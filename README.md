@@ -186,6 +186,10 @@ The following interfaces can be injected:
         - *IImageDataFactory*: A factory to create Image Data
         - *IMeridianFlipVMFactory*: A factory to create a meridian flip viewmodel instance
         - *IAutoFocusVMFactory*: A factory to create an autofocus viewmodel instance
+        - *IImageControlVM*: Control that is holding the image for display
+        - *IImageStatisticsVM*: Statistics of a session
+        - *IDomeSynchronization**: Access to dome synchronizatino
+        - *ISequenceMediator*: Control of the sequencer. **Must be initialized first before you can use it which is after all plugins are loaded!**
 
 Example:
 
