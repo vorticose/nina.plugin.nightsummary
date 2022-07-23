@@ -1,4 +1,4 @@
-﻿using MyPlugin.Properties;
+﻿using $pluginnamespace$.Properties;
 using Newtonsoft.Json;
 using NINA.Core.Model;
 using NINA.Core.Utility.Notification;
@@ -12,8 +12,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 
-namespace MyPlugin.MyPluginTestCategory {
-
+namespace $pluginnamespace$.$pluginclassname$TestCategory {
     /// <summary>
     /// This Class shows the basic principle on how to add a new Sequence Instruction to the N.I.N.A. sequencer via the plugin interface
     /// For ease of use this class inherits the abstract SequenceItem which already handles most of the running logic, like logging, exception handling etc.
@@ -28,11 +27,10 @@ namespace MyPlugin.MyPluginTestCategory {
     [ExportMetadata("Name", "Plugin Template Instruction")]
     [ExportMetadata("Description", "This item will just show a notification and is just there to show how the plugin system works")]
     [ExportMetadata("Icon", "Plugin_Test_SVG")]
-    [ExportMetadata("Category", "MyPluginTestCategory")]
+    [ExportMetadata("Category", "$pluginname$")]
     [Export(typeof(ISequenceItem))]
     [JsonObject(MemberSerialization.OptIn)]
-    public class MyPluginTestInstruction : SequenceItem {
-
+    public class $pluginclassname$Instruction : SequenceItem {
         /// <summary>
         /// The constructor marked with [ImportingConstructor] will be used to import and construct the object
         /// General device interfaces can be added to the constructor parameters and will be automatically injected on instantiation by the plugin loader
@@ -64,10 +62,10 @@ namespace MyPlugin.MyPluginTestCategory {
         ///     - IList<IDateTimeProvider>
         /// </remarks>
         [ImportingConstructor]
-        public MyPluginTestInstruction() {
+        public $pluginclassname$Instruction() {
             Text = Settings.Default.DefaultNotificationMessage;
         }
-        public MyPluginTestInstruction(MyPluginTestInstruction copyMe) : this() {
+        public $pluginclassname$Instruction($pluginclassname$Instruction copyMe) : this() {
             CopyMetaData(copyMe);
         }
 
@@ -98,7 +96,7 @@ namespace MyPlugin.MyPluginTestCategory {
         /// </summary>
         /// <returns></returns>
         public override object Clone() {
-            return new MyPluginTestInstruction(this);
+            return new $pluginclassname$Instruction(this);
         }
 
         /// <summary>
@@ -106,7 +104,7 @@ namespace MyPlugin.MyPluginTestCategory {
         /// </summary>
         /// <returns></returns>
         public override string ToString() {
-            return $"Category: {Category}, Item: {nameof(MyPluginTestInstruction)}, Text: {Text}";
+            return $"Category: {Category}, Item: {nameof($pluginclassname$Instruction)}, Text: {Text}";
         }
     }
 }

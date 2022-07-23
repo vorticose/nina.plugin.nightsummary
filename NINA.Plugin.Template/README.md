@@ -1,0 +1,3 @@
+﻿# $pluginname$
+
+$pluginlongdesc$

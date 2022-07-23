@@ -6,7 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 
-namespace MyPluginNamespace {
+namespace $pluginnamespace$ {
 
     [Export(typeof(ResourceDictionary))]
     partial class Options : ResourceDictionary {

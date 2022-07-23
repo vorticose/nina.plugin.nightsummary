@@ -8,7 +8,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace MyPlugin.MyPluginTestCategory {
+namespace $pluginnamespace$.$pluginclassname$TestCategory {
     /// <summary>
     /// This Class shows the basic principle on how to add a new Sequence Trigger to the N.I.N.A. sequencer via the plugin interface
     /// For ease of use this class inherits the abstract SequenceTrigger which already handles most of the running logic, like logging, exception handling etc.
@@ -23,10 +23,10 @@ namespace MyPlugin.MyPluginTestCategory {
     [ExportMetadata("Name", "Plugin Template Condition")]
     [ExportMetadata("Description", "This condition is true until a user flicks a combobox on the condition")]
     [ExportMetadata("Icon", "Plugin_Test_SVG")]
-    [ExportMetadata("Category", "MyPluginTestCategory")]
+    [ExportMetadata("Category", "$pluginname$")]
     [Export(typeof(ISequenceCondition))]
     [JsonObject(MemberSerialization.OptIn)]
-    public class MyPluginTestCondition : SequenceCondition {
+    public class $pluginclassname$Condition : SequenceCondition {
         /// <summary>
         /// The constructor marked with [ImportingConstructor] will be used to import and construct the object
         /// General device interfaces can be added to the constructor parameters and will be automatically injected on instantiation by the plugin loader
@@ -58,7 +58,7 @@ namespace MyPlugin.MyPluginTestCategory {
         ///     - IList<IDateTimeProvider>
         /// </remarks>
         [ImportingConstructor]
-        public MyPluginTestCondition() {
+        public $pluginclassname$Condition() {
             IsTruthy = true;
         }
 
@@ -84,7 +84,7 @@ namespace MyPlugin.MyPluginTestCategory {
         }
 
         public override object Clone() {
-            return new MyPluginTestCondition() {
+            return new $pluginclassname$Condition() {
                 Icon = Icon,
                 Name = Name,
                 Category = Category,
@@ -97,7 +97,7 @@ namespace MyPlugin.MyPluginTestCategory {
         /// </summary>
         /// <returns></returns>
         public override string ToString() {
-            return $"Category: {Category}, Item: {nameof(MyPluginTestCondition)}, IsTruthy: {IsTruthy}";
+            return $"Category: {Category}, Item: {nameof($pluginclassname$Condition)}, IsTruthy: {IsTruthy}";
         }
     }
 }

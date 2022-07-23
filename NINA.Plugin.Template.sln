@@ -1,0 +1,49 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.2.32630.192
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NINA.Plugin.Template", "NINA.Plugin.Template\NINA.Plugin.Template.csproj", "{78FC6455-C1BA-4DC5-A8D0-9F48AECD733D}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "SolutionItems", "SolutionItems", "{3A7B69EE-60D7-414C-ABFF-B918973CFC75}"
+	ProjectSection(SolutionItems) = preProject
+		.editorconfig = .editorconfig
+		.gitignore = .gitignore
+		LICENSE.txt = LICENSE.txt
+		README.md = README.md
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NINA.Plugin.Template.Wizard", "NINA.Plugin.Template.Wizard\NINA.Plugin.Template.Wizard.csproj", "{A75AB00C-97E5-41CF-ABE7-A17BAE40E695}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Debug|x86 = Debug|x86
+		Release|Any CPU = Release|Any CPU
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{78FC6455-C1BA-4DC5-A8D0-9F48AECD733D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{78FC6455-C1BA-4DC5-A8D0-9F48AECD733D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{78FC6455-C1BA-4DC5-A8D0-9F48AECD733D}.Debug|x86.ActiveCfg = Debug|x86
+		{78FC6455-C1BA-4DC5-A8D0-9F48AECD733D}.Debug|x86.Build.0 = Debug|x86
+		{78FC6455-C1BA-4DC5-A8D0-9F48AECD733D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{78FC6455-C1BA-4DC5-A8D0-9F48AECD733D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{78FC6455-C1BA-4DC5-A8D0-9F48AECD733D}.Release|x86.ActiveCfg = Release|x86
+		{78FC6455-C1BA-4DC5-A8D0-9F48AECD733D}.Release|x86.Build.0 = Release|x86
+		{A75AB00C-97E5-41CF-ABE7-A17BAE40E695}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A75AB00C-97E5-41CF-ABE7-A17BAE40E695}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A75AB00C-97E5-41CF-ABE7-A17BAE40E695}.Debug|x86.ActiveCfg = Debug|x86
+		{A75AB00C-97E5-41CF-ABE7-A17BAE40E695}.Debug|x86.Build.0 = Debug|x86
+		{A75AB00C-97E5-41CF-ABE7-A17BAE40E695}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A75AB00C-97E5-41CF-ABE7-A17BAE40E695}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A75AB00C-97E5-41CF-ABE7-A17BAE40E695}.Release|x86.ActiveCfg = Release|x86
+		{A75AB00C-97E5-41CF-ABE7-A17BAE40E695}.Release|x86.Build.0 = Release|x86
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {B45CE89B-1961-4499-801A-BAE72ECF84C8}
+	EndGlobalSection
+EndGlobal

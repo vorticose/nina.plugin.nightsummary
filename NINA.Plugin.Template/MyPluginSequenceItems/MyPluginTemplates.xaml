@@ -1,8 +1,8 @@
 ﻿<ResourceDictionary
-    x:Class="MyPlugin.MyPluginTestCategory.PluginTestItemTemplate"
+    x:Class="$pluginnamespace$.$pluginclassname$TestCategory.PluginItemTemplate"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="clr-namespace:MyPlugin.MyPluginTestCategory"
+    xmlns:local="clr-namespace:$pluginnamespace$.$pluginclassname$TestCategory"
     xmlns:mini="clr-namespace:NINA.View.Sequencer.MiniSequencer;assembly=NINA.Sequencer"
     xmlns:nina="clr-namespace:NINA.View.Sequencer;assembly=NINA.Sequencer">
     <!--  This geometrygroup defines a custom SVG to be used with the plugin instruction  -->
@@ -15,7 +15,7 @@
 
     <!--  The definition of the plugin test instruction style  -->
     <!--  The DataType has to be defined as the instruction in context  -->
-    <DataTemplate DataType="{x:Type local:MyPluginTestInstruction}">
+    <DataTemplate DataType="{x:Type local:$pluginclassname$Instruction}">
         <nina:SequenceBlockView>
             <nina:SequenceBlockView.SequenceItemContent>
                 <StackPanel Orientation="Horizontal">
@@ -32,7 +32,7 @@
 
     <!--  The definition of the test instruction plugin style in the mini format on the imaging tab  -->
     <!--  The Key has to be defined as the fully qualified instruction name and the "_Mini" postfix  -->
-    <DataTemplate x:Key="MyPlugin.MyPluginTestCategory.MyPluginTestInstruction_Mini">
+    <DataTemplate x:Key="$pluginnamespace$.$pluginclassname$TestCategory.$pluginclassname$Instruction_Mini">
         <mini:MiniSequenceItem>
             <mini:MiniSequenceItem.SequenceItemContent>
                 <StackPanel Orientation="Horizontal">
@@ -49,7 +49,7 @@
 
     <!--  The definition of the plugin test condition style  -->
     <!--  The DataType has to be defined as the instruction in context  -->
-    <DataTemplate DataType="{x:Type local:MyPluginTestCondition}">
+    <DataTemplate DataType="{x:Type local:$pluginclassname$Condition}">
         <nina:SequenceBlockView>
             <nina:SequenceBlockView.SequenceItemContent>
                 <StackPanel Orientation="Horizontal">
@@ -67,7 +67,7 @@
 
     <!--  The definition of the test condition plugin style in the mini format on the imaging tab  -->
     <!--  The Key has to be defined as the fully qualified instruction name and the "_Mini" postfix  -->
-    <DataTemplate x:Key="MyPlugin.MyPluginTestCategory.MyPluginTestCondition_Mini">
+    <DataTemplate x:Key="$pluginnamespace$.$pluginclassname$TestCategory.$pluginclassname$Condition_Mini">
         <mini:MiniSequenceItem>
             <mini:MiniSequenceItem.SequenceItemContent>
                 <StackPanel Orientation="Horizontal">

@@ -6,12 +6,10 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 
-namespace MyPlugin.MyPluginTestCategory {
-
+namespace $pluginnamespace$.$pluginclassname$TestCategory {
     [Export(typeof(ResourceDictionary))]
-    public partial class PluginTestItemTemplate : ResourceDictionary {
-
-        public PluginTestItemTemplate() {
+    public partial class PluginItemTemplate : ResourceDictionary {
+        public PluginItemTemplate() {
             InitializeComponent();
         }
     }

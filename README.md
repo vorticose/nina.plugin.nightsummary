@@ -7,6 +7,12 @@ This repository contains examples and guidelines on how to develop a plugin for 
 The plugins for N.I.N.A. are C# class libraries, that expose certain classes to be imported by the application using the [Managed Extensibility Framework (MEF)](https://docs.microsoft.com/en-us/dotnet/framework/mef/).
 Currently plugins are capable to extend the advanced sequencer's functionality by creating new instructions, instruction sets, triggers or conditions.
 
+## Setting up the project
+
+A Visual Studio Extension can be downloaded and installed in the [download section of the template repository](https://bitbucket.org/Isbeorn/nina.plugin.template/downloads/NINA.Plugin.Template.Wizard.vsix).   
+Simply install the extension and create a new project afterwards by selecting the new template.  
+With it you can quickly setup an example project containing all necessary presets and some quick examples to get you started.
+
 ## Important Topics to consider
 ### Namespaces and Type names
 

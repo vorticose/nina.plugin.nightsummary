@@ -1,0 +1,59 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<VSTemplate Version="3.0.0" Type="Project" xmlns="http://schemas.microsoft.com/developer/vstemplate/2005" xmlns:sdk="http://schemas.microsoft.com/developer/vstemplate-sdkextension/2010">
+	<TemplateData>
+		<Name>NINA Plugin Template</Name>
+		<Description>A template that provides a basic NINA plugin with example sequence instruction and Image window pane.</Description>
+		<Icon>NINAPluginTemplate.ico</Icon>
+		<ProjectType>CSharp</ProjectType>
+		<LanguageTag>csharp</LanguageTag>
+		<TargetPlatformName>Windows</TargetPlatformName>
+		<ProjectTypeTag>NINA</ProjectTypeTag>
+		<ProjectSubType>Plugin</ProjectSubType>
+		<RequiredFrameworkVersion>4.7</RequiredFrameworkVersion>
+		<SortOrder>10</SortOrder>
+		<TemplateID>2646785A-BACD-4D65-897C-E01468ADCFE1</TemplateID>
+		<DefaultName>MyPlugin</DefaultName>
+		<ProvideDefaultName>true</ProvideDefaultName>
+		<CreateNewFolder>true</CreateNewFolder>
+		<LocationField>Enabled</LocationField>
+		<CreateInPlace>true</CreateInPlace>
+		<EnableLocationBrowseButton>true</EnableLocationBrowseButton>
+	</TemplateData>
+	<TemplateContent PreferedSolutionConfiguration="Release|AnyCPU">
+		<Project ReplaceParameters="true" TargetFileName="$pluginname$.csproj" File="ProjectTemplate.csproj">
+			<Folder Name="MyPluginProperties" TargetFolderName="Properties">
+				<ProjectItem ReplaceParameters="true">AssemblyInfo.cs</ProjectItem>
+				<ProjectItem ReplaceParameters="true">Settings.Designer.cs</ProjectItem>
+				<ProjectItem ReplaceParameters="true">Settings.Settings</ProjectItem>
+			</Folder>
+
+			<Folder Name="MyPluginSequenceItems" TargetFolderName="$pluginclassname$SequenceItems">
+				<ProjectItem ReplaceParameters="true" TargetFileName="$pluginclassname$Condition.cs">MyPluginCondition.cs</ProjectItem>
+				<ProjectItem ReplaceParameters="true" TargetFileName="$pluginclassname$Instruction.cs">MyPluginInstruction.cs</ProjectItem>
+				<ProjectItem ReplaceParameters="true" TargetFileName="$pluginclassname$Trigger.cs">MyPluginTrigger.cs</ProjectItem>
+
+				<ProjectItem ReplaceParameters="true" TargetFileName="$pluginclassname$Templates.xaml">MyPluginTemplates.xaml</ProjectItem>
+				<ProjectItem ReplaceParameters="true" TargetFileName="$pluginclassname$Templates.xaml.cs">MyPluginTemplates.xaml.cs</ProjectItem>
+			</Folder>
+
+			<ProjectItem ReplaceParameters="true" TargetFileName="$pluginclassname$.cs" OpenInEditor="true">MyPlugin.cs</ProjectItem>
+
+			<ProjectItem ReplaceParameters="true">Options.xaml</ProjectItem>
+			<ProjectItem ReplaceParameters="true">Options.xaml.cs</ProjectItem>
+
+			<ProjectItem ReplaceParameters="true">app.config</ProjectItem>
+			<ProjectItem ReplaceParameters="true">packages.config</ProjectItem>
+			<ProjectItem ReplaceParameters="true">CHANGELOG.md</ProjectItem>
+			<ProjectItem ReplaceParameters="true">README.md</ProjectItem>
+
+			<ProjectItem>LICENSE.txt</ProjectItem>
+			<ProjectItem>CodeMaid.config</ProjectItem>
+			<ProjectItem>.editorconfig</ProjectItem>
+			<ProjectItem>.gitignore</ProjectItem>
+		</Project>
+	</TemplateContent>
+	<WizardExtension>
+		<Assembly>NINA.Plugin.Template.Wizard, Version=1.0.0.0, Culture=Neutral, PublicKeyToken=c617f0e9aed052aa</Assembly>
+		<FullClassName>NINA.Plugin.Template.Wizard.WizardImplementation</FullClassName>
+	</WizardExtension>
+</VSTemplate>

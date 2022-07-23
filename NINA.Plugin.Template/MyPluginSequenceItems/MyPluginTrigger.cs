@@ -12,7 +12,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace MyPlugin.MyPluginTestCategory {
+namespace $pluginnamespace$.$pluginclassname$TestCategory {
     /// <summary>
     /// This Class shows the basic principle on how to add a new Sequence Trigger to the N.I.N.A. sequencer via the plugin interface
     /// For ease of use this class inherits the abstract SequenceTrigger which already handles most of the running logic, like logging, exception handling etc.
@@ -27,10 +27,10 @@ namespace MyPlugin.MyPluginTestCategory {
     [ExportMetadata("Name", "Plugin Template Trigger")]
     [ExportMetadata("Description", "This trigger will show a notification when a random generated number is even on evaluation")]
     [ExportMetadata("Icon", "Plugin_Test_SVG")]
-    [ExportMetadata("Category", "MyPluginTestCategory")]
+    [ExportMetadata("Category", "$pluginname$")]
     [Export(typeof(ISequenceTrigger))]
     [JsonObject(MemberSerialization.OptIn)]
-    public class MyPluginTestTrigger : SequenceTrigger {
+    public class $pluginclassname$Trigger : SequenceTrigger {
         /// <summary>
         /// The constructor marked with [ImportingConstructor] will be used to import and construct the object
         /// General device interfaces can be added to the constructor parameters and will be automatically injected on instantiation by the plugin loader
@@ -62,12 +62,11 @@ namespace MyPlugin.MyPluginTestCategory {
         ///     - IList<IDateTimeProvider>
         /// </remarks>
         [ImportingConstructor]
-        public MyPluginTestTrigger() {
-
+        public $pluginclassname$Trigger() {
         }
 
         public override object Clone() {
-            return new MyPluginTestTrigger() {
+            return new $pluginclassname$Trigger() {
                 Icon = Icon,
                 Name = Name,
                 Category = Category,
@@ -89,9 +88,9 @@ namespace MyPlugin.MyPluginTestCategory {
 
         /// <summary>
         /// This method will be evaluated to see if the trigger should be executed.
-        /// When true - the Execute method will be called 
+        /// When true - the Execute method will be called
         /// Skipped otherwise
-        /// 
+        ///
         /// For this example the trigger will fire when the random number generator generates an even number
         /// </summary>
         /// <param name="previousItem"></param>
@@ -108,7 +107,7 @@ namespace MyPlugin.MyPluginTestCategory {
         /// </summary>
         /// <returns></returns>
         public override string ToString() {
-            return $"Category: {Category}, Item: {nameof(MyPluginTestTrigger)}";
+            return $"Category: {Category}, Item: {nameof($pluginclassname$Trigger)}";
         }
     }
 }
