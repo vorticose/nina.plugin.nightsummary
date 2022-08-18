@@ -194,7 +194,7 @@ The following interfaces can be injected:
         - *IAutoFocusVMFactory*: A factory to create an autofocus viewmodel instance  
         - *IImageControlVM*: Control that is holding the image for display  
         - *IImageStatisticsVM*: Statistics of a session  
-        - *IDomeSynchronization**: Access to dome synchronization  
+        - *IDomeSynchronization*: Access to dome synchronization  
         - *ISequenceMediator*: Control of the sequencer. **Must be initialized first before you can use it which is after all plugins are loaded!**  
 
 Example:
