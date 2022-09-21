@@ -122,6 +122,12 @@ The interface that defines the *plugin meta data*. Each plugin requires an expor
 
 *An interface used to exchange functionality for certain operations in N.I.N.A. - currently it is possible to exchange IStarDetection, IStarAnnotator and IAutoFocusVMFactory*
 
+### IEquipmentProvider
+
+*An interface to export custom device drivers to use as equipment in N.I.N.A.  
+The export needs to use the base type, but the implementation should inherit from `IEquipmentProvider<[ISpecificDevice]>` (e.g. `IEquipmentProvider<ICamera>`)
+*  
+
 ## Available Base Classes
 
 The N.I.N.A. packages provide a set of base classes that can be inherited from, that will already handle most of the boilerplate required for the exportable interfaces.  
@@ -196,6 +202,8 @@ The following interfaces can be injected:
         - *IImageStatisticsVM*: Statistics of a session  
         - *IDomeSynchronization*: Access to dome synchronization  
         - *ISequenceMediator*: Control of the sequencer. **Must be initialized first before you can use it which is after all plugins are loaded!**  
+        - *IOptionsVM*: Offers utility to inject custom image file patterns to save files with  
+        - *IExposureDataFactory*: Create exposure data from in memory or files  
 
 Example:
 
@@ -277,6 +285,19 @@ Furthermore to be imported correctly by the application the ResourceDictionary w
     <DataTemplate x:Key="<Fully Qualified DockableVMDataType TypeName>_Dockable">
         <Grid>
             <!-- Your dock panel interface-->
+        </Grid>
+    </DataTemplate>
+```
+
+### Equipment Settings
+
+Each equipment page has a separate section for settings. When a plugin provides a custom device driver, these sections can be filled with custom settings for this specific device.
+Simply export a datatemplate following the postfix `<Fully Qualified Device Type TypeName>_<DeviceType>Settings`. The specific values can also be found in the static Object NINA.WPF.Base.Utility.DataTemplatePostfix.  
+  
+```xml
+    <DataTemplate x:Key="<Fully Qualified Device Type TypeName>_CameraSettings">
+        <Grid>
+            <!-- Your camera specific device interface-->
         </Grid>
     </DataTemplate>
 ```
