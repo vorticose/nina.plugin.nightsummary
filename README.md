@@ -331,13 +331,13 @@ dotnet tool install -g --add-source "https://api.nuget.org/v3/index.json" --igno
 ```bash
 upgrade-assistant analyze <Your Solution Name>.sln
 ```
-4. Start the upgrade the project
+4. Start to upgrade the project
 ```bash
 upgrade-assistant upgrade <Your Solution Name>.sln
 ```
 5. The assistant will run you through multiple steps. Read them thoroughly and step through them  
 5.a. Alternatively you can add the argument `--non-interactive` to automatically run through all steps
-5.b. Depending on the complexity of your plugin there might be manual steps required. For most projects the migration will be successful without any manual steps
+5.b. Depending on the complexity of your plugin there might be manual steps required. For most projects the migration will be successful without any manual steps  
 ### Package update
 1. Open the solution in Visual Studio, right click on the properties of your project and validate that the target framework is set to `.NET 7.0` with the target OS set to `Windows`
 2. The next step consists of updating the N.I.N.A. nugets  
