@@ -339,13 +339,13 @@ upgrade-assistant upgrade <Your Solution Name>.sln
 5.a. Alternatively you can add the argument `--non-interactive` to automatically run through all steps
 5.b. Depending on the complexity of your plugin there might be manual steps required. For most projects the migration will be successful without any manual steps
 ### Package update
-6. Open the solution in Visual Studio, right click on the properties of your project and validate that the target framework is set to `.NET 7.0` with the target OS set to `Windows`
-7. The next step consists of updating the N.I.N.A. nugets  
+1. Open the solution in Visual Studio, right click on the properties of your project and validate that the target framework is set to `.NET 7.0` with the target OS set to `Windows`
+2. The next step consists of updating the N.I.N.A. nugets  
 ```bash
 # Open the package manager console in visual studio and run the update
 Update-Package NINA.Plugin -IncludePrerelease
 ```
-
+3. Change the AssemblyMetaData for MinimumApplicationVersion to the NINA.Plugin package version
 ### XAML migrations
 1. NINACustomControlLibrary has been renamed to NINA.CustomControlLibrary
 ```
