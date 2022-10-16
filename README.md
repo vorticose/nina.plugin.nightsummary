@@ -361,8 +361,25 @@ In your XAML code replace:
 clr-namespace:OxyPlot.Wpf;assembly=OxyPlot.Wpf
 With:
 clr-namespace:OxyPlot.Wpf;assembly=OxyPlot.Contrib.Wpf
+
+The TrackerDefinition however resides in the WPF Shared library. Here is an example:
+<UserControl 
+xmlns:oxy="clr-namespace:OxyPlot.Wpf;assembly=OxyPlot.Contrib.Wpf"
+xmlns:oxys="clr-namespace:OxyPlot.Wpf;assembly=OxyPlot.Wpf.Shared">
+  <oxy:Plot>
+    <oxys:TrackerDefinition TrackerKey="NoiseProperties">
+    </oxys:TrackerDefinition>
+  </oxy:Plot>
+</UserControl>
 ```
 ### Code migrations
-Due to the big changes in the .NET framework some concepts are moved to different namespaces or need to be replaced with a different technology. This fully depends on your plugin code and can't be covered in these steps, as they need to be done per plugin separately
+Due to the big changes in the .NET framework some concepts are moved to different namespaces or need to be replaced with a different technology. This fully depends on your plugin code and can't be covered in these steps, as they need to be done per plugin separately. However some common problems are listed below.
+
+- Starting an external process
+    - UseShellExecute for starting a process was set to true in .NET4.8, however with .NET5 and above this now defaults to false. Simply pass the flag into your process start routine
+    - Process.Start(new ProcessStartInfo(&lt;path to exe&gt;) { UseShellExecute = true });
+- If you are using mutexes, they have a different signature for their constructors
+
 ### Post-build events
-For some reason the post build events might fail and can't resolve the tokens. Currently you can simply remove the post build event and re-add it in the build section of the UI and it will just work again
+Post Build events are transformed to xml and might have some characters replaced in error. For example %localappdata% will be %25localappdata%25. Just replace them with the original value again.  
+For some reason the post build events might also fail and can't resolve the dollar tokens. Currently you can simply remove the post build event and re-add it in the build section of the UI and it will just work again
