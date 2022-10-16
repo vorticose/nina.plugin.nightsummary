@@ -317,3 +317,52 @@ In addition to the offical distribution, you can also simply distribute your plu
 
 In order to make work with the template easy, the template project is using [the Unlicense](https://unlicense.org/) and is therefore part of the public domain.
 I dedicate any and all copyright interest in this plugin template to the public domain. I make this dedication for the benefit of the public at large and to the detriment of my heirs and successors. I intend this dedication to be an overt act of relinquishment in perpetuity of all present and future rights to this software under copyright law. 
+
+## Migrate Plugin to .NET7
+
+### Solution upgrade
+1. Download [.NET 7.0 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/7.0)
+2. Download [.NET upgrade assistant](https://dotnet.microsoft.com/en-us/platform/upgrade-assistant)
+```bash
+# It can be installed via dotnet cli
+dotnet tool install -g --add-source "https://api.nuget.org/v3/index.json" --ignore-failed-sources upgrade-assistant
+```
+3. Analyze your plugin solution
+```bash
+upgrade-assistant analyze <Your Solution Name>.sln
+```
+4. Start the upgrade the project
+```bash
+upgrade-assistant upgrade <Your Solution Name>.sln
+```
+5. The assistant will run you through multiple steps. Read them thoroughly and step through them  
+5.a. Alternatively you can add the argument `--non-interactive` to automatically run through all steps
+5.b. Depending on the complexity of your plugin there might be manual steps required. For most projects the migration will be successful without any manual steps
+### Package update
+6. Open the solution in Visual Studio, right click on the properties of your project and validate that the target framework is set to `.NET 7.0` with the target OS set to `Windows`
+7. The next step consists of updating the N.I.N.A. nugets  
+```bash
+# Open the package manager console in visual studio and run the update
+Update-Package NINA.Plugin -IncludePrerelease
+```
+
+### XAML migrations
+1. NINACustomControlLibrary has been renamed to NINA.CustomControlLibrary
+```
+In your XAML code replace:
+clr-namespace:NINACustomControlLibrary;assembly=NINACustomControlLibrary
+With:
+clr-namespace:NINA.CustomControlLibrary;assembly=NINA.CustomControlLibrary
+```
+2. OxyPlot major version has had some changes
+```
+WPF Plots have been moved into a separate libray.
+In your XAML code replace:
+clr-namespace:OxyPlot.Wpf;assembly=OxyPlot.Wpf
+With:
+clr-namespace:OxyPlot.Wpf;assembly=OxyPlot.Contrib.Wpf
+```
+### Code migrations
+Due to the big changes in the .NET framework some concepts are moved to different namespaces or need to be replaced with a different technology. This fully depends on your plugin code and can't be covered in these steps, as they need to be done per plugin separately
+### Post-build events
+For some reason the post build events might fail and can't resolve the tokens. Currently you can simply remove the post build event and re-add it in the build section of the UI and it will just work again
