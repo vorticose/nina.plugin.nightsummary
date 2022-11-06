@@ -319,6 +319,7 @@ In order to make work with the template easy, the template project is using [the
 I dedicate any and all copyright interest in this plugin template to the public domain. I make this dedication for the benefit of the public at large and to the detriment of my heirs and successors. I intend this dedication to be an overt act of relinquishment in perpetuity of all present and future rights to this software under copyright law. 
 
 ## Migrate Plugin to .NET7
+The following steps describe how to upgrade a plugin to .NET7. This is required for N.I.N.A. Version 3.0 and beyond.
 
 ### Solution upgrade
 1. Download [.NET 7.0 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/7.0)
