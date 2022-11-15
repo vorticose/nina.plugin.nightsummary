@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
     <Metadata>
-        <Identity Id="NINAPluginTemplateWizard.6646dbbf-bffd-4ddc-9d13-9e227d9f823d" Version="1.0" Language="en-US" Publisher="Stefan Berg" />
+        <Identity Id="NINAPluginTemplateWizard.6646dbbf-bffd-4ddc-9d13-9e227d9f823d" Version="1.2" Language="en-US" Publisher="Stefan Berg" />
         <DisplayName>NINA.Plugin.Template.Wizard</DisplayName>
         <Description>Empty VSIX Project.</Description>
     </Metadata>
