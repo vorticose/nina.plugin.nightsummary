@@ -14,7 +14,7 @@
 		<TemplateID>2646785A-BACD-4D65-897C-E01468ADCFE1</TemplateID>
 		<DefaultName>MyPlugin</DefaultName>
 		<ProvideDefaultName>true</ProvideDefaultName>
-		<CreateNewFolder>true</CreateNewFolder>
+		<CreateNewFolder>false</CreateNewFolder>
 		<LocationField>Enabled</LocationField>
 		<CreateInPlace>true</CreateInPlace>
 		<EnableLocationBrowseButton>true</EnableLocationBrowseButton>
