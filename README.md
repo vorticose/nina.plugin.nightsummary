@@ -11,7 +11,7 @@ Currently plugins are capable to extend the advanced sequencer's functionality b
 
 A Visual Studio Extension can be downloaded and installed in the [download section of the template repository](https://bitbucket.org/Isbeorn/nina.plugin.template/downloads/NINA.Plugin.Template.Wizard.vsix).   
 Simply install the extension and create a new project afterwards by selecting the new template.  
-⚠️ Make sure to enable "Place solution and project in the same directory"! Otherwise the nuget package reference paths in the project definition are incorrect.
+⚠️ Make sure to enable "Place solution and project in the same directory"! Otherwise the nuget package reference paths in the project definition are incorrect.  
 With it you can quickly setup an example project containing all necessary presets and some quick examples to get you started.
 
 ## Important Topics to consider
