@@ -283,6 +283,12 @@
 			<DesignTimeSharedInput>True</DesignTimeSharedInput>
 			<DependentUpon>Settings.settings</DependentUpon>
 		</Compile>
+    <Compile Include="$pluginclassname$Drivers\$pluginclassname$WeatherDriver.cs" />
+    <Compile Include="$pluginclassname$Drivers\$pluginclassname$WeatherProvider.cs" />
+    <Compile Include="$pluginclassname$Dockables\$pluginclassname$Dockable.cs" />
+    <Compile Include="$pluginclassname$Dockables\$pluginclassname$DockableTemplates.xaml.cs">
+      <DependentUpon>$pluginclassname$DockableTemplates.xaml</DependentUpon>
+    </Compile>
 	</ItemGroup>
 	<ItemGroup>
 		<None Include="app.config" />
@@ -301,6 +307,10 @@
 			<Generator>MSBuild:Compile</Generator>
 			<SubType>Designer</SubType>
 		</Page>
+    <Page Include="$pluginclassname$Dockables\$pluginclassname$DockableTemplates.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
 	</ItemGroup>
 	<Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 	<Import Project="packages\Accord.3.8.0\build\Accord.targets" Condition="Exists('packages\Accord.3.8.0\build\Accord.targets')" />

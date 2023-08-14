@@ -27,6 +27,18 @@
 				<ProjectItem ReplaceParameters="true">Settings.Settings</ProjectItem>
 			</Folder>
 
+      <Folder Name="MyPluginDockables" TargetFolderName="$pluginclassname$Dockables">
+        <ProjectItem ReplaceParameters="true" TargetFileName="$pluginclassname$Dockable.cs">MyPluginDockable.cs</ProjectItem>
+        
+        <ProjectItem ReplaceParameters="true" TargetFileName="$pluginclassname$DockableTemplates.xaml">MyPluginDockableTemplates.xaml</ProjectItem>
+        <ProjectItem ReplaceParameters="true" TargetFileName="$pluginclassname$DockableTemplates.xaml.cs">MyPluginDockableTemplates.xaml.cs</ProjectItem>        
+      </Folder>
+
+      <Folder Name="MyPluginDrivers" TargetFolderName="$pluginclassname$Drivers">
+        <ProjectItem ReplaceParameters="true" TargetFileName="$pluginclassname$WeatherDriver.cs">MyPluginWeatherDriver.cs</ProjectItem>
+        <ProjectItem ReplaceParameters="true" TargetFileName="$pluginclassname$WeatherProvider.cs">MyPluginWeatherProvider.cs</ProjectItem>
+      </Folder>
+
 			<Folder Name="MyPluginSequenceItems" TargetFolderName="$pluginclassname$SequenceItems">
 				<ProjectItem ReplaceParameters="true" TargetFileName="$pluginclassname$Condition.cs">MyPluginCondition.cs</ProjectItem>
 				<ProjectItem ReplaceParameters="true" TargetFileName="$pluginclassname$Instruction.cs">MyPluginInstruction.cs</ProjectItem>
