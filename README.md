@@ -319,35 +319,36 @@ In addition to the offical distribution, you can also simply distribute your plu
 In order to make work with the template easy, the template project is using [the Unlicense](https://unlicense.org/) and is therefore part of the public domain.
 I dedicate any and all copyright interest in this plugin template to the public domain. I make this dedication for the benefit of the public at large and to the detriment of my heirs and successors. I intend this dedication to be an overt act of relinquishment in perpetuity of all present and future rights to this software under copyright law. 
 
-## Migrate Plugin to .NET7
-The following steps describe how to upgrade a plugin to .NET7. This is required for N.I.N.A. Version 3.0 and beyond.
+## Migrate Plugin to .NET Core
+The following steps describe how to upgrade a plugin to .NET 8 or above. This is required for N.I.N.A. Version 3.0 and beyond.
 
 ### Solution upgrade
-1. Download [.NET 7.0 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/7.0)
+1. Download [.NET 8.0 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/8.0)
 2. Download [.NET upgrade assistant](https://dotnet.microsoft.com/en-us/platform/upgrade-assistant)
 ```bash
 # It can be installed via dotnet cli
 dotnet tool install -g --add-source "https://api.nuget.org/v3/index.json" --ignore-failed-sources upgrade-assistant
 ```
-3. Analyze your plugin solution
+3. Start to upgrade the project with the following command
 ```bash
-upgrade-assistant analyze <Your Solution Name>.sln
+upgrade-assistant upgrade <Your Poject Name>.csproj
 ```
-4. Start to upgrade the project
-```bash
-upgrade-assistant upgrade <Your Solution Name>.sln
-```
-5. The assistant will run you through multiple steps. Read them thoroughly and step through them  
-5.a. Alternatively you can add the argument `--non-interactive` to automatically run through all steps
-5.b. Depending on the complexity of your plugin there might be manual steps required. For most projects the migration will be successful without any manual steps  
+3.a Select `In-place project upgrade (framework.inplace)`
+3.b Select `.NET 8.0 (Supported until November, 2026)`
+4. The assistant will run you through multiple steps. Read them thoroughly and step through them  
+4.a. Alternatively you can add the argument `--non-interactive` to automatically run through all steps
+4.b. Depending on the complexity of your plugin there might be manual steps required. For most projects the migration will be successful without any manual steps  
+4.c. Confirm the upgrade. Afterwards the upgrade-assistant will migrate the project
+4.d. Revert the deletion of your "AssemblyInfo.cs" as it is still required
 ### Package update
-1. Open the solution in Visual Studio, right click on the properties of your project and validate that the target framework is set to `.NET 7.0` with the target OS set to `Windows`
+1. It is recommended to remove all PackageReferences from the csproj file. Dotnet core handles them much better and far less direct dependencies have to be specified.
 2. The next step consists of updating the N.I.N.A. nugets  
 ```bash
 # Open the package manager console in visual studio and run the update
 Update-Package NINA.Plugin -IncludePrerelease
 ```
-3. Change the AssemblyMetaData for MinimumApplicationVersion to the NINA.Plugin package version
+3. Re-add and upgrade all necessary third party nugets that your plugin needs.
+4. Change the AssemblyMetaData for `MinimumApplicationVersion` to the NINA.Plugin package version
 ### XAML migrations
 1. NINACustomControlLibrary has been renamed to NINA.CustomControlLibrary
 ```
