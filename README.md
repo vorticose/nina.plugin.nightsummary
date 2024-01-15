@@ -333,13 +333,13 @@ dotnet tool install -g --add-source "https://api.nuget.org/v3/index.json" --igno
 ```bash
 upgrade-assistant upgrade <Your Poject Name>.csproj
 ```
-3.a Select `In-place project upgrade (framework.inplace)`
-3.b Select `.NET 8.0 (Supported until November, 2026)`
+3.a Select `In-place project upgrade (framework.inplace)`  
+3.b Select `.NET 8.0 (Supported until November, 2026)`  
 4. The assistant will run you through multiple steps. Read them thoroughly and step through them  
-4.a. Alternatively you can add the argument `--non-interactive` to automatically run through all steps
+4.a. Alternatively you can add the argument `--non-interactive` to automatically run through all steps  
 4.b. Depending on the complexity of your plugin there might be manual steps required. For most projects the migration will be successful without any manual steps  
-4.c. Confirm the upgrade. Afterwards the upgrade-assistant will migrate the project
-4.d. Revert the deletion of your "AssemblyInfo.cs" as it is still required
+4.c. Confirm the upgrade. Afterwards the upgrade-assistant will migrate the project  
+4.d. Revert the deletion of your "AssemblyInfo.cs" as it is still required  
 ### Package update
 1. It is recommended to remove all PackageReferences from the csproj file. Dotnet core handles them much better and far less direct dependencies have to be specified.
 2. The next step consists of updating the N.I.N.A. nugets  
