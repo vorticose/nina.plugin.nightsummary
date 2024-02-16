@@ -114,7 +114,6 @@
     <EmbeddedResource Include=".gitignore" />
     <EmbeddedResource Include="app.config" />
     <EmbeddedResource Include="LICENSE.txt" />
-    <EmbeddedResource Include="packages.config" />
     <Resource Include="MyPluginProperties\AssemblyInfo.cs" />
     <None Include="ProjectTemplate.csproj" />
     <Resource Include="MyPluginProperties\Settings.settings" />
