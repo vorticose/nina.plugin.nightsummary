@@ -26,6 +26,8 @@ namespace $pluginnamespace$.$pluginclassname$Drivers {
 
     public string Name { get; }
 
+    public string DisplayName => Name;
+
     public string Category => "$pluginclassname$ Weather Driver";
 
     public string Description => "My custom weather driver from a plugin";
