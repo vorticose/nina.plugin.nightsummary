@@ -12,7 +12,9 @@ Currently plugins are capable to extend the advanced sequencer's functionality b
 A Visual Studio Extension can be downloaded and installed in the [download section of the template repository](https://bitbucket.org/Isbeorn/nina.plugin.template/downloads/NINA.Plugin.Template.Wizard.NET8.vsix).   
 Simply install the extension and create a new project afterwards by selecting the new template.  
 ⚠️ Make sure to enable "Place solution and project in the same directory"! Otherwise the nuget package reference paths in the project definition are incorrect.  
+⚠️ The wizard may prompt you to choose .NET Framework 4.8 instead of .NET 8. You can safely ignore this suggestion and select .NET Framework 4.8. Despite this, the project will still be created as a .NET 8 project, as this is a current limitation of the extension.
 With it you can quickly setup an example project containing all necessary presets and some quick examples to get you started.
+
 
 ## Important Topics to consider
 ### Namespaces and Type names
