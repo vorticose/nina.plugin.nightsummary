@@ -1,9 +1,9 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.2.32630.192
+# Visual Studio Version 18
+VisualStudioVersion = 18.3.11520.95 d18.3
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NINA.Plugin.Template", "NINA.Plugin.Template\NINA.Plugin.Template.csproj", "{78FC6455-C1BA-4DC5-A8D0-9F48AECD733D}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NINA.Plugin.NightSummary", "NINA.Plugin.Template\NINA.Plugin.NightSummary.csproj", "{78FC6455-C1BA-4DC5-A8D0-9F48AECD733D}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "SolutionItems", "SolutionItems", "{3A7B69EE-60D7-414C-ABFF-B918973CFC75}"
 	ProjectSection(SolutionItems) = preProject

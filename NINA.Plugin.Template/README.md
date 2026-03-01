@@ -1,3 +1,3 @@
-﻿# $pluginname$
+﻿# Night Summary
 
 $pluginlongdesc$

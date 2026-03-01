@@ -70,9 +70,9 @@ namespace NINA.Plugin.Template.Wizard {
                 }
 
                 // Add custom parameters.
-                replacementsDictionary.Add("$pluginname$", pluginName);
-                replacementsDictionary.Add("$pluginnamespace$", pluginNamespace);
-                replacementsDictionary.Add("$pluginclassname$", pluginClassName);
+                replacementsDictionary.Add("Night Summary", pluginName);
+                replacementsDictionary.Add("NINA.Plugin.NightSummary", pluginNamespace);
+                replacementsDictionary.Add("NightSummaryPlugin", pluginClassName);
                 replacementsDictionary.Add("$pluginshortdesc$", pluginShortDescription);
                 replacementsDictionary.Add("$pluginlongdesc$", pluginLongDescription);
                 replacementsDictionary.Add("$pluginauthor$", pluginAuthor);

@@ -13,26 +13,26 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 
-namespace $pluginnamespace$.$pluginclassname$Dockables {
+namespace NINA.Plugin.NightSummary.NightSummaryPluginDockables {
     /// <summary>
     /// This Class shows the basic principle on how to add a new panel to N.I.N.A. Imaging tab via the plugin interface
     /// In this example an altitude chart is added to the imaging tab that shows the altitude chart based on the position of the telescope    
     /// </summary>
     [Export(typeof(IDockableVM))]
-    public class $pluginclassname$Dockable : DockableVM, ITelescopeConsumer {
+    public class NightSummaryPluginDockable : DockableVM, ITelescopeConsumer {
         private INighttimeCalculator nighttimeCalculator;
         private ITelescopeMediator telescopeMediator;
 
         [ImportingConstructor]
-        public $pluginclassname$Dockable(
+        public NightSummaryPluginDockable(
             IProfileService profileService,
             ITelescopeMediator telescopeMediator,
             INighttimeCalculator nighttimeCalculator) : base(profileService) {
 
             // This will reference the resource dictionary to import the SVG graphic and assign it as the icon for the header bar
             var dict = new ResourceDictionary();
-            dict.Source = new Uri("$pluginnamespace$;component/$pluginclassname$Dockables/$pluginclassname$DockableTemplates.xaml", UriKind.RelativeOrAbsolute);
-            ImageGeometry = (System.Windows.Media.GeometryGroup)dict["$pluginnamespace$_AltitudeSVG"];
+            dict.Source = new Uri("NINA.Plugin.NightSummary;component/NightSummaryPluginDockables/NightSummaryPluginDockableTemplates.xaml", UriKind.RelativeOrAbsolute);
+            ImageGeometry = (System.Windows.Media.GeometryGroup)dict["NINA.Plugin.NightSummary_AltitudeSVG"];
             ImageGeometry.Freeze();
 
             this.nighttimeCalculator = nighttimeCalculator;

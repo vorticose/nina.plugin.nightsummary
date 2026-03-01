@@ -6,7 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 
-namespace $pluginnamespace$ {
+namespace NINA.Plugin.NightSummary {
 
     [Export(typeof(ResourceDictionary))]
     partial class Options : ResourceDictionary {

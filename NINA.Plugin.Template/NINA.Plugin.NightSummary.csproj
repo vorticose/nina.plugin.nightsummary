@@ -91,22 +91,18 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Resource Include="MyPlugin.cs" />
-    <Resource Include="MyPluginSequenceItems\MyPluginCondition.cs" />
-    <Resource Include="MyPluginSequenceItems\MyPluginInstruction.cs" />
+    <Resource Include="NightSummaryPlugin.cs" />
+    <Resource Include="MyPluginSequenceItems\NightSummaryInstruction.cs" />
     <Resource Include="MyPluginSequenceItems\MyPluginTemplates.xaml.cs">
       <DependentUpon>MyPluginTemplates.xaml</DependentUpon>
     </Resource>
-    <Resource Include="MyPluginSequenceItems\MyPluginTrigger.cs" />
     <Resource Include="Options.xaml.cs">
       <DependentUpon>Options.xaml</DependentUpon>
     </Resource>
-    <Resource Include="MyPluginDockables\MyPluginDockable.cs" />
+    <Resource Include="MyPluginDockables\NightSummaryDockable.cs" />
     <Resource Include="MyPluginDockables\MyPluginDockableTemplates.xaml.cs">
       <DependentUpon>MyPluginDockableTemplates.xaml</DependentUpon>
     </Resource>
-    <Resource Include="MyPluginDrivers\MyPluginWeatherDriver.cs" />
-    <Resource Include="MyPluginDrivers\MyPluginWeatherProvider.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Resource Include="MyPluginProperties\Settings.Designer.cs" />
   </ItemGroup>
@@ -142,7 +138,9 @@
   <ItemGroup>
     <EmbeddedResource Include="CHANGELOG.md" />
   </ItemGroup>
-  <ItemGroup />
+  <ItemGroup>
+    <Folder Include="MyPluginDrivers\" />
+  </ItemGroup>
   <ItemGroup>
     <Resource Include="MyPluginDockables\MyPluginDockableTemplates.xaml">
       <Generator>MSBuild:Compile</Generator>

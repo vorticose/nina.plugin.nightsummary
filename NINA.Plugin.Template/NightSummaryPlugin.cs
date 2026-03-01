@@ -1,4 +1,4 @@
-﻿using $pluginnamespace$.Properties;
+﻿using NINA.Plugin.NightSummary.Properties;
 using NINA.Core.Model;
 using NINA.Core.Utility;
 using NINA.Image.ImageData;
@@ -16,27 +16,27 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
-using Settings = $pluginnamespace$.Properties.Settings;
+using Settings = NINA.Plugin.NightSummary.Properties.Settings;
 
-namespace $pluginnamespace$ {
+namespace NINA.Plugin.NightSummary {
     /// <summary>
     /// This class exports the IPluginManifest interface and will be used for the general plugin information and options
     /// The base class "PluginBase" will populate all the necessary Manifest Meta Data out of the AssemblyInfo attributes. Please fill these accoringly
     /// 
     /// An instance of this class will be created and set as datacontext on the plugin options tab in N.I.N.A. to be able to configure global plugin settings
-    /// The user interface for the settings will be defined by a DataTemplate with the key having the naming convention "$pluginclassname$_Options" where $pluginclassname$ corresponds to the AssemblyTitle - In this template example it is found in the Options.xaml
+    /// The user interface for the settings will be defined by a DataTemplate with the key having the naming convention "NightSummaryPlugin_Options" where NightSummaryPlugin corresponds to the AssemblyTitle - In this template example it is found in the Options.xaml
     /// </summary>
     [Export(typeof(IPluginManifest))]
-    public class $pluginclassname$ : PluginBase, INotifyPropertyChanged {
+    public class NightSummaryPlugin : PluginBase, INotifyPropertyChanged {
         private readonly IPluginOptionsAccessor pluginSettings;
         private readonly IProfileService profileService;
         private readonly IImageSaveMediator imageSaveMediator;
 
         // Implementing a file pattern
-        private readonly ImagePattern exampleImagePattern = new ImagePattern("$$EXAMPLEPATTERN$$", "An example of an image pattern implementation", "$pluginname$");
+        private readonly ImagePattern exampleImagePattern = new ImagePattern("$$EXAMPLEPATTERN$$", "An example of an image pattern implementation", "Night Summary");
 
         [ImportingConstructor]
-        public $pluginclassname$(IProfileService profileService, IOptionsVM options, IImageSaveMediator imageSaveMediator) {
+        public NightSummaryPlugin(IProfileService profileService, IOptionsVM options, IImageSaveMediator imageSaveMediator) {
             if (Settings.Default.UpdateSettings) {
                 Settings.Default.Upgrade();
                 Settings.Default.UpdateSettings = false;

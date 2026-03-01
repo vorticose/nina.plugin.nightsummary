@@ -1,9 +1,8 @@
-﻿using Newtonsoft.Json;
+﻿using NINA.Plugin.NightSummary.Properties;
+using Newtonsoft.Json;
 using NINA.Core.Model;
 using NINA.Core.Utility.Notification;
-using NINA.Sequencer.Container;
 using NINA.Sequencer.SequenceItem;
-using NINA.Sequencer.Trigger;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
@@ -11,12 +10,13 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
 
-namespace $pluginnamespace$.$pluginclassname$TestCategory {
+namespace NINA.Plugin.NightSummary.NightSummaryPluginTestCategory {
     /// <summary>
-    /// This Class shows the basic principle on how to add a new Sequence Trigger to the N.I.N.A. sequencer via the plugin interface
-    /// For ease of use this class inherits the abstract SequenceTrigger which already handles most of the running logic, like logging, exception handling etc.
-    /// A complete custom implementation by just implementing ISequenceTrigger is possible too
+    /// This Class shows the basic principle on how to add a new Sequence Instruction to the N.I.N.A. sequencer via the plugin interface
+    /// For ease of use this class inherits the abstract SequenceItem which already handles most of the running logic, like logging, exception handling etc.
+    /// A complete custom implementation by just implementing ISequenceItem is possible too
     /// The following MetaData can be set to drive the initial values
     /// --> Name - The name that will be displayed for the item
     /// --> Description - a brief summary of what the item is doing. It will be displayed as a tooltip on mouseover in the application
@@ -24,13 +24,13 @@ namespace $pluginnamespace$.$pluginclassname$TestCategory {
     ///
     /// If the item has some preconditions that should be validated, it shall also extend the IValidatable interface and add the validation logic accordingly.
     /// </summary>
-    [ExportMetadata("Name", "Plugin Template Trigger")]
-    [ExportMetadata("Description", "This trigger will show a notification when a random generated number is even on evaluation")]
+    [ExportMetadata("Name", "Plugin Template Instruction")]
+    [ExportMetadata("Description", "This item will just show a notification and is just there to show how the plugin system works")]
     [ExportMetadata("Icon", "Plugin_Test_SVG")]
-    [ExportMetadata("Category", "$pluginname$")]
-    [Export(typeof(ISequenceTrigger))]
+    [ExportMetadata("Category", "Night Summary")]
+    [Export(typeof(ISequenceItem))]
     [JsonObject(MemberSerialization.OptIn)]
-    public class $pluginclassname$Trigger : SequenceTrigger {
+    public class NightSummaryPluginInstruction : SequenceItem {
         /// <summary>
         /// The constructor marked with [ImportingConstructor] will be used to import and construct the object
         /// General device interfaces can be added to the constructor parameters and will be automatically injected on instantiation by the plugin loader
@@ -62,52 +62,49 @@ namespace $pluginnamespace$.$pluginclassname$TestCategory {
         ///     - IList<IDateTimeProvider>
         /// </remarks>
         [ImportingConstructor]
-        public $pluginclassname$Trigger() {
+        public NightSummaryPluginInstruction() {
+            Text = Settings.Default.DefaultNotificationMessage;
         }
-
-        public override object Clone() {
-            return new $pluginclassname$Trigger() {
-                Icon = Icon,
-                Name = Name,
-                Category = Category,
-                Description = Description
-            };
+        public NightSummaryPluginInstruction(NightSummaryPluginInstruction copyMe) : this() {
+            CopyMetaData(copyMe);
         }
 
         /// <summary>
-        /// The actual running logic for when the trigger should run
+        /// An example property that can be set from the user interface via the Datatemplate specified in PluginTestItem.Template.xaml
         /// </summary>
-        /// <param name="context"></param>
-        /// <param name="progress"></param>
-        /// <param name="token"></param>
+        /// <remarks>
+        /// If the property changes from the code itself, remember to call RaisePropertyChanged() on it for the User Interface to notice the change
+        /// </remarks>
+        [JsonProperty]
+        public string Text { get; set; }
+
+        /// <summary>
+        /// The core logic when the sequence item is running resides here
+        /// Add whatever action is necessary
+        /// </summary>
+        /// <param name="progress">The application status progress that can be sent back during execution</param>
+        /// <param name="token">When a cancel signal is triggered from outside, this token can be used to register to it or check if it is cancelled</param>
         /// <returns></returns>
-        public override Task Execute(ISequenceContainer context, IProgress<ApplicationStatus> progress, CancellationToken token) {
-            Notification.ShowSuccess("Trigger was fired");
+        public override Task Execute(IProgress<ApplicationStatus> progress, CancellationToken token) {
+            Notification.ShowSuccess(Text);
+            // Add logic to run the item here
             return Task.CompletedTask;
         }
 
         /// <summary>
-        /// This method will be evaluated to see if the trigger should be executed.
-        /// When true - the Execute method will be called
-        /// Skipped otherwise
-        ///
-        /// For this example the trigger will fire when the random number generator generates an even number
+        /// When items are put into the sequence via the factory, the factory will call the clone method. Make sure all the relevant fields are cloned with the object.
         /// </summary>
-        /// <param name="previousItem"></param>
-        /// <param name="nextItem"></param>
         /// <returns></returns>
-        public override bool ShouldTrigger(ISequenceItem previousItem, ISequenceItem nextItem) {
-            return random.Next(0, 1000) % 2 == 0;
+        public override object Clone() {
+            return new NightSummaryPluginInstruction(this);
         }
-
-        Random random = new Random();
 
         /// <summary>
         /// This string will be used for logging
         /// </summary>
         /// <returns></returns>
         public override string ToString() {
-            return $"Category: {Category}, Item: {nameof($pluginclassname$Trigger)}";
+            return $"Category: {Category}, Item: {nameof(NightSummaryPluginInstruction)}, Text: {Text}";
         }
     }
 }

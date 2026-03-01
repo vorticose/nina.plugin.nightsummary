@@ -94,9 +94,9 @@
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\NINA.Plugin.Template\NINA.Plugin.Template.csproj">
+    <ProjectReference Include="..\NINA.Plugin.Template\NINA.Plugin.NightSummary.csproj">
       <Project>{78fc6455-c1ba-4dc5-a8d0-9f48aecd733d}</Project>
-      <Name>NINA.Plugin.Template</Name>
+      <Name>NINA.Plugin.NightSummary</Name>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
       <IncludeOutputGroupsInVSIX>TemplateProjectOutputGroup%3b</IncludeOutputGroupsInVSIX>
       <VSIXSubPath>ProjectTemplates</VSIXSubPath>

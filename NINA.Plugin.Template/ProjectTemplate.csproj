@@ -2,8 +2,8 @@
   <PropertyGroup>
     <TargetFramework>net8.0-windows</TargetFramework>
     <OutputType>Library</OutputType>
-    <RootNamespace>$pluginnamespace$</RootNamespace>
-    <AssemblyName>$pluginnamespace$</AssemblyName>
+    <RootNamespace>NINA.Plugin.NightSummary</RootNamespace>
+    <AssemblyName>NINA.Plugin.NightSummary</AssemblyName>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <UseWPF>true</UseWPF>
     <ImportWindowsDesktopTargets>true</ImportWindowsDesktopTargets>

@@ -6,7 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 
-namespace $pluginnamespace$.$pluginclassname$Dockables {
+namespace NINA.Plugin.NightSummary.NightSummaryPluginDockables {
     [Export(typeof(ResourceDictionary))]
     public partial class MyPluginDockableTemplates : ResourceDictionary {
         public MyPluginDockableTemplates() {

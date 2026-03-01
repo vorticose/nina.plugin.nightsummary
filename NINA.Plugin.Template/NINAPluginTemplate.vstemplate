@@ -20,35 +20,35 @@
 		<EnableLocationBrowseButton>true</EnableLocationBrowseButton>
 	</TemplateData>
 	<TemplateContent PreferedSolutionConfiguration="Release|AnyCPU">
-		<Project ReplaceParameters="true" TargetFileName="$pluginname$.csproj" File="ProjectTemplate.csproj">
+		<Project ReplaceParameters="true" TargetFileName="Night Summary.csproj" File="ProjectTemplate.csproj">
 			<Folder Name="MyPluginProperties" TargetFolderName="Properties">
 				<ProjectItem ReplaceParameters="true">AssemblyInfo.cs</ProjectItem>
 				<ProjectItem ReplaceParameters="true">Settings.Designer.cs</ProjectItem>
 				<ProjectItem ReplaceParameters="true">Settings.Settings</ProjectItem>
 			</Folder>
 
-      <Folder Name="MyPluginDockables" TargetFolderName="$pluginclassname$Dockables">
-        <ProjectItem ReplaceParameters="true" TargetFileName="$pluginclassname$Dockable.cs">MyPluginDockable.cs</ProjectItem>
+      <Folder Name="MyPluginDockables" TargetFolderName="NightSummaryPluginDockables">
+        <ProjectItem ReplaceParameters="true" TargetFileName="NightSummaryPluginDockable.cs">MyPluginDockable.cs</ProjectItem>
         
-        <ProjectItem ReplaceParameters="true" TargetFileName="$pluginclassname$DockableTemplates.xaml">MyPluginDockableTemplates.xaml</ProjectItem>
-        <ProjectItem ReplaceParameters="true" TargetFileName="$pluginclassname$DockableTemplates.xaml.cs">MyPluginDockableTemplates.xaml.cs</ProjectItem>        
+        <ProjectItem ReplaceParameters="true" TargetFileName="NightSummaryPluginDockableTemplates.xaml">MyPluginDockableTemplates.xaml</ProjectItem>
+        <ProjectItem ReplaceParameters="true" TargetFileName="NightSummaryPluginDockableTemplates.xaml.cs">MyPluginDockableTemplates.xaml.cs</ProjectItem>        
       </Folder>
 
-      <Folder Name="MyPluginDrivers" TargetFolderName="$pluginclassname$Drivers">
-        <ProjectItem ReplaceParameters="true" TargetFileName="$pluginclassname$WeatherDriver.cs">MyPluginWeatherDriver.cs</ProjectItem>
-        <ProjectItem ReplaceParameters="true" TargetFileName="$pluginclassname$WeatherProvider.cs">MyPluginWeatherProvider.cs</ProjectItem>
+      <Folder Name="MyPluginDrivers" TargetFolderName="NightSummaryPluginDrivers">
+        <ProjectItem ReplaceParameters="true" TargetFileName="NightSummaryPluginWeatherDriver.cs">MyPluginWeatherDriver.cs</ProjectItem>
+        <ProjectItem ReplaceParameters="true" TargetFileName="NightSummaryPluginWeatherProvider.cs">MyPluginWeatherProvider.cs</ProjectItem>
       </Folder>
 
-			<Folder Name="MyPluginSequenceItems" TargetFolderName="$pluginclassname$SequenceItems">
-				<ProjectItem ReplaceParameters="true" TargetFileName="$pluginclassname$Condition.cs">MyPluginCondition.cs</ProjectItem>
-				<ProjectItem ReplaceParameters="true" TargetFileName="$pluginclassname$Instruction.cs">MyPluginInstruction.cs</ProjectItem>
-				<ProjectItem ReplaceParameters="true" TargetFileName="$pluginclassname$Trigger.cs">MyPluginTrigger.cs</ProjectItem>
+			<Folder Name="MyPluginSequenceItems" TargetFolderName="NightSummaryPluginSequenceItems">
+				<ProjectItem ReplaceParameters="true" TargetFileName="NightSummaryPluginCondition.cs">MyPluginCondition.cs</ProjectItem>
+				<ProjectItem ReplaceParameters="true" TargetFileName="NightSummaryPluginInstruction.cs">MyPluginInstruction.cs</ProjectItem>
+				<ProjectItem ReplaceParameters="true" TargetFileName="NightSummaryPluginTrigger.cs">MyPluginTrigger.cs</ProjectItem>
 
-				<ProjectItem ReplaceParameters="true" TargetFileName="$pluginclassname$Templates.xaml">MyPluginTemplates.xaml</ProjectItem>
-				<ProjectItem ReplaceParameters="true" TargetFileName="$pluginclassname$Templates.xaml.cs">MyPluginTemplates.xaml.cs</ProjectItem>
+				<ProjectItem ReplaceParameters="true" TargetFileName="NightSummaryPluginTemplates.xaml">MyPluginTemplates.xaml</ProjectItem>
+				<ProjectItem ReplaceParameters="true" TargetFileName="NightSummaryPluginTemplates.xaml.cs">MyPluginTemplates.xaml.cs</ProjectItem>
 			</Folder>
 
-			<ProjectItem ReplaceParameters="true" TargetFileName="$pluginclassname$.cs" OpenInEditor="true">MyPlugin.cs</ProjectItem>
+			<ProjectItem ReplaceParameters="true" TargetFileName="NightSummaryPlugin.cs" OpenInEditor="true">MyPlugin.cs</ProjectItem>
 
 			<ProjectItem ReplaceParameters="true">Options.xaml</ProjectItem>
 			<ProjectItem ReplaceParameters="true">Options.xaml.cs</ProjectItem>
