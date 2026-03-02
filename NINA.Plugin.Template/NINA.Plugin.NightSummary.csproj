@@ -20,4 +20,8 @@
     <Compile Remove="MyPluginProperties\AssemblyInfo.cs" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="MyPluginDockables\" />
+  </ItemGroup>
+
 </Project>

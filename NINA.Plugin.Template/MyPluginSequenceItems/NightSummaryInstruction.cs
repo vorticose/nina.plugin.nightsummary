@@ -1,5 +1,6 @@
 ﻿using NINA.Core.Model;
 using NINA.Core.Utility;
+using NINA.Plugin.NightSummary.Session;
 using NINA.Sequencer.SequenceItem;
 using System;
 using System.ComponentModel.Composition;
@@ -14,20 +15,28 @@ namespace NINA.Plugin.NightSummary.Sequencer {
     [ExportMetadata("Category", "Night Summary")]
     public class NightSummaryInstruction : SequenceItem {
 
+        private readonly SessionService sessionService;
+
         [ImportingConstructor]
-        public NightSummaryInstruction() {
+        public NightSummaryInstruction(SessionService sessionService) {
+            this.sessionService = sessionService;
         }
 
         public override Task Execute(IProgress<ApplicationStatus> progress, CancellationToken token) {
-            Logger.Info("NightSummary: Start Session instruction executing");
-            progress?.Report(new ApplicationStatus() {
-                Status = "Night Summary: Session started"
-            });
+            try {
+                Logger.Info("NightSummary: Start Session instruction executing");
+                sessionService.StartSession("Active Profile");
+                progress?.Report(new ApplicationStatus() {
+                    Status = "Night Summary: Session started - recording imaging data"
+                });
+            } catch (Exception ex) {
+                Logger.Error($"NightSummary: Failed to start session. {ex.Message}");
+            }
             return Task.CompletedTask;
         }
 
         public override object Clone() {
-            return new NightSummaryInstruction();
+            return new NightSummaryInstruction(sessionService);
         }
 
         public override string ToString() {
