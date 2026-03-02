@@ -15,10 +15,9 @@ namespace NINA.Plugin.NightSummary.Data {
         private readonly string connectionString;
 
         public SessionDatabase() {
-            // Store the database in the same location NINA uses for plugin data
             string pluginDataPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "NINA", "Plugins", "NightSummary");
+                "NINA", "Plugins", "3.0.0", "NightSummary");
 
             Directory.CreateDirectory(pluginDataPath);
 
