@@ -1,4 +1,5 @@
-﻿using System;
+﻿using NINA.Core.Utility;
+using System;
 using System.Collections.Generic;
 using System.Data.SQLite;
 using System.IO;
@@ -17,13 +18,10 @@ namespace NINA.Plugin.NightSummary.Data {
         public SessionDatabase() {
             string pluginDataPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "NINA", "Plugins", "3.0.0", "NightSummary");
-
+                "NINA", "Plugins", CoreUtil.Version, "NightSummary");
             Directory.CreateDirectory(pluginDataPath);
-
             dbPath = Path.Combine(pluginDataPath, "nightsummary.sqlite");
             connectionString = $"Data Source={dbPath};Version=3;";
-
             InitializeDatabase();
         }
 

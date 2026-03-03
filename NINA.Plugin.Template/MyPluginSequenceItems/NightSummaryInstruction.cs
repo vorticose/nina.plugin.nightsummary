@@ -25,7 +25,7 @@ namespace NINA.Plugin.NightSummary.Sequencer {
         public override Task Execute(IProgress<ApplicationStatus> progress, CancellationToken token) {
             try {
                 Logger.Info("NightSummary: Start Session instruction executing");
-                sessionService.StartSession("Active Profile");
+                sessionService.StartSession(null);
                 progress?.Report(new ApplicationStatus() {
                     Status = "Night Summary: Session started - recording imaging data"
                 });
