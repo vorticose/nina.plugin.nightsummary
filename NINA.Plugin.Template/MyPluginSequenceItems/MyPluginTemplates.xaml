@@ -6,26 +6,55 @@
     xmlns:mini="clr-namespace:NINA.View.Sequencer.MiniSequencer;assembly=NINA.Sequencer"
     xmlns:nina="clr-namespace:NINA.View.Sequencer;assembly=NINA.Sequencer">
 
-    <!--  Night Summary Start Session Instruction  -->
+    <!-- Start Session Icon: Play button with telescope -->
+    <GeometryGroup x:Key="NightSummary_StartIcon" FillRule="Nonzero">
+        <EllipseGeometry Center="12,12" RadiusX="10" RadiusY="10"/>
+        <PathGeometry Figures="M9,8 L17,12 L9,16 Z"/>
+    </GeometryGroup>
+
+    <!-- End Session Icon: Stop button -->
+    <GeometryGroup x:Key="NightSummary_EndIcon" FillRule="Nonzero">
+        <EllipseGeometry Center="12,12" RadiusX="10" RadiusY="10"/>
+        <RectangleGeometry Rect="8,8,8,8"/>
+    </GeometryGroup>
+
+    <!-- Start Session Instruction -->
     <DataTemplate DataType="{x:Type local:NightSummaryInstruction}">
         <nina:SequenceBlockView>
             <nina:SequenceBlockView.SequenceItemContent>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock VerticalAlignment="Center" Text="Records imaging session data for Night Summary report" />
+                    <TextBlock VerticalAlignment="Center" Text="Start recording imaging session data" />
                 </StackPanel>
             </nina:SequenceBlockView.SequenceItemContent>
         </nina:SequenceBlockView>
     </DataTemplate>
 
-    <!--  Mini view for the imaging tab  -->
     <DataTemplate x:Key="NINA.Plugin.NightSummary.Sequencer.NightSummaryInstruction_Mini">
         <mini:MiniSequenceItem>
             <mini:MiniSequenceItem.SequenceItemContent>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock
-                        Margin="5,0,0,0"
-                        VerticalAlignment="Center"
-                        Text="Night Summary" />
+                    <TextBlock Margin="5,0,0,0" VerticalAlignment="Center" Text="Night Summary Start" />
+                </StackPanel>
+            </mini:MiniSequenceItem.SequenceItemContent>
+        </mini:MiniSequenceItem>
+    </DataTemplate>
+
+    <!-- End Session Instruction -->
+    <DataTemplate DataType="{x:Type local:NightSummaryEndInstruction}">
+        <nina:SequenceBlockView>
+            <nina:SequenceBlockView.SequenceItemContent>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock VerticalAlignment="Center" Text="End session and send Night Summary report" />
+                </StackPanel>
+            </nina:SequenceBlockView.SequenceItemContent>
+        </nina:SequenceBlockView>
+    </DataTemplate>
+
+    <DataTemplate x:Key="NINA.Plugin.NightSummary.Sequencer.NightSummaryEndInstruction_Mini">
+        <mini:MiniSequenceItem>
+            <mini:MiniSequenceItem.SequenceItemContent>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Margin="5,0,0,0" VerticalAlignment="Center" Text="Night Summary End" />
                 </StackPanel>
             </mini:MiniSequenceItem.SequenceItemContent>
         </mini:MiniSequenceItem>

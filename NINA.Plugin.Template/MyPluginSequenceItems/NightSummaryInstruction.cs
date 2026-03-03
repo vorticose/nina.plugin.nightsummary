@@ -6,6 +6,7 @@ using System;
 using System.ComponentModel.Composition;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
 
 namespace NINA.Plugin.NightSummary.Sequencer {
 
@@ -13,6 +14,7 @@ namespace NINA.Plugin.NightSummary.Sequencer {
     [ExportMetadata("Name", "Night Summary - Start Session")]
     [ExportMetadata("Description", "Starts recording imaging session data for the Night Summary report")]
     [ExportMetadata("Category", "Night Summary")]
+    [ExportMetadata("Icon", "NightSummary_StartIcon")]
     public class NightSummaryInstruction : SequenceItem {
 
         private readonly SessionService sessionService;

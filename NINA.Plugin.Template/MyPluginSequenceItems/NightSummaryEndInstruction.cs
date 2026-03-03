@@ -13,6 +13,7 @@ namespace NINA.Plugin.NightSummary.Sequencer {
     [ExportMetadata("Name", "Night Summary - End Session")]
     [ExportMetadata("Description", "Ends the Night Summary session and sends the email report")]
     [ExportMetadata("Category", "Night Summary")]
+    [ExportMetadata("Icon", "NightSummary_EndIcon")]
     public class NightSummaryEndInstruction : SequenceItem {
 
         private readonly SessionService sessionService;
