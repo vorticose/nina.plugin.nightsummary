@@ -16,7 +16,7 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyMetadata("Homepage", "")]
 [assembly: AssemblyMetadata("Tags", "report,summary,email,logging")]
 [assembly: AssemblyMetadata("ChangelogURL", "")]
-[assembly: AssemblyMetadata("FeaturedImageURL", "")]
+[assembly: AssemblyMetadata("FeaturedImageURL", "https://i.imgur.com/uvcC1dC.png")]
 [assembly: AssemblyMetadata("ScreenshotURL", "")]
 [assembly: AssemblyMetadata("AltScreenshotURL", "")]
 [assembly: AssemblyMetadata("LongDescription", @"Night Summary captures imaging session data during sequence execution and sends an email report upon completion.")]
