@@ -162,32 +162,30 @@ namespace NINA.Plugin.NightSummary.Data {
         /// </summary>
         public List<ImageRecord> GetImagesForSession(string sessionId) {
             var images = new List<ImageRecord>();
-
             using (var conn = new SQLiteConnection(connectionString)) {
                 conn.Open();
                 string sql = "SELECT * FROM Images WHERE SessionId = @SessionId ORDER BY Timestamp";
-
                 using (var cmd = new SQLiteCommand(sql, conn)) {
                     cmd.Parameters.AddWithValue("@SessionId", sessionId);
                     using (var reader = cmd.ExecuteReader()) {
                         while (reader.Read()) {
                             images.Add(new ImageRecord {
                                 Id = Convert.ToInt32(reader["Id"]),
-                                SessionId = reader["SessionId"].ToString(),
-                                Timestamp = DateTime.Parse(reader["Timestamp"].ToString()),
-                                TargetName = reader["TargetName"].ToString(),
-                                Filter = reader["Filter"].ToString(),
-                                ExposureDuration = Convert.ToDouble(reader["ExposureDuration"]),
-                                HFR = Convert.ToDouble(reader["HFR"]),
-                                FWHM = Convert.ToDouble(reader["FWHM"]),
-                                Eccentricity = Convert.ToDouble(reader["Eccentricity"]),
-                                StarCount = Convert.ToInt32(reader["StarCount"]),
-                                GuidingRMSTotal = Convert.ToDouble(reader["GuidingRMSTotal"]),
-                                GuidingRMSRA = Convert.ToDouble(reader["GuidingRMSRA"]),
-                                GuidingRMSDec = Convert.ToDouble(reader["GuidingRMSDec"]),
-                                FocuserPosition = Convert.ToInt32(reader["FocuserPosition"]),
-                                CameraTemperature = Convert.ToDouble(reader["CameraTemperature"]),
-                                Accepted = Convert.ToInt32(reader["Accepted"]) == 1
+                                SessionId = reader["SessionId"] == DBNull.Value ? "" : reader["SessionId"].ToString(),
+                                Timestamp = reader["Timestamp"] == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["Timestamp"].ToString()),
+                                TargetName = reader["TargetName"] == DBNull.Value ? "" : reader["TargetName"].ToString(),
+                                Filter = reader["Filter"] == DBNull.Value ? "" : reader["Filter"].ToString(),
+                                ExposureDuration = reader["ExposureDuration"] == DBNull.Value ? 0 : Convert.ToDouble(reader["ExposureDuration"]),
+                                HFR = reader["HFR"] == DBNull.Value ? 0 : Convert.ToDouble(reader["HFR"]),
+                                FWHM = reader["FWHM"] == DBNull.Value ? 0 : Convert.ToDouble(reader["FWHM"]),
+                                Eccentricity = reader["Eccentricity"] == DBNull.Value ? 0 : Convert.ToDouble(reader["Eccentricity"]),
+                                StarCount = reader["StarCount"] == DBNull.Value ? 0 : Convert.ToInt32(reader["StarCount"]),
+                                GuidingRMSTotal = reader["GuidingRMSTotal"] == DBNull.Value ? 0 : Convert.ToDouble(reader["GuidingRMSTotal"]),
+                                GuidingRMSRA = reader["GuidingRMSRA"] == DBNull.Value ? 0 : Convert.ToDouble(reader["GuidingRMSRA"]),
+                                GuidingRMSDec = reader["GuidingRMSDec"] == DBNull.Value ? 0 : Convert.ToDouble(reader["GuidingRMSDec"]),
+                                FocuserPosition = reader["FocuserPosition"] == DBNull.Value ? 0 : Convert.ToInt32(reader["FocuserPosition"]),
+                                CameraTemperature = reader["CameraTemperature"] == DBNull.Value ? 0 : Convert.ToDouble(reader["CameraTemperature"]),
+                                Accepted = reader["Accepted"] == DBNull.Value ? false : Convert.ToInt32(reader["Accepted"]) == 1
                             });
                         }
                     }
@@ -203,20 +201,24 @@ namespace NINA.Plugin.NightSummary.Data {
             using (var conn = new SQLiteConnection(connectionString)) {
                 conn.Open();
                 string sql = "SELECT * FROM Sessions WHERE SessionId = @SessionId";
-
                 using (var cmd = new SQLiteCommand(sql, conn)) {
                     cmd.Parameters.AddWithValue("@SessionId", sessionId);
                     using (var reader = cmd.ExecuteReader()) {
                         if (reader.Read()) {
-                            return new SessionRecord {
-                                Id = Convert.ToInt32(reader["Id"]),
-                                SessionId = reader["SessionId"].ToString(),
-                                SessionStart = DateTime.Parse(reader["SessionStart"].ToString()),
-                                SessionEnd = reader["SessionEnd"] == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionEnd"].ToString()),
-                                ProfileName = reader["ProfileName"].ToString(),
-                                Notes = reader["Notes"].ToString(),
-                                ReportSent = Convert.ToInt32(reader["ReportSent"]) == 1
-                            };
+                            try {
+                                return new SessionRecord {
+                                    Id = Convert.ToInt32(reader["Id"]),
+                                    SessionId = reader["SessionId"] == DBNull.Value ? "" : reader["SessionId"].ToString(),
+                                    SessionStart = reader["SessionStart"] == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionStart"].ToString()),
+                                    SessionEnd = reader["SessionEnd"] == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionEnd"].ToString()),
+                                    ProfileName = reader["ProfileName"] == DBNull.Value ? "" : reader["ProfileName"].ToString(),
+                                    Notes = reader["Notes"] == DBNull.Value ? "" : reader["Notes"].ToString(),
+                                    ReportSent = reader["ReportSent"] == DBNull.Value ? false : Convert.ToInt32(reader["ReportSent"]) == 1
+                                };
+                            } catch (Exception ex) {
+                                Logger.Error($"NightSummary: Error reading session record field: {ex.Message}");
+                                throw;
+                            }
                         }
                     }
                 }

@@ -27,10 +27,12 @@ namespace NINA.Plugin.NightSummary.Sequencer {
                 Logger.Info("NightSummary: End Session instruction executing");
 
                 progress?.Report(new ApplicationStatus() {
-                    Status = "Night Summary: Generating session report..."
+                    Status = "Night Summary: Waiting for images to save..."
                 });
 
-                // End the session - this finalizes the database record
+                // Wait for NINA to finish saving any pending images
+                await Task.Delay(TimeSpan.FromSeconds(15), token);
+
                 sessionService.EndSession();
 
                 Logger.Info("NightSummary: Session ended successfully");
