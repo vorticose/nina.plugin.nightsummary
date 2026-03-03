@@ -82,7 +82,3 @@
 
 \- Settings UI refinements
 
-git commit -m "Add development roadmap"
-
-git push
-
