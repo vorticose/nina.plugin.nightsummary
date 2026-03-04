@@ -94,5 +94,41 @@ namespace NINA.Plugin.NightSummary.MyPluginProperties {
                 this["SendReportOnSessionEnd"] = value;
             }
         }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool PushoverEnabled {
+            get {
+                return ((bool)(this["PushoverEnabled"]));
+            }
+            set {
+                this["PushoverEnabled"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string PushoverAppToken {
+            get {
+                return ((string)(this["PushoverAppToken"]));
+            }
+            set {
+                this["PushoverAppToken"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string PushoverUserKey {
+            get {
+                return ((string)(this["PushoverUserKey"]));
+            }
+            set {
+                this["PushoverUserKey"] = value;
+            }
+        }
     }
 }

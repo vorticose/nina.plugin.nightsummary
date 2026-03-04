@@ -6,6 +6,7 @@ using NINA.Profile.Interfaces;
 using NINA.WPF.Base.Interfaces.Mediator;
 using System;
 using System.ComponentModel.Composition;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace NINA.Plugin.NightSummary.Session {
@@ -40,9 +41,39 @@ namespace NINA.Plugin.NightSummary.Session {
             var sessionId = collector.GetCurrentSessionId();
             collector.EndSession();
 
-            // Send report if enabled and settings are configured
             if (Settings.Default.SendReportOnSessionEnd) {
                 Task.Run(async () => await SendReportAsync(sessionId));
+            }
+
+            if (Settings.Default.PushoverEnabled) {
+                Task.Run(async () => await SendPushoverAsync(sessionId));
+            }
+        }
+
+        private async Task SendPushoverAsync(string sessionId) {
+            try {
+                var appToken = Settings.Default.PushoverAppToken;
+                var userKey  = Settings.Default.PushoverUserKey;
+
+                if (string.IsNullOrWhiteSpace(appToken) || string.IsNullOrWhiteSpace(userKey)) {
+                    Logger.Warning("NightSummary: Pushover not configured — skipping notification");
+                    return;
+                }
+
+                var database = collector.Database;
+                var session  = database.GetSession(sessionId);
+                var images   = database.GetImagesForSession(sessionId);
+
+                if (session == null) return;
+
+                var duration = (session.SessionEnd - session.SessionStart).TotalHours;
+                var accepted = images.Count(i => i.Accepted);
+                var message  = $"{accepted} images accepted in {duration:F1}h";
+
+                var sender = new PushoverSender(appToken, userKey);
+                await sender.SendAsync("Night Summary", message);
+            } catch (Exception ex) {
+                Logger.Error($"NightSummary: Failed to send Pushover notification. {ex.Message}");
             }
         }
 
