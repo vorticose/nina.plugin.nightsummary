@@ -53,14 +53,9 @@ namespace NINA.Plugin.NightSummary.Data {
                         Filter TEXT,
                         ExposureDuration REAL,
                         HFR REAL,
-                        FWHM REAL,
-                        Eccentricity REAL,
                         StarCount INTEGER,
                         GuidingRMSTotal REAL,
-                        GuidingRMSRA REAL,
-                        GuidingRMSDec REAL,
-                        FocuserPosition INTEGER,
-                        CameraTemperature REAL,
+                        GuidingScale REAL,
                         Accepted INTEGER DEFAULT 1
                     )";
 
@@ -120,6 +115,7 @@ namespace NINA.Plugin.NightSummary.Data {
         /// <summary>
         /// Saves a single image record to the database.
         /// Call this each time an image is captured during the session.
+        /// GuidingRMSTotal is stored in arcseconds (pixels * GuidingScale).
         /// </summary>
         public void SaveImageRecord(ImageRecord image) {
             using (var conn = new SQLiteConnection(connectionString)) {
@@ -127,14 +123,10 @@ namespace NINA.Plugin.NightSummary.Data {
                 string sql = @"
                     INSERT INTO Images (
                         SessionId, Timestamp, TargetName, Filter, ExposureDuration,
-                        HFR, FWHM, Eccentricity, StarCount,
-                        GuidingRMSTotal, GuidingRMSRA, GuidingRMSDec,
-                        FocuserPosition, CameraTemperature, Accepted)
+                        HFR, StarCount, GuidingRMSTotal, GuidingScale, Accepted)
                     VALUES (
                         @SessionId, @Timestamp, @TargetName, @Filter, @ExposureDuration,
-                        @HFR, @FWHM, @Eccentricity, @StarCount,
-                        @GuidingRMSTotal, @GuidingRMSRA, @GuidingRMSDec,
-                        @FocuserPosition, @CameraTemperature, @Accepted)";
+                        @HFR, @StarCount, @GuidingRMSTotal, @GuidingScale, @Accepted)";
 
                 using (var cmd = new SQLiteCommand(sql, conn)) {
                     cmd.Parameters.AddWithValue("@SessionId", image.SessionId);
@@ -143,14 +135,9 @@ namespace NINA.Plugin.NightSummary.Data {
                     cmd.Parameters.AddWithValue("@Filter", image.Filter ?? "");
                     cmd.Parameters.AddWithValue("@ExposureDuration", image.ExposureDuration);
                     cmd.Parameters.AddWithValue("@HFR", image.HFR);
-                    cmd.Parameters.AddWithValue("@FWHM", image.FWHM);
-                    cmd.Parameters.AddWithValue("@Eccentricity", image.Eccentricity);
                     cmd.Parameters.AddWithValue("@StarCount", image.StarCount);
                     cmd.Parameters.AddWithValue("@GuidingRMSTotal", image.GuidingRMSTotal);
-                    cmd.Parameters.AddWithValue("@GuidingRMSRA", image.GuidingRMSRA);
-                    cmd.Parameters.AddWithValue("@GuidingRMSDec", image.GuidingRMSDec);
-                    cmd.Parameters.AddWithValue("@FocuserPosition", image.FocuserPosition);
-                    cmd.Parameters.AddWithValue("@CameraTemperature", image.CameraTemperature);
+                    cmd.Parameters.AddWithValue("@GuidingScale", image.GuidingScale);
                     cmd.Parameters.AddWithValue("@Accepted", image.Accepted ? 1 : 0);
                     cmd.ExecuteNonQuery();
                 }
@@ -177,14 +164,9 @@ namespace NINA.Plugin.NightSummary.Data {
                                 Filter = reader["Filter"] == DBNull.Value ? "" : reader["Filter"].ToString(),
                                 ExposureDuration = reader["ExposureDuration"] == DBNull.Value ? 0 : Convert.ToDouble(reader["ExposureDuration"]),
                                 HFR = reader["HFR"] == DBNull.Value ? 0 : Convert.ToDouble(reader["HFR"]),
-                                FWHM = reader["FWHM"] == DBNull.Value ? 0 : Convert.ToDouble(reader["FWHM"]),
-                                Eccentricity = reader["Eccentricity"] == DBNull.Value ? 0 : Convert.ToDouble(reader["Eccentricity"]),
                                 StarCount = reader["StarCount"] == DBNull.Value ? 0 : Convert.ToInt32(reader["StarCount"]),
                                 GuidingRMSTotal = reader["GuidingRMSTotal"] == DBNull.Value ? 0 : Convert.ToDouble(reader["GuidingRMSTotal"]),
-                                GuidingRMSRA = reader["GuidingRMSRA"] == DBNull.Value ? 0 : Convert.ToDouble(reader["GuidingRMSRA"]),
-                                GuidingRMSDec = reader["GuidingRMSDec"] == DBNull.Value ? 0 : Convert.ToDouble(reader["GuidingRMSDec"]),
-                                FocuserPosition = reader["FocuserPosition"] == DBNull.Value ? 0 : Convert.ToInt32(reader["FocuserPosition"]),
-                                CameraTemperature = reader["CameraTemperature"] == DBNull.Value ? 0 : Convert.ToDouble(reader["CameraTemperature"]),
+                                GuidingScale = reader["GuidingScale"] == DBNull.Value ? 1 : Convert.ToDouble(reader["GuidingScale"]),
                                 Accepted = reader["Accepted"] == DBNull.Value ? false : Convert.ToInt32(reader["Accepted"]) == 1
                             });
                         }

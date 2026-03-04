@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 
 namespace NINA.Plugin.NightSummary.Session {
     public class SessionCollector {
-
         private readonly SessionDatabase database;
         private readonly IImageSaveMediator imageSaveMediator;
         private SessionRecord currentSession;
@@ -26,29 +25,23 @@ namespace NINA.Plugin.NightSummary.Session {
                 Logger.Warning("NightSummary: StartSession called but a session is already active. Ending previous session first.");
                 EndSession();
             }
-
             currentSession = new SessionRecord {
                 SessionId = Guid.NewGuid().ToString(),
                 SessionStart = DateTime.Now,
                 ProfileName = profileName,
                 ReportSent = false
             };
-
             database.CreateSession(currentSession);
             imageSaveMediator.ImageSaved += OnImageSaved;
             isCollecting = true;
-
             Logger.Info($"NightSummary: Session started. SessionId={currentSession.SessionId}");
         }
 
         public void EndSession() {
             if (!isCollecting) return;
-
             imageSaveMediator.ImageSaved -= OnImageSaved;
             isCollecting = false;
-
             database.FinalizeSession(currentSession.SessionId, DateTime.Now, false);
-
             Logger.Info($"NightSummary: Session ended. SessionId={currentSession.SessionId}");
         }
 
@@ -58,6 +51,10 @@ namespace NINA.Plugin.NightSummary.Session {
 
         private void OnImageSaved(object sender, ImageSavedEventArgs e) {
             try {
+                // Read guiding scale from NINA - this converts pixels to arcseconds
+                // Default to 1 if not available so values are still stored (as pixels)
+                double guidingScale = e.MetaData?.Image?.RecordedRMS?.Scale ?? 1;
+
                 var record = new ImageRecord {
                     SessionId = currentSession.SessionId,
                     Timestamp = DateTime.Now,
@@ -66,18 +63,14 @@ namespace NINA.Plugin.NightSummary.Session {
                     ExposureDuration = e.MetaData?.Image?.ExposureTime ?? 0,
                     HFR = e.StarDetectionAnalysis?.HFR ?? 0,
                     StarCount = e.StarDetectionAnalysis?.DetectedStars ?? 0,
-                    FWHM = 0,
-                    Eccentricity = 0,
-                    GuidingRMSTotal = e.MetaData?.Image?.RecordedRMS?.Total ?? 0,
-                    GuidingRMSRA = e.MetaData?.Image?.RecordedRMS?.RA ?? 0,
-                    GuidingRMSDec = e.MetaData?.Image?.RecordedRMS?.Dec ?? 0,
-                    FocuserPosition = e.MetaData?.Focuser?.Position ?? 0,
-                    CameraTemperature = e.MetaData?.Camera?.Temperature ?? 0,
+                    // Multiply RMS by Scale to store in arcseconds
+                    GuidingRMSTotal = (e.MetaData?.Image?.RecordedRMS?.Total ?? 0) * guidingScale,
+                    GuidingScale = guidingScale,
                     Accepted = true
                 };
 
                 database.SaveImageRecord(record);
-                Logger.Debug($"NightSummary: Recorded image - Target={record.TargetName}, Filter={record.Filter}, HFR={record.HFR:F2}");
+                Logger.Debug($"NightSummary: Recorded image - Target={record.TargetName}, Filter={record.Filter}, HFR={record.HFR:F2}, GuidingRMS={record.GuidingRMSTotal:F2}\"");
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to record image. {ex.Message}");
             }

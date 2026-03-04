@@ -82,17 +82,7 @@
 
 \- Settings UI refinements
 
-```
 
 
 
-Save and close Notepad, then commit:
-
-```
-
-git add ROADMAP.md
-
-git commit -m "Add development roadmap"
-
-git push
 

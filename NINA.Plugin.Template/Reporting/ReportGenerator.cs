@@ -10,6 +10,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
     /// </summary>
     public class ReportGenerator {
 
+        // Broadband and narrowband filter definitions for star count CV calculation
+        private static readonly HashSet<string> BroadbandFilters = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "L", "R", "G", "B" };
+        private static readonly HashSet<string> NarrowbandFilters = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "H", "Ha", "S", "Sii", "O", "Oiii" };
+
         /// <summary>
         /// Generates a complete HTML email body for the given session.
         /// </summary>
@@ -21,6 +25,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background-color: #1a1a2e; color: #e0e0e0; }");
             sb.AppendLine("h1 { color: #7eb8f7; border-bottom: 2px solid #7eb8f7; padding-bottom: 10px; }");
             sb.AppendLine("h2 { color: #a0c4ff; margin-top: 30px; }");
+            sb.AppendLine("h3 { color: #c0d8ff; }");
             sb.AppendLine("table { width: 100%; border-collapse: collapse; margin-top: 10px; }");
             sb.AppendLine("th { background-color: #2d2d5e; color: #7eb8f7; padding: 8px; text-align: left; }");
             sb.AppendLine("td { padding: 8px; border-bottom: 1px solid #2d2d5e; }");
@@ -28,7 +33,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine(".stat-box { display: inline-block; background-color: #16213e; border: 1px solid #2d2d5e; border-radius: 8px; padding: 15px; margin: 10px; min-width: 150px; text-align: center; }");
             sb.AppendLine(".stat-value { font-size: 24px; color: #7eb8f7; font-weight: bold; }");
             sb.AppendLine(".stat-label { font-size: 12px; color: #888; margin-top: 5px; }");
-            sb.AppendLine(".good { color: #4caf50; } .warn { color: #ff9800; }");
+            sb.AppendLine(".star-count-table { width: auto; margin-top: 8px; }");
+            sb.AppendLine(".footnote { color: #555; font-size: 12px; margin-top: 40px; }");
             sb.AppendLine("</style></head><body>");
 
             // Header
@@ -60,7 +66,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("<h2>Targets Imaged</h2>");
 
             foreach (var target in targets) {
-                sb.AppendLine($"<h3 style='color:#c0d8ff;'>🌌 {target.Key}</h3>");
+                sb.AppendLine($"<h3>🌌 {target.Key}</h3>");
+
+                // Filter breakdown table
                 sb.AppendLine("<table>");
                 sb.AppendLine("<tr><th>Filter</th><th>Images</th><th>Exposure</th><th>Total Time</th></tr>");
 
@@ -73,6 +81,23 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var targetTotal = TimeSpan.FromSeconds(target.Sum(i => i.ExposureDuration));
                 sb.AppendLine($"<tr><td><strong>Total</strong></td><td><strong>{target.Count()}</strong></td><td></td><td><strong>{targetTotal.TotalMinutes:F1} min</strong></td></tr>");
                 sb.AppendLine("</table>");
+
+                // Star count CV per target
+                var broadbandImages = target.Where(i => BroadbandFilters.Contains(i.Filter) && i.StarCount > 0).ToList();
+                var narrowbandImages = target.Where(i => NarrowbandFilters.Contains(i.Filter) && i.StarCount > 0).ToList();
+
+                string broadbandCV = broadbandImages.Count >= 2
+                    ? $"{CV(broadbandImages.Select(i => (double)i.StarCount).ToList()):F0}%"
+                    : "—";
+                string narrowbandCV = narrowbandImages.Count >= 2
+                    ? $"{CV(narrowbandImages.Select(i => (double)i.StarCount).ToList()):F0}%"
+                    : "—";
+
+                sb.AppendLine("<p><strong>Star Count</strong></p>");
+                sb.AppendLine("<table class='star-count-table'>");
+                sb.AppendLine("<tr><th>Broadband CV</th><th>Narrowband CV</th></tr>");
+                sb.AppendLine($"<tr><td>{broadbandCV}</td><td>{narrowbandCV}</td></tr>");
+                sb.AppendLine("</table>");
             }
 
             // Image quality metrics
@@ -80,22 +105,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
             if (imagesWithHFR.Any()) {
                 sb.AppendLine("<h2>Image Quality</h2>");
                 sb.AppendLine("<table>");
-                sb.AppendLine("<tr><th>Metric</th><th>Mean</th><th>Min</th><th>Max</th><th>Std Dev</th></tr>");
+                sb.AppendLine("<tr><th>Metric</th><th>Min</th><th>Max</th><th>Mean</th><th>CV</th></tr>");
 
                 var hfrValues = imagesWithHFR.Select(i => i.HFR).ToList();
-                sb.AppendLine($"<tr><td>HFR</td><td>{hfrValues.Average():F2}</td><td>{hfrValues.Min():F2}</td><td>{hfrValues.Max():F2}</td><td>{StdDev(hfrValues):F2}</td></tr>");
-
-                var imagesWithFWHM = images.Where(i => i.FWHM > 0).ToList();
-                if (imagesWithFWHM.Any()) {
-                    var fwhmValues = imagesWithFWHM.Select(i => i.FWHM).ToList();
-                    sb.AppendLine($"<tr><td>FWHM</td><td>{fwhmValues.Average():F2}</td><td>{fwhmValues.Min():F2}</td><td>{fwhmValues.Max():F2}</td><td>{StdDev(fwhmValues):F2}</td></tr>");
-                }
-
-                var imagesWithStars = images.Where(i => i.StarCount > 0).ToList();
-                if (imagesWithStars.Any()) {
-                    var starValues = imagesWithStars.Select(i => (double)i.StarCount).ToList();
-                    sb.AppendLine($"<tr><td>Star Count</td><td>{starValues.Average():F0}</td><td>{starValues.Min():F0}</td><td>{starValues.Max():F0}</td><td>{StdDev(starValues):F0}</td></tr>");
-                }
+                sb.AppendLine($"<tr><td>HFR</td><td>{hfrValues.Min():F2}</td><td>{hfrValues.Max():F2}</td><td>{hfrValues.Average():F2}</td><td>{CV(hfrValues):F0}%</td></tr>");
 
                 sb.AppendLine("</table>");
             }
@@ -105,41 +118,35 @@ namespace NINA.Plugin.NightSummary.Reporting {
             if (imagesWithGuiding.Any()) {
                 sb.AppendLine("<h2>Guiding</h2>");
                 sb.AppendLine("<table>");
-                sb.AppendLine("<tr><th>Metric</th><th>Mean</th><th>Min</th><th>Max</th></tr>");
+                sb.AppendLine("<tr><th>Metric</th><th>Min</th><th>Max</th><th>Mean</th><th>CV</th></tr>");
 
                 var rmsValues = imagesWithGuiding.Select(i => i.GuidingRMSTotal).ToList();
-                var rmsRAValues = imagesWithGuiding.Select(i => i.GuidingRMSRA).ToList();
-                var rmsDecValues = imagesWithGuiding.Select(i => i.GuidingRMSDec).ToList();
+                sb.AppendLine($"<tr><td>RMS Total</td><td>{rmsValues.Min():F2}\"</td><td>{rmsValues.Max():F2}\"</td><td>{rmsValues.Average():F2}\"</td><td>{CV(rmsValues):F0}%</td></tr>");
 
-                sb.AppendLine($"<tr><td>RMS Total</td><td>{rmsValues.Average():F2}\"</td><td>{rmsValues.Min():F2}\"</td><td>{rmsValues.Max():F2}\"</td></tr>");
-                sb.AppendLine($"<tr><td>RMS RA</td><td>{rmsRAValues.Average():F2}\"</td><td>{rmsRAValues.Min():F2}\"</td><td>{rmsRAValues.Max():F2}\"</td></tr>");
-                sb.AppendLine($"<tr><td>RMS Dec</td><td>{rmsDecValues.Average():F2}\"</td><td>{rmsDecValues.Min():F2}\"</td><td>{rmsDecValues.Max():F2}\"</td></tr>");
                 sb.AppendLine("</table>");
             }
 
-            // Focuser drift
-            var imagesWithFocuser = images.Where(i => i.FocuserPosition > 0).ToList();
-            if (imagesWithFocuser.Any()) {
-                sb.AppendLine("<h2>Equipment</h2>");
-                sb.AppendLine("<table>");
-                sb.AppendLine("<tr><th>Metric</th><th>Start</th><th>End</th><th>Drift</th></tr>");
-                var firstPos = imagesWithFocuser.First().FocuserPosition;
-                var lastPos = imagesWithFocuser.Last().FocuserPosition;
-                sb.AppendLine($"<tr><td>Focuser Position</td><td>{firstPos}</td><td>{lastPos}</td><td>{lastPos - firstPos:+#;-#;0}</td></tr>");
-
-                var camTemps = images.Where(i => i.CameraTemperature != 0).Select(i => i.CameraTemperature).ToList();
-                if (camTemps.Any()) {
-                    sb.AppendLine($"<tr><td>Camera Temperature</td><td>{camTemps.First():F1}°C</td><td>{camTemps.Last():F1}°C</td><td>{camTemps.Average():F1}°C avg</td></tr>");
-                }
-                sb.AppendLine("</table>");
-            }
-
-            sb.AppendLine("<p style='color:#555; font-size:12px; margin-top:40px;'>Generated by Night Summary plugin for N.I.N.A.</p>");
+            // Footnote and footer
+            sb.AppendLine("<p class='footnote'>CV (Coefficient of Variation) measures consistency as a percentage of the mean. Lower values indicate more stable conditions. Star count CV is calculated per target and filter type.</p>");
+            sb.AppendLine("<p class='footnote'>Generated by Night Summary plugin for N.I.N.A.</p>");
             sb.AppendLine("</body></html>");
 
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Calculates the Coefficient of Variation (std dev / mean) as a percentage.
+        /// </summary>
+        private double CV(List<double> values) {
+            if (values.Count < 2) return 0;
+            var avg = values.Average();
+            if (avg == 0) return 0;
+            return (StdDev(values) / avg) * 100;
+        }
+
+        /// <summary>
+        /// Calculates the standard deviation of a list of values.
+        /// </summary>
         private double StdDev(List<double> values) {
             if (values.Count < 2) return 0;
             var avg = values.Average();

@@ -1,5 +1,4 @@
 ﻿using System;
-
 namespace NINA.Plugin.NightSummary.Data {
     /// <summary>
     /// Represents a single captured image and all associated metadata
@@ -22,18 +21,11 @@ namespace NINA.Plugin.NightSummary.Data {
 
         // Image quality metrics
         public double HFR { get; set; }
-        public double FWHM { get; set; }
-        public double Eccentricity { get; set; }
         public int StarCount { get; set; }
 
-        // Guiding
+        // Guiding - stored in arcseconds using NINA's scale factor
         public double GuidingRMSTotal { get; set; }
-        public double GuidingRMSRA { get; set; }
-        public double GuidingRMSDec { get; set; }
-
-        // Equipment state at time of capture
-        public int FocuserPosition { get; set; }
-        public double CameraTemperature { get; set; }
+        public double GuidingScale { get; set; }
 
         // Whether this image was accepted or rejected by image grader
         public bool Accepted { get; set; }
