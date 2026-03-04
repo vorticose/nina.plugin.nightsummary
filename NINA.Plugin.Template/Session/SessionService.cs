@@ -48,6 +48,10 @@ namespace NINA.Plugin.NightSummary.Session {
             if (Settings.Default.PushoverEnabled) {
                 Task.Run(async () => await SendPushoverAsync(sessionId));
             }
+
+            if (Settings.Default.DiscordEnabled) {
+                Task.Run(async () => await SendDiscordAsync(sessionId));
+            }
         }
 
         private async Task SendPushoverAsync(string sessionId) {
@@ -74,6 +78,28 @@ namespace NINA.Plugin.NightSummary.Session {
                 await sender.SendAsync("Night Summary", message);
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to send Pushover notification. {ex.Message}");
+            }
+        }
+
+        private async Task SendDiscordAsync(string sessionId) {
+            try {
+                var webhookUrl = Settings.Default.DiscordWebhookUrl;
+
+                if (string.IsNullOrWhiteSpace(webhookUrl)) {
+                    Logger.Warning("NightSummary: Discord webhook URL not configured — skipping");
+                    return;
+                }
+
+                var database = collector.Database;
+                var session  = database.GetSession(sessionId);
+                var images   = database.GetImagesForSession(sessionId);
+
+                if (session == null) return;
+
+                var sender = new DiscordSender(webhookUrl);
+                await sender.SendReportAsync(session, images);
+            } catch (Exception ex) {
+                Logger.Error($"NightSummary: Failed to send Discord report. {ex.Message}");
             }
         }
 

@@ -25,6 +25,16 @@ namespace NINA.Plugin.NightSummary {
             IOptionsVM options,
             IImageSaveMediator imageSaveMediator) {
 
+            TestDiscordCommand = new RelayCommand(async () => {
+                var url = Settings.Default.DiscordWebhookUrl;
+                if (string.IsNullOrWhiteSpace(url)) {
+                    Logger.Warning("NightSummary: Discord test skipped — webhook URL is empty");
+                    return;
+                }
+                var sender = new DiscordSender(url);
+                await sender.SendTestAsync();
+            });
+
             TestPushoverCommand = new RelayCommand(async () => {
                 var appToken = Settings.Default.PushoverAppToken;
                 var userKey  = Settings.Default.PushoverUserKey;
@@ -109,6 +119,25 @@ namespace NINA.Plugin.NightSummary {
             }
         }
 
+        public bool DiscordEnabled {
+            get => Settings.Default.DiscordEnabled;
+            set {
+                Settings.Default.DiscordEnabled = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public string DiscordWebhookUrl {
+            get => Settings.Default.DiscordWebhookUrl;
+            set {
+                Settings.Default.DiscordWebhookUrl = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public ICommand TestDiscordCommand { get; }
         public ICommand TestPushoverCommand { get; }
 
         public event PropertyChangedEventHandler PropertyChanged;

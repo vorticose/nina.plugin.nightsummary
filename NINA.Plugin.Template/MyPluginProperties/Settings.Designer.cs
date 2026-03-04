@@ -130,5 +130,29 @@ namespace NINA.Plugin.NightSummary.MyPluginProperties {
                 this["PushoverUserKey"] = value;
             }
         }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool DiscordEnabled {
+            get {
+                return ((bool)(this["DiscordEnabled"]));
+            }
+            set {
+                this["DiscordEnabled"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string DiscordWebhookUrl {
+            get {
+                return ((string)(this["DiscordWebhookUrl"]));
+            }
+            set {
+                this["DiscordWebhookUrl"] = value;
+            }
+        }
     }
 }
