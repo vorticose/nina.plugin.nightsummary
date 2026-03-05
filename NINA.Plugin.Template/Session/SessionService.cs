@@ -72,10 +72,22 @@ namespace NINA.Plugin.NightSummary.Session {
 
                 var duration = (session.SessionEnd - session.SessionStart).TotalHours;
                 var accepted = images.Count(i => i.Accepted);
-                var message  = $"{accepted} images accepted in {duration:F1}h";
+
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine($"Session complete — {duration:F1}h total");
+                sb.AppendLine();
+
+                var targets = images.GroupBy(i => i.TargetName).OrderBy(g => g.Key);
+                foreach (var target in targets) {
+                    var targetExp = TimeSpan.FromSeconds(target.Sum(i => i.ExposureDuration));
+                    sb.AppendLine($"{target.Key}: {target.Count()} images ({targetExp.TotalHours:F1}h)");
+                }
+
+                sb.AppendLine();
+                sb.Append($"{accepted} accepted of {images.Count} total");
 
                 var sender = new PushoverSender(appToken, userKey);
-                await sender.SendAsync("Night Summary", message);
+                await sender.SendAsync("Night Summary", sb.ToString());
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to send Pushover notification. {ex.Message}");
             }
