@@ -102,13 +102,28 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             // Image quality metrics
             var imagesWithHFR = images.Where(i => i.HFR > 0).ToList();
-            if (imagesWithHFR.Any()) {
+            var imagesWithFWHM = images.Where(i => i.FWHM > 0).ToList();
+            var imagesWithEcc = images.Where(i => i.Eccentricity > 0).ToList();
+
+            if (imagesWithHFR.Any() || imagesWithFWHM.Any()) {
                 sb.AppendLine("<h2>Image Quality</h2>");
                 sb.AppendLine("<table>");
                 sb.AppendLine("<tr><th>Metric</th><th>Min</th><th>Max</th><th>Mean</th><th>CV</th></tr>");
 
-                var hfrValues = imagesWithHFR.Select(i => i.HFR).ToList();
-                sb.AppendLine($"<tr><td>HFR</td><td>{hfrValues.Min():F2}</td><td>{hfrValues.Max():F2}</td><td>{hfrValues.Average():F2}</td><td>{CV(hfrValues):F0}%</td></tr>");
+                if (imagesWithHFR.Any()) {
+                    var hfrValues = imagesWithHFR.Select(i => i.HFR).ToList();
+                    sb.AppendLine($"<tr><td>HFR</td><td>{hfrValues.Min():F2}</td><td>{hfrValues.Max():F2}</td><td>{hfrValues.Average():F2}</td><td>{CV(hfrValues):F0}%</td></tr>");
+                }
+
+                if (imagesWithFWHM.Any()) {
+                    var fwhmValues = imagesWithFWHM.Select(i => i.FWHM).ToList();
+                    sb.AppendLine($"<tr><td>FWHM</td><td>{fwhmValues.Min():F2}</td><td>{fwhmValues.Max():F2}</td><td>{fwhmValues.Average():F2}</td><td>{CV(fwhmValues):F0}%</td></tr>");
+                }
+
+                if (imagesWithEcc.Any()) {
+                    var eccValues = imagesWithEcc.Select(i => i.Eccentricity).ToList();
+                    sb.AppendLine($"<tr><td>Eccentricity</td><td>{eccValues.Min():F3}</td><td>{eccValues.Max():F3}</td><td>{eccValues.Average():F3}</td><td>{CV(eccValues):F0}%</td></tr>");
+                }
 
                 sb.AppendLine("</table>");
             }

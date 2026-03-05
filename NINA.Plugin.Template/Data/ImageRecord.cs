@@ -21,6 +21,8 @@ namespace NINA.Plugin.NightSummary.Data {
 
         // Image quality metrics
         public double HFR { get; set; }
+        public double FWHM { get; set; }
+        public double Eccentricity { get; set; }
         public int StarCount { get; set; }
 
         // Guiding - stored in arcseconds using NINA's scale factor

@@ -110,10 +110,23 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             // Image quality
-            var withHFR = images.Where(i => i.HFR > 0).ToList();
+            var withHFR  = images.Where(i => i.HFR > 0).ToList();
+            var withFWHM = images.Where(i => i.FWHM > 0).ToList();
+            var withEcc  = images.Where(i => i.Eccentricity > 0).ToList();
+
             if (withHFR.Any()) {
                 var hfrVals = withHFR.Select(i => i.HFR).ToList();
                 fields.Add(Field("HFR", $"Min {hfrVals.Min():F2} | Max {hfrVals.Max():F2} | Mean {hfrVals.Average():F2} | CV {CV(hfrVals):F0}%"));
+            }
+
+            if (withFWHM.Any()) {
+                var fwhmVals = withFWHM.Select(i => i.FWHM).ToList();
+                fields.Add(Field("FWHM", $"Min {fwhmVals.Min():F2} | Max {fwhmVals.Max():F2} | Mean {fwhmVals.Average():F2} | CV {CV(fwhmVals):F0}%"));
+            }
+
+            if (withEcc.Any()) {
+                var eccVals = withEcc.Select(i => i.Eccentricity).ToList();
+                fields.Add(Field("Eccentricity", $"Min {eccVals.Min():F3} | Max {eccVals.Max():F3} | Mean {eccVals.Average():F3} | CV {CV(eccVals):F0}%"));
             }
 
             // Guiding

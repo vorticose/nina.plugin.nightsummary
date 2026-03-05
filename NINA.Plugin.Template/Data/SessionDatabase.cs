@@ -53,6 +53,8 @@ namespace NINA.Plugin.NightSummary.Data {
                         Filter TEXT,
                         ExposureDuration REAL,
                         HFR REAL,
+                        FWHM REAL DEFAULT 0,
+                        Eccentricity REAL DEFAULT 0,
                         StarCount INTEGER,
                         GuidingRMSTotal REAL,
                         GuidingScale REAL,
@@ -64,6 +66,24 @@ namespace NINA.Plugin.NightSummary.Data {
 
                 using (var cmd = new SQLiteCommand(createImages, conn))
                     cmd.ExecuteNonQuery();
+
+                // Migrate existing databases that predate FWHM/Eccentricity columns
+                MigrateAddColumn(conn, "Images", "FWHM", "REAL DEFAULT 0");
+                MigrateAddColumn(conn, "Images", "Eccentricity", "REAL DEFAULT 0");
+            }
+        }
+
+        /// <summary>
+        /// Adds a column to an existing table if it doesn't already exist.
+        /// SQLite does not support ALTER TABLE ADD COLUMN IF NOT EXISTS,
+        /// so we attempt the ALTER and swallow the error if the column is already there.
+        /// </summary>
+        private void MigrateAddColumn(SQLiteConnection conn, string table, string column, string definition) {
+            try {
+                using (var cmd = new SQLiteCommand($"ALTER TABLE {table} ADD COLUMN {column} {definition}", conn))
+                    cmd.ExecuteNonQuery();
+            } catch {
+                // Column already exists — nothing to do
             }
         }
 
@@ -123,10 +143,10 @@ namespace NINA.Plugin.NightSummary.Data {
                 string sql = @"
                     INSERT INTO Images (
                         SessionId, Timestamp, TargetName, Filter, ExposureDuration,
-                        HFR, StarCount, GuidingRMSTotal, GuidingScale, Accepted)
+                        HFR, FWHM, Eccentricity, StarCount, GuidingRMSTotal, GuidingScale, Accepted)
                     VALUES (
                         @SessionId, @Timestamp, @TargetName, @Filter, @ExposureDuration,
-                        @HFR, @StarCount, @GuidingRMSTotal, @GuidingScale, @Accepted)";
+                        @HFR, @FWHM, @Eccentricity, @StarCount, @GuidingRMSTotal, @GuidingScale, @Accepted)";
 
                 using (var cmd = new SQLiteCommand(sql, conn)) {
                     cmd.Parameters.AddWithValue("@SessionId", image.SessionId);
@@ -135,6 +155,8 @@ namespace NINA.Plugin.NightSummary.Data {
                     cmd.Parameters.AddWithValue("@Filter", image.Filter ?? "");
                     cmd.Parameters.AddWithValue("@ExposureDuration", image.ExposureDuration);
                     cmd.Parameters.AddWithValue("@HFR", image.HFR);
+                    cmd.Parameters.AddWithValue("@FWHM", image.FWHM);
+                    cmd.Parameters.AddWithValue("@Eccentricity", image.Eccentricity);
                     cmd.Parameters.AddWithValue("@StarCount", image.StarCount);
                     cmd.Parameters.AddWithValue("@GuidingRMSTotal", image.GuidingRMSTotal);
                     cmd.Parameters.AddWithValue("@GuidingScale", image.GuidingScale);
@@ -164,6 +186,8 @@ namespace NINA.Plugin.NightSummary.Data {
                                 Filter = reader["Filter"] == DBNull.Value ? "" : reader["Filter"].ToString(),
                                 ExposureDuration = reader["ExposureDuration"] == DBNull.Value ? 0 : Convert.ToDouble(reader["ExposureDuration"]),
                                 HFR = reader["HFR"] == DBNull.Value ? 0 : Convert.ToDouble(reader["HFR"]),
+                                FWHM = reader["FWHM"] == DBNull.Value ? 0 : Convert.ToDouble(reader["FWHM"]),
+                                Eccentricity = reader["Eccentricity"] == DBNull.Value ? 0 : Convert.ToDouble(reader["Eccentricity"]),
                                 StarCount = reader["StarCount"] == DBNull.Value ? 0 : Convert.ToInt32(reader["StarCount"]),
                                 GuidingRMSTotal = reader["GuidingRMSTotal"] == DBNull.Value ? 0 : Convert.ToDouble(reader["GuidingRMSTotal"]),
                                 GuidingScale = reader["GuidingScale"] == DBNull.Value ? 1 : Convert.ToDouble(reader["GuidingScale"]),
