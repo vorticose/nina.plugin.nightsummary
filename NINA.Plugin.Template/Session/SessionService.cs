@@ -108,8 +108,9 @@ namespace NINA.Plugin.NightSummary.Session {
 
                 if (session == null) return;
 
-                var sender = new DiscordSender(webhookUrl);
-                await sender.SendReportAsync(session, images);
+                var htmlReport = reportGenerator.GenerateHtmlReport(session, images);
+                var sender     = new DiscordSender(webhookUrl);
+                await sender.SendReportAsync(session, images, htmlReport);
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to send Discord report. {ex.Message}");
             }

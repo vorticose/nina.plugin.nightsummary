@@ -28,9 +28,9 @@
 
 \- FWHM and Eccentricity via Hocus Focus plugin integration
 
-\- Rejected image tracking with configurable HFR/FWHM thresholds
+\- HFR over time chart embedded in email report (inline SVG)
 
-\- Star count timeline as cloud/transparency proxy
+\- Full HTML report attached to Discord messages
 
 \- Test notification button in settings UI
 

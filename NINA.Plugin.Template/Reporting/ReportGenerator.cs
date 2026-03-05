@@ -126,6 +126,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 }
 
                 sb.AppendLine("</table>");
+
+                // HFR over time chart
+                var hfrChart = ChartGenerator.GenerateHfrChart(images);
+                if (!string.IsNullOrEmpty(hfrChart)) {
+                    sb.AppendLine("<h2>HFR Over Time</h2>");
+                    sb.AppendLine(hfrChart);
+                }
             }
 
             // Guiding metrics

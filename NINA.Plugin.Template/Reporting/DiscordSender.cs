@@ -2,6 +2,7 @@ using NINA.Core.Utility;
 using NINA.Plugin.NightSummary.Data;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
@@ -25,13 +26,15 @@ namespace NINA.Plugin.NightSummary.Reporting {
         }
 
         /// <summary>
-        /// Sends a full session report as a Discord embed.
+        /// Sends a session summary embed to Discord with the full HTML report attached as a file.
         /// </summary>
-        public async Task<bool> SendReportAsync(SessionRecord session, List<ImageRecord> images) {
+        public async Task<bool> SendReportAsync(SessionRecord session, List<ImageRecord> images, string htmlReport) {
             try {
                 Logger.Info("NightSummary: Sending Discord report");
                 var payload = BuildReportPayload(session, images);
-                return await PostPayload(payload);
+                var json    = JsonSerializer.Serialize(payload);
+                var fileName = $"night-summary-{session.SessionStart:yyyy-MM-dd}.html";
+                return await PostWithAttachment(json, htmlReport, fileName);
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to send Discord report. {ex.Message}");
                 return false;
@@ -155,10 +158,24 @@ namespace NINA.Plugin.NightSummary.Reporting {
         }
 
         private async Task<bool> PostPayload(object payload) {
-            var json = JsonSerializer.Serialize(payload);
+            var json    = JsonSerializer.Serialize(payload);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
             var response = await httpClient.PostAsync(webhookUrl, content);
+            return await LogResult(response);
+        }
 
+        private async Task<bool> PostWithAttachment(string payloadJson, string htmlContent, string fileName) {
+            var multipart = new MultipartFormDataContent();
+            multipart.Add(new StringContent(payloadJson, Encoding.UTF8, "application/json"), "payload_json");
+            var fileBytes = Encoding.UTF8.GetBytes(htmlContent);
+            var fileContent = new ByteArrayContent(fileBytes);
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/html");
+            multipart.Add(fileContent, "files[0]", fileName);
+            var response = await httpClient.PostAsync(webhookUrl, multipart);
+            return await LogResult(response);
+        }
+
+        private async Task<bool> LogResult(HttpResponseMessage response) {
             if (response.IsSuccessStatusCode) {
                 Logger.Info("NightSummary: Discord message sent successfully");
                 return true;
