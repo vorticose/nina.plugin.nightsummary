@@ -25,6 +25,13 @@ namespace NINA.Plugin.NightSummary.Data {
             InitializeDatabase();
         }
 
+        public SessionDatabase(string customDbPath) {
+            dbPath = customDbPath;
+            connectionString = $"Data Source={dbPath};Version=3;";
+            Directory.CreateDirectory(Path.GetDirectoryName(dbPath));
+            InitializeDatabase();
+        }
+
         /// <summary>
         /// Creates the database tables if they don't already exist.
         /// Safe to call every time - uses CREATE TABLE IF NOT EXISTS.
@@ -223,6 +230,37 @@ namespace NINA.Plugin.NightSummary.Data {
                                 };
                             } catch (Exception ex) {
                                 Logger.Error($"NightSummary: Error reading session record field: {ex.Message}");
+                                throw;
+                            }
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Returns the most recent session by SessionStart, or null if no sessions exist.
+        /// </summary>
+        public SessionRecord GetLatestSession() {
+            using (var conn = new SQLiteConnection(connectionString)) {
+                conn.Open();
+                string sql = "SELECT * FROM Sessions ORDER BY SessionStart DESC LIMIT 1";
+                using (var cmd = new SQLiteCommand(sql, conn)) {
+                    using (var reader = cmd.ExecuteReader()) {
+                        if (reader.Read()) {
+                            try {
+                                return new SessionRecord {
+                                    Id = Convert.ToInt32(reader["Id"]),
+                                    SessionId = reader["SessionId"] == DBNull.Value ? "" : reader["SessionId"].ToString(),
+                                    SessionStart = reader["SessionStart"] == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionStart"].ToString()),
+                                    SessionEnd = reader["SessionEnd"] == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionEnd"].ToString()),
+                                    ProfileName = reader["ProfileName"] == DBNull.Value ? "" : reader["ProfileName"].ToString(),
+                                    Notes = reader["Notes"] == DBNull.Value ? "" : reader["Notes"].ToString(),
+                                    ReportSent = reader["ReportSent"] == DBNull.Value ? false : Convert.ToInt32(reader["ReportSent"]) == 1
+                                };
+                            } catch (Exception ex) {
+                                Logger.Error($"NightSummary: Error reading latest session record: {ex.Message}");
                                 throw;
                             }
                         }

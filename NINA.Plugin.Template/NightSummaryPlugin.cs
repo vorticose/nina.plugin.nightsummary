@@ -10,6 +10,7 @@ using NINA.WPF.Base.Interfaces.ViewModel;
 using System;
 using System.ComponentModel;
 using System.ComponentModel.Composition;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -19,11 +20,16 @@ namespace NINA.Plugin.NightSummary {
     [Export(typeof(IPluginManifest))]
     public class NightSummaryPlugin : PluginBase, INotifyPropertyChanged {
 
+        private readonly SessionService sessionService;
+
         [ImportingConstructor]
         public NightSummaryPlugin(
             IProfileService profileService,
             IOptionsVM options,
-            IImageSaveMediator imageSaveMediator) {
+            IImageSaveMediator imageSaveMediator,
+            SessionService sessionService) {
+
+            this.sessionService = sessionService;
 
             TestDiscordCommand = new RelayCommand(async () => {
                 var url = Settings.Default.DiscordWebhookUrl;
@@ -44,6 +50,19 @@ namespace NINA.Plugin.NightSummary {
                 }
                 var sender = new PushoverSender(appToken, userKey);
                 await sender.SendAsync("Night Summary", "Pushover is configured correctly!");
+            });
+
+            SendTestReportCommand = new RelayCommand(async () => {
+                var testDbPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "NINA", "Plugins", CoreUtil.Version, "NightSummary", "test", "nightsummary.sqlite");
+
+                if (!File.Exists(testDbPath)) {
+                    Logger.Warning($"NightSummary: Test database not found at {testDbPath}");
+                    return;
+                }
+
+                await this.sessionService.SendFromDatabaseAsync(testDbPath);
             });
 
             Logger.Info("NightSummary: Plugin initialized successfully");
@@ -139,6 +158,7 @@ namespace NINA.Plugin.NightSummary {
 
         public ICommand TestDiscordCommand { get; }
         public ICommand TestPushoverCommand { get; }
+        public ICommand SendTestReportCommand { get; }
 
         public event PropertyChangedEventHandler PropertyChanged;
         protected void RaisePropertyChanged([CallerMemberName] string propertyName = null) {

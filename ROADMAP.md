@@ -20,7 +20,7 @@
 
 
 
-\## V2 — Notifications \& Data Quality
+\## V2 — Notifications \& Data Quality (Complete)
 
 \- Pushover integration for instant mobile notifications on session end
 
@@ -28,11 +28,15 @@
 
 \- FWHM and Eccentricity via Hocus Focus plugin integration
 
-\- HFR over time chart embedded in email report (inline SVG)
+\- HFR over time chart in HTML report (inline SVG, renders in browser)
 
-\- Full HTML report attached to Discord messages
+\- Full HTML report attached to email and Discord messages (plain-text summary in email body)
 
-\- Test notification button in settings UI
+\- Test notification buttons in settings UI (per-channel ping + full test report from test database)
+
+\- Per-target visual separators in HTML report
+
+\- Settings UI refinements (global send toggle, reorganized sections)
 
 
 

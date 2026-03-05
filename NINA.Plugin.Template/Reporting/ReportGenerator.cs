@@ -35,6 +35,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine(".stat-label { font-size: 12px; color: #888; margin-top: 5px; }");
             sb.AppendLine(".star-count-table { width: auto; margin-top: 8px; }");
             sb.AppendLine(".footnote { color: #555; font-size: 12px; margin-top: 40px; }");
+            sb.AppendLine(".target-section { border-top: 1px solid #2d2d5e; margin-top: 24px; padding-top: 16px; }");
             sb.AppendLine("</style></head><body>");
 
             // Header
@@ -66,6 +67,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("<h2>Targets Imaged</h2>");
 
             foreach (var target in targets) {
+                sb.AppendLine("<div class='target-section'>");
                 sb.AppendLine($"<h3>🌌 {target.Key}</h3>");
 
                 // Filter breakdown table
@@ -98,6 +100,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine("<tr><th>Broadband CV</th><th>Narrowband CV</th></tr>");
                 sb.AppendLine($"<tr><td>{broadbandCV}</td><td>{narrowbandCV}</td></tr>");
                 sb.AppendLine("</table>");
+                sb.AppendLine("</div>");
             }
 
             // Image quality metrics
