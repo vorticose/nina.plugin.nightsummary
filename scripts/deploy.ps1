@@ -5,7 +5,7 @@
 #   1. Builds the plugin in Release
 #   2. Creates NINA.Plugin.NightSummary.zip (excluding .pdb)
 #   3. Calculates SHA256 checksum
-#   4. Updates manifest.json with new version, download URL, and checksum
+#   4. Updates manifest.json and repository.json with new version, download URL, and checksum
 #   5. Copies the DLL to local NINA plugins folder
 #
 # After running this script:
@@ -59,6 +59,18 @@ $manifest[0].Installer.Checksum = $checksum
 $manifest | ConvertTo-Json -Depth 10 | Set-Content $manifestPath
 Write-Host "manifest.json updated." -ForegroundColor Green
 
+# --- Update repository.json ---
+$repoJsonPath = Join-Path $repoRoot "repository.json"
+$repoJson = Get-Content $repoJsonPath | ConvertFrom-Json
+$repoJson[0].Version.Major = $version.Major
+$repoJson[0].Version.Minor = $version.Minor
+$repoJson[0].Version.Patch = $version.Build
+$repoJson[0].Version.Build = $version.Revision
+$repoJson[0].Installer.URL = $downloadUrl
+$repoJson[0].Installer.Checksum = $checksum
+$repoJson | ConvertTo-Json -Depth 10 | Set-Content $repoJsonPath
+Write-Host "repository.json updated." -ForegroundColor Green
+
 # --- Deploy locally ---
 if (Test-Path $ninaPluginDir) {
     Copy-Item $dll $ninaPluginDir -Force
@@ -72,5 +84,5 @@ Write-Host "Next steps:" -ForegroundColor White
 Write-Host "  1. Go to github.com/vorticose/nina.plugin.nightsummary/releases/new" -ForegroundColor White
 Write-Host "  2. Tag: v$versionStr  |  Title: Night Summary v$versionStr" -ForegroundColor White
 Write-Host "  3. Upload: $zipPath" -ForegroundColor White
-$step4 = "  4. git add manifest.json; git commit -m Release-v$versionStr; git push"
+$step4 = "  4. git add manifest.json repository.json; git commit -m Release-v$versionStr; git push"
 Write-Host $step4 -ForegroundColor White
