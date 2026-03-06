@@ -6,7 +6,24 @@
     <DataTemplate x:Key="Night Summary_Options">
         <StackPanel Orientation="Vertical" Margin="10">
 
+            <TextBlock Text="Saved Reports" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
+
+            <StackPanel Orientation="Horizontal" Margin="0,5">
+                <TextBlock Text="Save Report Locally" Width="200" VerticalAlignment="Center" />
+                <CheckBox IsChecked="{Binding SaveReportLocally}" VerticalAlignment="Center" />
+            </StackPanel>
+
+            <TextBlock Text="Saves the HTML report to Documents\N.I.N.A.\Night Summary\Saved Reports\ after each session."
+                       TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="0,5,0,0" MaxWidth="550" />
+
+            <Separator Margin="0,20,0,10" />
+
             <TextBlock Text="Email Report Settings" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
+
+            <StackPanel Orientation="Horizontal" Margin="0,5">
+                <TextBlock Text="Enable Email Reports" Width="200" VerticalAlignment="Center" />
+                <CheckBox IsChecked="{Binding EmailEnabled}" VerticalAlignment="Center" />
+            </StackPanel>
 
             <StackPanel Orientation="Horizontal" Margin="0,5">
                 <TextBlock Text="Gmail Address" Width="200" VerticalAlignment="Center" />
@@ -23,13 +40,69 @@
                 <TextBox MinWidth="300" Text="{Binding RecipientAddress, UpdateSourceTrigger=PropertyChanged}" />
             </StackPanel>
 
-            <StackPanel Orientation="Horizontal" Margin="0,10">
-                <TextBlock Text="Send Report on Session End" Width="200" VerticalAlignment="Center" />
-                <CheckBox IsChecked="{Binding SendReportOnSessionEnd}" VerticalAlignment="Center" />
-            </StackPanel>
-
             <TextBlock Text="Note: Use a Gmail App Password, not your regular Gmail password. Generate one at myaccount.google.com under Security > App Passwords."
                        TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="0,10,0,0" MaxWidth="550" />
+
+            <Separator Margin="0,20,0,10" />
+
+            <TextBlock Text="Pushover Notifications" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
+
+            <StackPanel Orientation="Horizontal" Margin="0,5">
+                <TextBlock Text="Enable Pushover" Width="200" VerticalAlignment="Center" />
+                <CheckBox IsChecked="{Binding PushoverEnabled}" VerticalAlignment="Center" />
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" Margin="0,5">
+                <TextBlock Text="App Token" Width="200" VerticalAlignment="Center" />
+                <TextBox MinWidth="300" Text="{Binding PushoverAppToken, UpdateSourceTrigger=PropertyChanged}" />
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" Margin="0,5">
+                <TextBlock Text="User Key" Width="200" VerticalAlignment="Center" />
+                <TextBox MinWidth="300" Text="{Binding PushoverUserKey, UpdateSourceTrigger=PropertyChanged}" />
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" Margin="0,10">
+                <TextBlock Width="200" />
+                <Button Content="Send Test Notification" Command="{Binding TestPushoverCommand}" Width="180" />
+            </StackPanel>
+
+            <TextBlock Text="Note: Create a Pushover application at pushover.net to get your App Token. Your User Key is on your Pushover dashboard."
+                       TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="0,5,0,0" MaxWidth="550" />
+
+            <Separator Margin="0,20,0,10" />
+
+            <TextBlock Text="Discord Notifications" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
+
+            <StackPanel Orientation="Horizontal" Margin="0,5">
+                <TextBlock Text="Enable Discord" Width="200" VerticalAlignment="Center" />
+                <CheckBox IsChecked="{Binding DiscordEnabled}" VerticalAlignment="Center" />
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" Margin="0,5">
+                <TextBlock Text="Webhook URL" Width="200" VerticalAlignment="Center" />
+                <TextBox MinWidth="300" Text="{Binding DiscordWebhookUrl, UpdateSourceTrigger=PropertyChanged}" />
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" Margin="0,10">
+                <TextBlock Width="200" />
+                <Button Content="Send Test Message" Command="{Binding TestDiscordCommand}" Width="180" />
+            </StackPanel>
+
+            <TextBlock Text="Note: In Discord, go to channel Settings → Integrations → Webhooks → New Webhook to get your URL."
+                       TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="0,5,0,0" MaxWidth="550" />
+
+            <Separator Margin="0,20,0,10" />
+
+            <TextBlock Text="Test Report" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
+
+            <TextBlock Text="Sends a full report using the session data in the test database. To use this, place a nightsummary.sqlite file in the 'test' subfolder of the Night Summary plugin data directory. Uses all currently enabled notification channels."
+                       TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="0,0,0,10" MaxWidth="550" />
+
+            <StackPanel Orientation="Horizontal" Margin="0,10">
+                <TextBlock Width="200" />
+                <Button Content="Send Test Report" Command="{Binding SendTestReportCommand}" Width="180" />
+            </StackPanel>
 
         </StackPanel>
     </DataTemplate>

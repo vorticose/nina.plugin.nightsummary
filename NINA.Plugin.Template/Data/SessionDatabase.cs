@@ -25,6 +25,13 @@ namespace NINA.Plugin.NightSummary.Data {
             InitializeDatabase();
         }
 
+        public SessionDatabase(string customDbPath) {
+            dbPath = customDbPath;
+            connectionString = $"Data Source={dbPath};Version=3;";
+            Directory.CreateDirectory(Path.GetDirectoryName(dbPath));
+            InitializeDatabase();
+        }
+
         /// <summary>
         /// Creates the database tables if they don't already exist.
         /// Safe to call every time - uses CREATE TABLE IF NOT EXISTS.
@@ -53,6 +60,8 @@ namespace NINA.Plugin.NightSummary.Data {
                         Filter TEXT,
                         ExposureDuration REAL,
                         HFR REAL,
+                        FWHM REAL DEFAULT 0,
+                        Eccentricity REAL DEFAULT 0,
                         StarCount INTEGER,
                         GuidingRMSTotal REAL,
                         GuidingScale REAL,
@@ -64,6 +73,24 @@ namespace NINA.Plugin.NightSummary.Data {
 
                 using (var cmd = new SQLiteCommand(createImages, conn))
                     cmd.ExecuteNonQuery();
+
+                // Migrate existing databases that predate FWHM/Eccentricity columns
+                MigrateAddColumn(conn, "Images", "FWHM", "REAL DEFAULT 0");
+                MigrateAddColumn(conn, "Images", "Eccentricity", "REAL DEFAULT 0");
+            }
+        }
+
+        /// <summary>
+        /// Adds a column to an existing table if it doesn't already exist.
+        /// SQLite does not support ALTER TABLE ADD COLUMN IF NOT EXISTS,
+        /// so we attempt the ALTER and swallow the error if the column is already there.
+        /// </summary>
+        private void MigrateAddColumn(SQLiteConnection conn, string table, string column, string definition) {
+            try {
+                using (var cmd = new SQLiteCommand($"ALTER TABLE {table} ADD COLUMN {column} {definition}", conn))
+                    cmd.ExecuteNonQuery();
+            } catch {
+                // Column already exists — nothing to do
             }
         }
 
@@ -123,10 +150,10 @@ namespace NINA.Plugin.NightSummary.Data {
                 string sql = @"
                     INSERT INTO Images (
                         SessionId, Timestamp, TargetName, Filter, ExposureDuration,
-                        HFR, StarCount, GuidingRMSTotal, GuidingScale, Accepted)
+                        HFR, FWHM, Eccentricity, StarCount, GuidingRMSTotal, GuidingScale, Accepted)
                     VALUES (
                         @SessionId, @Timestamp, @TargetName, @Filter, @ExposureDuration,
-                        @HFR, @StarCount, @GuidingRMSTotal, @GuidingScale, @Accepted)";
+                        @HFR, @FWHM, @Eccentricity, @StarCount, @GuidingRMSTotal, @GuidingScale, @Accepted)";
 
                 using (var cmd = new SQLiteCommand(sql, conn)) {
                     cmd.Parameters.AddWithValue("@SessionId", image.SessionId);
@@ -135,6 +162,8 @@ namespace NINA.Plugin.NightSummary.Data {
                     cmd.Parameters.AddWithValue("@Filter", image.Filter ?? "");
                     cmd.Parameters.AddWithValue("@ExposureDuration", image.ExposureDuration);
                     cmd.Parameters.AddWithValue("@HFR", image.HFR);
+                    cmd.Parameters.AddWithValue("@FWHM", image.FWHM);
+                    cmd.Parameters.AddWithValue("@Eccentricity", image.Eccentricity);
                     cmd.Parameters.AddWithValue("@StarCount", image.StarCount);
                     cmd.Parameters.AddWithValue("@GuidingRMSTotal", image.GuidingRMSTotal);
                     cmd.Parameters.AddWithValue("@GuidingScale", image.GuidingScale);
@@ -164,6 +193,8 @@ namespace NINA.Plugin.NightSummary.Data {
                                 Filter = reader["Filter"] == DBNull.Value ? "" : reader["Filter"].ToString(),
                                 ExposureDuration = reader["ExposureDuration"] == DBNull.Value ? 0 : Convert.ToDouble(reader["ExposureDuration"]),
                                 HFR = reader["HFR"] == DBNull.Value ? 0 : Convert.ToDouble(reader["HFR"]),
+                                FWHM = reader["FWHM"] == DBNull.Value ? 0 : Convert.ToDouble(reader["FWHM"]),
+                                Eccentricity = reader["Eccentricity"] == DBNull.Value ? 0 : Convert.ToDouble(reader["Eccentricity"]),
                                 StarCount = reader["StarCount"] == DBNull.Value ? 0 : Convert.ToInt32(reader["StarCount"]),
                                 GuidingRMSTotal = reader["GuidingRMSTotal"] == DBNull.Value ? 0 : Convert.ToDouble(reader["GuidingRMSTotal"]),
                                 GuidingScale = reader["GuidingScale"] == DBNull.Value ? 1 : Convert.ToDouble(reader["GuidingScale"]),
@@ -199,6 +230,37 @@ namespace NINA.Plugin.NightSummary.Data {
                                 };
                             } catch (Exception ex) {
                                 Logger.Error($"NightSummary: Error reading session record field: {ex.Message}");
+                                throw;
+                            }
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Returns the most recent session by SessionStart, or null if no sessions exist.
+        /// </summary>
+        public SessionRecord GetLatestSession() {
+            using (var conn = new SQLiteConnection(connectionString)) {
+                conn.Open();
+                string sql = "SELECT * FROM Sessions ORDER BY SessionStart DESC LIMIT 1";
+                using (var cmd = new SQLiteCommand(sql, conn)) {
+                    using (var reader = cmd.ExecuteReader()) {
+                        if (reader.Read()) {
+                            try {
+                                return new SessionRecord {
+                                    Id = Convert.ToInt32(reader["Id"]),
+                                    SessionId = reader["SessionId"] == DBNull.Value ? "" : reader["SessionId"].ToString(),
+                                    SessionStart = reader["SessionStart"] == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionStart"].ToString()),
+                                    SessionEnd = reader["SessionEnd"] == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionEnd"].ToString()),
+                                    ProfileName = reader["ProfileName"] == DBNull.Value ? "" : reader["ProfileName"].ToString(),
+                                    Notes = reader["Notes"] == DBNull.Value ? "" : reader["Notes"].ToString(),
+                                    ReportSent = reader["ReportSent"] == DBNull.Value ? false : Convert.ToInt32(reader["ReportSent"]) == 1
+                                };
+                            } catch (Exception ex) {
+                                Logger.Error($"NightSummary: Error reading latest session record: {ex.Message}");
                                 throw;
                             }
                         }

@@ -85,13 +85,85 @@ namespace NINA.Plugin.NightSummary.MyPluginProperties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("True")]
-        public bool SendReportOnSessionEnd {
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool SaveReportLocally {
             get {
-                return ((bool)(this["SendReportOnSessionEnd"]));
+                return ((bool)(this["SaveReportLocally"]));
             }
             set {
-                this["SendReportOnSessionEnd"] = value;
+                this["SaveReportLocally"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool EmailEnabled {
+            get {
+                return ((bool)(this["EmailEnabled"]));
+            }
+            set {
+                this["EmailEnabled"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool PushoverEnabled {
+            get {
+                return ((bool)(this["PushoverEnabled"]));
+            }
+            set {
+                this["PushoverEnabled"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string PushoverAppToken {
+            get {
+                return ((string)(this["PushoverAppToken"]));
+            }
+            set {
+                this["PushoverAppToken"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string PushoverUserKey {
+            get {
+                return ((string)(this["PushoverUserKey"]));
+            }
+            set {
+                this["PushoverUserKey"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool DiscordEnabled {
+            get {
+                return ((bool)(this["DiscordEnabled"]));
+            }
+            set {
+                this["DiscordEnabled"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string DiscordWebhookUrl {
+            get {
+                return ((string)(this["DiscordWebhookUrl"]));
+            }
+            set {
+                this["DiscordWebhookUrl"] = value;
             }
         }
     }

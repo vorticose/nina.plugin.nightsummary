@@ -4,8 +4,8 @@ using System.Runtime.InteropServices;
 
 [assembly: Guid("682531D1-5A23-4627-B961-0794282ECB4E")]
 
-[assembly: AssemblyVersion("1.0.0.1")]
-[assembly: AssemblyFileVersion("1.0.0.1")]
+[assembly: AssemblyVersion("2.0.0.0")]
+[assembly: AssemblyFileVersion("2.0.0.0")]
 
 [assembly: AssemblyTitle("Night Summary")]
 [assembly: AssemblyDescription("Logs imaging session data and emails a summary report at sequence completion")]

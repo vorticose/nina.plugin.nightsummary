@@ -1,7 +1,9 @@
 ﻿using NINA.Core.Utility;
 using System;
+using System.IO;
 using System.Net;
 using System.Net.Mail;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace NINA.Plugin.NightSummary.Reporting {
@@ -21,21 +23,25 @@ namespace NINA.Plugin.NightSummary.Reporting {
         }
 
         /// <summary>
-        /// Sends the HTML report as an email.
+        /// Sends the HTML report as an email attachment with a brief plain-text body.
         /// Returns true if successful, false if it failed.
         /// </summary>
-        public async Task<bool> SendReportAsync(string subject, string htmlBody) {
+        public async Task<bool> SendReportAsync(string subject, string htmlReport, string plainTextBody) {
             try {
                 Logger.Info($"NightSummary: Sending report email to {recipientAddress}");
 
                 var message = new MailMessage {
                     From = new MailAddress(gmailAddress, "NINA Night Summary"),
                     Subject = subject,
-                    Body = htmlBody,
-                    IsBodyHtml = true
+                    Body = plainTextBody,
+                    IsBodyHtml = false
                 };
 
                 message.To.Add(recipientAddress);
+
+                var fileBytes = Encoding.UTF8.GetBytes(htmlReport);
+                var attachment = new Attachment(new MemoryStream(fileBytes), $"{subject}.html", "text/html");
+                message.Attachments.Add(attachment);
 
                 using (var client = new SmtpClient("smtp.gmail.com", 587)) {
                     client.EnableSsl = true;

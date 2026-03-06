@@ -35,6 +35,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine(".stat-label { font-size: 12px; color: #888; margin-top: 5px; }");
             sb.AppendLine(".star-count-table { width: auto; margin-top: 8px; }");
             sb.AppendLine(".footnote { color: #555; font-size: 12px; margin-top: 40px; }");
+            sb.AppendLine(".target-section { border-top: 1px solid #2d2d5e; margin-top: 24px; padding-top: 16px; }");
             sb.AppendLine("</style></head><body>");
 
             // Header
@@ -66,6 +67,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("<h2>Targets Imaged</h2>");
 
             foreach (var target in targets) {
+                sb.AppendLine("<div class='target-section'>");
                 sb.AppendLine($"<h3>🌌 {target.Key}</h3>");
 
                 // Filter breakdown table
@@ -98,19 +100,42 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine("<tr><th>Broadband CV</th><th>Narrowband CV</th></tr>");
                 sb.AppendLine($"<tr><td>{broadbandCV}</td><td>{narrowbandCV}</td></tr>");
                 sb.AppendLine("</table>");
+                sb.AppendLine("</div>");
             }
 
             // Image quality metrics
             var imagesWithHFR = images.Where(i => i.HFR > 0).ToList();
-            if (imagesWithHFR.Any()) {
+            var imagesWithFWHM = images.Where(i => i.FWHM > 0).ToList();
+            var imagesWithEcc = images.Where(i => i.Eccentricity > 0).ToList();
+
+            if (imagesWithHFR.Any() || imagesWithFWHM.Any()) {
                 sb.AppendLine("<h2>Image Quality</h2>");
                 sb.AppendLine("<table>");
                 sb.AppendLine("<tr><th>Metric</th><th>Min</th><th>Max</th><th>Mean</th><th>CV</th></tr>");
 
-                var hfrValues = imagesWithHFR.Select(i => i.HFR).ToList();
-                sb.AppendLine($"<tr><td>HFR</td><td>{hfrValues.Min():F2}</td><td>{hfrValues.Max():F2}</td><td>{hfrValues.Average():F2}</td><td>{CV(hfrValues):F0}%</td></tr>");
+                if (imagesWithHFR.Any()) {
+                    var hfrValues = imagesWithHFR.Select(i => i.HFR).ToList();
+                    sb.AppendLine($"<tr><td>HFR</td><td>{hfrValues.Min():F2}</td><td>{hfrValues.Max():F2}</td><td>{hfrValues.Average():F2}</td><td>{CV(hfrValues):F0}%</td></tr>");
+                }
+
+                if (imagesWithFWHM.Any()) {
+                    var fwhmValues = imagesWithFWHM.Select(i => i.FWHM).ToList();
+                    sb.AppendLine($"<tr><td>FWHM</td><td>{fwhmValues.Min():F2}</td><td>{fwhmValues.Max():F2}</td><td>{fwhmValues.Average():F2}</td><td>{CV(fwhmValues):F0}%</td></tr>");
+                }
+
+                if (imagesWithEcc.Any()) {
+                    var eccValues = imagesWithEcc.Select(i => i.Eccentricity).ToList();
+                    sb.AppendLine($"<tr><td>Eccentricity</td><td>{eccValues.Min():F3}</td><td>{eccValues.Max():F3}</td><td>{eccValues.Average():F3}</td><td>{CV(eccValues):F0}%</td></tr>");
+                }
 
                 sb.AppendLine("</table>");
+
+                // HFR over time chart
+                var hfrChart = ChartGenerator.GenerateHfrChart(images);
+                if (!string.IsNullOrEmpty(hfrChart)) {
+                    sb.AppendLine("<h2>HFR Over Time</h2>");
+                    sb.AppendLine(hfrChart);
+                }
             }
 
             // Guiding metrics
