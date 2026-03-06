@@ -1,4 +1,4 @@
-# Night Summary — Deploy Script
+# Night Summary - Deploy Script
 # Usage: .\scripts\deploy.ps1
 #
 # What this does:
@@ -64,7 +64,7 @@ if (Test-Path $ninaPluginDir) {
     Copy-Item $dll $ninaPluginDir -Force
     Write-Host "Deployed to local NINA plugins folder." -ForegroundColor Green
 } else {
-    Write-Host "Local NINA plugin folder not found — skipping local deploy." -ForegroundColor Yellow
+    Write-Host "Local NINA plugin folder not found - skipping local deploy." -ForegroundColor Yellow
 }
 
 Write-Host ""
@@ -72,4 +72,5 @@ Write-Host "Next steps:" -ForegroundColor White
 Write-Host "  1. Go to github.com/vorticose/nina.plugin.nightsummary/releases/new" -ForegroundColor White
 Write-Host "  2. Tag: v$versionStr  |  Title: Night Summary v$versionStr" -ForegroundColor White
 Write-Host "  3. Upload: $zipPath" -ForegroundColor White
-Write-Host "  4. git add manifest.json && git commit -m `"Release v$versionStr`" && git push" -ForegroundColor White
+$step4 = "  4. git add manifest.json; git commit -m Release-v$versionStr; git push"
+Write-Host $step4 -ForegroundColor White

@@ -1,4 +1,5 @@
 using NINA.Core.Utility;
+using NINA.Equipment.Interfaces.Mediator;
 using NINA.Plugin.NightSummary.Data;
 using NINA.Plugin.NightSummary.MyPluginProperties;
 using NINA.Plugin.NightSummary.Reporting;
@@ -17,24 +18,30 @@ namespace NINA.Plugin.NightSummary.Session {
     [PartCreationPolicy(CreationPolicy.Shared)]
     public class SessionService {
 
-        private readonly SessionCollector collector;
-        private readonly ReportGenerator reportGenerator;
-        private readonly IProfileService profileService;
+        private readonly SessionCollector      collector;
+        private readonly SessionEventCollector eventCollector;
+        private readonly ReportGenerator       reportGenerator;
+        private readonly IProfileService       profileService;
 
         [ImportingConstructor]
         public SessionService(
-            IImageSaveMediator imageSaveMediator,
-            IProfileService profileService) {
+            IImageSaveMediator     imageSaveMediator,
+            IProfileService        profileService,
+            ISafetyMonitorMediator safetyMonitorMediator,
+            IFocuserMediator       focuserMediator,
+            ITelescopeMediator     telescopeMediator) {
 
-            this.profileService = profileService;
-            var database = new SessionDatabase();
-            this.collector = new SessionCollector(imageSaveMediator, database);
+            this.profileService  = profileService;
+            var database         = new SessionDatabase();
+            this.collector       = new SessionCollector(imageSaveMediator, database);
+            this.eventCollector  = new SessionEventCollector(database, safetyMonitorMediator, focuserMediator, telescopeMediator);
             this.reportGenerator = new ReportGenerator();
         }
 
         public void StartSession(string profileName) {
             var name = profileService?.ActiveProfile?.Name ?? profileName;
             collector.StartSession(name);
+            eventCollector.StartSession(collector.GetCurrentSessionId());
         }
 
         public void EndSession() {
@@ -42,27 +49,31 @@ namespace NINA.Plugin.NightSummary.Session {
 
             var sessionId = collector.GetCurrentSessionId();
             collector.EndSession();
+            eventCollector.EndSession();
 
-            var database = collector.Database;
-            var session  = database.GetSession(sessionId);
-            var images   = database.GetImagesForSession(sessionId);
+            var database   = collector.Database;
+            var session    = database.GetSession(sessionId);
+            var images     = database.GetImagesForSession(sessionId);
+            var events     = database.GetEventsForSession(sessionId);
 
             if (session == null) return;
 
+            var reportData = new ReportData { Session = session, Images = images, Events = events };
+
             if (Settings.Default.SaveReportLocally) {
-                Task.Run(async () => await SaveReportLocallyAsync(session, images));
+                Task.Run(async () => await SaveReportLocallyAsync(reportData));
             }
 
             if (Settings.Default.EmailEnabled) {
-                Task.Run(async () => await SendReportWithDataAsync(session, images));
+                Task.Run(async () => await SendReportWithDataAsync(reportData));
             }
 
             if (Settings.Default.PushoverEnabled) {
-                Task.Run(async () => await SendPushoverWithDataAsync(session, images));
+                Task.Run(async () => await SendPushoverWithDataAsync(reportData));
             }
 
             if (Settings.Default.DiscordEnabled) {
-                Task.Run(async () => await SendDiscordWithDataAsync(session, images));
+                Task.Run(async () => await SendDiscordWithDataAsync(reportData));
             }
         }
 
@@ -81,30 +92,33 @@ namespace NINA.Plugin.NightSummary.Session {
                 }
 
                 var images = testDb.GetImagesForSession(session.SessionId);
-                Logger.Info($"NightSummary: Sending test report for session {session.SessionId} ({images.Count} images)");
+                var events = testDb.GetEventsForSession(session.SessionId);
+                Logger.Info($"NightSummary: Sending test report for session {session.SessionId} ({images.Count} images, {events.Count} events)");
+
+                var reportData = new ReportData { Session = session, Images = images, Events = events };
 
                 await Task.WhenAll(
-                    Settings.Default.SaveReportLocally ? SaveReportLocallyAsync(session, images)  : Task.CompletedTask,
-                    Settings.Default.EmailEnabled      ? SendReportWithDataAsync(session, images)  : Task.CompletedTask,
-                    Settings.Default.PushoverEnabled   ? SendPushoverWithDataAsync(session, images) : Task.CompletedTask,
-                    Settings.Default.DiscordEnabled    ? SendDiscordWithDataAsync(session, images)  : Task.CompletedTask
+                    Settings.Default.SaveReportLocally ? SaveReportLocallyAsync(reportData)  : Task.CompletedTask,
+                    Settings.Default.EmailEnabled      ? SendReportWithDataAsync(reportData)  : Task.CompletedTask,
+                    Settings.Default.PushoverEnabled   ? SendPushoverWithDataAsync(reportData) : Task.CompletedTask,
+                    Settings.Default.DiscordEnabled    ? SendDiscordWithDataAsync(reportData)  : Task.CompletedTask
                 );
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to send test report. {ex.Message}");
             }
         }
 
-        private async Task SaveReportLocallyAsync(SessionRecord session, List<ImageRecord> images) {
+        private async Task SaveReportLocallyAsync(ReportData reportData) {
             try {
                 var saveDir = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
                     "N.I.N.A.", "Night Summary", "Saved Reports");
                 Directory.CreateDirectory(saveDir);
 
-                var filename = $"NightSummary_{session.SessionStart:yyyy-MM-dd_HH-mm-ss}.html";
+                var filename = $"NightSummary_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.html";
                 var filePath = Path.Combine(saveDir, filename);
 
-                var htmlReport = reportGenerator.GenerateHtmlReport(session, images);
+                var htmlReport = reportGenerator.GenerateHtmlReport(reportData);
                 await File.WriteAllTextAsync(filePath, htmlReport);
 
                 Logger.Info($"NightSummary: Report saved locally to {filePath}");
@@ -113,7 +127,7 @@ namespace NINA.Plugin.NightSummary.Session {
             }
         }
 
-        private async Task SendPushoverWithDataAsync(SessionRecord session, List<ImageRecord> images) {
+        private async Task SendPushoverWithDataAsync(ReportData reportData) {
             try {
                 var appToken = Settings.Default.PushoverAppToken;
                 var userKey  = Settings.Default.PushoverUserKey;
@@ -123,6 +137,8 @@ namespace NINA.Plugin.NightSummary.Session {
                     return;
                 }
 
+                var session  = reportData.Session;
+                var images   = reportData.Images;
                 var duration = (session.SessionEnd - session.SessionStart).TotalHours;
                 var accepted = images.Count(i => i.Accepted);
 
@@ -146,7 +162,7 @@ namespace NINA.Plugin.NightSummary.Session {
             }
         }
 
-        private async Task SendDiscordWithDataAsync(SessionRecord session, List<ImageRecord> images) {
+        private async Task SendDiscordWithDataAsync(ReportData reportData) {
             try {
                 var webhookUrl = Settings.Default.DiscordWebhookUrl;
 
@@ -155,15 +171,15 @@ namespace NINA.Plugin.NightSummary.Session {
                     return;
                 }
 
-                var htmlReport = reportGenerator.GenerateHtmlReport(session, images);
+                var htmlReport = reportGenerator.GenerateHtmlReport(reportData);
                 var sender     = new DiscordSender(webhookUrl);
-                await sender.SendReportAsync(session, images, htmlReport);
+                await sender.SendReportAsync(reportData.Session, reportData.Images, htmlReport);
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to send Discord report. {ex.Message}");
             }
         }
 
-        private async Task SendReportWithDataAsync(SessionRecord session, List<ImageRecord> images) {
+        private async Task SendReportWithDataAsync(ReportData reportData) {
             try {
                 var gmailAddress = Settings.Default.GmailAddress;
                 var appPassword  = Settings.Default.GmailAppPassword;
@@ -176,11 +192,12 @@ namespace NINA.Plugin.NightSummary.Session {
                     return;
                 }
 
-                var htmlReport = reportGenerator.GenerateHtmlReport(session, images);
+                var session    = reportData.Session;
+                var images     = reportData.Images;
+                var htmlReport = reportGenerator.GenerateHtmlReport(reportData);
                 var subject    = $"Night Summary Report - {session.SessionStart:yyyy-MM-dd} - {images.Count} images";
                 var duration   = (session.SessionEnd - session.SessionStart).TotalHours;
                 var accepted   = images.Count(i => i.Accepted);
-                var totalExp   = System.TimeSpan.FromSeconds(images.Sum(i => i.ExposureDuration));
 
                 var body = new System.Text.StringBuilder();
                 body.AppendLine($"Session complete — {duration:F1}h total");
@@ -195,8 +212,9 @@ namespace NINA.Plugin.NightSummary.Session {
                 body.AppendLine();
                 body.AppendLine("Full report attached.");
 
+                var attachmentFileName = $"NightSummary_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.html";
                 var sender  = new EmailSender(gmailAddress, appPassword, recipient);
-                var success = await sender.SendReportAsync(subject, htmlReport, body.ToString());
+                var success = await sender.SendReportAsync(subject, htmlReport, body.ToString(), attachmentFileName);
 
                 if (success) {
                     collector.Database.FinalizeSession(session.SessionId, session.SessionEnd, true);

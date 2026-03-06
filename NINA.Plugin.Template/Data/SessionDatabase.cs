@@ -74,6 +74,18 @@ namespace NINA.Plugin.NightSummary.Data {
                 using (var cmd = new SQLiteCommand(createImages, conn))
                     cmd.ExecuteNonQuery();
 
+                string createEvents = @"
+                    CREATE TABLE IF NOT EXISTS SessionEvents (
+                        Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        SessionId TEXT NOT NULL,
+                        Timestamp TEXT NOT NULL,
+                        EventType TEXT NOT NULL,
+                        Description TEXT
+                    )";
+
+                using (var cmd = new SQLiteCommand(createEvents, conn))
+                    cmd.ExecuteNonQuery();
+
                 // Migrate existing databases that predate FWHM/Eccentricity columns
                 MigrateAddColumn(conn, "Images", "FWHM", "REAL DEFAULT 0");
                 MigrateAddColumn(conn, "Images", "Eccentricity", "REAL DEFAULT 0");
@@ -237,6 +249,52 @@ namespace NINA.Plugin.NightSummary.Data {
                 }
             }
             return null;
+        }
+
+        /// <summary>
+        /// Saves a session event (autofocus run, safety monitor change, meridian flip, etc.).
+        /// </summary>
+        public void SaveEvent(SessionEvent evt) {
+            using (var conn = new SQLiteConnection(connectionString)) {
+                conn.Open();
+                string sql = @"
+                    INSERT INTO SessionEvents (SessionId, Timestamp, EventType, Description)
+                    VALUES (@SessionId, @Timestamp, @EventType, @Description)";
+
+                using (var cmd = new SQLiteCommand(sql, conn)) {
+                    cmd.Parameters.AddWithValue("@SessionId", evt.SessionId);
+                    cmd.Parameters.AddWithValue("@Timestamp", evt.Timestamp.ToString("o"));
+                    cmd.Parameters.AddWithValue("@EventType", evt.EventType ?? "");
+                    cmd.Parameters.AddWithValue("@Description", evt.Description ?? "");
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Retrieves all session events for a given session, ordered by timestamp.
+        /// </summary>
+        public List<SessionEvent> GetEventsForSession(string sessionId) {
+            var events = new List<SessionEvent>();
+            using (var conn = new SQLiteConnection(connectionString)) {
+                conn.Open();
+                string sql = "SELECT * FROM SessionEvents WHERE SessionId = @SessionId ORDER BY Timestamp";
+                using (var cmd = new SQLiteCommand(sql, conn)) {
+                    cmd.Parameters.AddWithValue("@SessionId", sessionId);
+                    using (var reader = cmd.ExecuteReader()) {
+                        while (reader.Read()) {
+                            events.Add(new SessionEvent {
+                                Id = Convert.ToInt32(reader["Id"]),
+                                SessionId = reader["SessionId"] == DBNull.Value ? "" : reader["SessionId"].ToString(),
+                                Timestamp = reader["Timestamp"] == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["Timestamp"].ToString()),
+                                EventType = reader["EventType"] == DBNull.Value ? "" : reader["EventType"].ToString(),
+                                Description = reader["Description"] == DBNull.Value ? "" : reader["Description"].ToString()
+                            });
+                        }
+                    }
+                }
+            }
+            return events;
         }
 
         /// <summary>

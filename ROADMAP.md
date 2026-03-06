@@ -40,17 +40,19 @@
 
 
 
-\## V3.1 — Session Event Timeline & Logging
+\## V2.1 — Session Event Timeline & Logging (Complete)
 
 \- Session event timeline near the top of the HTML report (inline SVG):
   - Target imaging periods as color-coded bands (one color per target, consistent with per-target report sections)
   - Roof open/close markers
   - Autofocus run markers
   - Meridian flip markers
+  - Ruler-style time axis with adaptive tick intervals
+  - Interactive hover tooltips on event markers
 \- Safety monitor event logging (roof open/close with timestamps)
-\- Autofocus trigger logging (when runs were initiated and which trigger caused them)
-\- Session interruption notes (meridian flip times)
-\- Option to save HTML report locally to Documents/NINA/Night Summary/Saved Reports/ with session timestamp in filename
+\- Autofocus run logging (filter, temperature, focuser position)
+\- Meridian flip logging
+\- Save HTML report locally to Documents/NINA/Night Summary/Saved Reports/ with generation timestamp in filename
 
 
 

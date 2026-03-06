@@ -33,7 +33,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 Logger.Info("NightSummary: Sending Discord report");
                 var payload = BuildReportPayload(session, images);
                 var json    = JsonSerializer.Serialize(payload);
-                var fileName = $"night-summary-{session.SessionStart:yyyy-MM-dd}.html";
+                var fileName = $"NightSummary_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.html";
                 return await PostWithAttachment(json, htmlReport, fileName);
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to send Discord report. {ex.Message}");
@@ -169,7 +169,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             multipart.Add(new StringContent(payloadJson, Encoding.UTF8, "application/json"), "payload_json");
             var fileBytes = Encoding.UTF8.GetBytes(htmlContent);
             var fileContent = new ByteArrayContent(fileBytes);
-            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/html");
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
             multipart.Add(fileContent, "files[0]", fileName);
             var response = await httpClient.PostAsync(webhookUrl, multipart);
             return await LogResult(response);

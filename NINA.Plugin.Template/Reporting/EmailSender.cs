@@ -26,7 +26,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// Sends the HTML report as an email attachment with a brief plain-text body.
         /// Returns true if successful, false if it failed.
         /// </summary>
-        public async Task<bool> SendReportAsync(string subject, string htmlReport, string plainTextBody) {
+        public async Task<bool> SendReportAsync(string subject, string htmlReport, string plainTextBody, string attachmentFileName = null) {
             try {
                 Logger.Info($"NightSummary: Sending report email to {recipientAddress}");
 
@@ -40,7 +40,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 message.To.Add(recipientAddress);
 
                 var fileBytes = Encoding.UTF8.GetBytes(htmlReport);
-                var attachment = new Attachment(new MemoryStream(fileBytes), $"{subject}.html", "text/html");
+                var attachment = new Attachment(new MemoryStream(fileBytes), attachmentFileName ?? $"NightSummary_generated-{DateTime.Now:HH-mm-ss}.html", "text/html");
                 message.Attachments.Add(attachment);
 
                 using (var client = new SmtpClient("smtp.gmail.com", 587)) {
