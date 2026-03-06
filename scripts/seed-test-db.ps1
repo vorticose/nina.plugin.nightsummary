@@ -1,8 +1,7 @@
 # Seed test database with dummy session data including timeline events
 # Run this once to populate the test database used by "Send Test Report"
 
-$ninaVersion = (Get-ChildItem "$env:LOCALAPPDATA\NINA\Plugins" -Directory | Sort-Object Name -Descending | Select-Object -First 1).Name
-$dbPath    = "$env:LOCALAPPDATA\NINA\Plugins\$ninaVersion\NightSummary\test\nightsummary.sqlite"
+$dbPath    = "$env:LOCALAPPDATA\NINA\Plugins\3.2.0.9001\NightSummary\test\nightsummary.sqlite"
 $sqliteDir = "$env:USERPROFILE\.nuget\packages\stub.system.data.sqlite.core.netstandard\1.0.119"
 $managedDll = "$sqliteDir\lib\netstandard2.0\System.Data.SQLite.dll"
 $nativeDll  = "$sqliteDir\runtimes\win-x64\native\SQLite.Interop.dll"
