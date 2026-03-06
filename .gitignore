@@ -97,3 +97,8 @@ orleans.codegen.cs
 /NINA/Resources/SVG/ArrowRight.ai
 /NINA/Resources/StaticResources/ArrowRight.xaml
 /NINA/Resources/StaticResources/ArrowLeft.xaml
+
+# Claude Code memory and session files
+.claude/
+*.snk
+scripts/*.zip

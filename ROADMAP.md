@@ -40,25 +40,41 @@
 
 
 
-\## V3 — Context \& Intelligence
+\## V3.1 — Session Event Timeline & Logging
 
-\- Target Scheduler integration — completion percentages per target/filter
+\- Session event timeline near the top of the HTML report (inline SVG):
+  - Target imaging periods as color-coded bands (one color per target, consistent with per-target report sections)
+  - Roof open/close markers
+  - Autofocus run markers
+  - Meridian flip markers
+\- Safety monitor event logging (roof open/close with timestamps)
+\- Autofocus trigger logging (when runs were initiated and which trigger caused them)
+\- Session interruption notes (meridian flip times)
+\- Option to save HTML report locally to Documents/NINA/Night Summary/Saved Reports/ with session timestamp in filename
 
-\- Per-target cumulative integration time pulled from Target Scheduler database
+
+
+\## V3.2 — Historical Context
 
 \- Compare current session to previous sessions on same target (HFR, FWHM, guiding RMS)
+\- Per-target cumulative integration time from our own session database
+\- Survey image per target in HTML report (DSS/SkyView URL-based, using RA/Dec from image metadata)
 
-\- Tonight's opportunity snapshot — altitude curves and imaging windows for active Target Scheduler targets, including moon separation and best darkness window
 
+
+\## V3.3 — Target Scheduler Integration
+
+\- Target Scheduler completion percentages per target/filter
+\- Per-target cumulative integration time from Target Scheduler database
+\- Tonight's opportunity snapshot (altitude curves, moon separation, imaging windows)
+\- FOV overlay on survey image using Aladin Lite JS widget (sensor + focal length from NINA profile, rotation from Target Scheduler)
+
+
+
+\## V3.4 — External Data & Diagnostics
+
+\- Equipment error logging (connection losses, reconnection attempts, device affected)
 \- Astrospheric or Clear Outside weather snapshot embedded in report
-
-\- Safety monitor event logging — roof open/close events with timestamps
-
-\- Equipment error logging — connection losses, reconnection attempts, and which device was affected
-
-\- Autofocus trigger logging — when autofocus runs were initiated and which trigger caused them
-
-\- Session interruption notes (meridian flip times)
 
 
 
