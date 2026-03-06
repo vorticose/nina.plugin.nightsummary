@@ -102,10 +102,19 @@ namespace NINA.Plugin.NightSummary {
             }
         }
 
-        public bool SendReportOnSessionEnd {
-            get => Settings.Default.SendReportOnSessionEnd;
+        public bool SaveReportLocally {
+            get => Settings.Default.SaveReportLocally;
             set {
-                Settings.Default.SendReportOnSessionEnd = value;
+                Settings.Default.SaveReportLocally = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public bool EmailEnabled {
+            get => Settings.Default.EmailEnabled;
+            set {
+                Settings.Default.EmailEnabled = value;
                 Settings.Default.Save();
                 RaisePropertyChanged();
             }

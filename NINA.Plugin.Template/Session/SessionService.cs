@@ -49,7 +49,11 @@ namespace NINA.Plugin.NightSummary.Session {
 
             if (session == null) return;
 
-            if (Settings.Default.SendReportOnSessionEnd) {
+            if (Settings.Default.SaveReportLocally) {
+                Task.Run(async () => await SaveReportLocallyAsync(session, images));
+            }
+
+            if (Settings.Default.EmailEnabled) {
                 Task.Run(async () => await SendReportWithDataAsync(session, images));
             }
 
@@ -80,12 +84,32 @@ namespace NINA.Plugin.NightSummary.Session {
                 Logger.Info($"NightSummary: Sending test report for session {session.SessionId} ({images.Count} images)");
 
                 await Task.WhenAll(
-                    Settings.Default.SendReportOnSessionEnd ? SendReportWithDataAsync(session, images)  : Task.CompletedTask,
-                    Settings.Default.PushoverEnabled        ? SendPushoverWithDataAsync(session, images) : Task.CompletedTask,
-                    Settings.Default.DiscordEnabled         ? SendDiscordWithDataAsync(session, images)  : Task.CompletedTask
+                    Settings.Default.SaveReportLocally ? SaveReportLocallyAsync(session, images)  : Task.CompletedTask,
+                    Settings.Default.EmailEnabled      ? SendReportWithDataAsync(session, images)  : Task.CompletedTask,
+                    Settings.Default.PushoverEnabled   ? SendPushoverWithDataAsync(session, images) : Task.CompletedTask,
+                    Settings.Default.DiscordEnabled    ? SendDiscordWithDataAsync(session, images)  : Task.CompletedTask
                 );
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to send test report. {ex.Message}");
+            }
+        }
+
+        private async Task SaveReportLocallyAsync(SessionRecord session, List<ImageRecord> images) {
+            try {
+                var saveDir = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                    "N.I.N.A.", "Night Summary", "Saved Reports");
+                Directory.CreateDirectory(saveDir);
+
+                var filename = $"NightSummary_{session.SessionStart:yyyy-MM-dd_HH-mm-ss}.html";
+                var filePath = Path.Combine(saveDir, filename);
+
+                var htmlReport = reportGenerator.GenerateHtmlReport(session, images);
+                await File.WriteAllTextAsync(filePath, htmlReport);
+
+                Logger.Info($"NightSummary: Report saved locally to {filePath}");
+            } catch (Exception ex) {
+                Logger.Error($"NightSummary: Failed to save report locally. {ex.Message}");
             }
         }
 

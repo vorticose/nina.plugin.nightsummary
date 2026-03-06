@@ -85,13 +85,25 @@ namespace NINA.Plugin.NightSummary.MyPluginProperties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("True")]
-        public bool SendReportOnSessionEnd {
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool SaveReportLocally {
             get {
-                return ((bool)(this["SendReportOnSessionEnd"]));
+                return ((bool)(this["SaveReportLocally"]));
             }
             set {
-                this["SendReportOnSessionEnd"] = value;
+                this["SaveReportLocally"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool EmailEnabled {
+            get {
+                return ((bool)(this["EmailEnabled"]));
+            }
+            set {
+                this["EmailEnabled"] = value;
             }
         }
 
