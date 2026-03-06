@@ -18,7 +18,9 @@ $projectDir = Join-Path $repoRoot "NINA.Plugin.Template"
 $buildDir   = Join-Path $projectDir "bin\Release\net8.0-windows"
 $zipPath    = Join-Path $PSScriptRoot "NINA.Plugin.NightSummary.zip"
 $manifestPath = Join-Path $repoRoot "manifest.json"
-$ninaPluginDir = Join-Path $env:LOCALAPPDATA "NINA\Plugins\3.0.0\NightSummary"
+$ninaPluginsBase = Join-Path $env:LOCALAPPDATA "NINA\Plugins"
+$ninaVersion     = (Get-ChildItem $ninaPluginsBase -Directory | Sort-Object Name -Descending | Select-Object -First 1).Name
+$ninaPluginDir   = Join-Path $ninaPluginsBase "$ninaVersion\NightSummary"
 
 # --- Build ---
 Write-Host "Building..." -ForegroundColor Cyan
@@ -61,7 +63,7 @@ Write-Host "manifest.json updated." -ForegroundColor Green
 
 # --- Update repository.json ---
 $repoJsonPath = Join-Path $repoRoot "repository.json"
-$repoJson = Get-Content $repoJsonPath | ConvertFrom-Json
+$repoJson = @(Get-Content $repoJsonPath | ConvertFrom-Json)
 $repoJson[0].Version.Major = $version.Major
 $repoJson[0].Version.Minor = $version.Minor
 $repoJson[0].Version.Patch = $version.Build
