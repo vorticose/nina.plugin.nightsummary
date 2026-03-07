@@ -76,41 +76,71 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             sb.AppendLine($"<svg viewBox='0 0 {svgWidth} {svgHeight}' xmlns='http://www.w3.org/2000/svg' style='width:100%;font-family:Arial,sans-serif;font-size:11px;'>");
 
-            // Background track
-            sb.AppendLine($"<rect x='{leftPad}' y='{trackY}' width='{barAreaW}' height='{trackHeight}' rx='4' fill='#0f0f23' />");
+            // Diagonal stripe pattern for idle (no imaging) periods
+            sb.AppendLine("<defs>");
+            sb.AppendLine("  <pattern id='ns-idle' patternUnits='userSpaceOnUse' width='8' height='8' patternTransform='rotate(45)'>");
+            sb.AppendLine("    <rect width='8' height='8' fill='#0f0f23'/>");
+            sb.AppendLine("    <line x1='0' y1='0' x2='0' y2='8' stroke='#7a1a1a' stroke-width='3'/>");
+            sb.AppendLine("  </pattern>");
+            sb.AppendLine("</defs>");
 
-            // Target imaging bands
+            // Build all imaging blocks across all targets before rendering,
+            // so we can compute idle gaps and hatch only those regions.
+            static DateTime EstimatedStart(ImageRecord r) =>
+                r.Timestamp.AddSeconds(-(r.ExposureDuration > 0 ? r.ExposureDuration : 60));
+
+            var allBlocks = new List<(string Name, string Color, DateTime Start, DateTime End)>();
             foreach (var target in targets) {
-                // Group contiguous runs of images (tolerance = 5 min gap)
                 var sorted = target.Images.OrderBy(i => i.Timestamp).ToList();
                 if (!sorted.Any()) continue;
 
-                var blockStart = sorted[0].Timestamp;
-                var blockEnd   = blockStart.AddSeconds(sorted[0].ExposureDuration > 0 ? sorted[0].ExposureDuration : 60);
+                var blockStart = EstimatedStart(sorted[0]);
+                var blockEnd   = sorted[0].Timestamp;
 
                 for (int i = 1; i <= sorted.Count; i++) {
-                    bool flush = i == sorted.Count;
-                    if (!flush) {
-                        var gap = (sorted[i].Timestamp - blockEnd).TotalMinutes;
+                    if (i < sorted.Count) {
+                        var gap = (EstimatedStart(sorted[i]) - blockEnd).TotalMinutes;
                         if (gap <= 5) {
-                            blockEnd = sorted[i].Timestamp.AddSeconds(sorted[i].ExposureDuration > 0 ? sorted[i].ExposureDuration : 60);
+                            blockEnd = sorted[i].Timestamp;
                             continue;
                         }
-                        flush = true;
                     }
-
-                    double x1 = TimeToX(blockStart);
-                    double x2 = TimeToX(blockEnd);
-                    double w  = Math.Max(x2 - x1, 2);
-                    sb.AppendLine($"<rect x='{x1:F1}' y='{trackY}' width='{w:F1}' height='{trackHeight}' fill='{target.Color}' opacity='0.85'>");
-                    sb.AppendLine($"  <title>{target.Name}: {blockStart:HH:mm} \u2013 {blockEnd:HH:mm}</title>");
-                    sb.AppendLine("</rect>");
-
-                    if (!flush) {
-                        blockStart = sorted[i].Timestamp;
-                        blockEnd   = blockStart.AddSeconds(sorted[i].ExposureDuration > 0 ? sorted[i].ExposureDuration : 60);
+                    allBlocks.Add((target.Name, target.Color, blockStart, blockEnd));
+                    if (i < sorted.Count) {
+                        blockStart = EstimatedStart(sorted[i]);
+                        blockEnd   = sorted[i].Timestamp;
                     }
                 }
+            }
+            allBlocks.Sort((a, b) => a.Start.CompareTo(b.Start));
+
+            // Solid dark background track
+            sb.AppendLine($"<rect x='{leftPad}' y='{trackY}' width='{barAreaW}' height='{trackHeight}' rx='4' fill='#0f0f23' />");
+
+            // Hatch only the idle gaps (session start→first block, between blocks, last block→session end)
+            var cursor = sessionStart;
+            foreach (var block in allBlocks) {
+                if (block.Start > cursor) {
+                    double gx1 = TimeToX(cursor);
+                    double gx2 = TimeToX(block.Start);
+                    sb.AppendLine($"<rect x='{gx1:F1}' y='{trackY}' width='{(gx2 - gx1):F1}' height='{trackHeight}' fill='url(#ns-idle)' />");
+                }
+                if (block.End > cursor) cursor = block.End;
+            }
+            if (cursor < sessionEnd) {
+                double gx1 = TimeToX(cursor);
+                double gx2 = TimeToX(sessionEnd);
+                sb.AppendLine($"<rect x='{gx1:F1}' y='{trackY}' width='{(gx2 - gx1):F1}' height='{trackHeight}' fill='url(#ns-idle)' />");
+            }
+
+            // Render colored imaging bands on top
+            foreach (var block in allBlocks) {
+                double x1 = TimeToX(block.Start);
+                double x2 = TimeToX(block.End);
+                double w  = Math.Max(x2 - x1, 2);
+                sb.AppendLine($"<rect x='{x1:F1}' y='{trackY}' width='{w:F1}' height='{trackHeight}' fill='{block.Color}' opacity='0.85'>");
+                sb.AppendLine($"  <title>{block.Name}: {block.Start:HH:mm} \u2013 {block.End:HH:mm}</title>");
+                sb.AppendLine("</rect>");
             }
 
             // Event markers — triangles with data-tip for hover tooltips

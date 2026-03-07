@@ -65,6 +65,19 @@ namespace NINA.Plugin.NightSummary {
                 await this.sessionService.SendFromDatabaseAsync(testDbPath);
             });
 
+            ResendLastSessionCommand = new RelayCommand(async () => {
+                var liveDbPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "NINA", "Plugins", CoreUtil.Version, "NightSummary", "nightsummary.sqlite");
+
+                if (!File.Exists(liveDbPath)) {
+                    Logger.Warning($"NightSummary: Live database not found at {liveDbPath}");
+                    return;
+                }
+
+                await this.sessionService.SendFromDatabaseAsync(liveDbPath);
+            });
+
             Logger.Info("NightSummary: Plugin initialized successfully");
         }
 
@@ -168,6 +181,7 @@ namespace NINA.Plugin.NightSummary {
         public ICommand TestDiscordCommand { get; }
         public ICommand TestPushoverCommand { get; }
         public ICommand SendTestReportCommand { get; }
+        public ICommand ResendLastSessionCommand { get; }
 
         public event PropertyChangedEventHandler PropertyChanged;
         protected void RaisePropertyChanged([CallerMemberName] string propertyName = null) {
