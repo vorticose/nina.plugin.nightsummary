@@ -2,8 +2,8 @@
 using System.Runtime.InteropServices;
 
 [assembly: Guid("682531D1-5A23-4627-B961-0794282ECB4E")]
-[assembly: AssemblyVersion("2.4.0.0")]
-[assembly: AssemblyFileVersion("2.4.0.0")]
+[assembly: AssemblyVersion("2.4.1.0")]
+[assembly: AssemblyFileVersion("2.4.1.0")]
 [assembly: AssemblyTitle("Night Summary")]
 [assembly: AssemblyDescription("Logs imaging session data and emails a summary report at sequence completion")]
 [assembly: AssemblyCompany("Evan Pegors")]
