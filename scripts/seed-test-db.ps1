@@ -1,4 +1,4 @@
-# Seed test database with dummy session data including timeline events
+# Seed test database with dummy session data including timeline events and historical sessions
 # Run this once to populate the test database used by "Send Test Report"
 
 $dbPath    = "$env:LOCALAPPDATA\NINA\Plugins\3.2.0.9001\NightSummary\test\nightsummary.sqlite"
@@ -86,7 +86,7 @@ if (Test-Path $tsDbPath) {
     }
     Write-Host "Target names synced with TS database." -ForegroundColor Cyan
 } else {
-    Write-Host "TS database not found — skipping target name sync." -ForegroundColor Yellow
+    Write-Host "TS database not found - skipping target name sync." -ForegroundColor Yellow
 }
 
 # Clear existing events for this session
@@ -129,7 +129,91 @@ foreach ($e in $events) {
     Write-Host "  Added $($e.Type) at +$([int]$e.Time) min" -ForegroundColor Gray
 }
 
+# Historical sessions for Session History section
+# Read distinct target+filter combos from the current session
+$fCmd = $conn.CreateCommand()
+$fCmd.CommandText = "SELECT TargetName, Filter, ExposureDuration FROM Images WHERE SessionId = @sid GROUP BY TargetName, Filter"
+$fCmd.Parameters.AddWithValue("@sid", $sessionId) | Out-Null
+$fReader = $fCmd.ExecuteReader()
+$filterRows = @()
+while ($fReader.Read()) {
+    $filterRows += @{
+        Target = $fReader["TargetName"].ToString()
+        Filter = $fReader["Filter"].ToString()
+        ExpDur = [double]$fReader["ExposureDuration"]
+    }
+}
+$fReader.Close()
+Write-Host "Found $($filterRows.Count) target/filter combos for history seeding." -ForegroundColor Gray
+
+# Remove previously seeded historical sessions
+$hCmd = $conn.CreateCommand()
+$hCmd.CommandText = "SELECT SessionId FROM Sessions WHERE ProfileName = 'Test-History'"
+$hReader = $hCmd.ExecuteReader()
+$oldIds = @()
+while ($hReader.Read()) { $oldIds += $hReader["SessionId"].ToString() }
+$hReader.Close()
+foreach ($oldId in $oldIds) {
+    Exec "DELETE FROM Images WHERE SessionId = @sid"        @{ "@sid" = $oldId }
+    Exec "DELETE FROM SessionEvents WHERE SessionId = @sid" @{ "@sid" = $oldId }
+    Exec "DELETE FROM Sessions WHERE SessionId = @sid"      @{ "@sid" = $oldId }
+    Write-Host "  Removed old history session: $oldId" -ForegroundColor DarkGray
+}
+
+# Seed 2 historical nights with slightly different quality metrics
+$totalHistSessions = 0
+
+foreach ($weeksAgo in @(4, 2)) {
+    $hfr_mult  = if ($weeksAgo -eq 4) { 1.15 } else { 0.92 }
+    $fwhm_mult = if ($weeksAgo -eq 4) { 1.20 } else { 0.88 }
+    $rms_mult  = if ($weeksAgo -eq 4) { 1.10 } else { 0.95 }
+    $imgCount  = if ($weeksAgo -eq 4) { 40   } else { 65   }
+
+    $hSid   = [System.Guid]::NewGuid().ToString()
+    $hStart = $sessionStart.AddDays(-($weeksAgo * 7)).Date.AddHours(21)
+    $hEnd   = $hStart.AddHours(6)
+
+    Exec "INSERT INTO Sessions (SessionId, SessionStart, SessionEnd, ProfileName, Notes, ReportSent) VALUES (@sid, @start, @end, @prof, '', 1)" @{
+        "@sid"   = $hSid
+        "@start" = $hStart.ToString("o")
+        "@end"   = $hEnd.ToString("o")
+        "@prof"  = "Test-History"
+    }
+
+    $perCombo = [math]::Max(3, [math]::Floor($imgCount / [math]::Max(1, $filterRows.Count)))
+    $step     = ($hEnd - $hStart).TotalMinutes / [math]::Max(1, $filterRows.Count * $perCombo)
+    $elapsed  = 0.0
+
+    foreach ($row in $filterRows) {
+        for ($i = 0; $i -lt $perCombo; $i++) {
+            $ts   = $hStart.AddMinutes($elapsed).ToString("o")
+            $hfr  = [math]::Round(1.85 * $hfr_mult  + (Get-Random -Minimum -15 -Maximum 15) / 100.0, 2)
+            $fwhm = [math]::Round(2.10 * $fwhm_mult + (Get-Random -Minimum -20 -Maximum 20) / 100.0, 2)
+            $rms  = [math]::Round(0.52 * $rms_mult  + (Get-Random -Minimum -8  -Maximum 8 ) / 100.0, 3)
+            $stars = [math]::Max(50, 380 + (Get-Random -Minimum -60 -Maximum 60))
+
+            Exec "INSERT INTO Images (SessionId, Timestamp, TargetName, Filter, ExposureDuration, HFR, FWHM, Eccentricity, StarCount, GuidingRMSTotal, GuidingScale, Accepted) VALUES (@sid, @ts, @target, @filter, @exp, @hfr, @fwhm, 0.42, @stars, @rms, 1.32, 1)" @{
+                "@sid"    = $hSid
+                "@ts"     = $ts
+                "@target" = $row.Target
+                "@filter" = $row.Filter
+                "@exp"    = $row.ExpDur
+                "@hfr"    = $hfr
+                "@fwhm"   = $fwhm
+                "@stars"  = $stars
+                "@rms"    = $rms
+            }
+            $elapsed += $step
+        }
+    }
+
+    $dateLabel = $hStart.ToString("yyyy-MM-dd")
+    $imgTotal  = $filterRows.Count * $perCombo
+    Write-Host "  Seeded $weeksAgo weeks ago: $dateLabel ($imgTotal images)" -ForegroundColor DarkCyan
+    $totalHistSessions++
+}
+
 $conn.Close()
 Write-Host ""
-Write-Host "Done. $($events.Count) events seeded into test database." -ForegroundColor Green
-Write-Host "Click 'Send Test Report' in NINA settings to see the timeline." -ForegroundColor Green
+Write-Host "Done. $($events.Count) timeline events + $totalHistSessions historical sessions seeded." -ForegroundColor Green
+Write-Host "Click 'Send Test Report' in NINA settings to see the session history." -ForegroundColor Green

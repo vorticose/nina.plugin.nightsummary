@@ -65,7 +65,9 @@ namespace NINA.Plugin.NightSummary.Data {
                         StarCount INTEGER,
                         GuidingRMSTotal REAL,
                         GuidingScale REAL,
-                        Accepted INTEGER DEFAULT 1
+                        Accepted INTEGER DEFAULT 1,
+                        RaHours REAL DEFAULT 0,
+                        DecDegrees REAL DEFAULT 0
                     )";
 
                 using (var cmd = new SQLiteCommand(createSessions, conn))
@@ -86,9 +88,11 @@ namespace NINA.Plugin.NightSummary.Data {
                 using (var cmd = new SQLiteCommand(createEvents, conn))
                     cmd.ExecuteNonQuery();
 
-                // Migrate existing databases that predate FWHM/Eccentricity columns
-                MigrateAddColumn(conn, "Images", "FWHM", "REAL DEFAULT 0");
-                MigrateAddColumn(conn, "Images", "Eccentricity", "REAL DEFAULT 0");
+                // Migrate existing databases that predate added columns
+                MigrateAddColumn(conn, "Images", "FWHM",       "REAL DEFAULT 0");
+                MigrateAddColumn(conn, "Images", "Eccentricity","REAL DEFAULT 0");
+                MigrateAddColumn(conn, "Images", "RaHours",    "REAL DEFAULT 0");
+                MigrateAddColumn(conn, "Images", "DecDegrees", "REAL DEFAULT 0");
             }
         }
 
@@ -162,10 +166,12 @@ namespace NINA.Plugin.NightSummary.Data {
                 string sql = @"
                     INSERT INTO Images (
                         SessionId, Timestamp, TargetName, Filter, ExposureDuration,
-                        HFR, FWHM, Eccentricity, StarCount, GuidingRMSTotal, GuidingScale, Accepted)
+                        HFR, FWHM, Eccentricity, StarCount, GuidingRMSTotal, GuidingScale, Accepted,
+                        RaHours, DecDegrees)
                     VALUES (
                         @SessionId, @Timestamp, @TargetName, @Filter, @ExposureDuration,
-                        @HFR, @FWHM, @Eccentricity, @StarCount, @GuidingRMSTotal, @GuidingScale, @Accepted)";
+                        @HFR, @FWHM, @Eccentricity, @StarCount, @GuidingRMSTotal, @GuidingScale, @Accepted,
+                        @RaHours, @DecDegrees)";
 
                 using (var cmd = new SQLiteCommand(sql, conn)) {
                     cmd.Parameters.AddWithValue("@SessionId", image.SessionId);
@@ -180,6 +186,8 @@ namespace NINA.Plugin.NightSummary.Data {
                     cmd.Parameters.AddWithValue("@GuidingRMSTotal", image.GuidingRMSTotal);
                     cmd.Parameters.AddWithValue("@GuidingScale", image.GuidingScale);
                     cmd.Parameters.AddWithValue("@Accepted", image.Accepted ? 1 : 0);
+                    cmd.Parameters.AddWithValue("@RaHours",    image.RaHours);
+                    cmd.Parameters.AddWithValue("@DecDegrees", image.DecDegrees);
                     cmd.ExecuteNonQuery();
                 }
             }
@@ -210,7 +218,9 @@ namespace NINA.Plugin.NightSummary.Data {
                                 StarCount = reader["StarCount"] == DBNull.Value ? 0 : Convert.ToInt32(reader["StarCount"]),
                                 GuidingRMSTotal = reader["GuidingRMSTotal"] == DBNull.Value ? 0 : Convert.ToDouble(reader["GuidingRMSTotal"]),
                                 GuidingScale = reader["GuidingScale"] == DBNull.Value ? 1 : Convert.ToDouble(reader["GuidingScale"]),
-                                Accepted = reader["Accepted"] == DBNull.Value ? false : Convert.ToInt32(reader["Accepted"]) == 1
+                                Accepted = reader["Accepted"] == DBNull.Value ? false : Convert.ToInt32(reader["Accepted"]) == 1,
+                                RaHours    = reader["RaHours"]    == DBNull.Value ? 0 : Convert.ToDouble(reader["RaHours"]),
+                                DecDegrees = reader["DecDegrees"] == DBNull.Value ? 0 : Convert.ToDouble(reader["DecDegrees"])
                             });
                         }
                     }
@@ -319,6 +329,49 @@ namespace NINA.Plugin.NightSummary.Data {
                             var total = reader["TotalSeconds"] == DBNull.Value ? 0 : Convert.ToDouble(reader["TotalSeconds"]);
                             if (!string.IsNullOrEmpty(name))
                                 result[name] = total;
+                        }
+                    }
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Returns per-session aggregate stats for a target across all sessions except the current one.
+        /// Ordered most-recent-first, limited to <paramref name="limit"/> rows.
+        /// </summary>
+        public List<TargetSessionHistory> GetSessionHistoryForTarget(string targetName, string excludeSessionId, int limit = 5) {
+            var result = new List<TargetSessionHistory>();
+            using (var conn = new SQLiteConnection(connectionString)) {
+                conn.Open();
+                string sql = @"
+                    SELECT
+                        s.SessionStart,
+                        SUM(CASE WHEN i.Accepted = 1 THEN i.ExposureDuration ELSE 0 END) AS IntegrationSeconds,
+                        AVG(CASE WHEN i.HFR > 0 THEN i.HFR END)               AS AvgHFR,
+                        AVG(CASE WHEN i.FWHM > 0 THEN i.FWHM END)             AS AvgFWHM,
+                        AVG(CASE WHEN i.GuidingRMSTotal > 0 THEN i.GuidingRMSTotal END) AS AvgGuidingRMS
+                    FROM Images i
+                    JOIN Sessions s ON s.SessionId = i.SessionId
+                    WHERE i.TargetName = @TargetName
+                      AND i.SessionId != @ExcludeSessionId
+                    GROUP BY i.SessionId
+                    ORDER BY s.SessionStart DESC
+                    LIMIT @Limit";
+
+                using (var cmd = new SQLiteCommand(sql, conn)) {
+                    cmd.Parameters.AddWithValue("@TargetName",       targetName       ?? "");
+                    cmd.Parameters.AddWithValue("@ExcludeSessionId", excludeSessionId ?? "");
+                    cmd.Parameters.AddWithValue("@Limit",            limit);
+                    using (var reader = cmd.ExecuteReader()) {
+                        while (reader.Read()) {
+                            result.Add(new TargetSessionHistory {
+                                SessionStart       = reader["SessionStart"]       == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionStart"].ToString()),
+                                IntegrationSeconds = reader["IntegrationSeconds"] == DBNull.Value ? 0 : Convert.ToDouble(reader["IntegrationSeconds"]),
+                                AvgHFR             = reader["AvgHFR"]             == DBNull.Value ? 0 : Convert.ToDouble(reader["AvgHFR"]),
+                                AvgFWHM            = reader["AvgFWHM"]            == DBNull.Value ? 0 : Convert.ToDouble(reader["AvgFWHM"]),
+                                AvgGuidingRMS      = reader["AvgGuidingRMS"]      == DBNull.Value ? 0 : Convert.ToDouble(reader["AvgGuidingRMS"])
+                            });
                         }
                     }
                 }

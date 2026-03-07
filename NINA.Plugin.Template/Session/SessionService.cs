@@ -60,15 +60,20 @@ namespace NINA.Plugin.NightSummary.Session {
 
             var tsData       = FetchTsData(images);
             var cumulative   = database.GetCumulativeIntegrationByTarget(sessionId);
+            var history      = BuildSessionHistory(database, images, sessionId);
             var (fovW, fovH) = ComputeCameraFov();
+            var (lat, lon)   = GetObserverCoords();
             var reportData   = new ReportData {
                 Session                      = session,
                 Images                       = images,
                 Events                       = events,
                 TsData                       = tsData,
                 CumulativeIntegrationSeconds = cumulative,
+                SessionHistory               = history,
                 CameraFovWidthDeg            = fovW,
-                CameraFovHeightDeg           = fovH
+                CameraFovHeightDeg           = fovH,
+                ObserverLatitude             = lat,
+                ObserverLongitude            = lon
             };
 
             if (Settings.Default.SaveReportLocally) {
@@ -108,15 +113,20 @@ namespace NINA.Plugin.NightSummary.Session {
 
                 var tsData       = FetchTsData(images);
                 var cumulative   = testDb.GetCumulativeIntegrationByTarget(session.SessionId);
+                var history      = BuildSessionHistory(testDb, images, session.SessionId);
                 var (fovW, fovH) = ComputeCameraFov();
+                var (lat, lon)   = GetObserverCoords();
                 var reportData   = new ReportData {
                     Session                      = session,
                     Images                       = images,
                     Events                       = events,
                     TsData                       = tsData,
                     CumulativeIntegrationSeconds = cumulative,
+                    SessionHistory               = history,
                     CameraFovWidthDeg            = fovW,
-                    CameraFovHeightDeg           = fovH
+                    CameraFovHeightDeg           = fovH,
+                    ObserverLatitude             = lat,
+                    ObserverLongitude            = lon
                 };
 
                 await Task.WhenAll(
@@ -248,6 +258,14 @@ namespace NINA.Plugin.NightSummary.Session {
             }
         }
 
+        private Dictionary<string, List<TargetSessionHistory>> BuildSessionHistory(SessionDatabase database, List<ImageRecord> images, string sessionId) {
+            var result = new Dictionary<string, List<TargetSessionHistory>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var targetName in images.Select(i => i.TargetName).Distinct()) {
+                result[targetName] = database.GetSessionHistoryForTarget(targetName, sessionId, 5);
+            }
+            return result;
+        }
+
         private List<TsTargetData> FetchTsData(List<ImageRecord> images) {
             var targetNames = images.Select(i => i.TargetName).Distinct();
             var tsDb = new TargetSchedulerDatabase();
@@ -275,6 +293,16 @@ namespace NINA.Plugin.NightSummary.Session {
                 return (widthDeg, heightDeg);
             } catch {
                 return (1.0, 1.0);
+            }
+        }
+
+        private (double lat, double lon) GetObserverCoords() {
+            try {
+                var lat = profileService?.ActiveProfile?.AstrometrySettings?.Latitude  ?? 0;
+                var lon = profileService?.ActiveProfile?.AstrometrySettings?.Longitude ?? 0;
+                return (lat, lon);
+            } catch {
+                return (0, 0);
             }
         }
 

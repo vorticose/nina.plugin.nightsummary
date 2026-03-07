@@ -20,6 +20,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// </summary>
         public Dictionary<string, double> CumulativeIntegrationSeconds { get; init; }
         /// <summary>
+        /// Per-target session history for historical comparison (up to 5 previous sessions), keyed by target name.
+        /// </summary>
+        public Dictionary<string, List<TargetSessionHistory>> SessionHistory { get; init; }
+        /// <summary>
         /// Imaging camera FOV width in degrees, computed from profile (pixel size + focal length + sensor width).
         /// </summary>
         public double CameraFovWidthDeg  { get; init; }
@@ -27,5 +31,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// Imaging camera FOV height in degrees.
         /// </summary>
         public double CameraFovHeightDeg { get; init; }
+        /// <summary>
+        /// Observer latitude in decimal degrees from NINA profile. 0 if not configured.
+        /// </summary>
+        public double ObserverLatitude  { get; init; }
+        /// <summary>
+        /// Observer longitude in decimal degrees (positive East) from NINA profile. 0 if not configured.
+        /// </summary>
+        public double ObserverLongitude { get; init; }
     }
 }

@@ -78,7 +78,9 @@ namespace NINA.Plugin.NightSummary.Session {
                     // Multiply RMS by Scale to store in arcseconds
                     GuidingRMSTotal = (e.MetaData?.Image?.RecordedRMS?.Total ?? 0) * guidingScale,
                     GuidingScale = guidingScale,
-                    Accepted = true
+                    Accepted = true,
+                    RaHours    = e.MetaData?.Target?.Coordinates?.RA  ?? 0,
+                    DecDegrees = e.MetaData?.Target?.Coordinates?.Dec ?? 0
                 };
 
                 database.SaveImageRecord(record);

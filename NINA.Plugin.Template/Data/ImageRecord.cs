@@ -31,5 +31,9 @@ namespace NINA.Plugin.NightSummary.Data {
 
         // Whether this image was accepted or rejected by image grader
         public bool Accepted { get; set; }
+
+        // Target coordinates — decimal hours (RA) and decimal degrees (Dec); 0 = unknown
+        public double RaHours    { get; set; }
+        public double DecDegrees { get; set; }
     }
 }
