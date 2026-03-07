@@ -43,6 +43,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine(".target-section { border-top: 1px solid #2d2d5e; margin-top: 24px; padding-top: 16px; }");
             sb.AppendLine(".timeline-container { background-color: #16213e; border: 1px solid #2d2d5e; border-radius: 8px; padding: 16px; margin: 16px 0; }");
             sb.AppendLine(".ts-target-header { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 12px; }");
+            sb.AppendLine(".ts-left-col { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }");
             sb.AppendLine(".ts-thumb-wrap { position: relative; width: 200px; height: 200px; flex-shrink: 0; }");
             sb.AppendLine(".ts-thumb-wrap img { width: 200px; height: 200px; border-radius: 6px; border: 1px solid #2d2d5e; display: block; }");
             sb.AppendLine(".ts-thumb-wrap svg { position: absolute; top: 0; left: 0; border-radius: 6px; }");
@@ -55,6 +56,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine(".ts-bar-acquired { position: absolute; top: 0; bottom: 0; background: #3a5a7a; }");
             sb.AppendLine(".ts-bar-label { font-size: 12px; color: #888; white-space: nowrap; min-width: 110px; text-align: right; }");
             sb.AppendLine(".ts-cumulative { font-size: 12px; color: #888; margin-top: 12px; }");
+            sb.AppendLine("details.history-section { margin-top: 12px; }");
+            sb.AppendLine("details.history-section > summary { cursor: pointer; color: #a0c4ff; font-size: 13px; user-select: none; list-style: none; }");
+            sb.AppendLine("details.history-section > summary::-webkit-details-marker { display: none; }");
+            sb.AppendLine("details.history-section > summary::before { content: '\\25B6\\00A0'; }");
+            sb.AppendLine("details.history-section[open] > summary::before { content: '\\25BC\\00A0'; }");
             sb.AppendLine("</style></head><body>");
 
             sb.Append(BuildHeader(data));
@@ -120,11 +126,24 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var tsTarget = data.TsData?.FirstOrDefault(t =>
                     string.Equals(t.TargetName, target.Key, StringComparison.OrdinalIgnoreCase));
 
+                // Resolve RA/Dec: prefer TS data, fall back to image metadata
+                double raH = 0, decD = 0;
+                if (tsTarget != null && (tsTarget.RA != 0 || tsTarget.Dec != 0)) {
+                    raH = tsTarget.RA; decD = tsTarget.Dec;
+                } else {
+                    var coordImg = target.FirstOrDefault(i => i.RaHours != 0 || i.DecDegrees != 0);
+                    if (coordImg != null) { raH = coordImg.RaHours; decD = coordImg.DecDegrees; }
+                }
+
+                // Imaging window for this target: first to last image timestamp
+                var targetImgStart = target.Min(i => i.Timestamp);
+                var targetImgEnd   = target.Max(i => i.Timestamp);
+
                 sb.AppendLine("<div class='target-section'>");
                 sb.AppendLine($"<h3>{target.Key}</h3>");
 
                 if (tsTarget != null) {
-                    // Two-column layout: thumbnail left, all info right
+                    // Two-column layout: left col (thumbnail + altitude chart), right col (all info)
                     sb.AppendLine("<div class='ts-target-header'>");
 
                     var raDeg    = tsTarget.RA * 15.0;
@@ -134,6 +153,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                                    $"&projection=TAN&format=jpg";
                     var svgAngle = -tsTarget.Rotation;
 
+                    sb.AppendLine("<div class='ts-left-col'>");
                     sb.AppendLine($"<div class='ts-thumb-wrap'>");
                     sb.AppendLine($"  <img src='{thumbUrl}' alt='{target.Key}' />");
                     sb.AppendLine($"  <svg width='{thumbPx}' height='{thumbPx}' xmlns='http://www.w3.org/2000/svg'>");
@@ -141,7 +161,16 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     sb.AppendLine($"          fill='none' stroke='#7eb8f7' stroke-width='1.5' opacity='0.85'");
                     sb.AppendLine($"          transform='rotate({svgAngle:F2},{cx:F1},{cy:F1})' />");
                     sb.AppendLine($"  </svg>");
-                    sb.AppendLine($"</div>");
+                    sb.AppendLine($"</div>"); // ts-thumb-wrap
+
+                    // Altitude chart directly below the thumbnail
+                    if (raH != 0 || decD != 0) {
+                        var altChart = BuildAltitudeChart(raH, decD, data.ObserverLatitude, data.ObserverLongitude,
+                                                          targetImgStart, targetImgEnd, width: thumbPx);
+                        if (!string.IsNullOrEmpty(altChart))
+                            sb.Append(altChart);
+                    }
+                    sb.AppendLine("</div>"); // ts-left-col
 
                     sb.AppendLine("<div class='ts-target-info'>");
                     sb.AppendLine($"<p class='ts-coords'>{FormatRA(tsTarget.RA)} &nbsp;·&nbsp; {FormatDec(tsTarget.Dec)}</p>");
@@ -168,6 +197,25 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine("<tr><th>Broadband CV</th><th>Narrowband CV</th></tr>");
                 sb.AppendLine($"<tr><td>{broadbandCV}</td><td>{narrowbandCV}</td></tr>");
                 sb.AppendLine("</table>");
+
+                // Session history (collapsible)
+                List<TargetSessionHistory> history = null;
+                data.SessionHistory?.TryGetValue(target.Key, out history);
+                if (history != null && history.Any()) {
+                    var label = $"Session History ({history.Count} previous session{(history.Count == 1 ? "" : "s")})";
+                    sb.AppendLine($"<details class='history-section'>");
+                    sb.AppendLine($"<summary>{label}</summary>");
+                    sb.AppendLine("<table>");
+                    sb.AppendLine("<tr><th>Date</th><th>Integration</th><th>Avg HFR</th><th>Avg FWHM</th><th>Avg Guiding RMS</th></tr>");
+                    foreach (var h in history) {
+                        var hfrStr = h.AvgHFR        > 0 ? h.AvgHFR.ToString("F2")         : "—";
+                        var fwhmStr = h.AvgFWHM      > 0 ? h.AvgFWHM.ToString("F2")        : "—";
+                        var rmsStr = h.AvgGuidingRMS > 0 ? $"{h.AvgGuidingRMS:F2}&quot;" : "—";
+                        sb.AppendLine($"<tr><td>{h.SessionStart:MMM d, yyyy}</td><td>{FormatIntegration(h.IntegrationSeconds)}</td><td>{hfrStr}</td><td>{fwhmStr}</td><td>{rmsStr}</td></tr>");
+                    }
+                    sb.AppendLine("</table>");
+                    sb.AppendLine("</details>");
+                }
 
                 if (tsTarget != null) {
                     // TS progress bars
@@ -198,6 +246,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
                     sb.AppendLine("</div>"); // ts-target-info
                     sb.AppendLine("</div>"); // ts-target-header
+                }
+
+                // No TS data: altitude chart at full width below target info
+                if (tsTarget == null && (raH != 0 || decD != 0)) {
+                    var altChart = BuildAltitudeChart(raH, decD, data.ObserverLatitude, data.ObserverLongitude,
+                                                      targetImgStart, targetImgEnd, width: 560);
+                    if (!string.IsNullOrEmpty(altChart))
+                        sb.Append(altChart);
                 }
 
                 sb.AppendLine("</div>"); // target-section
@@ -289,11 +345,118 @@ namespace NINA.Plugin.NightSummary.Reporting {
             return $"{sign}{d:D2}° {m:D2}′ {s:F0}″";
         }
 
+        private string BuildAltitudeChart(double raHours, double decDeg, double latDeg, double lonDeg,
+                                          DateTime sessionStart, DateTime sessionEnd, int width = 560) {
+            if (latDeg == 0 && lonDeg == 0) return string.Empty;
+
+            // Full astronomical day window (noon-to-noon) so we see the whole rise/set arc
+            var dayStart = sessionStart.Hour >= 12
+                ? sessionStart.Date.AddHours(12)
+                : sessionStart.Date.AddHours(-12);
+            var dayEnd = dayStart.AddHours(24);
+
+            int svgW = width;
+            bool compact = width <= 210;
+            // padT is tall enough to hold the "Start"/"End" labels above the plot
+            int svgH = compact ? 225 : 225;
+            int padL = compact ? 28  : 38;
+            int padR = compact ? 6   : 10;
+            int padT = compact ? 20  : 20;
+            int padB = compact ? 58  : 58;   // time row + moon row (larger font)
+            int plotW = svgW - padL - padR;
+            int plotH = svgH - padT - padB;
+
+            const double minAlt = -10.0, maxAlt = 90.0, altRange = maxAlt - minAlt;
+            double totalMin = (dayEnd - dayStart).TotalMinutes;  // always 1440
+
+            var points = AltitudeCalculator.GetAltitudeCurve(raHours, decDeg, latDeg, lonDeg,
+                                                              dayStart, dayEnd, stepMinutes: 5);
+            if (points.Count < 2) return string.Empty;
+
+            double X(DateTime t) => padL + ((t - dayStart).TotalMinutes / totalMin * plotW);
+            double Y(double alt)  => padT + plotH - ((alt - minAlt) / altRange * plotH);
+
+            double horizY     = Y(0);
+            double xSessStart = X(sessionStart);
+            double xSessEnd   = X(sessionEnd);
+
+            // Build polyline points string
+            var pts = new System.Text.StringBuilder();
+            foreach (var (t, alt) in points)
+                pts.Append($"{X(t):F1},{Y(Math.Max(minAlt, Math.Min(maxAlt, alt))):F1} ");
+
+            // Moon separation at session midpoint
+            var sessMid = sessionStart.AddMinutes((sessionEnd - sessionStart).TotalMinutes / 2);
+            var (moonRa, moonDec) = AltitudeCalculator.GetMoonPosition(sessMid.ToUniversalTime());
+            double moonSep = AltitudeCalculator.AngularSeparation(raHours, decDeg, moonRa, moonDec);
+            string moonStr = $"&#127769; Moon separation: {moonSep:F0}&#176;";
+
+            int timeLabelY = padT + plotH + 16;
+            int moonLabelY = padT + plotH + 40;
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"<svg width='{svgW}' height='{svgH}' xmlns='http://www.w3.org/2000/svg' style='display:block;margin-top:12px;'>");
+
+            // Background
+            sb.AppendLine($"<rect x='{padL}' y='{padT}' width='{plotW}' height='{plotH}' fill='#0d1117' rx='4'/>");
+
+            // Below-horizon shading
+            if (horizY < padT + plotH) {
+                double shadH = Math.Min(padT + plotH - horizY, plotH);
+                sb.AppendLine($"<rect x='{padL}' y='{horizY:F1}' width='{plotW}' height='{shadH:F1}' fill='#2a1010' opacity='0.6'/>");
+            }
+
+            // Session window subtle highlight
+            sb.AppendLine($"<rect x='{xSessStart:F1}' y='{padT}' width='{(xSessEnd - xSessStart):F1}' height='{plotH}' fill='#7eb8f7' opacity='0.07'/>");
+
+            // Grid lines at 30° and 60°
+            foreach (var gridAlt in new[] { 30.0, 60.0 }) {
+                double gy = Y(gridAlt);
+                sb.AppendLine($"<line x1='{padL}' y1='{gy:F1}' x2='{padL + plotW}' y2='{gy:F1}' stroke='#2d2d5e' stroke-width='1'/>");
+                sb.AppendLine($"<text x='{padL - 4}' y='{gy + 4:F1}' text-anchor='end' font-size='10' fill='#555'>{gridAlt:F0}°</text>");
+            }
+            sb.AppendLine($"<text x='{padL - 4}' y='{padT + 4}' text-anchor='end' font-size='10' fill='#555'>90°</text>");
+
+            // Horizon line
+            sb.AppendLine($"<line x1='{padL}' y1='{horizY:F1}' x2='{padL + plotW}' y2='{horizY:F1}' stroke='#664444' stroke-width='1' stroke-dasharray='4,3'/>");
+            sb.AppendLine($"<text x='{padL - 4}' y='{horizY + 4:F1}' text-anchor='end' font-size='10' fill='#664444'>0°</text>");
+
+            // Altitude curve
+            sb.AppendLine($"<polyline points='{pts}' fill='none' stroke='#7eb8f7' stroke-width='2'/>");
+
+            // Session start/end vertical lines with labels above the plot
+            sb.AppendLine($"<line x1='{xSessStart:F1}' y1='{padT}' x2='{xSessStart:F1}' y2='{padT + plotH}' stroke='#7eb8f7' stroke-width='1.5' stroke-dasharray='4,3' opacity='0.7'/>");
+            sb.AppendLine($"<text x='{xSessStart:F1}' y='{padT - 5}' text-anchor='middle' font-size='9' fill='#7eb8f7'>Start</text>");
+
+            sb.AppendLine($"<line x1='{xSessEnd:F1}' y1='{padT}' x2='{xSessEnd:F1}' y2='{padT + plotH}' stroke='#7eb8f7' stroke-width='1.5' stroke-dasharray='4,3' opacity='0.7'/>");
+            sb.AppendLine($"<text x='{xSessEnd:F1}' y='{padT - 5}' text-anchor='middle' font-size='9' fill='#7eb8f7'>End</text>");
+
+            // X axis time labels — every 3h (full width) or 6h (compact)
+            int stepH = compact ? 6 : 3;
+            for (int h = 0; h <= 24; h += stepH) {
+                var t      = dayStart.AddHours(h);
+                double tx  = X(t);
+                string anchor = h == 0 ? "start" : (h == 24 ? "end" : "middle");
+                sb.AppendLine($"<text x='{tx:F1}' y='{timeLabelY}' text-anchor='{anchor}' font-size='10' fill='#888'>{t:HH:mm}</text>");
+            }
+
+            // Moon separation — own row, font-size increased 50%
+            sb.AppendLine($"<text x='{padL}' y='{moonLabelY}' text-anchor='start' font-size='13' fill='#aaa'>{moonStr}</text>");
+
+            sb.AppendLine("</svg>");
+            return sb.ToString();
+        }
+
         private string BuildFooter() {
             var sb = new StringBuilder();
             sb.AppendLine("<p class='footnote'>CV (Coefficient of Variation) measures consistency as a percentage of the mean. Lower values indicate more stable conditions. Star count CV is calculated per target and filter type.</p>");
             sb.AppendLine("<p class='footnote'>Generated by Night Summary plugin for N.I.N.A.</p>");
             return sb.ToString();
+        }
+
+        private static string FormatIntegration(double seconds) {
+            var ts = TimeSpan.FromSeconds(seconds);
+            return ts.TotalHours >= 1 ? $"{ts.TotalHours:F1}h" : $"{ts.TotalMinutes:F0}m";
         }
 
         private double CV(List<double> values) {
