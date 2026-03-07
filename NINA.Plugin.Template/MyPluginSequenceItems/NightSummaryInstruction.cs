@@ -11,7 +11,7 @@ using System.Windows;
 namespace NINA.Plugin.NightSummary.Sequencer {
 
     [Export(typeof(ISequenceItem))]
-    [ExportMetadata("Name", "Night Summary - Start Session")]
+    [ExportMetadata("Name", "Night Summary Start")]
     [ExportMetadata("Description", "Starts recording imaging session data for the Night Summary report")]
     [ExportMetadata("Category", "Night Summary")]
     [ExportMetadata("Icon", "NightSummary_StartIcon")]
@@ -38,7 +38,7 @@ namespace NINA.Plugin.NightSummary.Sequencer {
         }
 
         public override object Clone() {
-            return new NightSummaryInstruction(sessionService);
+            return new NightSummaryInstruction(sessionService) { Icon = this.Icon, Name = this.Name };
         }
 
         public override string ToString() {

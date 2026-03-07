@@ -50,6 +50,45 @@ $sessionEnd   = [DateTime]::Parse($reader["SessionEnd"].ToString())
 $reader.Close()
 Write-Host "Using session: $sessionId ($($sessionStart.ToString('yyyy-MM-dd HH:mm')) - $($sessionEnd.ToString('HH:mm')))" -ForegroundColor Cyan
 
+# Rename image targets to match whatever names exist in the local TS database
+# so the Target Progress section renders correctly on any machine.
+$tsDbPath = "$env:LOCALAPPDATA\NINA\SchedulerPlugin\schedulerdb.sqlite"
+if (Test-Path $tsDbPath) {
+    $tsConn = New-Object System.Data.SQLite.SQLiteConnection("Data Source=$tsDbPath;Version=3;Read Only=True;")
+    $tsConn.Open()
+    $tsCmd = $tsConn.CreateCommand()
+    $tsCmd.CommandText = "SELECT name FROM target ORDER BY name"
+    $tsReader = $tsCmd.ExecuteReader()
+    $tsNames = @()
+    while ($tsReader.Read()) { $tsNames += $tsReader["name"].ToString() }
+    $tsReader.Close()
+    $tsConn.Close()
+
+    # Get distinct target names currently in the test session
+    $nsCmd = $conn.CreateCommand()
+    $nsCmd.CommandText = "SELECT DISTINCT TargetName FROM Images WHERE SessionId = @sid"
+    $nsCmd.Parameters.AddWithValue("@sid", $sessionId) | Out-Null
+    $nsReader = $nsCmd.ExecuteReader()
+    $nsNames = @()
+    while ($nsReader.Read()) { $nsNames += $nsReader["TargetName"].ToString() }
+    $nsReader.Close()
+
+    # For each NS target, find the best matching TS target name (case-insensitive, ignoring " (N)" suffixes)
+    foreach ($nsName in $nsNames) {
+        $baseName = $nsName -replace '\s*\(\d+\)$', ''
+        $match = $tsNames | Where-Object { ($_ -replace '\s*\(\d+\)$', '') -eq $baseName } | Select-Object -First 1
+        if ($match -and $match -ne $nsName) {
+            Exec "UPDATE Images SET TargetName = @newName WHERE SessionId = @sid AND TargetName = @oldName" @{
+                "@newName" = $match; "@sid" = $sessionId; "@oldName" = $nsName
+            }
+            Write-Host "  Renamed '$nsName' -> '$match' to match TS database." -ForegroundColor Cyan
+        }
+    }
+    Write-Host "Target names synced with TS database." -ForegroundColor Cyan
+} else {
+    Write-Host "TS database not found — skipping target name sync." -ForegroundColor Yellow
+}
+
 # Clear existing events for this session
 Exec "DELETE FROM SessionEvents WHERE SessionId = @sid" @{ "@sid" = $sessionId }
 

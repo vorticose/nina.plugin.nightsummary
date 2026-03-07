@@ -16,6 +16,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
         private static readonly HashSet<string> BroadbandFilters = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "L", "R", "G", "B" };
         private static readonly HashSet<string> NarrowbandFilters = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "H", "Ha", "S", "Sii", "O", "Oiii" };
 
+        private static readonly string[] FilterPriority = { "L", "R", "G", "B", "H", "S", "O" };
+        private static int FilterSortKey(string filter) {
+            var idx = Array.FindIndex(FilterPriority, p => string.Equals(p, filter, StringComparison.OrdinalIgnoreCase));
+            return idx >= 0 ? idx : int.MaxValue;
+        }
+
         public string GenerateHtmlReport(ReportData data) {
             var sb = new StringBuilder();
 
@@ -36,6 +42,19 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine(".footnote { color: #555; font-size: 12px; margin-top: 40px; }");
             sb.AppendLine(".target-section { border-top: 1px solid #2d2d5e; margin-top: 24px; padding-top: 16px; }");
             sb.AppendLine(".timeline-container { background-color: #16213e; border: 1px solid #2d2d5e; border-radius: 8px; padding: 16px; margin: 16px 0; }");
+            sb.AppendLine(".ts-target-header { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 12px; }");
+            sb.AppendLine(".ts-thumb-wrap { position: relative; width: 200px; height: 200px; flex-shrink: 0; }");
+            sb.AppendLine(".ts-thumb-wrap img { width: 200px; height: 200px; border-radius: 6px; border: 1px solid #2d2d5e; display: block; }");
+            sb.AppendLine(".ts-thumb-wrap svg { position: absolute; top: 0; left: 0; border-radius: 6px; }");
+            sb.AppendLine(".ts-target-info { flex: 1; }");
+            sb.AppendLine(".ts-coords { font-size: 12px; color: #888; margin: 4px 0 12px; }");
+            sb.AppendLine(".ts-filter-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }");
+            sb.AppendLine(".ts-filter-name { min-width: 44px; font-size: 13px; color: #a0c4ff; }");
+            sb.AppendLine(".ts-bar-track { flex: 1; height: 14px; background: #2d2d5e; border-radius: 4px; position: relative; overflow: hidden; }");
+            sb.AppendLine(".ts-bar-accepted { position: absolute; left: 0; top: 0; bottom: 0; background: #7eb8f7; }");
+            sb.AppendLine(".ts-bar-acquired { position: absolute; top: 0; bottom: 0; background: #3a5a7a; }");
+            sb.AppendLine(".ts-bar-label { font-size: 12px; color: #888; white-space: nowrap; min-width: 110px; text-align: right; }");
+            sb.AppendLine(".ts-cumulative { font-size: 12px; color: #888; margin-top: 12px; }");
             sb.AppendLine("</style></head><body>");
 
             sb.Append(BuildHeader(data));
@@ -48,7 +67,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             sb.Append(BuildEventTimelineSection(data));
             sb.Append(BuildOverviewStatsSection(data));
-            sb.Append(BuildPerTargetSection(data));
+            sb.Append(BuildTargetSection(data));
             sb.Append(BuildImageQualitySection(data));
             sb.Append(BuildGuidingSection(data));
             sb.Append(BuildFooter());
@@ -81,44 +100,107 @@ namespace NINA.Plugin.NightSummary.Reporting {
             return sb.ToString();
         }
 
-        private string BuildPerTargetSection(ReportData data) {
+        private string BuildTargetSection(ReportData data) {
             var sb = new StringBuilder();
             var targets = data.Images.GroupBy(i => i.TargetName).OrderBy(g => g.Key);
             sb.AppendLine("<h2>Targets Imaged</h2>");
 
+            // Pre-compute thumbnail/FOV geometry (same for all targets)
+            const int thumbPx = 200;
+            var fovW     = data.CameraFovWidthDeg;
+            var fovH     = data.CameraFovHeightDeg;
+            var thumbFov = Math.Max(fovW, fovH) * 1.5;
+            if (thumbFov <= 0) thumbFov = 1.0;
+            double boxW = (fovW / thumbFov) * thumbPx;
+            double boxH = (fovH / thumbFov) * thumbPx;
+            double cx   = thumbPx / 2.0;
+            double cy   = thumbPx / 2.0;
+
             foreach (var target in targets) {
+                var tsTarget = data.TsData?.FirstOrDefault(t =>
+                    string.Equals(t.TargetName, target.Key, StringComparison.OrdinalIgnoreCase));
+
                 sb.AppendLine("<div class='target-section'>");
                 sb.AppendLine($"<h3>{target.Key}</h3>");
 
+                if (tsTarget != null) {
+                    // Two-column layout: thumbnail left, all info right
+                    sb.AppendLine("<div class='ts-target-header'>");
+
+                    var raDeg    = tsTarget.RA * 15.0;
+                    var thumbUrl = $"https://alasky.cds.unistra.fr/hips-image-services/hips2fits" +
+                                   $"?hips=CDS%2FP%2FDSS2%2Fcolor&width={thumbPx}&height={thumbPx}" +
+                                   $"&fov={thumbFov:F4}&ra={raDeg:F6}&dec={tsTarget.Dec:F6}" +
+                                   $"&projection=TAN&format=jpg";
+                    var svgAngle = -tsTarget.Rotation;
+
+                    sb.AppendLine($"<div class='ts-thumb-wrap'>");
+                    sb.AppendLine($"  <img src='{thumbUrl}' alt='{target.Key}' />");
+                    sb.AppendLine($"  <svg width='{thumbPx}' height='{thumbPx}' xmlns='http://www.w3.org/2000/svg'>");
+                    sb.AppendLine($"    <rect x='{(cx - boxW / 2):F1}' y='{(cy - boxH / 2):F1}' width='{boxW:F1}' height='{boxH:F1}'");
+                    sb.AppendLine($"          fill='none' stroke='#7eb8f7' stroke-width='1.5' opacity='0.85'");
+                    sb.AppendLine($"          transform='rotate({svgAngle:F2},{cx:F1},{cy:F1})' />");
+                    sb.AppendLine($"  </svg>");
+                    sb.AppendLine($"</div>");
+
+                    sb.AppendLine("<div class='ts-target-info'>");
+                    sb.AppendLine($"<p class='ts-coords'>{FormatRA(tsTarget.RA)} &nbsp;·&nbsp; {FormatDec(tsTarget.Dec)}</p>");
+                }
+
+                // Session filter table
                 sb.AppendLine("<table>");
                 sb.AppendLine("<tr><th>Filter</th><th>Images</th><th>Exposure</th><th>Total Time</th></tr>");
-
-                var filterGroups = target.GroupBy(i => i.Filter).OrderBy(g => g.Key);
+                var filterGroups = target.GroupBy(i => i.Filter).OrderBy(g => FilterSortKey(g.Key)).ThenBy(g => g.Key);
                 foreach (var filterGroup in filterGroups) {
                     var totalTime = TimeSpan.FromSeconds(filterGroup.Sum(i => i.ExposureDuration));
                     sb.AppendLine($"<tr><td>{filterGroup.Key}</td><td>{filterGroup.Count()}</td><td>{filterGroup.First().ExposureDuration:F0}s</td><td>{totalTime.TotalMinutes:F1} min</td></tr>");
                 }
-
                 var targetTotal = TimeSpan.FromSeconds(target.Sum(i => i.ExposureDuration));
                 sb.AppendLine($"<tr><td><strong>Total</strong></td><td><strong>{target.Count()}</strong></td><td></td><td><strong>{targetTotal.TotalMinutes:F1} min</strong></td></tr>");
                 sb.AppendLine("</table>");
 
-                var broadbandImages = target.Where(i => BroadbandFilters.Contains(i.Filter) && i.StarCount > 0).ToList();
+                // Star count CV
+                var broadbandImages  = target.Where(i => BroadbandFilters.Contains(i.Filter)  && i.StarCount > 0).ToList();
                 var narrowbandImages = target.Where(i => NarrowbandFilters.Contains(i.Filter) && i.StarCount > 0).ToList();
-
-                string broadbandCV = broadbandImages.Count >= 2
-                    ? $"{CV(broadbandImages.Select(i => (double)i.StarCount).ToList()):F0}%"
-                    : "—";
-                string narrowbandCV = narrowbandImages.Count >= 2
-                    ? $"{CV(narrowbandImages.Select(i => (double)i.StarCount).ToList()):F0}%"
-                    : "—";
-
-                sb.AppendLine("<p><strong>Star Count</strong></p>");
+                string broadbandCV  = broadbandImages.Count  >= 2 ? $"{CV(broadbandImages.Select(i  => (double)i.StarCount).ToList()):F0}%" : "—";
+                string narrowbandCV = narrowbandImages.Count >= 2 ? $"{CV(narrowbandImages.Select(i => (double)i.StarCount).ToList()):F0}%" : "—";
                 sb.AppendLine("<table class='star-count-table'>");
                 sb.AppendLine("<tr><th>Broadband CV</th><th>Narrowband CV</th></tr>");
                 sb.AppendLine($"<tr><td>{broadbandCV}</td><td>{narrowbandCV}</td></tr>");
                 sb.AppendLine("</table>");
-                sb.AppendLine("</div>");
+
+                if (tsTarget != null) {
+                    // TS progress bars
+                    sb.AppendLine("<p style='margin: 12px 0 4px; font-size: 13px; color: #a0c4ff;'><strong>Target Scheduler Progress</strong></p>");
+                    foreach (var f in tsTarget.Filters.OrderBy(f => FilterSortKey(f.Filter)).ThenBy(f => f.Filter)) {
+                        var desired     = f.Desired;
+                        var acquired    = Math.Min(f.Acquired, desired);
+                        var accepted    = Math.Min(f.Accepted, acquired);
+                        var acceptedPct = desired > 0 ? (double)accepted            / desired * 100 : 0;
+                        var acquiredPct = desired > 0 ? (double)(acquired - accepted) / desired * 100 : 0;
+
+                        sb.AppendLine("<div class='ts-filter-row'>");
+                        sb.AppendLine($"  <span class='ts-filter-name'>{f.Filter}</span>");
+                        sb.AppendLine($"  <div class='ts-bar-track'>");
+                        sb.AppendLine($"    <div class='ts-bar-accepted' style='width:{acceptedPct:F1}%'></div>");
+                        sb.AppendLine($"    <div class='ts-bar-acquired' style='left:{acceptedPct:F1}%;width:{acquiredPct:F1}%'></div>");
+                        sb.AppendLine($"  </div>");
+                        sb.AppendLine($"  <span class='ts-bar-label'>{accepted}/{desired} accepted</span>");
+                        sb.AppendLine("</div>");
+                    }
+
+                    // Cumulative integration
+                    double prevSec = 0;
+                    data.CumulativeIntegrationSeconds?.TryGetValue(tsTarget.TargetName, out prevSec);
+                    var thisSec    = target.Where(i => i.Accepted).Sum(i => i.ExposureDuration);
+                    var totalHours = (prevSec + thisSec) / 3600.0;
+                    sb.AppendLine($"<p class='ts-cumulative'>Total integration (all sessions): {totalHours:F1}h</p>");
+
+                    sb.AppendLine("</div>"); // ts-target-info
+                    sb.AppendLine("</div>"); // ts-target-header
+                }
+
+                sb.AppendLine("</div>"); // target-section
             }
 
             return sb.ToString();
@@ -187,6 +269,24 @@ namespace NINA.Plugin.NightSummary.Reporting {
             if (events == null || !events.Any()) return string.Empty;
 
             return EventTimelineGenerator.GenerateTimeline(data.Session, data.Images, events);
+        }
+
+        private static string FormatRA(double raHours) {
+            var h     = (int)raHours;
+            var mFrac = (raHours - h) * 60;
+            var m     = (int)mFrac;
+            var s     = (mFrac - m) * 60;
+            return $"{h:D2}h {m:D2}m {s:F0}s";
+        }
+
+        private static string FormatDec(double decDeg) {
+            var sign  = decDeg >= 0 ? "+" : "-";
+            var abs   = Math.Abs(decDeg);
+            var d     = (int)abs;
+            var mFrac = (abs - d) * 60;
+            var m     = (int)mFrac;
+            var s     = (mFrac - m) * 60;
+            return $"{sign}{d:D2}° {m:D2}′ {s:F0}″";
         }
 
         private string BuildFooter() {

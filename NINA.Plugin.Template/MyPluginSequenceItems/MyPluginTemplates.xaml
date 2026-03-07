@@ -6,27 +6,45 @@
     xmlns:mini="clr-namespace:NINA.View.Sequencer.MiniSequencer;assembly=NINA.Sequencer"
     xmlns:nina="clr-namespace:NINA.View.Sequencer;assembly=NINA.Sequencer">
 
-    <!-- Start Session Icon: Play button with telescope -->
-    <GeometryGroup x:Key="NightSummary_StartIcon" FillRule="Nonzero">
-        <EllipseGeometry Center="12,12" RadiusX="10" RadiusY="10"/>
-        <PathGeometry Figures="M9,8 L17,12 L9,16 Z"/>
+    <!-- Night Summary brand icon: constellation stars + report document (lower-right) -->
+    <GeometryGroup x:Key="NightSummary_StartIcon" FillRule="EvenOdd">
+        <!-- Constellation star dots -->
+        <EllipseGeometry Center="3,4"  RadiusX="1.2" RadiusY="1.2"/>
+        <EllipseGeometry Center="11,3" RadiusX="1"   RadiusY="1"/>
+        <EllipseGeometry Center="20,2" RadiusX="0.8" RadiusY="0.8"/>
+        <EllipseGeometry Center="6,9"  RadiusX="1"   RadiusY="1"/>
+        <EllipseGeometry Center="16,7" RadiusX="1.2" RadiusY="1.2"/>
+        <EllipseGeometry Center="2,15" RadiusX="0.8" RadiusY="0.8"/>
+        <EllipseGeometry Center="5,21" RadiusX="0.8" RadiusY="0.8"/>
+        <EllipseGeometry Center="22,11" RadiusX="1"  RadiusY="1"/>
+        <!-- Report document body (lower-right) -->
+        <PathGeometry Figures="M8,11 L18,11 L22,15 L22,23 L8,23 Z"/>
+        <!-- Folded corner cutout -->
+        <PathGeometry Figures="M18,11 L22,15 L18,15 Z"/>
+        <!-- Text line cutouts -->
+        <RectangleGeometry Rect="10,14,10,1.5"/>
+        <RectangleGeometry Rect="10,17.5,10,1.5"/>
+        <RectangleGeometry Rect="10,21,7,1.5"/>
     </GeometryGroup>
-
-    <!-- End Session Icon: Stop button -->
-    <GeometryGroup x:Key="NightSummary_EndIcon" FillRule="Nonzero">
-        <EllipseGeometry Center="12,12" RadiusX="10" RadiusY="10"/>
-        <RectangleGeometry Rect="8,8,8,8"/>
+    <GeometryGroup x:Key="NightSummary_EndIcon" FillRule="EvenOdd">
+        <EllipseGeometry Center="3,4"  RadiusX="1.2" RadiusY="1.2"/>
+        <EllipseGeometry Center="11,3" RadiusX="1"   RadiusY="1"/>
+        <EllipseGeometry Center="20,2" RadiusX="0.8" RadiusY="0.8"/>
+        <EllipseGeometry Center="6,9"  RadiusX="1"   RadiusY="1"/>
+        <EllipseGeometry Center="16,7" RadiusX="1.2" RadiusY="1.2"/>
+        <EllipseGeometry Center="2,15" RadiusX="0.8" RadiusY="0.8"/>
+        <EllipseGeometry Center="5,21" RadiusX="0.8" RadiusY="0.8"/>
+        <EllipseGeometry Center="22,11" RadiusX="1"  RadiusY="1"/>
+        <PathGeometry Figures="M8,11 L18,11 L22,15 L22,23 L8,23 Z"/>
+        <PathGeometry Figures="M18,11 L22,15 L18,15 Z"/>
+        <RectangleGeometry Rect="10,14,10,1.5"/>
+        <RectangleGeometry Rect="10,17.5,10,1.5"/>
+        <RectangleGeometry Rect="10,21,7,1.5"/>
     </GeometryGroup>
 
     <!-- Start Session Instruction -->
     <DataTemplate DataType="{x:Type local:NightSummaryInstruction}">
-        <nina:SequenceBlockView>
-            <nina:SequenceBlockView.SequenceItemContent>
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock VerticalAlignment="Center" Text="Start recording imaging session data" />
-                </StackPanel>
-            </nina:SequenceBlockView.SequenceItemContent>
-        </nina:SequenceBlockView>
+        <nina:SequenceBlockView />
     </DataTemplate>
 
     <DataTemplate x:Key="NINA.Plugin.NightSummary.Sequencer.NightSummaryInstruction_Mini">
@@ -41,13 +59,7 @@
 
     <!-- End Session Instruction -->
     <DataTemplate DataType="{x:Type local:NightSummaryEndInstruction}">
-        <nina:SequenceBlockView>
-            <nina:SequenceBlockView.SequenceItemContent>
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock VerticalAlignment="Center" Text="End session and send Night Summary report" />
-                </StackPanel>
-            </nina:SequenceBlockView.SequenceItemContent>
-        </nina:SequenceBlockView>
+        <nina:SequenceBlockView />
     </DataTemplate>
 
     <DataTemplate x:Key="NINA.Plugin.NightSummary.Sequencer.NightSummaryEndInstruction_Mini">

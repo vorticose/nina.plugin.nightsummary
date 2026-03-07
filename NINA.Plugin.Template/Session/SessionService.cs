@@ -58,7 +58,18 @@ namespace NINA.Plugin.NightSummary.Session {
 
             if (session == null) return;
 
-            var reportData = new ReportData { Session = session, Images = images, Events = events };
+            var tsData       = FetchTsData(images);
+            var cumulative   = database.GetCumulativeIntegrationByTarget(sessionId);
+            var (fovW, fovH) = ComputeCameraFov();
+            var reportData   = new ReportData {
+                Session                      = session,
+                Images                       = images,
+                Events                       = events,
+                TsData                       = tsData,
+                CumulativeIntegrationSeconds = cumulative,
+                CameraFovWidthDeg            = fovW,
+                CameraFovHeightDeg           = fovH
+            };
 
             if (Settings.Default.SaveReportLocally) {
                 Task.Run(async () => await SaveReportLocallyAsync(reportData));
@@ -95,7 +106,18 @@ namespace NINA.Plugin.NightSummary.Session {
                 var events = testDb.GetEventsForSession(session.SessionId);
                 Logger.Info($"NightSummary: Sending test report for session {session.SessionId} ({images.Count} images, {events.Count} events)");
 
-                var reportData = new ReportData { Session = session, Images = images, Events = events };
+                var tsData       = FetchTsData(images);
+                var cumulative   = testDb.GetCumulativeIntegrationByTarget(session.SessionId);
+                var (fovW, fovH) = ComputeCameraFov();
+                var reportData   = new ReportData {
+                    Session                      = session,
+                    Images                       = images,
+                    Events                       = events,
+                    TsData                       = tsData,
+                    CumulativeIntegrationSeconds = cumulative,
+                    CameraFovWidthDeg            = fovW,
+                    CameraFovHeightDeg           = fovH
+                };
 
                 await Task.WhenAll(
                     Settings.Default.SaveReportLocally ? SaveReportLocallyAsync(reportData)  : Task.CompletedTask,
@@ -223,6 +245,36 @@ namespace NINA.Plugin.NightSummary.Session {
 
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to generate/send report. {ex.Message}");
+            }
+        }
+
+        private List<TsTargetData> FetchTsData(List<ImageRecord> images) {
+            var targetNames = images.Select(i => i.TargetName).Distinct();
+            var tsDb = new TargetSchedulerDatabase();
+            return tsDb.GetProgressForTargets(targetNames);
+        }
+
+        /// <summary>
+        /// Computes the imaging camera's field of view in degrees from the active profile.
+        /// Uses pixel size (µm), focal length (mm), and sensor dimensions (px) from the profile.
+        /// Falls back to (1.0, 1.0) if any value is missing or zero.
+        /// </summary>
+        private (double widthDeg, double heightDeg) ComputeCameraFov() {
+            try {
+                var pixelSize   = profileService?.ActiveProfile?.CameraSettings?.PixelSize     ?? 0;
+                var focalLength = profileService?.ActiveProfile?.TelescopeSettings?.FocalLength ?? 0;
+                var camWidth    = profileService?.ActiveProfile?.FramingAssistantSettings?.CameraWidth  ?? 0;
+                var camHeight   = profileService?.ActiveProfile?.FramingAssistantSettings?.CameraHeight ?? 0;
+
+                if (pixelSize <= 0 || focalLength <= 0 || camWidth <= 0 || camHeight <= 0)
+                    return (1.0, 1.0);
+
+                var plateScale = 206.265 * pixelSize / focalLength;  // arcsec/pixel
+                var widthDeg   = plateScale * camWidth  / 3600.0;
+                var heightDeg  = plateScale * camHeight / 3600.0;
+                return (widthDeg, heightDeg);
+            } catch {
+                return (1.0, 1.0);
             }
         }
 

@@ -298,6 +298,35 @@ namespace NINA.Plugin.NightSummary.Data {
         }
 
         /// <summary>
+        /// Returns total accepted exposure seconds per target name across all sessions
+        /// except the one identified by excludeSessionId.
+        /// </summary>
+        public Dictionary<string, double> GetCumulativeIntegrationByTarget(string excludeSessionId) {
+            var result = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            using (var conn = new SQLiteConnection(connectionString)) {
+                conn.Open();
+                string sql = @"
+                    SELECT TargetName, SUM(ExposureDuration) AS TotalSeconds
+                    FROM Images
+                    WHERE Accepted = 1 AND SessionId != @SessionId
+                    GROUP BY TargetName";
+
+                using (var cmd = new SQLiteCommand(sql, conn)) {
+                    cmd.Parameters.AddWithValue("@SessionId", excludeSessionId ?? "");
+                    using (var reader = cmd.ExecuteReader()) {
+                        while (reader.Read()) {
+                            var name  = reader["TargetName"] == DBNull.Value ? "" : reader["TargetName"].ToString();
+                            var total = reader["TotalSeconds"] == DBNull.Value ? 0 : Convert.ToDouble(reader["TotalSeconds"]);
+                            if (!string.IsNullOrEmpty(name))
+                                result[name] = total;
+                        }
+                    }
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
         /// Returns the most recent session by SessionStart, or null if no sessions exist.
         /// </summary>
         public SessionRecord GetLatestSession() {

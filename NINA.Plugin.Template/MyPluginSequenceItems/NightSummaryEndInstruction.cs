@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 namespace NINA.Plugin.NightSummary.Sequencer {
 
     [Export(typeof(ISequenceItem))]
-    [ExportMetadata("Name", "Night Summary - End Session")]
+    [ExportMetadata("Name", "Night Summary End")]
     [ExportMetadata("Description", "Ends the Night Summary session and sends the email report")]
     [ExportMetadata("Category", "Night Summary")]
     [ExportMetadata("Icon", "NightSummary_EndIcon")]
@@ -48,7 +48,7 @@ namespace NINA.Plugin.NightSummary.Sequencer {
         }
 
         public override object Clone() {
-            return new NightSummaryEndInstruction(sessionService);
+            return new NightSummaryEndInstruction(sessionService) { Icon = this.Icon, Name = this.Name };
         }
 
         public override string ToString() {
