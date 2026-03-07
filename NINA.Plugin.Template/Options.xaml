@@ -94,14 +94,24 @@
 
             <Separator Margin="0,20,0,10" />
 
-            <TextBlock Text="Resend Last Session" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
+            <TextBlock Text="Resend Previous Session" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
 
-            <TextBlock Text="Resends the report for the most recent session from the live database. Uses all currently enabled notification channels."
+            <TextBlock Text="Select any previous session and resend its report through all currently enabled notification channels."
                        TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="0,0,0,10" MaxWidth="550" />
 
-            <StackPanel Orientation="Horizontal" Margin="0,10">
+            <StackPanel Orientation="Horizontal" Margin="0,5">
+                <TextBlock Width="200" VerticalAlignment="Center" />
+                <ComboBox ItemsSource="{Binding AvailableSessions}"
+                          SelectedItem="{Binding SelectedSession}"
+                          DisplayMemberPath="DisplayLabel"
+                          MinWidth="300" />
+                <Button Content="↻" Command="{Binding RefreshSessionsCommand}" Width="30" Margin="6,0,0,0"
+                        ToolTip="Refresh session list" />
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" Margin="0,8">
                 <TextBlock Width="200" />
-                <Button Content="Resend Last Session" Command="{Binding ResendLastSessionCommand}" Width="180" />
+                <Button Content="Send Report" Command="{Binding ResendSessionCommand}" Width="180" />
             </StackPanel>
 
             <Separator Margin="0,20,0,10" />

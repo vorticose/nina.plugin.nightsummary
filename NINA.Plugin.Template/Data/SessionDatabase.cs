@@ -380,6 +380,36 @@ namespace NINA.Plugin.NightSummary.Data {
         }
 
         /// <summary>
+        /// Returns all sessions ordered newest-first.
+        /// </summary>
+        public List<SessionRecord> GetAllSessions() {
+            var result = new List<SessionRecord>();
+            using (var conn = new SQLiteConnection(connectionString)) {
+                conn.Open();
+                string sql = "SELECT * FROM Sessions ORDER BY SessionStart DESC";
+                using (var cmd = new SQLiteCommand(sql, conn))
+                using (var reader = cmd.ExecuteReader()) {
+                    while (reader.Read()) {
+                        try {
+                            result.Add(new SessionRecord {
+                                Id          = Convert.ToInt32(reader["Id"]),
+                                SessionId   = reader["SessionId"]   == DBNull.Value ? "" : reader["SessionId"].ToString(),
+                                SessionStart = reader["SessionStart"] == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionStart"].ToString()),
+                                SessionEnd   = reader["SessionEnd"]   == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionEnd"].ToString()),
+                                ProfileName  = reader["ProfileName"]  == DBNull.Value ? "" : reader["ProfileName"].ToString(),
+                                Notes        = reader["Notes"]        == DBNull.Value ? "" : reader["Notes"].ToString(),
+                                ReportSent   = reader["ReportSent"]   == DBNull.Value ? false : Convert.ToInt32(reader["ReportSent"]) == 1
+                            });
+                        } catch (Exception ex) {
+                            Logger.Error($"NightSummary: Error reading session record: {ex.Message}");
+                        }
+                    }
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
         /// Returns the most recent session by SessionStart, or null if no sessions exist.
         /// </summary>
         public SessionRecord GetLatestSession() {

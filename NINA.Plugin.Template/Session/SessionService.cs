@@ -97,10 +97,10 @@ namespace NINA.Plugin.NightSummary.Session {
         /// Sends all enabled reports for the most recent session in the given database file.
         /// Used by the "Send Test Report" button in the Options UI.
         /// </summary>
-        public async Task SendFromDatabaseAsync(string dbPath) {
+        public async Task SendFromDatabaseAsync(string dbPath, string sessionId = null) {
             try {
                 var testDb  = new SessionDatabase(dbPath);
-                var session = testDb.GetLatestSession();
+                var session = sessionId != null ? testDb.GetSession(sessionId) : testDb.GetLatestSession();
 
                 if (session == null) {
                     Logger.Warning("NightSummary: No sessions found in test database");

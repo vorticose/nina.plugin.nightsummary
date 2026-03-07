@@ -2,7 +2,7 @@
 # Usage: .\scripts\deploy-remote.ps1
 #
 # Copies the already-built Release DLL to the remote telescope machine
-# over the Tailscale network share. Run deploy-local.ps1 first to build.
+# over the Tailscale network share. Run deploy.ps1 first to build.
 
 $ErrorActionPreference = "Stop"
 $repoRoot  = Split-Path -Parent $PSScriptRoot
@@ -12,7 +12,7 @@ $remoteDir = "\\100.86.208.29\NightSummaryPlugin"
 
 # --- Verify build exists ---
 if (-not (Test-Path $dll)) {
-    Write-Error "DLL not found at $dll — run deploy-local.ps1 first to build."
+    Write-Error "DLL not found at $dll - run deploy.ps1 first to build."
     exit 1
 }
 

@@ -7,7 +7,9 @@ using NINA.Plugin.NightSummary.Session;
 using NINA.Profile.Interfaces;
 using NINA.WPF.Base.Interfaces.Mediator;
 using NINA.WPF.Base.Interfaces.ViewModel;
+using NINA.Plugin.NightSummary.Data;
 using System;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.ComponentModel.Composition;
 using System.IO;
@@ -21,6 +23,19 @@ namespace NINA.Plugin.NightSummary {
     public class NightSummaryPlugin : PluginBase, INotifyPropertyChanged {
 
         private readonly SessionService sessionService;
+        private readonly string liveDbPath;
+
+        private ObservableCollection<SessionRecord> _availableSessions = new ObservableCollection<SessionRecord>();
+        public ObservableCollection<SessionRecord> AvailableSessions {
+            get => _availableSessions;
+            private set { _availableSessions = value; RaisePropertyChanged(); }
+        }
+
+        private SessionRecord _selectedSession;
+        public SessionRecord SelectedSession {
+            get => _selectedSession;
+            set { _selectedSession = value; RaisePropertyChanged(); }
+        }
 
         [ImportingConstructor]
         public NightSummaryPlugin(
@@ -65,19 +80,26 @@ namespace NINA.Plugin.NightSummary {
                 await this.sessionService.SendFromDatabaseAsync(testDbPath);
             });
 
-            ResendLastSessionCommand = new RelayCommand(async () => {
-                var liveDbPath = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "NINA", "Plugins", CoreUtil.Version, "NightSummary", "nightsummary.sqlite");
+            liveDbPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "NINA", "Plugins", CoreUtil.Version, "NightSummary", "nightsummary.sqlite");
 
+            RefreshSessionsCommand = new RelayCommand(async () => {
+                await Task.Run(() => LoadSessions());
+            });
+
+            ResendSessionCommand = new RelayCommand(async () => {
                 if (!File.Exists(liveDbPath)) {
                     Logger.Warning($"NightSummary: Live database not found at {liveDbPath}");
                     return;
                 }
-
-                await this.sessionService.SendFromDatabaseAsync(liveDbPath);
+                await this.sessionService.SendFromDatabaseAsync(liveDbPath, SelectedSession?.SessionId);
             });
 
+            // Keep old name pointing to the same command for backwards compat
+            ResendLastSessionCommand = ResendSessionCommand;
+
+            LoadSessions();
             Logger.Info("NightSummary: Plugin initialized successfully");
         }
 
@@ -178,10 +200,29 @@ namespace NINA.Plugin.NightSummary {
             }
         }
 
+        private void LoadSessions() {
+            try {
+                if (!File.Exists(liveDbPath)) return;
+                var db       = new SessionDatabase(liveDbPath);
+                var sessions = db.GetAllSessions();
+                System.Windows.Application.Current.Dispatcher.Invoke(() => {
+                    AvailableSessions.Clear();
+                    foreach (var s in sessions)
+                        AvailableSessions.Add(s);
+                    if (SelectedSession == null && AvailableSessions.Count > 0)
+                        SelectedSession = AvailableSessions[0];
+                });
+            } catch (Exception ex) {
+                Logger.Error($"NightSummary: Failed to load session list. {ex.Message}");
+            }
+        }
+
         public ICommand TestDiscordCommand { get; }
         public ICommand TestPushoverCommand { get; }
         public ICommand SendTestReportCommand { get; }
         public ICommand ResendLastSessionCommand { get; }
+        public ICommand ResendSessionCommand { get; }
+        public ICommand RefreshSessionsCommand { get; }
 
         public event PropertyChangedEventHandler PropertyChanged;
         protected void RaisePropertyChanged([CallerMemberName] string propertyName = null) {

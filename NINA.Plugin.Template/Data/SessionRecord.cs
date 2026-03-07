@@ -26,5 +26,8 @@ namespace NINA.Plugin.NightSummary.Data {
 
         // Whether the end of session report was successfully sent
         public bool ReportSent { get; set; }
+
+        // Display string for session picker dropdown
+        public string DisplayLabel => $"{SessionStart:yyyy-MM-dd  HH:mm}  —  {ProfileName}";
     }
 }
