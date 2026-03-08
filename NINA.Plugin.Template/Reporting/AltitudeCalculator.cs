@@ -52,6 +52,69 @@ namespace NINA.Plugin.NightSummary.Reporting {
         }
 
         /// <summary>
+        /// Returns approximate Sun RA (decimal hours) and Dec (decimal degrees) at a given UTC time.
+        /// Accurate to ~0.01° — sufficient for sunset/sunrise calculations.
+        /// </summary>
+        public static (double RaHours, double DecDeg) GetSunPosition(DateTime utcTime) {
+            double d    = ToJulianDate(utcTime) - 2451545.0;
+            double L    = ((280.460 + 0.9856474 * d) % 360 + 360) % 360;
+            double g    = ((357.528 + 0.9856003 * d) % 360 + 360) % 360;
+            double gRad = g * Math.PI / 180.0;
+            double lam  = L + 1.915 * Math.Sin(gRad) + 0.020 * Math.Sin(2 * gRad);
+            double lamRad = lam  * Math.PI / 180.0;
+            double epsRad = (23.439 - 0.0000004 * d) * Math.PI / 180.0;
+            double ra  = Math.Atan2(Math.Cos(epsRad) * Math.Sin(lamRad), Math.Cos(lamRad));
+            double dec = Math.Asin(Math.Sin(epsRad) * Math.Sin(lamRad));
+            return (((ra * 180.0 / Math.PI) / 15.0 + 24.0) % 24.0, dec * 180.0 / Math.PI);
+        }
+
+        /// <summary>
+        /// Returns the sun's altitude in degrees at the given local time.
+        /// </summary>
+        public static double GetSunAltitude(double latDeg, double lonDeg, DateTime localTime) {
+            var (sunRa, sunDec) = GetSunPosition(localTime.ToUniversalTime());
+            return GetAltitude(sunRa, sunDec, latDeg, lonDeg, localTime);
+        }
+
+        /// <summary>
+        /// Returns the (sunset, sunrise) window for the night containing sessionStart.
+        /// Uses -0.833° as the horizon to match standard nautical sunset/sunrise definition.
+        /// Falls back to sessionStart-1h / sessionStart+14h if no crossing is found.
+        /// </summary>
+        public static (DateTime Sunset, DateTime Sunrise) FindNightWindow(
+            double latDeg, double lonDeg, DateTime sessionStart) {
+
+            const double horizon = -0.833;
+
+            var noon = sessionStart.Hour >= 12
+                ? sessionStart.Date.AddHours(12)
+                : sessionStart.Date.AddHours(-12);
+
+            DateTime? sunset = null, sunrise = null;
+            double prevAlt = GetSunAltitude(latDeg, lonDeg, noon);
+
+            for (int m = 5; m <= 24 * 60; m += 5) {
+                var    t   = noon.AddMinutes(m);
+                double alt = GetSunAltitude(latDeg, lonDeg, t);
+
+                // Sunset: first descending crossing between 15:00 and 02:00
+                if (sunset == null && prevAlt >= horizon && alt < horizon && m >= 3 * 60 && m <= 14 * 60)
+                    sunset = t;
+
+                // Sunrise: first ascending crossing between 00:00 and 10:00
+                if (sunrise == null && prevAlt < horizon && alt >= horizon && m >= 12 * 60 && m <= 22 * 60)
+                    sunrise = t;
+
+                prevAlt = alt;
+            }
+
+            return (
+                sunset  ?? sessionStart.AddHours(-1),
+                sunrise ?? sessionStart.AddHours(14)
+            );
+        }
+
+        /// <summary>
         /// Returns approximate Moon RA (decimal hours) and Dec (decimal degrees) at a given UTC time.
         /// Accurate to ~1° — sufficient for reporting moon separation.
         /// </summary>

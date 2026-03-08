@@ -2,7 +2,10 @@ using NINA.Plugin.NightSummary.Data;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
+using System.Reflection;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace NINA.Plugin.NightSummary.Reporting {
     /// <summary>
@@ -11,6 +14,27 @@ namespace NINA.Plugin.NightSummary.Reporting {
     /// can be toggled on/off in a future release.
     /// </summary>
     public class ReportGenerator {
+
+        private static readonly HttpClient Http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+
+        // Lazily-loaded plugin icon as a base64 data URI (embedded resource)
+        private static string? _iconDataUri;
+        private static string? IconDataUri {
+            get {
+                if (_iconDataUri != null) return _iconDataUri;
+                try {
+                    using var stream = Assembly.GetExecutingAssembly()
+                                               .GetManifestResourceStream("plugin-icon.png");
+                    if (stream == null) return null;
+                    var bytes = new byte[stream.Length];
+                    stream.Read(bytes, 0, bytes.Length);
+                    _iconDataUri = "data:image/png;base64," + Convert.ToBase64String(bytes);
+                } catch {
+                    _iconDataUri = null;
+                }
+                return _iconDataUri;
+            }
+        }
 
         // Broadband and narrowband filter definitions for star count CV calculation
         private static readonly HashSet<string> BroadbandFilters = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "L", "R", "G", "B" };
@@ -22,11 +46,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
             return idx >= 0 ? idx : int.MaxValue;
         }
 
-        public string GenerateHtmlReport(ReportData data) {
+        public async Task<string> GenerateHtmlReport(ReportData data) {
             var sb = new StringBuilder();
 
             sb.AppendLine("<!DOCTYPE html>");
-            sb.AppendLine("<html><head><style>");
+            sb.AppendLine("<html><head><meta charset='UTF-8'><style>");
             sb.AppendLine("body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background-color: #1a1a2e; color: #e0e0e0; }");
             sb.AppendLine("h1 { color: #7eb8f7; border-bottom: 2px solid #7eb8f7; padding-bottom: 10px; }");
             sb.AppendLine("h2 { color: #a0c4ff; margin-top: 30px; }");
@@ -72,9 +96,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             sb.Append(BuildEventTimelineSection(data));
             sb.Append(BuildOverviewStatsSection(data));
-            sb.Append(BuildTargetSection(data));
+            sb.Append(await BuildTargetSection(data));
             sb.Append(BuildImageQualitySection(data));
-            sb.Append(BuildGuidingSection(data));
             sb.Append(BuildFooter());
 
             sb.AppendLine("</body></html>");
@@ -83,7 +106,15 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
         private string BuildHeader(ReportData data) {
             var sb = new StringBuilder();
-            sb.AppendLine($"<h1>Night Summary Report</h1>");
+            var icon = IconDataUri;
+            if (icon != null) {
+                sb.AppendLine("<div style='display:flex; align-items:center; gap:14px; border-bottom:2px solid #7eb8f7; padding-bottom:10px; margin-bottom:8px;'>");
+                sb.AppendLine($"  <img src='{icon}' alt='Night Summary' style='width:48px; height:48px; border-radius:6px; flex-shrink:0;' />");
+                sb.AppendLine("  <h1 style='margin:0; border:none; padding:0;'>Night Summary Report</h1>");
+                sb.AppendLine("</div>");
+            } else {
+                sb.AppendLine("<h1>Night Summary Report</h1>");
+            }
             sb.AppendLine($"<p><strong>Session Date:</strong> {data.Session.SessionStart:yyyy-MM-dd}</p>");
             sb.AppendLine($"<p><strong>Session Start:</strong> {data.Session.SessionStart:HH:mm:ss} &nbsp;&nbsp; <strong>Session End:</strong> {data.Session.SessionEnd:HH:mm:ss}</p>");
             sb.AppendLine($"<p><strong>Duration:</strong> {(data.Session.SessionEnd - data.Session.SessionStart).TotalHours:F1} hours</p>");
@@ -105,9 +136,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
             return sb.ToString();
         }
 
-        private string BuildTargetSection(ReportData data) {
+        private async Task<string> BuildTargetSection(ReportData data) {
             var sb = new StringBuilder();
-            var targets = data.Images.GroupBy(i => i.TargetName).OrderBy(g => g.Key);
+            var targets = data.Images.GroupBy(i => i.TargetName).OrderBy(g => g.Min(i => i.Timestamp));
             sb.AppendLine("<h2>Targets Imaged</h2>");
 
             // Pre-compute thumbnail/FOV geometry (same for all targets)
@@ -138,8 +169,19 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var targetImgStart = target.Min(i => i.Timestamp);
                 var targetImgEnd   = target.Max(i => i.Timestamp);
 
+                // Build coords + moon subtitle for the h3 heading
+                string h3Subtitle = "";
+                if (raH != 0 || decD != 0) {
+                    var sessMid    = targetImgStart.AddMinutes((targetImgEnd - targetImgStart).TotalMinutes / 2);
+                    var (moonRa, moonDec) = AltitudeCalculator.GetMoonPosition(sessMid.ToUniversalTime());
+                    double moonSep = AltitudeCalculator.AngularSeparation(raH, decD, moonRa, moonDec);
+                    h3Subtitle = $" <span style='font-weight:normal; font-size:12px; color:#888;'>" +
+                                 $"— {FormatRA(raH)} &nbsp;·&nbsp; {FormatDec(decD)} &nbsp;·&nbsp; &#127769; Moon: {moonSep:F0}&#176;" +
+                                 $"</span>";
+                }
+
                 sb.AppendLine("<div class='target-section'>");
-                sb.AppendLine($"<h3>{target.Key}</h3>");
+                sb.AppendLine($"<h3>{target.Key}{h3Subtitle}</h3>");
 
                 if (tsTarget != null) {
                     // Row: thumbnail (200px) | altitude chart (~360px) side by side
@@ -152,8 +194,17 @@ namespace NINA.Plugin.NightSummary.Reporting {
                                    $"&projection=TAN&format=jpg";
                     var svgAngle = -tsTarget.Rotation;
 
+                    // Attempt to download and embed the thumbnail as a base64 data URI so
+                    // the report displays correctly when opened offline. Falls back to the
+                    // remote URL if the download fails or times out.
+                    string imgSrc = thumbUrl;
+                    try {
+                        var bytes = await Http.GetByteArrayAsync(thumbUrl);
+                        imgSrc = "data:image/jpeg;base64," + Convert.ToBase64String(bytes);
+                    } catch { /* leave imgSrc as the remote URL */ }
+
                     sb.AppendLine($"<div class='ts-thumb-wrap'>");
-                    sb.AppendLine($"  <img src='{thumbUrl}' alt='{target.Key}' />");
+                    sb.AppendLine($"  <img src='{imgSrc}' alt='{target.Key}' />");
                     sb.AppendLine($"  <svg width='{thumbPx}' height='{thumbPx}' xmlns='http://www.w3.org/2000/svg'>");
                     sb.AppendLine($"    <rect x='{(cx - boxW / 2):F1}' y='{(cy - boxH / 2):F1}' width='{boxW:F1}' height='{boxH:F1}'");
                     sb.AppendLine($"          fill='none' stroke='#7eb8f7' stroke-width='1.5' opacity='0.85'");
@@ -166,20 +217,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
                         var altChart = BuildAltitudeChart(raH, decD, data.ObserverLatitude, data.ObserverLongitude,
                                                           targetImgStart, targetImgEnd, width: 500);
                         if (!string.IsNullOrEmpty(altChart))
-                            sb.Append($"<div style='flex:1; min-width:0;'>{altChart}</div>");
+                            sb.Append($"<div style='flex:1; min-width:0; margin-top:-20px;'>{altChart}</div>");
                     }
 
                     sb.AppendLine("</div>"); // ts-target-header
-
-                    // Coords + moon separation below the header row, full width
-                    string moonStr = "";
-                    if (raH != 0 || decD != 0) {
-                        var sessMid    = targetImgStart.AddMinutes((targetImgEnd - targetImgStart).TotalMinutes / 2);
-                        var (moonRa, moonDec) = AltitudeCalculator.GetMoonPosition(sessMid.ToUniversalTime());
-                        double moonSep = AltitudeCalculator.AngularSeparation(raH, decD, moonRa, moonDec);
-                        moonStr = $" &nbsp;&#183;&nbsp; &#127769; Moon: {moonSep:F0}&#176;";
-                    }
-                    sb.AppendLine($"<p class='ts-coords'>{FormatRA(tsTarget.RA)} &nbsp;·&nbsp; {FormatDec(tsTarget.Dec)}{moonStr}</p>");
                 }
 
                 // Session filter table
@@ -199,6 +240,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var narrowbandImages = target.Where(i => NarrowbandFilters.Contains(i.Filter) && i.StarCount > 0).ToList();
                 string broadbandCV  = broadbandImages.Count  >= 2 ? $"{CV(broadbandImages.Select(i  => (double)i.StarCount).ToList()):F0}%" : "—";
                 string narrowbandCV = narrowbandImages.Count >= 2 ? $"{CV(narrowbandImages.Select(i => (double)i.StarCount).ToList()):F0}%" : "—";
+                sb.AppendLine("<p style='margin: 12px 0 4px; font-size: 13px; color: #a0c4ff;'><strong>Star Count Consistency</strong></p>");
                 sb.AppendLine("<table class='star-count-table'>");
                 sb.AppendLine("<tr><th>Broadband CV</th><th>Narrowband CV</th></tr>");
                 sb.AppendLine($"<tr><td>{broadbandCV}</td><td>{narrowbandCV}</td></tr>");
@@ -267,11 +309,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
         private string BuildImageQualitySection(ReportData data) {
             var sb = new StringBuilder();
-            var imagesWithHFR = data.Images.Where(i => i.HFR > 0).ToList();
-            var imagesWithFWHM = data.Images.Where(i => i.FWHM > 0).ToList();
-            var imagesWithEcc = data.Images.Where(i => i.Eccentricity > 0).ToList();
+            var imagesWithHFR     = data.Images.Where(i => i.HFR > 0).ToList();
+            var imagesWithFWHM    = data.Images.Where(i => i.FWHM > 0).ToList();
+            var imagesWithEcc     = data.Images.Where(i => i.Eccentricity > 0).ToList();
+            var imagesWithGuiding = data.Images.Where(i => i.GuidingRMSTotal > 0).ToList();
 
-            if (!imagesWithHFR.Any() && !imagesWithFWHM.Any()) return string.Empty;
+            if (!imagesWithHFR.Any() && !imagesWithFWHM.Any() && !imagesWithGuiding.Any()) return string.Empty;
 
             sb.AppendLine("<h2>Image Quality</h2>");
             sb.AppendLine("<table>");
@@ -289,7 +332,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             if (imagesWithEcc.Any()) {
                 var eccValues = imagesWithEcc.Select(i => i.Eccentricity).ToList();
-                sb.AppendLine($"<tr><td>Eccentricity</td><td>{eccValues.Min():F3}</td><td>{eccValues.Max():F3}</td><td>{eccValues.Average():F3}</td><td>{CV(eccValues):F0}%</td></tr>");
+                sb.AppendLine($"<tr><td>Eccentricity</td><td>{eccValues.Min():F2}</td><td>{eccValues.Max():F2}</td><td>{eccValues.Average():F2}</td><td>{CV(eccValues):F0}%</td></tr>");
+            }
+
+            if (imagesWithGuiding.Any()) {
+                var rmsValues = imagesWithGuiding.Select(i => i.GuidingRMSTotal).ToList();
+                sb.AppendLine($"<tr><td>Guiding RMS</td><td>{rmsValues.Min():F2}\"</td><td>{rmsValues.Max():F2}\"</td><td>{rmsValues.Average():F2}\"</td><td>{CV(rmsValues):F0}%</td></tr>");
             }
 
             sb.AppendLine("</table>");
@@ -300,22 +348,6 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine(hfrChart);
             }
 
-            return sb.ToString();
-        }
-
-        private string BuildGuidingSection(ReportData data) {
-            var sb = new StringBuilder();
-            var imagesWithGuiding = data.Images.Where(i => i.GuidingRMSTotal > 0).ToList();
-            if (!imagesWithGuiding.Any()) return string.Empty;
-
-            sb.AppendLine("<h2>Guiding</h2>");
-            sb.AppendLine("<table>");
-            sb.AppendLine("<tr><th>Metric</th><th>Min</th><th>Max</th><th>Mean</th><th>CV</th></tr>");
-
-            var rmsValues = imagesWithGuiding.Select(i => i.GuidingRMSTotal).ToList();
-            sb.AppendLine($"<tr><td>RMS Total</td><td>{rmsValues.Min():F2}\"</td><td>{rmsValues.Max():F2}\"</td><td>{rmsValues.Average():F2}\"</td><td>{CV(rmsValues):F0}%</td></tr>");
-
-            sb.AppendLine("</table>");
             return sb.ToString();
         }
 
@@ -352,11 +384,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
                                           DateTime sessionStart, DateTime sessionEnd, int width = 560) {
             if (latDeg == 0 && lonDeg == 0) return string.Empty;
 
-            // Full astronomical day window (noon-to-noon) so we see the whole rise/set arc
-            var dayStart = sessionStart.Hour >= 12
-                ? sessionStart.Date.AddHours(12)
-                : sessionStart.Date.AddHours(-12);
-            var dayEnd = dayStart.AddHours(24);
+            // Chart window: sunset to sunrise (zoomed in to the imaging night)
+            var (dayStart, dayEnd) = AltitudeCalculator.FindNightWindow(latDeg, lonDeg, sessionStart);
 
             int svgW     = width;
             bool compact = width <= 210;
@@ -396,7 +425,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             int timeLabelY = padT + plotH + 18;
 
             var sb = new StringBuilder();
-            sb.AppendLine($"<svg viewBox='0 0 {svgW} {svgH}' width='100%' height='{svgH}' xmlns='http://www.w3.org/2000/svg' style='display:block;' preserveAspectRatio='none'>");
+            sb.AppendLine($"<svg viewBox='0 0 {svgW} {svgH}' width='102%' height='{svgH}' xmlns='http://www.w3.org/2000/svg' style='display:block;' preserveAspectRatio='none'>");
 
             // Background
             sb.AppendLine($"<rect x='{padL}' y='{padT}' width='{plotW}' height='{plotH}' fill='#0d1117' rx='4'/>");
@@ -436,13 +465,19 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine($"  <text x='{xSessEnd:F1}' y='{padT - 5}' text-anchor='middle' font-size='9' fill='#7eb8f7'>End</text>");
             sb.AppendLine("</g>");
 
-            // X-axis time labels — every 3h (full width) or 6h (compact)
-            int stepH = compact ? 6 : 3;
-            for (int h = 0; h <= 24; h += stepH) {
-                var t      = dayStart.AddHours(h);
-                double tx  = X(t);
-                string anchor = h == 0 ? "start" : (h == 24 ? "end" : "middle");
-                sb.AppendLine($"<text x='{tx:F1}' y='{timeLabelY}' text-anchor='{anchor}' font-size='10' fill='#888'>{t:HH:mm}</text>");
+            // Sunset / sunrise edge markers
+            sb.AppendLine($"<text x='{padL + 2}' y='{padT + plotH - 4}' font-size='10' fill='#f59e0b' opacity='0.8'>&#9660; Sunset {dayStart:HH:mm}</text>");
+            sb.AppendLine($"<text x='{padL + plotW - 2}' y='{padT + plotH - 4}' text-anchor='end' font-size='10' fill='#f59e0b' opacity='0.8'>Sunrise {dayEnd:HH:mm} &#9650;</text>");
+
+            // X-axis time labels — edge labels + intermediate ticks every 2h
+            sb.AppendLine($"<text x='{padL}' y='{timeLabelY}' text-anchor='start' font-size='10' fill='#888'>{dayStart:HH:mm}</text>");
+            sb.AppendLine($"<text x='{padL + plotW}' y='{timeLabelY}' text-anchor='end' font-size='10' fill='#888'>{dayEnd:HH:mm}</text>");
+            var firstTick = new DateTime(dayStart.Year, dayStart.Month, dayStart.Day, dayStart.Hour, 0, 0).AddHours(compact ? 4 : 2);
+            if (firstTick <= dayStart) firstTick = firstTick.AddHours(compact ? 4 : 2);
+            for (var tick = firstTick; tick < dayEnd; tick = tick.AddHours(compact ? 4 : 2)) {
+                double tx = X(tick);
+                if (tx - padL > 30 && (padL + plotW) - tx > 30)
+                    sb.AppendLine($"<text x='{tx:F1}' y='{timeLabelY}' text-anchor='middle' font-size='10' fill='#888'>{tick:HH:mm}</text>");
             }
 
             sb.AppendLine("</svg>");

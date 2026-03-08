@@ -150,7 +150,7 @@ namespace NINA.Plugin.NightSummary.Session {
                 var filename = $"NightSummary_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.html";
                 var filePath = Path.Combine(saveDir, filename);
 
-                var htmlReport = reportGenerator.GenerateHtmlReport(reportData);
+                var htmlReport = await reportGenerator.GenerateHtmlReport(reportData);
                 await File.WriteAllTextAsync(filePath, htmlReport);
 
                 Logger.Info($"NightSummary: Report saved locally to {filePath}");
@@ -203,7 +203,7 @@ namespace NINA.Plugin.NightSummary.Session {
                     return;
                 }
 
-                var htmlReport = reportGenerator.GenerateHtmlReport(reportData);
+                var htmlReport = await reportGenerator.GenerateHtmlReport(reportData);
                 var sender     = new DiscordSender(webhookUrl);
                 await sender.SendReportAsync(reportData.Session, reportData.Images, htmlReport);
             } catch (Exception ex) {
@@ -226,7 +226,7 @@ namespace NINA.Plugin.NightSummary.Session {
 
                 var session    = reportData.Session;
                 var images     = reportData.Images;
-                var htmlReport = reportGenerator.GenerateHtmlReport(reportData);
+                var htmlReport = await reportGenerator.GenerateHtmlReport(reportData);
                 var subject    = $"Night Summary Report - {session.SessionStart:yyyy-MM-dd} - {images.Count} images";
                 var duration   = (session.SessionEnd - session.SessionStart).TotalHours;
                 var accepted   = images.Count(i => i.Accepted);

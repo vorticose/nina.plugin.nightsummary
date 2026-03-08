@@ -25,6 +25,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="..\assets\plugin-icon.png">
+      <LogicalName>plugin-icon.png</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Update="MyPluginProperties\Settings.Designer.cs">
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <AutoGen>True</AutoGen>

@@ -100,7 +100,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 for (int i = 1; i <= sorted.Count; i++) {
                     if (i < sorted.Count) {
                         var gap = (EstimatedStart(sorted[i]) - blockEnd).TotalMinutes;
-                        if (gap <= 5) {
+                        if (gap <= 15) {
                             blockEnd = sorted[i].Timestamp;
                             continue;
                         }
