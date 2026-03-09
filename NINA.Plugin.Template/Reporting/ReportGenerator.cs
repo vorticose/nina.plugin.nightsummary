@@ -170,7 +170,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{TimeSpan.FromSeconds(totalExposureSec).TotalHours:F1}h</div><div class='stat-label'>Total Exposure</div></div>");
             sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{targetCount}</div><div class='stat-label'>Targets</div></div>");
             if (hfrImages.Any())
-                sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{hfrImages.Average(i => i.HFR):F2}</div><div class='stat-label'>Avg HFR</div></div>");
+                sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{hfrImages.Average(i => i.HFR):F2}\"</div><div class='stat-label'>Avg HFR</div></div>");
             if (guidingImages.Any())
                 sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{guidingImages.Average(i => i.GuidingRMSTotal):F2}\"</div><div class='stat-label'>Avg Guiding RMS</div></div>");
             var yieldTooltip = hasSafetyMonitor
@@ -189,7 +189,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("<h2>Targets Imaged</h2>");
 
             // Pre-compute thumbnail/FOV geometry (same for all targets)
-            const int thumbPx = 200;
+            const int thumbPx  = 200;  // CSS display size and SVG overlay dimensions
+            const int fetchPx  = 400;  // fetch at 2× for retina/high-DPI screens
             var fovW     = data.CameraFovWidthDeg;
             var fovH     = data.CameraFovHeightDeg;
             var thumbFov = Math.Max(fovW, fovH) * 1.5;
@@ -217,15 +218,18 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var targetImgStart = target.Min(i => i.Timestamp);
                 var targetImgEnd   = target.Max(i => i.Timestamp);
 
-                // Build coords + moon subtitle for the h3 heading
-                string h3Subtitle = "";
+                // Build subtitle for the h3 heading: start/end times, coords, moon separation
+                var timePart   = $"Start: {targetImgStart:HH:mm} &nbsp;&#8594;&nbsp; End: {targetImgEnd:HH:mm}";
+                string h3Subtitle;
                 if (raH != 0 || decD != 0) {
                     var sessMid    = targetImgStart.AddMinutes((targetImgEnd - targetImgStart).TotalMinutes / 2);
                     var (moonRa, moonDec) = AltitudeCalculator.GetMoonPosition(sessMid.ToUniversalTime());
                     double moonSep = AltitudeCalculator.AngularSeparation(raH, decD, moonRa, moonDec);
                     h3Subtitle = $" <span style='font-weight:normal; font-size:12px; color:#888;'>" +
-                                 $"— {FormatRA(raH)} &nbsp;·&nbsp; {FormatDec(decD)} &nbsp;·&nbsp; &#127769; Moon: {moonSep:F0}&#176;" +
+                                 $"— {timePart} &nbsp;·&nbsp; R.A. {FormatRA(raH)} &nbsp;·&nbsp; Dec. {FormatDec(decD)} &nbsp;·&nbsp; &#127769; &#8596; {moonSep:F0}&#176;" +
                                  $"</span>";
+                } else {
+                    h3Subtitle = $" <span style='font-weight:normal; font-size:12px; color:#888;'>— {timePart}</span>";
                 }
 
                 sb.AppendLine("<div class='target-section'>");
@@ -237,7 +241,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
                     var raDeg    = tsTarget.RA * 15.0;
                     var thumbUrl = $"https://alasky.cds.unistra.fr/hips-image-services/hips2fits" +
-                                   $"?hips=CDS%2FP%2FDSS2%2Fcolor&width={thumbPx}&height={thumbPx}" +
+                                   $"?hips=CDS%2FP%2FDSS2%2Fcolor&width={fetchPx}&height={fetchPx}" +
                                    $"&fov={thumbFov:F4}&ra={raDeg:F6}&dec={tsTarget.Dec:F6}" +
                                    $"&projection=TAN&format=jpg";
                     var svgAngle = -tsTarget.Rotation;
@@ -277,10 +281,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var filterGroups = target.GroupBy(i => i.Filter).OrderBy(g => FilterSortKey(g.Key)).ThenBy(g => g.Key);
                 foreach (var filterGroup in filterGroups) {
                     var totalTime = TimeSpan.FromSeconds(filterGroup.Sum(i => i.ExposureDuration));
-                    sb.AppendLine($"<tr><td>{filterGroup.Key}</td><td>{filterGroup.Count()}</td><td>{filterGroup.First().ExposureDuration:F0}s</td><td>{totalTime.TotalMinutes:F1} min</td></tr>");
+                    sb.AppendLine($"<tr><td>{filterGroup.Key}</td><td>{filterGroup.Count()}</td><td>{filterGroup.First().ExposureDuration:F0}s</td><td>{FormatDuration(totalTime.TotalSeconds)}</td></tr>");
                 }
                 var targetTotal = TimeSpan.FromSeconds(target.Sum(i => i.ExposureDuration));
-                sb.AppendLine($"<tr><td><strong>Total</strong></td><td><strong>{target.Count()}</strong></td><td></td><td><strong>{targetTotal.TotalMinutes:F1} min</strong></td></tr>");
+                sb.AppendLine($"<tr><td><strong>Total</strong></td><td><strong>{target.Count()}</strong></td><td></td><td><strong>{FormatDuration(targetTotal.TotalSeconds)}</strong></td></tr>");
                 sb.AppendLine("</table>");
 
                 // Star count CV
@@ -288,11 +292,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var narrowbandImages = target.Where(i => NarrowbandFilters.Contains(i.Filter) && i.StarCount > 0).ToList();
                 string broadbandCV  = broadbandImages.Count  >= 2 ? $"{CV(broadbandImages.Select(i  => (double)i.StarCount).ToList()):F0}%" : "—";
                 string narrowbandCV = narrowbandImages.Count >= 2 ? $"{CV(narrowbandImages.Select(i => (double)i.StarCount).ToList()):F0}%" : "—";
+                var cvTooltip = "CV (Coefficient of Variation) measures consistency as a percentage of the mean. Lower values indicate more stable conditions. Star count CV is calculated per target and filter type.";
+                sb.AppendLine($"<div title='{cvTooltip}' style='cursor:help;'>");
                 sb.AppendLine("<p style='margin: 12px 0 4px; font-size: 13px; color: #a0c4ff;'><strong>Star Count Consistency</strong></p>");
                 sb.AppendLine("<table class='star-count-table'>");
                 sb.AppendLine("<tr><th>Broadband CV</th><th>Narrowband CV</th></tr>");
                 sb.AppendLine($"<tr><td>{broadbandCV}</td><td>{narrowbandCV}</td></tr>");
                 sb.AppendLine("</table>");
+                sb.AppendLine("</div>");
 
                 // Session history (collapsible)
                 List<TargetSessionHistory> history = null;
@@ -304,8 +311,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     sb.AppendLine("<table>");
                     sb.AppendLine("<tr><th>Date</th><th>Integration</th><th>Avg HFR</th><th>Avg FWHM</th><th>Avg Guiding RMS</th></tr>");
                     foreach (var h in history) {
-                        var hfrStr = h.AvgHFR        > 0 ? h.AvgHFR.ToString("F2")         : "—";
-                        var fwhmStr = h.AvgFWHM      > 0 ? h.AvgFWHM.ToString("F2")        : "—";
+                        var hfrStr = h.AvgHFR        > 0 ? h.AvgHFR.ToString("F2") + "\"" : "—";
+                        var fwhmStr = h.AvgFWHM      > 0 ? h.AvgFWHM.ToString("F2") + "\"" : "—";
                         var rmsStr = h.AvgGuidingRMS > 0 ? $"{h.AvgGuidingRMS:F2}&quot;" : "—";
                         sb.AppendLine($"<tr><td>{h.SessionStart:MMM d, yyyy}</td><td>{FormatIntegration(h.IntegrationSeconds)}</td><td>{hfrStr}</td><td>{fwhmStr}</td><td>{rmsStr}</td></tr>");
                     }
@@ -331,23 +338,30 @@ namespace NINA.Plugin.NightSummary.Reporting {
                         // Integration: accepted frames × configured exposure time per template
                         totalIntegrationSec += accepted * f.ExposureSec;
 
-                        // Bar widths based on accepted count so bar always matches the label
-                        var tonightBar = Math.Min(tonightCount, accepted);
-                        var priorBar   = Math.Max(0, accepted - tonightBar);
+                        // When grading is pending (accepted=0 but acquired>0), use acquired so tonight's bar is visible
+                        var gradingPending  = accepted == 0 && f.Acquired > 0;
+                        var effectiveFilled = gradingPending ? f.Acquired : accepted;
+                        var tonightBar = Math.Min(tonightCount, effectiveFilled);
+                        var priorBar   = Math.Max(0, effectiveFilled - tonightBar);
                         var priorPct   = desired > 0 ? (double)priorBar   / desired * 100.0 : 0;
                         var tonightPct = desired > 0 ? (double)tonightBar / desired * 100.0 : 0;
 
                         var expLabel  = f.ExposureSec > 0 ? $" ({f.ExposureSec:F0}s)" : "";
                         var barLabel  = !string.IsNullOrEmpty(f.TemplateName) ? $"{f.TemplateName}{expLabel}" : $"{f.Filter}{expLabel}";
-                        var tooltip   = tonightCount > 0 ? $"+{tonightCount} images tonight" : "";
+                        var tooltip   = tonightCount > 0
+                            ? (gradingPending ? $"+{tonightCount} images tonight (grading pending)" : $"+{tonightCount} images tonight")
+                            : "";
 
                         sb.AppendLine("<div class='ts-filter-row'>");
                         sb.AppendLine($"  <span class='ts-filter-name'>{barLabel}</span>");
-                        sb.AppendLine($"  <div class='ts-bar-track'>");
+                        sb.AppendLine($"  <div class='ts-bar-track' title='{tooltip}'>");
                         sb.AppendLine($"    <div class='ts-bar-accepted' style='width:{priorPct:F1}%'></div>");
-                        sb.AppendLine($"    <div class='ts-bar-acquired' style='left:{priorPct:F1}%;width:{tonightPct:F1}%' title='{tooltip}'></div>");
+                        sb.AppendLine($"    <div class='ts-bar-acquired' style='left:{priorPct:F1}%;width:{tonightPct:F1}%'></div>");
                         sb.AppendLine($"  </div>");
-                        sb.AppendLine($"  <span class='ts-bar-label'>{accepted}/{desired} accepted{pctLabel}</span>");
+                        var barRightLabel = gradingPending
+                            ? $"{f.Acquired}/{desired} acquired ({(desired > 0 ? (double)f.Acquired / desired * 100.0 : 0):F0}%)"
+                            : $"{accepted}/{desired} accepted{pctLabel}";
+                        sb.AppendLine($"  <span class='ts-bar-label'>{barRightLabel}</span>");
                         sb.AppendLine("</div>");
                     }
 
@@ -386,12 +400,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             if (imagesWithHFR.Any()) {
                 var hfrValues = imagesWithHFR.Select(i => i.HFR).ToList();
-                sb.AppendLine($"<tr><td>HFR</td><td>{hfrValues.Min():F2}</td><td>{hfrValues.Max():F2}</td><td>{hfrValues.Average():F2}</td><td>{CV(hfrValues):F0}%</td></tr>");
+                sb.AppendLine($"<tr><td>HFR</td><td>{hfrValues.Min():F2}\"</td><td>{hfrValues.Max():F2}\"</td><td>{hfrValues.Average():F2}\"</td><td>{CV(hfrValues):F0}%</td></tr>");
             }
 
             if (imagesWithFWHM.Any()) {
                 var fwhmValues = imagesWithFWHM.Select(i => i.FWHM).ToList();
-                sb.AppendLine($"<tr><td>FWHM</td><td>{fwhmValues.Min():F2}</td><td>{fwhmValues.Max():F2}</td><td>{fwhmValues.Average():F2}</td><td>{CV(fwhmValues):F0}%</td></tr>");
+                sb.AppendLine($"<tr><td>FWHM</td><td>{fwhmValues.Min():F2}\"</td><td>{fwhmValues.Max():F2}\"</td><td>{fwhmValues.Average():F2}\"</td><td>{CV(fwhmValues):F0}%</td></tr>");
             }
 
             if (imagesWithEcc.Any()) {
@@ -493,6 +507,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             // Background
             sb.AppendLine($"<rect x='{padL}' y='{padT}' width='{plotW}' height='{plotH}' fill='#0d1117' rx='4'/>");
+            sb.AppendLine($"<rect x='{padL}' y='{padT}' width='{plotW}' height='{plotH}' fill='none' stroke='#2d2d5e' stroke-width='1' rx='4'/>");
 
             // Session window subtle highlight
             sb.AppendLine($"<rect x='{xSessStart:F1}' y='{padT}' width='{(xSessEnd - xSessStart):F1}' height='{plotH}' fill='#7eb8f7' opacity='0.07'/>");
@@ -553,6 +568,21 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("<p class='footnote'>CV (Coefficient of Variation) measures consistency as a percentage of the mean. Lower values indicate more stable conditions. Star count CV is calculated per target and filter type.</p>");
             sb.AppendLine("<p class='footnote'>Generated by Night Summary plugin for N.I.N.A.</p>");
             return sb.ToString();
+        }
+
+        private static string FormatDuration(double seconds) {
+            var ts = TimeSpan.FromSeconds(seconds);
+            if (ts.TotalSeconds < 60)
+                return $"{(int)ts.TotalSeconds}s";
+            if (ts.TotalMinutes < 60) {
+                var m = (int)ts.TotalMinutes;
+                var s = (int)(ts.TotalSeconds - m * 60);
+                return s > 0 ? $"{m}m {s}s" : $"{m}m";
+            } else {
+                var h = (int)ts.TotalHours;
+                var m = (int)(ts.TotalMinutes - h * 60);
+                return m > 0 ? $"{h}h {m}m" : $"{h}h";
+            }
         }
 
         private static string FormatIntegration(double seconds) {

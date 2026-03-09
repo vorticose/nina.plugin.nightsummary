@@ -224,8 +224,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     };
                     string label = evtType switch {
                         "AutoFocus"    => "AutoFocus run",
-                        "RoofOpen"     => "Roof opened (safe)",
-                        "RoofClosed"   => "Roof closed (unsafe)",
+                        "RoofOpen"     => "Safe",
+                        "RoofClosed"   => "Unsafe",
                         "MeridianFlip" => "Meridian flip",
                         _              => evtType
                     };

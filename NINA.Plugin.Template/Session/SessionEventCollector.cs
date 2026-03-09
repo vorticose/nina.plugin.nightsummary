@@ -71,8 +71,8 @@ namespace NINA.Plugin.NightSummary.Session {
             if (lastIsSafe.HasValue) {
                 var eventType   = isSafe ? "RoofOpen" : "RoofClosed";
                 var description = isSafe
-                    ? "Safety monitor: Safe — roof opened"
-                    : "Safety monitor: Unsafe — roof closed";
+                    ? "Safety monitor: Safe"
+                    : "Safety monitor: Unsafe";
                 SaveEvent(eventType, description);
             }
 
