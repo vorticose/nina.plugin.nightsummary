@@ -60,7 +60,9 @@ namespace NINA.Plugin.NightSummary.Data {
                     t.ra          AS RA,
                     t.dec         AS Dec,
                     t.rotation    AS Rotation,
+                    et.name       AS TemplateName,
                     et.filtername AS Filter,
+                    CASE WHEN ep.exposure > 0 THEN ep.exposure ELSE et.defaultexposure END AS ExposureSec,
                     ep.desired    AS Desired,
                     ep.acquired   AS Acquired,
                     ep.accepted   AS Accepted
@@ -68,9 +70,9 @@ namespace NINA.Plugin.NightSummary.Data {
                 JOIN target t           ON t.Id  = ep.targetid
                 JOIN exposuretemplate et ON et.Id = ep.exposureTemplateId
                 WHERE ep.desired > 0
-                ORDER BY t.name, et.filtername";
+                ORDER BY t.name, et.filtername, et.name";
 
-            var rows = new List<(string Name, double RA, double Dec, double Rotation, string Filter, int Desired, int Acquired, int Accepted)>();
+            var rows = new List<(string Name, double RA, double Dec, double Rotation, string TemplateName, string Filter, double ExposureSec, int Desired, int Acquired, int Accepted)>();
 
             using (var cmd = new SQLiteCommand(sql, conn))
             using (var reader = cmd.ExecuteReader()) {
@@ -79,19 +81,21 @@ namespace NINA.Plugin.NightSummary.Data {
                     if (!nameSet.Contains(name)) continue;
 
                     rows.Add((
-                        Name:     name,
-                        RA:       Convert.ToDouble(reader["RA"]),
-                        Dec:      Convert.ToDouble(reader["Dec"]),
-                        Rotation: reader["Rotation"] == DBNull.Value ? 0 : Convert.ToDouble(reader["Rotation"]),
-                        Filter:   reader["Filter"].ToString() ?? "",
-                        Desired:  Convert.ToInt32(reader["Desired"]),
-                        Acquired: Convert.ToInt32(reader["Acquired"]),
-                        Accepted: Convert.ToInt32(reader["Accepted"])
+                        Name:         name,
+                        RA:           Convert.ToDouble(reader["RA"]),
+                        Dec:          Convert.ToDouble(reader["Dec"]),
+                        Rotation:     reader["Rotation"]   == DBNull.Value ? 0 : Convert.ToDouble(reader["Rotation"]),
+                        TemplateName: reader["TemplateName"].ToString() ?? "",
+                        Filter:       reader["Filter"].ToString() ?? "",
+                        ExposureSec:  reader["ExposureSec"] == DBNull.Value ? 0 : Convert.ToDouble(reader["ExposureSec"]),
+                        Desired:      Convert.ToInt32(reader["Desired"]),
+                        Acquired:     Convert.ToInt32(reader["Acquired"]),
+                        Accepted:     Convert.ToInt32(reader["Accepted"])
                     ));
                 }
             }
 
-            // Group into TsTargetData objects
+            // Group by target only — each exposure plan row is its own bar (one per template+filter)
             return rows
                 .GroupBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
                 .Select(g => new TsTargetData {
@@ -99,12 +103,13 @@ namespace NINA.Plugin.NightSummary.Data {
                     RA         = g.First().RA,
                     Dec        = g.First().Dec,
                     Rotation   = g.First().Rotation,
-                    Filters    = g.GroupBy(r => r.Filter, StringComparer.OrdinalIgnoreCase)
-                                   .Select(fg => new TsFilterProgress {
-                                       Filter   = fg.Key,
-                                       Desired  = fg.Sum(r => r.Desired),
-                                       Acquired = fg.Sum(r => r.Acquired),
-                                       Accepted = fg.Sum(r => r.Accepted)
+                    Filters    = g.Select(r => new TsFilterProgress {
+                                       TemplateName = r.TemplateName,
+                                       Filter       = r.Filter,
+                                       ExposureSec  = r.ExposureSec,
+                                       Desired      = r.Desired,
+                                       Acquired     = r.Acquired,
+                                       Accepted     = r.Accepted
                                    }).ToList()
                 })
                 .ToList();

@@ -6,10 +6,12 @@ namespace NINA.Plugin.NightSummary.Data {
     /// Per-filter exposure progress pulled from the Target Scheduler database.
     /// </summary>
     public class TsFilterProgress {
-        public string Filter   { get; set; }
-        public int    Desired  { get; set; }
-        public int    Acquired { get; set; }
-        public int    Accepted { get; set; }
+        public string Filter       { get; set; }
+        public string TemplateName { get; set; }
+        public double ExposureSec  { get; set; }
+        public int    Desired      { get; set; }
+        public int    Acquired     { get; set; }
+        public int    Accepted     { get; set; }
     }
 
     /// <summary>

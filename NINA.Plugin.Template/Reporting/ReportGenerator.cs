@@ -74,11 +74,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine(".ts-target-info { flex: 1; }");
             sb.AppendLine(".ts-coords { font-size: 12px; color: #888; margin: 4px 0 12px; }");
             sb.AppendLine(".ts-filter-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }");
-            sb.AppendLine(".ts-filter-name { min-width: 44px; font-size: 13px; color: #a0c4ff; }");
+            sb.AppendLine(".ts-filter-name { width: 180px; min-width: 180px; max-width: 180px; font-size: 13px; color: #a0c4ff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0; }");
             sb.AppendLine(".ts-bar-track { flex: 1; height: 14px; background: #2d2d5e; border-radius: 4px; position: relative; overflow: hidden; }");
             sb.AppendLine(".ts-bar-accepted { position: absolute; left: 0; top: 0; bottom: 0; background: #7eb8f7; }");
             sb.AppendLine(".ts-bar-acquired { position: absolute; top: 0; bottom: 0; background: #3a5a7a; }");
-            sb.AppendLine(".ts-bar-label { font-size: 12px; color: #888; white-space: nowrap; min-width: 110px; text-align: right; }");
+            sb.AppendLine(".ts-bar-label { font-size: 12px; color: #888; white-space: nowrap; width: 150px; min-width: 150px; max-width: 150px; text-align: right; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; }");
             sb.AppendLine(".ts-cumulative { font-size: 12px; color: #888; margin-top: 12px; }");
             sb.AppendLine("details.history-section { margin-top: 12px; }");
             sb.AppendLine("details.history-section > summary { cursor: pointer; color: #a0c4ff; font-size: 13px; user-select: none; list-style: none; }");
@@ -160,8 +160,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
             double yieldPct = effectiveWindowSec > 0 ? (totalExposureSec / effectiveWindowSec) * 100.0 : 0;
             yieldPct = Math.Min(yieldPct, 100.0); // cap at 100%
 
-            // Avg HFR (session-wide)
-            var hfrImages = data.Images.Where(i => i.HFR > 0).ToList();
+            // Avg HFR and Avg Guiding RMS (session-wide)
+            var hfrImages     = data.Images.Where(i => i.HFR > 0).ToList();
+            var guidingImages = data.Images.Where(i => i.GuidingRMSTotal > 0).ToList();
 
             sb.AppendLine("<h2>Session Overview</h2>");
             sb.AppendLine("<div>");
@@ -170,6 +171,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{targetCount}</div><div class='stat-label'>Targets</div></div>");
             if (hfrImages.Any())
                 sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{hfrImages.Average(i => i.HFR):F2}</div><div class='stat-label'>Avg HFR</div></div>");
+            if (guidingImages.Any())
+                sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{guidingImages.Average(i => i.GuidingRMSTotal):F2}\"</div><div class='stat-label'>Avg Guiding RMS</div></div>");
             var yieldTooltip = hasSafetyMonitor
                 ? "Total exposure time ÷ (imaging window − roof-closed time). Measures how efficiently you collected images during time the roof was open."
                 : "Total exposure time ÷ imaging window (first to last image).";
@@ -311,31 +314,47 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 }
 
                 if (tsTarget != null) {
-                    // TS progress bars
+                    // TS progress bars — one per exposure plan row (template + filter)
                     sb.AppendLine("<p style='margin: 12px 0 4px; font-size: 13px; color: #a0c4ff;'><strong>Target Scheduler Progress</strong></p>");
-                    foreach (var f in tsTarget.Filters.OrderBy(f => FilterSortKey(f.Filter)).ThenBy(f => f.Filter)) {
+                    double totalIntegrationSec = 0;
+                    foreach (var f in tsTarget.Filters.OrderBy(f => FilterSortKey(f.Filter)).ThenBy(f => f.Filter).ThenBy(f => f.TemplateName)) {
                         var desired     = f.Desired;
-                        var acquired    = Math.Min(f.Acquired, desired);
-                        var accepted    = Math.Min(f.Accepted, acquired);
-                        var acceptedPct = desired > 0 ? (double)accepted            / desired * 100 : 0;
-                        var acquiredPct = desired > 0 ? (double)(acquired - accepted) / desired * 100 : 0;
+                        var accepted    = f.Accepted;
+                        var acceptedPct = desired > 0 ? (double)accepted / desired * 100.0 : 0;
+                        var pctLabel    = desired > 0 ? $" ({acceptedPct:F0}%)" : "";
+
+                        // Tonight's contribution: images captured this session for this filter (match by exposure duration too to handle multiple templates per filter)
+                        var tonightImages = target.Where(i => string.Equals(i.Filter, f.Filter, StringComparison.OrdinalIgnoreCase)
+                                                           && (f.ExposureSec <= 0 || Math.Abs(i.ExposureDuration - f.ExposureSec) < 1.0)).ToList();
+                        var tonightCount  = tonightImages.Count;
+
+                        // Integration: accepted frames × configured exposure time per template
+                        totalIntegrationSec += accepted * f.ExposureSec;
+
+                        // Bar widths based on accepted count so bar always matches the label
+                        var tonightBar = Math.Min(tonightCount, accepted);
+                        var priorBar   = Math.Max(0, accepted - tonightBar);
+                        var priorPct   = desired > 0 ? (double)priorBar   / desired * 100.0 : 0;
+                        var tonightPct = desired > 0 ? (double)tonightBar / desired * 100.0 : 0;
+
+                        var expLabel  = f.ExposureSec > 0 ? $" ({f.ExposureSec:F0}s)" : "";
+                        var barLabel  = !string.IsNullOrEmpty(f.TemplateName) ? $"{f.TemplateName}{expLabel}" : $"{f.Filter}{expLabel}";
+                        var tooltip   = tonightCount > 0 ? $"+{tonightCount} images tonight" : "";
 
                         sb.AppendLine("<div class='ts-filter-row'>");
-                        sb.AppendLine($"  <span class='ts-filter-name'>{f.Filter}</span>");
+                        sb.AppendLine($"  <span class='ts-filter-name'>{barLabel}</span>");
                         sb.AppendLine($"  <div class='ts-bar-track'>");
-                        sb.AppendLine($"    <div class='ts-bar-accepted' style='width:{acceptedPct:F1}%'></div>");
-                        sb.AppendLine($"    <div class='ts-bar-acquired' style='left:{acceptedPct:F1}%;width:{acquiredPct:F1}%'></div>");
+                        sb.AppendLine($"    <div class='ts-bar-accepted' style='width:{priorPct:F1}%'></div>");
+                        sb.AppendLine($"    <div class='ts-bar-acquired' style='left:{priorPct:F1}%;width:{tonightPct:F1}%' title='{tooltip}'></div>");
                         sb.AppendLine($"  </div>");
-                        sb.AppendLine($"  <span class='ts-bar-label'>{accepted}/{desired} accepted</span>");
+                        sb.AppendLine($"  <span class='ts-bar-label'>{accepted}/{desired} accepted{pctLabel}</span>");
                         sb.AppendLine("</div>");
                     }
 
-                    // Cumulative integration
-                    double prevSec = 0;
-                    data.CumulativeIntegrationSeconds?.TryGetValue(tsTarget.TargetName, out prevSec);
-                    var thisSec    = target.Where(i => i.Accepted).Sum(i => i.ExposureDuration);
-                    var totalHours = (prevSec + thisSec) / 3600.0;
-                    sb.AppendLine($"<p class='ts-cumulative'>Total integration (all sessions): {totalHours:F1}h</p>");
+                    // Cumulative integration estimate
+                    var totalHours    = totalIntegrationSec / 3600.0;
+                    var integTooltip  = "Estimated from TS accepted frames (or acquired if grading is pending) × configured exposure time per template. Reduce the TS accepted count manually to account for culled images.";
+                    sb.AppendLine($"<p class='ts-cumulative' title='{integTooltip}' style='cursor:help;'>Total integration (all sessions, estimate): ~{totalHours:F1}h</p>");
                 }
 
                 // No TS data: altitude chart at full width below target info
