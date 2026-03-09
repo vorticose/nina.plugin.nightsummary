@@ -89,10 +89,14 @@ namespace NINA.Plugin.NightSummary.Data {
                     cmd.ExecuteNonQuery();
 
                 // Migrate existing databases that predate added columns
-                MigrateAddColumn(conn, "Images", "FWHM",       "REAL DEFAULT 0");
-                MigrateAddColumn(conn, "Images", "Eccentricity","REAL DEFAULT 0");
-                MigrateAddColumn(conn, "Images", "RaHours",    "REAL DEFAULT 0");
-                MigrateAddColumn(conn, "Images", "DecDegrees", "REAL DEFAULT 0");
+                MigrateAddColumn(conn, "Images",   "FWHM",             "REAL DEFAULT 0");
+                MigrateAddColumn(conn, "Images",   "Eccentricity",     "REAL DEFAULT 0");
+                MigrateAddColumn(conn, "Images",   "RaHours",          "REAL DEFAULT 0");
+                MigrateAddColumn(conn, "Images",   "DecDegrees",       "REAL DEFAULT 0");
+                MigrateAddColumn(conn, "Sessions", "CamXSize",         "INTEGER DEFAULT 0");
+                MigrateAddColumn(conn, "Sessions", "CamYSize",         "INTEGER DEFAULT 0");
+                MigrateAddColumn(conn, "Sessions", "PixelSizeMicrons", "REAL DEFAULT 0");
+                MigrateAddColumn(conn, "Sessions", "FocalLengthMm",    "REAL DEFAULT 0");
             }
         }
 
@@ -132,6 +136,30 @@ namespace NINA.Plugin.NightSummary.Data {
                 }
             }
             return session;
+        }
+
+        /// <summary>
+        /// Stores camera hardware info captured from the first image of the session.
+        /// Safe to call multiple times — only updates if values are still zero.
+        /// </summary>
+        public void UpdateSessionCameraInfo(string sessionId, int camXSize, int camYSize, double pixelSizeMicrons, double focalLengthMm) {
+            using (var conn = new SQLiteConnection(connectionString)) {
+                conn.Open();
+                string sql = @"
+                    UPDATE Sessions
+                    SET CamXSize = @CamXSize, CamYSize = @CamYSize,
+                        PixelSizeMicrons = @PixelSizeMicrons, FocalLengthMm = @FocalLengthMm
+                    WHERE SessionId = @SessionId AND CamXSize = 0";
+
+                using (var cmd = new SQLiteCommand(sql, conn)) {
+                    cmd.Parameters.AddWithValue("@SessionId",        sessionId);
+                    cmd.Parameters.AddWithValue("@CamXSize",         camXSize);
+                    cmd.Parameters.AddWithValue("@CamYSize",         camYSize);
+                    cmd.Parameters.AddWithValue("@PixelSizeMicrons", pixelSizeMicrons);
+                    cmd.Parameters.AddWithValue("@FocalLengthMm",    focalLengthMm);
+                    cmd.ExecuteNonQuery();
+                }
+            }
         }
 
         /// <summary>
@@ -241,15 +269,7 @@ namespace NINA.Plugin.NightSummary.Data {
                     using (var reader = cmd.ExecuteReader()) {
                         if (reader.Read()) {
                             try {
-                                return new SessionRecord {
-                                    Id = Convert.ToInt32(reader["Id"]),
-                                    SessionId = reader["SessionId"] == DBNull.Value ? "" : reader["SessionId"].ToString(),
-                                    SessionStart = reader["SessionStart"] == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionStart"].ToString()),
-                                    SessionEnd = reader["SessionEnd"] == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionEnd"].ToString()),
-                                    ProfileName = reader["ProfileName"] == DBNull.Value ? "" : reader["ProfileName"].ToString(),
-                                    Notes = reader["Notes"] == DBNull.Value ? "" : reader["Notes"].ToString(),
-                                    ReportSent = reader["ReportSent"] == DBNull.Value ? false : Convert.ToInt32(reader["ReportSent"]) == 1
-                                };
+                                return ReadSessionRecord(reader);
                             } catch (Exception ex) {
                                 Logger.Error($"NightSummary: Error reading session record field: {ex.Message}");
                                 throw;
@@ -391,15 +411,7 @@ namespace NINA.Plugin.NightSummary.Data {
                 using (var reader = cmd.ExecuteReader()) {
                     while (reader.Read()) {
                         try {
-                            result.Add(new SessionRecord {
-                                Id          = Convert.ToInt32(reader["Id"]),
-                                SessionId   = reader["SessionId"]   == DBNull.Value ? "" : reader["SessionId"].ToString(),
-                                SessionStart = reader["SessionStart"] == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionStart"].ToString()),
-                                SessionEnd   = reader["SessionEnd"]   == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionEnd"].ToString()),
-                                ProfileName  = reader["ProfileName"]  == DBNull.Value ? "" : reader["ProfileName"].ToString(),
-                                Notes        = reader["Notes"]        == DBNull.Value ? "" : reader["Notes"].ToString(),
-                                ReportSent   = reader["ReportSent"]   == DBNull.Value ? false : Convert.ToInt32(reader["ReportSent"]) == 1
-                            });
+                            result.Add(ReadSessionRecord(reader));
                         } catch (Exception ex) {
                             Logger.Error($"NightSummary: Error reading session record: {ex.Message}");
                         }
@@ -420,15 +432,7 @@ namespace NINA.Plugin.NightSummary.Data {
                     using (var reader = cmd.ExecuteReader()) {
                         if (reader.Read()) {
                             try {
-                                return new SessionRecord {
-                                    Id = Convert.ToInt32(reader["Id"]),
-                                    SessionId = reader["SessionId"] == DBNull.Value ? "" : reader["SessionId"].ToString(),
-                                    SessionStart = reader["SessionStart"] == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionStart"].ToString()),
-                                    SessionEnd = reader["SessionEnd"] == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionEnd"].ToString()),
-                                    ProfileName = reader["ProfileName"] == DBNull.Value ? "" : reader["ProfileName"].ToString(),
-                                    Notes = reader["Notes"] == DBNull.Value ? "" : reader["Notes"].ToString(),
-                                    ReportSent = reader["ReportSent"] == DBNull.Value ? false : Convert.ToInt32(reader["ReportSent"]) == 1
-                                };
+                                return ReadSessionRecord(reader);
                             } catch (Exception ex) {
                                 Logger.Error($"NightSummary: Error reading latest session record: {ex.Message}");
                                 throw;
@@ -438,6 +442,22 @@ namespace NINA.Plugin.NightSummary.Data {
                 }
             }
             return null;
+        }
+
+        private static SessionRecord ReadSessionRecord(SQLiteDataReader reader) {
+            return new SessionRecord {
+                Id               = Convert.ToInt32(reader["Id"]),
+                SessionId        = reader["SessionId"]        == DBNull.Value ? "" : reader["SessionId"].ToString(),
+                SessionStart     = reader["SessionStart"]     == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionStart"].ToString()),
+                SessionEnd       = reader["SessionEnd"]       == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionEnd"].ToString()),
+                ProfileName      = reader["ProfileName"]      == DBNull.Value ? "" : reader["ProfileName"].ToString(),
+                Notes            = reader["Notes"]            == DBNull.Value ? "" : reader["Notes"].ToString(),
+                ReportSent       = reader["ReportSent"]       == DBNull.Value ? false : Convert.ToInt32(reader["ReportSent"]) == 1,
+                CamXSize         = reader["CamXSize"]         == DBNull.Value ? 0 : Convert.ToInt32(reader["CamXSize"]),
+                CamYSize         = reader["CamYSize"]         == DBNull.Value ? 0 : Convert.ToInt32(reader["CamYSize"]),
+                PixelSizeMicrons = reader["PixelSizeMicrons"] == DBNull.Value ? 0 : Convert.ToDouble(reader["PixelSizeMicrons"]),
+                FocalLengthMm    = reader["FocalLengthMm"]    == DBNull.Value ? 0 : Convert.ToDouble(reader["FocalLengthMm"])
+            };
         }
     }
 }

@@ -22,6 +22,7 @@ namespace NINA.Plugin.NightSummary.Session {
         private readonly SessionEventCollector eventCollector;
         private readonly ReportGenerator       reportGenerator;
         private readonly IProfileService       profileService;
+        private readonly ICameraMediator       cameraMediator;
 
         [ImportingConstructor]
         public SessionService(
@@ -29,9 +30,11 @@ namespace NINA.Plugin.NightSummary.Session {
             IProfileService        profileService,
             ISafetyMonitorMediator safetyMonitorMediator,
             IFocuserMediator       focuserMediator,
-            ITelescopeMediator     telescopeMediator) {
+            ITelescopeMediator     telescopeMediator,
+            ICameraMediator        cameraMediator) {
 
             this.profileService  = profileService;
+            this.cameraMediator  = cameraMediator;
             var database         = new SessionDatabase();
             this.collector       = new SessionCollector(imageSaveMediator, database);
             this.eventCollector  = new SessionEventCollector(database, safetyMonitorMediator, focuserMediator, telescopeMediator);
@@ -42,6 +45,24 @@ namespace NINA.Plugin.NightSummary.Session {
             var name = profileService?.ActiveProfile?.Name ?? profileName;
             collector.StartSession(name);
             eventCollector.StartSession(collector.GetCurrentSessionId());
+
+            // Capture camera hardware info while the camera is connected.
+            // Stored in the session so report generation works correctly even
+            // after the camera is disconnected (e.g. when resending old sessions).
+            try {
+                var camInfo     = cameraMediator?.GetInfo();
+                var focalLength = profileService?.ActiveProfile?.TelescopeSettings?.FocalLength ?? 0;
+                if (camInfo != null && camInfo.XSize > 0 && camInfo.YSize > 0
+                    && camInfo.PixelSize > 0 && focalLength > 0) {
+                    collector.Database.UpdateSessionCameraInfo(
+                        collector.GetCurrentSessionId(),
+                        camInfo.XSize, camInfo.YSize,
+                        camInfo.PixelSize, focalLength);
+                    Logger.Info($"NightSummary: Stored camera info — {camInfo.XSize}×{camInfo.YSize}px, {camInfo.PixelSize}µm, {focalLength}mm focal");
+                }
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Could not read camera info at session start. {ex.Message}");
+            }
         }
 
         public void EndSession() {
@@ -61,7 +82,7 @@ namespace NINA.Plugin.NightSummary.Session {
             var tsData       = FetchTsData(images);
             var cumulative   = database.GetCumulativeIntegrationByTarget(sessionId);
             var history      = BuildSessionHistory(database, images, sessionId);
-            var (fovW, fovH) = ComputeCameraFov();
+            var (fovW, fovH) = ComputeCameraFov(session);
             var (lat, lon)   = GetObserverCoords();
             var reportData   = new ReportData {
                 Session                      = session,
@@ -114,7 +135,7 @@ namespace NINA.Plugin.NightSummary.Session {
                 var tsData       = FetchTsData(images);
                 var cumulative   = testDb.GetCumulativeIntegrationByTarget(session.SessionId);
                 var history      = BuildSessionHistory(testDb, images, session.SessionId);
-                var (fovW, fovH) = ComputeCameraFov();
+                var (fovW, fovH) = ComputeCameraFov(session);
                 var (lat, lon)   = GetObserverCoords();
                 var reportData   = new ReportData {
                     Session                      = session,
@@ -273,23 +294,40 @@ namespace NINA.Plugin.NightSummary.Session {
         }
 
         /// <summary>
-        /// Computes the imaging camera's field of view in degrees from the active profile.
-        /// Uses pixel size (µm), focal length (mm), and sensor dimensions (px) from the profile.
-        /// Falls back to (1.0, 1.0) if any value is missing or zero.
+        /// Computes the imaging camera's field of view in degrees.
+        /// Primary source: camera hardware info stored in the session record (captured from the first image).
+        /// Fallback: pixel size and focal length from the active NINA profile, with sensor size from FramingAssistantSettings.
+        /// Falls back to (1.0, 1.0) if no usable values are found.
         /// </summary>
-        private (double widthDeg, double heightDeg) ComputeCameraFov() {
+        private (double widthDeg, double heightDeg) ComputeCameraFov(SessionRecord session = null) {
             try {
+                // Prefer values captured from the actual connected camera at session time
+                if (session != null && session.CamXSize > 0 && session.CamYSize > 0
+                    && session.PixelSizeMicrons > 0 && session.FocalLengthMm > 0) {
+                    var ps  = 206.265 * session.PixelSizeMicrons / session.FocalLengthMm;
+                    var w   = ps * session.CamXSize  / 3600.0;
+                    var h   = ps * session.CamYSize  / 3600.0;
+                    Logger.Info($"NightSummary: ComputeCameraFov (from session) — {session.CamXSize}×{session.CamYSize}px, {session.PixelSizeMicrons}µm, {session.FocalLengthMm}mm → FOV={w:F4}° × {h:F4}°");
+                    return (w, h);
+                }
+
+                // Fallback: read from the active NINA profile
                 var pixelSize   = profileService?.ActiveProfile?.CameraSettings?.PixelSize     ?? 0;
                 var focalLength = profileService?.ActiveProfile?.TelescopeSettings?.FocalLength ?? 0;
                 var camWidth    = profileService?.ActiveProfile?.FramingAssistantSettings?.CameraWidth  ?? 0;
                 var camHeight   = profileService?.ActiveProfile?.FramingAssistantSettings?.CameraHeight ?? 0;
 
-                if (pixelSize <= 0 || focalLength <= 0 || camWidth <= 0 || camHeight <= 0)
-                    return (1.0, 1.0);
+                Logger.Info($"NightSummary: ComputeCameraFov (from profile) — pixelSize={pixelSize} focalLength={focalLength} camWidth={camWidth} camHeight={camHeight}");
 
-                var plateScale = 206.265 * pixelSize / focalLength;  // arcsec/pixel
+                if (pixelSize <= 0 || focalLength <= 0 || camWidth <= 0 || camHeight <= 0) {
+                    Logger.Warning("NightSummary: ComputeCameraFov — profile values missing, falling back to (1.0, 1.0)");
+                    return (1.0, 1.0);
+                }
+
+                var plateScale = 206.265 * pixelSize / focalLength;
                 var widthDeg   = plateScale * camWidth  / 3600.0;
                 var heightDeg  = plateScale * camHeight / 3600.0;
+                Logger.Info($"NightSummary: ComputeCameraFov — plateScale={plateScale:F4} arcsec/px, FOV={widthDeg:F4}° × {heightDeg:F4}°");
                 return (widthDeg, heightDeg);
             } catch {
                 return (1.0, 1.0);

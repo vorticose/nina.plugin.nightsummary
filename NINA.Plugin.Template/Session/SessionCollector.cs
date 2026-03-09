@@ -44,6 +44,7 @@ namespace NINA.Plugin.NightSummary.Session {
             isCollecting = false;
             database.FinalizeSession(currentSession.SessionId, DateTime.Now, false);
             Logger.Info($"NightSummary: Session ended. SessionId={currentSession.SessionId}");
+            currentSession = null;
         }
 
         public string GetCurrentSessionId() {

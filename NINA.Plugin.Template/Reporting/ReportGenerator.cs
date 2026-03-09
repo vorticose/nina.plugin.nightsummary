@@ -1,3 +1,4 @@
+using NINA.Core.Utility;
 using NINA.Plugin.NightSummary.Data;
 using System;
 using System.Collections.Generic;
@@ -124,15 +125,58 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
         private string BuildOverviewStatsSection(ReportData data) {
             var sb = new StringBuilder();
-            var acceptedImages = data.Images.Where(i => i.Accepted).ToList();
-            var totalExposureTime = data.Images.Sum(i => i.ExposureDuration);
+            var totalExposureSec = data.Images.Sum(i => i.ExposureDuration);
+            var targetCount      = data.Images.Select(i => i.TargetName).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+
+            // Imaging window: first image to last image
+            var firstImage = data.Images.Min(i => i.Timestamp);
+            var lastImage  = data.Images.Max(i => i.Timestamp);
+            var windowSec  = (lastImage - firstImage).TotalSeconds;
+
+            // Roof-closed exclusion: sum time between each RoofClosed→RoofOpen pair within the imaging window
+            var roofEvents    = data.Events
+                                    .Where(e => e.EventType == "RoofClosed" || e.EventType == "RoofOpen")
+                                    .OrderBy(e => e.Timestamp)
+                                    .ToList();
+            double roofClosedSec   = 0;
+            bool   hasSafetyMonitor = roofEvents.Any();
+            DateTime? closedAt = null;
+            foreach (var ev in roofEvents) {
+                if (ev.EventType == "RoofClosed") {
+                    closedAt = ev.Timestamp;
+                } else if (ev.EventType == "RoofOpen" && closedAt.HasValue) {
+                    var overlapStart = closedAt.Value < firstImage ? firstImage : closedAt.Value;
+                    var overlapEnd   = ev.Timestamp  > lastImage  ? lastImage  : ev.Timestamp;
+                    if (overlapEnd > overlapStart)
+                        roofClosedSec += (overlapEnd - overlapStart).TotalSeconds;
+                    closedAt = null;
+                }
+            }
+            // If roof was closed at session end with no matching RoofOpen, count to lastImage
+            if (closedAt.HasValue && closedAt.Value < lastImage)
+                roofClosedSec += (lastImage - closedAt.Value).TotalSeconds;
+
+            var effectiveWindowSec = windowSec - roofClosedSec;
+            double yieldPct = effectiveWindowSec > 0 ? (totalExposureSec / effectiveWindowSec) * 100.0 : 0;
+            yieldPct = Math.Min(yieldPct, 100.0); // cap at 100%
+
+            // Avg HFR (session-wide)
+            var hfrImages = data.Images.Where(i => i.HFR > 0).ToList();
+
             sb.AppendLine("<h2>Session Overview</h2>");
             sb.AppendLine("<div>");
             sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{data.Images.Count}</div><div class='stat-label'>Total Images</div></div>");
-            sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{acceptedImages.Count}</div><div class='stat-label'>Accepted</div></div>");
-            sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{data.Images.Count - acceptedImages.Count}</div><div class='stat-label'>Rejected</div></div>");
-            sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{TimeSpan.FromSeconds(totalExposureTime).TotalHours:F1}h</div><div class='stat-label'>Total Exposure</div></div>");
+            sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{TimeSpan.FromSeconds(totalExposureSec).TotalHours:F1}h</div><div class='stat-label'>Total Exposure</div></div>");
+            sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{targetCount}</div><div class='stat-label'>Targets</div></div>");
+            if (hfrImages.Any())
+                sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{hfrImages.Average(i => i.HFR):F2}</div><div class='stat-label'>Avg HFR</div></div>");
+            var yieldTooltip = hasSafetyMonitor
+                ? "Total exposure time ÷ (imaging window − roof-closed time). Measures how efficiently you collected images during time the roof was open."
+                : "Total exposure time ÷ imaging window (first to last image).";
+            sb.AppendLine($"<div class='stat-box' title='{yieldTooltip}' style='cursor:help;'><div class='stat-value'>{yieldPct:F0}%</div><div class='stat-label'>Yield{(hasSafetyMonitor ? "" : "*")}</div></div>");
             sb.AppendLine("</div>");
+            if (!hasSafetyMonitor)
+                sb.AppendLine("<p style='font-size:11px; color:#666; margin-top:4px;'>* Yield calculated without cloud exclusion — no safety monitor events recorded</p>");
             return sb.ToString();
         }
 
@@ -147,6 +191,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var fovH     = data.CameraFovHeightDeg;
             var thumbFov = Math.Max(fovW, fovH) * 1.5;
             if (thumbFov <= 0) thumbFov = 1.0;
+            Logger.Info($"NightSummary: Thumbnail FOV — fovW={fovW:F4}° fovH={fovH:F4}° thumbFov={thumbFov:F4}°");
             double boxW = (fovW / thumbFov) * thumbPx;
             double boxH = (fovH / thumbFov) * thumbPx;
             double cx   = thumbPx / 2.0;

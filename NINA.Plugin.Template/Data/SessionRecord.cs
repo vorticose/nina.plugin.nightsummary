@@ -27,6 +27,13 @@ namespace NINA.Plugin.NightSummary.Data {
         // Whether the end of session report was successfully sent
         public bool ReportSent { get; set; }
 
+        // Camera hardware info captured from the first image of the session.
+        // Used to compute FOV for the sky survey thumbnail.
+        public int    CamXSize         { get; set; }
+        public int    CamYSize         { get; set; }
+        public double PixelSizeMicrons { get; set; }
+        public double FocalLengthMm    { get; set; }
+
         // Display string for session picker dropdown
         public string DisplayLabel => $"{SessionStart:yyyy-MM-dd  HH:mm}  —  {ProfileName}";
     }
