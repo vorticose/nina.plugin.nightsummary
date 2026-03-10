@@ -23,6 +23,38 @@ namespace NINA.Plugin.NightSummary.Reporting {
         }
 
         /// <summary>
+        /// Sends a simple test email to verify credentials and connectivity.
+        /// Returns true if successful, false if it failed.
+        /// </summary>
+        public async Task<bool> SendTestAsync() {
+            try {
+                Logger.Info($"NightSummary: Sending test email to {recipientAddress}");
+
+                var message = new MailMessage {
+                    From    = new MailAddress(gmailAddress, "NINA Night Summary"),
+                    Subject = "Night Summary — Test Email",
+                    Body    = "This is a test email from Night Summary. If you received this, your email settings are configured correctly.",
+                    IsBodyHtml = false
+                };
+                message.To.Add(recipientAddress);
+
+                using (var client = new SmtpClient("smtp.gmail.com", 587)) {
+                    client.EnableSsl      = true;
+                    client.Credentials    = new NetworkCredential(gmailAddress, gmailAppPassword);
+                    client.DeliveryMethod = SmtpDeliveryMethod.Network;
+                    await client.SendMailAsync(message);
+                }
+
+                Logger.Info("NightSummary: Test email sent successfully");
+                return true;
+
+            } catch (Exception ex) {
+                Logger.Error($"NightSummary: Failed to send test email. {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Sends the HTML report as an email attachment with a brief plain-text body.
         /// Returns true if successful, false if it failed.
         /// </summary>

@@ -400,6 +400,51 @@ namespace NINA.Plugin.NightSummary.Data {
         }
 
         /// <summary>
+        /// Returns the most recent <paramref name="limit"/> sessions, newest-first.
+        /// </summary>
+        public List<SessionRecord> GetRecentSessions(int limit) {
+            var result = new List<SessionRecord>();
+            using (var conn = new SQLiteConnection(connectionString)) {
+                conn.Open();
+                string sql = "SELECT * FROM Sessions ORDER BY SessionStart DESC LIMIT @Limit";
+                using (var cmd = new SQLiteCommand(sql, conn)) {
+                    cmd.Parameters.AddWithValue("@Limit", limit);
+                    using (var reader = cmd.ExecuteReader()) {
+                        while (reader.Read()) {
+                            try { result.Add(ReadSessionRecord(reader)); }
+                            catch (Exception ex) { Logger.Error($"NightSummary: Error reading session record: {ex.Message}"); }
+                        }
+                    }
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Returns all sessions whose start date falls within [from, to], newest-first.
+        /// </summary>
+        public List<SessionRecord> GetSessionsByDateRange(DateTime from, DateTime to) {
+            var result = new List<SessionRecord>();
+            using (var conn = new SQLiteConnection(connectionString)) {
+                conn.Open();
+                string sql = @"SELECT * FROM Sessions
+                               WHERE SessionStart >= @From AND SessionStart <= @To
+                               ORDER BY SessionStart DESC";
+                using (var cmd = new SQLiteCommand(sql, conn)) {
+                    cmd.Parameters.AddWithValue("@From", from.ToString("o"));
+                    cmd.Parameters.AddWithValue("@To",   to.Date.AddDays(1).AddSeconds(-1).ToString("o"));
+                    using (var reader = cmd.ExecuteReader()) {
+                        while (reader.Read()) {
+                            try { result.Add(ReadSessionRecord(reader)); }
+                            catch (Exception ex) { Logger.Error($"NightSummary: Error reading session record: {ex.Message}"); }
+                        }
+                    }
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
         /// Returns all sessions ordered newest-first.
         /// </summary>
         public List<SessionRecord> GetAllSessions() {

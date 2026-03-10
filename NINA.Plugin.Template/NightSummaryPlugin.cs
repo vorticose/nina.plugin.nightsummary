@@ -37,6 +37,30 @@ namespace NINA.Plugin.NightSummary {
             set { _selectedSession = value; RaisePropertyChanged(); }
         }
 
+        private DateTime _searchFrom = DateTime.Today.AddMonths(-1);
+        public DateTime SearchFrom {
+            get => _searchFrom;
+            set { _searchFrom = value; RaisePropertyChanged(); }
+        }
+
+        private DateTime _searchTo = DateTime.Today;
+        public DateTime SearchTo {
+            get => _searchTo;
+            set { _searchTo = value; RaisePropertyChanged(); }
+        }
+
+        private string _searchResultText = "";
+        public string SearchResultText {
+            get => _searchResultText;
+            set { _searchResultText = value; RaisePropertyChanged(); }
+        }
+
+        public ButtonStatus EmailTestStatus   { get; } = new ButtonStatus();
+        public ButtonStatus DiscordTestStatus { get; } = new ButtonStatus();
+        public ButtonStatus PushoverTestStatus{ get; } = new ButtonStatus();
+        public ButtonStatus ResendStatus      { get; } = new ButtonStatus();
+        public ButtonStatus TestReportStatus  { get; } = new ButtonStatus();
+
         [ImportingConstructor]
         public NightSummaryPlugin(
             IProfileService profileService,
@@ -46,38 +70,59 @@ namespace NINA.Plugin.NightSummary {
 
             this.sessionService = sessionService;
 
+            TestEmailCommand = new RelayCommand(async () => {
+                EmailTestStatus.Text = "";
+                var gmail    = Settings.Default.GmailAddress;
+                var password = Settings.Default.GmailAppPassword;
+                var recipient= Settings.Default.RecipientAddress;
+                if (string.IsNullOrWhiteSpace(gmail) || string.IsNullOrWhiteSpace(password) || string.IsNullOrWhiteSpace(recipient)) {
+                    EmailTestStatus.Text = "✗ Fill in all email fields first";
+                    return;
+                }
+                var sender = new EmailSender(gmail, password, recipient);
+                bool ok = await sender.SendTestAsync();
+                EmailTestStatus.Text = ok ? "✓ Sent" : "✗ Failed — check NINA log";
+            });
+
             TestDiscordCommand = new RelayCommand(async () => {
+                DiscordTestStatus.Text = "";
                 var url = Settings.Default.DiscordWebhookUrl;
                 if (string.IsNullOrWhiteSpace(url)) {
-                    Logger.Warning("NightSummary: Discord test skipped — webhook URL is empty");
+                    DiscordTestStatus.Text = "✗ Webhook URL is empty";
                     return;
                 }
                 var sender = new DiscordSender(url);
-                await sender.SendTestAsync();
+                bool ok = await sender.SendTestAsync();
+                DiscordTestStatus.Text = ok ? "✓ Sent" : "✗ Failed — check NINA log";
             });
 
             TestPushoverCommand = new RelayCommand(async () => {
+                PushoverTestStatus.Text = "";
                 var appToken = Settings.Default.PushoverAppToken;
                 var userKey  = Settings.Default.PushoverUserKey;
                 if (string.IsNullOrWhiteSpace(appToken) || string.IsNullOrWhiteSpace(userKey)) {
-                    Logger.Warning("NightSummary: Pushover test skipped — app token or user key is empty");
+                    PushoverTestStatus.Text = "✗ App token or user key is empty";
                     return;
                 }
                 var sender = new PushoverSender(appToken, userKey);
-                await sender.SendAsync("Night Summary", "Pushover is configured correctly!");
+                bool ok = await sender.SendAsync("Night Summary", "Pushover is configured correctly!");
+                PushoverTestStatus.Text = ok ? "✓ Sent" : "✗ Failed — check NINA log";
             });
 
             SendTestReportCommand = new RelayCommand(async () => {
+                TestReportStatus.Text = "";
                 var testDbPath = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                     "NINA", "Plugins", CoreUtil.Version, "NightSummary", "test", "nightsummary.sqlite");
 
                 if (!File.Exists(testDbPath)) {
                     Logger.Warning($"NightSummary: Test database not found at {testDbPath}");
+                    TestReportStatus.Text = "✗ Test database not found";
                     return;
                 }
 
                 await this.sessionService.SendFromDatabaseAsync(testDbPath);
+                TestReportStatus.Text = "✓ Sent";
             });
 
             liveDbPath = Path.Combine(
@@ -85,15 +130,49 @@ namespace NINA.Plugin.NightSummary {
                 "NINA", "Plugins", CoreUtil.Version, "NightSummary", "nightsummary.sqlite");
 
             RefreshSessionsCommand = new RelayCommand(async () => {
+                SearchResultText = "";
+                await Task.Run(() => LoadSessions());
+            });
+
+            SearchSessionsCommand = new RelayCommand(async () => {
+                if (!File.Exists(liveDbPath)) return;
+                await Task.Run(() => {
+                    try {
+                        var db       = new SessionDatabase(liveDbPath);
+                        var sessions = db.GetSessionsByDateRange(SearchFrom, SearchTo);
+                        System.Windows.Application.Current.Dispatcher.Invoke(() => {
+                            AvailableSessions.Clear();
+                            foreach (var s in sessions)
+                                AvailableSessions.Add(s);
+                            SelectedSession = AvailableSessions.Count > 0 ? AvailableSessions[0] : null;
+                            SearchResultText = sessions.Count == 0
+                                ? "No sessions found in that range"
+                                : $"{sessions.Count} session{(sessions.Count == 1 ? "" : "s")} found";
+                        });
+                    } catch (Exception ex) {
+                        Logger.Error($"NightSummary: Failed to search sessions. {ex.Message}");
+                    }
+                });
+            });
+
+            ClearSearchCommand = new RelayCommand(async () => {
+                SearchResultText = "";
                 await Task.Run(() => LoadSessions());
             });
 
             ResendSessionCommand = new RelayCommand(async () => {
+                ResendStatus.Text = "";
                 if (!File.Exists(liveDbPath)) {
                     Logger.Warning($"NightSummary: Live database not found at {liveDbPath}");
+                    ResendStatus.Text = "✗ No session database found";
                     return;
                 }
-                await this.sessionService.SendFromDatabaseAsync(liveDbPath, SelectedSession?.SessionId);
+                if (SelectedSession == null) {
+                    ResendStatus.Text = "✗ No session selected";
+                    return;
+                }
+                await this.sessionService.SendFromDatabaseAsync(liveDbPath, SelectedSession.SessionId);
+                ResendStatus.Text = "✓ Sent";
             });
 
             // Keep old name pointing to the same command for backwards compat
@@ -204,7 +283,7 @@ namespace NINA.Plugin.NightSummary {
             try {
                 if (!File.Exists(liveDbPath)) return;
                 var db       = new SessionDatabase(liveDbPath);
-                var sessions = db.GetAllSessions();
+                var sessions = db.GetRecentSessions(30);
                 System.Windows.Application.Current.Dispatcher.Invoke(() => {
                     AvailableSessions.Clear();
                     foreach (var s in sessions)
@@ -217,17 +296,49 @@ namespace NINA.Plugin.NightSummary {
             }
         }
 
+        public ICommand TestEmailCommand { get; }
         public ICommand TestDiscordCommand { get; }
         public ICommand TestPushoverCommand { get; }
         public ICommand SendTestReportCommand { get; }
         public ICommand ResendLastSessionCommand { get; }
         public ICommand ResendSessionCommand { get; }
         public ICommand RefreshSessionsCommand { get; }
+        public ICommand SearchSessionsCommand { get; }
+        public ICommand ClearSearchCommand { get; }
 
         public event PropertyChangedEventHandler PropertyChanged;
         protected void RaisePropertyChanged([CallerMemberName] string propertyName = null) {
             this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
+    }
+
+    /// <summary>
+    /// Bindable status indicator for action buttons in the Options UI.
+    /// Text starting with "✓" is shown in green; anything else in red.
+    /// </summary>
+    public class ButtonStatus : INotifyPropertyChanged {
+        private string _text = "";
+        public string Text {
+            get => _text;
+            set {
+                _text = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Text)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Foreground)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Visibility)));
+            }
+        }
+
+        public System.Windows.Media.Brush Foreground =>
+            _text.StartsWith("✓")
+                ? System.Windows.Media.Brushes.LightGreen
+                : System.Windows.Media.Brushes.Salmon;
+
+        public System.Windows.Visibility Visibility =>
+            string.IsNullOrEmpty(_text)
+                ? System.Windows.Visibility.Collapsed
+                : System.Windows.Visibility.Visible;
+
+        public event PropertyChangedEventHandler PropertyChanged;
     }
 
     /// <summary>

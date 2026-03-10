@@ -85,7 +85,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("details.history-section > summary::-webkit-details-marker { display: none; }");
             sb.AppendLine("details.history-section > summary::before { content: '\\25B6\\00A0'; }");
             sb.AppendLine("details.history-section[open] > summary::before { content: '\\25BC\\00A0'; }");
-            sb.AppendLine("</style></head><body>");
+            sb.AppendLine("</style><script>");
+            sb.AppendLine("function nsRestripe(tableId){var t=document.getElementById(tableId);if(!t)return;var idx=0;Array.from(t.rows).forEach(function(r){if(r.classList.contains('ns-detail-row')){r.style.backgroundColor='transparent';return;}r.style.backgroundColor=(idx%2===1)?'#16213e':'transparent';idx++;});}");
+            sb.AppendLine("function nsToggle(detailId,arrowId,tableId){var r=document.getElementById(detailId),a=document.getElementById(arrowId);if(r.style.display==='none'){r.style.display='table-row';a.textContent='▼';}else{r.style.display='none';a.textContent='▶';}nsRestripe(tableId);}");
+            sb.AppendLine("document.addEventListener('DOMContentLoaded',function(){nsRestripe('iq-table');});");
+            sb.AppendLine("</script></head><body>");
 
             sb.Append(BuildHeader(data));
 
@@ -301,6 +305,20 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine("</table>");
                 sb.AppendLine("</div>");
 
+                // Warn about unrecognized filter names that were excluded from CV
+                var unrecognizedFilters = target
+                    .Select(i => i.Filter)
+                    .Where(f => !string.IsNullOrEmpty(f) && !BroadbandFilters.Contains(f) && !NarrowbandFilters.Contains(f))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(f => f)
+                    .ToList();
+                if (unrecognizedFilters.Any()) {
+                    var filterList = string.Join(", ", unrecognizedFilters.Select(f => $"<strong>{f}</strong>"));
+                    sb.AppendLine($"<p style='font-size:11px; color:#b8860b; margin-top:6px;'>&#9888; Filter{(unrecognizedFilters.Count == 1 ? "" : "s")} not recognized for CV calculation: {filterList}. " +
+                                  $"Expected broadband (L, R, G, B) or narrowband (H, Ha, S, Sii, O, Oiii). " +
+                                  $"Rename the filter in your NINA equipment profile to include it.</p>");
+                }
+
                 // Session history (collapsible)
                 List<TargetSessionHistory> history = null;
                 data.SessionHistory?.TryGetValue(target.Key, out history);
@@ -395,17 +413,41 @@ namespace NINA.Plugin.NightSummary.Reporting {
             if (!imagesWithHFR.Any() && !imagesWithFWHM.Any() && !imagesWithGuiding.Any()) return string.Empty;
 
             sb.AppendLine("<h2>Image Quality</h2>");
-            sb.AppendLine("<table>");
+            sb.AppendLine("<table id='iq-table'>");
             sb.AppendLine("<tr><th>Metric</th><th>Min</th><th>Max</th><th>Mean</th><th>CV</th></tr>");
 
             if (imagesWithHFR.Any()) {
-                var hfrValues = imagesWithHFR.Select(i => i.HFR).ToList();
-                sb.AppendLine($"<tr><td>HFR</td><td>{hfrValues.Min():F2}\"</td><td>{hfrValues.Max():F2}\"</td><td>{hfrValues.Average():F2}\"</td><td>{CV(hfrValues):F0}%</td></tr>");
+                var hfrValues  = imagesWithHFR.Select(i => i.HFR).ToList();
+                var hfrFilters = imagesWithHFR.GroupBy(i => i.Filter).Where(g => g.Any()).OrderBy(g => FilterSortKey(g.Key)).ThenBy(g => g.Key).ToList();
+                var hfrTip     = $"Click to expand per-filter HFR breakdown ({hfrFilters.Count} filter{(hfrFilters.Count == 1 ? "" : "s")})";
+                sb.AppendLine($"<tr onclick=\"nsToggle('hfr-detail','hfr-arrow','iq-table')\" style='cursor:pointer;' title='{hfrTip}'>");
+                sb.AppendLine($"  <td><span id='hfr-arrow'>&#9658;</span> HFR</td><td>{hfrValues.Min():F2}\"</td><td>{hfrValues.Max():F2}\"</td><td>{hfrValues.Average():F2}\"</td><td>{CV(hfrValues):F0}%</td>");
+                sb.AppendLine($"</tr>");
+                sb.AppendLine($"<tr id='hfr-detail' class='ns-detail-row' style='display:none;'><td colspan='5' style='padding:4px 0 8px 16px;'>");
+                sb.AppendLine("<table style='margin:0;'><tr><th>Filter</th><th>Min</th><th>Max</th><th>Mean</th><th>CV</th></tr>");
+                foreach (var g in hfrFilters) {
+                    var vals  = g.Select(i => i.HFR).ToList();
+                    var cvStr = vals.Count >= 2 ? $"{CV(vals):F0}%" : "—";
+                    sb.AppendLine($"<tr><td>{g.Key} <span style='color:#7eb8f7;font-style:italic;'>({vals.Count})</span></td><td>{vals.Min():F2}\"</td><td>{vals.Max():F2}\"</td><td>{vals.Average():F2}\"</td><td>{cvStr}</td></tr>");
+                }
+                sb.AppendLine("</table></td></tr>");
             }
 
             if (imagesWithFWHM.Any()) {
-                var fwhmValues = imagesWithFWHM.Select(i => i.FWHM).ToList();
-                sb.AppendLine($"<tr><td>FWHM</td><td>{fwhmValues.Min():F2}\"</td><td>{fwhmValues.Max():F2}\"</td><td>{fwhmValues.Average():F2}\"</td><td>{CV(fwhmValues):F0}%</td></tr>");
+                var fwhmValues  = imagesWithFWHM.Select(i => i.FWHM).ToList();
+                var fwhmFilters = imagesWithFWHM.GroupBy(i => i.Filter).Where(g => g.Any()).OrderBy(g => FilterSortKey(g.Key)).ThenBy(g => g.Key).ToList();
+                var fwhmTip     = $"Click to expand per-filter FWHM breakdown ({fwhmFilters.Count} filter{(fwhmFilters.Count == 1 ? "" : "s")})";
+                sb.AppendLine($"<tr onclick=\"nsToggle('fwhm-detail','fwhm-arrow','iq-table')\" style='cursor:pointer;' title='{fwhmTip}'>");
+                sb.AppendLine($"  <td><span id='fwhm-arrow'>&#9658;</span> FWHM</td><td>{fwhmValues.Min():F2}\"</td><td>{fwhmValues.Max():F2}\"</td><td>{fwhmValues.Average():F2}\"</td><td>{CV(fwhmValues):F0}%</td>");
+                sb.AppendLine($"</tr>");
+                sb.AppendLine($"<tr id='fwhm-detail' class='ns-detail-row' style='display:none;'><td colspan='5' style='padding:4px 0 8px 16px;'>");
+                sb.AppendLine("<table style='margin:0;'><tr><th>Filter</th><th>Min</th><th>Max</th><th>Mean</th><th>CV</th></tr>");
+                foreach (var g in fwhmFilters) {
+                    var vals  = g.Select(i => i.FWHM).ToList();
+                    var cvStr = vals.Count >= 2 ? $"{CV(vals):F0}%" : "—";
+                    sb.AppendLine($"<tr><td>{g.Key} <span style='color:#7eb8f7;font-style:italic;'>({vals.Count})</span></td><td>{vals.Min():F2}\"</td><td>{vals.Max():F2}\"</td><td>{vals.Average():F2}\"</td><td>{cvStr}</td></tr>");
+                }
+                sb.AppendLine("</table></td></tr>");
             }
 
             if (imagesWithEcc.Any()) {
