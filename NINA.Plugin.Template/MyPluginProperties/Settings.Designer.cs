@@ -166,5 +166,101 @@ namespace NINA.Plugin.NightSummary.MyPluginProperties {
                 this["DiscordWebhookUrl"] = value;
             }
         }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool ShowMoonCurve {
+            get {
+                return ((bool)(this["ShowMoonCurve"]));
+            }
+            set {
+                this["ShowMoonCurve"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("1")]
+        public int ReportDetailLevel {
+            get {
+                return ((int)(this["ReportDetailLevel"]));
+            }
+            set {
+                this["ReportDetailLevel"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool ShowSkyThumbnails {
+            get {
+                return ((bool)(this["ShowSkyThumbnails"]));
+            }
+            set {
+                this["ShowSkyThumbnails"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool ShowSessionHistory {
+            get {
+                return ((bool)(this["ShowSessionHistory"]));
+            }
+            set {
+                this["ShowSessionHistory"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool ShowAltitudeChart {
+            get {
+                return ((bool)(this["ShowAltitudeChart"]));
+            }
+            set {
+                this["ShowAltitudeChart"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool ShowTSProgressBars {
+            get {
+                return ((bool)(this["ShowTSProgressBars"]));
+            }
+            set {
+                this["ShowTSProgressBars"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool ShowStarCountCV {
+            get {
+                return ((bool)(this["ShowStarCountCV"]));
+            }
+            set {
+                this["ShowStarCountCV"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool ShowHFRGraph {
+            get {
+                return ((bool)(this["ShowHFRGraph"]));
+            }
+            set {
+                this["ShowHFRGraph"] = value;
+            }
+        }
     }
 }

@@ -9,6 +9,119 @@
             <Expander Header="Night Summary Settings" IsExpanded="False">
                 <StackPanel Margin="10,8,0,8">
 
+                    <TextBlock Text="Report Content" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
+
+                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                        <TextBlock Text="Detail Level" Width="200" VerticalAlignment="Center" />
+                        <ComboBox SelectedIndex="{Binding ReportDetailLevel}" MinWidth="160">
+                            <ComboBoxItem>Snapshot</ComboBoxItem>
+                            <ComboBoxItem>Standard</ComboBoxItem>
+                            <ComboBoxItem>Full</ComboBoxItem>
+                        </ComboBox>
+                    </StackPanel>
+
+                    <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="200,4,0,10" MaxWidth="550">
+                        <Run FontWeight="Bold">Snapshot</Run><Run> — Header, stat boxes, and filter table only.</Run>
+                        <LineBreak />
+                        <Run FontWeight="Bold">Standard</Run><Run> — Adds timeline, altitude charts, image quality, and Target Scheduler bars.</Run>
+                        <LineBreak />
+                        <Run FontWeight="Bold">Full</Run><Run> — Adds HFR chart and session history.</Run>
+                    </TextBlock>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,4">
+                        <TextBlock Text="Show Sky Thumbnails" Width="200" VerticalAlignment="Center" />
+                        <CheckBox IsChecked="{Binding ShowSkyThumbnails}" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <!-- Altitude Charts + Moon Curve on one row; whole row disabled at Snapshot -->
+                    <StackPanel Orientation="Horizontal" Margin="0,4">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="IsEnabled" Value="True"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ReportDetailLevel}" Value="0">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <TextBlock Text="Show Altitude Charts" Width="200" VerticalAlignment="Center" />
+                        <CheckBox IsChecked="{Binding ShowAltitudeChart}" VerticalAlignment="Center" />
+                        <!-- Moon Curve sub-group: additionally disabled when altitude chart is off -->
+                        <StackPanel Orientation="Horizontal" Margin="20,0,0,0">
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Setter Property="IsEnabled" Value="True"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ShowAltitudeChart}" Value="False">
+                                            <Setter Property="IsEnabled" Value="False"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </StackPanel.Style>
+                            <TextBlock Text="Show Moon Curve" Width="140" VerticalAlignment="Center" />
+                            <CheckBox IsChecked="{Binding ShowMoonCurve}" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- TS Progress Bars + Star Count CV: both disabled at Snapshot -->
+                    <StackPanel Orientation="Horizontal" Margin="0,4">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="IsEnabled" Value="True"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ReportDetailLevel}" Value="0">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <TextBlock Text="Show TS Progress Bars" Width="200" VerticalAlignment="Center" />
+                        <CheckBox IsChecked="{Binding ShowTSProgressBars}" VerticalAlignment="Center" />
+                        <TextBlock Text="Show Star Count CV" Width="160" VerticalAlignment="Center" Margin="20,0,0,0" />
+                        <CheckBox IsChecked="{Binding ShowStarCountCV}" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <!-- Session History + HFR Graph: both disabled at Snapshot and Standard -->
+                    <StackPanel Orientation="Horizontal" Margin="0,4">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="IsEnabled" Value="True"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ReportDetailLevel}" Value="0">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding ReportDetailLevel}" Value="1">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <TextBlock Text="Show Session History" Width="200" VerticalAlignment="Center" />
+                        <CheckBox IsChecked="{Binding ShowSessionHistory}" VerticalAlignment="Center" />
+                        <TextBlock Text="Show HFR Graph" Width="160" VerticalAlignment="Center" Margin="20,0,0,0" />
+                        <CheckBox IsChecked="{Binding ShowHFRGraph}" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="200,4,0,0" MaxWidth="550">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Opacity" Value="1"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ReportDetailLevel}" Value="0">
+                                        <Setter Property="Opacity" Value="0.35"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding ReportDetailLevel}" Value="1">
+                                        <Setter Property="Opacity" Value="0.35"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                        Session history is only shown at Full detail level.
+                    </TextBlock>
+
+                    <Separator Margin="0,20,0,10" />
+
                     <TextBlock Text="Saved Reports" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
 
                     <StackPanel Orientation="Horizontal" Margin="0,5">

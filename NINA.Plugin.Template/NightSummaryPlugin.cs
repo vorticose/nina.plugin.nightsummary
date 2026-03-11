@@ -279,6 +279,92 @@ namespace NINA.Plugin.NightSummary {
             }
         }
 
+        public int ReportDetailLevel {
+            get => Settings.Default.ReportDetailLevel;
+            set {
+                Settings.Default.ReportDetailLevel = value;
+                Settings.Default.ShowSkyThumbnails  = true;
+                Settings.Default.ShowAltitudeChart  = true;
+                Settings.Default.ShowMoonCurve      = true;
+                Settings.Default.ShowTSProgressBars = true;
+                Settings.Default.ShowSessionHistory = true;
+                Settings.Default.ShowStarCountCV    = true;
+                Settings.Default.ShowHFRGraph       = true;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+                RaisePropertyChanged(nameof(ShowSkyThumbnails));
+                RaisePropertyChanged(nameof(ShowAltitudeChart));
+                RaisePropertyChanged(nameof(ShowMoonCurve));
+                RaisePropertyChanged(nameof(ShowTSProgressBars));
+                RaisePropertyChanged(nameof(ShowSessionHistory));
+                RaisePropertyChanged(nameof(ShowStarCountCV));
+                RaisePropertyChanged(nameof(ShowHFRGraph));
+            }
+        }
+
+        public bool ShowSkyThumbnails {
+            get => Settings.Default.ShowSkyThumbnails;
+            set {
+                Settings.Default.ShowSkyThumbnails = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public bool ShowMoonCurve {
+            get => Settings.Default.ShowMoonCurve;
+            set {
+                Settings.Default.ShowMoonCurve = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public bool ShowSessionHistory {
+            get => Settings.Default.ShowSessionHistory;
+            set {
+                Settings.Default.ShowSessionHistory = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public bool ShowAltitudeChart {
+            get => Settings.Default.ShowAltitudeChart;
+            set {
+                Settings.Default.ShowAltitudeChart = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public bool ShowTSProgressBars {
+            get => Settings.Default.ShowTSProgressBars;
+            set {
+                Settings.Default.ShowTSProgressBars = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public bool ShowStarCountCV {
+            get => Settings.Default.ShowStarCountCV;
+            set {
+                Settings.Default.ShowStarCountCV = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public bool ShowHFRGraph {
+            get => Settings.Default.ShowHFRGraph;
+            set {
+                Settings.Default.ShowHFRGraph = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
         private void LoadSessions() {
             try {
                 if (!File.Exists(liveDbPath)) return;

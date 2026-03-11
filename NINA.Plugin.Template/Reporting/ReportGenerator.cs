@@ -1,5 +1,6 @@
 using NINA.Core.Utility;
 using NINA.Plugin.NightSummary.Data;
+using NINA.Plugin.NightSummary.MyPluginProperties;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -99,10 +100,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 return sb.ToString();
             }
 
-            sb.Append(BuildEventTimelineSection(data));
-            sb.Append(BuildOverviewStatsSection(data));
-            sb.Append(await BuildTargetSection(data));
-            sb.Append(BuildImageQualitySection(data));
+            int detailLevel = Settings.Default.ReportDetailLevel;
+
+            if (detailLevel >= 1) sb.Append(BuildEventTimelineSection(data));
+            sb.Append(BuildOverviewStatsSection(data, detailLevel));
+            sb.Append(await BuildTargetSection(data, detailLevel));
+            if (detailLevel >= 1) sb.Append(BuildImageQualitySection(data, detailLevel));
             sb.Append(BuildFooter());
 
             sb.AppendLine("</body></html>");
@@ -127,7 +130,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             return sb.ToString();
         }
 
-        private string BuildOverviewStatsSection(ReportData data) {
+        private string BuildOverviewStatsSection(ReportData data, int detailLevel) {
             var sb = new StringBuilder();
             var totalExposureSec = data.Images.Sum(i => i.ExposureDuration);
             var targetCount      = data.Images.Select(i => i.TargetName).Distinct(StringComparer.OrdinalIgnoreCase).Count();
@@ -168,32 +171,38 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var hfrImages     = data.Images.Where(i => i.HFR > 0).ToList();
             var guidingImages = data.Images.Where(i => i.GuidingRMSTotal > 0).ToList();
 
+            var fwhmImages = data.Images.Where(i => i.FWHM > 0).ToList();
+
+            // Column count: Snapshot=3 (one row), Standard=5 (one row), Full=4 (two rows of 4)
+            int gridCols = detailLevel == 0 ? 3 : detailLevel == 1 ? 5 : 4;
+
             sb.AppendLine("<h2>Session Overview</h2>");
-            sb.AppendLine("<div style='display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:10px 0;'>");
+            sb.AppendLine($"<div style='display:grid; grid-template-columns:repeat({gridCols},1fr); gap:10px; margin:10px 0;'>");
             sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{data.Images.Count}</div><div class='stat-label'>Total Images</div></div>");
             sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{TimeSpan.FromSeconds(totalExposureSec).TotalHours:F1}h</div><div class='stat-label'>Total Exposure</div></div>");
             sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{targetCount}</div><div class='stat-label'>Targets</div></div>");
-            if (hfrImages.Any())
+            if (detailLevel >= 1 && hfrImages.Any())
                 sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{hfrImages.Average(i => i.HFR):F2}\"</div><div class='stat-label'>Avg HFR</div></div>");
-            var fwhmImages = data.Images.Where(i => i.FWHM > 0).ToList();
-            if (fwhmImages.Any())
-                sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{fwhmImages.Average(i => i.FWHM):F2}\"</div><div class='stat-label'>Avg FWHM</div></div>");
-            if (guidingImages.Any())
+            if (detailLevel >= 1 && guidingImages.Any())
                 sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{guidingImages.Average(i => i.GuidingRMSTotal):F2}\"</div><div class='stat-label'>Avg Guiding RMS</div></div>");
-            var yieldTooltip = hasSafetyMonitor
-                ? "Total exposure time ÷ (imaging window − roof-closed time). Measures how efficiently you collected images during time the roof was open."
-                : "Total exposure time ÷ imaging window (first to last image).";
-            sb.AppendLine($"<div class='stat-box' title='{yieldTooltip}' style='cursor:help;'><div class='stat-value'>{yieldPct:F0}%</div><div class='stat-label'>Yield{(hasSafetyMonitor ? "" : "*")}</div></div>");
-            var moonIllum = MoonIllumination(data.Session.SessionStart, out bool waxing);
-            var moonArrow = waxing ? "&#8593;" : "&#8595;";
-            sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{moonIllum:F0}% {moonArrow}</div><div class='stat-label'>Moon</div></div>");
+            if (detailLevel >= 2 && fwhmImages.Any())
+                sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{fwhmImages.Average(i => i.FWHM):F2}\"</div><div class='stat-label'>Avg FWHM</div></div>");
+            if (detailLevel >= 2) {
+                var yieldTooltip = hasSafetyMonitor
+                    ? "Total exposure time ÷ (imaging window − roof-closed time). Measures how efficiently you collected images during time the roof was open."
+                    : "Total exposure time ÷ imaging window (first to last image).";
+                sb.AppendLine($"<div class='stat-box' title='{yieldTooltip}' style='cursor:help;'><div class='stat-value'>{yieldPct:F0}%</div><div class='stat-label'>Yield{(hasSafetyMonitor ? "" : "*")}</div></div>");
+                var moonIllum = MoonIllumination(data.Session.SessionStart, out bool waxing);
+                var moonArrow = waxing ? "&#8593;" : "&#8595;";
+                sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{moonIllum:F0}% {moonArrow}</div><div class='stat-label'>Moon</div></div>");
+            }
             sb.AppendLine("</div>");
-            if (!hasSafetyMonitor)
+            if (detailLevel >= 2 && !hasSafetyMonitor)
                 sb.AppendLine("<p style='font-size:11px; color:#666; margin-top:4px;'>* Yield calculated without cloud exclusion — no safety monitor events recorded</p>");
             return sb.ToString();
         }
 
-        private async Task<string> BuildTargetSection(ReportData data) {
+        private async Task<string> BuildTargetSection(ReportData data, int detailLevel) {
             var sb = new StringBuilder();
             var targets = data.Images.GroupBy(i => i.TargetName).OrderBy(g => g.Min(i => i.Timestamp));
             sb.AppendLine("<h2>Targets Imaged</h2>");
@@ -245,43 +254,53 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine("<div class='target-section'>");
                 sb.AppendLine($"<h3>{target.Key}{h3Subtitle}</h3>");
 
-                if (tsTarget != null) {
-                    // Row: thumbnail (200px) | altitude chart (~360px) side by side
-                    sb.AppendLine("<div class='ts-target-header'>");
+                bool showThumb         = tsTarget != null && Settings.Default.ShowSkyThumbnails;
+                bool showSideBySideChart = tsTarget != null && detailLevel >= 1 && (raH != 0 || decD != 0) && Settings.Default.ShowAltitudeChart;
 
-                    var raDeg    = tsTarget.RA * 15.0;
+                // Pre-build thumbnail HTML so it can be placed in either layout
+                string thumbHtml = "";
+                if (showThumb) {
+                    var tSb     = new StringBuilder();
+                    var raDeg   = tsTarget.RA * 15.0;
                     var thumbUrl = $"https://alasky.cds.unistra.fr/hips-image-services/hips2fits" +
                                    $"?hips=CDS%2FP%2FDSS2%2Fcolor&width={fetchPx}&height={fetchPx}" +
                                    $"&fov={thumbFov:F4}&ra={raDeg:F6}&dec={tsTarget.Dec:F6}" +
                                    $"&projection=TAN&format=jpg";
                     var svgAngle = -tsTarget.Rotation;
-
-                    // Attempt to download and embed the thumbnail as a base64 data URI so
-                    // the report displays correctly when opened offline. Falls back to the
-                    // remote URL if the download fails or times out.
                     string imgSrc = thumbUrl;
                     try {
                         var bytes = await Http.GetByteArrayAsync(thumbUrl);
                         imgSrc = "data:image/jpeg;base64," + Convert.ToBase64String(bytes);
                     } catch { /* leave imgSrc as the remote URL */ }
+                    tSb.AppendLine($"<div class='ts-thumb-wrap'>");
+                    tSb.AppendLine($"  <img src='{imgSrc}' alt='{target.Key}' />");
+                    tSb.AppendLine($"  <svg width='{thumbPx}' height='{thumbPx}' xmlns='http://www.w3.org/2000/svg'>");
+                    tSb.AppendLine($"    <rect x='{(cx - boxW / 2):F1}' y='{(cy - boxH / 2):F1}' width='{boxW:F1}' height='{boxH:F1}'");
+                    tSb.AppendLine($"          fill='none' stroke='#7eb8f7' stroke-width='1.5' opacity='0.85'");
+                    tSb.AppendLine($"          transform='rotate({svgAngle:F2},{cx:F1},{cy:F1})' />");
+                    tSb.AppendLine($"  </svg>");
+                    tSb.AppendLine($"</div>"); // ts-thumb-wrap
+                    thumbHtml = tSb.ToString();
+                }
 
-                    sb.AppendLine($"<div class='ts-thumb-wrap'>");
-                    sb.AppendLine($"  <img src='{imgSrc}' alt='{target.Key}' />");
-                    sb.AppendLine($"  <svg width='{thumbPx}' height='{thumbPx}' xmlns='http://www.w3.org/2000/svg'>");
-                    sb.AppendLine($"    <rect x='{(cx - boxW / 2):F1}' y='{(cy - boxH / 2):F1}' width='{boxW:F1}' height='{boxH:F1}'");
-                    sb.AppendLine($"          fill='none' stroke='#7eb8f7' stroke-width='1.5' opacity='0.85'");
-                    sb.AppendLine($"          transform='rotate({svgAngle:F2},{cx:F1},{cy:F1})' />");
-                    sb.AppendLine($"  </svg>");
-                    sb.AppendLine($"</div>"); // ts-thumb-wrap
+                // When thumbnail is shown without an altitude chart, place thumbnail left
+                // and wrap all remaining content in a flex right column to fill the space.
+                bool thumbWithoutChart = showThumb && !showSideBySideChart;
 
-                    // Altitude chart beside the thumbnail
-                    if (raH != 0 || decD != 0) {
+                if (thumbWithoutChart) {
+                    sb.AppendLine("<div style='display:flex; gap:16px; align-items:flex-start;'>");
+                    sb.Append(thumbHtml);
+                    sb.AppendLine("<div style='flex:1; min-width:0;'>");
+                } else if (showThumb || showSideBySideChart) {
+                    // Thumbnail + altitude chart side by side
+                    sb.AppendLine("<div class='ts-target-header'>");
+                    sb.Append(thumbHtml);
+                    if (showSideBySideChart) {
                         var altChart = BuildAltitudeChart(raH, decD, data.ObserverLatitude, data.ObserverLongitude,
                                                           targetImgStart, targetImgEnd, width: 500);
                         if (!string.IsNullOrEmpty(altChart))
                             sb.Append($"<div style='flex:1; min-width:0; margin-top:-20px;'>{altChart}</div>");
                     }
-
                     sb.AppendLine("</div>"); // ts-target-header
                 }
 
@@ -297,54 +316,58 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine($"<tr><td><strong>Total</strong></td><td><strong>{target.Count()}</strong></td><td></td><td><strong>{FormatDuration(targetTotal.TotalSeconds)}</strong></td></tr>");
                 sb.AppendLine("</table>");
 
-                // Star count CV
-                var broadbandImages  = target.Where(i => BroadbandFilters.Contains(i.Filter)  && i.StarCount > 0).ToList();
-                var narrowbandImages = target.Where(i => NarrowbandFilters.Contains(i.Filter) && i.StarCount > 0).ToList();
-                string broadbandCV  = broadbandImages.Count  >= 2 ? $"{CV(broadbandImages.Select(i  => (double)i.StarCount).ToList()):F0}%" : "—";
-                string narrowbandCV = narrowbandImages.Count >= 2 ? $"{CV(narrowbandImages.Select(i => (double)i.StarCount).ToList()):F0}%" : "—";
-                var cvTooltip = "CV (Coefficient of Variation) measures consistency as a percentage of the mean. Lower values indicate more stable conditions. Star count CV is calculated per target and filter type.";
-                sb.AppendLine($"<div title='{cvTooltip}' style='cursor:help;'>");
-                sb.AppendLine("<p style='margin: 12px 0 4px; font-size: 13px; color: #a0c4ff;'><strong>Star Count Consistency</strong></p>");
-                sb.AppendLine("<table class='star-count-table'>");
-                sb.AppendLine("<tr><th>Broadband CV</th><th>Narrowband CV</th></tr>");
-                sb.AppendLine($"<tr><td>{broadbandCV}</td><td>{narrowbandCV}</td></tr>");
-                sb.AppendLine("</table>");
-                sb.AppendLine("</div>");
+                if (detailLevel >= 1 && Settings.Default.ShowStarCountCV) {
+                    // Star count CV
+                    var broadbandImages  = target.Where(i => BroadbandFilters.Contains(i.Filter)  && i.StarCount > 0).ToList();
+                    var narrowbandImages = target.Where(i => NarrowbandFilters.Contains(i.Filter) && i.StarCount > 0).ToList();
+                    string broadbandCV  = broadbandImages.Count  >= 2 ? $"{CV(broadbandImages.Select(i  => (double)i.StarCount).ToList()):F0}%" : "—";
+                    string narrowbandCV = narrowbandImages.Count >= 2 ? $"{CV(narrowbandImages.Select(i => (double)i.StarCount).ToList()):F0}%" : "—";
+                    var cvTooltip = "CV (Coefficient of Variation) measures consistency as a percentage of the mean. Lower values indicate more stable conditions. Star count CV is calculated per target and filter type.";
+                    sb.AppendLine($"<div title='{cvTooltip}' style='cursor:help;'>");
+                    sb.AppendLine("<p style='margin: 12px 0 4px; font-size: 13px; color: #a0c4ff;'><strong>Star Count Consistency</strong></p>");
+                    sb.AppendLine("<table class='star-count-table'>");
+                    sb.AppendLine("<tr><th>Broadband CV</th><th>Narrowband CV</th></tr>");
+                    sb.AppendLine($"<tr><td>{broadbandCV}</td><td>{narrowbandCV}</td></tr>");
+                    sb.AppendLine("</table>");
+                    sb.AppendLine("</div>");
 
-                // Warn about unrecognized filter names that were excluded from CV
-                var unrecognizedFilters = target
-                    .Select(i => i.Filter)
-                    .Where(f => !string.IsNullOrEmpty(f) && !BroadbandFilters.Contains(f) && !NarrowbandFilters.Contains(f))
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .OrderBy(f => f)
-                    .ToList();
-                if (unrecognizedFilters.Any()) {
-                    var filterList = string.Join(", ", unrecognizedFilters.Select(f => $"<strong>{f}</strong>"));
-                    sb.AppendLine($"<p style='font-size:11px; color:#b8860b; margin-top:6px;'>&#9888; Filter{(unrecognizedFilters.Count == 1 ? "" : "s")} not recognized for CV calculation: {filterList}. " +
-                                  $"Expected broadband (L, R, G, B) or narrowband (H, Ha, S, Sii, O, Oiii). " +
-                                  $"Rename the filter in your NINA equipment profile to include it.</p>");
+                    // Warn about unrecognized filter names that were excluded from CV
+                    var unrecognizedFilters = target
+                        .Select(i => i.Filter)
+                        .Where(f => !string.IsNullOrEmpty(f) && !BroadbandFilters.Contains(f) && !NarrowbandFilters.Contains(f))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .OrderBy(f => f)
+                        .ToList();
+                    if (unrecognizedFilters.Any()) {
+                        var filterList = string.Join(", ", unrecognizedFilters.Select(f => $"<strong>{f}</strong>"));
+                        sb.AppendLine($"<p style='font-size:11px; color:#b8860b; margin-top:6px;'>&#9888; Filter{(unrecognizedFilters.Count == 1 ? "" : "s")} not recognized for CV calculation: {filterList}. " +
+                                      $"Expected broadband (L, R, G, B) or narrowband (H, Ha, S, Sii, O, Oiii). " +
+                                      $"Rename the filter in your NINA equipment profile to include it.</p>");
+                    }
                 }
 
                 // Session history (collapsible)
-                List<TargetSessionHistory> history = null;
-                data.SessionHistory?.TryGetValue(target.Key, out history);
-                if (history != null && history.Any()) {
-                    var label = $"Session History ({history.Count} previous session{(history.Count == 1 ? "" : "s")})";
-                    sb.AppendLine($"<details class='history-section'>");
-                    sb.AppendLine($"<summary>{label}</summary>");
-                    sb.AppendLine("<table>");
-                    sb.AppendLine("<tr><th>Date</th><th>Integration</th><th>Avg HFR</th><th>Avg FWHM</th><th>Avg Guiding RMS</th></tr>");
-                    foreach (var h in history) {
-                        var hfrStr = h.AvgHFR        > 0 ? h.AvgHFR.ToString("F2") + "\"" : "—";
-                        var fwhmStr = h.AvgFWHM      > 0 ? h.AvgFWHM.ToString("F2") + "\"" : "—";
-                        var rmsStr = h.AvgGuidingRMS > 0 ? $"{h.AvgGuidingRMS:F2}&quot;" : "—";
-                        sb.AppendLine($"<tr><td>{h.SessionStart:MMM d, yyyy}</td><td>{FormatIntegration(h.IntegrationSeconds)}</td><td>{hfrStr}</td><td>{fwhmStr}</td><td>{rmsStr}</td></tr>");
+                if (detailLevel >= 2 && Settings.Default.ShowSessionHistory) {
+                    List<TargetSessionHistory> history = null;
+                    data.SessionHistory?.TryGetValue(target.Key, out history);
+                    if (history != null && history.Any()) {
+                        var label = $"Session History ({history.Count} previous session{(history.Count == 1 ? "" : "s")})";
+                        sb.AppendLine($"<details class='history-section'>");
+                        sb.AppendLine($"<summary>{label}</summary>");
+                        sb.AppendLine("<table>");
+                        sb.AppendLine("<tr><th>Date</th><th>Integration</th><th>Avg HFR</th><th>Avg FWHM</th><th>Avg Guiding RMS</th></tr>");
+                        foreach (var h in history) {
+                            var hfrStr  = h.AvgHFR        > 0 ? h.AvgHFR.ToString("F2") + "\"" : "—";
+                            var fwhmStr = h.AvgFWHM       > 0 ? h.AvgFWHM.ToString("F2") + "\"" : "—";
+                            var rmsStr  = h.AvgGuidingRMS > 0 ? $"{h.AvgGuidingRMS:F2}&quot;" : "—";
+                            sb.AppendLine($"<tr><td>{h.SessionStart:MMM d, yyyy}</td><td>{FormatIntegration(h.IntegrationSeconds)}</td><td>{hfrStr}</td><td>{fwhmStr}</td><td>{rmsStr}</td></tr>");
+                        }
+                        sb.AppendLine("</table>");
+                        sb.AppendLine("</details>");
                     }
-                    sb.AppendLine("</table>");
-                    sb.AppendLine("</details>");
                 }
 
-                if (tsTarget != null) {
+                if (tsTarget != null && detailLevel >= 1 && Settings.Default.ShowTSProgressBars) {
                     // TS progress bars — one per exposure plan row (template + filter)
                     sb.AppendLine("<p style='margin: 12px 0 4px; font-size: 13px; color: #a0c4ff;'><strong>Target Scheduler Progress</strong></p>");
                     double totalIntegrationSec = 0;
@@ -396,11 +419,16 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 }
 
                 // No TS data: altitude chart at full width below target info
-                if (tsTarget == null && (raH != 0 || decD != 0)) {
+                if (tsTarget == null && detailLevel >= 1 && (raH != 0 || decD != 0) && Settings.Default.ShowAltitudeChart) {
                     var altChart = BuildAltitudeChart(raH, decD, data.ObserverLatitude, data.ObserverLongitude,
                                                       targetImgStart, targetImgEnd, width: 560);
                     if (!string.IsNullOrEmpty(altChart))
                         sb.Append(altChart);
+                }
+
+                if (thumbWithoutChart) {
+                    sb.AppendLine("</div>"); // flex right column
+                    sb.AppendLine("</div>"); // flex wrapper
                 }
 
                 sb.AppendLine("</div>"); // target-section
@@ -409,7 +437,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             return sb.ToString();
         }
 
-        private string BuildImageQualitySection(ReportData data) {
+        private string BuildImageQualitySection(ReportData data, int detailLevel) {
             var sb = new StringBuilder();
             var imagesWithHFR     = data.Images.Where(i => i.HFR > 0).ToList();
             var imagesWithFWHM    = data.Images.Where(i => i.FWHM > 0).ToList();
@@ -468,10 +496,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             sb.AppendLine("</table>");
 
-            var hfrChart = ChartGenerator.GenerateHfrChart(data.Images);
-            if (!string.IsNullOrEmpty(hfrChart)) {
-                sb.AppendLine("<h2>HFR Over Time</h2>");
-                sb.AppendLine(hfrChart);
+            if (detailLevel >= 2 && Settings.Default.ShowHFRGraph) {
+                var hfrChart = ChartGenerator.GenerateHfrChart(data.Images);
+                if (!string.IsNullOrEmpty(hfrChart)) {
+                    sb.AppendLine("<h2>HFR Over Time</h2>");
+                    sb.AppendLine(hfrChart);
+                }
             }
 
             return sb.ToString();
@@ -579,7 +609,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             // ── Moon altitude curve ──────────────────────────────────────────────
-            // Toggle: gate on Settings.Default.ShowMoonCurve when implementing the option
+            if (!Settings.Default.ShowMoonCurve) goto skipMoon;
             var moonPoints = AltitudeCalculator.GetMoonAltitudeCurve(latDeg, lonDeg, dayStart, dayEnd, stepMinutes: 5);
             var moonSegments = new List<List<(DateTime t, double alt)>>();
             List<(DateTime t, double alt)> moonSeg = null;
@@ -601,6 +631,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine($"<polyline points='{pts}' fill='none' stroke='#c0c0c0' stroke-width='1.5' stroke-dasharray='5,4' opacity='0.45'/>");
                 sb.AppendLine("</g>");
             }
+            skipMoon:;
 
             // Session start line with tooltip
             sb.AppendLine("<g>");
