@@ -60,7 +60,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("th { background-color: #2d2d5e; color: #7eb8f7; padding: 8px; text-align: left; }");
             sb.AppendLine("td { padding: 8px; border-bottom: 1px solid #2d2d5e; }");
             sb.AppendLine("tr:nth-child(even) { background-color: #16213e; }");
-            sb.AppendLine(".stat-box { display: inline-block; background-color: #16213e; border: 1px solid #2d2d5e; border-radius: 8px; padding: 15px; margin: 10px; min-width: 150px; text-align: center; }");
+            sb.AppendLine(".stat-box { background-color: #16213e; border: 1px solid #2d2d5e; border-radius: 8px; padding: 15px; text-align: center; }");
             sb.AppendLine(".stat-value { font-size: 24px; color: #7eb8f7; font-weight: bold; }");
             sb.AppendLine(".stat-label { font-size: 12px; color: #888; margin-top: 5px; }");
             sb.AppendLine(".star-count-table { width: auto; margin-top: 8px; }");
@@ -169,18 +169,24 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var guidingImages = data.Images.Where(i => i.GuidingRMSTotal > 0).ToList();
 
             sb.AppendLine("<h2>Session Overview</h2>");
-            sb.AppendLine("<div>");
+            sb.AppendLine("<div style='display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:10px 0;'>");
             sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{data.Images.Count}</div><div class='stat-label'>Total Images</div></div>");
             sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{TimeSpan.FromSeconds(totalExposureSec).TotalHours:F1}h</div><div class='stat-label'>Total Exposure</div></div>");
             sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{targetCount}</div><div class='stat-label'>Targets</div></div>");
             if (hfrImages.Any())
                 sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{hfrImages.Average(i => i.HFR):F2}\"</div><div class='stat-label'>Avg HFR</div></div>");
+            var fwhmImages = data.Images.Where(i => i.FWHM > 0).ToList();
+            if (fwhmImages.Any())
+                sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{fwhmImages.Average(i => i.FWHM):F2}\"</div><div class='stat-label'>Avg FWHM</div></div>");
             if (guidingImages.Any())
                 sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{guidingImages.Average(i => i.GuidingRMSTotal):F2}\"</div><div class='stat-label'>Avg Guiding RMS</div></div>");
             var yieldTooltip = hasSafetyMonitor
                 ? "Total exposure time ÷ (imaging window − roof-closed time). Measures how efficiently you collected images during time the roof was open."
                 : "Total exposure time ÷ imaging window (first to last image).";
             sb.AppendLine($"<div class='stat-box' title='{yieldTooltip}' style='cursor:help;'><div class='stat-value'>{yieldPct:F0}%</div><div class='stat-label'>Yield{(hasSafetyMonitor ? "" : "*")}</div></div>");
+            var moonIllum = MoonIllumination(data.Session.SessionStart, out bool waxing);
+            var moonArrow = waxing ? "&#8593;" : "&#8595;";
+            sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{moonIllum:F0}% {moonArrow}</div><div class='stat-label'>Moon</div></div>");
             sb.AppendLine("</div>");
             if (!hasSafetyMonitor)
                 sb.AppendLine("<p style='font-size:11px; color:#666; margin-top:4px;'>* Yield calculated without cloud exclusion — no safety monitor events recorded</p>");
@@ -353,12 +359,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
                                                            && (f.ExposureSec <= 0 || Math.Abs(i.ExposureDuration - f.ExposureSec) < 1.0)).ToList();
                         var tonightCount  = tonightImages.Count;
 
-                        // Integration: accepted frames × configured exposure time per template
-                        totalIntegrationSec += accepted * f.ExposureSec;
-
                         // When grading is pending (accepted=0 but acquired>0), use acquired so tonight's bar is visible
                         var gradingPending  = accepted == 0 && f.Acquired > 0;
                         var effectiveFilled = gradingPending ? f.Acquired : accepted;
+
+                        // Integration: use effectiveFilled so grading-pending frames are included
+                        totalIntegrationSec += effectiveFilled * f.ExposureSec;
                         var tonightBar = Math.Min(tonightCount, effectiveFilled);
                         var priorBar   = Math.Max(0, effectiveFilled - tonightBar);
                         var priorPct   = desired > 0 ? (double)priorBar   / desired * 100.0 : 0;
@@ -572,6 +578,30 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine($"<polyline points='{pts}' fill='none' stroke='#7eb8f7' stroke-width='2'/>");
             }
 
+            // ── Moon altitude curve ──────────────────────────────────────────────
+            // Toggle: gate on Settings.Default.ShowMoonCurve when implementing the option
+            var moonPoints = AltitudeCalculator.GetMoonAltitudeCurve(latDeg, lonDeg, dayStart, dayEnd, stepMinutes: 5);
+            var moonSegments = new List<List<(DateTime t, double alt)>>();
+            List<(DateTime t, double alt)> moonSeg = null;
+            foreach (var (t, alt) in moonPoints) {
+                if (alt >= 0) {
+                    if (moonSeg == null) { moonSeg = new List<(DateTime, double)>(); moonSegments.Add(moonSeg); }
+                    moonSeg.Add((t, Math.Min(maxAlt, alt)));
+                } else {
+                    moonSeg = null;
+                }
+            }
+            foreach (var seg in moonSegments) {
+                if (seg.Count < 2) continue;
+                var pts = new StringBuilder();
+                foreach (var (t, alt) in seg)
+                    pts.Append($"{X(t):F1},{Y(alt):F1} ");
+                sb.AppendLine("<g><title>Moon Position</title>");
+                sb.AppendLine($"<polyline points='{pts}' fill='none' stroke='transparent' stroke-width='12'/>");
+                sb.AppendLine($"<polyline points='{pts}' fill='none' stroke='#c0c0c0' stroke-width='1.5' stroke-dasharray='5,4' opacity='0.45'/>");
+                sb.AppendLine("</g>");
+            }
+
             // Session start line with tooltip
             sb.AppendLine("<g>");
             sb.AppendLine($"  <title>Start: {sessionStart:HH:mm}</title>");
@@ -630,6 +660,23 @@ namespace NINA.Plugin.NightSummary.Reporting {
         private static string FormatIntegration(double seconds) {
             var ts = TimeSpan.FromSeconds(seconds);
             return ts.TotalHours >= 1 ? $"{ts.TotalHours:F1}h" : $"{ts.TotalMinutes:F0}m";
+        }
+
+        /// <summary>
+        /// Returns the moon illumination fraction (0–100%) at the given local time.
+        /// Also sets <paramref name="waxing"/> to true if the moon is brightening.
+        /// Uses a mean-anomaly approximation accurate to ~1–2%.
+        /// Reference new moon: 2000-01-06 18:14 UTC (JD 2451549.5).
+        /// </summary>
+        private static double MoonIllumination(DateTime localTime, out bool waxing) {
+            const double synodicPeriod = 29.53058868;
+            var referenceNewMoon = new DateTime(2000, 1, 6, 18, 14, 0, DateTimeKind.Utc);
+            var utc = localTime.Kind == DateTimeKind.Utc ? localTime : localTime.ToUniversalTime();
+            var daysSinceNew = (utc - referenceNewMoon).TotalDays % synodicPeriod;
+            if (daysSinceNew < 0) daysSinceNew += synodicPeriod;
+            waxing = daysSinceNew < synodicPeriod / 2.0;
+            var phaseAngle = daysSinceNew / synodicPeriod * 2.0 * Math.PI;
+            return (1.0 - Math.Cos(phaseAngle)) / 2.0 * 100.0;
         }
 
         private double CV(List<double> values) {

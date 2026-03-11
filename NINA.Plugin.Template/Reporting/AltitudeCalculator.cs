@@ -52,6 +52,28 @@ namespace NINA.Plugin.NightSummary.Reporting {
         }
 
         /// <summary>
+        /// Returns a sampled moon altitude curve across the given window.
+        /// Moon RA/Dec is recomputed at each step since the moon moves ~0.5°/hr.
+        /// </summary>
+        public static List<(DateTime Time, double Altitude)> GetMoonAltitudeCurve(
+            double latDeg, double lonDeg,
+            DateTime startLocal, DateTime endLocal, int stepMinutes = 5) {
+
+            var result = new List<(DateTime Time, double Altitude)>();
+            var t = startLocal;
+            while (t <= endLocal) {
+                var (moonRa, moonDec) = GetMoonPosition(t.ToUniversalTime());
+                result.Add((t, GetAltitude(moonRa, moonDec, latDeg, lonDeg, t)));
+                t = t.AddMinutes(stepMinutes);
+            }
+            if (result.Count == 0 || result[result.Count - 1].Time < endLocal) {
+                var (moonRa, moonDec) = GetMoonPosition(endLocal.ToUniversalTime());
+                result.Add((endLocal, GetAltitude(moonRa, moonDec, latDeg, lonDeg, endLocal)));
+            }
+            return result;
+        }
+
+        /// <summary>
         /// Returns approximate Sun RA (decimal hours) and Dec (decimal degrees) at a given UTC time.
         /// Accurate to ~0.01° — sufficient for sunset/sunrise calculations.
         /// </summary>

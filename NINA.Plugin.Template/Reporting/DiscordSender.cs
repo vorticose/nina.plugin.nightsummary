@@ -2,7 +2,6 @@ using NINA.Core.Utility;
 using NINA.Plugin.NightSummary.Data;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
@@ -16,8 +15,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
     public class DiscordSender {
 
         private static readonly HttpClient httpClient = new HttpClient();
-        private static readonly HashSet<string> BroadbandFilters = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "L", "R", "G", "B" };
-        private static readonly HashSet<string> NarrowbandFilters = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "H", "Ha", "S", "Sii", "O", "Oiii" };
+        private static readonly string[] FilterPriority = { "L", "R", "G", "B", "H", "S", "O" };
 
         private readonly string webhookUrl;
 
@@ -28,11 +26,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// <summary>
         /// Sends a session summary embed to Discord with the full HTML report attached as a file.
         /// </summary>
-        public async Task<bool> SendReportAsync(SessionRecord session, List<ImageRecord> images, string htmlReport) {
+        public async Task<bool> SendReportAsync(ReportData reportData, string htmlReport) {
             try {
                 Logger.Info("NightSummary: Sending Discord report");
-                var payload = BuildReportPayload(session, images);
-                var json    = JsonSerializer.Serialize(payload);
+                var payload  = BuildReportPayload(reportData);
+                var json     = JsonSerializer.Serialize(payload);
                 var fileName = $"NightSummary_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.html";
                 return await PostWithAttachment(json, htmlReport, fileName);
             } catch (Exception ex) {
@@ -64,55 +62,79 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
         }
 
-        private object BuildReportPayload(SessionRecord session, List<ImageRecord> images) {
-            var fields = new List<object>();
-            var duration = session.SessionEnd - session.SessionStart;
+        private object BuildReportPayload(ReportData reportData) {
+            var session = reportData.Session;
+            var images  = reportData.Images;
+            var events  = reportData.Events ?? new List<SessionEvent>();
+            var fields  = new List<object>();
 
-            // Session info
-            fields.Add(Field("Date", session.SessionStart.ToString("yyyy-MM-dd"), true));
-            fields.Add(Field("Duration", $"{duration.TotalHours:F1}h", true));
-            fields.Add(Field("Profile", session.ProfileName ?? "—", true));
-            fields.Add(Field("Start", session.SessionStart.ToString("HH:mm:ss"), true));
-            fields.Add(Field("End", session.SessionEnd.ToString("HH:mm:ss"), true));
+            // ── Session Overview ───────────────────────────────────────────────
+            var totalExpSec = images.Sum(i => i.ExposureDuration);
+            var hfrImages   = images.Where(i => i.HFR > 0).ToList();
+            var rmsImages   = images.Where(i => i.GuidingRMSTotal > 0).ToList();
+
+            // Yield — same logic as BuildSessionSummary / ReportGenerator
+            var firstImage = images.Any() ? images.Min(i => i.Timestamp) : session.SessionStart;
+            var lastImage  = images.Any() ? images.Max(i => i.Timestamp) : session.SessionEnd;
+            var windowSec  = (lastImage - firstImage).TotalSeconds;
+            var roofEvents = events.Where(e => e.EventType == "RoofClosed" || e.EventType == "RoofOpen")
+                                   .OrderBy(e => e.Timestamp).ToList();
+            double roofClosedSec = 0;
+            DateTime? closedAt = null;
+            foreach (var ev in roofEvents) {
+                if (ev.EventType == "RoofClosed") {
+                    closedAt = ev.Timestamp;
+                } else if (ev.EventType == "RoofOpen" && closedAt.HasValue) {
+                    var overlapStart = closedAt.Value < firstImage ? firstImage : closedAt.Value;
+                    var overlapEnd   = ev.Timestamp   > lastImage  ? lastImage  : ev.Timestamp;
+                    if (overlapEnd > overlapStart) roofClosedSec += (overlapEnd - overlapStart).TotalSeconds;
+                    closedAt = null;
+                }
+            }
+            if (closedAt.HasValue && closedAt.Value < lastImage)
+                roofClosedSec += (lastImage - closedAt.Value).TotalSeconds;
+            var effectiveWindowSec = windowSec - roofClosedSec;
+            double yieldPct = effectiveWindowSec > 0 ? Math.Min(totalExpSec / effectiveWindowSec * 100.0, 100.0) : 0;
+
+            var overview = new StringBuilder();
+            overview.AppendLine($"Total Images: {images.Count}");
+            overview.AppendLine($"Total Exposure: {totalExpSec / 3600.0:F1}h");
+            if (hfrImages.Any()) overview.AppendLine($"Avg HFR: {hfrImages.Average(i => i.HFR):F2}\"");
+            if (rmsImages.Any()) overview.AppendLine($"Avg Guiding RMS: {rmsImages.Average(i => i.GuidingRMSTotal):F2}\"");
+            overview.Append($"Yield: {yieldPct:F0}%");
+            fields.Add(Field("Session Overview", overview.ToString()));
 
             if (!images.Any()) {
                 fields.Add(Field("Images", "No images recorded during this session."));
                 return Payload(fields, session.SessionEnd);
             }
 
-            // Session overview
-            var accepted = images.Where(i => i.Accepted).ToList();
-            var totalExp = TimeSpan.FromSeconds(images.Sum(i => i.ExposureDuration));
-            fields.Add(Field("Total Images", images.Count.ToString(), true));
-            fields.Add(Field("Accepted", accepted.Count.ToString(), true));
-            fields.Add(Field("Rejected", (images.Count - accepted.Count).ToString(), true));
-            fields.Add(Field("Total Exposure", $"{totalExp.TotalHours:F1}h", true));
-
-            // Per-target breakdown
-            var targets = images.GroupBy(i => i.TargetName).OrderBy(g => g.Key);
+            // ── Per-target breakdown ───────────────────────────────────────────
+            var targets = images.GroupBy(i => i.TargetName).OrderBy(g => g.Min(i => i.Timestamp));
             foreach (var target in targets) {
                 var sb = new StringBuilder();
 
-                var filterGroups = target.GroupBy(i => i.Filter).OrderBy(g => g.Key);
+                var filterGroups = target.GroupBy(i => i.Filter)
+                                         .OrderBy(g => FilterSortKey(g.Key)).ThenBy(g => g.Key);
                 foreach (var fg in filterGroups) {
                     var totalTime = TimeSpan.FromSeconds(fg.Sum(i => i.ExposureDuration));
-                    sb.AppendLine($"{fg.Key}: {fg.Count()}×{fg.First().ExposureDuration:F0}s ({totalTime.TotalMinutes:F1} min)");
+                    sb.AppendLine($"{fg.Key}: {fg.Count()}\u00d7{fg.First().ExposureDuration:F0}s ({totalTime.TotalHours:F1}h)");
                 }
 
                 var targetTotal = TimeSpan.FromSeconds(target.Sum(i => i.ExposureDuration));
-                sb.AppendLine($"**Total: {targetTotal.TotalMinutes:F1} min**");
+                sb.AppendLine($"**Total: {targetTotal.TotalHours:F1}h**");
 
                 // Star count CV
-                var bbImages = target.Where(i => BroadbandFilters.Contains(i.Filter) && i.StarCount > 0).ToList();
-                var nbImages = target.Where(i => NarrowbandFilters.Contains(i.Filter) && i.StarCount > 0).ToList();
-                string bbCV = bbImages.Count >= 2 ? $"{CV(bbImages.Select(i => (double)i.StarCount).ToList()):F0}%" : "—";
-                string nbCV = nbImages.Count >= 2 ? $"{CV(nbImages.Select(i => (double)i.StarCount).ToList()):F0}%" : "—";
-                sb.Append($"Star count CV — Broadband: {bbCV} | Narrowband: {nbCV}");
+                var bbImages = target.Where(i => IsBroadband(i.Filter) && i.StarCount > 0).ToList();
+                var nbImages = target.Where(i => IsNarrowband(i.Filter) && i.StarCount > 0).ToList();
+                string bbCV = bbImages.Count >= 2 ? $"{CV(bbImages.Select(i => (double)i.StarCount).ToList()):F0}%" : "\u2014";
+                string nbCV = nbImages.Count >= 2 ? $"{CV(nbImages.Select(i => (double)i.StarCount).ToList()):F0}%" : "\u2014";
+                sb.Append($"Star count CV \u2014 Broadband: {bbCV} | Narrowband: {nbCV}");
 
-                fields.Add(Field($"🌌 {target.Key}", sb.ToString().TrimEnd()));
+                fields.Add(Field($"\ud83c\udf0c {target.Key}", sb.ToString().TrimEnd()));
             }
 
-            // Image quality
+            // ── Image quality ──────────────────────────────────────────────────
             var withHFR  = images.Where(i => i.HFR > 0).ToList();
             var withFWHM = images.Where(i => i.FWHM > 0).ToList();
             var withEcc  = images.Where(i => i.Eccentricity > 0).ToList();
@@ -132,7 +154,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 fields.Add(Field("Eccentricity", $"Min {eccVals.Min():F3} | Max {eccVals.Max():F3} | Mean {eccVals.Average():F3} | CV {CV(eccVals):F0}%"));
             }
 
-            // Guiding
+            // ── Guiding ────────────────────────────────────────────────────────
             var withGuiding = images.Where(i => i.GuidingRMSTotal > 0).ToList();
             if (withGuiding.Any()) {
                 var rmsVals = withGuiding.Select(i => i.GuidingRMSTotal).ToList();
@@ -147,7 +169,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 username = "Night Summary",
                 embeds = new[] {
                     new {
-                        title = "🔭 Night Summary Report",
+                        title = "\ud83d\udd2d Night Summary Report",
                         color = 8302839, // #7eb8f7
                         fields = fields.ToArray(),
                         footer = new { text = "Generated by Night Summary for N.I.N.A." },
@@ -189,6 +211,25 @@ namespace NINA.Plugin.NightSummary.Reporting {
         private static object Field(string name, string value, bool inline = false) {
             return new { name, value, inline };
         }
+
+        private static int FilterSortKey(string filter) {
+            var idx = Array.FindIndex(FilterPriority, p => string.Equals(p, filter, StringComparison.OrdinalIgnoreCase));
+            return idx >= 0 ? idx : int.MaxValue;
+        }
+
+        private static bool IsBroadband(string filter) =>
+            filter != null && (filter.Equals("L", StringComparison.OrdinalIgnoreCase) ||
+                               filter.Equals("R", StringComparison.OrdinalIgnoreCase) ||
+                               filter.Equals("G", StringComparison.OrdinalIgnoreCase) ||
+                               filter.Equals("B", StringComparison.OrdinalIgnoreCase));
+
+        private static bool IsNarrowband(string filter) =>
+            filter != null && (filter.Equals("H",    StringComparison.OrdinalIgnoreCase) ||
+                               filter.Equals("Ha",   StringComparison.OrdinalIgnoreCase) ||
+                               filter.Equals("S",    StringComparison.OrdinalIgnoreCase) ||
+                               filter.Equals("Sii",  StringComparison.OrdinalIgnoreCase) ||
+                               filter.Equals("O",    StringComparison.OrdinalIgnoreCase) ||
+                               filter.Equals("Oiii", StringComparison.OrdinalIgnoreCase));
 
         private static double CV(List<double> values) {
             if (values.Count < 2) return 0;

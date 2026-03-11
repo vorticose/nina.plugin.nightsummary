@@ -190,26 +190,10 @@ namespace NINA.Plugin.NightSummary.Session {
                     return;
                 }
 
-                var session  = reportData.Session;
-                var images   = reportData.Images;
-                var duration = (session.SessionEnd - session.SessionStart).TotalHours;
-                var accepted = images.Count(i => i.Accepted);
-
-                var sb = new System.Text.StringBuilder();
-                sb.AppendLine($"Session complete — {duration:F1}h total");
-                sb.AppendLine();
-
-                var targets = images.GroupBy(i => i.TargetName).OrderBy(g => g.Key);
-                foreach (var target in targets) {
-                    var targetExp = TimeSpan.FromSeconds(target.Sum(i => i.ExposureDuration));
-                    sb.AppendLine($"{target.Key}: {target.Count()} images ({targetExp.TotalHours:F1}h)");
-                }
-
-                sb.AppendLine();
-                sb.Append($"{accepted} accepted of {images.Count} total");
-
-                var sender = new PushoverSender(appToken, userKey);
-                await sender.SendAsync("Night Summary", sb.ToString());
+                var title   = $"Night Summary — {reportData.Session.SessionStart:yyyy-MM-dd}";
+                var message = BuildSessionSummary(reportData, compact: true);
+                var sender  = new PushoverSender(appToken, userKey);
+                await sender.SendAsync(title, message);
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to send Pushover notification. {ex.Message}");
             }
@@ -226,7 +210,7 @@ namespace NINA.Plugin.NightSummary.Session {
 
                 var htmlReport = await reportGenerator.GenerateHtmlReport(reportData);
                 var sender     = new DiscordSender(webhookUrl);
-                await sender.SendReportAsync(reportData.Session, reportData.Images, htmlReport);
+                await sender.SendReportAsync(reportData, htmlReport);
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to send Discord report. {ex.Message}");
             }
@@ -249,21 +233,7 @@ namespace NINA.Plugin.NightSummary.Session {
                 var images     = reportData.Images;
                 var htmlReport = await reportGenerator.GenerateHtmlReport(reportData);
                 var subject    = $"Night Summary Report - {session.SessionStart:yyyy-MM-dd} - {images.Count} images";
-                var duration   = (session.SessionEnd - session.SessionStart).TotalHours;
-                var accepted   = images.Count(i => i.Accepted);
-
-                var body = new System.Text.StringBuilder();
-                body.AppendLine($"Session complete — {duration:F1}h total");
-                body.AppendLine();
-                var targets = images.GroupBy(i => i.TargetName).OrderBy(g => g.Key);
-                foreach (var target in targets) {
-                    var targetExp = System.TimeSpan.FromSeconds(target.Sum(i => i.ExposureDuration));
-                    body.AppendLine($"{target.Key}: {target.Count()} images ({targetExp.TotalHours:F1}h)");
-                }
-                body.AppendLine();
-                body.AppendLine($"{accepted} accepted of {images.Count} total");
-                body.AppendLine();
-                body.AppendLine("Full report attached.");
+                var body       = BuildSessionSummary(reportData, compact: false);
 
                 var attachmentFileName = $"NightSummary_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.html";
                 var sender  = new EmailSender(gmailAddress, appPassword, recipient);
@@ -349,5 +319,101 @@ namespace NINA.Plugin.NightSummary.Session {
         }
 
         public SessionDatabase Database => collector.Database;
+
+        // ── Summary text helpers ──────────────────────────────────────────────
+
+        private static readonly string[] FilterPriority = { "L", "R", "G", "B", "H", "S", "O" };
+        private static int FilterSortKey(string filter) {
+            var idx = Array.FindIndex(FilterPriority, p => string.Equals(p, filter, StringComparison.OrdinalIgnoreCase));
+            return idx >= 0 ? idx : int.MaxValue;
+        }
+
+        /// <summary>
+        /// Builds a plain-text session summary for email (compact=false) or Pushover (compact=true).
+        /// Mirrors the language, metric names, and formatting conventions of the HTML report.
+        /// </summary>
+        private static string BuildSessionSummary(ReportData reportData, bool compact) {
+            var session  = reportData.Session;
+            var images   = reportData.Images;
+            var events   = reportData.Events ?? new List<Data.SessionEvent>();
+
+            var totalExpSec  = images.Sum(i => i.ExposureDuration);
+            var accepted     = images.Count(i => i.Accepted);
+            var hfrImages    = images.Where(i => i.HFR > 0).ToList();
+            var rmsImages    = images.Where(i => i.GuidingRMSTotal > 0).ToList();
+
+            // Yield — mirrors ReportGenerator.BuildOverviewStatsSection
+            var firstImage = images.Any() ? images.Min(i => i.Timestamp) : session.SessionStart;
+            var lastImage  = images.Any() ? images.Max(i => i.Timestamp) : session.SessionEnd;
+            var windowSec  = (lastImage - firstImage).TotalSeconds;
+            var roofEvents = events.Where(e => e.EventType == "RoofClosed" || e.EventType == "RoofOpen")
+                                   .OrderBy(e => e.Timestamp).ToList();
+            double roofClosedSec    = 0;
+            bool   hasSafetyMonitor = roofEvents.Any();
+            DateTime? closedAt = null;
+            foreach (var ev in roofEvents) {
+                if (ev.EventType == "RoofClosed") {
+                    closedAt = ev.Timestamp;
+                } else if (ev.EventType == "RoofOpen" && closedAt.HasValue) {
+                    var overlapStart = closedAt.Value < firstImage ? firstImage : closedAt.Value;
+                    var overlapEnd   = ev.Timestamp   > lastImage  ? lastImage  : ev.Timestamp;
+                    if (overlapEnd > overlapStart) roofClosedSec += (overlapEnd - overlapStart).TotalSeconds;
+                    closedAt = null;
+                }
+            }
+            if (closedAt.HasValue && closedAt.Value < lastImage)
+                roofClosedSec += (lastImage - closedAt.Value).TotalSeconds;
+            var effectiveWindowSec = windowSec - roofClosedSec;
+            double yieldPct = effectiveWindowSec > 0 ? Math.Min(totalExpSec / effectiveWindowSec * 100.0, 100.0) : 0;
+
+            var targets = images.GroupBy(i => i.TargetName).OrderBy(g => g.Min(i => i.Timestamp)).ToList();
+            var sb = new System.Text.StringBuilder();
+
+            if (compact) {
+                // ── Pushover ──────────────────────────────────────────────────
+                sb.AppendLine($"Total Images: {images.Count}  ·  Total Exposure: {totalExpSec / 3600.0:F1}h");
+                var pushoverParts = new List<string>();
+                if (hfrImages.Any()) pushoverParts.Add($"Avg HFR: {hfrImages.Average(i => i.HFR):F2}\"");
+                if (rmsImages.Any()) pushoverParts.Add($"Avg Guiding RMS: {rmsImages.Average(i => i.GuidingRMSTotal):F2}\"");
+                pushoverParts.Add($"Yield: {yieldPct:F0}%");
+                sb.AppendLine(string.Join("  ·  ", pushoverParts));
+                sb.AppendLine();
+                foreach (var target in targets) {
+                    var tExp = target.Sum(i => i.ExposureDuration);
+                    sb.AppendLine($"{target.Key}: {target.Count()} images  ·  {tExp / 3600.0:F1}h");
+                }
+            } else {
+                // ── Email ─────────────────────────────────────────────────────
+                var yieldNote = hasSafetyMonitor ? "" : "*";
+                sb.AppendLine("Session Overview");
+                sb.AppendLine("────────────────");
+                sb.AppendLine($"Total Images:    {images.Count}");
+                sb.AppendLine($"Total Exposure:  {totalExpSec / 3600.0:F1}h");
+                if (hfrImages.Any()) sb.AppendLine($"Avg HFR:         {hfrImages.Average(i => i.HFR):F2}\"");
+                if (rmsImages.Any()) sb.AppendLine($"Avg Guiding RMS: {rmsImages.Average(i => i.GuidingRMSTotal):F2}\"");
+                sb.AppendLine($"Yield:           {yieldPct:F0}%{yieldNote}");
+                sb.AppendLine($"Profile:         {session.ProfileName}");
+                sb.AppendLine($"Start:           {session.SessionStart:HH:mm}");
+                sb.AppendLine($"End:             {session.SessionEnd:HH:mm}");
+                if (!hasSafetyMonitor)
+                    sb.AppendLine("* Yield calculated without cloud exclusion — no safety monitor events recorded");
+                sb.AppendLine();
+                sb.AppendLine("Targets Imaged");
+                sb.AppendLine("──────────────");
+                foreach (var target in targets) {
+                    sb.AppendLine(target.Key);
+                    var filterGroups = target.GroupBy(i => i.Filter)
+                                             .OrderBy(g => FilterSortKey(g.Key)).ThenBy(g => g.Key);
+                    var filterParts = filterGroups.Select(g => $"{g.Key}: {g.Count()} \u00d7 {g.First().ExposureDuration:F0}s");
+                    sb.AppendLine($"  {string.Join("   ", filterParts)}");
+                    var tExp = target.Sum(i => i.ExposureDuration);
+                    sb.AppendLine($"  {target.Count()} images  ·  {tExp / 3600.0:F1}h total exposure");
+                    sb.AppendLine();
+                }
+                sb.AppendLine("Full report attached.");
+            }
+
+            return sb.ToString();
+        }
     }
 }

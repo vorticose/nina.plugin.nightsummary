@@ -158,10 +158,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 };
 
                 int half = markerSize / 2;
-                // Escape single quotes in description to avoid breaking the attribute
-                string tipText = $"{evt.Timestamp:HH:mm} \u2014 {evt.Description?.Replace("'", "\u2019") ?? ""}";
+                string tipLabel = evt.EventType switch {
+                    "RoofOpen"   => "Safety monitor: safe",
+                    "RoofClosed" => "Safety monitor: unsafe",
+                    _            => evt.Description?.Replace("'", "\u2019") ?? ""
+                };
+                string tipText = $"{evt.Timestamp:HH:mm} \u2014 {tipLabel}";
                 sb.AppendLine($"<polygon points='{mx:F1},{markerY - half} {mx - half:F1},{markerY + half} {mx + half:F1},{markerY + half}' fill='{markerColor}' opacity='0.95' data-tip='{tipText}' style='cursor:pointer;'>");
-                sb.AppendLine($"  <title>{evt.Timestamp:HH:mm} \u2013 {evt.Description}</title>");
+                sb.AppendLine($"  <title>{tipText}</title>");
                 sb.AppendLine("</polygon>");
             }
 
