@@ -365,6 +365,24 @@ namespace NINA.Plugin.NightSummary {
             }
         }
 
+        public int ChartPrimaryMetric {
+            get => Settings.Default.ChartPrimaryMetric;
+            set {
+                Settings.Default.ChartPrimaryMetric = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public int ChartSecondaryMetric {
+            get => Settings.Default.ChartSecondaryMetric;
+            set {
+                Settings.Default.ChartSecondaryMetric = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
         private void LoadSessions() {
             try {
                 if (!File.Exists(liveDbPath)) return;

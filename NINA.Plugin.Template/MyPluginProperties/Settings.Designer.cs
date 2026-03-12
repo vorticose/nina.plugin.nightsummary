@@ -262,5 +262,29 @@ namespace NINA.Plugin.NightSummary.MyPluginProperties {
                 this["ShowHFRGraph"] = value;
             }
         }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("0")]
+        public int ChartPrimaryMetric {
+            get {
+                return ((int)(this["ChartPrimaryMetric"]));
+            }
+            set {
+                this["ChartPrimaryMetric"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("0")]
+        public int ChartSecondaryMetric {
+            get {
+                return ((int)(this["ChartSecondaryMetric"]));
+            }
+            set {
+                this["ChartSecondaryMetric"] = value;
+            }
+        }
     }
 }

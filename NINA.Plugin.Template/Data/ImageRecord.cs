@@ -35,5 +35,9 @@ namespace NINA.Plugin.NightSummary.Data {
         // Target coordinates — decimal hours (RA) and decimal degrees (Dec); 0 = unknown
         public double RaHours    { get; set; }
         public double DecDegrees { get; set; }
+
+        // Temperature readings at capture time; null = device not connected or no sensor
+        public double? FocuserTemp { get; set; }
+        public double? AmbientTemp { get; set; }
     }
 }

@@ -497,11 +497,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("</table>");
 
             if (detailLevel >= 2 && Settings.Default.ShowHFRGraph) {
-                var hfrChart = ChartGenerator.GenerateHfrChart(data.Images);
-                if (!string.IsNullOrEmpty(hfrChart)) {
-                    sb.AppendLine("<h2>HFR Over Time</h2>");
-                    sb.AppendLine(hfrChart);
-                }
+                int primary   = Settings.Default.ChartPrimaryMetric;
+                int secondary = Settings.Default.ChartSecondaryMetric;
+                sb.AppendLine($"<h2>{ChartGenerator.GetChartTitle(primary, secondary)}</h2>");
+                sb.AppendLine(ChartGenerator.GenerateMetricChart(data.Images, primary, secondary));
             }
 
             return sb.ToString();

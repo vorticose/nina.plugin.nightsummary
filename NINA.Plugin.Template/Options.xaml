@@ -11,22 +11,21 @@
 
                     <TextBlock Text="Report Content" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
 
-                    <StackPanel Orientation="Horizontal" Margin="0,5">
-                        <TextBlock Text="Detail Level" Width="200" VerticalAlignment="Center" />
-                        <ComboBox SelectedIndex="{Binding ReportDetailLevel}" MinWidth="160">
+                    <StackPanel Orientation="Horizontal" Margin="0,5,0,10">
+                        <TextBlock Text="Detail Level" Width="200" VerticalAlignment="Top" Margin="0,4,0,0" />
+                        <ComboBox SelectedIndex="{Binding ReportDetailLevel}" MinWidth="160" VerticalAlignment="Top">
                             <ComboBoxItem>Snapshot</ComboBoxItem>
                             <ComboBoxItem>Standard</ComboBoxItem>
                             <ComboBoxItem>Full</ComboBoxItem>
                         </ComboBox>
+                        <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,2,0,0" MaxWidth="400">
+                            <Run FontWeight="Bold">Snapshot</Run><Run> — Header, stat boxes, and filter table only.</Run>
+                            <LineBreak />
+                            <Run FontWeight="Bold">Standard</Run><Run> — Adds timeline, altitude charts, image quality, and Target Scheduler bars.</Run>
+                            <LineBreak />
+                            <Run FontWeight="Bold">Full</Run><Run> — Adds metric chart and session history.</Run>
+                        </TextBlock>
                     </StackPanel>
-
-                    <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="200,4,0,10" MaxWidth="550">
-                        <Run FontWeight="Bold">Snapshot</Run><Run> — Header, stat boxes, and filter table only.</Run>
-                        <LineBreak />
-                        <Run FontWeight="Bold">Standard</Run><Run> — Adds timeline, altitude charts, image quality, and Target Scheduler bars.</Run>
-                        <LineBreak />
-                        <Run FontWeight="Bold">Full</Run><Run> — Adds HFR chart and session history.</Run>
-                    </TextBlock>
 
                     <StackPanel Orientation="Horizontal" Margin="0,4">
                         <TextBlock Text="Show Sky Thumbnails" Width="200" VerticalAlignment="Center" />
@@ -64,7 +63,7 @@
                         </StackPanel>
                     </StackPanel>
 
-                    <!-- TS Progress Bars + Star Count CV: both disabled at Snapshot -->
+                    <!-- TS Progress Bars: disabled at Snapshot -->
                     <StackPanel Orientation="Horizontal" Margin="0,4">
                         <StackPanel.Style>
                             <Style TargetType="StackPanel">
@@ -78,11 +77,25 @@
                         </StackPanel.Style>
                         <TextBlock Text="Show TS Progress Bars" Width="200" VerticalAlignment="Center" />
                         <CheckBox IsChecked="{Binding ShowTSProgressBars}" VerticalAlignment="Center" />
-                        <TextBlock Text="Show Star Count CV" Width="160" VerticalAlignment="Center" Margin="20,0,0,0" />
+                    </StackPanel>
+
+                    <!-- Star Count CV: disabled at Snapshot -->
+                    <StackPanel Orientation="Horizontal" Margin="0,4">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="IsEnabled" Value="True"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ReportDetailLevel}" Value="0">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <TextBlock Text="Show Star Count CV" Width="200" VerticalAlignment="Center" />
                         <CheckBox IsChecked="{Binding ShowStarCountCV}" VerticalAlignment="Center" />
                     </StackPanel>
 
-                    <!-- Session History + HFR Graph: both disabled at Snapshot and Standard -->
+                    <!-- Session History: disabled at Snapshot and Standard -->
                     <StackPanel Orientation="Horizontal" Margin="0,4">
                         <StackPanel.Style>
                             <Style TargetType="StackPanel">
@@ -99,26 +112,75 @@
                         </StackPanel.Style>
                         <TextBlock Text="Show Session History" Width="200" VerticalAlignment="Center" />
                         <CheckBox IsChecked="{Binding ShowSessionHistory}" VerticalAlignment="Center" />
-                        <TextBlock Text="Show HFR Graph" Width="160" VerticalAlignment="Center" Margin="20,0,0,0" />
-                        <CheckBox IsChecked="{Binding ShowHFRGraph}" VerticalAlignment="Center" />
                     </StackPanel>
 
-                    <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="200,4,0,0" MaxWidth="550">
-                        <TextBlock.Style>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="Opacity" Value="1"/>
+                    <!-- Metric Chart: disabled at Snapshot and Standard -->
+                    <StackPanel Orientation="Horizontal" Margin="0,4">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="IsEnabled" Value="True"/>
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding ReportDetailLevel}" Value="0">
-                                        <Setter Property="Opacity" Value="0.35"/>
+                                        <Setter Property="IsEnabled" Value="False"/>
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding ReportDetailLevel}" Value="1">
-                                        <Setter Property="Opacity" Value="0.35"/>
+                                        <Setter Property="IsEnabled" Value="False"/>
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
-                        </TextBlock.Style>
-                        Session history is only shown at Full detail level.
-                    </TextBlock>
+                        </StackPanel.Style>
+                        <TextBlock Text="Show Metric Chart" Width="200" VerticalAlignment="Center" />
+                        <CheckBox IsChecked="{Binding ShowHFRGraph}" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <!-- Chart metric selectors: disabled at Snapshot/Standard or when Metric Chart is off -->
+                    <StackPanel Margin="200,2,0,2">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="IsEnabled" Value="True"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ReportDetailLevel}" Value="0">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding ReportDetailLevel}" Value="1">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding ShowHFRGraph}" Value="False">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,3">
+                            <TextBlock Text="Primary Metric" Width="130" VerticalAlignment="Center" />
+                            <ComboBox SelectedIndex="{Binding ChartPrimaryMetric}" MinWidth="160">
+                                <ComboBoxItem>HFR</ComboBoxItem>
+                                <ComboBoxItem>FWHM</ComboBoxItem>
+                                <ComboBoxItem>Guiding RMS</ComboBoxItem>
+                                <ComboBoxItem>Focuser Temp (°C)</ComboBoxItem>
+                                <ComboBoxItem>Ambient Temp (°C)</ComboBoxItem>
+                                <ComboBoxItem>Eccentricity</ComboBoxItem>
+                            </ComboBox>
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,3">
+                            <TextBlock Text="Secondary Metric" Width="130" VerticalAlignment="Top" Margin="0,4,0,0" />
+                            <ComboBox SelectedIndex="{Binding ChartSecondaryMetric}" MinWidth="160" VerticalAlignment="Top">
+                                <ComboBoxItem>None</ComboBoxItem>
+                                <ComboBoxItem>HFR</ComboBoxItem>
+                                <ComboBoxItem>FWHM</ComboBoxItem>
+                                <ComboBoxItem>Guiding RMS</ComboBoxItem>
+                                <ComboBoxItem>Focuser Temp (°C)</ComboBoxItem>
+                                <ComboBoxItem>Ambient Temp (°C)</ComboBoxItem>
+                                <ComboBoxItem>Eccentricity</ComboBoxItem>
+                            </ComboBox>
+                            <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,2,0,0" MaxWidth="320">
+                                FWHM and Eccentricity require the Hocus Focus plugin. Focuser Temp requires a focuser with a built-in temperature sensor.
+                                Ambient Temp requires a device connected as a NINA weather data source (e.g. Pegasus UPB, AAG CloudWatcher).
+                            </TextBlock>
+                        </StackPanel>
+                    </StackPanel>
 
                     <Separator Margin="0,20,0,10" />
 
@@ -127,10 +189,9 @@
                     <StackPanel Orientation="Horizontal" Margin="0,5">
                         <TextBlock Text="Save Report Locally" Width="200" VerticalAlignment="Center" />
                         <CheckBox IsChecked="{Binding SaveReportLocally}" VerticalAlignment="Center" />
+                        <TextBlock Text="Saves the HTML report to Documents\N.I.N.A.\Night Summary\Saved Reports\ after each session."
+                                   TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,0,0,0" MaxWidth="350" VerticalAlignment="Center" />
                     </StackPanel>
-
-                    <TextBlock Text="Saves the HTML report to Documents\N.I.N.A.\Night Summary\Saved Reports\ after each session."
-                               TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="0,5,0,0" MaxWidth="550" />
 
                     <Separator Margin="0,20,0,10" />
 
@@ -163,10 +224,9 @@
                                    Foreground="{Binding EmailTestStatus.Foreground}"
                                    Visibility="{Binding EmailTestStatus.Visibility}"
                                    VerticalAlignment="Center" Margin="10,0,0,0" />
+                        <TextBlock Text="Use a Gmail App Password, not your regular password. Generate one at myaccount.google.com → Security → App Passwords."
+                                   TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,0,0,0" MaxWidth="300" VerticalAlignment="Center" />
                     </StackPanel>
-
-                    <TextBlock Text="Note: Use a Gmail App Password, not your regular Gmail password. Generate one at myaccount.google.com under Security > App Passwords."
-                               TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="0,5,0,0" MaxWidth="550" />
 
                     <Separator Margin="0,20,0,10" />
 
@@ -194,10 +254,9 @@
                                    Foreground="{Binding PushoverTestStatus.Foreground}"
                                    Visibility="{Binding PushoverTestStatus.Visibility}"
                                    VerticalAlignment="Center" Margin="10,0,0,0" />
+                        <TextBlock Text="Create a Pushover application at pushover.net to get your App Token. Your User Key is on your Pushover dashboard."
+                                   TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,0,0,0" MaxWidth="300" VerticalAlignment="Center" />
                     </StackPanel>
-
-                    <TextBlock Text="Note: Create a Pushover application at pushover.net to get your App Token. Your User Key is on your Pushover dashboard."
-                               TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="0,5,0,0" MaxWidth="550" />
 
                     <Separator Margin="0,20,0,10" />
 
@@ -220,17 +279,19 @@
                                    Foreground="{Binding DiscordTestStatus.Foreground}"
                                    Visibility="{Binding DiscordTestStatus.Visibility}"
                                    VerticalAlignment="Center" Margin="10,0,0,0" />
+                        <TextBlock Text="In Discord, go to channel Settings → Integrations → Webhooks → New Webhook to get your URL."
+                                   TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,0,0,0" MaxWidth="300" VerticalAlignment="Center" />
                     </StackPanel>
-
-                    <TextBlock Text="Note: In Discord, go to channel Settings → Integrations → Webhooks → New Webhook to get your URL."
-                               TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="0,5,0,0" MaxWidth="550" />
 
                     <Separator Margin="0,20,0,10" />
 
                     <TextBlock Text="Resend Previous Session" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
 
-                    <TextBlock Text="Select any previous session and resend its report through all currently enabled notification channels."
-                               TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="0,0,0,10" MaxWidth="550" />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                        <TextBlock Width="200" />
+                        <TextBlock Text="Select any previous session and resend its report through all currently enabled notification channels."
+                                   TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="400" />
+                    </StackPanel>
 
                     <StackPanel Orientation="Horizontal" Margin="0,5">
                         <TextBlock Width="200" VerticalAlignment="Center" />
@@ -274,8 +335,11 @@
 
                     <TextBlock Text="Test Report" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
 
-                    <TextBlock Text="Sends a full report using the session data in the test database. To use this, place a nightsummary.sqlite file in the 'test' subfolder of the Night Summary plugin data directory. Uses all currently enabled notification channels."
-                               TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="0,0,0,10" MaxWidth="550" />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                        <TextBlock Width="200" />
+                        <TextBlock Text="Sends a full report using the session data in the test database. To use this, place a nightsummary.sqlite file in the 'test' subfolder of the Night Summary plugin data directory. Uses all currently enabled notification channels."
+                                   TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="400" />
+                    </StackPanel>
 
                     <StackPanel Orientation="Horizontal" Margin="0,10">
                         <TextBlock Width="200" />

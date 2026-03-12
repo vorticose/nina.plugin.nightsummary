@@ -67,7 +67,9 @@ namespace NINA.Plugin.NightSummary.Data {
                         GuidingScale REAL,
                         Accepted INTEGER DEFAULT 1,
                         RaHours REAL DEFAULT 0,
-                        DecDegrees REAL DEFAULT 0
+                        DecDegrees REAL DEFAULT 0,
+                        FocuserTemp REAL,
+                        AmbientTemp REAL
                     )";
 
                 using (var cmd = new SQLiteCommand(createSessions, conn))
@@ -93,6 +95,8 @@ namespace NINA.Plugin.NightSummary.Data {
                 MigrateAddColumn(conn, "Images",   "Eccentricity",     "REAL DEFAULT 0");
                 MigrateAddColumn(conn, "Images",   "RaHours",          "REAL DEFAULT 0");
                 MigrateAddColumn(conn, "Images",   "DecDegrees",       "REAL DEFAULT 0");
+                MigrateAddColumn(conn, "Images",   "FocuserTemp",      "REAL");
+                MigrateAddColumn(conn, "Images",   "AmbientTemp",      "REAL");
                 MigrateAddColumn(conn, "Sessions", "CamXSize",         "INTEGER DEFAULT 0");
                 MigrateAddColumn(conn, "Sessions", "CamYSize",         "INTEGER DEFAULT 0");
                 MigrateAddColumn(conn, "Sessions", "PixelSizeMicrons", "REAL DEFAULT 0");
@@ -195,11 +199,11 @@ namespace NINA.Plugin.NightSummary.Data {
                     INSERT INTO Images (
                         SessionId, Timestamp, TargetName, Filter, ExposureDuration,
                         HFR, FWHM, Eccentricity, StarCount, GuidingRMSTotal, GuidingScale, Accepted,
-                        RaHours, DecDegrees)
+                        RaHours, DecDegrees, FocuserTemp, AmbientTemp)
                     VALUES (
                         @SessionId, @Timestamp, @TargetName, @Filter, @ExposureDuration,
                         @HFR, @FWHM, @Eccentricity, @StarCount, @GuidingRMSTotal, @GuidingScale, @Accepted,
-                        @RaHours, @DecDegrees)";
+                        @RaHours, @DecDegrees, @FocuserTemp, @AmbientTemp)";
 
                 using (var cmd = new SQLiteCommand(sql, conn)) {
                     cmd.Parameters.AddWithValue("@SessionId", image.SessionId);
@@ -216,6 +220,8 @@ namespace NINA.Plugin.NightSummary.Data {
                     cmd.Parameters.AddWithValue("@Accepted", image.Accepted ? 1 : 0);
                     cmd.Parameters.AddWithValue("@RaHours",    image.RaHours);
                     cmd.Parameters.AddWithValue("@DecDegrees", image.DecDegrees);
+                    cmd.Parameters.AddWithValue("@FocuserTemp", image.FocuserTemp.HasValue ? (object)image.FocuserTemp.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@AmbientTemp", image.AmbientTemp.HasValue ? (object)image.AmbientTemp.Value : DBNull.Value);
                     cmd.ExecuteNonQuery();
                 }
             }
@@ -248,7 +254,9 @@ namespace NINA.Plugin.NightSummary.Data {
                                 GuidingScale = reader["GuidingScale"] == DBNull.Value ? 1 : Convert.ToDouble(reader["GuidingScale"]),
                                 Accepted = reader["Accepted"] == DBNull.Value ? false : Convert.ToInt32(reader["Accepted"]) == 1,
                                 RaHours    = reader["RaHours"]    == DBNull.Value ? 0 : Convert.ToDouble(reader["RaHours"]),
-                                DecDegrees = reader["DecDegrees"] == DBNull.Value ? 0 : Convert.ToDouble(reader["DecDegrees"])
+                                DecDegrees = reader["DecDegrees"] == DBNull.Value ? 0 : Convert.ToDouble(reader["DecDegrees"]),
+                                FocuserTemp = reader["FocuserTemp"] == DBNull.Value ? (double?)null : Convert.ToDouble(reader["FocuserTemp"]),
+                                AmbientTemp = reader["AmbientTemp"] == DBNull.Value ? (double?)null : Convert.ToDouble(reader["AmbientTemp"])
                             });
                         }
                     }

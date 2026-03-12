@@ -66,6 +66,16 @@ namespace NINA.Plugin.NightSummary.Session {
                     eccentricity = ReadDouble(type.GetProperty("Eccentricity"), analysis);
                 }
 
+                // Focuser and ambient temperatures — null when device not connected or no sensor
+                double? focuserTemp = null;
+                double? ambientTemp = null;
+                try {
+                    var ft = e.MetaData?.Focuser?.Temperature ?? double.NaN;
+                    if (!double.IsNaN(ft)) focuserTemp = ft;
+                    var at = e.MetaData?.WeatherData?.Temperature ?? double.NaN;
+                    if (!double.IsNaN(at)) ambientTemp = at;
+                } catch { /* not critical if temperature capture fails */ }
+
                 var record = new ImageRecord {
                     SessionId = currentSession.SessionId,
                     Timestamp = DateTime.Now,
@@ -81,7 +91,9 @@ namespace NINA.Plugin.NightSummary.Session {
                     GuidingScale = guidingScale,
                     Accepted = true,
                     RaHours    = e.MetaData?.Target?.Coordinates?.RA  ?? 0,
-                    DecDegrees = e.MetaData?.Target?.Coordinates?.Dec ?? 0
+                    DecDegrees = e.MetaData?.Target?.Coordinates?.Dec ?? 0,
+                    FocuserTemp = focuserTemp,
+                    AmbientTemp = ambientTemp
                 };
 
                 database.SaveImageRecord(record);
