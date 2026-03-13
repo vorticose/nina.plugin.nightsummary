@@ -82,15 +82,22 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine(".ts-bar-label { font-size: 12px; color: #888; white-space: nowrap; width: 150px; min-width: 150px; max-width: 150px; text-align: right; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; }");
             sb.AppendLine(".ts-cumulative { font-size: 12px; color: #888; margin-top: 12px; }");
             sb.AppendLine("details.history-section { margin-top: 12px; }");
-            sb.AppendLine("details.history-section > summary { cursor: pointer; color: #a0c4ff; font-size: 13px; user-select: none; list-style: none; }");
+            sb.AppendLine("details.history-section > summary { cursor: pointer; color: #a0c4ff; font-size: 14px; font-weight: bold; list-style: none; }");
             sb.AppendLine("details.history-section > summary::-webkit-details-marker { display: none; }");
             sb.AppendLine("details.history-section > summary::before { content: '\\25B6\\00A0'; }");
             sb.AppendLine("details.history-section[open] > summary::before { content: '\\25BC\\00A0'; }");
-            sb.AppendLine("</style><script>");
-            sb.AppendLine("function nsRestripe(tableId){var t=document.getElementById(tableId);if(!t)return;var idx=0;Array.from(t.rows).forEach(function(r){if(r.classList.contains('ns-detail-row')){r.style.backgroundColor='transparent';return;}r.style.backgroundColor=(idx%2===1)?'#16213e':'transparent';idx++;});}");
-            sb.AppendLine("function nsToggle(detailId,arrowId,tableId){var r=document.getElementById(detailId),a=document.getElementById(arrowId);if(r.style.display==='none'){r.style.display='table-row';a.textContent='▼';}else{r.style.display='none';a.textContent='▶';}nsRestripe(tableId);}");
-            sb.AppendLine("document.addEventListener('DOMContentLoaded',function(){nsRestripe('iq-table');});");
-            sb.AppendLine("</script></head><body>");
+            sb.AppendLine(".iq-table { width: 100%; margin-top: 10px; }");
+            sb.AppendLine(".iq-row-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr; }");
+            sb.AppendLine(".iq-header { background-color: #2d2d5e; color: #7eb8f7; padding: 8px; text-align: left; font-weight: bold; }");
+            sb.AppendLine(".iq-cell { padding: 8px; border-bottom: 1px solid #2d2d5e; }");
+            sb.AppendLine(".iq-row-even .iq-cell { background-color: #16213e; }");
+            sb.AppendLine("details.iq-row { margin: 0; }");
+            sb.AppendLine("details.iq-row > summary { list-style: none; cursor: pointer; }");
+            sb.AppendLine("details.iq-row > summary::-webkit-details-marker { display: none; }");
+            sb.AppendLine(".iq-arrow::after { content: ' \\25B6'; font-size: 10px; color: #a0c4ff; }");
+            sb.AppendLine("details.iq-row[open] .iq-arrow::after { content: ' \\25BC'; }");
+            sb.AppendLine(".iq-expand { padding: 0 8px 8px; }");
+            sb.AppendLine("</style></head><body>");
 
             sb.Append(BuildHeader(data));
 
@@ -447,54 +454,68 @@ namespace NINA.Plugin.NightSummary.Reporting {
             if (!imagesWithHFR.Any() && !imagesWithFWHM.Any() && !imagesWithGuiding.Any()) return string.Empty;
 
             sb.AppendLine("<h2>Image Quality</h2>");
-            sb.AppendLine("<table id='iq-table'>");
-            sb.AppendLine("<tr><th>Metric</th><th>Min</th><th>Max</th><th>Mean</th><th>CV</th></tr>");
+            sb.AppendLine("<div class='iq-table'>");
 
+            // Header row
+            sb.AppendLine("<div class='iq-row-grid'><div class='iq-header'>Metric</div><div class='iq-header'>Min</div><div class='iq-header'>Max</div><div class='iq-header'>Mean</div><div class='iq-header'>CV</div></div>");
+
+            int rowIdx = 0;
+
+            // HFR row — expandable via <details>
             if (imagesWithHFR.Any()) {
                 var hfrValues  = imagesWithHFR.Select(i => i.HFR).ToList();
                 var hfrFilters = imagesWithHFR.GroupBy(i => i.Filter).Where(g => g.Any()).OrderBy(g => FilterSortKey(g.Key)).ThenBy(g => g.Key).ToList();
-                var hfrTip     = $"Click to expand per-filter HFR breakdown ({hfrFilters.Count} filter{(hfrFilters.Count == 1 ? "" : "s")})";
-                sb.AppendLine($"<tr onclick=\"nsToggle('hfr-detail','hfr-arrow','iq-table')\" style='cursor:pointer;' title='{hfrTip}'>");
-                sb.AppendLine($"  <td><span id='hfr-arrow'>&#9658;</span> HFR</td><td>{hfrValues.Min():F2}\"</td><td>{hfrValues.Max():F2}\"</td><td>{hfrValues.Average():F2}\"</td><td>{CV(hfrValues):F0}%</td>");
-                sb.AppendLine($"</tr>");
-                sb.AppendLine($"<tr id='hfr-detail' class='ns-detail-row' style='display:none;'><td colspan='5' style='padding:4px 0 8px 16px;'>");
+                string evenCls = rowIdx % 2 == 1 ? " iq-row-even" : "";
+                sb.AppendLine($"<details class='iq-row{evenCls}'><summary>");
+                sb.AppendLine($"<div class='iq-row-grid'><div class='iq-cell'>HFR<span class='iq-arrow'></span></div><div class='iq-cell'>{hfrValues.Min():F2}\"</div><div class='iq-cell'>{hfrValues.Max():F2}\"</div><div class='iq-cell'>{hfrValues.Average():F2}\"</div><div class='iq-cell'>{CV(hfrValues):F0}%</div></div>");
+                sb.AppendLine("</summary>");
+                sb.AppendLine("<div class='iq-expand'>");
                 sb.AppendLine("<table style='margin:0;'><tr><th>Filter</th><th>Min</th><th>Max</th><th>Mean</th><th>CV</th></tr>");
                 foreach (var g in hfrFilters) {
                     var vals  = g.Select(i => i.HFR).ToList();
                     var cvStr = vals.Count >= 2 ? $"{CV(vals):F0}%" : "—";
                     sb.AppendLine($"<tr><td>{g.Key} <span style='color:#7eb8f7;font-style:italic;'>({vals.Count})</span></td><td>{vals.Min():F2}\"</td><td>{vals.Max():F2}\"</td><td>{vals.Average():F2}\"</td><td>{cvStr}</td></tr>");
                 }
-                sb.AppendLine("</table></td></tr>");
+                sb.AppendLine("</table></div></details>");
+                rowIdx++;
             }
 
+            // FWHM row — expandable via <details>
             if (imagesWithFWHM.Any()) {
                 var fwhmValues  = imagesWithFWHM.Select(i => i.FWHM).ToList();
                 var fwhmFilters = imagesWithFWHM.GroupBy(i => i.Filter).Where(g => g.Any()).OrderBy(g => FilterSortKey(g.Key)).ThenBy(g => g.Key).ToList();
-                var fwhmTip     = $"Click to expand per-filter FWHM breakdown ({fwhmFilters.Count} filter{(fwhmFilters.Count == 1 ? "" : "s")})";
-                sb.AppendLine($"<tr onclick=\"nsToggle('fwhm-detail','fwhm-arrow','iq-table')\" style='cursor:pointer;' title='{fwhmTip}'>");
-                sb.AppendLine($"  <td><span id='fwhm-arrow'>&#9658;</span> FWHM</td><td>{fwhmValues.Min():F2}\"</td><td>{fwhmValues.Max():F2}\"</td><td>{fwhmValues.Average():F2}\"</td><td>{CV(fwhmValues):F0}%</td>");
-                sb.AppendLine($"</tr>");
-                sb.AppendLine($"<tr id='fwhm-detail' class='ns-detail-row' style='display:none;'><td colspan='5' style='padding:4px 0 8px 16px;'>");
+                string evenCls = rowIdx % 2 == 1 ? " iq-row-even" : "";
+                sb.AppendLine($"<details class='iq-row{evenCls}'><summary>");
+                sb.AppendLine($"<div class='iq-row-grid'><div class='iq-cell'>FWHM<span class='iq-arrow'></span></div><div class='iq-cell'>{fwhmValues.Min():F2}\"</div><div class='iq-cell'>{fwhmValues.Max():F2}\"</div><div class='iq-cell'>{fwhmValues.Average():F2}\"</div><div class='iq-cell'>{CV(fwhmValues):F0}%</div></div>");
+                sb.AppendLine("</summary>");
+                sb.AppendLine("<div class='iq-expand'>");
                 sb.AppendLine("<table style='margin:0;'><tr><th>Filter</th><th>Min</th><th>Max</th><th>Mean</th><th>CV</th></tr>");
                 foreach (var g in fwhmFilters) {
                     var vals  = g.Select(i => i.FWHM).ToList();
                     var cvStr = vals.Count >= 2 ? $"{CV(vals):F0}%" : "—";
                     sb.AppendLine($"<tr><td>{g.Key} <span style='color:#7eb8f7;font-style:italic;'>({vals.Count})</span></td><td>{vals.Min():F2}\"</td><td>{vals.Max():F2}\"</td><td>{vals.Average():F2}\"</td><td>{cvStr}</td></tr>");
                 }
-                sb.AppendLine("</table></td></tr>");
+                sb.AppendLine("</table></div></details>");
+                rowIdx++;
             }
 
+            // Eccentricity row — plain (not expandable)
             if (imagesWithEcc.Any()) {
                 var eccValues = imagesWithEcc.Select(i => i.Eccentricity).ToList();
-                sb.AppendLine($"<tr><td>Eccentricity</td><td>{eccValues.Min():F2}</td><td>{eccValues.Max():F2}</td><td>{eccValues.Average():F2}</td><td>{CV(eccValues):F0}%</td></tr>");
+                string evenCls = rowIdx % 2 == 1 ? " iq-row-even" : "";
+                sb.AppendLine($"<div class='iq-row-grid{evenCls}'><div class='iq-cell'>Eccentricity</div><div class='iq-cell'>{eccValues.Min():F2}</div><div class='iq-cell'>{eccValues.Max():F2}</div><div class='iq-cell'>{eccValues.Average():F2}</div><div class='iq-cell'>{CV(eccValues):F0}%</div></div>");
+                rowIdx++;
             }
 
+            // Guiding RMS row — plain (not expandable)
             if (imagesWithGuiding.Any()) {
                 var rmsValues = imagesWithGuiding.Select(i => i.GuidingRMSTotal).ToList();
-                sb.AppendLine($"<tr><td>Guiding RMS</td><td>{rmsValues.Min():F2}\"</td><td>{rmsValues.Max():F2}\"</td><td>{rmsValues.Average():F2}\"</td><td>{CV(rmsValues):F0}%</td></tr>");
+                string evenCls = rowIdx % 2 == 1 ? " iq-row-even" : "";
+                sb.AppendLine($"<div class='iq-row-grid{evenCls}'><div class='iq-cell'>Guiding RMS</div><div class='iq-cell'>{rmsValues.Min():F2}\"</div><div class='iq-cell'>{rmsValues.Max():F2}\"</div><div class='iq-cell'>{rmsValues.Average():F2}\"</div><div class='iq-cell'>{CV(rmsValues):F0}%</div></div>");
+                rowIdx++;
             }
 
-            sb.AppendLine("</table>");
+            sb.AppendLine("</div>"); // iq-table
 
             if (detailLevel >= 2 && Settings.Default.ShowHFRGraph) {
                 int primary   = Settings.Default.ChartPrimaryMetric;

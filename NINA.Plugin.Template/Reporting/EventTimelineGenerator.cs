@@ -138,13 +138,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 double x1 = TimeToX(block.Start);
                 double x2 = TimeToX(block.End);
                 double w  = Math.Max(x2 - x1, 2);
-                sb.AppendLine($"<rect x='{x1:F1}' y='{trackY}' width='{w:F1}' height='{trackHeight}' fill='{block.Color}' opacity='0.85'>");
-                sb.AppendLine($"  <title>{block.Name}: {block.Start:HH:mm} \u2013 {block.End:HH:mm}</title>");
-                sb.AppendLine("</rect>");
+                sb.AppendLine($"<rect x='{x1:F1}' y='{trackY}' width='{w:F1}' height='{trackHeight}' fill='{block.Color}' opacity='0.85'/>");
             }
 
             // Event markers — triangles with data-tip for hover tooltips
             int markerY = trackY + trackHeight / 2;
+            var markerData = new List<(double X, string Tip)>();
             foreach (var evt in events) {
                 if (evt.Timestamp < sessionStart || evt.Timestamp > sessionEnd) continue;
 
@@ -164,9 +163,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     _            => evt.Description?.Replace("'", "\u2019") ?? ""
                 };
                 string tipText = $"{evt.Timestamp:HH:mm} \u2014 {tipLabel}";
-                sb.AppendLine($"<polygon points='{mx:F1},{markerY - half} {mx - half:F1},{markerY + half} {mx + half:F1},{markerY + half}' fill='{markerColor}' opacity='0.95' data-tip='{tipText}' style='cursor:pointer;'>");
-                sb.AppendLine($"  <title>{tipText}</title>");
-                sb.AppendLine("</polygon>");
+                markerData.Add((mx, tipText));
+                sb.AppendLine($"<polygon points='{mx:F1},{markerY - half} {mx - half:F1},{markerY + half} {mx + half:F1},{markerY + half}' fill='{markerColor}' opacity='0.95' data-tip='{tipText}' style='cursor:pointer;'/>");
             }
 
             // ── Ruler-style time axis ────────────────────────────────────────────
@@ -243,23 +241,65 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             sb.AppendLine("</svg>");
 
-            // Inline JS — wires up hover tooltips for all [data-tip] SVG elements
-            sb.AppendLine(@"<script>
-(function() {
+            // Inline JS — desktop hover on [data-tip] elements + touch via coordinate-based nearest-marker lookup
+            // Build JS array of marker positions for touch hit-testing
+            var jsMarkers = new StringBuilder();
+            jsMarkers.Append("[");
+            for (int m = 0; m < markerData.Count; m++) {
+                if (m > 0) jsMarkers.Append(",");
+                var escaped = markerData[m].Tip.Replace("\\", "\\\\").Replace("'", "\\'");
+                jsMarkers.Append($"{{x:{markerData[m].X:F1},tip:'{escaped}'}}");
+            }
+            jsMarkers.Append("]");
+
+            sb.AppendLine($@"<script>
+(function() {{
   var tip = document.getElementById('ns-tooltip');
   if (!tip) return;
-  document.querySelectorAll('[data-tip]').forEach(function(el) {
-    el.addEventListener('mousemove', function(e) {
+  var markers = {jsMarkers};
+  document.querySelectorAll('[data-tip]').forEach(function(el) {{
+    el.addEventListener('mousemove', function(e) {{
       tip.textContent = el.getAttribute('data-tip');
       tip.style.display = 'block';
       tip.style.left = (e.clientX + 14) + 'px';
       tip.style.top  = (e.clientY - 36) + 'px';
-    });
-    el.addEventListener('mouseout', function() {
+    }});
+    el.addEventListener('mouseout', function() {{
       tip.style.display = 'none';
-    });
-  });
-})();
+    }});
+  }});
+  var container = document.querySelector('.timeline-container');
+  if (container) {{
+    var svg = container.querySelector('svg');
+    container.addEventListener('click', function(e) {{
+      if (!svg || markers.length === 0) return;
+      var rect = svg.getBoundingClientRect();
+      var svgW = {svgWidth};
+      var scaleX = rect.width / svgW;
+      var tapSvgX = (e.clientX - rect.left) / scaleX;
+      var best = null, bestDist = 9999;
+      for (var i = 0; i < markers.length; i++) {{
+        var d = Math.abs(markers[i].x - tapSvgX);
+        if (d < bestDist) {{ bestDist = d; best = markers[i]; }}
+      }}
+      if (best && bestDist < 30) {{
+        if (tip.style.display === 'block' && tip._lastTip === best.tip) {{
+          tip.style.display = 'none';
+          tip._lastTip = null;
+        }} else {{
+          tip.textContent = best.tip;
+          tip.style.display = 'block';
+          tip.style.left = (e.clientX) + 'px';
+          tip.style.top  = (e.clientY - 50) + 'px';
+          tip._lastTip = best.tip;
+        }}
+      }} else {{
+        tip.style.display = 'none';
+        tip._lastTip = null;
+      }}
+    }});
+  }}
+}})();
 </script>");
 
             sb.AppendLine("</div>");
