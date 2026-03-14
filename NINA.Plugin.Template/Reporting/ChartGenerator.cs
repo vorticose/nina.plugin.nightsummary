@@ -276,17 +276,17 @@ namespace NINA.Plugin.NightSummary.Reporting {
         };
 
         private static string GetPrimaryAxisLabel(int metric) => metric switch {
-            PrimaryHFR          => "HFR (\")",
+            PrimaryHFR          => "HFR (px)",
             PrimaryFWHM         => "FWHM (\")",
             PrimaryGuidingRMS   => "RMS (\")",
             PrimaryFocuserTemp  => "Temp (&#176;C)",
             PrimaryAmbientTemp  => "Temp (&#176;C)",
             PrimaryEccentricity => "Eccentricity",
-            _                   => "HFR (\")"
+            _                   => "HFR (px)"
         };
 
         private static string GetSecondaryAxisLabel(int metric) => metric switch {
-            SecHFR          => "HFR (\")",
+            SecHFR          => "HFR (px)",
             SecFWHM         => "FWHM (\")",
             SecGuidingRMS   => "RMS (\")",
             SecFocuserTemp  => "Temp (&#176;C)",

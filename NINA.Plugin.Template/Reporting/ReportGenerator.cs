@@ -86,7 +86,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("details.history-section > summary::-webkit-details-marker { display: none; }");
             sb.AppendLine("details.history-section > summary::before { content: '\\25B6\\00A0'; }");
             sb.AppendLine("details.history-section[open] > summary::before { content: '\\25BC\\00A0'; }");
-            sb.AppendLine(".iq-table { width: 100%; margin-top: 10px; }");
+            sb.AppendLine("details.iq-section { margin-top: 12px; }");
+            sb.AppendLine("details.iq-section > summary { cursor: pointer; color: #a0c4ff; font-size: 14px; font-weight: bold; list-style: none; }");
+            sb.AppendLine("details.iq-section > summary::-webkit-details-marker { display: none; }");
+            sb.AppendLine("details.iq-section > summary::before { content: '\\25B6\\00A0'; }");
+            sb.AppendLine("details.iq-section[open] > summary::before { content: '\\25BC\\00A0'; }");
+            sb.AppendLine(".iq-table { width: 100%; margin-top: 8px; }");
             sb.AppendLine(".iq-row-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr; }");
             sb.AppendLine(".iq-header { background-color: #2d2d5e; color: #7eb8f7; padding: 8px; text-align: left; font-weight: bold; }");
             sb.AppendLine(".iq-cell { padding: 8px; border-bottom: 1px solid #2d2d5e; }");
@@ -189,7 +194,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{TimeSpan.FromSeconds(totalExposureSec).TotalHours:F1}h</div><div class='stat-label'>Total Exposure</div></div>");
             sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{targetCount}</div><div class='stat-label'>Targets</div></div>");
             if (detailLevel >= 1 && hfrImages.Any())
-                sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{hfrImages.Average(i => i.HFR):F2}\"</div><div class='stat-label'>Avg HFR</div></div>");
+                sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{hfrImages.Average(i => i.HFR):F2}px</div><div class='stat-label'>Avg HFR</div></div>");
             if (detailLevel >= 1 && guidingImages.Any())
                 sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{guidingImages.Average(i => i.GuidingRMSTotal):F2}\"</div><div class='stat-label'>Avg Guiding RMS</div></div>");
             if (detailLevel >= 2 && fwhmImages.Any())
@@ -211,7 +216,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
         private async Task<string> BuildTargetSection(ReportData data, int detailLevel) {
             var sb = new StringBuilder();
-            var targets = data.Images.GroupBy(i => i.TargetName).OrderBy(g => g.Min(i => i.Timestamp));
+            var targets     = data.Images.GroupBy(i => i.TargetName).OrderBy(g => g.Min(i => i.Timestamp));
+            bool multiTarget = targets.Count() > 1;
             sb.AppendLine("<h2>Targets Imaged</h2>");
 
             // Pre-compute thumbnail/FOV geometry (same for all targets)
@@ -353,6 +359,21 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     }
                 }
 
+                // Per-target image quality (collapsible) — only for multi-target sessions
+                if (detailLevel >= 1 && multiTarget && Settings.Default.ShowPerTargetIQ) {
+                    var targetList = target.ToList();
+                    bool hasData = targetList.Any(i => i.HFR > 0 || i.FWHM > 0 || i.Eccentricity > 0 || i.GuidingRMSTotal > 0);
+                    if (hasData) {
+                        sb.AppendLine("<details class='iq-section'>");
+                        sb.AppendLine("<summary>Image Quality</summary>");
+                        sb.AppendLine("<div class='iq-table'>");
+                        sb.AppendLine("<div class='iq-row-grid'><div class='iq-header'>Metric</div><div class='iq-header'>Min</div><div class='iq-header'>Max</div><div class='iq-header'>Mean</div><div class='iq-header'>CV</div></div>");
+                        AppendIqRows(sb, targetList);
+                        sb.AppendLine("</div>");
+                        sb.AppendLine("</details>");
+                    }
+                }
+
                 // Session history (collapsible)
                 if (detailLevel >= 2 && Settings.Default.ShowSessionHistory) {
                     List<TargetSessionHistory> history = null;
@@ -364,7 +385,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                         sb.AppendLine("<table>");
                         sb.AppendLine("<tr><th>Date</th><th>Integration</th><th>Avg HFR</th><th>Avg FWHM</th><th>Avg Guiding RMS</th></tr>");
                         foreach (var h in history) {
-                            var hfrStr  = h.AvgHFR        > 0 ? h.AvgHFR.ToString("F2") + "\"" : "—";
+                            var hfrStr  = h.AvgHFR        > 0 ? h.AvgHFR.ToString("F2") + "px" : "—";
                             var fwhmStr = h.AvgFWHM       > 0 ? h.AvgFWHM.ToString("F2") + "\"" : "—";
                             var rmsStr  = h.AvgGuidingRMS > 0 ? $"{h.AvgGuidingRMS:F2}&quot;" : "—";
                             sb.AppendLine($"<tr><td>{h.SessionStart:MMM d, yyyy}</td><td>{FormatIntegration(h.IntegrationSeconds)}</td><td>{hfrStr}</td><td>{fwhmStr}</td><td>{rmsStr}</td></tr>");
@@ -444,22 +465,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
             return sb.ToString();
         }
 
-        private string BuildImageQualitySection(ReportData data, int detailLevel) {
-            var sb = new StringBuilder();
-            var imagesWithHFR     = data.Images.Where(i => i.HFR > 0).ToList();
-            var imagesWithFWHM    = data.Images.Where(i => i.FWHM > 0).ToList();
-            var imagesWithEcc     = data.Images.Where(i => i.Eccentricity > 0).ToList();
-            var imagesWithGuiding = data.Images.Where(i => i.GuidingRMSTotal > 0).ToList();
-
-            if (!imagesWithHFR.Any() && !imagesWithFWHM.Any() && !imagesWithGuiding.Any()) return string.Empty;
-
-            sb.AppendLine("<h2>Image Quality</h2>");
-            sb.AppendLine("<div class='iq-table'>");
-
-            // Header row
-            sb.AppendLine("<div class='iq-row-grid'><div class='iq-header'>Metric</div><div class='iq-header'>Min</div><div class='iq-header'>Max</div><div class='iq-header'>Mean</div><div class='iq-header'>CV</div></div>");
-
+        private void AppendIqRows(StringBuilder sb, List<ImageRecord> images) {
             int rowIdx = 0;
+            var imagesWithHFR     = images.Where(i => i.HFR > 0).ToList();
+            var imagesWithFWHM    = images.Where(i => i.FWHM > 0).ToList();
+            var imagesWithEcc     = images.Where(i => i.Eccentricity > 0).ToList();
+            var imagesWithGuiding = images.Where(i => i.GuidingRMSTotal > 0).ToList();
 
             // HFR row — expandable via <details>
             if (imagesWithHFR.Any()) {
@@ -467,14 +478,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var hfrFilters = imagesWithHFR.GroupBy(i => i.Filter).Where(g => g.Any()).OrderBy(g => FilterSortKey(g.Key)).ThenBy(g => g.Key).ToList();
                 string evenCls = rowIdx % 2 == 1 ? " iq-row-even" : "";
                 sb.AppendLine($"<details class='iq-row{evenCls}'><summary>");
-                sb.AppendLine($"<div class='iq-row-grid'><div class='iq-cell'>HFR<span class='iq-arrow'></span></div><div class='iq-cell'>{hfrValues.Min():F2}\"</div><div class='iq-cell'>{hfrValues.Max():F2}\"</div><div class='iq-cell'>{hfrValues.Average():F2}\"</div><div class='iq-cell'>{CV(hfrValues):F0}%</div></div>");
+                sb.AppendLine($"<div class='iq-row-grid'><div class='iq-cell'>HFR<span class='iq-arrow'></span></div><div class='iq-cell'>{hfrValues.Min():F2}px</div><div class='iq-cell'>{hfrValues.Max():F2}px</div><div class='iq-cell'>{hfrValues.Average():F2}px</div><div class='iq-cell'>{CV(hfrValues):F0}%</div></div>");
                 sb.AppendLine("</summary>");
                 sb.AppendLine("<div class='iq-expand'>");
                 sb.AppendLine("<table style='margin:0;'><tr><th>Filter</th><th>Min</th><th>Max</th><th>Mean</th><th>CV</th></tr>");
                 foreach (var g in hfrFilters) {
                     var vals  = g.Select(i => i.HFR).ToList();
                     var cvStr = vals.Count >= 2 ? $"{CV(vals):F0}%" : "—";
-                    sb.AppendLine($"<tr><td>{g.Key} <span style='color:#7eb8f7;font-style:italic;'>({vals.Count})</span></td><td>{vals.Min():F2}\"</td><td>{vals.Max():F2}\"</td><td>{vals.Average():F2}\"</td><td>{cvStr}</td></tr>");
+                    sb.AppendLine($"<tr><td>{g.Key} <span style='color:#7eb8f7;font-style:italic;'>({vals.Count})</span></td><td>{vals.Min():F2}px</td><td>{vals.Max():F2}px</td><td>{vals.Average():F2}px</td><td>{cvStr}</td></tr>");
                 }
                 sb.AppendLine("</table></div></details>");
                 rowIdx++;
@@ -512,9 +523,21 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var rmsValues = imagesWithGuiding.Select(i => i.GuidingRMSTotal).ToList();
                 string evenCls = rowIdx % 2 == 1 ? " iq-row-even" : "";
                 sb.AppendLine($"<div class='iq-row-grid{evenCls}'><div class='iq-cell'>Guiding RMS</div><div class='iq-cell'>{rmsValues.Min():F2}\"</div><div class='iq-cell'>{rmsValues.Max():F2}\"</div><div class='iq-cell'>{rmsValues.Average():F2}\"</div><div class='iq-cell'>{CV(rmsValues):F0}%</div></div>");
-                rowIdx++;
             }
+        }
 
+        private string BuildImageQualitySection(ReportData data, int detailLevel) {
+            var sb = new StringBuilder();
+            var hasHFR     = data.Images.Any(i => i.HFR > 0);
+            var hasFWHM    = data.Images.Any(i => i.FWHM > 0);
+            var hasGuiding = data.Images.Any(i => i.GuidingRMSTotal > 0);
+
+            if (!hasHFR && !hasFWHM && !hasGuiding) return string.Empty;
+
+            sb.AppendLine("<h2>Session Image Quality</h2>");
+            sb.AppendLine("<div class='iq-table'>");
+            sb.AppendLine("<div class='iq-row-grid'><div class='iq-header'>Metric</div><div class='iq-header'>Min</div><div class='iq-header'>Max</div><div class='iq-header'>Mean</div><div class='iq-header'>CV</div></div>");
+            AppendIqRows(sb, data.Images);
             sb.AppendLine("</div>"); // iq-table
 
             if (detailLevel >= 2 && Settings.Default.ShowHFRGraph) {

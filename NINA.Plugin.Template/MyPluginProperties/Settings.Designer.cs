@@ -277,6 +277,18 @@ namespace NINA.Plugin.NightSummary.MyPluginProperties {
 
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool ShowPerTargetIQ {
+            get {
+                return ((bool)(this["ShowPerTargetIQ"]));
+            }
+            set {
+                this["ShowPerTargetIQ"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("0")]
         public int ChartSecondaryMetric {
             get {

@@ -21,7 +21,7 @@
                         <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,2,0,0" MaxWidth="400">
                             <Run FontWeight="Bold">Snapshot</Run><Run> — Header, stat boxes, and filter table only.</Run>
                             <LineBreak />
-                            <Run FontWeight="Bold">Standard</Run><Run> — Adds timeline, altitude charts, image quality, and Target Scheduler bars.</Run>
+                            <Run FontWeight="Bold">Standard</Run><Run> — Adds timeline, altitude charts, image quality, per-target image quality, and Target Scheduler bars.</Run>
                             <LineBreak />
                             <Run FontWeight="Bold">Full</Run><Run> — Adds metric chart and session history.</Run>
                         </TextBlock>
@@ -93,6 +93,22 @@
                         </StackPanel.Style>
                         <TextBlock Text="Show Star Count CV" Width="200" VerticalAlignment="Center" />
                         <CheckBox IsChecked="{Binding ShowStarCountCV}" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <!-- Per-Target IQ: disabled at Snapshot -->
+                    <StackPanel Orientation="Horizontal" Margin="0,4">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="IsEnabled" Value="True"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ReportDetailLevel}" Value="0">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <TextBlock Text="Show Per-Target Image Quality" Width="200" VerticalAlignment="Center" />
+                        <CheckBox IsChecked="{Binding ShowPerTargetIQ}" VerticalAlignment="Center" />
                     </StackPanel>
 
                     <!-- Session History: disabled at Snapshot and Standard -->

@@ -290,6 +290,7 @@ namespace NINA.Plugin.NightSummary {
                 Settings.Default.ShowSessionHistory = true;
                 Settings.Default.ShowStarCountCV    = true;
                 Settings.Default.ShowHFRGraph       = true;
+                Settings.Default.ShowPerTargetIQ    = true;
                 Settings.Default.Save();
                 RaisePropertyChanged();
                 RaisePropertyChanged(nameof(ShowSkyThumbnails));
@@ -299,6 +300,7 @@ namespace NINA.Plugin.NightSummary {
                 RaisePropertyChanged(nameof(ShowSessionHistory));
                 RaisePropertyChanged(nameof(ShowStarCountCV));
                 RaisePropertyChanged(nameof(ShowHFRGraph));
+                RaisePropertyChanged(nameof(ShowPerTargetIQ));
             }
         }
 
@@ -360,6 +362,15 @@ namespace NINA.Plugin.NightSummary {
             get => Settings.Default.ShowHFRGraph;
             set {
                 Settings.Default.ShowHFRGraph = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public bool ShowPerTargetIQ {
+            get => Settings.Default.ShowPerTargetIQ;
+            set {
+                Settings.Default.ShowPerTargetIQ = value;
                 Settings.Default.Save();
                 RaisePropertyChanged();
             }
