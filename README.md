@@ -2,7 +2,7 @@
 
 A [N.I.N.A.](https://nighttime-imaging.eu/) plugin that records your astrophotography session as it runs and delivers a rich HTML report the moment your sequence completes — so you wake up to a full breakdown of the night.
 
-![Night Summary Report](https://i.imgur.com/uvcC1dC.png)
+<img src="assets/DemoReportScreenshot.png" width="700" alt="Night Summary Report" />
 
 ---
 
