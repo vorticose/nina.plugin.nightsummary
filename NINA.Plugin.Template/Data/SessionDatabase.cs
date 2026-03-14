@@ -584,7 +584,7 @@ namespace NINA.Plugin.NightSummary.Data {
 
                     foreach (var (imageId, gradingStatus, rejectReason) in updates) {
                         using (var cmd = new SQLiteCommand(sql, conn, tx)) {
-                            // gradingStatus == 1 means Accepted in TS (verify at integration time)
+                            // GradingStatus enum (Target Scheduler plugin, ImageGrader.cs): 0=Pending, 1=Accepted, 2=Rejected
                             bool accepted = gradingStatus == 1;
                             cmd.Parameters.AddWithValue("@Id",            imageId);
                             cmd.Parameters.AddWithValue("@SessionId",     sessionId);

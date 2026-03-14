@@ -1,4 +1,4 @@
-﻿using NINA.Core.Utility;
+using NINA.Core.Utility;
 using System;
 using System.IO;
 using System.Net;
@@ -8,17 +8,23 @@ using System.Threading.Tasks;
 
 namespace NINA.Plugin.NightSummary.Reporting {
     /// <summary>
-    /// Sends the Night Summary report via Gmail SMTP.
+    /// Sends the Night Summary report via SMTP. Defaults to Gmail (smtp.gmail.com:587).
     /// </summary>
     public class EmailSender {
 
-        private readonly string gmailAddress;
-        private readonly string gmailAppPassword;
+        private readonly string smtpHost;
+        private readonly int smtpPort;
+        private readonly bool smtpSsl;
+        private readonly string senderAddress;
+        private readonly string password;
         private readonly string recipientAddress;
 
-        public EmailSender(string gmailAddress, string gmailAppPassword, string recipientAddress) {
-            this.gmailAddress = gmailAddress;
-            this.gmailAppPassword = gmailAppPassword;
+        public EmailSender(string smtpHost, int smtpPort, bool smtpSsl, string senderAddress, string password, string recipientAddress) {
+            this.smtpHost        = smtpHost;
+            this.smtpPort        = smtpPort;
+            this.smtpSsl         = smtpSsl;
+            this.senderAddress   = senderAddress;
+            this.password        = password;
             this.recipientAddress = recipientAddress;
         }
 
@@ -30,19 +36,20 @@ namespace NINA.Plugin.NightSummary.Reporting {
             try {
                 Logger.Info($"NightSummary: Sending test email to {recipientAddress}");
 
-                var message = new MailMessage {
-                    From    = new MailAddress(gmailAddress, "NINA Night Summary"),
-                    Subject = "Night Summary — Test Email",
-                    Body    = "This is a test email from Night Summary. If you received this, your email settings are configured correctly.",
+                using (var message = new MailMessage {
+                    From       = new MailAddress(senderAddress, "NINA Night Summary"),
+                    Subject    = "Night Summary — Test Email",
+                    Body       = "This is a test email from Night Summary. If you received this, your email settings are configured correctly.",
                     IsBodyHtml = false
-                };
-                message.To.Add(recipientAddress);
+                }) {
+                    message.To.Add(recipientAddress);
 
-                using (var client = new SmtpClient("smtp.gmail.com", 587)) {
-                    client.EnableSsl      = true;
-                    client.Credentials    = new NetworkCredential(gmailAddress, gmailAppPassword);
-                    client.DeliveryMethod = SmtpDeliveryMethod.Network;
-                    await client.SendMailAsync(message);
+                    using (var client = new SmtpClient(smtpHost, smtpPort)) {
+                        client.EnableSsl      = smtpSsl;
+                        client.Credentials    = new NetworkCredential(senderAddress, password);
+                        client.DeliveryMethod = SmtpDeliveryMethod.Network;
+                        await client.SendMailAsync(message);
+                    }
                 }
 
                 Logger.Info("NightSummary: Test email sent successfully");
@@ -62,25 +69,24 @@ namespace NINA.Plugin.NightSummary.Reporting {
             try {
                 Logger.Info($"NightSummary: Sending report email to {recipientAddress}");
 
-                var message = new MailMessage {
-                    From = new MailAddress(gmailAddress, "NINA Night Summary"),
-                    Subject = subject,
-                    Body = plainTextBody,
+                using (var message = new MailMessage {
+                    From       = new MailAddress(senderAddress, "NINA Night Summary"),
+                    Subject    = subject,
+                    Body       = plainTextBody,
                     IsBodyHtml = false
-                };
+                }) {
+                    message.To.Add(recipientAddress);
 
-                message.To.Add(recipientAddress);
+                    var fileBytes  = Encoding.UTF8.GetBytes(htmlReport);
+                    var attachment = new Attachment(new MemoryStream(fileBytes), attachmentFileName ?? $"NightSummary_generated-{DateTime.Now:HH-mm-ss}.html", "text/html");
+                    message.Attachments.Add(attachment);
 
-                var fileBytes = Encoding.UTF8.GetBytes(htmlReport);
-                var attachment = new Attachment(new MemoryStream(fileBytes), attachmentFileName ?? $"NightSummary_generated-{DateTime.Now:HH-mm-ss}.html", "text/html");
-                message.Attachments.Add(attachment);
-
-                using (var client = new SmtpClient("smtp.gmail.com", 587)) {
-                    client.EnableSsl = true;
-                    client.Credentials = new NetworkCredential(gmailAddress, gmailAppPassword);
-                    client.DeliveryMethod = SmtpDeliveryMethod.Network;
-
-                    await client.SendMailAsync(message);
+                    using (var client = new SmtpClient(smtpHost, smtpPort)) {
+                        client.EnableSsl      = smtpSsl;
+                        client.Credentials    = new NetworkCredential(senderAddress, password);
+                        client.DeliveryMethod = SmtpDeliveryMethod.Network;
+                        await client.SendMailAsync(message);
+                    }
                 }
 
                 Logger.Info("NightSummary: Report email sent successfully");

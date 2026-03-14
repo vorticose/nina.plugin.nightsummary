@@ -223,12 +223,12 @@ namespace NINA.Plugin.NightSummary.Session {
 
         private async Task SendReportWithDataAsync(ReportData reportData) {
             try {
-                var gmailAddress = Settings.Default.GmailAddress;
-                var appPassword  = Settings.Default.GmailAppPassword;
-                var recipient    = Settings.Default.RecipientAddress;
+                var senderAddress = Settings.Default.SenderAddress;
+                var smtpPassword  = Settings.Default.SmtpPassword;
+                var recipient     = Settings.Default.RecipientAddress;
 
-                if (string.IsNullOrWhiteSpace(gmailAddress) ||
-                    string.IsNullOrWhiteSpace(appPassword) ||
+                if (string.IsNullOrWhiteSpace(senderAddress) ||
+                    string.IsNullOrWhiteSpace(smtpPassword) ||
                     string.IsNullOrWhiteSpace(recipient)) {
                     Logger.Warning("NightSummary: Email settings not configured - skipping report");
                     return;
@@ -241,7 +241,12 @@ namespace NINA.Plugin.NightSummary.Session {
                 var body       = BuildSessionSummary(reportData, compact: false);
 
                 var attachmentFileName = $"NightSummary_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.html";
-                var sender  = new EmailSender(gmailAddress, appPassword, recipient);
+                bool useGmail = Settings.Default.UseGmailSmtp;
+                var sender = new EmailSender(
+                    useGmail ? "smtp.gmail.com" : Settings.Default.SmtpHost,
+                    useGmail ? 587 : Settings.Default.SmtpPort,
+                    useGmail ? true : Settings.Default.SmtpSsl,
+                    senderAddress, smtpPassword, recipient);
                 var success = await sender.SendReportAsync(subject, htmlReport, body.ToString(), attachmentFileName);
 
                 if (success) {

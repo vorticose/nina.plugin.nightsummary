@@ -8,11 +8,23 @@
     <Setting Name="DefaultNotificationMessage" Type="System.String" Scope="User">
       <Value Profile="(Default)">This is a notification</Value>
     </Setting>
-    <Setting Name="GmailAddress" Type="System.String" Scope="User">
+    <Setting Name="UseGmailSmtp" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">True</Value>
+    </Setting>
+    <Setting Name="SenderAddress" Type="System.String" Scope="User">
       <Value Profile="(Default)" />
     </Setting>
-    <Setting Name="GmailAppPassword" Type="System.String" Scope="User">
+    <Setting Name="SmtpPassword" Type="System.String" Scope="User">
       <Value Profile="(Default)" />
+    </Setting>
+    <Setting Name="SmtpHost" Type="System.String" Scope="User">
+      <Value Profile="(Default)">smtp.gmail.com</Value>
+    </Setting>
+    <Setting Name="SmtpPort" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">587</Value>
+    </Setting>
+    <Setting Name="SmtpSsl" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">True</Value>
     </Setting>
     <Setting Name="RecipientAddress" Type="System.String" Scope="User">
       <Value Profile="(Default)" />

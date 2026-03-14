@@ -72,14 +72,32 @@ namespace NINA.Plugin.NightSummary {
 
             TestEmailCommand = new RelayCommand(async () => {
                 EmailTestStatus.Text = "";
-                var gmail    = Settings.Default.GmailAddress;
-                var password = Settings.Default.GmailAppPassword;
-                var recipient= Settings.Default.RecipientAddress;
-                if (string.IsNullOrWhiteSpace(gmail) || string.IsNullOrWhiteSpace(password) || string.IsNullOrWhiteSpace(recipient)) {
+                var senderAddr = Settings.Default.SenderAddress;
+                var password   = Settings.Default.SmtpPassword;
+                var recipient  = Settings.Default.RecipientAddress;
+                var smtpHost   = Settings.Default.SmtpHost;
+                if (string.IsNullOrWhiteSpace(senderAddr) || string.IsNullOrWhiteSpace(password) || string.IsNullOrWhiteSpace(recipient)) {
                     EmailTestStatus.Text = "✗ Fill in all email fields first";
                     return;
                 }
-                var sender = new EmailSender(gmail, password, recipient);
+                if (!senderAddr.Contains("@")) {
+                    EmailTestStatus.Text = "✗ Sender doesn't look like an email address";
+                    return;
+                }
+                if (!recipient.Contains("@")) {
+                    EmailTestStatus.Text = "✗ Recipient doesn't look like an email address";
+                    return;
+                }
+                if (string.IsNullOrWhiteSpace(smtpHost)) {
+                    EmailTestStatus.Text = "✗ SMTP server is required";
+                    return;
+                }
+                bool useGmail = Settings.Default.UseGmailSmtp;
+                var sender = new EmailSender(
+                    useGmail ? "smtp.gmail.com" : smtpHost,
+                    useGmail ? 587 : Settings.Default.SmtpPort,
+                    useGmail ? true : Settings.Default.SmtpSsl,
+                    senderAddr, password, recipient);
                 bool ok = await sender.SendTestAsync();
                 EmailTestStatus.Text = ok ? "✓ Sent" : "✗ Failed — check NINA log";
             });
@@ -89,6 +107,10 @@ namespace NINA.Plugin.NightSummary {
                 var url = Settings.Default.DiscordWebhookUrl;
                 if (string.IsNullOrWhiteSpace(url)) {
                     DiscordTestStatus.Text = "✗ Webhook URL is empty";
+                    return;
+                }
+                if (!url.Contains("discord.com/api/webhooks")) {
+                    DiscordTestStatus.Text = "✗ URL doesn't look like a Discord webhook";
                     return;
                 }
                 var sender = new DiscordSender(url);
@@ -102,6 +124,14 @@ namespace NINA.Plugin.NightSummary {
                 var userKey  = Settings.Default.PushoverUserKey;
                 if (string.IsNullOrWhiteSpace(appToken) || string.IsNullOrWhiteSpace(userKey)) {
                     PushoverTestStatus.Text = "✗ App token or user key is empty";
+                    return;
+                }
+                if (appToken.Length < 20 || appToken.Contains(" ")) {
+                    PushoverTestStatus.Text = "✗ App token looks wrong — double-check you copied it correctly";
+                    return;
+                }
+                if (userKey.Length < 20 || userKey.Contains(" ")) {
+                    PushoverTestStatus.Text = "✗ User key looks wrong — double-check you copied it correctly";
                     return;
                 }
                 var sender = new PushoverSender(appToken, userKey);
@@ -189,19 +219,66 @@ namespace NINA.Plugin.NightSummary {
         }
 
         // Settings properties bound to the Options UI
-        public string GmailAddress {
-            get => Settings.Default.GmailAddress;
+        public bool UseGmailSmtp {
+            get => Settings.Default.UseGmailSmtp;
             set {
-                Settings.Default.GmailAddress = value;
+                Settings.Default.UseGmailSmtp = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+                RaisePropertyChanged(nameof(UseCustomSmtp));
+            }
+        }
+
+        public bool UseCustomSmtp {
+            get => !Settings.Default.UseGmailSmtp;
+            set {
+                Settings.Default.UseGmailSmtp = !value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+                RaisePropertyChanged(nameof(UseGmailSmtp));
+            }
+        }
+
+        public string SenderAddress {
+            get => Settings.Default.SenderAddress;
+            set {
+                Settings.Default.SenderAddress = value;
                 Settings.Default.Save();
                 RaisePropertyChanged();
             }
         }
 
-        public string GmailAppPassword {
-            get => Settings.Default.GmailAppPassword;
+        public string SmtpPassword {
+            get => Settings.Default.SmtpPassword;
             set {
-                Settings.Default.GmailAppPassword = value;
+                Settings.Default.SmtpPassword = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public string SmtpHost {
+            get => Settings.Default.SmtpHost;
+            set {
+                Settings.Default.SmtpHost = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public int SmtpPort {
+            get => Settings.Default.SmtpPort;
+            set {
+                Settings.Default.SmtpPort = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public bool SmtpSsl {
+            get => Settings.Default.SmtpSsl;
+            set {
+                Settings.Default.SmtpSsl = value;
                 Settings.Default.Save();
                 RaisePropertyChanged();
             }

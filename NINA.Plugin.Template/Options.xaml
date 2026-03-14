@@ -200,6 +200,54 @@
 
                     <Separator Margin="0,20,0,10" />
 
+                    <TextBlock Text="Resend Previous Session" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
+
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                        <TextBlock Width="200" />
+                        <TextBlock Text="Select any previous session and resend its report through all currently enabled notification channels."
+                                   TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="400" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                        <TextBlock Width="200" VerticalAlignment="Center" />
+                        <ComboBox ItemsSource="{Binding AvailableSessions}"
+                                  SelectedItem="{Binding SelectedSession}"
+                                  DisplayMemberPath="DisplayLabel"
+                                  MinWidth="300" />
+                        <Button Content="↻" Command="{Binding RefreshSessionsCommand}" Width="30" Margin="6,0,0,0"
+                                ToolTip="Reset to 30 most recent sessions" />
+                    </StackPanel>
+
+                    <StackPanel Margin="200,4,0,4">
+                        <Expander Header="Search older sessions" IsExpanded="False">
+                            <StackPanel Margin="0,8,0,0">
+                                <StackPanel Orientation="Horizontal" Margin="0,4">
+                                    <TextBlock Text="From" Width="40" VerticalAlignment="Center" />
+                                    <DatePicker SelectedDate="{Binding SearchFrom}" Width="130" />
+                                    <TextBlock Text="To" Width="28" VerticalAlignment="Center" Margin="10,0,0,0" />
+                                    <DatePicker SelectedDate="{Binding SearchTo}" Width="130" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6">
+                                    <Button Content="Search" Command="{Binding SearchSessionsCommand}" Width="80" />
+                                    <Button Content="Clear" Command="{Binding ClearSearchCommand}" Width="60" Margin="8,0,0,0" />
+                                    <TextBlock Text="{Binding SearchResultText}" VerticalAlignment="Center"
+                                               Foreground="Gray" FontSize="11" Margin="10,0,0,0" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Expander>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,8">
+                        <TextBlock Width="200" />
+                        <Button Content="Send Report" Command="{Binding ResendSessionCommand}" Width="180" />
+                        <TextBlock Text="{Binding ResendStatus.Text}"
+                                   Foreground="{Binding ResendStatus.Foreground}"
+                                   Visibility="{Binding ResendStatus.Visibility}"
+                                   VerticalAlignment="Center" Margin="10,0,0,0" />
+                    </StackPanel>
+
+                    <Separator Margin="0,20,0,10" />
+
                     <TextBlock Text="Saved Reports" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
 
                     <StackPanel Orientation="Horizontal" Margin="0,5">
@@ -218,30 +266,118 @@
                         <CheckBox IsChecked="{Binding EmailEnabled}" VerticalAlignment="Center" />
                     </StackPanel>
 
-                    <StackPanel Orientation="Horizontal" Margin="0,5">
-                        <TextBlock Text="Gmail Address" Width="200" VerticalAlignment="Center" />
-                        <TextBox MinWidth="300" Text="{Binding GmailAddress, UpdateSourceTrigger=PropertyChanged}" />
+                    <!-- Provider selection -->
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,10">
+                        <TextBlock Text="Email Provider" Width="200" VerticalAlignment="Center" />
+                        <RadioButton Content="Gmail" IsChecked="{Binding UseGmailSmtp}"
+                                     GroupName="EmailProvider" VerticalAlignment="Center" Margin="0,0,20,0" />
+                        <RadioButton Content="Other provider" IsChecked="{Binding UseCustomSmtp}"
+                                     GroupName="EmailProvider" VerticalAlignment="Center" />
                     </StackPanel>
 
-                    <StackPanel Orientation="Horizontal" Margin="0,5">
-                        <TextBlock Text="Gmail App Password" Width="200" VerticalAlignment="Center" />
-                        <TextBox MinWidth="300" Text="{Binding GmailAppPassword, UpdateSourceTrigger=PropertyChanged}" />
+                    <!-- Gmail section -->
+                    <StackPanel>
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding UseGmailSmtp}" Value="False">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,5">
+                            <TextBlock Text="Gmail Address" Width="200" VerticalAlignment="Center" />
+                            <TextBox MinWidth="300" Text="{Binding SenderAddress, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,5">
+                            <TextBlock Text="App Password" Width="200" VerticalAlignment="Center" />
+                            <TextBox MinWidth="300" Text="{Binding SmtpPassword, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,5">
+                            <TextBlock Text="Recipient Email Address" Width="200" VerticalAlignment="Center" />
+                            <TextBox MinWidth="300" Text="{Binding RecipientAddress, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,10">
+                            <TextBlock Width="200" />
+                            <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="420">
+                                Requires a Gmail App Password — not your regular password.
+                                Generate one at myaccount.google.com → Security → App Passwords.
+                            </TextBlock>
+                        </StackPanel>
                     </StackPanel>
 
-                    <StackPanel Orientation="Horizontal" Margin="0,5">
-                        <TextBlock Text="Recipient Email Address" Width="200" VerticalAlignment="Center" />
-                        <TextBox MinWidth="300" Text="{Binding RecipientAddress, UpdateSourceTrigger=PropertyChanged}" />
+                    <!-- Other provider section -->
+                    <StackPanel>
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding UseGmailSmtp}" Value="False">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,5">
+                            <TextBlock Text="Sender Email" Width="200" VerticalAlignment="Center" />
+                            <TextBox MinWidth="300" Text="{Binding SenderAddress, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,5">
+                            <TextBlock Text="App Password / API Key" Width="200" VerticalAlignment="Center" />
+                            <TextBox MinWidth="300" Text="{Binding SmtpPassword, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,5">
+                            <TextBlock Text="Recipient Email Address" Width="200" VerticalAlignment="Center" />
+                            <TextBox MinWidth="300" Text="{Binding RecipientAddress, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,5">
+                            <TextBlock Text="SMTP Server" Width="200" VerticalAlignment="Center" />
+                            <TextBox MinWidth="300" Text="{Binding SmtpHost, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,5">
+                            <TextBlock Text="Port" Width="200" VerticalAlignment="Center" />
+                            <TextBox Width="60" Text="{Binding SmtpPort, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Text="Use TLS/SSL" VerticalAlignment="Center" Margin="20,0,8,0" />
+                            <CheckBox IsChecked="{Binding SmtpSsl}" VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,4">
+                            <TextBlock Width="200" />
+                            <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="420">
+                                <Run FontWeight="Bold">Do not use your regular account password.</Run>
+                                <Run>Most providers require an App Password or API key for SMTP access.</Run>
+                                <LineBreak /><LineBreak />
+                                <Run FontWeight="Bold">Common provider settings:</Run>
+                                <LineBreak />
+                                <Run>• Outlook.com — smtp-mail.outlook.com : 587, TLS on. App password: myaccount.microsoft.com → Security → App passwords</Run>
+                                <LineBreak />
+                                <Run>• Yahoo — smtp.mail.yahoo.com : 587, TLS on. App password: myaccount.yahoo.com → Security → Generate app password</Run>
+                                <LineBreak />
+                                <Run>• iCloud — smtp.mail.me.com : 587, TLS on. App password: appleid.apple.com → Sign-In &amp; Security → App-Specific Passwords</Run>
+                            </TextBlock>
+                        </StackPanel>
                     </StackPanel>
 
-                    <StackPanel Orientation="Horizontal" Margin="0,10">
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,10">
                         <TextBlock Width="200" />
                         <Button Content="Send Test Email" Command="{Binding TestEmailCommand}" Width="180" />
                         <TextBlock Text="{Binding EmailTestStatus.Text}"
                                    Foreground="{Binding EmailTestStatus.Foreground}"
                                    Visibility="{Binding EmailTestStatus.Visibility}"
                                    VerticalAlignment="Center" Margin="10,0,0,0" />
-                        <TextBlock Text="Use a Gmail App Password, not your regular password. Generate one at myaccount.google.com → Security → App Passwords."
-                                   TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,0,0,0" MaxWidth="300" VerticalAlignment="Center" />
+                        <TextBlock Text="If you don't receive the email, check your spam folder."
+                                   TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,0,0,0" MaxWidth="250" VerticalAlignment="Center" />
                     </StackPanel>
 
                     <Separator Margin="0,20,0,10" />
@@ -297,54 +433,6 @@
                                    VerticalAlignment="Center" Margin="10,0,0,0" />
                         <TextBlock Text="In Discord, go to channel Settings → Integrations → Webhooks → New Webhook to get your URL."
                                    TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,0,0,0" MaxWidth="300" VerticalAlignment="Center" />
-                    </StackPanel>
-
-                    <Separator Margin="0,20,0,10" />
-
-                    <TextBlock Text="Resend Previous Session" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
-
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                        <TextBlock Width="200" />
-                        <TextBlock Text="Select any previous session and resend its report through all currently enabled notification channels."
-                                   TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="400" />
-                    </StackPanel>
-
-                    <StackPanel Orientation="Horizontal" Margin="0,5">
-                        <TextBlock Width="200" VerticalAlignment="Center" />
-                        <ComboBox ItemsSource="{Binding AvailableSessions}"
-                                  SelectedItem="{Binding SelectedSession}"
-                                  DisplayMemberPath="DisplayLabel"
-                                  MinWidth="300" />
-                        <Button Content="↻" Command="{Binding RefreshSessionsCommand}" Width="30" Margin="6,0,0,0"
-                                ToolTip="Reset to 30 most recent sessions" />
-                    </StackPanel>
-
-                    <StackPanel Margin="200,4,0,4">
-                        <Expander Header="Search older sessions" IsExpanded="False">
-                            <StackPanel Margin="0,8,0,0">
-                                <StackPanel Orientation="Horizontal" Margin="0,4">
-                                    <TextBlock Text="From" Width="40" VerticalAlignment="Center" />
-                                    <DatePicker SelectedDate="{Binding SearchFrom}" Width="130" />
-                                    <TextBlock Text="To" Width="28" VerticalAlignment="Center" Margin="10,0,0,0" />
-                                    <DatePicker SelectedDate="{Binding SearchTo}" Width="130" />
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,6">
-                                    <Button Content="Search" Command="{Binding SearchSessionsCommand}" Width="80" />
-                                    <Button Content="Clear" Command="{Binding ClearSearchCommand}" Width="60" Margin="8,0,0,0" />
-                                    <TextBlock Text="{Binding SearchResultText}" VerticalAlignment="Center"
-                                               Foreground="Gray" FontSize="11" Margin="10,0,0,0" />
-                                </StackPanel>
-                            </StackPanel>
-                        </Expander>
-                    </StackPanel>
-
-                    <StackPanel Orientation="Horizontal" Margin="0,8">
-                        <TextBlock Width="200" />
-                        <Button Content="Send Report" Command="{Binding ResendSessionCommand}" Width="180" />
-                        <TextBlock Text="{Binding ResendStatus.Text}"
-                                   Foreground="{Binding ResendStatus.Foreground}"
-                                   Visibility="{Binding ResendStatus.Visibility}"
-                                   VerticalAlignment="Center" Margin="10,0,0,0" />
                     </StackPanel>
 
                     <Separator Margin="0,20,0,10" />
