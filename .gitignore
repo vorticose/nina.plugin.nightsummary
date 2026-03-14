@@ -102,3 +102,4 @@ orleans.codegen.cs
 .claude/
 *.snk
 scripts/*.zip
+CLAUDE.md
