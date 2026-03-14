@@ -22,6 +22,12 @@
 - Input validation added to all three test commands — catches malformed addresses, wrong URL format, and short/invalid tokens before attempting a send
 - Resend Previous Session section moved to the top of the options page
 
+**Bug fixes**
+- DSS sky survey thumbnail and altitude chart now render correctly when Target Scheduler is not installed; previously both required TS data even when RA/Dec was available from image metadata
+
+**First-run experience**
+- Demo session data (M31 + Rosette Nebula) bundled with the plugin — Send Test Report works out of the box on a fresh install with no setup required
+
 
 ## v2.4.0
 
