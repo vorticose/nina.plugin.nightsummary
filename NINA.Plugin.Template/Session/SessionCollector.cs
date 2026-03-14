@@ -77,23 +77,39 @@ namespace NINA.Plugin.NightSummary.Session {
                 } catch { /* not critical if temperature capture fails */ }
 
                 var record = new ImageRecord {
-                    SessionId = currentSession.SessionId,
-                    Timestamp = DateTime.Now,
-                    TargetName = e.MetaData?.Target?.Name ?? "Unknown",
-                    Filter = e.MetaData?.FilterWheel?.Filter ?? "None",
+                    SessionId        = currentSession.SessionId,
+                    Timestamp        = DateTime.Now,
+                    TargetName       = e.MetaData?.Target?.Name ?? "Unknown",
+                    Filter           = e.MetaData?.FilterWheel?.Filter ?? "None",
                     ExposureDuration = e.MetaData?.Image?.ExposureTime ?? 0,
-                    HFR = e.StarDetectionAnalysis?.HFR ?? 0,
-                    FWHM = fwhm,
-                    Eccentricity = eccentricity,
-                    StarCount = e.StarDetectionAnalysis?.DetectedStars ?? 0,
+                    HFR              = e.StarDetectionAnalysis?.HFR ?? 0,
+                    FWHM             = fwhm,
+                    Eccentricity     = eccentricity,
+                    StarCount        = e.StarDetectionAnalysis?.DetectedStars ?? 0,
                     // Multiply RMS by Scale to store in arcseconds
-                    GuidingRMSTotal = (e.MetaData?.Image?.RecordedRMS?.Total ?? 0) * guidingScale,
-                    GuidingScale = guidingScale,
-                    Accepted = true,
-                    RaHours    = e.MetaData?.Target?.Coordinates?.RA  ?? 0,
-                    DecDegrees = e.MetaData?.Target?.Coordinates?.Dec ?? 0,
-                    FocuserTemp = focuserTemp,
-                    AmbientTemp = ambientTemp
+                    GuidingRMSTotal  = (e.MetaData?.Image?.RecordedRMS?.Total ?? 0) * guidingScale,
+                    GuidingScale     = guidingScale,
+                    Accepted         = true,
+                    RaHours          = e.MetaData?.Target?.Coordinates?.RA  ?? 0,
+                    DecDegrees       = e.MetaData?.Target?.Coordinates?.Dec ?? 0,
+                    FocuserTemp      = focuserTemp,
+                    AmbientTemp      = ambientTemp,
+                    // Camera acquisition parameters
+                    Gain             = e.MetaData?.Camera?.Gain   ?? -1,
+                    Offset           = e.MetaData?.Camera?.Offset ?? -1,
+                    Binning          = e.MetaData?.Camera?.BinX   ?? 0,
+                    CameraTemp       = NullIfNaN(e.MetaData?.Camera?.Temperature),
+                    CoolerSetpoint   = NullIfNaN(e.MetaData?.Camera?.SetPoint),
+                    // Equipment state
+                    FocuserPosition  = e.MetaData?.Focuser?.Position,
+                    RotatorPosition  = NullIfNaN(e.MetaData?.Rotator?.Position),
+                    // Extended weather
+                    Humidity         = NullIfNaN(e.MetaData?.WeatherData?.Humidity),
+                    DewPoint         = NullIfNaN(e.MetaData?.WeatherData?.DewPoint),
+                    WindSpeed        = NullIfNaN(e.MetaData?.WeatherData?.WindSpeed),
+                    Pressure         = NullIfNaN(e.MetaData?.WeatherData?.Pressure),
+                    // TS grading fields — populated at session end via UpdateImageGradingFromTs
+                    GradingStatus    = -1
                 };
 
                 database.SaveImageRecord(record);
@@ -107,5 +123,8 @@ namespace NINA.Plugin.NightSummary.Session {
             if (prop == null) return 0;
             try { return Convert.ToDouble(prop.GetValue(obj)); } catch { return 0; }
         }
+
+        private static double? NullIfNaN(double? value) =>
+            value.HasValue && !double.IsNaN(value.Value) ? value : null;
     }
 }

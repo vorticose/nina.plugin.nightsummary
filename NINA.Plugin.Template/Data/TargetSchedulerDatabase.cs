@@ -53,6 +53,49 @@ namespace NINA.Plugin.NightSummary.Data {
             }
         }
 
+        /// <summary>
+        /// Returns raw acquired-image rows from the TS database whose acquireddate falls within
+        /// [start, end] (inclusive). Returns an empty list if TS is unavailable or any error occurs.
+        /// </summary>
+        public List<TsAcquiredImage> GetAcquiredImagesForDateRange(DateTime start, DateTime end) {
+            if (!IsAvailable) return new List<TsAcquiredImage>();
+
+            try {
+                var connectionString = $"Data Source={dbPath};Version=3;Read Only=True;";
+                using (var conn = new SQLiteConnection(connectionString)) {
+                    conn.Open();
+                    long startUnix = new DateTimeOffset(start.ToUniversalTime()).ToUnixTimeSeconds();
+                    long endUnix   = new DateTimeOffset(end.ToUniversalTime()).ToUnixTimeSeconds();
+
+                    const string sql = @"
+                        SELECT id, acquireddate, filtername, gradingstatus, rejectreason
+                        FROM acquiredimage
+                        WHERE acquireddate >= @Start AND acquireddate <= @End";
+
+                    var result = new List<TsAcquiredImage>();
+                    using (var cmd = new SQLiteCommand(sql, conn)) {
+                        cmd.Parameters.AddWithValue("@Start", startUnix);
+                        cmd.Parameters.AddWithValue("@End",   endUnix);
+                        using (var reader = cmd.ExecuteReader()) {
+                            while (reader.Read()) {
+                                long unixTs = Convert.ToInt64(reader["acquireddate"]);
+                                result.Add(new TsAcquiredImage {
+                                    AcquiredAt     = DateTimeOffset.FromUnixTimeSeconds(unixTs).LocalDateTime,
+                                    FilterName     = reader["filtername"]     == DBNull.Value ? "" : reader["filtername"].ToString(),
+                                    GradingStatus  = reader["gradingstatus"]  == DBNull.Value ? -1 : Convert.ToInt32(reader["gradingstatus"]),
+                                    RejectReason   = reader["rejectreason"]   == DBNull.Value ? null : reader["rejectreason"].ToString()
+                                });
+                            }
+                        }
+                    }
+                    return result;
+                }
+            } catch (Exception ex) {
+                Logger.Error($"NightSummary: Failed to read TS acquiredimage table. {ex.Message}");
+                return new List<TsAcquiredImage>();
+            }
+        }
+
         private List<TsTargetData> QueryProgress(SQLiteConnection conn, HashSet<string> nameSet) {
             const string sql = @"
                 SELECT

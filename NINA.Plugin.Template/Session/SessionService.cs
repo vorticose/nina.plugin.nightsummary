@@ -79,6 +79,11 @@ namespace NINA.Plugin.NightSummary.Session {
 
             if (session == null) return;
 
+            // Sync Target Scheduler grading results into our Images table (best-effort, TS optional)
+            SyncTsGrading(database, sessionId, session.SessionStart, session.SessionEnd, images);
+            // Reload images so report uses updated Accepted/GradingStatus/RejectReason values
+            images = database.GetImagesForSession(sessionId);
+
             var tsData       = FetchTsData(images);
             var cumulative   = database.GetCumulativeIntegrationByTarget(sessionId);
             var history      = BuildSessionHistory(database, images, sessionId);
@@ -255,6 +260,41 @@ namespace NINA.Plugin.NightSummary.Session {
                 result[targetName] = database.GetSessionHistoryForTarget(targetName, sessionId, 5);
             }
             return result;
+        }
+
+        /// <summary>
+        /// Queries the Target Scheduler database for grading results that overlap the session window
+        /// and batch-updates our Images rows. Matched on filter name + timestamp within ±60 s.
+        /// Entirely wrapped in try/catch — TS unavailability or schema differences are non-fatal.
+        /// </summary>
+        private static void SyncTsGrading(SessionDatabase database, string sessionId,
+                                           DateTime sessionStart, DateTime sessionEnd,
+                                           List<ImageRecord> images) {
+            try {
+                var tsDb = new TargetSchedulerDatabase();
+                if (!tsDb.IsAvailable) return;
+
+                var tsRows = tsDb.GetAcquiredImagesForDateRange(sessionStart, sessionEnd);
+                if (tsRows.Count == 0) return;
+
+                var updates = new List<(int imageId, int gradingStatus, string rejectReason)>();
+                foreach (var img in images) {
+                    // Match by filter (case-insensitive) and timestamp within ±60 s
+                    var match = tsRows.FirstOrDefault(r =>
+                        string.Equals(r.FilterName, img.Filter, StringComparison.OrdinalIgnoreCase) &&
+                        Math.Abs((r.AcquiredAt - img.Timestamp).TotalSeconds) <= 60);
+
+                    if (match != null)
+                        updates.Add((img.Id, match.GradingStatus, match.RejectReason));
+                }
+
+                if (updates.Count > 0) {
+                    database.UpdateImageGradingFromTs(sessionId, updates);
+                    Logger.Info($"NightSummary: Synced TS grading for {updates.Count}/{images.Count} images");
+                }
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: TS grading sync failed (non-fatal). {ex.Message}");
+            }
         }
 
         private List<TsTargetData> FetchTsData(List<ImageRecord> images) {

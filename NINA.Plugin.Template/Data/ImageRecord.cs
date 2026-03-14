@@ -39,5 +39,28 @@ namespace NINA.Plugin.NightSummary.Data {
         // Temperature readings at capture time; null = device not connected or no sensor
         public double? FocuserTemp { get; set; }
         public double? AmbientTemp { get; set; }
+
+        // Camera acquisition parameters; -1 = not reported by camera driver
+        public int Gain    { get; set; }
+        public int Offset  { get; set; }
+        public int Binning { get; set; }  // BinX (assumes BinX == BinY); 0 = unknown
+
+        // Camera thermal; null = cooler not connected or data unavailable
+        public double? CameraTemp      { get; set; }  // sensor temperature °C
+        public double? CoolerSetpoint  { get; set; }  // cooler target setpoint °C
+
+        // Equipment state at capture time; null = device not connected
+        public int?    FocuserPosition { get; set; }  // absolute focuser step position
+        public double? RotatorPosition { get; set; }  // rotator angle in degrees
+
+        // Extended weather data; null = weather device not connected
+        public double? Humidity { get; set; }   // relative humidity %
+        public double? DewPoint { get; set; }   // dew point °C
+        public double? WindSpeed { get; set; }  // wind speed m/s
+        public double? Pressure  { get; set; }  // atmospheric pressure hPa
+
+        // Target Scheduler grading; -1 = no TS match or TS not installed
+        public int    GradingStatus { get; set; }
+        public string RejectReason  { get; set; }
     }
 }

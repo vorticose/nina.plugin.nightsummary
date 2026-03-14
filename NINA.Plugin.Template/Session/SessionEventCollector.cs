@@ -85,6 +85,7 @@ namespace NINA.Plugin.NightSummary.Session {
             if (!isCollecting || currentSessionId == null) return;
 
             var description = $"AutoFocus completed — Filter: {info?.Filter ?? "N/A"}, Temp: {info?.Temperature:F1}°C, Position: {info?.Position}";
+            // AutoFocusInfo only exposes Filter/Timestamp/Temperature/Position — no Succeeded or HFR
             SaveEvent("AutoFocus", description);
         }
 
@@ -114,13 +115,15 @@ namespace NINA.Plugin.NightSummary.Session {
 
         // ── Helpers ─────────────────────────────────────────────────────────
 
-        private void SaveEvent(string eventType, string description) {
+        private void SaveEvent(string eventType, string description, bool? afSucceeded = null, double? afHfr = null) {
             try {
                 database.SaveEvent(new SessionEvent {
                     SessionId   = currentSessionId,
                     Timestamp   = DateTime.Now,
                     EventType   = eventType,
-                    Description = description
+                    Description = description,
+                    AfSucceeded = afSucceeded,
+                    AfHfr       = afHfr
                 });
                 Logger.Info($"NightSummary: Event logged — {eventType}: {description}");
             } catch (Exception ex) {

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace NINA.Plugin.NightSummary.Data {
@@ -12,6 +13,17 @@ namespace NINA.Plugin.NightSummary.Data {
         public int    Desired      { get; set; }
         public int    Acquired     { get; set; }
         public int    Accepted     { get; set; }
+    }
+
+    /// <summary>
+    /// A single row from the Target Scheduler acquiredimage table.
+    /// Used to match images back to grading results at session end.
+    /// </summary>
+    public class TsAcquiredImage {
+        public DateTime AcquiredAt    { get; set; }
+        public string   FilterName    { get; set; }
+        public int      GradingStatus { get; set; }  // raw TS enum; -1 = unknown
+        public string   RejectReason  { get; set; }
     }
 
     /// <summary>
