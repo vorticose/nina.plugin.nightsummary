@@ -15,7 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```powershell
 # Build (Release)
-dotnet build "NINA.Plugin.Template/NINA.Plugin.NightSummary.csproj" -c Release
+dotnet build "NINA.Plugin.NightSummary/NINA.Plugin.NightSummary.csproj" -c Release
 
 # Full deploy: build → zip → update manifest.json + repository.json → copy DLL to local NINA
 .\scripts\deploy.ps1
@@ -23,7 +23,7 @@ dotnet build "NINA.Plugin.Template/NINA.Plugin.NightSummary.csproj" -c Release
 
 The deploy script reads the version from the compiled DLL, creates `scripts/NINA.Plugin.NightSummary.zip`, computes the SHA256, and updates both `manifest.json` and `repository.json`. After running it, manually create a GitHub Release tagged `v{version}`, upload the zip, then commit the updated JSON files.
 
-**Version** is set in `NINA.Plugin.Template/Properties/AssemblyInfo.cs` via `[AssemblyVersion]` and `[AssemblyFileVersion]`. There is no separate IDE or test runner — build is via `dotnet build`.
+**Version** is set in `NINA.Plugin.NightSummary/Properties/AssemblyInfo.cs` via `[AssemblyVersion]` and `[AssemblyFileVersion]`. There is no separate IDE or test runner — build is via `dotnet build`.
 
 ## Architecture
 
