@@ -9,7 +9,6 @@ For a full history of what has shipped in each version, see [CHANGELOG.md](CHANG
 These are features under consideration for future releases. Nothing here is committed or scheduled.
 
 **Report enhancements**
-- Encrypted storage for SMTP credentials (DPAPI)
 - Report preview directly in the NINA options panel
 - Equipment error logging — connection losses and reconnection attempts with timestamps
 - Weather snapshot embedded in report (e.g. Astrospheric or Clear Outside)
