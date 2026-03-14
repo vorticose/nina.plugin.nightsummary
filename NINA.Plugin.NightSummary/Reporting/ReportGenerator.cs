@@ -267,19 +267,19 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine("<div class='target-section'>");
                 sb.AppendLine($"<h3>{target.Key}{h3Subtitle}</h3>");
 
-                bool showThumb         = tsTarget != null && Settings.Default.ShowSkyThumbnails;
-                bool showSideBySideChart = tsTarget != null && detailLevel >= 1 && (raH != 0 || decD != 0) && Settings.Default.ShowAltitudeChart;
+                bool showThumb         = (raH != 0 || decD != 0) && Settings.Default.ShowSkyThumbnails;
+                bool showSideBySideChart = (raH != 0 || decD != 0) && detailLevel >= 1 && Settings.Default.ShowAltitudeChart;
 
                 // Pre-build thumbnail HTML so it can be placed in either layout
                 string thumbHtml = "";
                 if (showThumb) {
                     var tSb     = new StringBuilder();
-                    var raDeg   = tsTarget.RA * 15.0;
+                    var raDeg   = raH * 15.0;
                     var thumbUrl = $"https://alasky.cds.unistra.fr/hips-image-services/hips2fits" +
                                    $"?hips=CDS%2FP%2FDSS2%2Fcolor&width={fetchPx}&height={fetchPx}" +
-                                   $"&fov={thumbFov:F4}&ra={raDeg:F6}&dec={tsTarget.Dec:F6}" +
+                                   $"&fov={thumbFov:F4}&ra={raDeg:F6}&dec={decD:F6}" +
                                    $"&projection=TAN&format=jpg";
-                    var svgAngle = -tsTarget.Rotation;
+                    var svgAngle = tsTarget != null ? -tsTarget.Rotation : 0.0;
                     string imgSrc = thumbUrl;
                     try {
                         var bytes = await Http.GetByteArrayAsync(thumbUrl);
@@ -446,13 +446,6 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     sb.AppendLine($"<p class='ts-cumulative' title='{integTooltip}' style='cursor:help;'>Total integration (all sessions, estimate): ~{totalHours:F1}h</p>");
                 }
 
-                // No TS data: altitude chart at full width below target info
-                if (tsTarget == null && detailLevel >= 1 && (raH != 0 || decD != 0) && Settings.Default.ShowAltitudeChart) {
-                    var altChart = BuildAltitudeChart(raH, decD, data.ObserverLatitude, data.ObserverLongitude,
-                                                      targetImgStart, targetImgEnd, width: 560);
-                    if (!string.IsNullOrEmpty(altChart))
-                        sb.Append(altChart);
-                }
 
                 if (thumbWithoutChart) {
                     sb.AppendLine("</div>"); // flex right column

@@ -153,7 +153,7 @@ if ($oldIds.Count -gt 0) { Write-Host "Cleared $($oldIds.Count) previous demo se
 
 $sessionId    = [System.Guid]::NewGuid().ToString()
 $sessionStart = [DateTime]::new(2025, 10, 15, 21, 0, 0)   # Oct 15 2025, 9:00 PM
-$sessionEnd   = [DateTime]::new(2025, 10, 16,  3, 30, 0)  # Oct 16 2025, 3:30 AM
+$sessionEnd   = [DateTime]::new(2025, 10, 16,  6,  0, 0)  # Oct 16 2025, 6:00 AM (9h session)
 
 # Camera / scope profile (realistic mid-range rig)
 # ASI2600MC-equivalent: 6248x4176, 3.76Âµm pixel, 700mm focal length
@@ -187,27 +187,35 @@ $targets = @(
         RaHours    = 0.7123    # 00h 42m 44s
         DecDegrees = 41.269    # +41Â° 16'
         Filters    = @(
-            @{ Name = "L";  ExpSec = 120; Count = 50; BaseHFR = 1.75; BaseFWHM = 2.00; BaseEcc = 0.37; BaseStars = 420 }
-            @{ Name = "R";  ExpSec = 120; Count = 25; BaseHFR = 1.82; BaseFWHM = 2.08; BaseEcc = 0.39; BaseStars = 395 }
-            @{ Name = "G";  ExpSec = 120; Count = 25; BaseHFR = 1.79; BaseFWHM = 2.05; BaseEcc = 0.38; BaseStars = 405 }
-            @{ Name = "B";  ExpSec = 120; Count = 25; BaseHFR = 1.88; BaseFWHM = 2.15; BaseEcc = 0.41; BaseStars = 380 }
+            @{ Name = "L";  ExpSec = 120; Count = 30; BaseHFR = 1.75; BaseFWHM = 2.00; BaseEcc = 0.37; BaseStars = 420 }
+            @{ Name = "R";  ExpSec = 120; Count = 20; BaseHFR = 1.82; BaseFWHM = 2.08; BaseEcc = 0.39; BaseStars = 395 }
+            @{ Name = "G";  ExpSec = 120; Count = 20; BaseHFR = 1.79; BaseFWHM = 2.05; BaseEcc = 0.38; BaseStars = 405 }
+            @{ Name = "B";  ExpSec = 120; Count = 20; BaseHFR = 1.88; BaseFWHM = 2.15; BaseEcc = 0.41; BaseStars = 380 }
         )
-        StartOffset = 10       # minutes from session start
+        StartOffset = 10       # minutes from session start (9:10 PM)
     }
     @{
         Name       = "Rosette Nebula - NGC 2244"
         RaHours    = 6.5625    # 06h 33m 45s
-        DecDegrees = 4.998     # +04Â° 59'
+        DecDegrees = 4.998     # +04 59'
         Filters    = @(
-            @{ Name = "Ha";   ExpSec = 300; Count = 30; BaseHFR = 2.05; BaseFWHM = 2.30; BaseEcc = 0.43; BaseStars = 290 }
-            @{ Name = "OIII"; ExpSec = 300; Count = 22; BaseHFR = 2.12; BaseFWHM = 2.40; BaseEcc = 0.45; BaseStars = 270 }
-            @{ Name = "SII";  ExpSec = 300; Count = 18; BaseHFR = 2.18; BaseFWHM = 2.48; BaseEcc = 0.46; BaseStars = 255 }
+            @{ Name = "Ha";   ExpSec = 300; Count = 10; BaseHFR = 2.05; BaseFWHM = 2.30; BaseEcc = 0.43; BaseStars = 290 }
+            @{ Name = "OIII"; ExpSec = 300; Count = 8;  BaseHFR = 2.12; BaseFWHM = 2.40; BaseEcc = 0.45; BaseStars = 270 }
+            @{ Name = "SII";  ExpSec = 300; Count = 4;  BaseHFR = 2.18; BaseFWHM = 2.48; BaseEcc = 0.46; BaseStars = 255 }
         )
-        StartOffset = 155      # minutes from session start (~11:35 PM)
+        StartOffset = 420      # minutes from session start (4:00 AM -- Rosette above 20 deg elevation)
     }
 )
 
 # â”€â”€ Seed images â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+# Safety monitor closure windows: [startOffset, endOffset] in minutes
+$closedWindows = @( @(320, 340) )  # roof closes during the gap between targets (~1:20 AM)
+
+function IsUnsafe($offsetMin) {
+    foreach ($w in $closedWindows) { if ($offsetMin -ge $w[0] -and $offsetMin -lt $w[1]) { return $true } }
+    return $false
+}
 
 $totalImages = 0
 $elapsed     = 0.0   # running clock in minutes from session start
@@ -220,6 +228,9 @@ foreach ($target in $targets) {
         $rejected = 0
 
         for ($i = 0; $i -lt $f.Count; $i++) {
+            # Skip frames during roof-closed windows; advance clock through closure
+            while (IsUnsafe $elapsed) { $elapsed += 0.5 }
+
             $ts = $sessionStart.AddMinutes($elapsed).ToString("o")
 
             # Simulate slight HFR drift over time (focuser temp drop)
@@ -313,14 +324,13 @@ function EventAt($offsetMin, $type, $desc) {
 
 Write-Host "Seeding timeline events..." -ForegroundColor White
 EventAt   3  “RoofOpen”     “Safety monitor: Safe - roof opened”
-EventAt   8  “AutoFocus”    “AutoFocus completed - Filter: L, Temp: 8.3C, Position: 38310”
-EventAt 152  “AutoFocus”    “AutoFocus completed - Filter: Ha, Temp: 6.9C, Position: 38380”
-EventAt 198  “MeridianFlip” “Meridian flip completed successfully”
-EventAt 202  “AutoFocus”    “AutoFocus completed - Filter: Ha, Temp: 6.1C, Position: 38420”
-EventAt 285  “RoofClosed”   “Safety monitor: Unsafe - roof closed (wind gusts)”
-EventAt 303  “RoofOpen”     “Safety monitor: Safe - roof reopened”
-EventAt 306  “AutoFocus”    “AutoFocus completed - Filter: OIII, Temp: 5.2C, Position: 38455”
-EventAt 368  “AutoFocus”    “AutoFocus completed - Filter: SII, Temp: 4.4C, Position: 38490”
+EventAt   8  “AutoFocus”    “AutoFocus completed - Filter: L, Temp: 8.3C, Position: 38310”   # start of M31
+EventAt 100  “MeridianFlip” “Meridian flip completed successfully”                            # M31 crosses meridian
+EventAt 103  “AutoFocus”    “AutoFocus completed - Filter: L, Temp: 7.1C, Position: 38355”   # post-flip refocus
+EventAt 320  “RoofClosed”   “Safety monitor: Unsafe - roof closed (wind gusts)”              # gap between targets
+EventAt 340  “RoofOpen”     “Safety monitor: Safe - roof reopened”                           # gap between targets
+EventAt 418  “AutoFocus”    “AutoFocus completed - Filter: Ha, Temp: 4.8C, Position: 38420”  # start of Rosette
+EventAt 480  “AutoFocus”    “AutoFocus completed - Filter: OIII, Temp: 3.9C, Position: 38448” # Rosette filter switch
 
 # â”€â”€ Seed historical sessions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 

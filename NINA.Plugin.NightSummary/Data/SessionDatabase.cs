@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Data.SQLite;
 using System.IO;
+using System.Reflection;
 
 namespace NINA.Plugin.NightSummary.Data {
     /// <summary>
@@ -22,6 +23,7 @@ namespace NINA.Plugin.NightSummary.Data {
             Directory.CreateDirectory(pluginDataPath);
             dbPath = Path.Combine(pluginDataPath, "nightsummary.sqlite");
             connectionString = $"Data Source={dbPath};Version=3;";
+            SeedTestDatabaseIfMissing(pluginDataPath);
             InitializeDatabase();
         }
 
@@ -30,6 +32,24 @@ namespace NINA.Plugin.NightSummary.Data {
             connectionString = $"Data Source={dbPath};Version=3;";
             Directory.CreateDirectory(Path.GetDirectoryName(dbPath));
             InitializeDatabase();
+        }
+
+        /// <summary>
+        /// Copies the bundled demo database to the test DB location if no test DB exists yet.
+        /// Runs once on first install so users have demo data ready for Send Test Report.
+        /// </summary>
+        private static void SeedTestDatabaseIfMissing(string pluginDataPath) {
+            try {
+                var testDbPath = Path.Combine(pluginDataPath, "test", "nightsummary.sqlite");
+                if (File.Exists(testDbPath)) return;
+
+                var pluginDir  = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                var bundled    = Path.Combine(pluginDir, "Assets", "demo-nightsummary.sqlite");
+                if (!File.Exists(bundled)) return;
+
+                Directory.CreateDirectory(Path.GetDirectoryName(testDbPath));
+                File.Copy(bundled, testDbPath);
+            } catch { /* non-fatal — user can always run the seed script manually */ }
         }
 
         /// <summary>
