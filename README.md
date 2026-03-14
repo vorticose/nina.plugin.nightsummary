@@ -86,7 +86,7 @@ Gmail requires an App Password — not your regular account password. Generate o
 
 **Other providers**
 
-Any SMTP provider is supported. Expand the **Advanced SMTP Settings** section in the plugin options and enter your provider's server details. Most providers require an App Password or API key rather than your regular account password — check your provider's documentation.
+Any SMTP provider is supported. Select **Other provider** in the plugin options and enter your provider's server details. Most providers require an App Password or API key rather than your regular account password — check your provider's documentation.
 
 ---
 
