@@ -50,18 +50,42 @@ All channels can be enabled independently, tested without running a sequence, an
 
 ## Installation
 
-1. Download the latest `NINA.Plugin.NightSummary.zip` from the [Releases](../../releases) page
-2. Extract the contents into `%LOCALAPPDATA%\NINA\Plugins\`
-3. Restart NINA
+1. Download `NINA.Plugin.NightSummary.zip` from the [Releases](../../releases/latest) page.
+
+2. Open File Explorer and navigate to `%LOCALAPPDATA%\NINA\Plugins\3.0.0\`. You can paste this path directly into the address bar. This should be the same folder where all your other NINA plugins are installed.
+
+3. Create a new folder inside called `NightSummary`.
+
+4. Extract the contents of the zip into that `NightSummary` folder. 
+
+5. Start (or restart) NINA. The plugin will appear under **Options → Plugins → Night Summary**.
 
 
-## How to Use
+## Initial Setup
 
-1. Add the **Night Summary Start** instruction near the beginning of your sequence
-2. Add the **Night Summary End** instruction at the end of your sequence
-3. Configure your delivery settings in **Options → Plugins → Night Summary**
+Before your first session, open **Options → Plugins → Night Summary** and configure at least one delivery channel:
 
-That's it. Night Summary records data automatically as your sequence runs and sends the report when it ends.
+- **Email** — enter your Gmail address and an App Password (not your regular account password). If you're using another provider, select *Other provider* and enter your SMTP host, port, and credentials.
+- **Discord** — paste your webhook URL.
+- **Pushover** — enter your User Key and App Token.
+- **Save locally** — enable this to always save the HTML report to `Documents\N.I.N.A.\Night Summary\Saved Reports\`, no account required.
+
+Use the **Send Test Report** button in each section to verify your settings. If using email and you don't see it arrive, check your spam folder.
+
+
+## Adding the Sequence Instructions
+
+Night Summary uses two sequence instructions that must both be present: **Night Summary Start** and **Night Summary End**.
+
+1. In the NINA sequencer, search for **Night Summary** in the instruction list — both instructions will appear.
+
+2. Place **Night Summary Start** near the top of your sequence, before any imaging begins.
+
+3. Place **Night Summary End** at the very end of your sequence, after all imaging is complete and any park/warm-up instructions. This is what triggers the report — it must execute for the report to be delivered.
+
+If you use **Target Scheduler**, place Night Summary Start before the Target Scheduler Container and Night Summary End after it.
+
+Once your sequence completes, check your configured delivery channel for the report. You can also resend any previous session report at any time from the plugin options page.
 
 
 ## License
