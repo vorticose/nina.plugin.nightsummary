@@ -320,10 +320,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 // Session filter table
                 sb.AppendLine("<table>");
                 sb.AppendLine("<tr><th>Filter</th><th>Images</th><th>Exposure</th><th>Total Time</th></tr>");
-                var filterGroups = target.GroupBy(i => i.Filter).OrderBy(g => FilterSortKey(g.Key)).ThenBy(g => g.Key);
+                var filterGroups = target
+                    .GroupBy(i => (i.Filter, i.ExposureDuration))
+                    .OrderBy(g => FilterSortKey(g.Key.Filter)).ThenBy(g => g.Key.Filter).ThenBy(g => g.Key.ExposureDuration);
                 foreach (var filterGroup in filterGroups) {
                     var totalTime = TimeSpan.FromSeconds(filterGroup.Sum(i => i.ExposureDuration));
-                    sb.AppendLine($"<tr><td>{filterGroup.Key}</td><td>{filterGroup.Count()}</td><td>{filterGroup.First().ExposureDuration:F0}s</td><td>{FormatDuration(totalTime.TotalSeconds)}</td></tr>");
+                    sb.AppendLine($"<tr><td>{filterGroup.Key.Filter}</td><td>{filterGroup.Count()}</td><td>{filterGroup.Key.ExposureDuration:F0}s</td><td>{FormatDuration(totalTime.TotalSeconds)}</td></tr>");
                 }
                 var targetTotal = TimeSpan.FromSeconds(target.Sum(i => i.ExposureDuration));
                 sb.AppendLine($"<tr><td><strong>Total</strong></td><td><strong>{target.Count()}</strong></td><td></td><td><strong>{FormatDuration(targetTotal.TotalSeconds)}</strong></td></tr>");
