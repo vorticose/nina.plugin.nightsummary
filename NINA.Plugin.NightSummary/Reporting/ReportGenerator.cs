@@ -46,13 +46,21 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
         }
 
-        // Broadband and narrowband filter definitions for star count CV calculation
-        private static readonly HashSet<string> BroadbandFilters = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "L", "R", "G", "B" };
-        private static readonly HashSet<string> NarrowbandFilters = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "H", "Ha", "S", "Sii", "O", "Oiii" };
+        // Broadband and narrowband filter classification by first letter (case-insensitive)
+        private static readonly HashSet<char> BroadbandFirstLetters = new HashSet<char> { 'L', 'R', 'G', 'B' };
+        private static readonly HashSet<char> NarrowbandFirstLetters = new HashSet<char> { 'H', 'S', 'O' };
 
-        private static readonly string[] FilterPriority = { "L", "R", "G", "B", "H", "S", "O" };
+        private static bool IsBroadband(string filter) =>
+            !string.IsNullOrEmpty(filter) && BroadbandFirstLetters.Contains(char.ToUpperInvariant(filter[0]));
+
+        private static bool IsNarrowband(string filter) =>
+            !string.IsNullOrEmpty(filter) && NarrowbandFirstLetters.Contains(char.ToUpperInvariant(filter[0]));
+
+        private static readonly char[] FilterSortPriority = { 'L', 'R', 'G', 'B', 'H', 'S', 'O' };
         private static int FilterSortKey(string filter) {
-            var idx = Array.FindIndex(FilterPriority, p => string.Equals(p, filter, StringComparison.OrdinalIgnoreCase));
+            if (string.IsNullOrEmpty(filter)) return int.MaxValue;
+            var c = char.ToUpperInvariant(filter[0]);
+            var idx = Array.IndexOf(FilterSortPriority, c);
             return idx >= 0 ? idx : int.MaxValue;
         }
 
@@ -114,6 +122,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("</style></head><body>");
 
             sb.Append(BuildHeader(data));
+            const string warningsPlaceholder = "<!--WARNINGS_PLACEHOLDER-->";
+            sb.AppendLine(warningsPlaceholder);
 
             if (!data.Images.Any()) {
                 sb.AppendLine("<p><em>No images were recorded during this session.</em></p>");
@@ -131,7 +141,23 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.Append(BuildFooter());
 
             sb.AppendLine("</body></html>");
-            return sb.ToString();
+
+            // Replace placeholder with warnings banner if any were collected during generation
+            var html = sb.ToString();
+            if (Warnings.Any()) {
+                var warningHtml = new StringBuilder();
+                warningHtml.AppendLine("<div style='background-color:#3a2a00; border:1px solid #b8860b; border-radius:8px; padding:12px 16px; margin:16px 0;'>");
+                warningHtml.AppendLine("<p style='color:#f0c040; font-weight:bold; margin:0 0 8px;'>&#9888; Report generated with warnings:</p>");
+                warningHtml.AppendLine("<ul style='margin:0; padding-left:20px; color:#d4a850;'>");
+                foreach (var warning in Warnings)
+                    warningHtml.AppendLine($"<li style='margin:2px 0; font-size:13px;'>{warning}</li>");
+                warningHtml.AppendLine("</ul></div>");
+                html = html.Replace(warningsPlaceholder, warningHtml.ToString());
+            } else {
+                html = html.Replace(warningsPlaceholder, "");
+            }
+
+            return html;
         }
 
         private string BuildHeader(ReportData data) {
@@ -294,7 +320,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     try {
                         var bytes = await Http.GetByteArrayAsync(thumbUrl);
                         imgSrc = "data:image/jpeg;base64," + Convert.ToBase64String(bytes);
-                    } catch { /* leave imgSrc as the remote URL */ }
+                    } catch {
+                        Warnings.Add($"Sky thumbnail for {target.Key} could not be loaded — falling back to remote URL (requires internet access to display)");
+                    }
                     tSb.AppendLine($"<div class='ts-thumb-wrap'>");
                     tSb.AppendLine($"  <img src='{imgSrc}' alt='{target.Key}' />");
                     tSb.AppendLine($"  <svg width='{thumbPx}' height='{thumbPx}' xmlns='http://www.w3.org/2000/svg'>");
@@ -343,8 +371,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
                 if (detailLevel >= 1 && Settings.Default.ShowStarCountCV) {
                     // Star count CV
-                    var broadbandImages  = target.Where(i => BroadbandFilters.Contains(i.Filter)  && i.StarCount > 0).ToList();
-                    var narrowbandImages = target.Where(i => NarrowbandFilters.Contains(i.Filter) && i.StarCount > 0).ToList();
+                    var broadbandImages  = target.Where(i => IsBroadband(i.Filter)  && i.StarCount > 0).ToList();
+                    var narrowbandImages = target.Where(i => IsNarrowband(i.Filter) && i.StarCount > 0).ToList();
                     string broadbandCV  = broadbandImages.Count  >= 2 ? $"{CV(broadbandImages.Select(i  => (double)i.StarCount).ToList()):F0}%" : "—";
                     string narrowbandCV = narrowbandImages.Count >= 2 ? $"{CV(narrowbandImages.Select(i => (double)i.StarCount).ToList()):F0}%" : "—";
                     var cvTooltip = "CV (Coefficient of Variation) measures consistency as a percentage of the mean. Lower values indicate more stable conditions. Star count CV is calculated per target and filter type.";
@@ -359,15 +387,15 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     // Warn about unrecognized filter names that were excluded from CV
                     var unrecognizedFilters = target
                         .Select(i => i.Filter)
-                        .Where(f => !string.IsNullOrEmpty(f) && !BroadbandFilters.Contains(f) && !NarrowbandFilters.Contains(f))
+                        .Where(f => !string.IsNullOrEmpty(f) && !IsBroadband(f) && !IsNarrowband(f))
                         .Distinct(StringComparer.OrdinalIgnoreCase)
                         .OrderBy(f => f)
                         .ToList();
                     if (unrecognizedFilters.Any()) {
                         var filterList = string.Join(", ", unrecognizedFilters.Select(f => $"<strong>{f}</strong>"));
-                        sb.AppendLine($"<p style='font-size:11px; color:#b8860b; margin-top:6px;'>&#9888; Filter{(unrecognizedFilters.Count == 1 ? "" : "s")} not recognized for CV calculation: {filterList}. " +
-                                      $"Expected broadband (L, R, G, B) or narrowband (H, Ha, S, Sii, O, Oiii). " +
-                                      $"Rename the filter in your NINA equipment profile to include it.</p>");
+                        var filterListPlain = string.Join(", ", unrecognizedFilters);
+                        sb.AppendLine($"<p style='font-size:11px; color:#b8860b; margin-top:6px;'>&#9888; Filter{(unrecognizedFilters.Count == 1 ? "" : "s")} not recognized and excluded from CV calculation: {filterList}. Filters are classified by first letter — broadband (L, R, G, B) and narrowband (H, S, O).</p>");
+                        Warnings.Add($"Unrecognized filter{(unrecognizedFilters.Count == 1 ? "" : "s")} excluded from CV calculation: {filterListPlain}");
                     }
                 }
 
@@ -407,6 +435,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     }
                 }
 
+                if (tsTarget == null && detailLevel >= 1 && Settings.Default.ShowTSProgressBars) {
+                    if (data.TsData == null || data.TsData.Count == 0) {
+                        if (!Warnings.Any(w => w.StartsWith("Target Scheduler progress bars unavailable —")))
+                            Warnings.Add("Target Scheduler progress bars unavailable — Target Scheduler not installed or database not found");
+                    } else {
+                        Warnings.Add($"Target Scheduler progress bars unavailable for {target.Key} — target not found in Target Scheduler");
+                    }
+                }
                 if (tsTarget != null && detailLevel >= 1 && Settings.Default.ShowTSProgressBars) {
                     // TS progress bars — one per exposure plan row (template + filter)
                     sb.AppendLine("<p style='margin: 12px 0 4px; font-size: 13px; color: #a0c4ff;'><strong>Target Scheduler Progress</strong></p>");
@@ -733,9 +769,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
             if (!tsDb.IsAvailable)
                 return PreviewNotice("Target Scheduler is not installed.");
 
-            var (apiEnabled, apiPort) = tsDb.GetApiSettings();
+            var (apiEnabled, apiPort) = tsDb.GetApiSettings(data.ActiveProfileId);
             if (!apiEnabled)
-                return PreviewNotice("Target Scheduler API is not enabled. Enable it in Target Scheduler Options → Profile Preferences → Api Preferences.");
+                return PreviewNotice("Target Scheduler API is not enabled. In Target Scheduler, go to Options → Profile Preferences → API Preferences → Enable API.");
 
             try {
                 var baseUrl = $"http://localhost:{apiPort}/ts/v0";

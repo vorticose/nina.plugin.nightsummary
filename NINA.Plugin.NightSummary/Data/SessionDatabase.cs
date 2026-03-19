@@ -102,7 +102,15 @@ namespace NINA.Plugin.NightSummary.Data {
                         WindSpeed REAL,
                         Pressure REAL,
                         GradingStatus INTEGER DEFAULT -1,
-                        RejectReason TEXT
+                        RejectReason TEXT,
+                        ImageType TEXT,
+                        Altitude REAL,
+                        Azimuth REAL,
+                        Airmass REAL,
+                        SideOfPier TEXT,
+                        ReadoutMode TEXT,
+                        SkyQuality REAL,
+                        CloudCover REAL
                     )";
 
                 using (var cmd = new SQLiteCommand(createSessions, conn))
@@ -149,6 +157,14 @@ namespace NINA.Plugin.NightSummary.Data {
                 MigrateAddColumn(conn, "Images",        "Pressure",         "REAL");
                 MigrateAddColumn(conn, "Images",        "GradingStatus",    "INTEGER DEFAULT -1");
                 MigrateAddColumn(conn, "Images",        "RejectReason",     "TEXT");
+                MigrateAddColumn(conn, "Images",        "ImageType",        "TEXT");
+                MigrateAddColumn(conn, "Images",        "Altitude",         "REAL");
+                MigrateAddColumn(conn, "Images",        "Azimuth",          "REAL");
+                MigrateAddColumn(conn, "Images",        "Airmass",          "REAL");
+                MigrateAddColumn(conn, "Images",        "SideOfPier",       "TEXT");
+                MigrateAddColumn(conn, "Images",        "ReadoutMode",      "TEXT");
+                MigrateAddColumn(conn, "Images",        "SkyQuality",       "REAL");
+                MigrateAddColumn(conn, "Images",        "CloudCover",       "REAL");
                 MigrateAddColumn(conn, "SessionEvents", "AfSucceeded",      "INTEGER");
                 MigrateAddColumn(conn, "SessionEvents", "AfHfr",            "REAL");
             }
@@ -253,7 +269,8 @@ namespace NINA.Plugin.NightSummary.Data {
                         Gain, Offset, Binning, CameraTemp, CoolerSetpoint,
                         FocuserPosition, RotatorPosition,
                         Humidity, DewPoint, WindSpeed, Pressure,
-                        GradingStatus, RejectReason)
+                        GradingStatus, RejectReason,
+                        ImageType, Altitude, Azimuth, Airmass, SideOfPier, ReadoutMode, SkyQuality, CloudCover)
                     VALUES (
                         @SessionId, @Timestamp, @TargetName, @Filter, @ExposureDuration,
                         @HFR, @FWHM, @Eccentricity, @StarCount, @GuidingRMSTotal, @GuidingScale, @Accepted,
@@ -261,7 +278,8 @@ namespace NINA.Plugin.NightSummary.Data {
                         @Gain, @Offset, @Binning, @CameraTemp, @CoolerSetpoint,
                         @FocuserPosition, @RotatorPosition,
                         @Humidity, @DewPoint, @WindSpeed, @Pressure,
-                        @GradingStatus, @RejectReason)";
+                        @GradingStatus, @RejectReason,
+                        @ImageType, @Altitude, @Azimuth, @Airmass, @SideOfPier, @ReadoutMode, @SkyQuality, @CloudCover)";
 
                 using (var cmd = new SQLiteCommand(sql, conn)) {
                     cmd.Parameters.AddWithValue("@SessionId",       image.SessionId);
@@ -293,6 +311,14 @@ namespace NINA.Plugin.NightSummary.Data {
                     cmd.Parameters.AddWithValue("@Pressure",        image.Pressure.HasValue        ? (object)image.Pressure.Value        : DBNull.Value);
                     cmd.Parameters.AddWithValue("@GradingStatus",   image.GradingStatus);
                     cmd.Parameters.AddWithValue("@RejectReason",    image.RejectReason != null     ? (object)image.RejectReason          : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@ImageType",       image.ImageType    != null     ? (object)image.ImageType             : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Altitude",        image.Altitude.HasValue        ? (object)image.Altitude.Value        : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Azimuth",         image.Azimuth.HasValue         ? (object)image.Azimuth.Value         : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Airmass",         image.Airmass.HasValue         ? (object)image.Airmass.Value         : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@SideOfPier",      image.SideOfPier   != null     ? (object)image.SideOfPier            : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@ReadoutMode",     image.ReadoutMode  != null     ? (object)image.ReadoutMode           : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@SkyQuality",      image.SkyQuality.HasValue      ? (object)image.SkyQuality.Value      : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@CloudCover",      image.CloudCover.HasValue      ? (object)image.CloudCover.Value      : DBNull.Value);
                     cmd.ExecuteNonQuery();
                 }
             }
@@ -340,7 +366,15 @@ namespace NINA.Plugin.NightSummary.Data {
                                 WindSpeed       = reader["WindSpeed"]       == DBNull.Value ? (double?)null : Convert.ToDouble(reader["WindSpeed"]),
                                 Pressure        = reader["Pressure"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["Pressure"]),
                                 GradingStatus   = reader["GradingStatus"]   == DBNull.Value ? -1 : Convert.ToInt32(reader["GradingStatus"]),
-                                RejectReason    = reader["RejectReason"]    == DBNull.Value ? null : reader["RejectReason"].ToString()
+                                RejectReason    = reader["RejectReason"]    == DBNull.Value ? null : reader["RejectReason"].ToString(),
+                                ImageType       = reader["ImageType"]       == DBNull.Value ? null : reader["ImageType"].ToString(),
+                                Altitude        = reader["Altitude"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["Altitude"]),
+                                Azimuth         = reader["Azimuth"]         == DBNull.Value ? (double?)null : Convert.ToDouble(reader["Azimuth"]),
+                                Airmass         = reader["Airmass"]         == DBNull.Value ? (double?)null : Convert.ToDouble(reader["Airmass"]),
+                                SideOfPier      = reader["SideOfPier"]      == DBNull.Value ? null : reader["SideOfPier"].ToString(),
+                                ReadoutMode     = reader["ReadoutMode"]     == DBNull.Value ? null : reader["ReadoutMode"].ToString(),
+                                SkyQuality      = reader["SkyQuality"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["SkyQuality"]),
+                                CloudCover      = reader["CloudCover"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["CloudCover"])
                             });
                         }
                     }

@@ -39,5 +39,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// Observer longitude in decimal degrees (positive East) from NINA profile. 0 if not configured.
         /// </summary>
         public double ObserverLongitude { get; init; }
+        /// <summary>
+        /// Active NINA profile GUID, used to filter TS queries to the correct profile.
+        /// </summary>
+        public string ActiveProfileId { get; init; }
     }
 }

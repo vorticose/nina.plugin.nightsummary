@@ -15,7 +15,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
     public class DiscordSender {
 
         private static readonly HttpClient httpClient = new HttpClient();
-        private static readonly string[] FilterPriority = { "L", "R", "G", "B", "H", "S", "O" };
+        private static readonly char[] FilterSortPriority = { 'L', 'R', 'G', 'B', 'H', 'S', 'O' };
 
         private readonly string webhookUrl;
 
@@ -213,23 +213,20 @@ namespace NINA.Plugin.NightSummary.Reporting {
         }
 
         private static int FilterSortKey(string filter) {
-            var idx = Array.FindIndex(FilterPriority, p => string.Equals(p, filter, StringComparison.OrdinalIgnoreCase));
+            if (string.IsNullOrEmpty(filter)) return int.MaxValue;
+            var c = char.ToUpperInvariant(filter[0]);
+            var idx = Array.IndexOf(FilterSortPriority, c);
             return idx >= 0 ? idx : int.MaxValue;
         }
 
+        private static readonly HashSet<char> BroadbandFirstLetters = new HashSet<char> { 'L', 'R', 'G', 'B' };
+        private static readonly HashSet<char> NarrowbandFirstLetters = new HashSet<char> { 'H', 'S', 'O' };
+
         private static bool IsBroadband(string filter) =>
-            filter != null && (filter.Equals("L", StringComparison.OrdinalIgnoreCase) ||
-                               filter.Equals("R", StringComparison.OrdinalIgnoreCase) ||
-                               filter.Equals("G", StringComparison.OrdinalIgnoreCase) ||
-                               filter.Equals("B", StringComparison.OrdinalIgnoreCase));
+            !string.IsNullOrEmpty(filter) && BroadbandFirstLetters.Contains(char.ToUpperInvariant(filter[0]));
 
         private static bool IsNarrowband(string filter) =>
-            filter != null && (filter.Equals("H",    StringComparison.OrdinalIgnoreCase) ||
-                               filter.Equals("Ha",   StringComparison.OrdinalIgnoreCase) ||
-                               filter.Equals("S",    StringComparison.OrdinalIgnoreCase) ||
-                               filter.Equals("Sii",  StringComparison.OrdinalIgnoreCase) ||
-                               filter.Equals("O",    StringComparison.OrdinalIgnoreCase) ||
-                               filter.Equals("Oiii", StringComparison.OrdinalIgnoreCase));
+            !string.IsNullOrEmpty(filter) && NarrowbandFirstLetters.Contains(char.ToUpperInvariant(filter[0]));
 
         private static double CV(List<double> values) {
             if (values.Count < 2) return 0;

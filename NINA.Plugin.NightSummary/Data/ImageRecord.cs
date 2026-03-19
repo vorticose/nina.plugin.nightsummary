@@ -62,5 +62,23 @@ namespace NINA.Plugin.NightSummary.Data {
         // Target Scheduler grading; -1 = no TS match or TS not installed
         public int    GradingStatus { get; set; }
         public string RejectReason  { get; set; }
+
+        // Frame type — "LIGHT", "DARK", "FLAT", "BIAS", "SNAPSHOT"; empty = unknown (pre-v2.7 data)
+        public string ImageType { get; set; }
+
+        // Telescope pointing at capture time; null = mount not connected
+        public double? Altitude { get; set; }      // degrees above horizon
+        public double? Azimuth  { get; set; }      // degrees
+        public double? Airmass  { get; set; }      // atmospheric airmass
+
+        // Pier side; null = unknown or mount not connected
+        public string SideOfPier { get; set; }
+
+        // Camera readout mode name; null = not reported
+        public string ReadoutMode { get; set; }
+
+        // Sky quality and cloud cover; null = sensor not connected
+        public double? SkyQuality { get; set; }    // mag/arcsec² (SQM)
+        public double? CloudCover { get; set; }    // percentage
     }
 }

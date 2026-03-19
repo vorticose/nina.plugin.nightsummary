@@ -1,6 +1,16 @@
 # Night Summary — Changelog
 
 
+## Unreleased
+
+**Bug fixes**
+- Only LIGHT frames are now recorded — darks, flats, bias, and snapshot frames are excluded from session data
+- Filter classification for Star Count CV now uses first-letter matching, supporting common filter naming variants (Luminance, Red, Halpha, Sulfur, etc.)
+- Target Scheduler queries now filter by the active NINA profile, fixing incorrect results for users with multiple profiles
+- Report warnings banner — any issues encountered during report generation are now shown in an amber box at the top of the report
+
+
+
 ## v2.6.0
 
 **Tonight's Preview**

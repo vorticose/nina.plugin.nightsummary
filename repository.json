@@ -4,7 +4,7 @@
     "Version":  {
                     "Major":  2,
                     "Minor":  6,
-                    "Patch":  0,
+                    "Patch":  1,
                     "Build":  0
                 },
     "Author":  "Evan Pegors",
@@ -35,9 +35,9 @@
                          "AltScreenshotURL":  ""
                      },
     "Installer":  {
-                      "URL":  "https://github.com/vorticose/nina.plugin.nightsummary/releases/download/v2.6.0/NINA.Plugin.NightSummary.zip",
+                      "URL":  "https://github.com/vorticose/nina.plugin.nightsummary/releases/download/v2.6.1/NINA.Plugin.NightSummary.zip",
                       "Type":  "ARCHIVE",
-                      "Checksum":  "7F6508B91CF62503DD4C47495A74A490FDEBBE9BDAA626348AA342E3BB26017F",
+                      "Checksum":  "F7E88143CC43BC92513BFE9394913DBF9F3948F94AA1531651C5F73F9EB4AE1B",
                       "ChecksumType":  "SHA256"
                   }
 }

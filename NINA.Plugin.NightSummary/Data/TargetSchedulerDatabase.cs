@@ -31,7 +31,7 @@ namespace NINA.Plugin.NightSummary.Data {
         /// Only targets whose names match (case-insensitive) are returned.
         /// Returns an empty list if the database is not found or any error occurs.
         /// </summary>
-        public List<TsTargetData> GetProgressForTargets(IEnumerable<string> sessionTargetNames) {
+        public List<TsTargetData> GetProgressForTargets(IEnumerable<string> sessionTargetNames, string profileId = null) {
             if (!IsAvailable) {
                 Logger.Info("NightSummary: Target Scheduler database not found — skipping TS progress");
                 return new List<TsTargetData>();
@@ -45,7 +45,7 @@ namespace NINA.Plugin.NightSummary.Data {
                 var connectionString = $"Data Source={dbPath};Version=3;Read Only=True;";
                 using (var conn = new SQLiteConnection(connectionString)) {
                     conn.Open();
-                    return QueryProgress(conn, nameSet);
+                    return QueryProgress(conn, nameSet, profileId);
                 }
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to read Target Scheduler database. {ex.Message}");
@@ -100,20 +100,24 @@ namespace NINA.Plugin.NightSummary.Data {
         /// Reads the TS API settings (enableAPI, apiPort) from the profilepreference table.
         /// Returns (false, 0) if TS is unavailable or any error occurs.
         /// </summary>
-        public (bool Enabled, int Port) GetApiSettings() {
+        public (bool Enabled, int Port) GetApiSettings(string profileId = null) {
             if (!IsAvailable) return (false, 0);
 
             try {
                 var connectionString = $"Data Source={dbPath};Version=3;Read Only=True;";
                 using (var conn = new SQLiteConnection(connectionString)) {
                     conn.Open();
-                    const string sql = "SELECT enableAPI, apiPort FROM profilepreference LIMIT 1";
-                    using (var cmd = new SQLiteCommand(sql, conn))
-                    using (var reader = cmd.ExecuteReader()) {
-                        if (reader.Read()) {
-                            bool enabled = Convert.ToInt32(reader["enableAPI"]) == 1;
-                            int port     = Convert.ToInt32(reader["apiPort"]);
-                            return (enabled, port);
+                    var sql = profileId != null
+                        ? "SELECT enableAPI, apiPort FROM profilepreference WHERE ProfileId = @ProfileId"
+                        : "SELECT enableAPI, apiPort FROM profilepreference LIMIT 1";
+                    using (var cmd = new SQLiteCommand(sql, conn)) {
+                        if (profileId != null) cmd.Parameters.AddWithValue("@ProfileId", profileId);
+                        using (var reader = cmd.ExecuteReader()) {
+                            if (reader.Read()) {
+                                bool enabled = Convert.ToInt32(reader["enableAPI"]) == 1;
+                                int port     = Convert.ToInt32(reader["apiPort"]);
+                                return (enabled, port);
+                            }
                         }
                     }
                 }
@@ -123,8 +127,8 @@ namespace NINA.Plugin.NightSummary.Data {
             return (false, 0);
         }
 
-        private List<TsTargetData> QueryProgress(SQLiteConnection conn, HashSet<string> nameSet) {
-            const string sql = @"
+        private List<TsTargetData> QueryProgress(SQLiteConnection conn, HashSet<string> nameSet, string profileId = null) {
+            var sql = @"
                 SELECT
                     t.name        AS TargetName,
                     t.ra          AS RA,
@@ -138,30 +142,34 @@ namespace NINA.Plugin.NightSummary.Data {
                     ep.accepted   AS Accepted
                 FROM exposureplan ep
                 JOIN target t           ON t.Id  = ep.targetid
+                JOIN project p          ON p.Id  = t.ProjectId
                 JOIN exposuretemplate et ON et.Id = ep.exposureTemplateId
-                WHERE ep.desired > 0
-                ORDER BY t.name, et.filtername, et.name";
+                WHERE ep.desired > 0" +
+                (profileId != null ? " AND p.ProfileId = @ProfileId" : "") +
+                " ORDER BY t.name, et.filtername, et.name";
 
             var rows = new List<(string Name, double RA, double Dec, double Rotation, string TemplateName, string Filter, double ExposureSec, int Desired, int Acquired, int Accepted)>();
 
-            using (var cmd = new SQLiteCommand(sql, conn))
-            using (var reader = cmd.ExecuteReader()) {
-                while (reader.Read()) {
-                    var name = reader["TargetName"].ToString();
-                    if (!nameSet.Contains(name)) continue;
+            using (var cmd = new SQLiteCommand(sql, conn)) {
+                if (profileId != null) cmd.Parameters.AddWithValue("@ProfileId", profileId);
+                using (var reader = cmd.ExecuteReader()) {
+                    while (reader.Read()) {
+                        var name = reader["TargetName"].ToString();
+                        if (!nameSet.Contains(name)) continue;
 
-                    rows.Add((
-                        Name:         name,
-                        RA:           Convert.ToDouble(reader["RA"]),
-                        Dec:          Convert.ToDouble(reader["Dec"]),
-                        Rotation:     reader["Rotation"]   == DBNull.Value ? 0 : Convert.ToDouble(reader["Rotation"]),
-                        TemplateName: reader["TemplateName"].ToString() ?? "",
-                        Filter:       reader["Filter"].ToString() ?? "",
-                        ExposureSec:  reader["ExposureSec"] == DBNull.Value ? 0 : Convert.ToDouble(reader["ExposureSec"]),
-                        Desired:      Convert.ToInt32(reader["Desired"]),
-                        Acquired:     Convert.ToInt32(reader["Acquired"]),
-                        Accepted:     Convert.ToInt32(reader["Accepted"])
-                    ));
+                        rows.Add((
+                            Name:         name,
+                            RA:           Convert.ToDouble(reader["RA"]),
+                            Dec:          Convert.ToDouble(reader["Dec"]),
+                            Rotation:     reader["Rotation"]   == DBNull.Value ? 0 : Convert.ToDouble(reader["Rotation"]),
+                            TemplateName: reader["TemplateName"].ToString() ?? "",
+                            Filter:       reader["Filter"].ToString() ?? "",
+                            ExposureSec:  reader["ExposureSec"] == DBNull.Value ? 0 : Convert.ToDouble(reader["ExposureSec"]),
+                            Desired:      Convert.ToInt32(reader["Desired"]),
+                            Acquired:     Convert.ToInt32(reader["Acquired"]),
+                            Accepted:     Convert.ToInt32(reader["Accepted"])
+                        ));
+                    }
                 }
             }
 

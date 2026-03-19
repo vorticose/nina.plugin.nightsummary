@@ -85,7 +85,8 @@ namespace NINA.Plugin.NightSummary.Session {
             // Reload images so report uses updated Accepted/GradingStatus/RejectReason values
             images = database.GetImagesForSession(sessionId);
 
-            var tsData       = FetchTsData(images);
+            var profileId    = profileService?.ActiveProfile?.Id.ToString();
+            var tsData       = FetchTsData(images, profileId);
             var cumulative   = database.GetCumulativeIntegrationByTarget(sessionId);
             var history      = BuildSessionHistory(database, images, sessionId);
             var (fovW, fovH) = ComputeCameraFov(session);
@@ -100,7 +101,8 @@ namespace NINA.Plugin.NightSummary.Session {
                 CameraFovWidthDeg            = fovW,
                 CameraFovHeightDeg           = fovH,
                 ObserverLatitude             = lat,
-                ObserverLongitude            = lon
+                ObserverLongitude            = lon,
+                ActiveProfileId              = profileId
             };
 
             Task.Run(async () => await GenerateAndSendAsync(reportData));
@@ -154,7 +156,8 @@ namespace NINA.Plugin.NightSummary.Session {
                 var events = testDb.GetEventsForSession(session.SessionId);
                 Logger.Info($"NightSummary: Sending test report for session {session.SessionId} ({images.Count} images, {events.Count} events)");
 
-                var tsData       = FetchTsData(images);
+                var profileId    = profileService?.ActiveProfile?.Id.ToString();
+                var tsData       = FetchTsData(images, profileId);
                 var cumulative   = testDb.GetCumulativeIntegrationByTarget(session.SessionId);
                 var history      = BuildSessionHistory(testDb, images, session.SessionId);
                 var (fovW, fovH) = ComputeCameraFov(session);
@@ -169,7 +172,8 @@ namespace NINA.Plugin.NightSummary.Session {
                     CameraFovWidthDeg            = fovW,
                     CameraFovHeightDeg           = fovH,
                     ObserverLatitude             = lat,
-                    ObserverLongitude            = lon
+                    ObserverLongitude            = lon,
+                    ActiveProfileId              = profileId
                 };
 
                 var htmlReport = await reportGenerator.GenerateHtmlReport(reportData);
@@ -335,10 +339,10 @@ namespace NINA.Plugin.NightSummary.Session {
             }
         }
 
-        private List<TsTargetData> FetchTsData(List<ImageRecord> images) {
+        private List<TsTargetData> FetchTsData(List<ImageRecord> images, string profileId) {
             var targetNames = images.Select(i => i.TargetName).Distinct();
             var tsDb = new TargetSchedulerDatabase();
-            return tsDb.GetProgressForTargets(targetNames);
+            return tsDb.GetProgressForTargets(targetNames, profileId);
         }
 
         /// <summary>
@@ -400,9 +404,11 @@ namespace NINA.Plugin.NightSummary.Session {
 
         // ── Summary text helpers ──────────────────────────────────────────────
 
-        private static readonly string[] FilterPriority = { "L", "R", "G", "B", "H", "S", "O" };
+        private static readonly char[] FilterSortPriority = { 'L', 'R', 'G', 'B', 'H', 'S', 'O' };
         private static int FilterSortKey(string filter) {
-            var idx = Array.FindIndex(FilterPriority, p => string.Equals(p, filter, StringComparison.OrdinalIgnoreCase));
+            if (string.IsNullOrEmpty(filter)) return int.MaxValue;
+            var c = char.ToUpperInvariant(filter[0]);
+            var idx = Array.IndexOf(FilterSortPriority, c);
             return idx >= 0 ? idx : int.MaxValue;
         }
 

@@ -53,6 +53,11 @@ namespace NINA.Plugin.NightSummary.Session {
 
         private void OnImageSaved(object sender, ImageSavedEventArgs e) {
             try {
+                // Only record LIGHT frames — skip darks, flats, bias, etc.
+                var imageType = e.MetaData?.Image?.ImageType;
+                if (!"LIGHT".Equals(imageType, StringComparison.OrdinalIgnoreCase))
+                    return;
+
                 // Read guiding scale from NINA - this converts pixels to arcseconds
                 // Default to 1 if not available so values are still stored (as pixels)
                 double guidingScale = e.MetaData?.Image?.RecordedRMS?.Scale ?? 1;
@@ -109,7 +114,19 @@ namespace NINA.Plugin.NightSummary.Session {
                     WindSpeed        = NullIfNaN(e.MetaData?.WeatherData?.WindSpeed),
                     Pressure         = NullIfNaN(e.MetaData?.WeatherData?.Pressure),
                     // TS grading fields — populated at session end via UpdateImageGradingFromTs
-                    GradingStatus    = -1
+                    GradingStatus    = -1,
+                    // Frame type
+                    ImageType        = imageType ?? "",
+                    // Telescope pointing
+                    Altitude         = NullIfNaN(e.MetaData?.Telescope?.Altitude),
+                    Azimuth          = NullIfNaN(e.MetaData?.Telescope?.Azimuth),
+                    Airmass          = NullIfNaN(e.MetaData?.Telescope?.Airmass),
+                    SideOfPier       = e.MetaData?.Telescope?.SideOfPier.ToString(),
+                    // Camera readout mode
+                    ReadoutMode      = string.IsNullOrEmpty(e.MetaData?.Camera?.ReadoutModeName) ? null : e.MetaData.Camera.ReadoutModeName,
+                    // Sky conditions
+                    SkyQuality       = NullIfNaN(e.MetaData?.WeatherData?.SkyQuality),
+                    CloudCover       = NullIfNaN(e.MetaData?.WeatherData?.CloudCover)
                 };
 
                 database.SaveImageRecord(record);

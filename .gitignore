@@ -104,3 +104,4 @@ orleans.codegen.cs
 scripts/*.zip
 CLAUDE.md
 ROADMAP.md
+INTERNALS.md
