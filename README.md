@@ -26,19 +26,20 @@ A [N.I.N.A.](https://nighttime-imaging.eu/) plugin that records your astrophotog
 **Target Scheduler integration**
 - Per-filter progress bars showing desired, acquired, and accepted frame counts
 - Reads grading status from the Target Scheduler database to mark accepted vs rejected frames
+- Tonight's Preview — a visual timeline of what Target Scheduler plans to image tonight, with per-target filter breakdowns (requires the Target Scheduler API to be enabled)
 
-**Delivery options**
+**Delivery and notifications**
 - Email via SMTP — Gmail is the default and easiest to set up, but any SMTP provider is supported
 - Discord webhook — embed summary + HTML report as file attachment
 - Pushover — instant push notification with a short text summary
 - Save locally — HTML report saved to `Documents\N.I.N.A.\Night Summary\Saved Reports\`
 
-All channels can be enabled independently, tested without running a sequence, and previous sessions can be resent at any time.
+All channels can be enabled independently, tested without running a sequence, and previous sessions can be resent at any time. NINA shows toast notifications when reports are generated and delivered, including warnings if any section couldn't be included.
 
 
 ## Optional Integrations
 
-**Target Scheduler** — when installed, Night Summary reads imaging targets and frame counts directly from the Target Scheduler database, adding per-filter progress bars and cumulative integration tracking. Without it, targets and coordinates are captured from NINA's sequence data.
+**Target Scheduler** — when installed, Night Summary reads imaging targets and frame counts directly from the Target Scheduler database, adding per-filter progress bars and cumulative integration tracking. With the Target Scheduler API enabled, the report also includes Tonight's Preview showing the planned imaging schedule for tonight. Without Target Scheduler, targets and coordinates are captured from NINA's sequence data.
 
 **Hocus Focus** — when installed, Night Summary reads FWHM and Eccentricity measurements from each saved image. Without it, only HFR (provided natively by NINA) is included.
 
