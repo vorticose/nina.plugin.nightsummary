@@ -25,7 +25,6 @@ A [N.I.N.A.](https://nighttime-imaging.eu/) plugin that records your astrophotog
 
 **Target Scheduler integration**
 - Per-filter progress bars showing desired, acquired, and accepted frame counts
-- Reads grading status from the Target Scheduler database to mark accepted vs rejected frames
 - Tonight's Preview — a visual timeline of what Target Scheduler plans to image tonight, with per-target filter breakdowns (requires the Target Scheduler API to be enabled)
 
 **Delivery and notifications**
