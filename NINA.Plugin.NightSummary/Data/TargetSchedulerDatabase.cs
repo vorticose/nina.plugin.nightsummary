@@ -96,6 +96,33 @@ namespace NINA.Plugin.NightSummary.Data {
             }
         }
 
+        /// <summary>
+        /// Reads the TS API settings (enableAPI, apiPort) from the profilepreference table.
+        /// Returns (false, 0) if TS is unavailable or any error occurs.
+        /// </summary>
+        public (bool Enabled, int Port) GetApiSettings() {
+            if (!IsAvailable) return (false, 0);
+
+            try {
+                var connectionString = $"Data Source={dbPath};Version=3;Read Only=True;";
+                using (var conn = new SQLiteConnection(connectionString)) {
+                    conn.Open();
+                    const string sql = "SELECT enableAPI, apiPort FROM profilepreference LIMIT 1";
+                    using (var cmd = new SQLiteCommand(sql, conn))
+                    using (var reader = cmd.ExecuteReader()) {
+                        if (reader.Read()) {
+                            bool enabled = Convert.ToInt32(reader["enableAPI"]) == 1;
+                            int port     = Convert.ToInt32(reader["apiPort"]);
+                            return (enabled, port);
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                Logger.Error($"NightSummary: Failed to read TS API settings. {ex.Message}");
+            }
+            return (false, 0);
+        }
+
         private List<TsTargetData> QueryProgress(SQLiteConnection conn, HashSet<string> nameSet) {
             const string sql = @"
                 SELECT

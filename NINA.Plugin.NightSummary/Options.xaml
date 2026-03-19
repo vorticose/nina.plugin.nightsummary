@@ -63,7 +63,7 @@
                         </StackPanel>
                     </StackPanel>
 
-                    <!-- TS Progress Bars: disabled at Snapshot -->
+                    <!-- TS Progress Bars: disabled at Snapshot or if TS not installed -->
                     <StackPanel Orientation="Horizontal" Margin="0,4">
                         <StackPanel.Style>
                             <Style TargetType="StackPanel">
@@ -72,11 +72,26 @@
                                     <DataTrigger Binding="{Binding ReportDetailLevel}" Value="0">
                                         <Setter Property="IsEnabled" Value="False"/>
                                     </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsTsInstalled}" Value="False">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </StackPanel.Style>
-                        <TextBlock Text="Show TS Progress Bars" Width="200" VerticalAlignment="Center" />
+                        <TextBlock Text="Show Target Scheduler Progress" Width="200" VerticalAlignment="Center" />
                         <CheckBox IsChecked="{Binding ShowTSProgressBars}" VerticalAlignment="Center" />
+                        <TextBlock Text="Target Scheduler not installed" Foreground="#CC4444" FontSize="11" FontStyle="Italic" Margin="8,0,0,0" VerticalAlignment="Center">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsTsInstalled}" Value="False">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
                     </StackPanel>
 
                     <!-- Star Count CV: disabled at Snapshot -->
@@ -196,6 +211,44 @@
                                 Ambient Temp requires a device connected as a NINA weather data source (e.g. Pegasus UPB, AAG CloudWatcher).
                             </TextBlock>
                         </StackPanel>
+                    </StackPanel>
+
+                    <!-- Next Night Preview: disabled at Snapshot or if TS not installed -->
+                    <StackPanel Orientation="Horizontal" Margin="0,4">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="IsEnabled" Value="True"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ReportDetailLevel}" Value="0">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsTsInstalled}" Value="False">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <TextBlock Text="Show Tonight's Preview" Width="200" VerticalAlignment="Center" />
+                        <CheckBox IsChecked="{Binding ShowNextNightPreview}" VerticalAlignment="Center" />
+                        <TextBlock Text="Target Scheduler not installed" Foreground="#CC4444" FontSize="11" FontStyle="Italic" Margin="8,0,0,0" VerticalAlignment="Center">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsTsInstalled}" Value="False">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,2,0,8">
+                        <TextBlock Width="200" />
+                        <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="400">
+                            Requires the Target Scheduler API to be enabled. In Target Scheduler, go to Options → Profile Preferences → API Preferences → Enable API.
+                            Note: enabling this will increase report generation time as Target Scheduler computes the full night plan.
+                        </TextBlock>
                     </StackPanel>
 
                     <Separator Margin="0,20,0,10" />

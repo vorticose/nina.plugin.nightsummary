@@ -7,6 +7,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Reflection;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace NINA.Plugin.NightSummary.Reporting {
@@ -18,6 +19,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
     public class ReportGenerator {
 
         private static readonly HttpClient Http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        private static readonly HttpClient TsApiClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+
+        /// <summary>
+        /// Warnings collected during the most recent report generation.
+        /// Cleared at the start of each GenerateHtmlReport call.
+        /// </summary>
+        public List<string> Warnings { get; } = new List<string>();
 
         // Lazily-loaded plugin icon as a base64 data URI (embedded resource)
         private static string? _iconDataUri;
@@ -49,6 +57,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
         }
 
         public async Task<string> GenerateHtmlReport(ReportData data) {
+            Warnings.Clear();
             var sb = new StringBuilder();
 
             sb.AppendLine("<!DOCTYPE html>");
@@ -118,6 +127,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.Append(BuildOverviewStatsSection(data, detailLevel));
             sb.Append(await BuildTargetSection(data, detailLevel));
             if (detailLevel >= 1) sb.Append(BuildImageQualitySection(data, detailLevel));
+            if (detailLevel >= 1) sb.Append(BuildNextNightPreviewSection(data));
             sb.Append(BuildFooter());
 
             sb.AppendLine("</body></html>");
@@ -529,6 +539,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             if (!hasHFR && !hasFWHM && !hasGuiding) return string.Empty;
 
+            sb.AppendLine("<div class='target-section'>");
             sb.AppendLine("<h2>Session Image Quality</h2>");
             sb.AppendLine("<div class='iq-table'>");
             sb.AppendLine("<div class='iq-row-grid'><div class='iq-header'>Metric</div><div class='iq-header'>Min</div><div class='iq-header'>Max</div><div class='iq-header'>Mean</div><div class='iq-header'>CV</div></div>");
@@ -542,6 +553,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine(ChartGenerator.GenerateMetricChart(data.Images, primary, secondary));
             }
 
+            sb.AppendLine("</div>");
             return sb.ToString();
         }
 
@@ -702,6 +714,214 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             sb.AppendLine("</svg>");
             return sb.ToString();
+        }
+
+        // ── Tonight's Preview (via TS REST API) ──────────────────────────
+        private static readonly string[] PreviewColors = {
+            "#4e79a7", "#f28e2b", "#e15759", "#76b7b2", "#59a14f", "#edc948"
+        };
+
+        private string PreviewNotice(string message) {
+            Warnings.Add($"Tonight's Preview: {message}");
+            return $"<div class='target-section'><h2>Tonight's Preview</h2><p style='color:#888;font-style:italic;'>{message}</p></div>";
+        }
+
+        private string BuildNextNightPreviewSection(ReportData data) {
+            if (!Settings.Default.ShowNextNightPreview) return "";
+
+            var tsDb = new TargetSchedulerDatabase();
+            if (!tsDb.IsAvailable)
+                return PreviewNotice("Target Scheduler is not installed.");
+
+            var (apiEnabled, apiPort) = tsDb.GetApiSettings();
+            if (!apiEnabled)
+                return PreviewNotice("Target Scheduler API is not enabled. Enable it in Target Scheduler Options → Profile Preferences → Api Preferences.");
+
+            try {
+                var baseUrl = $"http://localhost:{apiPort}/ts/v0";
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+                // Step 1: Get active profile ID
+                var profilesJson = TsApiClient.GetStringAsync($"{baseUrl}/profiles").Result;
+                var profiles = JsonSerializer.Deserialize<List<TsProfileInfo>>(profilesJson, options);
+                var active = profiles?.FirstOrDefault(p => p.Active);
+                if (active == null)
+                    return PreviewNotice("No active NINA profile found.");
+
+                // Step 2: Compute tonight's sunset and use as the preview start time
+                if (data.ObserverLatitude == 0 && data.ObserverLongitude == 0)
+                    return PreviewNotice("Observer location not configured in NINA profile.");
+                var tomorrow = DateTime.Today.AddDays(1);
+                var (sunset, sunrise) = AltitudeCalculator.FindNightWindow(
+                    data.ObserverLatitude, data.ObserverLongitude, tomorrow.AddHours(-6));
+                var startTime = sunset;
+                var previewUrl = $"{baseUrl}/profiles/{active.Id}/preview?startTime={startTime:o}";
+
+                var previewJson = TsApiClient.GetStringAsync(previewUrl).Result;
+                var entries = JsonSerializer.Deserialize<List<TsPreviewEntry>>(previewJson, options);
+                if (entries == null || !entries.Any())
+                    return PreviewNotice("Target Scheduler returned an empty preview — no targets scheduled for tonight.");
+
+                // Filter to target blocks only (skip wait periods) for the summary
+                var targets = entries.Where(e => !e.WaitPeriod && e.Name != null).ToList();
+                if (!targets.Any())
+                    return PreviewNotice("Target Scheduler returned an empty preview — no targets scheduled for tonight.");
+
+                // Trim leading wait periods so the timeline starts at the first target block
+                var firstTargetStart = targets.First().StartTime;
+                entries = entries.Where(e => e.EndTime > firstTargetStart).ToList();
+
+                // Timeline spans from first target start to last entry end
+                var timelineStart = firstTargetStart;
+                var timelineEnd   = entries.Last().EndTime;
+                var totalSeconds  = (timelineEnd - timelineStart).TotalSeconds;
+                if (totalSeconds <= 0) return "";
+
+                // Assign colors to unique target names
+                var uniqueTargets = targets.Select(t => t.Name).Distinct().ToList();
+                var colorMap = new Dictionary<string, string>();
+                for (int i = 0; i < uniqueTargets.Count; i++)
+                    colorMap[uniqueTargets[i]] = PreviewColors[i % PreviewColors.Length];
+
+                var sb = new StringBuilder();
+                sb.AppendLine("<div class='target-section'>");
+                var previewDate = targets.First().StartTime;
+                sb.AppendLine($"<h2 style='display:inline;'>Tonight's Preview</h2>");
+                sb.AppendLine($"<span style='color:#555;font-size:12px;font-style:italic;margin-left:12px;'>Generated by Target Scheduler — actual imaging may differ based on conditions</span>");
+                sb.AppendLine($"<p style='color:#888;margin-top:8px;'>Planned schedule for {previewDate:MMMM d, yyyy} &mdash; {timelineStart:HH:mm} to {timelineEnd:HH:mm}</p>");
+
+                // ── SVG Timeline ──
+                const int svgWidth   = 760;
+                const int trackH     = 24;
+                const int topPad     = 10;
+                const int leftPad    = 8;
+                const int rightPad   = 8;
+                const int barAreaW   = svgWidth - leftPad - rightPad;
+                const int legendRowH = 20;
+
+                double TimeToX(DateTime t) =>
+                    leftPad + (t - timelineStart).TotalSeconds / totalSeconds * barAreaW;
+
+                int rulerH    = 28;
+                int legendTop = topPad + trackH + rulerH + 8;
+                int legendH   = 18 + uniqueTargets.Count * legendRowH;
+                int svgHeight = legendTop + legendH + 10;
+
+                sb.AppendLine("<div class='timeline-container'>");
+                sb.AppendLine($"<svg viewBox='0 0 {svgWidth} {svgHeight}' xmlns='http://www.w3.org/2000/svg' style='width:100%;font-family:Arial,sans-serif;font-size:11px;'>");
+
+                // Background track
+                sb.AppendLine($"<rect x='{leftPad}' y='{topPad}' width='{barAreaW}' height='{trackH}' rx='4' fill='#0f0f23' />");
+
+                // Wait period hatching
+                sb.AppendLine("<defs>");
+                sb.AppendLine("  <pattern id='ns-preview-idle' patternUnits='userSpaceOnUse' width='8' height='8' patternTransform='rotate(45)'>");
+                sb.AppendLine("    <rect width='8' height='8' fill='#0f0f23'/>");
+                sb.AppendLine("    <line x1='0' y1='0' x2='0' y2='8' stroke='#2d2d5e' stroke-width='3'/>");
+                sb.AppendLine("  </pattern>");
+                sb.AppendLine("</defs>");
+
+                foreach (var entry in entries.Where(e => e.WaitPeriod)) {
+                    double x1 = TimeToX(entry.StartTime);
+                    double x2 = TimeToX(entry.EndTime);
+                    double w  = Math.Max(x2 - x1, 1);
+                    sb.AppendLine($"<rect x='{x1:F1}' y='{topPad}' width='{w:F1}' height='{trackH}' fill='url(#ns-preview-idle)' />");
+                }
+
+                // Target blocks
+                foreach (var entry in targets) {
+                    double x1 = TimeToX(entry.StartTime);
+                    double x2 = TimeToX(entry.EndTime);
+                    double w  = Math.Max(x2 - x1, 2);
+                    sb.AppendLine($"<rect x='{x1:F1}' y='{topPad}' width='{w:F1}' height='{trackH}' fill='{colorMap[entry.Name]}' opacity='0.85'/>");
+                }
+
+                // Ruler
+                int rulerY     = topPad + trackH;
+                int tickLabelY = rulerY + 20;
+                sb.AppendLine($"<line x1='{leftPad}' y1='{rulerY}' x2='{svgWidth - rightPad}' y2='{rulerY}' stroke='#444' stroke-width='1'/>");
+
+                double durationHours   = totalSeconds / 3600.0;
+                int    tickIntervalMin = durationHours < 2 ? 15 : durationHours < 5 ? 30 : 60;
+                var firstTick = new DateTime(timelineStart.Year, timelineStart.Month, timelineStart.Day, timelineStart.Hour, 0, 0);
+                while (firstTick <= timelineStart) firstTick = firstTick.AddMinutes(tickIntervalMin);
+                var tick = firstTick;
+                while (tick < timelineEnd) {
+                    double tx = TimeToX(tick);
+                    if (tx - leftPad > 40 && (svgWidth - rightPad) - tx > 40) {
+                        sb.AppendLine($"<line x1='{tx:F1}' y1='{rulerY}' x2='{tx:F1}' y2='{rulerY + 6}' stroke='#555' stroke-width='1'/>");
+                        sb.AppendLine($"<text x='{tx:F1}' y='{tickLabelY}' fill='#888' text-anchor='middle'>{tick:HH:mm}</text>");
+                    }
+                    tick = tick.AddMinutes(tickIntervalMin);
+                }
+                sb.AppendLine($"<text x='{leftPad}' y='{tickLabelY}' fill='#888'>{timelineStart:HH:mm}</text>");
+                sb.AppendLine($"<text x='{svgWidth - rightPad}' y='{tickLabelY}' fill='#888' text-anchor='end'>{timelineEnd:HH:mm}</text>");
+
+                // Legend
+                int ly = legendTop;
+                sb.AppendLine($"<text x='{leftPad}' y='{ly + 12}' fill='#aaa' font-weight='bold'>Targets</text>");
+                ly += 18;
+                foreach (var name in uniqueTargets) {
+                    sb.AppendLine($"<rect x='{leftPad}' y='{ly}' width='14' height='12' fill='{colorMap[name]}' rx='2'/>");
+                    sb.AppendLine($"<text x='{leftPad + 18}' y='{ly + 10}' fill='#e0e0e0'>{name}</text>");
+                    ly += legendRowH;
+                }
+
+                sb.AppendLine("</svg>");
+                sb.AppendLine("</div>");
+
+                // ── Per-target summary list ──
+                sb.AppendLine("<table style='margin-top:12px;'>");
+                sb.AppendLine("<tr><th>Target</th><th>Window</th><th>Images</th><th>Total Time</th></tr>");
+
+                foreach (var target in targets) {
+                    int totalFrames = target.ExposurePlan.Sum(e => e.Count);
+                    double totalIntSec = target.ExposurePlan.Sum(e => e.Exposure * e.Count);
+                    sb.AppendLine($"<tr>");
+                    sb.AppendLine($"  <td>{target.Name}</td>");
+                    sb.AppendLine($"  <td>{target.StartTime:HH:mm} - {target.EndTime:HH:mm}</td>");
+                    sb.AppendLine($"  <td>{totalFrames}</td>");
+                    sb.AppendLine($"  <td>{FormatDuration(totalIntSec)}</td>");
+                    sb.AppendLine($"</tr>");
+                }
+                sb.AppendLine("</table>");
+
+                // ── Expandable per-target filter details ──
+                // Aggregate exposure plans across all timeline blocks for the same target,
+                // then group by (filter, exposure length) — matches main report grouping logic.
+                foreach (var targetGroup in targets.GroupBy(t => t.Name)) {
+                    var allExposures = targetGroup.SelectMany(t => t.ExposurePlan).ToList();
+                    if (!allExposures.Any()) continue;
+                    var filterGroups = allExposures
+                        .GroupBy(e => (e.FilterName, e.Exposure))
+                        .OrderBy(g => FilterSortKey(g.Key.FilterName)).ThenBy(g => g.Key.FilterName).ThenBy(g => g.Key.Exposure);
+                    sb.AppendLine("<details class='history-section'>");
+                    sb.AppendLine($"<summary>{targetGroup.Key} - Filter Breakdown</summary>");
+                    sb.AppendLine("<table style='margin-top:8px;width:auto;'>");
+                    sb.AppendLine("<tr><th>Filter</th><th>Images</th><th>Exposure</th><th>Total Time</th></tr>");
+                    foreach (var g in filterGroups) {
+                        int totalCount = g.Sum(e => e.Count);
+                        double intSec = g.Key.Exposure * totalCount;
+                        sb.AppendLine($"<tr>");
+                        sb.AppendLine($"  <td>{g.Key.FilterName}</td>");
+                        sb.AppendLine($"  <td>{totalCount}</td>");
+                        sb.AppendLine($"  <td>{g.Key.Exposure:F0}s</td>");
+                        sb.AppendLine($"  <td>{FormatDuration(intSec)}</td>");
+                        sb.AppendLine($"</tr>");
+                    }
+                    sb.AppendLine("</table>");
+                    sb.AppendLine("</details>");
+                }
+
+                sb.AppendLine("</div>");
+                return sb.ToString();
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Next night preview unavailable. {ex.Message}");
+                var reason = ex.InnerException is TaskCanceledException
+                    ? "Target Scheduler API did not respond in time — the server may not be running."
+                    : $"Could not connect to Target Scheduler API (port {apiPort}). Ensure NINA and Target Scheduler are running.";
+                return PreviewNotice(reason);
+            }
         }
 
         private string BuildFooter() {

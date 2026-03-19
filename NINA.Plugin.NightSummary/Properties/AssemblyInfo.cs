@@ -2,8 +2,8 @@
 using System.Runtime.InteropServices;
 
 [assembly: Guid("682531D1-5A23-4627-B961-0794282ECB4E")]
-[assembly: AssemblyVersion("2.5.2.0")]
-[assembly: AssemblyFileVersion("2.5.2.0")]
+[assembly: AssemblyVersion("2.6.0.0")]
+[assembly: AssemblyFileVersion("2.6.0.0")]
 [assembly: AssemblyTitle("Night Summary")]
 [assembly: AssemblyDescription("Records your imaging session and delivers a detailed HTML report via email, Discord, or Pushover when your sequence ends.")]
 [assembly: AssemblyCompany("Evan Pegors")]
@@ -12,10 +12,10 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyMetadata("MinimumApplicationVersion", "3.0.0.2017")]
 [assembly: AssemblyMetadata("License", "MPL-2.0")]
 [assembly: AssemblyMetadata("LicenseURL", "https://www.mozilla.org/en-US/MPL/2.0/")]
-[assembly: AssemblyMetadata("Repository", "")]
-[assembly: AssemblyMetadata("Homepage", "")]
+[assembly: AssemblyMetadata("Repository", "https://github.com/vorticose/nina.plugin.nightsummary")]
+[assembly: AssemblyMetadata("Homepage", "https://github.com/vorticose/nina.plugin.nightsummary")]
 [assembly: AssemblyMetadata("Tags", "report,summary,email,logging")]
-[assembly: AssemblyMetadata("ChangelogURL", "")]
+[assembly: AssemblyMetadata("ChangelogURL", "https://raw.githubusercontent.com/vorticose/nina.plugin.nightsummary/main/CHANGELOG.md")]
 [assembly: AssemblyMetadata("FeaturedImageURL", "https://i.imgur.com/uvcC1dC.png")]
 [assembly: AssemblyMetadata("ScreenshotURL", "")]
 [assembly: AssemblyMetadata("AltScreenshotURL", "")]
@@ -34,12 +34,13 @@ Add the ""Night Summary Start"" instruction near the beginning of your sequence 
 - Target Scheduler integration — shows desired, acquired, and accepted frame counts per filter with a visual progress bar
 - Session history table summarizing all past sessions for each target, including cumulative integration time
 - Configurable Metric Chart showing any two metrics over time — choose from HFR, FWHM, Eccentricity, Guiding RMS, Focuser Temperature, or Ambient Temperature
+- Tonight's Preview — a visual timeline of what Target Scheduler plans to image tonight, with per-target filter breakdowns
 
 **Report detail levels**
 Three levels let you control how much is included: Snapshot (header and filter table only), Standard (adds timeline, charts, and image quality), and Full (adds metric chart and session history). Each section can also be toggled individually.
 
 **Optional plugin integrations**
-- **Target Scheduler** — when installed, Night Summary reads your imaging targets and frame counts directly from the Target Scheduler database, adding per-filter progress bars and cumulative integration tracking to the report. Without it, targets and coordinates are still captured from NINA's sequence data.
+- **Target Scheduler** — when installed, Night Summary reads your imaging targets and frame counts directly from the Target Scheduler database, adding per-filter progress bars and cumulative integration tracking to the report. With the Target Scheduler API enabled, the report also includes a Tonight's Preview showing the planned schedule for tonight. Without Target Scheduler, targets and coordinates are still captured from NINA's sequence data.
 - **Hocus Focus** — when installed, Night Summary reads FWHM and Eccentricity measurements from each saved image. Without it, only HFR (provided natively by NINA) is included in image quality stats.
 
 **Delivery options**
@@ -48,7 +49,7 @@ Three levels let you control how much is included: Snapshot (header and filter t
 - Pushover push notification (short text summary)
 - Save report locally to Documents\N.I.N.A.\Night Summary\Saved Reports
 
-All channels can be enabled independently and tested directly from the plugin options page. Previous session reports can also be resent at any time without re-running a sequence.
+All channels can be enabled independently and tested directly from the plugin options page. Previous session reports can also be resent at any time without re-running a sequence. NINA shows toast notifications when reports are generated and delivered, including warnings if any section couldn't be included.
 
 **Troubleshooting**
 

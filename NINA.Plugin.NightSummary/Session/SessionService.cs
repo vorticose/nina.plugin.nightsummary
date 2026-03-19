@@ -1,4 +1,5 @@
 using NINA.Core.Utility;
+using NINA.Core.Utility.Notification;
 using NINA.Equipment.Interfaces.Mediator;
 using NINA.Plugin.NightSummary.Data;
 using NINA.Plugin.NightSummary.MyPluginProperties;
@@ -102,20 +103,36 @@ namespace NINA.Plugin.NightSummary.Session {
                 ObserverLongitude            = lon
             };
 
-            if (Settings.Default.SaveReportLocally) {
-                Task.Run(async () => await SaveReportLocallyAsync(reportData));
-            }
+            Task.Run(async () => await GenerateAndSendAsync(reportData));
+        }
 
-            if (Settings.Default.EmailEnabled) {
-                Task.Run(async () => await SendReportWithDataAsync(reportData));
-            }
+        private async Task GenerateAndSendAsync(ReportData reportData) {
+            try {
+                var htmlReport = await reportGenerator.GenerateHtmlReport(reportData);
 
-            if (Settings.Default.PushoverEnabled) {
-                Task.Run(async () => await SendPushoverWithDataAsync(reportData));
-            }
+                // Show NINA toast notifications
+                if (reportGenerator.Warnings.Any()) {
+                    foreach (var warning in reportGenerator.Warnings)
+                        Notification.ShowWarning($"Night Summary: {warning}");
+                } else {
+                    Notification.ShowSuccess("Night Summary: Report generated successfully");
+                }
 
-            if (Settings.Default.DiscordEnabled) {
-                Task.Run(async () => await SendDiscordWithDataAsync(reportData));
+                var tasks = new List<Task>();
+                if (Settings.Default.SaveReportLocally)
+                    tasks.Add(SaveReportLocallyAsync(reportData, htmlReport));
+                if (Settings.Default.EmailEnabled)
+                    tasks.Add(SendReportWithDataAsync(reportData, htmlReport));
+                if (Settings.Default.PushoverEnabled)
+                    tasks.Add(SendPushoverWithDataAsync(reportData));
+                if (Settings.Default.DiscordEnabled)
+                    tasks.Add(SendDiscordWithDataAsync(reportData, htmlReport));
+
+                await Task.WhenAll(tasks);
+                Notification.ShowSuccess("Night Summary: Report delivered successfully");
+            } catch (Exception ex) {
+                Logger.Error($"NightSummary: Failed to generate/send report. {ex.Message}");
+                Notification.ShowError($"Night Summary: Failed to send report — {ex.Message}");
             }
         }
 
@@ -155,18 +172,34 @@ namespace NINA.Plugin.NightSummary.Session {
                     ObserverLongitude            = lon
                 };
 
-                await Task.WhenAll(
-                    Settings.Default.SaveReportLocally ? SaveReportLocallyAsync(reportData)  : Task.CompletedTask,
-                    Settings.Default.EmailEnabled      ? SendReportWithDataAsync(reportData)  : Task.CompletedTask,
-                    Settings.Default.PushoverEnabled   ? SendPushoverWithDataAsync(reportData) : Task.CompletedTask,
-                    Settings.Default.DiscordEnabled    ? SendDiscordWithDataAsync(reportData)  : Task.CompletedTask
-                );
+                var htmlReport = await reportGenerator.GenerateHtmlReport(reportData);
+
+                if (reportGenerator.Warnings.Any()) {
+                    foreach (var warning in reportGenerator.Warnings)
+                        Notification.ShowWarning($"Night Summary: {warning}");
+                } else {
+                    Notification.ShowSuccess("Night Summary: Report generated successfully");
+                }
+
+                var tasks = new List<Task>();
+                if (Settings.Default.SaveReportLocally)
+                    tasks.Add(SaveReportLocallyAsync(reportData, htmlReport));
+                if (Settings.Default.EmailEnabled)
+                    tasks.Add(SendReportWithDataAsync(reportData, htmlReport));
+                if (Settings.Default.PushoverEnabled)
+                    tasks.Add(SendPushoverWithDataAsync(reportData));
+                if (Settings.Default.DiscordEnabled)
+                    tasks.Add(SendDiscordWithDataAsync(reportData, htmlReport));
+
+                await Task.WhenAll(tasks);
+                Notification.ShowSuccess("Night Summary: Report delivered successfully");
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to send test report. {ex.Message}");
+                Notification.ShowError($"Night Summary: Failed to send report — {ex.Message}");
             }
         }
 
-        private async Task SaveReportLocallyAsync(ReportData reportData) {
+        private async Task SaveReportLocallyAsync(ReportData reportData, string htmlReport = null) {
             try {
                 var saveDir = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
@@ -176,7 +209,7 @@ namespace NINA.Plugin.NightSummary.Session {
                 var filename = $"NightSummary_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.html";
                 var filePath = Path.Combine(saveDir, filename);
 
-                var htmlReport = await reportGenerator.GenerateHtmlReport(reportData);
+                htmlReport ??= await reportGenerator.GenerateHtmlReport(reportData);
                 await File.WriteAllTextAsync(filePath, htmlReport);
 
                 Logger.Info($"NightSummary: Report saved locally to {filePath}");
@@ -204,7 +237,7 @@ namespace NINA.Plugin.NightSummary.Session {
             }
         }
 
-        private async Task SendDiscordWithDataAsync(ReportData reportData) {
+        private async Task SendDiscordWithDataAsync(ReportData reportData, string htmlReport = null) {
             try {
                 var webhookUrl = Settings.Default.DiscordWebhookUrl;
 
@@ -213,7 +246,7 @@ namespace NINA.Plugin.NightSummary.Session {
                     return;
                 }
 
-                var htmlReport = await reportGenerator.GenerateHtmlReport(reportData);
+                htmlReport ??= await reportGenerator.GenerateHtmlReport(reportData);
                 var sender     = new DiscordSender(webhookUrl);
                 await sender.SendReportAsync(reportData, htmlReport);
             } catch (Exception ex) {
@@ -221,7 +254,7 @@ namespace NINA.Plugin.NightSummary.Session {
             }
         }
 
-        private async Task SendReportWithDataAsync(ReportData reportData) {
+        private async Task SendReportWithDataAsync(ReportData reportData, string htmlReport = null) {
             try {
                 var senderAddress = Settings.Default.SenderAddress;
                 var smtpPassword  = Settings.Default.SmtpPassword;
@@ -236,7 +269,7 @@ namespace NINA.Plugin.NightSummary.Session {
 
                 var session    = reportData.Session;
                 var images     = reportData.Images;
-                var htmlReport = await reportGenerator.GenerateHtmlReport(reportData);
+                htmlReport   ??= await reportGenerator.GenerateHtmlReport(reportData);
                 var subject    = $"Night Summary Report - {session.SessionStart:yyyy-MM-dd} - {images.Count} images";
                 var body       = BuildSessionSummary(reportData, compact: false);
 

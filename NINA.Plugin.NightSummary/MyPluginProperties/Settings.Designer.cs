@@ -346,5 +346,17 @@ namespace NINA.Plugin.NightSummary.MyPluginProperties {
                 this["ChartSecondaryMetric"] = value;
             }
         }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool ShowNextNightPreview {
+            get {
+                return ((bool)(this["ShowNextNightPreview"]));
+            }
+            set {
+                this["ShowNextNightPreview"] = value;
+            }
+        }
     }
 }

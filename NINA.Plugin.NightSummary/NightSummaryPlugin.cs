@@ -367,7 +367,8 @@ namespace NINA.Plugin.NightSummary {
                 Settings.Default.ShowSessionHistory = true;
                 Settings.Default.ShowStarCountCV    = true;
                 Settings.Default.ShowHFRGraph       = true;
-                Settings.Default.ShowPerTargetIQ    = true;
+                Settings.Default.ShowPerTargetIQ       = true;
+                Settings.Default.ShowNextNightPreview  = true;
                 Settings.Default.Save();
                 RaisePropertyChanged();
                 RaisePropertyChanged(nameof(ShowSkyThumbnails));
@@ -378,6 +379,7 @@ namespace NINA.Plugin.NightSummary {
                 RaisePropertyChanged(nameof(ShowStarCountCV));
                 RaisePropertyChanged(nameof(ShowHFRGraph));
                 RaisePropertyChanged(nameof(ShowPerTargetIQ));
+                RaisePropertyChanged(nameof(ShowNextNightPreview));
             }
         }
 
@@ -470,6 +472,17 @@ namespace NINA.Plugin.NightSummary {
                 RaisePropertyChanged();
             }
         }
+
+        public bool ShowNextNightPreview {
+            get => Settings.Default.ShowNextNightPreview;
+            set {
+                Settings.Default.ShowNextNightPreview = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public bool IsTsInstalled => new TargetSchedulerDatabase().IsAvailable;
 
         private void LoadSessions() {
             try {

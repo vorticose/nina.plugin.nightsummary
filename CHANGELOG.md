@@ -1,6 +1,43 @@
 # Night Summary — Changelog
 
 
+## v2.6.0
+
+**Tonight's Preview**
+- New report section showing Target Scheduler's planned schedule for the next night, powered by the TS REST API
+- Visual SVG timeline from first target to end of night, with colored blocks per target and hatched wait periods
+- Per-target summary table with imaging window, image count, and total time
+- Expandable per-target filter breakdown matching the main report's grouping (same filter + same exposure = one row, different exposures = separate rows)
+- Sunset-anchored start time computed from observer coordinates
+- Graceful degradation with specific in-report messages when TS is not installed, API is disabled, or the API is unreachable
+
+**Notifications**
+- NINA toast notifications for report generation and delivery — success, warning, and error states
+- Warnings shown when report sections are omitted (e.g. Tonight's Preview unavailable)
+
+**Options UI**
+- Target Scheduler options (progress bars and Tonight's Preview) are now greyed out with a "Target Scheduler not installed" message when TS is not detected
+- "Show TS Progress Bars" renamed to "Show Target Scheduler Progress"
+- Homepage and changelog links added to the plugin page in NINA
+
+**Improvements**
+- Report generated once and shared across all delivery channels, eliminating redundant generation
+- Separate HTTP client for TS API calls with 60-second timeout
+
+
+## v2.5.2
+
+**Bug fixes**
+- Fixed mixed-exposure filter grouping — same filter with different exposure lengths now correctly appear as separate rows
+- Default detail level changed to Full with all sections enabled
+
+
+## v2.5.1
+
+**Bug fixes**
+- Fixed long description formatting in NINA plugin window — em-dashes replaced with regular dashes to prevent jumbled text
+
+
 ## v2.5.0
 
 **Report improvements**
