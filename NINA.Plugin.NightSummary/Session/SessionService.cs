@@ -111,7 +111,13 @@ namespace NINA.Plugin.NightSummary.Session {
                 ActiveProfileId              = profileId
             };
 
-            Task.Run(async () => await GenerateAndSendAsync(reportData));
+            _ = Task.Run(async () => {
+                try {
+                    await GenerateAndSendAsync(reportData);
+                } catch (Exception ex) {
+                    Logger.Error($"NightSummary: Unhandled error in report generation. {ex.Message}");
+                }
+            });
         }
 
         private async Task GenerateAndSendAsync(ReportData reportData) {
@@ -421,14 +427,6 @@ namespace NINA.Plugin.NightSummary.Session {
 
         // ── Summary text helpers ──────────────────────────────────────────────
 
-        private static readonly char[] FilterSortPriority = { 'L', 'R', 'G', 'B', 'H', 'S', 'O' };
-        private static int FilterSortKey(string filter) {
-            if (string.IsNullOrEmpty(filter)) return int.MaxValue;
-            var c = char.ToUpperInvariant(filter[0]);
-            var idx = Array.IndexOf(FilterSortPriority, c);
-            return idx >= 0 ? idx : int.MaxValue;
-        }
-
         /// <summary>
         /// Builds a plain-text session summary for email (compact=false) or Pushover (compact=true).
         /// Mirrors the language, metric names, and formatting conventions of the HTML report.
@@ -443,29 +441,9 @@ namespace NINA.Plugin.NightSummary.Session {
             var hfrImages    = images.Where(i => i.HFR > 0).ToList();
             var rmsImages    = images.Where(i => i.GuidingRMSTotal > 0).ToList();
 
-            // Yield — mirrors ReportGenerator.BuildOverviewStatsSection
-            var firstImage = images.Any() ? images.Min(i => i.Timestamp) : session.SessionStart;
-            var lastImage  = images.Any() ? images.Max(i => i.Timestamp) : session.SessionEnd;
-            var windowSec  = (lastImage - firstImage).TotalSeconds;
-            var roofEvents = events.Where(e => e.EventType == "RoofClosed" || e.EventType == "RoofOpen")
-                                   .OrderBy(e => e.Timestamp).ToList();
-            double roofClosedSec    = 0;
-            bool   hasSafetyMonitor = roofEvents.Any();
-            DateTime? closedAt = null;
-            foreach (var ev in roofEvents) {
-                if (ev.EventType == "RoofClosed") {
-                    closedAt = ev.Timestamp;
-                } else if (ev.EventType == "RoofOpen" && closedAt.HasValue) {
-                    var overlapStart = closedAt.Value < firstImage ? firstImage : closedAt.Value;
-                    var overlapEnd   = ev.Timestamp   > lastImage  ? lastImage  : ev.Timestamp;
-                    if (overlapEnd > overlapStart) roofClosedSec += (overlapEnd - overlapStart).TotalSeconds;
-                    closedAt = null;
-                }
-            }
-            if (closedAt.HasValue && closedAt.Value < lastImage)
-                roofClosedSec += (lastImage - closedAt.Value).TotalSeconds;
-            var effectiveWindowSec = windowSec - roofClosedSec;
-            double yieldPct = effectiveWindowSec > 0 ? Math.Min(totalExpSec / effectiveWindowSec * 100.0, 100.0) : 0;
+            var yield = Reporting.YieldCalculator.Calculate(images, events, session.SessionStart, session.SessionEnd);
+            var yieldPct        = yield.YieldPct;
+            var hasSafetyMonitor = yield.HasSafetyMonitor;
 
             var targets = images.GroupBy(i => i.TargetName).OrderBy(g => g.Min(i => i.Timestamp)).ToList();
             var sb = new System.Text.StringBuilder();
@@ -504,7 +482,7 @@ namespace NINA.Plugin.NightSummary.Session {
                 foreach (var target in targets) {
                     sb.AppendLine(target.Key);
                     var filterGroups = target.GroupBy(i => i.Filter)
-                                             .OrderBy(g => FilterSortKey(g.Key)).ThenBy(g => g.Key);
+                                             .OrderBy(g => Reporting.FilterHelper.SortKey(g.Key)).ThenBy(g => g.Key);
                     var filterParts = filterGroups.Select(g => $"{g.Key}: {g.Count()} \u00d7 {g.First().ExposureDuration:F0}s");
                     sb.AppendLine($"  {string.Join("   ", filterParts)}");
                     var tExp = target.Sum(i => i.ExposureDuration);

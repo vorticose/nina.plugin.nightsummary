@@ -1,6 +1,5 @@
 using NINA.Core.Utility;
 using NINA.Plugin.NightSummary.Data;
-using NINA.Plugin.NightSummary.MyPluginProperties;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -15,8 +14,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
     /// </summary>
     public class DiscordSender {
 
-        private static readonly HttpClient httpClient = new HttpClient();
-        private static readonly char[] FilterSortPriority = { 'L', 'R', 'G', 'B', 'H', 'S', 'O' };
+        private static readonly HttpClient httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
 
         private readonly string webhookUrl;
 
@@ -74,28 +72,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var hfrImages   = images.Where(i => i.HFR > 0).ToList();
             var rmsImages   = images.Where(i => i.GuidingRMSTotal > 0).ToList();
 
-            // Yield — same logic as BuildSessionSummary / ReportGenerator
-            var firstImage = images.Any() ? images.Min(i => i.Timestamp) : session.SessionStart;
-            var lastImage  = images.Any() ? images.Max(i => i.Timestamp) : session.SessionEnd;
-            var windowSec  = (lastImage - firstImage).TotalSeconds;
-            var roofEvents = events.Where(e => e.EventType == "RoofClosed" || e.EventType == "RoofOpen")
-                                   .OrderBy(e => e.Timestamp).ToList();
-            double roofClosedSec = 0;
-            DateTime? closedAt = null;
-            foreach (var ev in roofEvents) {
-                if (ev.EventType == "RoofClosed") {
-                    closedAt = ev.Timestamp;
-                } else if (ev.EventType == "RoofOpen" && closedAt.HasValue) {
-                    var overlapStart = closedAt.Value < firstImage ? firstImage : closedAt.Value;
-                    var overlapEnd   = ev.Timestamp   > lastImage  ? lastImage  : ev.Timestamp;
-                    if (overlapEnd > overlapStart) roofClosedSec += (overlapEnd - overlapStart).TotalSeconds;
-                    closedAt = null;
-                }
-            }
-            if (closedAt.HasValue && closedAt.Value < lastImage)
-                roofClosedSec += (lastImage - closedAt.Value).TotalSeconds;
-            var effectiveWindowSec = windowSec - roofClosedSec;
-            double yieldPct = effectiveWindowSec > 0 ? Math.Min(totalExpSec / effectiveWindowSec * 100.0, 100.0) : 0;
+            var yield = YieldCalculator.Calculate(images, events, session.SessionStart, session.SessionEnd);
+            var yieldPct = yield.YieldPct;
 
             var overview = new StringBuilder();
             overview.AppendLine($"Total Images: {images.Count}");
@@ -116,7 +94,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var sb = new StringBuilder();
 
                 var filterGroups = target.GroupBy(i => i.Filter)
-                                         .OrderBy(g => FilterSortKey(g.Key)).ThenBy(g => g.Key);
+                                         .OrderBy(g => FilterHelper.SortKey(g.Key)).ThenBy(g => g.Key);
                 foreach (var fg in filterGroups) {
                     var totalTime = TimeSpan.FromSeconds(fg.Sum(i => i.ExposureDuration));
                     sb.AppendLine($"{fg.Key}: {fg.Count()}\u00d7{fg.First().ExposureDuration:F0}s ({totalTime.TotalHours:F1}h)");
@@ -126,10 +104,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine($"**Total: {targetTotal.TotalHours:F1}h**");
 
                 // Star count CV
-                var bbImages = target.Where(i => IsBroadband(i.Filter) && i.StarCount > 0).ToList();
-                var nbImages = target.Where(i => IsNarrowband(i.Filter) && i.StarCount > 0).ToList();
-                string bbCV = bbImages.Count >= 2 ? $"{CV(bbImages.Select(i => (double)i.StarCount).ToList()):F0}%" : "\u2014";
-                string nbCV = nbImages.Count >= 2 ? $"{CV(nbImages.Select(i => (double)i.StarCount).ToList()):F0}%" : "\u2014";
+                var bbImages = target.Where(i => FilterHelper.IsBroadband(i.Filter) && i.StarCount > 0).ToList();
+                var nbImages = target.Where(i => FilterHelper.IsNarrowband(i.Filter) && i.StarCount > 0).ToList();
+                string bbCV = bbImages.Count >= 2 ? $"{FilterHelper.CV(bbImages.Select(i => (double)i.StarCount).ToList()):F0}%" : "\u2014";
+                string nbCV = nbImages.Count >= 2 ? $"{FilterHelper.CV(nbImages.Select(i => (double)i.StarCount).ToList()):F0}%" : "\u2014";
                 sb.Append($"Star count CV \u2014 Broadband: {bbCV} | Narrowband: {nbCV}");
 
                 fields.Add(Field($"\ud83c\udf0c {target.Key}", sb.ToString().TrimEnd()));
@@ -142,24 +120,24 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             if (withHFR.Any()) {
                 var hfrVals = withHFR.Select(i => i.HFR).ToList();
-                fields.Add(Field("HFR", $"Min {hfrVals.Min():F2} | Max {hfrVals.Max():F2} | Mean {hfrVals.Average():F2} | CV {CV(hfrVals):F0}%"));
+                fields.Add(Field("HFR", $"Min {hfrVals.Min():F2} | Max {hfrVals.Max():F2} | Mean {hfrVals.Average():F2} | CV {FilterHelper.CV(hfrVals):F0}%"));
             }
 
             if (withFWHM.Any()) {
                 var fwhmVals = withFWHM.Select(i => i.FWHM).ToList();
-                fields.Add(Field("FWHM", $"Min {fwhmVals.Min():F2} | Max {fwhmVals.Max():F2} | Mean {fwhmVals.Average():F2} | CV {CV(fwhmVals):F0}%"));
+                fields.Add(Field("FWHM", $"Min {fwhmVals.Min():F2} | Max {fwhmVals.Max():F2} | Mean {fwhmVals.Average():F2} | CV {FilterHelper.CV(fwhmVals):F0}%"));
             }
 
             if (withEcc.Any()) {
                 var eccVals = withEcc.Select(i => i.Eccentricity).ToList();
-                fields.Add(Field("Eccentricity", $"Min {eccVals.Min():F3} | Max {eccVals.Max():F3} | Mean {eccVals.Average():F3} | CV {CV(eccVals):F0}%"));
+                fields.Add(Field("Eccentricity", $"Min {eccVals.Min():F3} | Max {eccVals.Max():F3} | Mean {eccVals.Average():F3} | CV {FilterHelper.CV(eccVals):F0}%"));
             }
 
             // ── Guiding ────────────────────────────────────────────────────────
             var withGuiding = images.Where(i => i.GuidingRMSTotal > 0).ToList();
             if (withGuiding.Any()) {
                 var rmsVals = withGuiding.Select(i => i.GuidingRMSTotal).ToList();
-                fields.Add(Field("Guiding RMS", $"Min {rmsVals.Min():F2}\" | Max {rmsVals.Max():F2}\" | Mean {rmsVals.Average():F2}\" | CV {CV(rmsVals):F0}%"));
+                fields.Add(Field("Guiding RMS", $"Min {rmsVals.Min():F2}\" | Max {rmsVals.Max():F2}\" | Mean {rmsVals.Average():F2}\" | CV {FilterHelper.CV(rmsVals):F0}%"));
             }
 
             return Payload(fields, session.SessionEnd);
@@ -183,19 +161,22 @@ namespace NINA.Plugin.NightSummary.Reporting {
         private async Task<bool> PostPayload(object payload) {
             var json    = JsonSerializer.Serialize(payload);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
-            var response = await httpClient.PostAsync(webhookUrl, content);
-            return await LogResult(response);
+            using (var response = await httpClient.PostAsync(webhookUrl, content)) {
+                return await LogResult(response);
+            }
         }
 
         private async Task<bool> PostWithAttachment(string payloadJson, string htmlContent, string fileName) {
-            var multipart = new MultipartFormDataContent();
-            multipart.Add(new StringContent(payloadJson, Encoding.UTF8, "application/json"), "payload_json");
-            var fileBytes = Encoding.UTF8.GetBytes(htmlContent);
-            var fileContent = new ByteArrayContent(fileBytes);
-            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
-            multipart.Add(fileContent, "files[0]", fileName);
-            var response = await httpClient.PostAsync(webhookUrl, multipart);
-            return await LogResult(response);
+            using (var multipart = new MultipartFormDataContent()) {
+                multipart.Add(new StringContent(payloadJson, Encoding.UTF8, "application/json"), "payload_json");
+                var fileBytes = Encoding.UTF8.GetBytes(htmlContent);
+                var fileContent = new ByteArrayContent(fileBytes);
+                fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+                multipart.Add(fileContent, "files[0]", fileName);
+                using (var response = await httpClient.PostAsync(webhookUrl, multipart)) {
+                    return await LogResult(response);
+                }
+            }
         }
 
         private async Task<bool> LogResult(HttpResponseMessage response) {
@@ -211,46 +192,6 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
         private static object Field(string name, string value, bool inline = false) {
             return new { name, value, inline };
-        }
-
-        private static int FilterSortKey(string filter) {
-            if (string.IsNullOrEmpty(filter)) return int.MaxValue;
-            var c = char.ToUpperInvariant(filter[0]);
-            var idx = Array.IndexOf(FilterSortPriority, c);
-            return idx >= 0 ? idx : int.MaxValue;
-        }
-
-        private static readonly HashSet<char> BroadbandFirstLetters = new HashSet<char> { 'L', 'R', 'G', 'B' };
-        private static readonly HashSet<char> NarrowbandFirstLetters = new HashSet<char> { 'H', 'S', 'O' };
-
-        private static bool IsBroadband(string filter) {
-            if (string.IsNullOrEmpty(filter)) return false;
-            var overrides = NightSummaryPlugin.ParseFilterClassifications(
-                MyPluginProperties.Settings.Default.FilterClassifications);
-            if (overrides.TryGetValue(filter, out var cls)) return cls == "B";
-            return BroadbandFirstLetters.Contains(char.ToUpperInvariant(filter[0]));
-        }
-
-        private static bool IsNarrowband(string filter) {
-            if (string.IsNullOrEmpty(filter)) return false;
-            var overrides = NightSummaryPlugin.ParseFilterClassifications(
-                MyPluginProperties.Settings.Default.FilterClassifications);
-            if (overrides.TryGetValue(filter, out var cls)) return cls == "N";
-            return NarrowbandFirstLetters.Contains(char.ToUpperInvariant(filter[0]));
-        }
-
-        private static double CV(List<double> values) {
-            if (values.Count < 2) return 0;
-            var avg = values.Average();
-            if (avg == 0) return 0;
-            return (StdDev(values) / avg) * 100;
-        }
-
-        private static double StdDev(List<double> values) {
-            if (values.Count < 2) return 0;
-            var avg = values.Average();
-            var sumOfSquares = values.Sum(v => Math.Pow(v - avg, 2));
-            return Math.Sqrt(sumOfSquares / (values.Count - 1));
         }
     }
 }

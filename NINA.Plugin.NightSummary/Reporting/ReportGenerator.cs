@@ -46,47 +46,15 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
         }
 
-        // Broadband and narrowband filter classification — user overrides checked first, then first-letter fallback
-        private static readonly HashSet<char> BroadbandFirstLetters = new HashSet<char> { 'L', 'R', 'G', 'B' };
-        private static readonly HashSet<char> NarrowbandFirstLetters = new HashSet<char> { 'H', 'S', 'O' };
-
-        private static Dictionary<string, string>? _filterOverrides;
-        private static Dictionary<string, string> FilterOverrides {
-            get {
-                if (_filterOverrides == null)
-                    _filterOverrides = NightSummaryPlugin.ParseFilterClassifications(Settings.Default.FilterClassifications);
-                return _filterOverrides;
-            }
-        }
-
-        private static bool IsBroadband(string filter) {
-            if (string.IsNullOrEmpty(filter)) return false;
-            if (FilterOverrides.TryGetValue(filter, out var cls)) return cls == "B";
-            return BroadbandFirstLetters.Contains(char.ToUpperInvariant(filter[0]));
-        }
-
-        private static bool IsNarrowband(string filter) {
-            if (string.IsNullOrEmpty(filter)) return false;
-            if (FilterOverrides.TryGetValue(filter, out var cls)) return cls == "N";
-            return NarrowbandFirstLetters.Contains(char.ToUpperInvariant(filter[0]));
-        }
-
-        private static bool IsExcluded(string filter) {
-            if (string.IsNullOrEmpty(filter)) return false;
-            return FilterOverrides.TryGetValue(filter, out var cls) && cls == "X";
-        }
-
-        private static readonly char[] FilterSortPriority = { 'L', 'R', 'G', 'B', 'H', 'S', 'O' };
-        private static int FilterSortKey(string filter) {
-            if (string.IsNullOrEmpty(filter)) return int.MaxValue;
-            var c = char.ToUpperInvariant(filter[0]);
-            var idx = Array.IndexOf(FilterSortPriority, c);
-            return idx >= 0 ? idx : int.MaxValue;
-        }
+        // Filter classification and sorting delegated to FilterHelper
+        private static bool IsBroadband(string filter) => FilterHelper.IsBroadband(filter);
+        private static bool IsNarrowband(string filter) => FilterHelper.IsNarrowband(filter);
+        private static bool IsExcluded(string filter) => FilterHelper.IsExcluded(filter);
+        private static int FilterSortKey(string filter) => FilterHelper.SortKey(filter);
 
         public async Task<string> GenerateHtmlReport(ReportData data) {
             Warnings.Clear();
-            _filterOverrides = null; // reload user classifications for this report
+            FilterHelper.ReloadOverrides();
             var sb = new StringBuilder();
 
             sb.AppendLine("<!DOCTYPE html>");
@@ -204,37 +172,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var totalExposureSec = data.Images.Sum(i => i.ExposureDuration);
             var targetCount      = data.Images.Select(i => i.TargetName).Distinct(StringComparer.OrdinalIgnoreCase).Count();
 
-            // Imaging window: first image to last image
-            var firstImage = data.Images.Min(i => i.Timestamp);
-            var lastImage  = data.Images.Max(i => i.Timestamp);
-            var windowSec  = (lastImage - firstImage).TotalSeconds;
-
-            // Roof-closed exclusion: sum time between each RoofClosed→RoofOpen pair within the imaging window
-            var roofEvents    = data.Events
-                                    .Where(e => e.EventType == "RoofClosed" || e.EventType == "RoofOpen")
-                                    .OrderBy(e => e.Timestamp)
-                                    .ToList();
-            double roofClosedSec   = 0;
-            bool   hasSafetyMonitor = roofEvents.Any();
-            DateTime? closedAt = null;
-            foreach (var ev in roofEvents) {
-                if (ev.EventType == "RoofClosed") {
-                    closedAt = ev.Timestamp;
-                } else if (ev.EventType == "RoofOpen" && closedAt.HasValue) {
-                    var overlapStart = closedAt.Value < firstImage ? firstImage : closedAt.Value;
-                    var overlapEnd   = ev.Timestamp  > lastImage  ? lastImage  : ev.Timestamp;
-                    if (overlapEnd > overlapStart)
-                        roofClosedSec += (overlapEnd - overlapStart).TotalSeconds;
-                    closedAt = null;
-                }
-            }
-            // If roof was closed at session end with no matching RoofOpen, count to lastImage
-            if (closedAt.HasValue && closedAt.Value < lastImage)
-                roofClosedSec += (lastImage - closedAt.Value).TotalSeconds;
-
-            var effectiveWindowSec = windowSec - roofClosedSec;
-            double yieldPct = effectiveWindowSec > 0 ? (totalExposureSec / effectiveWindowSec) * 100.0 : 0;
-            yieldPct = Math.Min(yieldPct, 100.0); // cap at 100%
+            var yield = YieldCalculator.Calculate(data.Images, data.Events, data.Session.SessionStart, data.Session.SessionEnd);
+            var yieldPct        = yield.YieldPct;
+            var hasSafetyMonitor = yield.HasSafetyMonitor;
 
             // Avg HFR and Avg Guiding RMS (session-wide)
             var hfrImages     = data.Images.Where(i => i.HFR > 0).ToList();
@@ -1026,18 +966,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             return (1.0 - Math.Cos(phaseAngle)) / 2.0 * 100.0;
         }
 
-        private double CV(List<double> values) {
-            if (values.Count < 2) return 0;
-            var avg = values.Average();
-            if (avg == 0) return 0;
-            return (StdDev(values) / avg) * 100;
-        }
-
-        private double StdDev(List<double> values) {
-            if (values.Count < 2) return 0;
-            var avg = values.Average();
-            var sumOfSquares = values.Sum(v => Math.Pow(v - avg, 2));
-            return Math.Sqrt(sumOfSquares / (values.Count - 1));
-        }
+        private static double CV(List<double> values) => FilterHelper.CV(values);
+        private static double StdDev(List<double> values) => FilterHelper.StdDev(values);
     }
 }

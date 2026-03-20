@@ -8,6 +8,7 @@ using NINA.Profile.Interfaces;
 using NINA.WPF.Base.Interfaces.Mediator;
 using NINA.WPF.Base.Interfaces.ViewModel;
 using NINA.Plugin.NightSummary.Data;
+using NINA.Plugin.NightSummary.Reporting;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -533,16 +534,8 @@ namespace NINA.Plugin.NightSummary {
             Settings.Default.Save();
         }
 
-        internal static Dictionary<string, string> ParseFilterClassifications(string raw) {
-            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            if (string.IsNullOrWhiteSpace(raw)) return result;
-            foreach (var pair in raw.Split(',')) {
-                var parts = pair.Split('=');
-                if (parts.Length == 2 && !string.IsNullOrWhiteSpace(parts[0]))
-                    result[parts[0].Trim()] = parts[1].Trim();
-            }
-            return result;
-        }
+        internal static Dictionary<string, string> ParseFilterClassifications(string raw) =>
+            FilterHelper.ParseClassifications(raw);
 
         private void LoadSessions() {
             try {
