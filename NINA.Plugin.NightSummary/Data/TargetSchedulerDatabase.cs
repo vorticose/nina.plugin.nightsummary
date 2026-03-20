@@ -42,6 +42,7 @@ namespace NINA.Plugin.NightSummary.Data {
                 StringComparer.OrdinalIgnoreCase);
 
             try {
+                Logger.Info($"NightSummary: Querying TS progress for profile {profileId ?? "(all)"}");
                 var connectionString = $"Data Source={dbPath};Version=3;Read Only=True;";
                 using (var conn = new SQLiteConnection(connectionString)) {
                     conn.Open();

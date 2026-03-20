@@ -320,7 +320,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     try {
                         var bytes = await Http.GetByteArrayAsync(thumbUrl);
                         imgSrc = "data:image/jpeg;base64," + Convert.ToBase64String(bytes);
-                    } catch {
+                    } catch (Exception ex) {
+                        Logger.Warning($"NightSummary: DSS thumbnail fetch failed for {target.Key}. {ex.Message}");
                         Warnings.Add($"Sky thumbnail for {target.Key} could not be loaded — falling back to remote URL (requires internet access to display)");
                     }
                     tSb.AppendLine($"<div class='ts-thumb-wrap'>");

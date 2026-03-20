@@ -67,7 +67,10 @@ namespace NINA.Plugin.NightSummary.Session {
         }
 
         public void EndSession() {
-            if (collector.GetCurrentSessionId() == null) return;
+            if (collector.GetCurrentSessionId() == null) {
+                Logger.Warning("NightSummary: EndSession called but no active session — nothing to do");
+                return;
+            }
 
             var sessionId = collector.GetCurrentSessionId();
             collector.EndSession();
@@ -78,7 +81,10 @@ namespace NINA.Plugin.NightSummary.Session {
             var images     = database.GetImagesForSession(sessionId);
             var events     = database.GetEventsForSession(sessionId);
 
-            if (session == null) return;
+            if (session == null) {
+                Logger.Warning($"NightSummary: Session record not found in database for SessionId={sessionId}");
+                return;
+            }
 
             // Sync Target Scheduler grading results into our Images table (best-effort, TS optional)
             SyncTsGrading(database, sessionId, session.SessionStart, session.SessionEnd, images);
@@ -110,15 +116,26 @@ namespace NINA.Plugin.NightSummary.Session {
 
         private async Task GenerateAndSendAsync(ReportData reportData) {
             try {
+                Logger.Info($"NightSummary: Generating report for session {reportData.Session.SessionId} (profile: {reportData.ActiveProfileId ?? "unknown"})");
                 var htmlReport = await reportGenerator.GenerateHtmlReport(reportData);
 
-                // Show NINA toast notifications
+                // Show NINA toast notifications and log warnings
                 if (reportGenerator.Warnings.Any()) {
-                    foreach (var warning in reportGenerator.Warnings)
+                    foreach (var warning in reportGenerator.Warnings) {
+                        Logger.Warning($"NightSummary: Report warning — {warning}");
                         Notification.ShowWarning($"Night Summary: {warning}");
+                    }
                 } else {
                     Notification.ShowSuccess("Night Summary: Report generated successfully");
                 }
+
+                // Build list of enabled delivery channels
+                var channels = new List<string>();
+                if (Settings.Default.SaveReportLocally) channels.Add("Local Save");
+                if (Settings.Default.EmailEnabled) channels.Add("Email");
+                if (Settings.Default.PushoverEnabled) channels.Add("Pushover");
+                if (Settings.Default.DiscordEnabled) channels.Add("Discord");
+                Logger.Info($"NightSummary: Delivering report to: {(channels.Any() ? string.Join(", ", channels) : "no channels enabled")}");
 
                 var tasks = new List<Task>();
                 if (Settings.Default.SaveReportLocally)
