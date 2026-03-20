@@ -732,11 +732,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 return PreviewNotice("Target Scheduler is not installed.");
 
             var (apiEnabled, apiPort) = tsDb.GetApiSettings(data.ActiveProfileId);
-            if (!apiEnabled)
+            if (!apiEnabled) {
+                Logger.Warning($"NightSummary: Tonight's Preview skipped — TS API not enabled for profile '{data.ActiveProfileId ?? "unknown"}'");
                 return PreviewNotice("Target Scheduler API is not enabled. In Target Scheduler, go to Options → Profile Preferences → API Preferences → Enable API.");
+            }
 
             try {
                 var baseUrl = $"http://localhost:{apiPort}/ts/v0";
+                Logger.Info($"NightSummary: Tonight's Preview — connecting to TS API at {baseUrl}");
                 var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 
                 // Step 1: Get active profile ID

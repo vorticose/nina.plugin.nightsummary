@@ -117,8 +117,10 @@ namespace NINA.Plugin.NightSummary.Data {
                             if (reader.Read()) {
                                 bool enabled = Convert.ToInt32(reader["enableAPI"]) == 1;
                                 int port     = Convert.ToInt32(reader["apiPort"]);
+                                Logger.Info($"NightSummary: TS API settings for profile '{profileId ?? "(any)"}' — enableAPI={enabled}, apiPort={port}");
                                 return (enabled, port);
                             }
+                            Logger.Warning($"NightSummary: No TS profilepreference row found for profile '{profileId ?? "(any)"}'. TS API check will return not-enabled.");
                         }
                     }
                 }

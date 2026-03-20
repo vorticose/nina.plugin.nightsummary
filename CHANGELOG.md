@@ -1,7 +1,15 @@
 # Night Summary — Changelog
 
 
-## Unreleased
+## v2.6.3
+
+**Improvements**
+- Added diagnostic logging for Tonight's Preview TS API checks — logs profile ID, API enabled status, port, and connection URL for easier troubleshooting
+- Extracted shared filter classification and yield calculation into reusable utilities, reducing code duplication
+- Fixed fire-and-forget exception handling in report generation
+- Fixed resource leaks in Discord webhook sender
+- Filter classification UI — users can override broadband/narrowband/exclude per filter in plugin options
+- Removed unused template settings
 
 **Bug fixes**
 - Only LIGHT frames are now recorded — darks, flats, bias, and snapshot frames are excluded from session data
