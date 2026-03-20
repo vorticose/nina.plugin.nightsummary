@@ -9,7 +9,7 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyCompany("Evan Pegors")]
 [assembly: AssemblyProduct("Night Summary")]
 [assembly: AssemblyCopyright("Copyright © 2026 Evan Pegors")]
-[assembly: AssemblyMetadata("MinimumApplicationVersion", "3.0.0.2017")]
+[assembly: AssemblyMetadata("MinimumApplicationVersion", "3.2.0.9001")]
 [assembly: AssemblyMetadata("License", "MPL-2.0")]
 [assembly: AssemblyMetadata("LicenseURL", "https://www.mozilla.org/en-US/MPL/2.0/")]
 [assembly: AssemblyMetadata("Repository", "https://github.com/vorticose/nina.plugin.nightsummary")]
