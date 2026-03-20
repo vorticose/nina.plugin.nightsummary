@@ -756,7 +756,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var (sunset, sunrise) = AltitudeCalculator.FindNightWindow(
                     data.ObserverLatitude, data.ObserverLongitude, tomorrow.AddHours(-6));
                 var startTime = sunset;
-                var previewUrl = $"{baseUrl}/profiles/{active.Id}/preview?startTime={startTime:o}";
+                var encodedStart = Uri.EscapeDataString(startTime.ToString("o"));
+                var previewUrl = $"{baseUrl}/profiles/{active.Id}/preview?startTime={encodedStart}";
 
                 var previewJson = TsApiClient.GetStringAsync(previewUrl).Result;
                 var entries = JsonSerializer.Deserialize<List<TsPreviewEntry>>(previewJson, options);

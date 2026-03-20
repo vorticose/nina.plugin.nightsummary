@@ -12,6 +12,7 @@
 - Removed unused template settings
 
 **Bug fixes**
+- Fixed Tonight's Preview failing with 400 Bad Request for users in positive UTC timezones (e.g. UTC+2) — the `+` in the startTime parameter was not URL-encoded
 - Only LIGHT frames are now recorded — darks, flats, bias, and snapshot frames are excluded from session data
 - Filter classification for Star Count CV now uses first-letter matching, supporting common filter naming variants (Luminance, Red, Halpha, Sulfur, etc.)
 - Target Scheduler queries now filter by the active NINA profile, fixing incorrect results for users with multiple profiles
