@@ -46,15 +46,35 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
         }
 
-        // Broadband and narrowband filter classification by first letter (case-insensitive)
+        // Broadband and narrowband filter classification — user overrides checked first, then first-letter fallback
         private static readonly HashSet<char> BroadbandFirstLetters = new HashSet<char> { 'L', 'R', 'G', 'B' };
         private static readonly HashSet<char> NarrowbandFirstLetters = new HashSet<char> { 'H', 'S', 'O' };
 
-        private static bool IsBroadband(string filter) =>
-            !string.IsNullOrEmpty(filter) && BroadbandFirstLetters.Contains(char.ToUpperInvariant(filter[0]));
+        private static Dictionary<string, string>? _filterOverrides;
+        private static Dictionary<string, string> FilterOverrides {
+            get {
+                if (_filterOverrides == null)
+                    _filterOverrides = NightSummaryPlugin.ParseFilterClassifications(Settings.Default.FilterClassifications);
+                return _filterOverrides;
+            }
+        }
 
-        private static bool IsNarrowband(string filter) =>
-            !string.IsNullOrEmpty(filter) && NarrowbandFirstLetters.Contains(char.ToUpperInvariant(filter[0]));
+        private static bool IsBroadband(string filter) {
+            if (string.IsNullOrEmpty(filter)) return false;
+            if (FilterOverrides.TryGetValue(filter, out var cls)) return cls == "B";
+            return BroadbandFirstLetters.Contains(char.ToUpperInvariant(filter[0]));
+        }
+
+        private static bool IsNarrowband(string filter) {
+            if (string.IsNullOrEmpty(filter)) return false;
+            if (FilterOverrides.TryGetValue(filter, out var cls)) return cls == "N";
+            return NarrowbandFirstLetters.Contains(char.ToUpperInvariant(filter[0]));
+        }
+
+        private static bool IsExcluded(string filter) {
+            if (string.IsNullOrEmpty(filter)) return false;
+            return FilterOverrides.TryGetValue(filter, out var cls) && cls == "X";
+        }
 
         private static readonly char[] FilterSortPriority = { 'L', 'R', 'G', 'B', 'H', 'S', 'O' };
         private static int FilterSortKey(string filter) {
@@ -66,6 +86,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
         public async Task<string> GenerateHtmlReport(ReportData data) {
             Warnings.Clear();
+            _filterOverrides = null; // reload user classifications for this report
             var sb = new StringBuilder();
 
             sb.AppendLine("<!DOCTYPE html>");

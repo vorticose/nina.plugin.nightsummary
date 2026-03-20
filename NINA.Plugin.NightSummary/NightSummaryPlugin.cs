@@ -9,10 +9,12 @@ using NINA.WPF.Base.Interfaces.Mediator;
 using NINA.WPF.Base.Interfaces.ViewModel;
 using NINA.Plugin.NightSummary.Data;
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.ComponentModel.Composition;
 using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -23,6 +25,7 @@ namespace NINA.Plugin.NightSummary {
     public class NightSummaryPlugin : PluginBase, INotifyPropertyChanged {
 
         private readonly SessionService sessionService;
+        private readonly IProfileService profileService;
         private readonly string liveDbPath;
 
         private ObservableCollection<SessionRecord> _availableSessions = new ObservableCollection<SessionRecord>();
@@ -69,6 +72,7 @@ namespace NINA.Plugin.NightSummary {
             SessionService sessionService) {
 
             this.sessionService = sessionService;
+            this.profileService = profileService;
 
             TestEmailCommand = new RelayCommand(async () => {
                 EmailTestStatus.Text = "";
@@ -208,7 +212,12 @@ namespace NINA.Plugin.NightSummary {
             // Keep old name pointing to the same command for backwards compat
             ResendLastSessionCommand = ResendSessionCommand;
 
+            RefreshFiltersCommand = new RelayCommand(async () => {
+                await Task.Run(() => LoadFilterClassifications());
+            });
+
             LoadSessions();
+            LoadFilterClassifications();
             Logger.Info("NightSummary: Plugin initialized successfully");
         }
 
@@ -484,6 +493,57 @@ namespace NINA.Plugin.NightSummary {
 
         public bool IsTsInstalled => new TargetSchedulerDatabase().IsAvailable;
 
+        // ── Filter classification ──
+
+        private ObservableCollection<FilterClassificationItem> _filterItems = new ObservableCollection<FilterClassificationItem>();
+        public ObservableCollection<FilterClassificationItem> FilterItems {
+            get => _filterItems;
+            private set { _filterItems = value; RaisePropertyChanged(); }
+        }
+
+        public ICommand RefreshFiltersCommand { get; private set; }
+
+        private void LoadFilterClassifications() {
+            try {
+                var filters = profileService?.ActiveProfile?.FilterWheelSettings?.FilterWheelFilters;
+                if (filters == null || filters.Count == 0) return;
+
+                var saved = ParseFilterClassifications(Settings.Default.FilterClassifications);
+
+                System.Windows.Application.Current.Dispatcher.Invoke(() => {
+                    FilterItems.Clear();
+                    foreach (var f in filters) {
+                        if (string.IsNullOrWhiteSpace(f.Name)) continue;
+                        var item = new FilterClassificationItem(f.Name, this);
+                        if (saved.TryGetValue(f.Name, out var cls))
+                            item.Classification = cls;
+                        FilterItems.Add(item);
+                    }
+                });
+            } catch (Exception ex) {
+                Logger.Error($"NightSummary: Failed to load filter classifications. {ex.Message}");
+            }
+        }
+
+        internal void SaveFilterClassifications() {
+            var parts = FilterItems
+                .Where(f => f.Classification != "A")
+                .Select(f => $"{f.Name}={f.Classification}");
+            Settings.Default.FilterClassifications = string.Join(",", parts);
+            Settings.Default.Save();
+        }
+
+        internal static Dictionary<string, string> ParseFilterClassifications(string raw) {
+            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(raw)) return result;
+            foreach (var pair in raw.Split(',')) {
+                var parts = pair.Split('=');
+                if (parts.Length == 2 && !string.IsNullOrWhiteSpace(parts[0]))
+                    result[parts[0].Trim()] = parts[1].Trim();
+            }
+            return result;
+        }
+
         private void LoadSessions() {
             try {
                 if (!File.Exists(liveDbPath)) return;
@@ -571,5 +631,56 @@ namespace NINA.Plugin.NightSummary {
         }
 
         public event EventHandler CanExecuteChanged;
+    }
+
+    /// <summary>
+    /// Represents a single filter with its user-assigned classification.
+    /// Classification values: A=Auto (first-letter matching), B=Broadband, N=Narrowband, X=Exclude.
+    /// </summary>
+    public class FilterClassificationItem : INotifyPropertyChanged {
+        private readonly NightSummaryPlugin plugin;
+        private string _classification = "A";
+
+        public FilterClassificationItem(string name, NightSummaryPlugin plugin) {
+            Name = name;
+            this.plugin = plugin;
+        }
+
+        public string Name { get; }
+
+        public string Classification {
+            get => _classification;
+            set {
+                if (_classification == value) return;
+                _classification = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Classification)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ClassificationIndex)));
+                plugin?.SaveFilterClassifications();
+            }
+        }
+
+        /// <summary>
+        /// ComboBox binding: 0=Auto, 1=Broadband, 2=Narrowband, 3=Exclude
+        /// </summary>
+        public int ClassificationIndex {
+            get {
+                switch (_classification) {
+                    case "B": return 1;
+                    case "N": return 2;
+                    case "X": return 3;
+                    default:  return 0;
+                }
+            }
+            set {
+                switch (value) {
+                    case 1:  Classification = "B"; break;
+                    case 2:  Classification = "N"; break;
+                    case 3:  Classification = "X"; break;
+                    default: Classification = "A"; break;
+                }
+            }
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
     }
 }

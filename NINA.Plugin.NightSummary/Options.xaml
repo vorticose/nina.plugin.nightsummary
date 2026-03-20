@@ -110,6 +110,64 @@
                         <CheckBox IsChecked="{Binding ShowStarCountCV}" VerticalAlignment="Center" />
                     </StackPanel>
 
+                    <!-- Filter Classifications: disabled at Snapshot or when Star Count CV is off -->
+                    <StackPanel Margin="200,4,0,8">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="IsEnabled" Value="True"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ReportDetailLevel}" Value="0">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding ShowStarCountCV}" Value="False">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+
+                        <Expander Header="Filter Classifications" IsExpanded="False">
+                            <StackPanel Margin="0,6,0,0">
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                    <Button Content="↻" Command="{Binding RefreshFiltersCommand}" Width="24" Height="22"
+                                            ToolTip="Reload filters from NINA profile" FontSize="11" Padding="0" />
+                                    <TextBlock Text="Filters are read from your NINA profile. Auto uses first-letter matching (L,R,G,B = broadband; H,S,O = narrowband)."
+                                               TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="8,0,0,0" MaxWidth="380" VerticalAlignment="Center" />
+                                </StackPanel>
+
+                                <ItemsControl ItemsSource="{Binding FilterItems}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal" Margin="0,2">
+                                                <TextBlock Text="{Binding Name}" Width="120" VerticalAlignment="Center" />
+                                                <ComboBox SelectedIndex="{Binding ClassificationIndex}" MinWidth="120">
+                                                    <ComboBoxItem>Auto</ComboBoxItem>
+                                                    <ComboBoxItem>Broadband</ComboBoxItem>
+                                                    <ComboBoxItem>Narrowband</ComboBoxItem>
+                                                    <ComboBoxItem>Exclude</ComboBoxItem>
+                                                </ComboBox>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <!-- Show message when no filters found -->
+                                <TextBlock Text="No filters found in the active NINA profile." Foreground="Gray" FontSize="11" FontStyle="Italic" Margin="0,4,0,0">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding FilterItems.Count}" Value="0">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                        </Expander>
+                    </StackPanel>
+
                     <!-- Per-Target IQ: disabled at Snapshot -->
                     <StackPanel Orientation="Horizontal" Margin="0,4">
                         <StackPanel.Style>

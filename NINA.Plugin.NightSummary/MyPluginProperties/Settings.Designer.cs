@@ -358,5 +358,17 @@ namespace NINA.Plugin.NightSummary.MyPluginProperties {
                 this["ShowNextNightPreview"] = value;
             }
         }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string FilterClassifications {
+            get {
+                return ((string)(this["FilterClassifications"]));
+            }
+            set {
+                this["FilterClassifications"] = value;
+            }
+        }
     }
 }

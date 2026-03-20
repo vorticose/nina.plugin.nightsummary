@@ -1,5 +1,6 @@
 using NINA.Core.Utility;
 using NINA.Plugin.NightSummary.Data;
+using NINA.Plugin.NightSummary.MyPluginProperties;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -222,11 +223,21 @@ namespace NINA.Plugin.NightSummary.Reporting {
         private static readonly HashSet<char> BroadbandFirstLetters = new HashSet<char> { 'L', 'R', 'G', 'B' };
         private static readonly HashSet<char> NarrowbandFirstLetters = new HashSet<char> { 'H', 'S', 'O' };
 
-        private static bool IsBroadband(string filter) =>
-            !string.IsNullOrEmpty(filter) && BroadbandFirstLetters.Contains(char.ToUpperInvariant(filter[0]));
+        private static bool IsBroadband(string filter) {
+            if (string.IsNullOrEmpty(filter)) return false;
+            var overrides = NightSummaryPlugin.ParseFilterClassifications(
+                MyPluginProperties.Settings.Default.FilterClassifications);
+            if (overrides.TryGetValue(filter, out var cls)) return cls == "B";
+            return BroadbandFirstLetters.Contains(char.ToUpperInvariant(filter[0]));
+        }
 
-        private static bool IsNarrowband(string filter) =>
-            !string.IsNullOrEmpty(filter) && NarrowbandFirstLetters.Contains(char.ToUpperInvariant(filter[0]));
+        private static bool IsNarrowband(string filter) {
+            if (string.IsNullOrEmpty(filter)) return false;
+            var overrides = NightSummaryPlugin.ParseFilterClassifications(
+                MyPluginProperties.Settings.Default.FilterClassifications);
+            if (overrides.TryGetValue(filter, out var cls)) return cls == "N";
+            return NarrowbandFirstLetters.Contains(char.ToUpperInvariant(filter[0]));
+        }
 
         private static double CV(List<double> values) {
             if (values.Count < 2) return 0;
