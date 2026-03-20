@@ -26,30 +26,6 @@ namespace NINA.Plugin.NightSummary.MyPluginProperties {
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("True")]
-        public bool UpdateSettings {
-            get {
-                return ((bool)(this["UpdateSettings"]));
-            }
-            set {
-                this["UpdateSettings"] = value;
-            }
-        }
-        
-        [global::System.Configuration.UserScopedSettingAttribute()]
-        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("This is a notification")]
-        public string DefaultNotificationMessage {
-            get {
-                return ((string)(this["DefaultNotificationMessage"]));
-            }
-            set {
-                this["DefaultNotificationMessage"] = value;
-            }
-        }
-        
-        [global::System.Configuration.UserScopedSettingAttribute()]
-        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("True")]
         public bool UseGmailSmtp {
             get {
                 return ((bool)(this["UseGmailSmtp"]));

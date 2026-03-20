@@ -1,5 +1,4 @@
-﻿using Accord.Statistics.Kernels;
-using System.ComponentModel.Composition;
+﻿using System.ComponentModel.Composition;
 using System.Windows;
 
 namespace NINA.Plugin.NightSummary.Sequencer {
