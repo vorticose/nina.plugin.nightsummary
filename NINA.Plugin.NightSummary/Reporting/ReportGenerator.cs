@@ -356,7 +356,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     if (unrecognizedFilters.Any()) {
                         var filterList = string.Join(", ", unrecognizedFilters.Select(f => $"<strong>{f}</strong>"));
                         var filterListPlain = string.Join(", ", unrecognizedFilters);
-                        sb.AppendLine($"<p style='font-size:11px; color:#b8860b; margin-top:6px;'>&#9888; Filter{(unrecognizedFilters.Count == 1 ? "" : "s")} not recognized and excluded from CV calculation: {filterList}. Filters are classified by first letter — broadband (L, R, G, B) and narrowband (H, S, O).</p>");
+                        sb.AppendLine($"<p style='font-size:11px; color:#b8860b; margin-top:6px;'>&#9888; Filter{(unrecognizedFilters.Count == 1 ? "" : "s")} not recognized and excluded from CV calculation: {filterList}. Filters are classified by first letter — broadband (L, R, G, B) and narrowband (H, S, O). You can manually classify filters in Night Summary Options → Filter Classification.</p>");
                         Warnings.Add($"Unrecognized filter{(unrecognizedFilters.Count == 1 ? "" : "s")} excluded from CV calculation: {filterListPlain}");
                     }
                 }
