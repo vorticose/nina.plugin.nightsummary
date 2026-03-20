@@ -4,20 +4,15 @@
 ## v2.6.3
 
 **Improvements**
+- Filter classification UI — users can manually classify broadband/narrowband/exclude per filter in plugin options for Star Count CV calculation
 - Added diagnostic logging for Tonight's Preview TS API checks — logs profile ID, API enabled status, port, and connection URL for easier troubleshooting
-- Extracted shared filter classification and yield calculation into reusable utilities, reducing code duplication
-- Fixed fire-and-forget exception handling in report generation
-- Fixed resource leaks in Discord webhook sender
-- Filter classification UI — users can override broadband/narrowband/exclude per filter in plugin options
-- Removed unused template settings
-
-**Bug fixes**
-- Fixed Tonight's Preview failing with 400 Bad Request for users in positive UTC timezones (e.g. UTC+2) — the `+` in the startTime parameter was not URL-encoded
-- Only LIGHT frames are now recorded — darks, flats, bias, and snapshot frames are excluded from session data
-- Filter classification for Star Count CV now uses first-letter matching, supporting common filter naming variants (Luminance, Red, Halpha, Sulfur, etc.)
-- Target Scheduler queries now filter by the active NINA profile, fixing incorrect results for users with multiple profiles
 - Report warnings banner — any issues encountered during report generation are now shown in an amber box at the top of the report
 
+**Bug fixes**
+- Fixed Tonight's Preview failing with 400 Bad Request for users in positive UTC timezones (e.g. UTC+2) 
+- Fixed issue where calibration frames where being recorded and reported on. Only LIGHT frames are now recorded — darks, flats, bias, and snapshot frames are excluded from session data
+- Filter classification for Star Count CV now uses first-letter matching, supporting common filter naming variants (Luminance, Red, Halpha, Sulfur, etc.) when in auto mode.  Users can also manually classify filters in plugin options.
+- Target Scheduler queries now filter by the active NINA profile, fixing incorrect results for users with multiple profiles
 
 
 ## v2.6.0
