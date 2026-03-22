@@ -576,6 +576,15 @@
                                    TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,0,0,0" MaxWidth="300" VerticalAlignment="Center" />
                     </StackPanel>
 
+                    <StackPanel Orientation="Horizontal" Margin="0,10">
+                        <TextBlock Width="200" />
+                        <Button Content="Upload All Sessions" Command="{Binding UploadAllToDashboardCommand}" Width="180" />
+                        <TextBlock Text="{Binding DashboardUploadStatus.Text}"
+                                   Foreground="{Binding DashboardUploadStatus.Foreground}"
+                                   Visibility="{Binding DashboardUploadStatus.Visibility}"
+                                   VerticalAlignment="Center" Margin="10,0,0,0" />
+                    </StackPanel>
+
                     <Separator Margin="0,20,0,10" />
 
                     <TextBlock Text="Test Report" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />

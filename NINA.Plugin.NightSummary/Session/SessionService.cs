@@ -286,6 +286,66 @@ namespace NINA.Plugin.NightSummary.Session {
             }
         }
 
+        /// <summary>
+        /// Uploads all sessions from the given database to the dashboard server.
+        /// Skips sessions that already exist on the server (server returns "already_exists").
+        /// </summary>
+        public async Task<(int uploaded, int skipped, int failed)> UploadAllToDashboardAsync(
+            string dbPath, Action<int, int> onProgress = null) {
+
+            var dashboardUrl = Settings.Default.DashboardUrl;
+            var apiKey       = Settings.Default.DashboardApiKey;
+
+            if (string.IsNullOrWhiteSpace(dashboardUrl)) {
+                Logger.Warning("NightSummary: Dashboard URL not configured");
+                return (0, 0, 0);
+            }
+
+            var db       = new SessionDatabase(dbPath);
+            var sessions = db.GetAllSessions();
+            var sender   = new DashboardSender(dashboardUrl, apiKey ?? "");
+            int uploaded = 0, skipped = 0, failed = 0;
+
+            for (int i = 0; i < sessions.Count; i++) {
+                var session = sessions[i];
+                onProgress?.Invoke(i + 1, sessions.Count);
+
+                try {
+                    var images     = db.GetImagesForSession(session.SessionId);
+                    var events     = db.GetEventsForSession(session.SessionId);
+                    var profileId  = profileService?.ActiveProfile?.Id.ToString();
+                    var tsData     = FetchTsData(images, profileId);
+                    var cumulative = db.GetCumulativeIntegrationByTarget(session.SessionId);
+                    var history    = BuildSessionHistory(db, images, session.SessionId);
+                    var (fovW, fovH) = ComputeCameraFov(session);
+                    var (lat, lon)   = GetObserverCoords();
+                    var reportData = new ReportData {
+                        Session                      = session,
+                        Images                       = images,
+                        Events                       = events,
+                        TsData                       = tsData,
+                        CumulativeIntegrationSeconds = cumulative,
+                        SessionHistory               = history,
+                        CameraFovWidthDeg            = fovW,
+                        CameraFovHeightDeg           = fovH,
+                        ObserverLatitude             = lat,
+                        ObserverLongitude            = lon,
+                        ActiveProfileId              = profileId
+                    };
+
+                    var htmlReport = await reportGenerator.GenerateHtmlReport(reportData);
+                    bool ok = await sender.SendReportAsync(reportData, htmlReport);
+                    if (ok) uploaded++; else skipped++;
+                } catch (Exception ex) {
+                    Logger.Warning($"NightSummary: Failed to upload session {session.SessionId}. {ex.Message}");
+                    failed++;
+                }
+            }
+
+            Logger.Info($"NightSummary: Dashboard bulk upload complete — {uploaded} uploaded, {skipped} skipped, {failed} failed");
+            return (uploaded, skipped, failed);
+        }
+
         private async Task SendDashboardWithDataAsync(ReportData reportData, string htmlReport = null) {
             try {
                 var dashboardUrl = Settings.Default.DashboardUrl;
