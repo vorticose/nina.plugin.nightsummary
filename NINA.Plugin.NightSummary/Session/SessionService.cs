@@ -452,7 +452,7 @@ namespace NINA.Plugin.NightSummary.Session {
                 // ── Pushover ──────────────────────────────────────────────────
                 sb.AppendLine($"Total Images: {images.Count}  ·  Total Exposure: {totalExpSec / 3600.0:F1}h");
                 var pushoverParts = new List<string>();
-                if (hfrImages.Any()) pushoverParts.Add($"Avg HFR: {hfrImages.Average(i => i.HFR):F2}\"");
+                if (hfrImages.Any()) pushoverParts.Add($"Avg HFR: {hfrImages.Average(i => i.HFR):F2}px");
                 if (rmsImages.Any()) pushoverParts.Add($"Avg Guiding RMS: {rmsImages.Average(i => i.GuidingRMSTotal):F2}\"");
                 pushoverParts.Add($"Yield: {yieldPct:F0}%");
                 sb.AppendLine(string.Join("  ·  ", pushoverParts));
@@ -468,7 +468,7 @@ namespace NINA.Plugin.NightSummary.Session {
                 sb.AppendLine("────────────────");
                 sb.AppendLine($"Total Images:    {images.Count}");
                 sb.AppendLine($"Total Exposure:  {totalExpSec / 3600.0:F1}h");
-                if (hfrImages.Any()) sb.AppendLine($"Avg HFR:         {hfrImages.Average(i => i.HFR):F2}\"");
+                if (hfrImages.Any()) sb.AppendLine($"Avg HFR:         {hfrImages.Average(i => i.HFR):F2}px");
                 if (rmsImages.Any()) sb.AppendLine($"Avg Guiding RMS: {rmsImages.Average(i => i.GuidingRMSTotal):F2}\"");
                 sb.AppendLine($"Yield:           {yieldPct:F0}%{yieldNote}");
                 sb.AppendLine($"Profile:         {session.ProfileName}");

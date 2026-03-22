@@ -8,7 +8,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot  = Split-Path -Parent $PSScriptRoot
 $buildDir  = Join-Path $repoRoot "NINA.Plugin.NightSummary\bin\Release\net8.0-windows"
 $dll       = Join-Path $buildDir "NINA.Plugin.NightSummary.dll"
-$remoteDir = "\\100.86.208.29\NightSummaryPlugin"
+$remoteDir = "\\100.86.208.29\Night Summary"
 
 # --- Verify build exists ---
 if (-not (Test-Path $dll)) {

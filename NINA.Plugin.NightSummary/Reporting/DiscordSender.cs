@@ -78,7 +78,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var overview = new StringBuilder();
             overview.AppendLine($"Total Images: {images.Count}");
             overview.AppendLine($"Total Exposure: {totalExpSec / 3600.0:F1}h");
-            if (hfrImages.Any()) overview.AppendLine($"Avg HFR: {hfrImages.Average(i => i.HFR):F2}\"");
+            if (hfrImages.Any()) overview.AppendLine($"Avg HFR: {hfrImages.Average(i => i.HFR):F2}px");
             if (rmsImages.Any()) overview.AppendLine($"Avg Guiding RMS: {rmsImages.Average(i => i.GuidingRMSTotal):F2}\"");
             overview.Append($"Yield: {yieldPct:F0}%");
             fields.Add(Field("Session Overview", overview.ToString()));

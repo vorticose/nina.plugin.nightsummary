@@ -304,7 +304,7 @@
                     <StackPanel Orientation="Horizontal" Margin="0,2,0,8">
                         <TextBlock Width="200" />
                         <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="400">
-                            Requires the Target Scheduler API to be enabled. In Target Scheduler, go to Options → Profile Preferences → API Preferences → Enable API.
+                            Requires the Target Scheduler API to be enabled. In Target Scheduler, go to Target Management → select your active profile from the dropdown → click the gear icon → API Preferences → enable API.
                             Note: enabling this will increase report generation time as Target Scheduler computes the full night plan.
                         </TextBlock>
                     </StackPanel>
