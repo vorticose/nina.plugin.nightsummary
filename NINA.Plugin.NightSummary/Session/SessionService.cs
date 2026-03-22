@@ -333,7 +333,7 @@ namespace NINA.Plugin.NightSummary.Session {
                         ActiveProfileId              = profileId
                     };
 
-                    var htmlReport = await reportGenerator.GenerateHtmlReport(reportData);
+                    var htmlReport = await GenerateReportForDashboard(reportData);
                     bool ok = await sender.SendReportAsync(reportData, htmlReport);
                     if (ok) uploaded++; else skipped++;
                 } catch (Exception ex) {
@@ -356,11 +356,25 @@ namespace NINA.Plugin.NightSummary.Session {
                     return;
                 }
 
-                htmlReport ??= await reportGenerator.GenerateHtmlReport(reportData);
+                htmlReport ??= await GenerateReportForDashboard(reportData);
                 var sender     = new DashboardSender(dashboardUrl, apiKey ?? "");
                 await sender.SendReportAsync(reportData, htmlReport);
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to upload to dashboard. {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Generates an HTML report with Tonight's Preview disabled, since the dashboard
+        /// is for historical review and the preview section only shows the current night.
+        /// </summary>
+        private async Task<string> GenerateReportForDashboard(ReportData reportData) {
+            var savedPreview = Settings.Default.ShowNextNightPreview;
+            try {
+                Settings.Default.ShowNextNightPreview = false;
+                return await reportGenerator.GenerateHtmlReport(reportData);
+            } finally {
+                Settings.Default.ShowNextNightPreview = savedPreview;
             }
         }
 
