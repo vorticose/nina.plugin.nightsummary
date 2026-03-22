@@ -141,6 +141,7 @@ namespace NINA.Plugin.NightSummary.Session {
                 if (Settings.Default.EmailEnabled) channels.Add("Email");
                 if (Settings.Default.PushoverEnabled) channels.Add("Pushover");
                 if (Settings.Default.DiscordEnabled) channels.Add("Discord");
+                if (Settings.Default.DashboardEnabled) channels.Add("Dashboard");
                 Logger.Info($"NightSummary: Delivering report to: {(channels.Any() ? string.Join(", ", channels) : "no channels enabled")}");
 
                 var tasks = new List<Task>();
@@ -152,6 +153,8 @@ namespace NINA.Plugin.NightSummary.Session {
                     tasks.Add(SendPushoverWithDataAsync(reportData));
                 if (Settings.Default.DiscordEnabled)
                     tasks.Add(SendDiscordWithDataAsync(reportData, htmlReport));
+                if (Settings.Default.DashboardEnabled)
+                    tasks.Add(SendDashboardWithDataAsync(reportData, htmlReport));
 
                 await Task.WhenAll(tasks);
                 Notification.ShowSuccess("Night Summary: Report delivered successfully");
@@ -217,6 +220,8 @@ namespace NINA.Plugin.NightSummary.Session {
                     tasks.Add(SendPushoverWithDataAsync(reportData));
                 if (Settings.Default.DiscordEnabled)
                     tasks.Add(SendDiscordWithDataAsync(reportData, htmlReport));
+                if (Settings.Default.DashboardEnabled)
+                    tasks.Add(SendDashboardWithDataAsync(reportData, htmlReport));
 
                 await Task.WhenAll(tasks);
                 Notification.ShowSuccess("Night Summary: Report delivered successfully");
@@ -278,6 +283,24 @@ namespace NINA.Plugin.NightSummary.Session {
                 await sender.SendReportAsync(reportData, htmlReport);
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to send Discord report. {ex.Message}");
+            }
+        }
+
+        private async Task SendDashboardWithDataAsync(ReportData reportData, string htmlReport = null) {
+            try {
+                var dashboardUrl = Settings.Default.DashboardUrl;
+                var apiKey       = Settings.Default.DashboardApiKey;
+
+                if (string.IsNullOrWhiteSpace(dashboardUrl)) {
+                    Logger.Warning("NightSummary: Dashboard URL not configured — skipping");
+                    return;
+                }
+
+                htmlReport ??= await reportGenerator.GenerateHtmlReport(reportData);
+                var sender     = new DashboardSender(dashboardUrl, apiKey ?? "");
+                await sender.SendReportAsync(reportData, htmlReport);
+            } catch (Exception ex) {
+                Logger.Error($"NightSummary: Failed to upload to dashboard. {ex.Message}");
             }
         }
 

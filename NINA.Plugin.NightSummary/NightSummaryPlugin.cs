@@ -59,11 +59,12 @@ namespace NINA.Plugin.NightSummary {
             set { _searchResultText = value; RaisePropertyChanged(); }
         }
 
-        public ButtonStatus EmailTestStatus   { get; } = new ButtonStatus();
-        public ButtonStatus DiscordTestStatus { get; } = new ButtonStatus();
-        public ButtonStatus PushoverTestStatus{ get; } = new ButtonStatus();
-        public ButtonStatus ResendStatus      { get; } = new ButtonStatus();
-        public ButtonStatus TestReportStatus  { get; } = new ButtonStatus();
+        public ButtonStatus EmailTestStatus    { get; } = new ButtonStatus();
+        public ButtonStatus DiscordTestStatus  { get; } = new ButtonStatus();
+        public ButtonStatus PushoverTestStatus { get; } = new ButtonStatus();
+        public ButtonStatus DashboardTestStatus{ get; } = new ButtonStatus();
+        public ButtonStatus ResendStatus       { get; } = new ButtonStatus();
+        public ButtonStatus TestReportStatus   { get; } = new ButtonStatus();
 
         [ImportingConstructor]
         public NightSummaryPlugin(
@@ -142,6 +143,18 @@ namespace NINA.Plugin.NightSummary {
                 var sender = new PushoverSender(appToken, userKey);
                 bool ok = await sender.SendAsync("Night Summary", "Pushover is configured correctly!");
                 PushoverTestStatus.Text = ok ? "✓ Sent" : "✗ Failed — check NINA log";
+            });
+
+            TestDashboardCommand = new RelayCommand(async () => {
+                DashboardTestStatus.Text = "";
+                var url = Settings.Default.DashboardUrl;
+                if (string.IsNullOrWhiteSpace(url)) {
+                    DashboardTestStatus.Text = "✗ Dashboard URL is empty";
+                    return;
+                }
+                var sender = new DashboardSender(url, Settings.Default.DashboardApiKey ?? "");
+                bool ok = await sender.TestConnectionAsync();
+                DashboardTestStatus.Text = ok ? "✓ Connected" : "✗ Failed — check NINA log";
             });
 
             SendTestReportCommand = new RelayCommand(async () => {
@@ -366,6 +379,33 @@ namespace NINA.Plugin.NightSummary {
             }
         }
 
+        public bool DashboardEnabled {
+            get => Settings.Default.DashboardEnabled;
+            set {
+                Settings.Default.DashboardEnabled = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public string DashboardUrl {
+            get => Settings.Default.DashboardUrl;
+            set {
+                Settings.Default.DashboardUrl = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public string DashboardApiKey {
+            get => Settings.Default.DashboardApiKey;
+            set {
+                Settings.Default.DashboardApiKey = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
         public int ReportDetailLevel {
             get => Settings.Default.ReportDetailLevel;
             set {
@@ -557,6 +597,7 @@ namespace NINA.Plugin.NightSummary {
         public ICommand TestEmailCommand { get; }
         public ICommand TestDiscordCommand { get; }
         public ICommand TestPushoverCommand { get; }
+        public ICommand TestDashboardCommand { get; }
         public ICommand SendTestReportCommand { get; }
         public ICommand ResendLastSessionCommand { get; }
         public ICommand ResendSessionCommand { get; }

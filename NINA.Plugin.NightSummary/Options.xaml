@@ -548,6 +548,36 @@
 
                     <Separator Margin="0,20,0,10" />
 
+                    <TextBlock Text="Dashboard" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
+
+                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                        <TextBlock Text="Enable Dashboard Upload" Width="200" VerticalAlignment="Center" />
+                        <CheckBox IsChecked="{Binding DashboardEnabled}" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                        <TextBlock Text="Dashboard URL" Width="200" VerticalAlignment="Center" />
+                        <TextBox MinWidth="300" Text="{Binding DashboardUrl, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                        <TextBlock Text="API Key" Width="200" VerticalAlignment="Center" />
+                        <TextBox MinWidth="300" Text="{Binding DashboardApiKey, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,10">
+                        <TextBlock Width="200" />
+                        <Button Content="Test Connection" Command="{Binding TestDashboardCommand}" Width="180" />
+                        <TextBlock Text="{Binding DashboardTestStatus.Text}"
+                                   Foreground="{Binding DashboardTestStatus.Foreground}"
+                                   Visibility="{Binding DashboardTestStatus.Visibility}"
+                                   VerticalAlignment="Center" Margin="10,0,0,0" />
+                        <TextBlock Text="Enter the URL of your nightsummary-server instance (e.g. http://100.86.208.29:5000)."
+                                   TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,0,0,0" MaxWidth="300" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <Separator Margin="0,20,0,10" />
+
                     <TextBlock Text="Test Report" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
 
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
