@@ -1,7 +1,7 @@
 # Night Summary — Changelog
 
 
-## v2.6.4
+## v2.7.0
 
 **New features**
 - Aborted exposure tracking — detects exposures that were skipped or aborted during the session (e.g. by RMS triggers, safety monitor events, or manual skip) and displays the count in the session overview, email, Discord, and Pushover summaries
