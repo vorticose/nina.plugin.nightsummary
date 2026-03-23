@@ -5,6 +5,7 @@ using NINA.Plugin.NightSummary.Data;
 using NINA.Plugin.NightSummary.MyPluginProperties;
 using NINA.Plugin.NightSummary.Reporting;
 using NINA.Profile.Interfaces;
+using NINA.Sequencer.Interfaces.Mediator;
 using NINA.WPF.Base.Interfaces.Mediator;
 using System;
 using System.Collections.Generic;
@@ -32,12 +33,13 @@ namespace NINA.Plugin.NightSummary.Session {
             ISafetyMonitorMediator safetyMonitorMediator,
             IFocuserMediator       focuserMediator,
             ITelescopeMediator     telescopeMediator,
-            ICameraMediator        cameraMediator) {
+            ICameraMediator        cameraMediator,
+            ISequenceMediator      sequenceMediator) {
 
             this.profileService  = profileService;
             this.cameraMediator  = cameraMediator;
             var database         = new SessionDatabase();
-            this.collector       = new SessionCollector(imageSaveMediator, database);
+            this.collector       = new SessionCollector(imageSaveMediator, sequenceMediator, database);
             this.eventCollector  = new SessionEventCollector(database, safetyMonitorMediator, focuserMediator, telescopeMediator);
             this.reportGenerator = new ReportGenerator();
         }
@@ -108,7 +110,8 @@ namespace NINA.Plugin.NightSummary.Session {
                 CameraFovHeightDeg           = fovH,
                 ObserverLatitude             = lat,
                 ObserverLongitude            = lon,
-                ActiveProfileId              = profileId
+                ActiveProfileId              = profileId,
+                SkippedExposures             = collector.SkippedExposures
             };
 
             _ = Task.Run(async () => {
@@ -196,7 +199,8 @@ namespace NINA.Plugin.NightSummary.Session {
                     CameraFovHeightDeg           = fovH,
                     ObserverLatitude             = lat,
                     ObserverLongitude            = lon,
-                    ActiveProfileId              = profileId
+                    ActiveProfileId              = profileId,
+                    SkippedExposures             = session.SkippedExposures
                 };
 
                 var htmlReport = await reportGenerator.GenerateHtmlReport(reportData);
@@ -228,9 +232,12 @@ namespace NINA.Plugin.NightSummary.Session {
 
         private async Task SaveReportLocallyAsync(ReportData reportData, string htmlReport = null) {
             try {
-                var saveDir = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                    "N.I.N.A.", "Night Summary", "Saved Reports");
+                var customPath = Settings.Default.SaveReportPath;
+                var saveDir = !string.IsNullOrWhiteSpace(customPath)
+                    ? customPath
+                    : Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                        "N.I.N.A.", "Night Summary", "Saved Reports");
                 Directory.CreateDirectory(saveDir);
 
                 var filename = $"NightSummary_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.html";
@@ -450,7 +457,8 @@ namespace NINA.Plugin.NightSummary.Session {
 
             if (compact) {
                 // ── Pushover ──────────────────────────────────────────────────
-                sb.AppendLine($"Total Images: {images.Count}  ·  Total Exposure: {totalExpSec / 3600.0:F1}h");
+                var skippedNote = reportData.SkippedExposures > 0 ? $" ({reportData.SkippedExposures} aborted)" : "";
+                sb.AppendLine($"Total Images: {images.Count}{skippedNote}  ·  Total Exposure: {totalExpSec / 3600.0:F1}h");
                 var pushoverParts = new List<string>();
                 if (hfrImages.Any()) pushoverParts.Add($"Avg HFR: {hfrImages.Average(i => i.HFR):F2}px");
                 if (rmsImages.Any()) pushoverParts.Add($"Avg Guiding RMS: {rmsImages.Average(i => i.GuidingRMSTotal):F2}\"");
@@ -466,7 +474,8 @@ namespace NINA.Plugin.NightSummary.Session {
                 var yieldNote = hasSafetyMonitor ? "" : "*";
                 sb.AppendLine("Session Overview");
                 sb.AppendLine("────────────────");
-                sb.AppendLine($"Total Images:    {images.Count}");
+                var skippedNote2 = reportData.SkippedExposures > 0 ? $" ({reportData.SkippedExposures} aborted)" : "";
+                sb.AppendLine($"Total Images:    {images.Count}{skippedNote2}");
                 sb.AppendLine($"Total Exposure:  {totalExpSec / 3600.0:F1}h");
                 if (hfrImages.Any()) sb.AppendLine($"Avg HFR:         {hfrImages.Average(i => i.HFR):F2}px");
                 if (rmsImages.Any()) sb.AppendLine($"Avg Guiding RMS: {rmsImages.Average(i => i.GuidingRMSTotal):F2}\"");

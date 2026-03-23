@@ -1,22 +1,37 @@
-﻿using NINA.Core.Utility;
+﻿using NINA.Core.Enum;
+using NINA.Core.Utility;
 using NINA.Image.Interfaces;
 using NINA.Plugin.NightSummary.Data;
+using NINA.Sequencer.Interfaces;
+using NINA.Sequencer.Interfaces.Mediator;
+using NINA.Sequencer.SequenceItem;
 using NINA.WPF.Base.Interfaces.Mediator;
 using System;
+using System.Collections.Generic;
+using System.ComponentModel;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace NINA.Plugin.NightSummary.Session {
     public class SessionCollector {
         private readonly SessionDatabase database;
         private readonly IImageSaveMediator imageSaveMediator;
+        private readonly ISequenceMediator sequenceMediator;
         private SessionRecord currentSession;
         private bool isCollecting = false;
 
-        public SessionDatabase Database { get; private set; }
+        // Skipped exposure tracking
+        private Timer skipPollTimer;
+        private readonly HashSet<int> trackedItems = new HashSet<int>();
+        private int skippedExposures = 0;
 
-        public SessionCollector(IImageSaveMediator imageSaveMediator, SessionDatabase database) {
+        public SessionDatabase Database { get; private set; }
+        public int SkippedExposures => skippedExposures;
+
+        public SessionCollector(IImageSaveMediator imageSaveMediator, ISequenceMediator sequenceMediator, SessionDatabase database) {
             this.imageSaveMediator = imageSaveMediator;
+            this.sequenceMediator = sequenceMediator;
             this.database = database;
             this.Database = database;
         }
@@ -34,6 +49,12 @@ namespace NINA.Plugin.NightSummary.Session {
             };
             database.CreateSession(currentSession);
             imageSaveMediator.ImageSaved += OnImageSaved;
+
+            // Start monitoring for skipped exposures
+            skippedExposures = 0;
+            trackedItems.Clear();
+            skipPollTimer = new Timer(PollRunningItems, null, TimeSpan.Zero, TimeSpan.FromSeconds(1));
+
             isCollecting = true;
             Logger.Info($"NightSummary: Session started. SessionId={currentSession.SessionId}");
         }
@@ -41,10 +62,58 @@ namespace NINA.Plugin.NightSummary.Session {
         public void EndSession() {
             if (!isCollecting) return;
             imageSaveMediator.ImageSaved -= OnImageSaved;
+
+            // Stop skip monitoring
+            skipPollTimer?.Dispose();
+            skipPollTimer = null;
+
+            if (skippedExposures > 0)
+                Logger.Info($"NightSummary: {skippedExposures} exposure(s) were aborted during session");
+
             isCollecting = false;
-            database.FinalizeSession(currentSession.SessionId, DateTime.Now, false);
+            database.FinalizeSession(currentSession.SessionId, DateTime.Now, false, skippedExposures);
             Logger.Info($"NightSummary: Session ended. SessionId={currentSession.SessionId}");
             currentSession = null;
+        }
+
+        private void PollRunningItems(object state) {
+            try {
+                if (sequenceMediator == null || !sequenceMediator.Initialized) return;
+
+                var items = sequenceMediator.GetAdvancedSequencerCurrentRunningItems();
+                if (items == null) return;
+
+                foreach (var item in items) {
+                    if (item is IExposureItem exposureItem && exposureItem.ImageType == "LIGHT") {
+                        var hash = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(item);
+                        if (trackedItems.Add(hash)) {
+                            ((INotifyPropertyChanged)item).PropertyChanged += OnExposureStatusChanged;
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                Logger.Debug($"NightSummary: Skip monitor poll error: {ex.Message}");
+            }
+        }
+
+        private void OnExposureStatusChanged(object sender, PropertyChangedEventArgs e) {
+            if (e.PropertyName != "Status") return;
+
+            var item = sender as ISequenceItem;
+            if (item == null) return;
+
+            if (item.Status == SequenceEntityStatus.SKIPPED) {
+                Interlocked.Increment(ref skippedExposures);
+                var name = (item as IExposureItem)?.ImageType ?? "unknown";
+                Logger.Info($"NightSummary: Exposure aborted (total aborted: {skippedExposures})");
+            }
+
+            // Unsubscribe once we have a terminal status
+            if (item.Status == SequenceEntityStatus.SKIPPED ||
+                item.Status == SequenceEntityStatus.FINISHED ||
+                item.Status == SequenceEntityStatus.FAILED) {
+                ((INotifyPropertyChanged)item).PropertyChanged -= OnExposureStatusChanged;
+            }
         }
 
         public string GetCurrentSessionId() {

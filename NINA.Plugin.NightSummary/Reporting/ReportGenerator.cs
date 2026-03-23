@@ -187,7 +187,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             sb.AppendLine("<h2>Session Overview</h2>");
             sb.AppendLine($"<div style='display:grid; grid-template-columns:repeat({gridCols},1fr); gap:10px; margin:10px 0;'>");
-            sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{data.Images.Count}</div><div class='stat-label'>Total Images</div></div>");
+            var imagesValue = data.SkippedExposures > 0
+                ? $"{data.Images.Count} <span style='font-size:60%; color:#cc6666;'>({data.SkippedExposures} aborted)</span>"
+                : $"{data.Images.Count}";
+            sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{imagesValue}</div><div class='stat-label'>Total Images</div></div>");
             sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{TimeSpan.FromSeconds(totalExposureSec).TotalHours:F1}h</div><div class='stat-label'>Total Exposure</div></div>");
             sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{targetCount}</div><div class='stat-label'>Targets</div></div>");
             if (detailLevel >= 1 && hfrImages.Any())

@@ -34,6 +34,9 @@ namespace NINA.Plugin.NightSummary.Data {
         public double PixelSizeMicrons { get; set; }
         public double FocalLengthMm    { get; set; }
 
+        // Number of exposures skipped/aborted during the session
+        public int SkippedExposures { get; set; }
+
         // Display string for session picker dropdown
         public string DisplayLabel => $"{SessionStart:yyyy-MM-dd  HH:mm}  —  {ProfileName}";
     }

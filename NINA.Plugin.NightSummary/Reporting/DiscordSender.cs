@@ -76,7 +76,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var yieldPct = yield.YieldPct;
 
             var overview = new StringBuilder();
-            overview.AppendLine($"Total Images: {images.Count}");
+            var skippedNote = reportData.SkippedExposures > 0 ? $" ({reportData.SkippedExposures} aborted)" : "";
+            overview.AppendLine($"Total Images: {images.Count}{skippedNote}");
             overview.AppendLine($"Total Exposure: {totalExpSec / 3600.0:F1}h");
             if (hfrImages.Any()) overview.AppendLine($"Avg HFR: {hfrImages.Average(i => i.HFR):F2}px");
             if (rmsImages.Any()) overview.AppendLine($"Avg Guiding RMS: {rmsImages.Average(i => i.GuidingRMSTotal):F2}\"");

@@ -312,6 +312,15 @@ namespace NINA.Plugin.NightSummary {
             }
         }
 
+        public string SaveReportPath {
+            get => Settings.Default.SaveReportPath;
+            set {
+                Settings.Default.SaveReportPath = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
         public bool EmailEnabled {
             get => Settings.Default.EmailEnabled;
             set {

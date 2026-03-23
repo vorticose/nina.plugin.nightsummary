@@ -364,8 +364,19 @@
                     <StackPanel Orientation="Horizontal" Margin="0,5">
                         <TextBlock Text="Save Report Locally" Width="200" VerticalAlignment="Center" />
                         <CheckBox IsChecked="{Binding SaveReportLocally}" VerticalAlignment="Center" />
-                        <TextBlock Text="Saves the HTML report to Documents\N.I.N.A.\Night Summary\Saved Reports\ after each session."
+                        <TextBlock Text="Saves the HTML report after each session."
                                    TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,0,0,0" MaxWidth="350" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                        <TextBlock Text="Save Path" Width="200" VerticalAlignment="Center" />
+                        <TextBox Text="{Binding SaveReportPath, UpdateSourceTrigger=LostFocus}" Width="300" VerticalAlignment="Center" />
+                        <Button Content="Browse..." Click="BrowseSaveReportPath_Click" Margin="5,0,0,0" Padding="8,2" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,2,0,8">
+                        <TextBlock Width="200" />
+                        <TextBlock Text="Leave blank to use the default: Documents\N.I.N.A.\Night Summary\Saved Reports\"
+                                   TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="350" />
                     </StackPanel>
 
                     <Separator Margin="0,20,0,10" />

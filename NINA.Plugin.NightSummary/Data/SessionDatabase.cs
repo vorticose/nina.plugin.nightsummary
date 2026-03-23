@@ -167,6 +167,7 @@ namespace NINA.Plugin.NightSummary.Data {
                 MigrateAddColumn(conn, "Images",        "CloudCover",       "REAL");
                 MigrateAddColumn(conn, "SessionEvents", "AfSucceeded",      "INTEGER");
                 MigrateAddColumn(conn, "SessionEvents", "AfHfr",            "REAL");
+                MigrateAddColumn(conn, "Sessions",      "SkippedExposures", "INTEGER DEFAULT 0");
             }
         }
 
@@ -236,17 +237,18 @@ namespace NINA.Plugin.NightSummary.Data {
         /// Updates the session end time and report sent status.
         /// Call this when the sequence ends.
         /// </summary>
-        public void FinalizeSession(string sessionId, DateTime endTime, bool reportSent) {
+        public void FinalizeSession(string sessionId, DateTime endTime, bool reportSent, int skippedExposures = 0) {
             using (var conn = new SQLiteConnection(connectionString)) {
                 conn.Open();
                 string sql = @"
-                    UPDATE Sessions 
-                    SET SessionEnd = @SessionEnd, ReportSent = @ReportSent
+                    UPDATE Sessions
+                    SET SessionEnd = @SessionEnd, ReportSent = @ReportSent, SkippedExposures = @SkippedExposures
                     WHERE SessionId = @SessionId";
 
                 using (var cmd = new SQLiteCommand(sql, conn)) {
                     cmd.Parameters.AddWithValue("@SessionEnd", endTime.ToString("o"));
                     cmd.Parameters.AddWithValue("@ReportSent", reportSent ? 1 : 0);
+                    cmd.Parameters.AddWithValue("@SkippedExposures", skippedExposures);
                     cmd.Parameters.AddWithValue("@SessionId", sessionId);
                     cmd.ExecuteNonQuery();
                 }
@@ -665,7 +667,8 @@ namespace NINA.Plugin.NightSummary.Data {
                 CamXSize         = reader["CamXSize"]         == DBNull.Value ? 0 : Convert.ToInt32(reader["CamXSize"]),
                 CamYSize         = reader["CamYSize"]         == DBNull.Value ? 0 : Convert.ToInt32(reader["CamYSize"]),
                 PixelSizeMicrons = reader["PixelSizeMicrons"] == DBNull.Value ? 0 : Convert.ToDouble(reader["PixelSizeMicrons"]),
-                FocalLengthMm    = reader["FocalLengthMm"]    == DBNull.Value ? 0 : Convert.ToDouble(reader["FocalLengthMm"])
+                FocalLengthMm    = reader["FocalLengthMm"]    == DBNull.Value ? 0 : Convert.ToDouble(reader["FocalLengthMm"]),
+                SkippedExposures = reader["SkippedExposures"] == DBNull.Value ? 0 : Convert.ToInt32(reader["SkippedExposures"])
             };
         }
     }
