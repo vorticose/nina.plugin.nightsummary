@@ -313,7 +313,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     sb.Append(thumbHtml);
                     if (showSideBySideChart) {
                         var altChart = BuildAltitudeChart(raH, decD, data.ObserverLatitude, data.ObserverLongitude,
-                                                          targetImgStart, targetImgEnd, width: 500);
+                                                          targetImgStart, targetImgEnd, width: 500,
+                                                          minimumAltitude: tsTarget?.MinimumAltitude ?? 0);
                         if (!string.IsNullOrEmpty(altChart))
                             sb.Append($"<div style='flex:1; min-width:0; margin-top:-20px;'>{altChart}</div>");
                     }
@@ -588,7 +589,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
         }
 
         private string BuildAltitudeChart(double raHours, double decDeg, double latDeg, double lonDeg,
-                                          DateTime sessionStart, DateTime sessionEnd, int width = 560) {
+                                          DateTime sessionStart, DateTime sessionEnd, int width = 560,
+                                          double minimumAltitude = 0) {
             if (latDeg == 0 && lonDeg == 0) return string.Empty;
 
             // Chart window: sunset to sunrise (zoomed in to the imaging night)
@@ -649,6 +651,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
             sb.AppendLine($"<text x='{padL - 4}' y='{padT + 4}' text-anchor='end' font-size='10' fill='#555'>90°</text>");
             sb.AppendLine($"<text x='{padL - 4}' y='{padT + plotH + 4}' text-anchor='end' font-size='10' fill='#555'>0°</text>");
+
+            // Minimum altitude line (from Target Scheduler)
+            if (minimumAltitude > 0 && minimumAltitude < maxAlt) {
+                double minAltY = Y(minimumAltitude);
+                sb.AppendLine($"<line x1='{padL}' y1='{minAltY:F1}' x2='{padL + plotW}' y2='{minAltY:F1}' stroke='#cc4444' stroke-width='1.2' stroke-dasharray='5,4' opacity='0.7'/>");
+                sb.AppendLine($"<text x='{padL + plotW - 2}' y='{minAltY - 4:F1}' text-anchor='end' font-size='9' fill='#cc4444' opacity='0.85'>Min Alt {minimumAltitude:F0}°</text>");
+            }
 
             // Altitude curve — one polyline per continuous above-horizon segment
             foreach (var seg in segments) {

@@ -37,7 +37,7 @@
     "Installer":  {
                       "URL":  "https://github.com/vorticose/nina.plugin.nightsummary/releases/download/v2.7.0/NINA.Plugin.NightSummary.zip",
                       "Type":  "ARCHIVE",
-                      "Checksum":  "B9520CDA14C8987AD191A22FFBB108344574F5E70BFE2AD40FC0432DC6E21D71",
+                      "Checksum":  "FE191D51F70780405673083285F40F05B16FE7EA9B182269897B5867945082D7",
                       "ChecksumType":  "SHA256"
                   }
 }
