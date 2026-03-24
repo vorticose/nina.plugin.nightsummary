@@ -8,7 +8,7 @@
 #
 # Usage: .\scripts\seed-test-db.ps1
 
-$dbPath    = "$env:LOCALAPPDATA\NINA\Plugins\3.2.0.9001\NightSummary\test\nightsummary.sqlite"
+$dbPath    = "$env:LOCALAPPDATA\NINA\NightSummary\test\nightsummary.sqlite"
 $sqliteDir = "$env:USERPROFILE\.nuget\packages\stub.system.data.sqlite.core.netstandard\1.0.119"
 $managedDll = "$sqliteDir\lib\netstandard2.0\System.Data.SQLite.dll"
 $nativeDll  = "$sqliteDir\runtimes\win-x64\native\SQLite.Interop.dll"

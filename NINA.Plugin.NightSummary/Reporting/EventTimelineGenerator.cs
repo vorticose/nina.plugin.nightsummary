@@ -1,4 +1,5 @@
 using NINA.Plugin.NightSummary.Data;
+using NINA.Plugin.NightSummary.MyPluginProperties;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -72,15 +73,24 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("<div class='timeline-container' style='position:relative;'>");
 
             // Floating tooltip div — positioned by JS on mousemove
-            sb.AppendLine("<div id='ns-tooltip' style='display:none;position:fixed;background:#1e1e2e;color:#e0e0e0;padding:6px 10px;border-radius:6px;font-size:12px;font-family:Arial,sans-serif;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,0.6);z-index:9999;white-space:nowrap;'></div>");
+            bool light = Settings.Default.ReportLightMode;
+            string tooltipBg = light ? "#ffffff" : "#1e1e2e";
+            string tooltipFg = light ? "#1a1a2e" : "#e0e0e0";
+            string tooltipShadow = light ? "rgba(0,0,0,0.15)" : "rgba(0,0,0,0.6)";
+            string idleBg = light ? "#d0d4da" : "#0f0f23";
+            string idleStripe = light ? "#b04040" : "#7a1a1a";
+            string tickColor = light ? "#888" : "#555";
+            string labelColor = light ? "#666" : "#888";
+            string legendText = light ? "#1a1a2e" : "#e0e0e0";
+            sb.AppendLine($"<div id='ns-tooltip' style='display:none;position:fixed;background:{tooltipBg};color:{tooltipFg};padding:6px 10px;border-radius:6px;font-size:12px;font-family:Arial,sans-serif;pointer-events:none;box-shadow:0 2px 8px {tooltipShadow};z-index:9999;white-space:nowrap;'></div>");
 
             sb.AppendLine($"<svg viewBox='0 0 {svgWidth} {svgHeight}' xmlns='http://www.w3.org/2000/svg' style='width:100%;font-family:Arial,sans-serif;font-size:11px;'>");
 
             // Diagonal stripe pattern for idle (no imaging) periods
             sb.AppendLine("<defs>");
             sb.AppendLine("  <pattern id='ns-idle' patternUnits='userSpaceOnUse' width='8' height='8' patternTransform='rotate(45)'>");
-            sb.AppendLine("    <rect width='8' height='8' fill='#0f0f23'/>");
-            sb.AppendLine("    <line x1='0' y1='0' x2='0' y2='8' stroke='#7a1a1a' stroke-width='3'/>");
+            sb.AppendLine($"    <rect width='8' height='8' fill='{idleBg}'/>");
+            sb.AppendLine($"    <line x1='0' y1='0' x2='0' y2='8' stroke='{idleStripe}' stroke-width='3'/>");
             sb.AppendLine("  </pattern>");
             sb.AppendLine("</defs>");
 
@@ -189,15 +199,15 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 double tx = TimeToX(tick);
                 // Suppress ticks that would collide with the start/end edge labels (within 40px)
                 if (tx - leftPad > 40 && (svgWidth - rightPad) - tx > 40) {
-                    sb.AppendLine($"<line x1='{tx:F1}' y1='{rulerY}' x2='{tx:F1}' y2='{rulerY + tickH}' stroke='#555' stroke-width='1'/>");
-                    sb.AppendLine($"<text x='{tx:F1}' y='{tickLabelY}' fill='#888' text-anchor='middle'>{tick:HH:mm}</text>");
+                    sb.AppendLine($"<line x1='{tx:F1}' y1='{rulerY}' x2='{tx:F1}' y2='{rulerY + tickH}' stroke='{tickColor}' stroke-width='1'/>");
+                    sb.AppendLine($"<text x='{tx:F1}' y='{tickLabelY}' fill='{labelColor}' text-anchor='middle'>{tick:HH:mm}</text>");
                 }
                 tick = tick.AddMinutes(tickIntervalMins);
             }
 
             // Session start / end edge labels
-            sb.AppendLine($"<text x='{leftPad}' y='{tickLabelY}' fill='#888'>{sessionStart:HH:mm}</text>");
-            sb.AppendLine($"<text x='{svgWidth - rightPad}' y='{tickLabelY}' fill='#888' text-anchor='end'>{sessionEnd:HH:mm}</text>");
+            sb.AppendLine($"<text x='{leftPad}' y='{tickLabelY}' fill='{labelColor}'>{sessionStart:HH:mm}</text>");
+            sb.AppendLine($"<text x='{svgWidth - rightPad}' y='{tickLabelY}' fill='{labelColor}' text-anchor='end'>{sessionEnd:HH:mm}</text>");
 
             // ── Legend ───────────────────────────────────────────────────────────
             int ly = legendTop;
@@ -207,7 +217,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             ly += 18;
             foreach (var target in targets) {
                 sb.AppendLine($"<rect x='{leftPad}' y='{ly}' width='14' height='12' fill='{target.Color}' rx='2'/>");
-                sb.AppendLine($"<text x='{leftPad + 18}' y='{ly + 10}' fill='#e0e0e0'>{target.Name}</text>");
+                sb.AppendLine($"<text x='{leftPad + 18}' y='{ly + 10}' fill='{legendText}'>{target.Name}</text>");
                 ly += legendRowH;
             }
 
@@ -234,7 +244,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     int half = markerSize / 2;
                     int mx2  = leftPad + half;
                     sb.AppendLine($"<polygon points='{mx2},{ly} {mx2 - half},{ly + markerSize} {mx2 + half},{ly + markerSize}' fill='{c}'/>");
-                    sb.AppendLine($"<text x='{leftPad + 18}' y='{ly + 10}' fill='#e0e0e0'>{label}</text>");
+                    sb.AppendLine($"<text x='{leftPad + 18}' y='{ly + 10}' fill='{legendText}'>{label}</text>");
                     ly += legendRowH;
                 }
             }

@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <Compile Remove="MyPluginProperties\AssemblyInfo.cs" />
+    <Compile Remove="Server\**" />
   </ItemGroup>
 
   <ItemGroup>

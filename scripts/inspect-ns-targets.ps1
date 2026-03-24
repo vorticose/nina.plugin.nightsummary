@@ -8,7 +8,7 @@ Copy-Item $nativeDll $tempDir -Force
 [System.IO.Directory]::SetCurrentDirectory($tempDir)
 Add-Type -Path $managedDll
 
-$dbPath = "C:\Users\Evan\AppData\Local\NINA\Plugins\3.2.0.9001\NightSummary\test\nightsummary.sqlite"
+$dbPath = "$env:LOCALAPPDATA\NINA\NightSummary\test\nightsummary.sqlite"
 $conn = New-Object System.Data.SQLite.SQLiteConnection("Data Source=$dbPath;Version=3;Read Only=True;")
 $conn.Open()
 
