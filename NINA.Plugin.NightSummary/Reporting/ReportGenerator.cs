@@ -121,12 +121,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             int detailLevel = Settings.Default.ReportDetailLevel;
+            string detailsOpen = Settings.Default.ExpandSectionsDefault ? " open" : "";
 
             if (detailLevel >= 1) sb.Append(BuildEventTimelineSection(data));
             sb.Append(BuildOverviewStatsSection(data, detailLevel));
-            sb.Append(await BuildTargetSection(data, detailLevel));
-            if (detailLevel >= 1) sb.Append(BuildImageQualitySection(data, detailLevel));
-            if (detailLevel >= 1) sb.Append(BuildNextNightPreviewSection(data));
+            sb.Append(await BuildTargetSection(data, detailLevel, detailsOpen));
+            if (detailLevel >= 1) sb.Append(BuildImageQualitySection(data, detailLevel, detailsOpen));
+            if (detailLevel >= 2) sb.Append(BuildNextNightPreviewSection(data));
             sb.Append(BuildFooter());
 
             sb.AppendLine("</body></html>");
@@ -214,7 +215,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             return sb.ToString();
         }
 
-        private async Task<string> BuildTargetSection(ReportData data, int detailLevel) {
+        private async Task<string> BuildTargetSection(ReportData data, int detailLevel, string detailsOpen = "") {
             var sb = new StringBuilder();
             var targets     = data.Images.GroupBy(i => i.TargetName).OrderBy(g => g.Min(i => i.Timestamp));
             bool multiTarget = targets.Count() > 1;
@@ -312,9 +313,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     sb.AppendLine("<div class='ts-target-header'>");
                     sb.Append(thumbHtml);
                     if (showSideBySideChart) {
+                        double minAlt = Settings.Default.ShowMinAltitude ? (tsTarget?.MinimumAltitude ?? 0) : 0;
                         var altChart = BuildAltitudeChart(raH, decD, data.ObserverLatitude, data.ObserverLongitude,
                                                           targetImgStart, targetImgEnd, width: 500,
-                                                          minimumAltitude: tsTarget?.MinimumAltitude ?? 0);
+                                                          minimumAltitude: minAlt);
                         if (!string.IsNullOrEmpty(altChart))
                             sb.Append($"<div style='flex:1; min-width:0; margin-top:-20px;'>{altChart}</div>");
                     }
@@ -370,11 +372,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     var targetList = target.ToList();
                     bool hasData = targetList.Any(i => i.HFR > 0 || i.FWHM > 0 || i.Eccentricity > 0 || i.GuidingRMSTotal > 0);
                     if (hasData) {
-                        sb.AppendLine("<details class='iq-section'>");
+                        sb.AppendLine($"<details class='iq-section'{detailsOpen}>");
                         sb.AppendLine("<summary>Image Quality</summary>");
                         sb.AppendLine("<div class='iq-table'>");
                         sb.AppendLine("<div class='iq-row-grid'><div class='iq-header'>Metric</div><div class='iq-header'>Min</div><div class='iq-header'>Max</div><div class='iq-header'>Mean</div><div class='iq-header'>CV</div></div>");
-                        AppendIqRows(sb, targetList);
+                        AppendIqRows(sb, targetList, detailsOpen);
                         sb.AppendLine("</div>");
                         sb.AppendLine("</details>");
                     }
@@ -386,7 +388,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     data.SessionHistory?.TryGetValue(target.Key, out history);
                     if (history != null && history.Any()) {
                         var label = $"Session History ({history.Count} previous session{(history.Count == 1 ? "" : "s")})";
-                        sb.AppendLine($"<details class='history-section'>");
+                        sb.AppendLine($"<details class='history-section'{detailsOpen}>");
                         sb.AppendLine($"<summary>{label}</summary>");
                         sb.AppendLine("<table>");
                         sb.AppendLine("<tr><th>Date</th><th>Integration</th><th>Avg HFR</th><th>Avg FWHM</th><th>Avg Guiding RMS</th></tr>");
@@ -402,12 +404,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 }
 
                 if (tsTarget == null && detailLevel >= 1 && Settings.Default.ShowTSProgressBars) {
-                    if (data.TsData == null || data.TsData.Count == 0) {
-                        if (!Warnings.Any(w => w.StartsWith("Target Scheduler progress bars unavailable —")))
-                            Warnings.Add("Target Scheduler progress bars unavailable — Target Scheduler not installed or database not found");
-                    } else {
+                    if (data.TsData != null && data.TsData.Count > 0) {
+                        // TS is installed but this specific target wasn't found in it
                         Warnings.Add($"Target Scheduler progress bars unavailable for {target.Key} — target not found in Target Scheduler");
                     }
+                    // If TS isn't installed at all, silently skip — the Options UI already shows it's unavailable
                 }
                 if (tsTarget != null && detailLevel >= 1 && Settings.Default.ShowTSProgressBars) {
                     // TS progress bars — one per exposure plan row (template + filter)
@@ -472,7 +473,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             return sb.ToString();
         }
 
-        private void AppendIqRows(StringBuilder sb, List<ImageRecord> images) {
+        private void AppendIqRows(StringBuilder sb, List<ImageRecord> images, string detailsOpen = "") {
             int rowIdx = 0;
             var imagesWithHFR     = images.Where(i => i.HFR > 0).ToList();
             var imagesWithFWHM    = images.Where(i => i.FWHM > 0).ToList();
@@ -484,7 +485,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var hfrValues  = imagesWithHFR.Select(i => i.HFR).ToList();
                 var hfrFilters = imagesWithHFR.GroupBy(i => i.Filter).Where(g => g.Any()).OrderBy(g => FilterSortKey(g.Key)).ThenBy(g => g.Key).ToList();
                 string evenCls = rowIdx % 2 == 1 ? " iq-row-even" : "";
-                sb.AppendLine($"<details class='iq-row{evenCls}'><summary>");
+                sb.AppendLine($"<details class='iq-row{evenCls}'{detailsOpen}><summary>");
                 sb.AppendLine($"<div class='iq-row-grid'><div class='iq-cell'>HFR<span class='iq-arrow'></span></div><div class='iq-cell'>{hfrValues.Min():F2}px</div><div class='iq-cell'>{hfrValues.Max():F2}px</div><div class='iq-cell'>{hfrValues.Average():F2}px</div><div class='iq-cell'>{CV(hfrValues):F0}%</div></div>");
                 sb.AppendLine("</summary>");
                 sb.AppendLine("<div class='iq-expand'>");
@@ -503,7 +504,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var fwhmValues  = imagesWithFWHM.Select(i => i.FWHM).ToList();
                 var fwhmFilters = imagesWithFWHM.GroupBy(i => i.Filter).Where(g => g.Any()).OrderBy(g => FilterSortKey(g.Key)).ThenBy(g => g.Key).ToList();
                 string evenCls = rowIdx % 2 == 1 ? " iq-row-even" : "";
-                sb.AppendLine($"<details class='iq-row{evenCls}'><summary>");
+                sb.AppendLine($"<details class='iq-row{evenCls}'{detailsOpen}><summary>");
                 sb.AppendLine($"<div class='iq-row-grid'><div class='iq-cell'>FWHM<span class='iq-arrow'></span></div><div class='iq-cell'>{fwhmValues.Min():F2}\"</div><div class='iq-cell'>{fwhmValues.Max():F2}\"</div><div class='iq-cell'>{fwhmValues.Average():F2}\"</div><div class='iq-cell'>{CV(fwhmValues):F0}%</div></div>");
                 sb.AppendLine("</summary>");
                 sb.AppendLine("<div class='iq-expand'>");
@@ -533,7 +534,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
         }
 
-        private string BuildImageQualitySection(ReportData data, int detailLevel) {
+        private string BuildImageQualitySection(ReportData data, int detailLevel, string detailsOpen = "") {
             var sb = new StringBuilder();
             var hasHFR     = data.Images.Any(i => i.HFR > 0);
             var hasFWHM    = data.Images.Any(i => i.FWHM > 0);
@@ -545,7 +546,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("<h2>Session Image Quality</h2>");
             sb.AppendLine("<div class='iq-table'>");
             sb.AppendLine("<div class='iq-row-grid'><div class='iq-header'>Metric</div><div class='iq-header'>Min</div><div class='iq-header'>Max</div><div class='iq-header'>Mean</div><div class='iq-header'>CV</div></div>");
-            AppendIqRows(sb, data.Images);
+            AppendIqRows(sb, data.Images, detailsOpen);
             sb.AppendLine("</div>"); // iq-table
 
             if (detailLevel >= 2 && Settings.Default.ShowHFRGraph) {
@@ -741,7 +742,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             var tsDb = new TargetSchedulerDatabase();
             if (!tsDb.IsAvailable)
-                return PreviewNotice("Target Scheduler is not installed.");
+                return "";  // TS not installed — silently skip, Options UI already indicates it's unavailable
 
             var (apiEnabled, apiPort) = tsDb.GetApiSettings(data.ActiveProfileId);
             if (!apiEnabled) {
@@ -909,7 +910,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     var filterGroups = allExposures
                         .GroupBy(e => (e.FilterName, e.Exposure))
                         .OrderBy(g => FilterSortKey(g.Key.FilterName)).ThenBy(g => g.Key.FilterName).ThenBy(g => g.Key.Exposure);
-                    sb.AppendLine("<details class='history-section'>");
+                    string detailsOpen = Settings.Default.ExpandSectionsDefault ? " open" : "";
+                    sb.AppendLine($"<details class='history-section'{detailsOpen}>");
                     sb.AppendLine($"<summary>{targetGroup.Key} - Filter Breakdown</summary>");
                     sb.AppendLine("<table style='margin-top:8px;width:auto;'>");
                     sb.AppendLine("<tr><th>Filter</th><th>Images</th><th>Exposure</th><th>Total Time</th></tr>");

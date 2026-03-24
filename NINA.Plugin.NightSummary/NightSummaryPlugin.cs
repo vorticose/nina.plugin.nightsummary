@@ -217,6 +217,11 @@ namespace NINA.Plugin.NightSummary {
                 await Task.Run(() => LoadFilterClassifications());
             });
 
+            PreviewReportCommand = new RelayCommand(async () => {
+                var window = new PreviewWindow(sessionService);
+                window.Show();
+            });
+
             LoadSessions();
             LoadFilterClassifications();
             Logger.Info("NightSummary: Plugin initialized successfully");
@@ -382,6 +387,7 @@ namespace NINA.Plugin.NightSummary {
                 Settings.Default.ShowSkyThumbnails  = true;
                 Settings.Default.ShowAltitudeChart  = true;
                 Settings.Default.ShowMoonCurve      = true;
+                Settings.Default.ShowMinAltitude    = true;
                 Settings.Default.ShowTSProgressBars = true;
                 Settings.Default.ShowSessionHistory = true;
                 Settings.Default.ShowStarCountCV    = true;
@@ -393,6 +399,7 @@ namespace NINA.Plugin.NightSummary {
                 RaisePropertyChanged(nameof(ShowSkyThumbnails));
                 RaisePropertyChanged(nameof(ShowAltitudeChart));
                 RaisePropertyChanged(nameof(ShowMoonCurve));
+                RaisePropertyChanged(nameof(ShowMinAltitude));
                 RaisePropertyChanged(nameof(ShowTSProgressBars));
                 RaisePropertyChanged(nameof(ShowSessionHistory));
                 RaisePropertyChanged(nameof(ShowStarCountCV));
@@ -415,6 +422,15 @@ namespace NINA.Plugin.NightSummary {
             get => Settings.Default.ShowMoonCurve;
             set {
                 Settings.Default.ShowMoonCurve = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public bool ShowMinAltitude {
+            get => Settings.Default.ShowMinAltitude;
+            set {
+                Settings.Default.ShowMinAltitude = value;
                 Settings.Default.Save();
                 RaisePropertyChanged();
             }
@@ -469,6 +485,15 @@ namespace NINA.Plugin.NightSummary {
             get => Settings.Default.ShowPerTargetIQ;
             set {
                 Settings.Default.ShowPerTargetIQ = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public bool ExpandSectionsDefault {
+            get => Settings.Default.ExpandSectionsDefault;
+            set {
+                Settings.Default.ExpandSectionsDefault = value;
                 Settings.Default.Save();
                 RaisePropertyChanged();
             }
@@ -572,6 +597,7 @@ namespace NINA.Plugin.NightSummary {
         public ICommand RefreshSessionsCommand { get; }
         public ICommand SearchSessionsCommand { get; }
         public ICommand ClearSearchCommand { get; }
+        public ICommand PreviewReportCommand { get; private set; }
 
         public event PropertyChangedEventHandler PropertyChanged;
         protected void RaisePropertyChanged([CallerMemberName] string propertyName = null) {

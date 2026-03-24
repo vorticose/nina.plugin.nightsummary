@@ -426,6 +426,46 @@ namespace NINA.Plugin.NightSummary.Session {
             }
         }
 
+        /// <summary>
+        /// Builds ReportData from a database without sending. Used by the preview window.
+        /// </summary>
+        public async Task<ReportData> BuildReportDataAsync(string dbPath, string sessionId = null) {
+            var db      = new SessionDatabase(dbPath);
+            var session = sessionId != null ? db.GetSession(sessionId) : db.GetLatestSession();
+            if (session == null) return null;
+
+            var images     = db.GetImagesForSession(session.SessionId);
+            var events     = db.GetEventsForSession(session.SessionId);
+            var profileId  = profileService?.ActiveProfile?.Id.ToString();
+            var tsData     = FetchTsData(images, profileId);
+            var cumulative = db.GetCumulativeIntegrationByTarget(session.SessionId);
+            var history    = BuildSessionHistory(db, images, session.SessionId);
+            var (fovW, fovH) = ComputeCameraFov(session);
+            var (lat, lon)   = GetObserverCoords();
+
+            return new ReportData {
+                Session                      = session,
+                Images                       = images,
+                Events                       = events,
+                TsData                       = tsData,
+                CumulativeIntegrationSeconds = cumulative,
+                SessionHistory               = history,
+                CameraFovWidthDeg            = fovW,
+                CameraFovHeightDeg           = fovH,
+                ObserverLatitude             = lat,
+                ObserverLongitude            = lon,
+                ActiveProfileId              = profileId,
+                SkippedExposures             = session.SkippedExposures
+            };
+        }
+
+        /// <summary>
+        /// Generates HTML from existing ReportData without sending. Used by the preview window for re-renders.
+        /// </summary>
+        public async Task<string> GenerateHtmlAsync(ReportData reportData) {
+            return await reportGenerator.GenerateHtmlReport(reportData);
+        }
+
         public string GetCurrentSessionId() {
             return collector.GetCurrentSessionId();
         }

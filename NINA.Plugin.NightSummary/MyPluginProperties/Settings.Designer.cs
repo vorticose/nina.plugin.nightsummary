@@ -349,6 +349,30 @@ namespace NINA.Plugin.NightSummary.MyPluginProperties {
 
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool ShowMinAltitude {
+            get {
+                return ((bool)(this["ShowMinAltitude"]));
+            }
+            set {
+                this["ShowMinAltitude"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool ExpandSectionsDefault {
+            get {
+                return ((bool)(this["ExpandSectionsDefault"]));
+            }
+            set {
+                this["ExpandSectionsDefault"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("")]
         public string FilterClassifications {
             get {
