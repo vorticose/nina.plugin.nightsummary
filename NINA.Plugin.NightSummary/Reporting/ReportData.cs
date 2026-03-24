@@ -43,5 +43,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// Active NINA profile GUID, used to filter TS queries to the correct profile.
         /// </summary>
         public string ActiveProfileId { get; init; }
+        /// <summary>
+        /// Number of exposures that were skipped/aborted during the session (e.g. by RMS triggers, safety events).
+        /// </summary>
+        public int SkippedExposures { get; init; }
     }
 }

@@ -18,9 +18,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
         public const int PrimaryFocuserTemp  = 3;
         public const int PrimaryAmbientTemp  = 4;
         public const int PrimaryEccentricity = 5;
+        public const int PrimaryAltitude     = 6;
+        public const int PrimaryAirmass      = 7;
+        public const int PrimaryHumidity     = 8;
+        public const int PrimaryFocuserPos   = 9;
 
         // Secondary metric indices (ChartSecondaryMetric setting, SelectedIndex in secondary ComboBox)
-        // Index 0 = None; indices 1–6 mirror the primary set offset by 1
+        // Index 0 = None; indices 1–10 mirror the primary set offset by 1
         public const int SecNone         = 0;
         public const int SecHFR          = 1;
         public const int SecFWHM         = 2;
@@ -28,6 +32,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
         public const int SecFocuserTemp  = 4;
         public const int SecAmbientTemp  = 5;
         public const int SecEccentricity = 6;
+        public const int SecAltitude     = 7;
+        public const int SecAirmass      = 8;
+        public const int SecHumidity     = 9;
+        public const int SecFocuserPos   = 10;
 
         private const int Width        = 800;
         private const int Height       = 300;
@@ -125,6 +133,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             var sb = new StringBuilder();
             sb.AppendLine($"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {Width} {Height}\" style=\"width:100%;max-width:{Width}px;display:block;margin:0 auto;font-family:sans-serif\">");
+            sb.AppendLine("<style>circle { cursor: pointer; }</style>");
             sb.AppendLine($"<rect width=\"{Width}\" height=\"{Height}\" fill=\"{ColorBackground}\" rx=\"6\"/>");
 
             // Horizontal grid lines + left Y labels
@@ -171,15 +180,18 @@ namespace NINA.Plugin.NightSummary.Reporting {
             if (hasDual) {
                 var rightPoly = string.Join(" ", rightPts.Select(p => $"{ToX(p.t):F1},{ToYR(p.v):F1}"));
                 sb.AppendLine($"<polyline points=\"{rightPoly}\" fill=\"none\" stroke=\"{ColorSecondary}\" stroke-width=\"2\" stroke-linejoin=\"round\" stroke-dasharray=\"6,3\"/>");
+                string secUnit = GetTooltipUnit(secondaryMetric, false);
                 foreach (var p in rightPts)
-                    sb.AppendLine($"<circle cx=\"{ToX(p.t):F1}\" cy=\"{ToYR(p.v):F1}\" r=\"3\" fill=\"{ColorSecondaryDot}\"/>");
+                    sb.AppendLine($"<circle cx=\"{ToX(p.t):F1}\" cy=\"{ToYR(p.v):F1}\" r=\"3\" fill=\"{ColorSecondaryDot}\"><title>{p.t:HH:mm} — {p.v:F2}{secUnit}</title></circle>");
             }
 
             // Primary line
             var leftPoly = string.Join(" ", leftPts.Select(p => $"{ToX(p.t):F1},{ToYL(p.v):F1}"));
             sb.AppendLine($"<polyline points=\"{leftPoly}\" fill=\"none\" stroke=\"{leftColor}\" stroke-width=\"2\" stroke-linejoin=\"round\"/>");
+            int leftMetricIdx = swapped ? secondaryMetric : primaryMetric;
+            string leftUnit = GetTooltipUnit(leftMetricIdx, !swapped);
             foreach (var p in leftPts)
-                sb.AppendLine($"<circle cx=\"{ToX(p.t):F1}\" cy=\"{ToYL(p.v):F1}\" r=\"3\" fill=\"{leftDotColor}\"/>");
+                sb.AppendLine($"<circle cx=\"{ToX(p.t):F1}\" cy=\"{ToYL(p.v):F1}\" r=\"3\" fill=\"{leftDotColor}\"><title>{p.t:HH:mm} — {p.v:F2}{leftUnit}</title></circle>");
 
             // Warning badge
             if (badgeText != null) {
@@ -207,6 +219,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 PrimaryFocuserTemp  => images.Where(i => i.FocuserTemp.HasValue).OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.FocuserTemp!.Value)).ToList(),
                 PrimaryAmbientTemp  => images.Where(i => i.AmbientTemp.HasValue).OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.AmbientTemp!.Value)).ToList(),
                 PrimaryEccentricity => images.Where(i => i.Eccentricity > 0)   .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.Eccentricity)).ToList(),
+                PrimaryAltitude     => images.Where(i => i.Altitude.HasValue)  .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.Altitude!.Value)).ToList(),
+                PrimaryAirmass      => images.Where(i => i.Airmass.HasValue)   .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.Airmass!.Value)).ToList(),
+                PrimaryHumidity     => images.Where(i => i.Humidity.HasValue)  .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.Humidity!.Value)).ToList(),
+                PrimaryFocuserPos   => images.Where(i => i.FocuserPosition.HasValue).OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, (double)i.FocuserPosition!.Value)).ToList(),
                 _                   => new List<(DateTime, double)>()
             };
         }
@@ -219,6 +235,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 SecFocuserTemp  => images.Where(i => i.FocuserTemp.HasValue).OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.FocuserTemp!.Value)).ToList(),
                 SecAmbientTemp  => images.Where(i => i.AmbientTemp.HasValue).OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.AmbientTemp!.Value)).ToList(),
                 SecEccentricity => images.Where(i => i.Eccentricity > 0)   .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.Eccentricity)).ToList(),
+                SecAltitude     => images.Where(i => i.Altitude.HasValue)  .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.Altitude!.Value)).ToList(),
+                SecAirmass      => images.Where(i => i.Airmass.HasValue)   .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.Airmass!.Value)).ToList(),
+                SecHumidity     => images.Where(i => i.Humidity.HasValue)  .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.Humidity!.Value)).ToList(),
+                SecFocuserPos   => images.Where(i => i.FocuserPosition.HasValue).OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, (double)i.FocuserPosition!.Value)).ToList(),
                 _               => new List<(DateTime, double)>()
             };
         }
@@ -243,6 +263,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
             PrimaryFocuserTemp  => 2.0,
             PrimaryAmbientTemp  => 2.0,
             PrimaryEccentricity => 0.2,
+            PrimaryAltitude     => 10.0,
+            PrimaryAirmass      => 0.5,
+            PrimaryHumidity     => 10.0,
+            PrimaryFocuserPos   => 100.0,
             _                   => 0.5
         };
 
@@ -250,6 +274,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
             SecFocuserTemp  => 2.0,
             SecAmbientTemp  => 2.0,
             SecEccentricity => 0.2,
+            SecAltitude     => 10.0,
+            SecAirmass      => 0.5,
+            SecHumidity     => 10.0,
+            SecFocuserPos   => 100.0,
             _               => 0.5
         };
 
@@ -262,6 +290,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
             PrimaryFocuserTemp  => "Focuser Temp",
             PrimaryAmbientTemp  => "Ambient Temp",
             PrimaryEccentricity => "Eccentricity",
+            PrimaryAltitude     => "Altitude",
+            PrimaryAirmass      => "Airmass",
+            PrimaryHumidity     => "Humidity",
+            PrimaryFocuserPos   => "Focuser Position",
             _                   => "HFR"
         };
 
@@ -272,6 +304,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
             SecFocuserTemp  => "Focuser Temp",
             SecAmbientTemp  => "Ambient Temp",
             SecEccentricity => "Eccentricity",
+            SecAltitude     => "Altitude",
+            SecAirmass      => "Airmass",
+            SecHumidity     => "Humidity",
+            SecFocuserPos   => "Focuser Position",
             _               => ""
         };
 
@@ -282,6 +318,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
             PrimaryFocuserTemp  => "Temp (&#176;C)",
             PrimaryAmbientTemp  => "Temp (&#176;C)",
             PrimaryEccentricity => "Eccentricity",
+            PrimaryAltitude     => "Altitude (&#176;)",
+            PrimaryAirmass      => "Airmass",
+            PrimaryHumidity     => "Humidity (%)",
+            PrimaryFocuserPos   => "Position (steps)",
             _                   => "HFR (px)"
         };
 
@@ -292,8 +332,29 @@ namespace NINA.Plugin.NightSummary.Reporting {
             SecFocuserTemp  => "Temp (&#176;C)",
             SecAmbientTemp  => "Temp (&#176;C)",
             SecEccentricity => "Eccentricity",
+            SecAltitude     => "Altitude (&#176;)",
+            SecAirmass      => "Airmass",
+            SecHumidity     => "Humidity (%)",
+            SecFocuserPos   => "Position (steps)",
             _               => ""
         };
+
+        private static string GetTooltipUnit(int metric, bool isPrimary) {
+            int m = isPrimary ? metric : metric - 1;  // secondary indices are offset by 1
+            return m switch {
+                0 => " px",       // HFR
+                1 => "\"",        // FWHM
+                2 => "\"",        // Guiding RMS
+                3 => " °C",       // Focuser Temp
+                4 => " °C",       // Ambient Temp
+                5 => "",          // Eccentricity
+                6 => "°",         // Altitude
+                7 => "",          // Airmass
+                8 => "%",         // Humidity
+                9 => " steps",    // Focuser Position
+                _ => ""
+            };
+        }
 
         // ── No-data messaging ────────────────────────────────────────────────
 
@@ -304,6 +365,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
             PrimaryFocuserTemp  => "No focuser temperature data recorded",
             PrimaryAmbientTemp  => "No ambient temperature data recorded",
             PrimaryEccentricity => "No eccentricity data \u2014 Hocus Focus plugin required",
+            PrimaryAltitude     => "No altitude data recorded",
+            PrimaryAirmass      => "No airmass data recorded",
+            PrimaryHumidity     => "No humidity data recorded",
+            PrimaryFocuserPos   => "No focuser position data recorded",
             _                   => "No data available"
         };
 
@@ -312,6 +377,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
             PrimaryFocuserTemp  => "Requires focuser with temperature sensor",
             PrimaryAmbientTemp  => "Requires NINA weather data source",
             PrimaryEccentricity => "Requires Hocus Focus plugin",
+            PrimaryHumidity     => "Requires NINA weather data source",
+            PrimaryFocuserPos   => "Requires motorized focuser",
             _                   => null
         };
 
@@ -322,6 +389,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
             SecFocuserTemp  => "No focuser temperature data recorded",
             SecAmbientTemp  => "No ambient temperature data recorded",
             SecEccentricity => "No eccentricity data \u2014 Hocus Focus plugin required",
+            SecAltitude     => "No altitude data recorded",
+            SecAirmass      => "No airmass data recorded",
+            SecHumidity     => "No humidity data recorded",
+            SecFocuserPos   => "No focuser position data recorded",
             _               => ""
         };
 
@@ -330,6 +401,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
             SecFocuserTemp  => "Requires focuser with temperature sensor",
             SecAmbientTemp  => "Requires NINA weather data source",
             SecEccentricity => "Requires Hocus Focus plugin",
+            SecHumidity     => "Requires NINA weather data source",
+            SecFocuserPos   => "Requires motorized focuser",
             _               => null
         };
 

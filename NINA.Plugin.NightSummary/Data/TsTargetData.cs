@@ -33,8 +33,9 @@ namespace NINA.Plugin.NightSummary.Data {
         public string                  TargetName { get; set; }
         public double                  RA         { get; set; }  // decimal hours
         public double                  Dec        { get; set; }  // decimal degrees
-        public double                  Rotation   { get; set; }  // position angle degrees East of North
-        public List<TsFilterProgress>  Filters    { get; set; } = new List<TsFilterProgress>();
+        public double                  Rotation        { get; set; }  // position angle degrees East of North
+        public double                  MinimumAltitude { get; set; }  // degrees; 0 = not set
+        public List<TsFilterProgress>  Filters         { get; set; } = new List<TsFilterProgress>();
     }
 
     // ── TS API response models (for /profiles and /profiles/{id}/preview) ──

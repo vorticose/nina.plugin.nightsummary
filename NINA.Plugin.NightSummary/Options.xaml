@@ -23,7 +23,7 @@
                             <LineBreak />
                             <Run FontWeight="Bold">Standard</Run><Run> — Adds timeline, altitude charts, image quality, per-target image quality, and Target Scheduler bars.</Run>
                             <LineBreak />
-                            <Run FontWeight="Bold">Full</Run><Run> — Adds metric chart and session history.</Run>
+                            <Run FontWeight="Bold">Full</Run><Run> — Adds metric chart, session history, and tonight's preview.</Run>
                         </TextBlock>
                     </StackPanel>
 
@@ -60,6 +60,35 @@
                             </StackPanel.Style>
                             <TextBlock Text="Show Moon Curve" Width="140" VerticalAlignment="Center" />
                             <CheckBox IsChecked="{Binding ShowMoonCurve}" VerticalAlignment="Center" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="20,0,0,0">
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Setter Property="IsEnabled" Value="True"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ShowAltitudeChart}" Value="False">
+                                            <Setter Property="IsEnabled" Value="False"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsTsInstalled}" Value="False">
+                                            <Setter Property="IsEnabled" Value="False"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </StackPanel.Style>
+                            <TextBlock Text="Show Min Altitude" Width="140" VerticalAlignment="Center" />
+                            <CheckBox IsChecked="{Binding ShowMinAltitude}" VerticalAlignment="Center" />
+                            <TextBlock Foreground="Gray" FontSize="11" FontStyle="Italic" Margin="8,0,0,0" VerticalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Text" Value="Uses the minimum altitude set in your Target Scheduler project settings"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsTsInstalled}" Value="False">
+                                                <Setter Property="Text" Value="Target Scheduler not installed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
                         </StackPanel>
                     </StackPanel>
 
@@ -184,6 +213,11 @@
                         <CheckBox IsChecked="{Binding ShowPerTargetIQ}" VerticalAlignment="Center" />
                     </StackPanel>
 
+                    <StackPanel Orientation="Horizontal" Margin="0,4">
+                        <TextBlock Text="Expand Sections by Default" Width="200" VerticalAlignment="Center" />
+                        <CheckBox IsChecked="{Binding ExpandSectionsDefault}" VerticalAlignment="Center" />
+                    </StackPanel>
+
                     <!-- Session History: disabled at Snapshot and Standard -->
                     <StackPanel Orientation="Horizontal" Margin="0,4">
                         <StackPanel.Style>
@@ -250,6 +284,10 @@
                                 <ComboBoxItem>Focuser Temp (°C)</ComboBoxItem>
                                 <ComboBoxItem>Ambient Temp (°C)</ComboBoxItem>
                                 <ComboBoxItem>Eccentricity</ComboBoxItem>
+                                <ComboBoxItem>Altitude (°)</ComboBoxItem>
+                                <ComboBoxItem>Airmass</ComboBoxItem>
+                                <ComboBoxItem>Humidity (%)</ComboBoxItem>
+                                <ComboBoxItem>Focuser Position (steps)</ComboBoxItem>
                             </ComboBox>
                         </StackPanel>
 
@@ -263,21 +301,29 @@
                                 <ComboBoxItem>Focuser Temp (°C)</ComboBoxItem>
                                 <ComboBoxItem>Ambient Temp (°C)</ComboBoxItem>
                                 <ComboBoxItem>Eccentricity</ComboBoxItem>
+                                <ComboBoxItem>Altitude (°)</ComboBoxItem>
+                                <ComboBoxItem>Airmass</ComboBoxItem>
+                                <ComboBoxItem>Humidity (%)</ComboBoxItem>
+                                <ComboBoxItem>Focuser Position (steps)</ComboBoxItem>
                             </ComboBox>
                             <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,2,0,0" MaxWidth="320">
                                 FWHM and Eccentricity require the Hocus Focus plugin. Focuser Temp requires a focuser with a built-in temperature sensor.
-                                Ambient Temp requires a device connected as a NINA weather data source (e.g. Pegasus UPB, AAG CloudWatcher).
+                                Ambient Temp and Humidity require a device connected as a NINA weather data source (e.g. Pegasus UPB, AAG CloudWatcher).
+                                Focuser Position requires a motorized focuser.
                             </TextBlock>
                         </StackPanel>
                     </StackPanel>
 
-                    <!-- Next Night Preview: disabled at Snapshot or if TS not installed -->
+                    <!-- Next Night Preview: disabled at Snapshot and Standard, or if TS not installed -->
                     <StackPanel Orientation="Horizontal" Margin="0,4">
                         <StackPanel.Style>
                             <Style TargetType="StackPanel">
                                 <Setter Property="IsEnabled" Value="True"/>
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding ReportDetailLevel}" Value="0">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding ReportDetailLevel}" Value="1">
                                         <Setter Property="IsEnabled" Value="False"/>
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding IsTsInstalled}" Value="False">
@@ -307,6 +353,12 @@
                             Requires the Target Scheduler API to be enabled. In Target Scheduler, go to Target Management → select your active profile from the dropdown → click the gear icon → API Preferences → enable API.
                             Note: enabling this will increase report generation time as Target Scheduler computes the full night plan.
                         </TextBlock>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                        <TextBlock Width="200" />
+                        <Button Content="Preview Report" Command="{Binding PreviewReportCommand}" Width="180" />
+                        <TextBlock Text="Opens a preview window to test your report settings" Foreground="Gray" FontSize="11" FontStyle="Italic" Margin="12,0,0,0" VerticalAlignment="Center" />
                     </StackPanel>
 
                     <Separator Margin="0,20,0,10" />
@@ -364,8 +416,19 @@
                     <StackPanel Orientation="Horizontal" Margin="0,5">
                         <TextBlock Text="Save Report Locally" Width="200" VerticalAlignment="Center" />
                         <CheckBox IsChecked="{Binding SaveReportLocally}" VerticalAlignment="Center" />
-                        <TextBlock Text="Saves the HTML report to Documents\N.I.N.A.\Night Summary\Saved Reports\ after each session."
+                        <TextBlock Text="Saves the HTML report after each session."
                                    TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,0,0,0" MaxWidth="350" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                        <TextBlock Text="Save Path" Width="200" VerticalAlignment="Center" />
+                        <TextBox Text="{Binding SaveReportPath, UpdateSourceTrigger=LostFocus}" Width="300" VerticalAlignment="Center" />
+                        <Button Content="Browse..." Click="BrowseSaveReportPath_Click" Margin="5,0,0,0" Padding="8,2" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,2,0,8">
+                        <TextBlock Width="200" />
+                        <TextBlock Text="Leave blank to use the default: Documents\N.I.N.A.\Night Summary\Saved Reports\"
+                                   TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="350" />
                     </StackPanel>
 
                     <Separator Margin="0,20,0,10" />

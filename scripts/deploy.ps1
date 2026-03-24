@@ -18,7 +18,7 @@ $projectDir = Join-Path $repoRoot "NINA.Plugin.NightSummary"
 $buildDir   = Join-Path $projectDir "bin\Release\net8.0-windows"
 $zipPath    = Join-Path $PSScriptRoot "NINA.Plugin.NightSummary.zip"
 $manifestPath = Join-Path $repoRoot "manifest.json"
-$ninaPluginDir = Join-Path $env:LOCALAPPDATA "NINA\Plugins\3.0.0\NightSummary"
+$ninaPluginDir = Join-Path $env:LOCALAPPDATA "NINA\Plugins\3.0.0\Night Summary"
 
 # --- Build ---
 Write-Host "Building..." -ForegroundColor Cyan

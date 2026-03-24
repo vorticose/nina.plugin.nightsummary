@@ -121,6 +121,18 @@ namespace NINA.Plugin.NightSummary.MyPluginProperties {
 
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string SaveReportPath {
+            get {
+                return ((string)(this["SaveReportPath"]));
+            }
+            set {
+                this["SaveReportPath"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("False")]
         public bool EmailEnabled {
             get {
@@ -332,6 +344,30 @@ namespace NINA.Plugin.NightSummary.MyPluginProperties {
             }
             set {
                 this["ShowNextNightPreview"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool ShowMinAltitude {
+            get {
+                return ((bool)(this["ShowMinAltitude"]));
+            }
+            set {
+                this["ShowMinAltitude"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool ExpandSectionsDefault {
+            get {
+                return ((bool)(this["ExpandSectionsDefault"]));
+            }
+            set {
+                this["ExpandSectionsDefault"] = value;
             }
         }
 

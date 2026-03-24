@@ -1,6 +1,33 @@
 # Night Summary — Changelog
 
 
+## v2.8.0
+
+**New features**
+- Minimum altitude line on altitude chart — when Target Scheduler is installed, the per-target altitude chart shows a dotted red line at the project's minimum altitude setting, with a new toggle in Options
+- Added 4 new metric chart options: Altitude, Airmass, Humidity, and Focuser Position
+- Added option to expand all report sections by default instead of collapsed
+- Report Preview window — preview your report with real session data or test data directly from the Options page using a built-in viewer
+
+**Improvements**
+- Hover tooltips on metric chart data points show timestamp and value
+- Target Scheduler features now silently skip when TS is not installed instead of showing toast warnings
+- Tonight's Preview section moved from Standard to Full detail level
+
+
+## v2.7.0
+
+**New features**
+- Aborted exposure tracking — detects exposures that were skipped or aborted during the session (e.g. by RMS triggers, safety monitor events, or manual skip) and displays the count in the session overview, email, Discord, and Pushover summaries
+- Save report path override — browse for a custom folder to save local HTML reports instead of the default Documents location
+
+**Improvements**
+- Updated Target Scheduler API enable instructions with more precise navigation steps
+
+**Bug fixes**
+- Fixed HFR units displayed as arcseconds (") instead of pixels (px) in email, Discord, and Pushover text summaries
+
+
 ## v2.6.3
 
 **Improvements**
