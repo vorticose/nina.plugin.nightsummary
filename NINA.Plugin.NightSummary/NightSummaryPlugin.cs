@@ -1,4 +1,5 @@
 using NINA.Core.Utility;
+using NINA.Core.Utility.Notification;
 using NINA.Plugin;
 using NINA.Plugin.Interfaces;
 using NINA.Plugin.NightSummary.MyPluginProperties;
@@ -28,7 +29,6 @@ namespace NINA.Plugin.NightSummary {
         private readonly SessionService sessionService;
         private readonly IProfileService profileService;
         private readonly string liveDbPath;
-
         private ObservableCollection<SessionRecord> _availableSessions = new ObservableCollection<SessionRecord>();
         public ObservableCollection<SessionRecord> AvailableSessions {
             get => _availableSessions;
@@ -148,7 +148,7 @@ namespace NINA.Plugin.NightSummary {
                 TestReportStatus.Text = "";
                 var testDbPath = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "NINA", "Plugins", CoreUtil.Version, "NightSummary", "test", "nightsummary.sqlite");
+                    "NINA", "NightSummary", "test", "nightsummary.sqlite");
 
                 if (!File.Exists(testDbPath)) {
                     Logger.Warning($"NightSummary: Test database not found at {testDbPath}");
@@ -162,7 +162,7 @@ namespace NINA.Plugin.NightSummary {
 
             liveDbPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "NINA", "Plugins", CoreUtil.Version, "NightSummary", "nightsummary.sqlite");
+                "NINA", "NightSummary", "nightsummary.sqlite");
 
             RefreshSessionsCommand = new RelayCommand(async () => {
                 SearchResultText = "";
@@ -224,13 +224,14 @@ namespace NINA.Plugin.NightSummary {
 
             LoadSessions();
             LoadFilterClassifications();
+
             Logger.Info("NightSummary: Plugin initialized successfully");
         }
 
-        public override Task Teardown() {
+        public override async Task Teardown() {
             Settings.Default.Save();
             Logger.Info("NightSummary: Plugin torn down");
-            return base.Teardown();
+            await base.Teardown();
         }
 
         // Settings properties bound to the Options UI
@@ -485,6 +486,15 @@ namespace NINA.Plugin.NightSummary {
             get => Settings.Default.ShowPerTargetIQ;
             set {
                 Settings.Default.ShowPerTargetIQ = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public bool ReportLightMode {
+            get => Settings.Default.ReportLightMode;
+            set {
+                Settings.Default.ReportLightMode = value;
                 Settings.Default.Save();
                 RaisePropertyChanged();
             }

@@ -1,4 +1,5 @@
 using NINA.Plugin.NightSummary.Data;
+using NINA.Plugin.NightSummary.MyPluginProperties;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -45,16 +46,18 @@ namespace NINA.Plugin.NightSummary.Reporting {
         private const int PadTop       = 20;
         private const int PadBottom    = 45;
 
-        private const string ColorBackground   = "#1a1a2e";
-        private const string ColorGrid         = "#2a2a4a";
-        private const string ColorAxis         = "#555577";
-        private const string ColorPrimary      = "#7eb8f7";
-        private const string ColorPrimaryDot   = "#a8d4ff";
-        private const string ColorSecondary    = "#f7a87e";
-        private const string ColorSecondaryDot = "#ffd4a8";
-        private const string ColorLabel        = "#aaaacc";
-        private const string ColorWarning      = "#f7a87e";
-        private const string ColorWarningBg    = "#3a1e00";
+        private static bool IsLight => Settings.Default.ReportLightMode;
+
+        private static string ColorBackground   => IsLight ? "#f5f5f5" : "#1a1a2e";
+        private static string ColorGrid         => IsLight ? "#c8cdd4" : "#2a2a4a";
+        private static string ColorAxis         => IsLight ? "#666688" : "#555577";
+        private static string ColorPrimary      => IsLight ? "#2563b8" : "#7eb8f7";
+        private static string ColorPrimaryDot   => IsLight ? "#1a4f9e" : "#a8d4ff";
+        private static string ColorSecondary    => IsLight ? "#d47020" : "#f7a87e";
+        private static string ColorSecondaryDot => IsLight ? "#b85c10" : "#ffd4a8";
+        private static string ColorLabel        => IsLight ? "#555577" : "#aaaacc";
+        private static string ColorWarning      => IsLight ? "#d47020" : "#f7a87e";
+        private static string ColorWarningBg    => IsLight ? "#fff3cd" : "#3a1e00";
 
         /// <summary>
         /// Returns the chart section heading based on configured metrics.

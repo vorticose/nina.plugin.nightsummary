@@ -29,7 +29,7 @@ namespace NINA.Plugin.NightSummary {
             Loaded += async (s, e) => {
                 var userDataFolder = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "NINA", "Plugins", CoreUtil.Version, "NightSummary", "WebView2");
+                    "NINA", "NightSummary", "WebView2");
                 Directory.CreateDirectory(userDataFolder);
                 var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
                 await PreviewWebView.EnsureCoreWebView2Async(env);
@@ -43,7 +43,7 @@ namespace NINA.Plugin.NightSummary {
             // Live sessions
             var liveDbPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "NINA", "Plugins", CoreUtil.Version, "NightSummary", "nightsummary.sqlite");
+                "NINA", "NightSummary", "nightsummary.sqlite");
 
             if (File.Exists(liveDbPath)) {
                 try {
@@ -65,7 +65,7 @@ namespace NINA.Plugin.NightSummary {
             // Test data
             var testDbPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "NINA", "Plugins", CoreUtil.Version, "NightSummary", "test", "nightsummary.sqlite");
+                "NINA", "NightSummary", "test", "nightsummary.sqlite");
 
             if (File.Exists(testDbPath)) {
                 sources.Add(new PreviewSource {

@@ -19,6 +19,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
     public class ReportGenerator {
 
         private static readonly HttpClient Http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        private static readonly HttpClient SkyViewHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
         private static readonly HttpClient TsApiClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
 
         /// <summary>
@@ -26,6 +27,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// Cleared at the start of each GenerateHtmlReport call.
         /// </summary>
         public List<string> Warnings { get; } = new List<string>();
+
+        // SVG theme colors (set at the start of each report generation)
+        private string svgBg, svgBorder, svgMuted, svgDim, svgAccent, svgChartBg, svgChartDark;
 
         // Lazily-loaded plugin icon as a base64 data URI (embedded resource)
         private static string? _iconDataUri;
@@ -57,55 +61,75 @@ namespace NINA.Plugin.NightSummary.Reporting {
             FilterHelper.ReloadOverrides();
             var sb = new StringBuilder();
 
+            bool lightMode = Settings.Default.ReportLightMode;
+
+            // Set SVG theme colors (SVG attributes can't use CSS variables)
+            // Altitude chart keeps dark background in both modes for better line visibility
+            if (lightMode) {
+                svgBg = "#f5f5f5"; svgBorder = "#c0c8d4"; svgMuted = "#666"; svgDim = "#888";
+                svgAccent = "#2563b8"; svgChartBg = "#0d1117"; svgChartDark = "#0f0f23";
+            } else {
+                svgBg = "#1a1a2e"; svgBorder = "#2d2d5e"; svgMuted = "#888"; svgDim = "#555";
+                svgAccent = "#7eb8f7"; svgChartBg = "#0d1117"; svgChartDark = "#0f0f23";
+            }
+
             sb.AppendLine("<!DOCTYPE html>");
             sb.AppendLine("<html><head><meta charset='UTF-8'><style>");
-            sb.AppendLine("body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background-color: #1a1a2e; color: #e0e0e0; }");
-            sb.AppendLine("h1 { color: #7eb8f7; border-bottom: 2px solid #7eb8f7; padding-bottom: 10px; }");
-            sb.AppendLine("h2 { color: #a0c4ff; margin-top: 30px; }");
-            sb.AppendLine("h3 { color: #c0d8ff; }");
+
+            // Theme colors via CSS custom properties
+            if (lightMode) {
+                sb.AppendLine(":root { --bg: #f5f5f5; --text: #1a1a2e; --accent: #2563b8; --accent-light: #3b7dd8; --accent-lighter: #5a9ae6; --surface: #e8ecf1; --border: #c0c8d4; --muted: #666; --dim: #888; --chart-bg: #e0e4ea; --chart-dark: #d0d4da; --bar-acquired: #8bb0d4; --warn-bg: #fff3cd; --warn-border: #d4a850; --warn-text: #856404; --warn-item: #6d5200; --skip-color: #cc3333; }");
+            } else {
+                sb.AppendLine(":root { --bg: #1a1a2e; --text: #e0e0e0; --accent: #7eb8f7; --accent-light: #a0c4ff; --accent-lighter: #c0d8ff; --surface: #16213e; --border: #2d2d5e; --muted: #888; --dim: #555; --chart-bg: #0d1117; --chart-dark: #0f0f23; --bar-acquired: #3a5a7a; --warn-bg: #3a2a00; --warn-border: #b8860b; --warn-text: #f0c040; --warn-item: #d4a850; --skip-color: #cc6666; }");
+            }
+
+            sb.AppendLine("body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background-color: var(--bg); color: var(--text); }");
+            sb.AppendLine("h1 { color: var(--accent); border-bottom: 2px solid var(--accent); padding-bottom: 10px; }");
+            sb.AppendLine("h2 { color: var(--accent-light); margin-top: 30px; }");
+            sb.AppendLine("h3 { color: var(--accent-lighter); }");
             sb.AppendLine("table { width: 100%; border-collapse: collapse; margin-top: 10px; }");
-            sb.AppendLine("th { background-color: #2d2d5e; color: #7eb8f7; padding: 8px; text-align: left; }");
-            sb.AppendLine("td { padding: 8px; border-bottom: 1px solid #2d2d5e; }");
-            sb.AppendLine("tr:nth-child(even) { background-color: #16213e; }");
-            sb.AppendLine(".stat-box { background-color: #16213e; border: 1px solid #2d2d5e; border-radius: 8px; padding: 15px; text-align: center; }");
-            sb.AppendLine(".stat-value { font-size: 24px; color: #7eb8f7; font-weight: bold; }");
-            sb.AppendLine(".stat-label { font-size: 12px; color: #888; margin-top: 5px; }");
+            sb.AppendLine("th { background-color: var(--border); color: var(--accent); padding: 8px; text-align: left; }");
+            sb.AppendLine("td { padding: 8px; border-bottom: 1px solid var(--border); }");
+            sb.AppendLine("tr:nth-child(even) { background-color: var(--surface); }");
+            sb.AppendLine(".stat-box { background-color: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 15px; text-align: center; }");
+            sb.AppendLine(".stat-value { font-size: 24px; color: var(--accent); font-weight: bold; }");
+            sb.AppendLine(".stat-label { font-size: 12px; color: var(--muted); margin-top: 5px; }");
             sb.AppendLine(".star-count-table { width: auto; margin-top: 8px; }");
-            sb.AppendLine(".footnote { color: #555; font-size: 12px; margin-top: 40px; }");
-            sb.AppendLine(".target-section { border-top: 1px solid #2d2d5e; margin-top: 24px; padding-top: 16px; }");
-            sb.AppendLine(".timeline-container { background-color: #16213e; border: 1px solid #2d2d5e; border-radius: 8px; padding: 16px; margin: 16px 0; }");
+            sb.AppendLine(".footnote { color: var(--dim); font-size: 12px; margin-top: 40px; }");
+            sb.AppendLine(".target-section { border-top: 1px solid var(--border); margin-top: 24px; padding-top: 16px; }");
+            sb.AppendLine(".timeline-container { background-color: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin: 16px 0; }");
             sb.AppendLine(".ts-target-header { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 12px; flex-wrap: wrap; }");
             sb.AppendLine(".ts-thumb-wrap { position: relative; width: 200px; height: 200px; flex-shrink: 0; }");
-            sb.AppendLine(".ts-thumb-wrap img { width: 200px; height: 200px; border-radius: 6px; border: 1px solid #2d2d5e; display: block; }");
+            sb.AppendLine(".ts-thumb-wrap img { width: 200px; height: 200px; border-radius: 6px; border: 1px solid var(--border); display: block; }");
             sb.AppendLine(".ts-thumb-wrap svg { position: absolute; top: 0; left: 0; border-radius: 6px; }");
             sb.AppendLine(".ts-target-info { flex: 1; }");
-            sb.AppendLine(".ts-coords { font-size: 12px; color: #888; margin: 4px 0 12px; }");
+            sb.AppendLine(".ts-coords { font-size: 12px; color: var(--muted); margin: 4px 0 12px; }");
             sb.AppendLine(".ts-filter-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }");
-            sb.AppendLine(".ts-filter-name { width: 180px; min-width: 180px; max-width: 180px; font-size: 13px; color: #a0c4ff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0; }");
-            sb.AppendLine(".ts-bar-track { flex: 1; height: 14px; background: #2d2d5e; border-radius: 4px; position: relative; overflow: hidden; }");
-            sb.AppendLine(".ts-bar-accepted { position: absolute; left: 0; top: 0; bottom: 0; background: #7eb8f7; }");
-            sb.AppendLine(".ts-bar-acquired { position: absolute; top: 0; bottom: 0; background: #3a5a7a; }");
-            sb.AppendLine(".ts-bar-label { font-size: 12px; color: #888; white-space: nowrap; width: 150px; min-width: 150px; max-width: 150px; text-align: right; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; }");
-            sb.AppendLine(".ts-cumulative { font-size: 12px; color: #888; margin-top: 12px; }");
+            sb.AppendLine(".ts-filter-name { width: 180px; min-width: 180px; max-width: 180px; font-size: 13px; color: var(--accent-light); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0; }");
+            sb.AppendLine(".ts-bar-track { flex: 1; height: 14px; background: var(--border); border-radius: 4px; position: relative; overflow: hidden; }");
+            sb.AppendLine(".ts-bar-accepted { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); }");
+            sb.AppendLine(".ts-bar-acquired { position: absolute; top: 0; bottom: 0; background: var(--bar-acquired); }");
+            sb.AppendLine(".ts-bar-label { font-size: 12px; color: var(--muted); white-space: nowrap; width: 150px; min-width: 150px; max-width: 150px; text-align: right; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; }");
+            sb.AppendLine(".ts-cumulative { font-size: 12px; color: var(--muted); margin-top: 12px; }");
             sb.AppendLine("details.history-section { margin-top: 12px; }");
-            sb.AppendLine("details.history-section > summary { cursor: pointer; color: #a0c4ff; font-size: 14px; font-weight: bold; list-style: none; }");
+            sb.AppendLine("details.history-section > summary { cursor: pointer; color: var(--accent-light); font-size: 14px; font-weight: bold; list-style: none; }");
             sb.AppendLine("details.history-section > summary::-webkit-details-marker { display: none; }");
             sb.AppendLine("details.history-section > summary::before { content: '\\25B6\\00A0'; }");
             sb.AppendLine("details.history-section[open] > summary::before { content: '\\25BC\\00A0'; }");
             sb.AppendLine("details.iq-section { margin-top: 12px; }");
-            sb.AppendLine("details.iq-section > summary { cursor: pointer; color: #a0c4ff; font-size: 14px; font-weight: bold; list-style: none; }");
+            sb.AppendLine("details.iq-section > summary { cursor: pointer; color: var(--accent-light); font-size: 14px; font-weight: bold; list-style: none; }");
             sb.AppendLine("details.iq-section > summary::-webkit-details-marker { display: none; }");
             sb.AppendLine("details.iq-section > summary::before { content: '\\25B6\\00A0'; }");
             sb.AppendLine("details.iq-section[open] > summary::before { content: '\\25BC\\00A0'; }");
             sb.AppendLine(".iq-table { width: 100%; margin-top: 8px; }");
             sb.AppendLine(".iq-row-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr; }");
-            sb.AppendLine(".iq-header { background-color: #2d2d5e; color: #7eb8f7; padding: 8px; text-align: left; font-weight: bold; }");
-            sb.AppendLine(".iq-cell { padding: 8px; border-bottom: 1px solid #2d2d5e; }");
-            sb.AppendLine(".iq-row-even .iq-cell { background-color: #16213e; }");
+            sb.AppendLine(".iq-header { background-color: var(--border); color: var(--accent); padding: 8px; text-align: left; font-weight: bold; }");
+            sb.AppendLine(".iq-cell { padding: 8px; border-bottom: 1px solid var(--border); }");
+            sb.AppendLine(".iq-row-even .iq-cell { background-color: var(--surface); }");
             sb.AppendLine("details.iq-row { margin: 0; }");
             sb.AppendLine("details.iq-row > summary { list-style: none; cursor: pointer; }");
             sb.AppendLine("details.iq-row > summary::-webkit-details-marker { display: none; }");
-            sb.AppendLine(".iq-arrow::after { content: ' \\25B6'; font-size: 10px; color: #a0c4ff; }");
+            sb.AppendLine(".iq-arrow::after { content: ' \\25B6'; font-size: 10px; color: var(--accent-light); }");
             sb.AppendLine("details.iq-row[open] .iq-arrow::after { content: ' \\25BC'; }");
             sb.AppendLine(".iq-expand { padding: 0 8px 8px; }");
             sb.AppendLine("</style></head><body>");
@@ -136,9 +160,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var html = sb.ToString();
             if (Warnings.Any()) {
                 var warningHtml = new StringBuilder();
-                warningHtml.AppendLine("<div style='background-color:#3a2a00; border:1px solid #b8860b; border-radius:8px; padding:12px 16px; margin:16px 0;'>");
-                warningHtml.AppendLine("<p style='color:#f0c040; font-weight:bold; margin:0 0 8px;'>&#9888; Report generated with warnings:</p>");
-                warningHtml.AppendLine("<ul style='margin:0; padding-left:20px; color:#d4a850;'>");
+                warningHtml.AppendLine("<div style='background-color:var(--warn-bg); border:1px solid var(--warn-border); border-radius:8px; padding:12px 16px; margin:16px 0;'>");
+                warningHtml.AppendLine("<p style='color:var(--warn-text); font-weight:bold; margin:0 0 8px;'>&#9888; Report generated with warnings:</p>");
+                warningHtml.AppendLine("<ul style='margin:0; padding-left:20px; color:var(--warn-item);'>");
                 foreach (var warning in Warnings)
                     warningHtml.AppendLine($"<li style='margin:2px 0; font-size:13px;'>{warning}</li>");
                 warningHtml.AppendLine("</ul></div>");
@@ -154,7 +178,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var sb = new StringBuilder();
             var icon = IconDataUri;
             if (icon != null) {
-                sb.AppendLine("<div style='display:flex; align-items:center; gap:14px; border-bottom:2px solid #7eb8f7; padding-bottom:10px; margin-bottom:8px;'>");
+                sb.AppendLine("<div style='display:flex; align-items:center; gap:14px; border-bottom:2px solid var(--accent); padding-bottom:10px; margin-bottom:8px;'>");
                 sb.AppendLine($"  <img src='{icon}' alt='Night Summary' style='width:48px; height:48px; border-radius:6px; flex-shrink:0;' />");
                 sb.AppendLine("  <h1 style='margin:0; border:none; padding:0;'>Night Summary Report</h1>");
                 sb.AppendLine("</div>");
@@ -189,7 +213,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("<h2>Session Overview</h2>");
             sb.AppendLine($"<div style='display:grid; grid-template-columns:repeat({gridCols},1fr); gap:10px; margin:10px 0;'>");
             var imagesValue = data.SkippedExposures > 0
-                ? $"{data.Images.Count} <span style='font-size:60%; color:#cc6666;'>({data.SkippedExposures} aborted)</span>"
+                ? $"{data.Images.Count} <span style='font-size:60%; color:var(--skip-color);'>({data.SkippedExposures} aborted)</span>"
                 : $"{data.Images.Count}";
             sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{imagesValue}</div><div class='stat-label'>Total Images</div></div>");
             sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{TimeSpan.FromSeconds(totalExposureSec).TotalHours:F1}h</div><div class='stat-label'>Total Exposure</div></div>");
@@ -211,7 +235,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
             sb.AppendLine("</div>");
             if (detailLevel >= 2 && !hasSafetyMonitor)
-                sb.AppendLine("<p style='font-size:11px; color:#666; margin-top:4px;'>* Yield calculated without cloud exclusion — no safety monitor events recorded</p>");
+                sb.AppendLine("<p style='font-size:11px; color:var(--muted); margin-top:4px;'>* Yield calculated without cloud exclusion — no safety monitor events recorded</p>");
             return sb.ToString();
         }
 
@@ -233,6 +257,39 @@ namespace NINA.Plugin.NightSummary.Reporting {
             double boxH = (fovH / thumbFov) * thumbPx;
             double cx   = thumbPx / 2.0;
             double cy   = thumbPx / 2.0;
+
+            // ── Pre-fetch all sky thumbnails in parallel ──────────────────────
+            var thumbResults = new Dictionary<string, (string imgSrc, bool usedFallback)>();
+            if (Settings.Default.ShowSkyThumbnails) {
+                var thumbTasks = new List<(string targetName, double raDeg, double decD, Task<(string imgSrc, bool usedFallback)> task)>();
+
+                foreach (var target in targets) {
+                    var tsT = data.TsData?.FirstOrDefault(t =>
+                        string.Equals(t.TargetName, target.Key, StringComparison.OrdinalIgnoreCase));
+                    double ra = 0, dec = 0;
+                    if (tsT != null && (tsT.RA != 0 || tsT.Dec != 0)) { ra = tsT.RA; dec = tsT.Dec; }
+                    else { var ci = target.FirstOrDefault(i => i.RaHours != 0 || i.DecDegrees != 0); if (ci != null) { ra = ci.RaHours; dec = ci.DecDegrees; } }
+
+                    if (ra == 0 && dec == 0) continue;
+
+                    var raDeg = ra * 15.0;
+                    thumbTasks.Add((target.Key, raDeg, dec, FetchThumbnailAsync(target.Key, raDeg, dec, fetchPx, thumbFov)));
+                }
+
+                if (thumbTasks.Any()) {
+                    Logger.Info($"NightSummary: Fetching {thumbTasks.Count} sky thumbnail(s) in parallel...");
+                    await Task.WhenAll(thumbTasks.Select(t => t.task));
+                    bool anyFallback = false;
+                    foreach (var t in thumbTasks) {
+                        var result = t.task.Result;
+                        thumbResults[t.targetName] = result;
+                        if (result.usedFallback) anyFallback = true;
+                    }
+                    if (anyFallback) {
+                        Warnings.Add("Sky thumbnails loaded from fallback survey (NASA SkyView DSS2 Red) — images are monochrome because the primary color service (CDS) is unavailable");
+                    }
+                }
+            }
 
             foreach (var target in targets) {
                 var tsTarget = data.TsData?.FirstOrDefault(t =>
@@ -258,11 +315,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     var sessMid    = targetImgStart.AddMinutes((targetImgEnd - targetImgStart).TotalMinutes / 2);
                     var (moonRa, moonDec) = AltitudeCalculator.GetMoonPosition(sessMid.ToUniversalTime());
                     double moonSep = AltitudeCalculator.AngularSeparation(raH, decD, moonRa, moonDec);
-                    h3Subtitle = $" <span style='font-weight:normal; font-size:12px; color:#888;'>" +
+                    h3Subtitle = $" <span style='font-weight:normal; font-size:12px; color:var(--muted);'>" +
                                  $"— {timePart} &nbsp;·&nbsp; R.A. {FormatRA(raH)} &nbsp;·&nbsp; Dec. {FormatDec(decD)} &nbsp;·&nbsp; &#127769; &#8596; {moonSep:F0}&#176;" +
                                  $"</span>";
                 } else {
-                    h3Subtitle = $" <span style='font-weight:normal; font-size:12px; color:#888;'>— {timePart}</span>";
+                    h3Subtitle = $" <span style='font-weight:normal; font-size:12px; color:var(--muted);'>— {timePart}</span>";
                 }
 
                 sb.AppendLine("<div class='target-section'>");
@@ -271,26 +328,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 bool showThumb         = (raH != 0 || decD != 0) && Settings.Default.ShowSkyThumbnails;
                 bool showSideBySideChart = (raH != 0 || decD != 0) && detailLevel >= 1 && Settings.Default.ShowAltitudeChart;
 
-                // Pre-build thumbnail HTML so it can be placed in either layout
+                // Build thumbnail HTML from pre-fetched results
                 string thumbHtml = "";
-                if (showThumb) {
-                    var tSb     = new StringBuilder();
-                    var raDeg   = raH * 15.0;
-                    var thumbUrl = $"https://alasky.cds.unistra.fr/hips-image-services/hips2fits" +
-                                   $"?hips=CDS%2FP%2FDSS2%2Fcolor&width={fetchPx}&height={fetchPx}" +
-                                   $"&fov={thumbFov:F4}&ra={raDeg:F6}&dec={decD:F6}" +
-                                   $"&projection=TAN&format=jpg";
+                if (showThumb && thumbResults.TryGetValue(target.Key, out var thumbResult)) {
+                    var tSb = new StringBuilder();
                     var svgAngle = tsTarget != null ? -tsTarget.Rotation : 0.0;
-                    string imgSrc = thumbUrl;
-                    try {
-                        var bytes = await Http.GetByteArrayAsync(thumbUrl);
-                        imgSrc = "data:image/jpeg;base64," + Convert.ToBase64String(bytes);
-                    } catch (Exception ex) {
-                        Logger.Warning($"NightSummary: DSS thumbnail fetch failed for {target.Key}. {ex.Message}");
-                        Warnings.Add($"Sky thumbnail for {target.Key} could not be loaded — falling back to remote URL (requires internet access to display)");
-                    }
                     tSb.AppendLine($"<div class='ts-thumb-wrap'>");
-                    tSb.AppendLine($"  <img src='{imgSrc}' alt='{target.Key}' />");
+                    tSb.AppendLine($"  <img src='{thumbResult.imgSrc}' alt='{target.Key}' />");
                     tSb.AppendLine($"  <svg width='{thumbPx}' height='{thumbPx}' xmlns='http://www.w3.org/2000/svg'>");
                     tSb.AppendLine($"    <rect x='{(cx - boxW / 2):F1}' y='{(cy - boxH / 2):F1}' width='{boxW:F1}' height='{boxH:F1}'");
                     tSb.AppendLine($"          fill='none' stroke='#7eb8f7' stroke-width='1.5' opacity='0.85'");
@@ -345,7 +389,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     string narrowbandCV = narrowbandImages.Count >= 2 ? $"{CV(narrowbandImages.Select(i => (double)i.StarCount).ToList()):F0}%" : "—";
                     var cvTooltip = "CV (Coefficient of Variation) measures consistency as a percentage of the mean. Lower values indicate more stable conditions. Star count CV is calculated per target and filter type.";
                     sb.AppendLine($"<div title='{cvTooltip}' style='cursor:help;'>");
-                    sb.AppendLine("<p style='margin: 12px 0 4px; font-size: 13px; color: #a0c4ff;'><strong>Star Count Consistency</strong></p>");
+                    sb.AppendLine("<p style='margin: 12px 0 4px; font-size: 13px; color: var(--accent-light);'><strong>Star Count Consistency</strong></p>");
                     sb.AppendLine("<table class='star-count-table'>");
                     sb.AppendLine("<tr><th>Broadband CV</th><th>Narrowband CV</th></tr>");
                     sb.AppendLine($"<tr><td>{broadbandCV}</td><td>{narrowbandCV}</td></tr>");
@@ -362,7 +406,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     if (unrecognizedFilters.Any()) {
                         var filterList = string.Join(", ", unrecognizedFilters.Select(f => $"<strong>{f}</strong>"));
                         var filterListPlain = string.Join(", ", unrecognizedFilters);
-                        sb.AppendLine($"<p style='font-size:11px; color:#b8860b; margin-top:6px;'>&#9888; Filter{(unrecognizedFilters.Count == 1 ? "" : "s")} not recognized and excluded from CV calculation: {filterList}. Filters are classified by first letter — broadband (L, R, G, B) and narrowband (H, S, O). You can manually classify filters in Night Summary Options → Filter Classification.</p>");
+                        sb.AppendLine($"<p style='font-size:11px; color:var(--warn-border); margin-top:6px;'>&#9888; Filter{(unrecognizedFilters.Count == 1 ? "" : "s")} not recognized and excluded from CV calculation: {filterList}. Filters are classified by first letter — broadband (L, R, G, B) and narrowband (H, S, O). You can manually classify filters in Night Summary Options → Filter Classification.</p>");
                         Warnings.Add($"Unrecognized filter{(unrecognizedFilters.Count == 1 ? "" : "s")} excluded from CV calculation: {filterListPlain}");
                     }
                 }
@@ -412,7 +456,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 }
                 if (tsTarget != null && detailLevel >= 1 && Settings.Default.ShowTSProgressBars) {
                     // TS progress bars — one per exposure plan row (template + filter)
-                    sb.AppendLine("<p style='margin: 12px 0 4px; font-size: 13px; color: #a0c4ff;'><strong>Target Scheduler Progress</strong></p>");
+                    sb.AppendLine("<p style='margin: 12px 0 4px; font-size: 13px; color: var(--accent-light);'><strong>Target Scheduler Progress</strong></p>");
                     double totalIntegrationSec = 0;
                     foreach (var f in tsTarget.Filters.OrderBy(f => FilterSortKey(f.Filter)).ThenBy(f => f.Filter).ThenBy(f => f.TemplateName)) {
                         var desired     = f.Desired;
@@ -493,7 +537,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 foreach (var g in hfrFilters) {
                     var vals  = g.Select(i => i.HFR).ToList();
                     var cvStr = vals.Count >= 2 ? $"{CV(vals):F0}%" : "—";
-                    sb.AppendLine($"<tr><td>{g.Key} <span style='color:#7eb8f7;font-style:italic;'>({vals.Count})</span></td><td>{vals.Min():F2}px</td><td>{vals.Max():F2}px</td><td>{vals.Average():F2}px</td><td>{cvStr}</td></tr>");
+                    sb.AppendLine($"<tr><td>{g.Key} <span style='color:var(--accent);font-style:italic;'>({vals.Count})</span></td><td>{vals.Min():F2}px</td><td>{vals.Max():F2}px</td><td>{vals.Average():F2}px</td><td>{cvStr}</td></tr>");
                 }
                 sb.AppendLine("</table></div></details>");
                 rowIdx++;
@@ -512,7 +556,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 foreach (var g in fwhmFilters) {
                     var vals  = g.Select(i => i.FWHM).ToList();
                     var cvStr = vals.Count >= 2 ? $"{CV(vals):F0}%" : "—";
-                    sb.AppendLine($"<tr><td>{g.Key} <span style='color:#7eb8f7;font-style:italic;'>({vals.Count})</span></td><td>{vals.Min():F2}\"</td><td>{vals.Max():F2}\"</td><td>{vals.Average():F2}\"</td><td>{cvStr}</td></tr>");
+                    sb.AppendLine($"<tr><td>{g.Key} <span style='color:var(--accent);font-style:italic;'>({vals.Count})</span></td><td>{vals.Min():F2}\"</td><td>{vals.Max():F2}\"</td><td>{vals.Average():F2}\"</td><td>{cvStr}</td></tr>");
                 }
                 sb.AppendLine("</table></div></details>");
                 rowIdx++;
@@ -637,21 +681,24 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var sb = new StringBuilder();
             sb.AppendLine($"<svg viewBox='0 0 {svgW} {svgH}' width='102%' height='{svgH}' xmlns='http://www.w3.org/2000/svg' style='display:block;' preserveAspectRatio='none'>");
 
+            // Altitude chart always uses dark palette internally for contrast
+            string altGrid = "#2d2d5e", altLabel = "#555", altAccent = "#7eb8f7";
+
             // Background
-            sb.AppendLine($"<rect x='{padL}' y='{padT}' width='{plotW}' height='{plotH}' fill='#0d1117' rx='4'/>");
-            sb.AppendLine($"<rect x='{padL}' y='{padT}' width='{plotW}' height='{plotH}' fill='none' stroke='#2d2d5e' stroke-width='1' rx='4'/>");
+            sb.AppendLine($"<rect x='{padL}' y='{padT}' width='{plotW}' height='{plotH}' fill='{svgChartBg}' rx='4'/>");
+            sb.AppendLine($"<rect x='{padL}' y='{padT}' width='{plotW}' height='{plotH}' fill='none' stroke='{altGrid}' stroke-width='1' rx='4'/>");
 
             // Session window subtle highlight
-            sb.AppendLine($"<rect x='{xSessStart:F1}' y='{padT}' width='{(xSessEnd - xSessStart):F1}' height='{plotH}' fill='#7eb8f7' opacity='0.07'/>");
+            sb.AppendLine($"<rect x='{xSessStart:F1}' y='{padT}' width='{(xSessEnd - xSessStart):F1}' height='{plotH}' fill='{altAccent}' opacity='0.07'/>");
 
             // Grid lines at 30° and 60°
             foreach (var gridAlt in new[] { 30.0, 60.0 }) {
                 double gy = Y(gridAlt);
-                sb.AppendLine($"<line x1='{padL}' y1='{gy:F1}' x2='{padL + plotW}' y2='{gy:F1}' stroke='#2d2d5e' stroke-width='1'/>");
-                sb.AppendLine($"<text x='{padL - 4}' y='{gy + 4:F1}' text-anchor='end' font-size='10' fill='#555'>{gridAlt:F0}°</text>");
+                sb.AppendLine($"<line x1='{padL}' y1='{gy:F1}' x2='{padL + plotW}' y2='{gy:F1}' stroke='{altGrid}' stroke-width='1'/>");
+                sb.AppendLine($"<text x='{padL - 4}' y='{gy + 4:F1}' text-anchor='end' font-size='10' fill='{altLabel}'>{gridAlt:F0}°</text>");
             }
-            sb.AppendLine($"<text x='{padL - 4}' y='{padT + 4}' text-anchor='end' font-size='10' fill='#555'>90°</text>");
-            sb.AppendLine($"<text x='{padL - 4}' y='{padT + plotH + 4}' text-anchor='end' font-size='10' fill='#555'>0°</text>");
+            sb.AppendLine($"<text x='{padL - 4}' y='{padT + 4}' text-anchor='end' font-size='10' fill='{altLabel}'>90°</text>");
+            sb.AppendLine($"<text x='{padL - 4}' y='{padT + plotH + 4}' text-anchor='end' font-size='10' fill='{altLabel}'>0°</text>");
 
             // Minimum altitude line (from Target Scheduler)
             if (minimumAltitude > 0 && minimumAltitude < maxAlt) {
@@ -666,7 +713,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var pts = new StringBuilder();
                 foreach (var (t, alt) in seg)
                     pts.Append($"{X(t):F1},{Y(alt):F1} ");
-                sb.AppendLine($"<polyline points='{pts}' fill='none' stroke='#7eb8f7' stroke-width='2'/>");
+                sb.AppendLine($"<polyline points='{pts}' fill='none' stroke='{altAccent}' stroke-width='2'/>");
             }
 
             // ── Moon altitude curve ──────────────────────────────────────────────
@@ -697,15 +744,15 @@ namespace NINA.Plugin.NightSummary.Reporting {
             // Session start line with tooltip
             sb.AppendLine("<g>");
             sb.AppendLine($"  <title>Start: {sessionStart:HH:mm}</title>");
-            sb.AppendLine($"  <line x1='{xSessStart:F1}' y1='{padT}' x2='{xSessStart:F1}' y2='{padT + plotH}' stroke='#7eb8f7' stroke-width='1.5' stroke-dasharray='4,3' opacity='0.7'/>");
-            sb.AppendLine($"  <text x='{xSessStart:F1}' y='{padT - 5}' text-anchor='middle' font-size='9' fill='#7eb8f7'>Start</text>");
+            sb.AppendLine($"  <line x1='{xSessStart:F1}' y1='{padT}' x2='{xSessStart:F1}' y2='{padT + plotH}' stroke='{altAccent}' stroke-width='1.5' stroke-dasharray='4,3' opacity='0.7'/>");
+            sb.AppendLine($"  <text x='{xSessStart:F1}' y='{padT - 5}' text-anchor='middle' font-size='9' fill='{altAccent}'>Start</text>");
             sb.AppendLine("</g>");
 
             // Session end line with tooltip
             sb.AppendLine("<g>");
             sb.AppendLine($"  <title>End: {sessionEnd:HH:mm}</title>");
-            sb.AppendLine($"  <line x1='{xSessEnd:F1}' y1='{padT}' x2='{xSessEnd:F1}' y2='{padT + plotH}' stroke='#7eb8f7' stroke-width='1.5' stroke-dasharray='4,3' opacity='0.7'/>");
-            sb.AppendLine($"  <text x='{xSessEnd:F1}' y='{padT - 5}' text-anchor='middle' font-size='9' fill='#7eb8f7'>End</text>");
+            sb.AppendLine($"  <line x1='{xSessEnd:F1}' y1='{padT}' x2='{xSessEnd:F1}' y2='{padT + plotH}' stroke='{altAccent}' stroke-width='1.5' stroke-dasharray='4,3' opacity='0.7'/>");
+            sb.AppendLine($"  <text x='{xSessEnd:F1}' y='{padT - 5}' text-anchor='middle' font-size='9' fill='{altAccent}'>End</text>");
             sb.AppendLine("</g>");
 
             // Sunset / sunrise edge markers
@@ -713,14 +760,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine($"<text x='{padL + plotW - 2}' y='{padT + plotH - 4}' text-anchor='end' font-size='10' fill='#f59e0b' opacity='0.8'>Sunrise {dayEnd:HH:mm} &#9650;</text>");
 
             // X-axis time labels — edge labels + intermediate ticks every 2h
-            sb.AppendLine($"<text x='{padL}' y='{timeLabelY}' text-anchor='start' font-size='10' fill='#888'>{dayStart:HH:mm}</text>");
-            sb.AppendLine($"<text x='{padL + plotW}' y='{timeLabelY}' text-anchor='end' font-size='10' fill='#888'>{dayEnd:HH:mm}</text>");
+            sb.AppendLine($"<text x='{padL}' y='{timeLabelY}' text-anchor='start' font-size='10' fill='{altLabel}'>{dayStart:HH:mm}</text>");
+            sb.AppendLine($"<text x='{padL + plotW}' y='{timeLabelY}' text-anchor='end' font-size='10' fill='{altLabel}'>{dayEnd:HH:mm}</text>");
             var firstTick = new DateTime(dayStart.Year, dayStart.Month, dayStart.Day, dayStart.Hour, 0, 0).AddHours(compact ? 4 : 2);
             if (firstTick <= dayStart) firstTick = firstTick.AddHours(compact ? 4 : 2);
             for (var tick = firstTick; tick < dayEnd; tick = tick.AddHours(compact ? 4 : 2)) {
                 double tx = X(tick);
                 if (tx - padL > 30 && (padL + plotW) - tx > 30)
-                    sb.AppendLine($"<text x='{tx:F1}' y='{timeLabelY}' text-anchor='middle' font-size='10' fill='#888'>{tick:HH:mm}</text>");
+                    sb.AppendLine($"<text x='{tx:F1}' y='{timeLabelY}' text-anchor='middle' font-size='10' fill='{altLabel}'>{tick:HH:mm}</text>");
             }
 
             sb.AppendLine("</svg>");
@@ -734,7 +781,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
         private string PreviewNotice(string message) {
             Warnings.Add($"Tonight's Preview: {message}");
-            return $"<div class='target-section'><h2>Tonight's Preview</h2><p style='color:#888;font-style:italic;'>{message}</p></div>";
+            return $"<div class='target-section'><h2>Tonight's Preview</h2><p style='color:var(--muted);font-style:italic;'>{message}</p></div>";
         }
 
         private string BuildNextNightPreviewSection(ReportData data) {
@@ -802,8 +849,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine("<div class='target-section'>");
                 var previewDate = targets.First().StartTime;
                 sb.AppendLine($"<h2 style='display:inline;'>Tonight's Preview</h2>");
-                sb.AppendLine($"<span style='color:#555;font-size:12px;font-style:italic;margin-left:12px;'>Generated by Target Scheduler — actual imaging may differ based on conditions</span>");
-                sb.AppendLine($"<p style='color:#888;margin-top:8px;'>Planned schedule for {previewDate:MMMM d, yyyy} &mdash; {timelineStart:HH:mm} to {timelineEnd:HH:mm}</p>");
+                sb.AppendLine($"<span style='color:var(--dim);font-size:12px;font-style:italic;margin-left:12px;'>Generated by Target Scheduler — actual imaging may differ based on conditions</span>");
+                sb.AppendLine($"<p style='color:var(--muted);margin-top:8px;'>Planned schedule for {previewDate:MMMM d, yyyy} &mdash; {timelineStart:HH:mm} to {timelineEnd:HH:mm}</p>");
 
                 // ── SVG Timeline ──
                 const int svgWidth   = 760;
@@ -826,13 +873,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine($"<svg viewBox='0 0 {svgWidth} {svgHeight}' xmlns='http://www.w3.org/2000/svg' style='width:100%;font-family:Arial,sans-serif;font-size:11px;'>");
 
                 // Background track
-                sb.AppendLine($"<rect x='{leftPad}' y='{topPad}' width='{barAreaW}' height='{trackH}' rx='4' fill='#0f0f23' />");
+                sb.AppendLine($"<rect x='{leftPad}' y='{topPad}' width='{barAreaW}' height='{trackH}' rx='4' fill='{svgChartDark}' />");
 
                 // Wait period hatching
                 sb.AppendLine("<defs>");
-                sb.AppendLine("  <pattern id='ns-preview-idle' patternUnits='userSpaceOnUse' width='8' height='8' patternTransform='rotate(45)'>");
-                sb.AppendLine("    <rect width='8' height='8' fill='#0f0f23'/>");
-                sb.AppendLine("    <line x1='0' y1='0' x2='0' y2='8' stroke='#2d2d5e' stroke-width='3'/>");
+                sb.AppendLine($"  <pattern id='ns-preview-idle' patternUnits='userSpaceOnUse' width='8' height='8' patternTransform='rotate(45)'>");
+                sb.AppendLine($"    <rect width='8' height='8' fill='{svgChartDark}'/>");
+                sb.AppendLine($"    <line x1='0' y1='0' x2='0' y2='8' stroke='{svgBorder}' stroke-width='3'/>");
                 sb.AppendLine("  </pattern>");
                 sb.AppendLine("</defs>");
 
@@ -854,7 +901,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 // Ruler
                 int rulerY     = topPad + trackH;
                 int tickLabelY = rulerY + 20;
-                sb.AppendLine($"<line x1='{leftPad}' y1='{rulerY}' x2='{svgWidth - rightPad}' y2='{rulerY}' stroke='#444' stroke-width='1'/>");
+                sb.AppendLine($"<line x1='{leftPad}' y1='{rulerY}' x2='{svgWidth - rightPad}' y2='{rulerY}' stroke='{svgDim}' stroke-width='1'/>");
 
                 double durationHours   = totalSeconds / 3600.0;
                 int    tickIntervalMin = durationHours < 2 ? 15 : durationHours < 5 ? 30 : 60;
@@ -864,21 +911,21 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 while (tick < timelineEnd) {
                     double tx = TimeToX(tick);
                     if (tx - leftPad > 40 && (svgWidth - rightPad) - tx > 40) {
-                        sb.AppendLine($"<line x1='{tx:F1}' y1='{rulerY}' x2='{tx:F1}' y2='{rulerY + 6}' stroke='#555' stroke-width='1'/>");
-                        sb.AppendLine($"<text x='{tx:F1}' y='{tickLabelY}' fill='#888' text-anchor='middle'>{tick:HH:mm}</text>");
+                        sb.AppendLine($"<line x1='{tx:F1}' y1='{rulerY}' x2='{tx:F1}' y2='{rulerY + 6}' stroke='{svgDim}' stroke-width='1'/>");
+                        sb.AppendLine($"<text x='{tx:F1}' y='{tickLabelY}' fill='{svgMuted}' text-anchor='middle'>{tick:HH:mm}</text>");
                     }
                     tick = tick.AddMinutes(tickIntervalMin);
                 }
-                sb.AppendLine($"<text x='{leftPad}' y='{tickLabelY}' fill='#888'>{timelineStart:HH:mm}</text>");
-                sb.AppendLine($"<text x='{svgWidth - rightPad}' y='{tickLabelY}' fill='#888' text-anchor='end'>{timelineEnd:HH:mm}</text>");
+                sb.AppendLine($"<text x='{leftPad}' y='{tickLabelY}' fill='{svgMuted}'>{timelineStart:HH:mm}</text>");
+                sb.AppendLine($"<text x='{svgWidth - rightPad}' y='{tickLabelY}' fill='{svgMuted}' text-anchor='end'>{timelineEnd:HH:mm}</text>");
 
                 // Legend
                 int ly = legendTop;
-                sb.AppendLine($"<text x='{leftPad}' y='{ly + 12}' fill='#aaa' font-weight='bold'>Targets</text>");
+                sb.AppendLine($"<text x='{leftPad}' y='{ly + 12}' fill='{svgMuted}' font-weight='bold'>Targets</text>");
                 ly += 18;
                 foreach (var name in uniqueTargets) {
                     sb.AppendLine($"<rect x='{leftPad}' y='{ly}' width='14' height='12' fill='{colorMap[name]}' rx='2'/>");
-                    sb.AppendLine($"<text x='{leftPad + 18}' y='{ly + 10}' fill='#e0e0e0'>{name}</text>");
+                    sb.AppendLine($"<text x='{leftPad + 18}' y='{ly + 10}' fill='var(--text)'>{name}</text>");
                     ly += legendRowH;
                 }
 
@@ -986,5 +1033,44 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
         private static double CV(List<double> values) => FilterHelper.CV(values);
         private static double StdDev(List<double> values) => FilterHelper.StdDev(values);
+
+        /// <summary>
+        /// Fetches a sky survey thumbnail, trying CDS (color) first, then NASA SkyView (mono) as fallback.
+        /// Returns the image as a base64 data URI and whether the fallback was used.
+        /// </summary>
+        private async Task<(string imgSrc, bool usedFallback)> FetchThumbnailAsync(
+            string targetName, double raDeg, double decDeg, int px, double fovDeg) {
+
+            // Primary: CDS HiPS color survey
+            try {
+                var cdsUrl = $"https://alasky.cds.unistra.fr/hips-image-services/hips2fits?hips=CDS/P/DSS2/color&ra={raDeg:F6}&dec={decDeg:F6}&fov={fovDeg:F6}&width={px}&height={px}";
+                var bytes = await Http.GetByteArrayAsync(cdsUrl);
+                if (bytes.Length > 500) {
+                    Logger.Info($"NightSummary: CDS thumbnail OK for {targetName} ({bytes.Length:N0} bytes)");
+                    return ($"data:image/jpeg;base64,{Convert.ToBase64String(bytes)}", false);
+                }
+                Logger.Warning($"NightSummary: CDS returned tiny response for {targetName} ({bytes.Length} bytes), trying fallback");
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: CDS thumbnail failed for {targetName}: {ex.Message}");
+            }
+
+            // Fallback: NASA SkyView DSS2 Red (monochrome but reliable)
+            try {
+                var svUrl = $"https://skyview.gsfc.nasa.gov/current/cgi/runquery.pl?Position={raDeg:F6},{decDeg:F6}&Survey=DSS2+Red&Pixels={px}&Size={fovDeg:F6}&Return=GIF";
+                var bytes = await SkyViewHttp.GetByteArrayAsync(svUrl);
+                if (bytes.Length > 500) {
+                    Logger.Info($"NightSummary: SkyView fallback OK for {targetName} ({bytes.Length:N0} bytes)");
+                    return ($"data:image/gif;base64,{Convert.ToBase64String(bytes)}", true);
+                }
+                Logger.Warning($"NightSummary: SkyView returned tiny response for {targetName} ({bytes.Length} bytes)");
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: SkyView fallback failed for {targetName}: {ex.Message}");
+            }
+
+            // Both failed — return remote URL as last resort
+            var remoteUrl = $"https://alasky.cds.unistra.fr/hips-image-services/hips2fits?hips=CDS/P/DSS2/color&ra={raDeg:F6}&dec={decDeg:F6}&fov={fovDeg:F6}&width={px}&height={px}";
+            Logger.Warning($"NightSummary: All thumbnail services failed for {targetName}, using remote URL");
+            return (remoteUrl, true);
+        }
     }
 }

@@ -362,6 +362,18 @@ namespace NINA.Plugin.NightSummary.MyPluginProperties {
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool ReportLightMode {
+            get {
+                return ((bool)(this["ReportLightMode"]));
+            }
+            set {
+                this["ReportLightMode"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
         public bool ExpandSectionsDefault {
             get {
                 return ((bool)(this["ExpandSectionsDefault"]));

@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Data.SQLite;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 
 namespace NINA.Plugin.NightSummary.Data {
@@ -19,12 +20,267 @@ namespace NINA.Plugin.NightSummary.Data {
         public SessionDatabase() {
             string pluginDataPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "NINA", "Plugins", CoreUtil.Version, "NightSummary");
+                "NINA", "NightSummary");
             Directory.CreateDirectory(pluginDataPath);
             dbPath = Path.Combine(pluginDataPath, "nightsummary.sqlite");
+
+            // Migrate from legacy version-specific location if needed
+            if (!File.Exists(dbPath)) {
+                MigrateLegacyDatabase(pluginDataPath);
+            }
+
+            Logger.Info($"NightSummary: Database path: {dbPath}");
+            Logger.Info($"NightSummary: Database exists: {File.Exists(dbPath)}");
+
             connectionString = $"Data Source={dbPath};Version=3;";
             SeedTestDatabaseIfMissing(pluginDataPath);
             InitializeDatabase();
+        }
+
+        /// <summary>
+        /// Scans legacy version-specific plugin folders for existing databases,
+        /// copies the most recent one as the base, then merges any unique sessions
+        /// from older databases. Never deletes or moves — always copies, so old data is never lost.
+        /// </summary>
+        private void MigrateLegacyDatabase(string newDataPath) {
+            try {
+                Logger.Info("NightSummary: No database at new location, scanning for legacy databases...");
+
+                var pluginsRoot = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "NINA", "Plugins");
+
+                if (!Directory.Exists(pluginsRoot)) {
+                    Logger.Info($"NightSummary: Plugins directory not found at {pluginsRoot}, skipping migration");
+                    return;
+                }
+
+                var candidates = new List<(string path, DateTime modified)>();
+
+                foreach (var versionDir in Directory.GetDirectories(pluginsRoot)) {
+                    var legacyDb = Path.Combine(versionDir, "NightSummary", "nightsummary.sqlite");
+                    Logger.Info($"NightSummary: Checking legacy path: {legacyDb}");
+                    if (File.Exists(legacyDb)) {
+                        var modified = File.GetLastWriteTimeUtc(legacyDb);
+                        Logger.Info($"NightSummary: Found legacy database at {legacyDb} (modified: {modified:yyyy-MM-dd HH:mm:ss} UTC)");
+                        candidates.Add((legacyDb, modified));
+                    }
+                }
+
+                if (candidates.Count == 0) {
+                    Logger.Info("NightSummary: No legacy databases found, starting fresh");
+                    return;
+                }
+
+                // Copy the most recent DB as the base
+                var sorted = candidates.OrderByDescending(c => c.modified).ToList();
+                var best = sorted.First();
+                Logger.Info($"NightSummary: Selected primary legacy database: {best.path} (most recent, modified {best.modified:yyyy-MM-dd HH:mm:ss} UTC)");
+                Logger.Info($"NightSummary: Copying to {dbPath}");
+
+                File.Copy(best.path, dbPath);
+                Logger.Info($"NightSummary: Primary database copied. Original preserved at {best.path}");
+
+                // Merge sessions from any other legacy databases
+                if (sorted.Count > 1) {
+                    Logger.Info($"NightSummary: Found {sorted.Count - 1} additional legacy database(s) to merge");
+                    MergeOlderDatabases(sorted.Skip(1).Select(c => c.path).ToList());
+                }
+
+                // Also migrate test database if it exists
+                var legacyTestDb = Path.Combine(Path.GetDirectoryName(best.path), "test", "nightsummary.sqlite");
+                var newTestDb = Path.Combine(newDataPath, "test", "nightsummary.sqlite");
+                if (File.Exists(legacyTestDb) && !File.Exists(newTestDb)) {
+                    Directory.CreateDirectory(Path.GetDirectoryName(newTestDb));
+                    File.Copy(legacyTestDb, newTestDb);
+                    Logger.Info($"NightSummary: Test database migrated from {legacyTestDb} to {newTestDb}");
+                }
+            } catch (Exception ex) {
+                Logger.Error($"NightSummary: Legacy database migration failed: {ex.Message}. No data was lost — original files are untouched.");
+            }
+        }
+
+        /// <summary>
+        /// Merges unique sessions from older legacy databases into the new database.
+        /// Skips any session whose SessionId already exists. Never modifies source databases.
+        /// </summary>
+        private void MergeOlderDatabases(List<string> olderDbPaths) {
+            // First, collect existing SessionIds from the new DB
+            var existingSessionIds = new HashSet<string>();
+            var newConnStr = $"Data Source={dbPath};Version=3;";
+            using (var conn = new SQLiteConnection(newConnStr)) {
+                conn.Open();
+                using (var cmd = new SQLiteCommand("SELECT SessionId FROM Sessions", conn)) {
+                    using (var reader = cmd.ExecuteReader()) {
+                        while (reader.Read()) {
+                            existingSessionIds.Add(reader.GetString(0));
+                        }
+                    }
+                }
+            }
+            Logger.Info($"NightSummary: New database has {existingSessionIds.Count} existing session(s)");
+
+            foreach (var olderDbPath in olderDbPaths) {
+                try {
+                    Logger.Info($"NightSummary: Merging from {olderDbPath}...");
+                    var olderConnStr = $"Data Source={olderDbPath};Version=3;Read Only=True;";
+                    int mergedSessions = 0, mergedImages = 0, mergedEvents = 0, skippedSessions = 0;
+
+                    using (var src = new SQLiteConnection(olderConnStr))
+                    using (var dst = new SQLiteConnection(newConnStr)) {
+                        src.Open();
+                        dst.Open();
+
+                        // Read all sessions from older DB
+                        var sessions = new List<(string sessionId, string start, string end, string profile, string notes, int reportSent)>();
+                        using (var cmd = new SQLiteCommand("SELECT SessionId, SessionStart, SessionEnd, ProfileName, Notes, ReportSent FROM Sessions", src)) {
+                            using (var reader = cmd.ExecuteReader()) {
+                                while (reader.Read()) {
+                                    sessions.Add((
+                                        reader.GetString(0),
+                                        reader.GetString(1),
+                                        reader.IsDBNull(2) ? null : reader.GetString(2),
+                                        reader.IsDBNull(3) ? null : reader.GetString(3),
+                                        reader.IsDBNull(4) ? null : reader.GetString(4),
+                                        reader.IsDBNull(5) ? 0 : reader.GetInt32(5)
+                                    ));
+                                }
+                            }
+                        }
+
+                        foreach (var session in sessions) {
+                            if (existingSessionIds.Contains(session.sessionId)) {
+                                skippedSessions++;
+                                continue;
+                            }
+
+                            using (var tx = dst.BeginTransaction()) {
+                                // Insert session
+                                using (var cmd = new SQLiteCommand(@"INSERT INTO Sessions (SessionId, SessionStart, SessionEnd, ProfileName, Notes, ReportSent)
+                                                                     VALUES (@sid, @start, @end, @profile, @notes, @sent)", dst)) {
+                                    cmd.Parameters.AddWithValue("@sid", session.sessionId);
+                                    cmd.Parameters.AddWithValue("@start", session.start);
+                                    cmd.Parameters.AddWithValue("@end", (object)session.end ?? DBNull.Value);
+                                    cmd.Parameters.AddWithValue("@profile", (object)session.profile ?? DBNull.Value);
+                                    cmd.Parameters.AddWithValue("@notes", (object)session.notes ?? DBNull.Value);
+                                    cmd.Parameters.AddWithValue("@sent", session.reportSent);
+                                    cmd.ExecuteNonQuery();
+                                }
+
+                                // Copy images for this session
+                                int imageCount = CopyImages(src, dst, session.sessionId);
+                                mergedImages += imageCount;
+
+                                // Copy events for this session
+                                int eventCount = CopyEvents(src, dst, session.sessionId);
+                                mergedEvents += eventCount;
+
+                                tx.Commit();
+                                mergedSessions++;
+                                existingSessionIds.Add(session.sessionId);
+                            }
+                        }
+                    }
+
+                    Logger.Info($"NightSummary: Merge from {olderDbPath} complete — {mergedSessions} session(s) merged ({mergedImages} images, {mergedEvents} events), {skippedSessions} skipped (already existed)");
+                } catch (Exception ex) {
+                    Logger.Error($"NightSummary: Failed to merge from {olderDbPath}: {ex.Message}. Skipping this database — no data was lost.");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Copies all image records for a session from source to destination DB.
+        /// Uses only columns that exist in both old and new schemas.
+        /// </summary>
+        private static int CopyImages(SQLiteConnection src, SQLiteConnection dst, string sessionId) {
+            int count = 0;
+            // Read column names from the source Images table to handle schema differences
+            var srcColumns = new List<string>();
+            using (var cmd = new SQLiteCommand("PRAGMA table_info(Images)", src)) {
+                using (var reader = cmd.ExecuteReader()) {
+                    while (reader.Read()) {
+                        srcColumns.Add(reader.GetString(1)); // column name
+                    }
+                }
+            }
+
+            var dstColumns = new List<string>();
+            using (var cmd = new SQLiteCommand("PRAGMA table_info(Images)", dst)) {
+                using (var reader = cmd.ExecuteReader()) {
+                    while (reader.Read()) {
+                        dstColumns.Add(reader.GetString(1)); // column name
+                    }
+                }
+            }
+
+            // Use only columns present in both, excluding auto-increment Id
+            var commonColumns = srcColumns.Intersect(dstColumns).Where(c => c != "Id").ToList();
+            var columnList = string.Join(", ", commonColumns);
+            var paramList = string.Join(", ", commonColumns.Select(c => $"@{c}"));
+
+            using (var readCmd = new SQLiteCommand($"SELECT {columnList} FROM Images WHERE SessionId = @sid", src)) {
+                readCmd.Parameters.AddWithValue("@sid", sessionId);
+                using (var reader = readCmd.ExecuteReader()) {
+                    while (reader.Read()) {
+                        using (var insertCmd = new SQLiteCommand($"INSERT INTO Images ({columnList}) VALUES ({paramList})", dst)) {
+                            foreach (var col in commonColumns) {
+                                insertCmd.Parameters.AddWithValue($"@{col}", reader[col] ?? DBNull.Value);
+                            }
+                            insertCmd.ExecuteNonQuery();
+                            count++;
+                        }
+                    }
+                }
+            }
+            return count;
+        }
+
+        /// <summary>
+        /// Copies all event records for a session from source to destination DB.
+        /// Uses only columns that exist in both old and new schemas.
+        /// </summary>
+        private static int CopyEvents(SQLiteConnection src, SQLiteConnection dst, string sessionId) {
+            int count = 0;
+            var srcColumns = new List<string>();
+            using (var cmd = new SQLiteCommand("PRAGMA table_info(SessionEvents)", src)) {
+                using (var reader = cmd.ExecuteReader()) {
+                    while (reader.Read()) {
+                        srcColumns.Add(reader.GetString(1));
+                    }
+                }
+            }
+
+            var dstColumns = new List<string>();
+            using (var cmd = new SQLiteCommand("PRAGMA table_info(SessionEvents)", dst)) {
+                using (var reader = cmd.ExecuteReader()) {
+                    while (reader.Read()) {
+                        dstColumns.Add(reader.GetString(1));
+                    }
+                }
+            }
+
+            var commonColumns = srcColumns.Intersect(dstColumns).Where(c => c != "Id").ToList();
+            if (commonColumns.Count == 0) return 0;
+
+            var columnList = string.Join(", ", commonColumns);
+            var paramList = string.Join(", ", commonColumns.Select(c => $"@{c}"));
+
+            using (var readCmd = new SQLiteCommand($"SELECT {columnList} FROM SessionEvents WHERE SessionId = @sid", src)) {
+                readCmd.Parameters.AddWithValue("@sid", sessionId);
+                using (var reader = readCmd.ExecuteReader()) {
+                    while (reader.Read()) {
+                        using (var insertCmd = new SQLiteCommand($"INSERT INTO SessionEvents ({columnList}) VALUES ({paramList})", dst)) {
+                            foreach (var col in commonColumns) {
+                                insertCmd.Parameters.AddWithValue($"@{col}", reader[col] ?? DBNull.Value);
+                            }
+                            insertCmd.ExecuteNonQuery();
+                            count++;
+                        }
+                    }
+                }
+            }
+            return count;
         }
 
         public SessionDatabase(string customDbPath) {

@@ -218,6 +218,11 @@
                         <CheckBox IsChecked="{Binding ExpandSectionsDefault}" VerticalAlignment="Center" />
                     </StackPanel>
 
+                    <StackPanel Orientation="Horizontal" Margin="0,4">
+                        <TextBlock Text="Light Mode Report" Width="200" VerticalAlignment="Center" />
+                        <CheckBox IsChecked="{Binding ReportLightMode}" VerticalAlignment="Center" />
+                    </StackPanel>
+
                     <!-- Session History: disabled at Snapshot and Standard -->
                     <StackPanel Orientation="Horizontal" Margin="0,4">
                         <StackPanel.Style>
