@@ -5,6 +5,7 @@
     <RootNamespace>NINA.Plugin.NightSummary</RootNamespace>
     <Platforms>x64</Platforms>
     <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <Nullable>enable</Nullable>
     <ApplicationIcon>NINAPluginTemplate.ico</ApplicationIcon>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
