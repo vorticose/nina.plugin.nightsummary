@@ -115,6 +115,7 @@ function New-LegacyDb([string]$Path, [array]$Sessions, [array]$Images = @(), [sw
         return
     }
 
+    if (Test-Path $Path) { Remove-Item $Path -Force }
     $conn = Open-Db $Path
 
     # Sessions table -- old schema omits camera columns and SkippedExposures
