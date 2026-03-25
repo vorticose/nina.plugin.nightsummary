@@ -236,7 +236,15 @@ function Restore-RealLegacyDbs {
 function Setup-MigrationRun {
     if (Test-Path $newDbPath) {
         Copy-Item $newDbPath $backupPath -Force
-        Remove-Item $newDbPath -Force
+        $deadline = (Get-Date).AddSeconds(10)
+        while (Test-Path $newDbPath) {
+            Remove-Item $newDbPath -Force -ErrorAction SilentlyContinue
+            if ((Test-Path $newDbPath) -and (Get-Date) -lt $deadline) {
+                Start-Sleep -Milliseconds 300
+            } elseif (Test-Path $newDbPath) {
+                throw "Could not remove $newDbPath after 10 seconds -- is another process holding it open?"
+            }
+        }
     }
     # Also clear any leftover state files from a previous test
     Remove-Item "$newDbPath.merge_state"     -Force -ErrorAction SilentlyContinue
