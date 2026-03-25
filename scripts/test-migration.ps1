@@ -271,9 +271,11 @@ function Run-Migration {
         $waited += 0.5
     }
 
-    # Kill NINA and all child processes (WebView2 etc.) using process tree kill
+    # Kill NINA and all child processes
     taskkill /PID $nina.Id /T /F 2>$null | Out-Null
     $nina.WaitForExit(15000) | Out-Null
+    # WebView2 processes detach from the parent and must be killed separately
+    taskkill /IM msedgewebview2.exe /F 2>$null | Out-Null
     Start-Sleep -Seconds 1
 
     if (-not (Test-Path $newDbPath)) {
