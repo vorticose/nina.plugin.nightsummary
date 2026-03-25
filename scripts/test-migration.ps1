@@ -286,7 +286,7 @@ function Restore-RealLegacyDbs {
 # Points the NightSummary junction at a fresh empty directory so migration runs
 function Setup-MigrationRun {
     $script:testRunCount++
-    $testDataDir = "${testDataBase}_$($script:testRunCount)"
+    $testDataDir = $testDataBase + "_" + $script:testRunCount
     Remove-Junction $newDbDir
     New-Item -ItemType Directory -Force $testDataDir | Out-Null
     New-Junction $newDbDir $testDataDir
