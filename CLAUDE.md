@@ -53,12 +53,19 @@ See `scripts/TEST-MIGRATION-NOTES.md` for hard-won lessons from testing this.
 - The `var(--text)` SVG fill bug: light mode SVG labels may render incorrectly.
   Fixed in v2.8.1 by using explicit color variables in SVG fill attributes.
 - Two `SessionDatabase` constructor log lines on startup is normal -- not a bug.
+- **CDS HiPS2FITS API returns FITS by default, not JPEG**: the URL must include
+  `&format=jpg` to get a browser-renderable image. Without it, the API returns
+  a binary FITS file which passes the `> 500 bytes` check but browsers cannot
+  render it as an image -- thumbnails silently disappear. Fixed after v2.8.1.
 
 ## Workflow Notes
 
 - Always push from Mac using `gh auth` credentials (token needs `repo` scope)
 - The remote URL must temporarily embed the token for push:
   `git remote set-url origin "https://$(gh auth token)@github.com/..."` then restore
+- **CAUTION**: after restoring the clean URL, verify `.git/config` has a non-empty URL.
+  If the restore command fails (e.g., gh can't detect the remote), the URL will be blank.
+  Repo URL: `https://github.com/vorticose/nina.plugin.nightsummary.git`
 - GitHub raw CDN caches aggressively -- use the Contents API for reliable downloads:
   `Invoke-RestMethod "https://api.github.com/repos/.../contents/..."`
 - PowerShell scripts must be pure ASCII -- no em dashes, box-drawing chars, or
