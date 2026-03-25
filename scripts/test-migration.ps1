@@ -30,7 +30,8 @@ $ErrorActionPreference = "Stop"
 
 $newDbDir     = "$env:LOCALAPPDATA\NINA\NightSummary"
 $newDbPath    = "$newDbDir\nightsummary.sqlite"
-$backupPath   = "$newDbDir\nightsummary.sqlite.test_backup"
+$backupDir    = "$env:LOCALAPPDATA\NINA\NightSummary.test_backup"
+$backupPath   = "$backupDir\nightsummary.sqlite"
 $pluginsRoot  = "$env:LOCALAPPDATA\NINA\Plugins"
 
 # Fake version folders used as legacy source locations
@@ -239,24 +240,11 @@ function Restore-RealLegacyDbs {
     }
 }
 
-# Backs up the live database (if it exists) and removes it so migration will run
+# Backs up the live database directory and replaces it with an empty dir so migration runs
 function Setup-MigrationRun {
-    if (Test-Path $newDbPath) {
-        Copy-Item $newDbPath $backupPath -Force
-        $deadline = (Get-Date).AddSeconds(10)
-        while (Test-Path $newDbPath) {
-            Remove-Item $newDbPath -Force -ErrorAction SilentlyContinue
-            if ((Test-Path $newDbPath) -and (Get-Date) -lt $deadline) {
-                Start-Sleep -Milliseconds 300
-            } elseif (Test-Path $newDbPath) {
-                throw "Could not remove $newDbPath after 10 seconds -- is another process holding it open?"
-            }
-        }
-    }
-    # Also clear any leftover state files from a previous test
-    Remove-Item "$newDbPath.merge_state"     -Force -ErrorAction SilentlyContinue
-    Remove-Item "$newDbPath.pre_merge_backup" -Force -ErrorAction SilentlyContinue
-    Remove-Item "$newDbPath.migration_tmp"   -Force -ErrorAction SilentlyContinue
+    if (Test-Path $backupDir) { Remove-Item $backupDir -Recurse -Force -ErrorAction SilentlyContinue }
+    if (Test-Path $newDbDir)  { Rename-Item $newDbDir $backupDir -Force }
+    New-Item -ItemType Directory -Force $newDbDir | Out-Null
     Hide-RealLegacyDbs
 }
 
@@ -284,7 +272,7 @@ function Run-Migration {
     }
 }
 
-# Restores the live database backup and removes fake legacy DBs
+# Restores the live database backup directory and removes fake legacy DBs
 function Teardown-MigrationRun {
     Restore-RealLegacyDbs
     if (-not $KeepLegacyDbs) {
@@ -292,19 +280,9 @@ function Teardown-MigrationRun {
         Remove-Item $legacyDb2 -Force -ErrorAction SilentlyContinue
         Remove-Item $legacyDb3 -Force -ErrorAction SilentlyContinue
     }
-    Remove-Item "$newDbPath.merge_state"      -Force -ErrorAction SilentlyContinue
-    Remove-Item "$newDbPath.pre_merge_backup" -Force -ErrorAction SilentlyContinue
-    Remove-Item "$newDbPath.migration_tmp"    -Force -ErrorAction SilentlyContinue
-
-    if (Test-Path $backupPath) {
-        $deadline = (Get-Date).AddSeconds(5)
-        while ((Test-Path $newDbPath) -and (Get-Date) -lt $deadline) {
-            Remove-Item $newDbPath -Force -ErrorAction SilentlyContinue
-            if (Test-Path $newDbPath) { Start-Sleep -Milliseconds 200 }
-        }
-        Copy-Item $backupPath $newDbPath -Force
-        Remove-Item $backupPath -Force -ErrorAction SilentlyContinue
-    }
+    # Remove the test NightSummary dir and restore the backup dir
+    if (Test-Path $newDbDir) { Remove-Item $newDbDir -Recurse -Force -ErrorAction SilentlyContinue }
+    if (Test-Path $backupDir) { Rename-Item $backupDir $newDbDir -Force -ErrorAction SilentlyContinue }
 }
 
 $passCount = 0
