@@ -1043,7 +1043,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             // Primary: CDS HiPS color survey
             try {
-                var cdsUrl = $"https://alasky.cds.unistra.fr/hips-image-services/hips2fits?hips=CDS/P/DSS2/color&ra={raDeg:F6}&dec={decDeg:F6}&fov={fovDeg:F6}&width={px}&height={px}";
+                var cdsUrl = $"https://alasky.cds.unistra.fr/hips-image-services/hips2fits?hips=CDS/P/DSS2/color&ra={raDeg:F6}&dec={decDeg:F6}&fov={fovDeg:F6}&width={px}&height={px}&format=jpg";
                 var bytes = await Http.GetByteArrayAsync(cdsUrl);
                 if (bytes.Length > 500) {
                     Logger.Info($"NightSummary: CDS thumbnail OK for {targetName} ({bytes.Length:N0} bytes)");
@@ -1068,7 +1068,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             // Both failed — return remote URL as last resort
-            var remoteUrl = $"https://alasky.cds.unistra.fr/hips-image-services/hips2fits?hips=CDS/P/DSS2/color&ra={raDeg:F6}&dec={decDeg:F6}&fov={fovDeg:F6}&width={px}&height={px}";
+            var remoteUrl = $"https://alasky.cds.unistra.fr/hips-image-services/hips2fits?hips=CDS/P/DSS2/color&ra={raDeg:F6}&dec={decDeg:F6}&fov={fovDeg:F6}&width={px}&height={px}&format=jpg";
             Logger.Warning($"NightSummary: All thumbnail services failed for {targetName}, using remote URL");
             return (remoteUrl, true);
         }
