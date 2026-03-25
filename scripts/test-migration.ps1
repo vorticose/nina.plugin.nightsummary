@@ -271,8 +271,13 @@ function Teardown-MigrationRun {
     Remove-Item "$newDbPath.migration_tmp"    -Force -ErrorAction SilentlyContinue
 
     if (Test-Path $backupPath) {
-        Remove-Item $newDbPath -Force -ErrorAction SilentlyContinue
-        Move-Item $backupPath $newDbPath -Force
+        $deadline = (Get-Date).AddSeconds(5)
+        while ((Test-Path $newDbPath) -and (Get-Date) -lt $deadline) {
+            Remove-Item $newDbPath -Force -ErrorAction SilentlyContinue
+            if (Test-Path $newDbPath) { Start-Sleep -Milliseconds 200 }
+        }
+        Copy-Item $backupPath $newDbPath -Force
+        Remove-Item $backupPath -Force -ErrorAction SilentlyContinue
     }
 }
 
