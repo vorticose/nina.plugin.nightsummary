@@ -256,11 +256,9 @@ function Run-Migration {
         $waited += 0.5
     }
 
-    # Give it one extra second to finish writing after the file appears
-    if (Test-Path $newDbPath) { Start-Sleep -Seconds 1 }
-
     Stop-Process -Id $nina.Id -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Milliseconds 500
+    # Wait briefly for SQLite to flush WAL to the main file before we read it
+    Start-Sleep -Milliseconds 800
 
     if (-not (Test-Path $newDbPath)) {
         Write-Host "    WARNING: NINA did not create the database within ${NinaStartupSeconds}s" -ForegroundColor Yellow
@@ -343,7 +341,8 @@ if (Test-Path $newDbPath) {
     $row    = @(Query-All  $conn "SELECT * FROM Sessions LIMIT 1")[0]
     $conn.Close(); $conn.Dispose()
 
-    Check ($count  -eq 1)                          "Session count = 1"
+    $migratedCount = Query-Scalar $conn "SELECT COUNT(*) FROM Sessions WHERE SessionId = '$($s1.SessionId)'"
+    Check ($migratedCount -eq 1)                   "Migrated session present by ID"
     Check ($images -eq 2)                          "Image count = 2"
     Check ($row["CamXSize"]        -eq 6248)       "CamXSize preserved"
     Check ($row["PixelSizeMicrons"] -eq 3.76)      "PixelSizeMicrons preserved"
