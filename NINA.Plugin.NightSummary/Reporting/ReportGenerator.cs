@@ -925,7 +925,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 ly += 18;
                 foreach (var name in uniqueTargets) {
                     sb.AppendLine($"<rect x='{leftPad}' y='{ly}' width='14' height='12' fill='{colorMap[name]}' rx='2'/>");
-                    sb.AppendLine($"<text x='{leftPad + 18}' y='{ly + 10}' fill='var(--text)'>{name}</text>");
+                    sb.AppendLine($"<text x='{leftPad + 18}' y='{ly + 10}' fill='{svgMuted}'>{name}</text>");
                     ly += legendRowH;
                 }
 

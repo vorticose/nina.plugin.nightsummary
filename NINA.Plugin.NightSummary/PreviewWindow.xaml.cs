@@ -91,6 +91,14 @@ namespace NINA.Plugin.NightSummary {
             }
         }
 
+        private string previewTempFile;
+
+        private void NavigateToHtml(string html) {
+            previewTempFile = Path.Combine(Path.GetTempPath(), "NightSummaryPreview.html");
+            File.WriteAllText(previewTempFile, html, System.Text.Encoding.UTF8);
+            PreviewWebView.CoreWebView2.Navigate(new Uri(previewTempFile).AbsoluteUri);
+        }
+
         private async void UpdatePreview_Click(object sender, RoutedEventArgs e) {
             if (cachedReportData == null) {
                 // No cached data — do a full load from current selection
@@ -105,7 +113,7 @@ namespace NINA.Plugin.NightSummary {
 
             try {
                 var html = await sessionService.GenerateHtmlAsync(cachedReportData);
-                PreviewWebView.NavigateToString(html);
+                NavigateToHtml(html);
                 StatusText.Text = $"{cachedReportData.Images.Count} images — {cachedReportData.Session.SessionStart:yyyy-MM-dd}";
             } catch (Exception ex) {
                 StatusText.Text = $"Error: {ex.Message}";
@@ -133,7 +141,7 @@ namespace NINA.Plugin.NightSummary {
 
                 StatusText.Text = "Rendering report...";
                 var html = await sessionService.GenerateHtmlAsync(cachedReportData);
-                PreviewWebView.NavigateToString(html);
+                NavigateToHtml(html);
                 StatusText.Text = $"{cachedReportData.Images.Count} images — {cachedReportData.Session.SessionStart:yyyy-MM-dd}";
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Preview generation failed. {ex.Message}");
