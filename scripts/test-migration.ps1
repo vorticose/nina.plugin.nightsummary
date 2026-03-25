@@ -26,6 +26,16 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+# -- Pre-flight: kill any lingering NINA / WebView2 processes -----------------
+Write-Host "Killing any running NINA processes..." -ForegroundColor DarkGray
+taskkill /IM NINA.exe           /F 2>$null | Out-Null
+taskkill /IM msedgewebview2.exe /F 2>$null | Out-Null
+$deadline = (Get-Date).AddSeconds(15)
+while ((Get-Process -Name "NINA","msedgewebview2" -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {
+    Start-Sleep -Milliseconds 500
+}
+Start-Sleep -Seconds 2   # extra buffer for file handles to be released by the OS
+
 # -- Paths --------------------------------------------------------------------
 
 $newDbDir     = "$env:LOCALAPPDATA\NINA\NightSummary"
