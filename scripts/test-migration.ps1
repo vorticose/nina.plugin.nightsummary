@@ -28,8 +28,11 @@ $ErrorActionPreference = "Stop"
 
 # -- Pre-flight: kill any lingering NINA / WebView2 processes -----------------
 Write-Host "Killing any running NINA processes..." -ForegroundColor DarkGray
-taskkill /IM NINA.exe           /F 2>$null | Out-Null
-taskkill /IM msedgewebview2.exe /F 2>$null | Out-Null
+$prevEA = $ErrorActionPreference
+$ErrorActionPreference = "SilentlyContinue"
+taskkill /IM NINA.exe           /F 2>&1 | Out-Null
+taskkill /IM msedgewebview2.exe /F 2>&1 | Out-Null
+$ErrorActionPreference = $prevEA
 $deadline = (Get-Date).AddSeconds(15)
 while ((Get-Process -Name "NINA","msedgewebview2" -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {
     Start-Sleep -Milliseconds 500
