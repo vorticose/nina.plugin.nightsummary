@@ -66,7 +66,7 @@ Copy-Item $nativeDll  $tempDir -Force
 
 function Open-Db([string]$Path, [switch]$ReadOnly) {
     $flags = if ($ReadOnly) { "Read Only=True;" } else { "" }
-    $conn  = New-Object System.Data.SQLite.SQLiteConnection("Data Source=$Path;Version=3;$flags")
+    $conn  = New-Object System.Data.SQLite.SQLiteConnection("Data Source=$Path;Version=3;Pooling=False;$flags")
     $conn.Open()
     return $conn
 }
