@@ -64,16 +64,30 @@ function Is-Junction([string]$Path) {
     return !!((Get-Item $Path -Force).Attributes -band [System.IO.FileAttributes]::ReparsePoint)
 }
 
+# Ensure realDataDir exists -- it might be missing if a previous run crashed
+if (-not (Test-Path $realDataDir)) {
+    New-Item -ItemType Directory -Force $realDataDir | Out-Null
+    Write-Host "Created missing $realDataDir" -ForegroundColor Yellow
+}
+
 if (Test-Path $newDbDir) {
     if (-not (Is-Junction $newDbDir)) {
         # First run: convert real directory to a junction
-        if (Test-Path $realDataDir) { Remove-Item $realDataDir -Recurse -Force -ErrorAction SilentlyContinue }
-        Rename-Item $newDbDir $realDataDir -Force
+        Rename-Item $newDbDir $realDataDir -Force -ErrorAction SilentlyContinue
+        if (Test-Path $newDbDir) {
+            # Rename failed (locked) -- copy contents instead
+            Get-ChildItem $newDbDir | Copy-Item -Destination $realDataDir -Force -ErrorAction SilentlyContinue
+            Remove-Junction $newDbDir
+        }
         New-Junction $newDbDir $realDataDir
         Write-Host "Converted NightSummary to junction (real data preserved at $realDataDir)" -ForegroundColor DarkGray
+    } elseif (-not (Test-Path "$newDbDir\." -PathType Container)) {
+        # Junction exists but target is missing -- fix it
+        Remove-Junction $newDbDir
+        New-Junction $newDbDir $realDataDir
+        Write-Host "Repaired broken NightSummary junction" -ForegroundColor Yellow
     }
 } else {
-    New-Item -ItemType Directory -Force $realDataDir | Out-Null
     New-Junction $newDbDir $realDataDir
 }
 
