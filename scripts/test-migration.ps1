@@ -256,7 +256,19 @@ function Restore-RealLegacyDbs {
 # Backs up the live database directory and replaces it with an empty dir so migration runs
 function Setup-MigrationRun {
     if (Test-Path $backupDir) { Remove-Item $backupDir -Recurse -Force -ErrorAction SilentlyContinue }
-    if (Test-Path $newDbDir)  { Rename-Item $newDbDir $backupDir -Force }
+    if (Test-Path $newDbDir) {
+        $deadline = (Get-Date).AddSeconds(20)
+        $renamed  = $false
+        while (-not $renamed) {
+            try {
+                Rename-Item $newDbDir $backupDir -Force -ErrorAction Stop
+                $renamed = $true
+            } catch {
+                if ((Get-Date) -ge $deadline) { throw "Could not rename $newDbDir after 20s -- $_" }
+                Start-Sleep -Milliseconds 500
+            }
+        }
+    }
     New-Item -ItemType Directory -Force $newDbDir | Out-Null
     Hide-RealLegacyDbs
 }
@@ -273,11 +285,17 @@ function Run-Migration {
     }
 
     # Kill NINA and all child processes
-    taskkill /PID $nina.Id /T /F 2>$null | Out-Null
+    $prevEA = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+    taskkill /PID $nina.Id /T /F 2>&1 | Out-Null
     $nina.WaitForExit(15000) | Out-Null
-    # WebView2 processes detach from the parent and must be killed separately
-    taskkill /IM msedgewebview2.exe /F 2>$null | Out-Null
-    Start-Sleep -Seconds 1
+    # WebView2 processes detach and must be killed separately; retry until gone
+    $deadline = (Get-Date).AddSeconds(15)
+    do {
+        taskkill /IM msedgewebview2.exe /F 2>&1 | Out-Null
+        Start-Sleep -Milliseconds 500
+    } while ((Get-Process -Name "msedgewebview2" -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline)
+    $ErrorActionPreference = $prevEA
+    Start-Sleep -Seconds 2  # extra buffer for OS to release directory handles
 
     if (-not (Test-Path $newDbPath)) {
         Write-Host "    WARNING: NINA did not create the database within ${NinaStartupSeconds}s" -ForegroundColor Yellow
