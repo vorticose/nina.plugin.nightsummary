@@ -26,7 +26,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-# ── Paths ────────────────────────────────────────────────────────────────────
+# -- Paths --------------------------------------------------------------------
 
 $newDbDir     = "$env:LOCALAPPDATA\NINA\NightSummary"
 $newDbPath    = "$newDbDir\nightsummary.sqlite"
@@ -41,7 +41,7 @@ $legacyDb1    = "$legacyDir1\nightsummary.sqlite"
 $legacyDb2    = "$legacyDir2\nightsummary.sqlite"
 $legacyDb3    = "$legacyDir3\nightsummary.sqlite"
 
-# ── Load SQLite ───────────────────────────────────────────────────────────────
+# -- Load SQLite ---------------------------------------------------------------
 
 $sqliteDir  = "$env:USERPROFILE\.nuget\packages\stub.system.data.sqlite.core.netstandard\1.0.119"
 $managedDll = "$sqliteDir\lib\netstandard2.0\System.Data.SQLite.dll"
@@ -62,7 +62,7 @@ Copy-Item $managedDll $tempDir -Force
 Copy-Item $nativeDll  $tempDir -Force
 [System.Reflection.Assembly]::LoadFrom("$tempDir\System.Data.SQLite.dll") | Out-Null
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# -- Helpers -------------------------------------------------------------------
 
 function Open-Db([string]$Path, [switch]$ReadOnly) {
     $flags = if ($ReadOnly) { "Read Only=True;" } else { "" }
@@ -267,7 +267,7 @@ function Check([bool]$Condition, [string]$Msg) {
     if ($Condition) { Pass $Msg } else { Fail $Msg }
 }
 
-# ── Test data ─────────────────────────────────────────────────────────────────
+# -- Test data -----------------------------------------------------------------
 
 function New-Session([string]$Id = $null, [string]$Profile = "Test", [int]$CamX = 6248, [int]$CamY = 4176,
                      [double]$PixelSize = 3.76, [double]$FocalLength = 700.0, [int]$Skipped = 3) {
@@ -280,14 +280,14 @@ function New-Image([string]$SessionId, [string]$Filter = "L", [double]$HFR = 1.8
     return @{ SessionId = $SessionId; Filter = $Filter; HFR = $HFR }
 }
 
-# ── TESTS ─────────────────────────────────────────────────────────────────────
+# -- TESTS ---------------------------------------------------------------------
 
 Write-Host ""
 Write-Host "Night Summary Migration Test Suite" -ForegroundColor Cyan
 Write-Host "===================================" -ForegroundColor Cyan
 Write-Host ""
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 Write-Host "Test 1: Single legacy DB -- basic migration" -ForegroundColor White
 
 $s1 = New-Session -Profile "ScopeA" -CamX 6248 -PixelSize 3.76 -FocalLength 700 -Skipped 5
@@ -315,7 +315,7 @@ if (Test-Path $newDbPath) {
 Teardown-MigrationRun
 Write-Host ""
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 Write-Host "Test 2: Multiple legacy DBs with no overlap -- all sessions merged" -ForegroundColor White
 
 $s2a = New-Session -Profile "ScopeA"
@@ -343,7 +343,7 @@ if (Test-Path $newDbPath) {
 Teardown-MigrationRun
 Write-Host ""
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 Write-Host "Test 3: Multiple legacy DBs with overlapping sessions -- no duplicates" -ForegroundColor White
 
 $sharedId = [System.Guid]::NewGuid().ToString()
@@ -369,7 +369,7 @@ if (Test-Path $newDbPath) {
 Teardown-MigrationRun
 Write-Host ""
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 Write-Host "Test 4: Corrupt primary DB -- falls back to valid older DB" -ForegroundColor White
 
 $s4 = New-Session -Profile "ValidFallback"
@@ -395,7 +395,7 @@ if (Test-Path $newDbPath) {
 Teardown-MigrationRun
 Write-Host ""
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 Write-Host "Test 5: All legacy DBs corrupt -- starts fresh with empty DB" -ForegroundColor White
 
 New-LegacyDb $legacyDb1 -Corrupt
@@ -418,7 +418,7 @@ if (Test-Path $newDbPath) {
 Teardown-MigrationRun
 Write-Host ""
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 Write-Host "Test 6: Interrupted merge resume -- merge state file pre-seeded" -ForegroundColor White
 
 $s6a = New-Session -Profile "AlreadyMerged"
@@ -459,7 +459,7 @@ if (Test-Path $newDbPath) {
 Teardown-MigrationRun
 Write-Host ""
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 Write-Host "Test 7: Old schema (missing columns) -- sessions migrate with defaults" -ForegroundColor White
 
 $s7 = New-Session -Profile "OldSchemaSession"
@@ -485,7 +485,7 @@ if (Test-Path $newDbPath) {
 Teardown-MigrationRun
 Write-Host ""
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 Write-Host "Test 8: Three-way merge -- images and events all survive" -ForegroundColor White
 
 $s8a = New-Session -Profile "DB1Session"
@@ -523,7 +523,7 @@ if (Test-Path $newDbPath) {
 Teardown-MigrationRun
 Write-Host ""
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 Write-Host "Test 9: Backup file created and pre-merge backup present during merge" -ForegroundColor White
 
 $s9a = New-Session -Profile "Primary"
@@ -546,7 +546,7 @@ Check $stateCleared "Merge state file cleaned up after successful migration"
 Teardown-MigrationRun
 Write-Host ""
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 Write-Host "===================================" -ForegroundColor Cyan
 Write-Host "Results: $passCount passed, $failCount failed" -ForegroundColor $(if ($failCount -eq 0) { "Green" } else { "Red" })
