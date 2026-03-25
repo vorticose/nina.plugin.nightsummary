@@ -644,3 +644,8 @@ if ($failCount -gt 0) {
     Write-Host "(look for lines starting with 'NightSummary:')" -ForegroundColor Yellow
     Write-Host ""
 }
+
+# Always restore the junction to real data so NINA works after the test run
+Remove-Junction $newDbDir
+New-Junction $newDbDir $realDataDir
+Write-Host "NightSummary junction restored to real data. NINA is ready to use." -ForegroundColor DarkGray
