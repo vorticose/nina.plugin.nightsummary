@@ -39,12 +39,41 @@ while ((Get-Process -Name "NINA","msedgewebview2" -ErrorAction SilentlyContinue)
 }
 Start-Sleep -Seconds 2   # extra buffer for file handles to be released by the OS
 
+# Convert $newDbDir to a directory junction so Setup/Teardown can swap targets
+# without needing to rename/delete the potentially-locked NightSummary directory.
+function Remove-Junction([string]$Path) {
+    # cmd rd (without /s) removes a junction without deleting the target contents
+    cmd /c "rd `"$Path`"" 2>&1 | Out-Null
+}
+function New-Junction([string]$JunctionPath, [string]$TargetPath) {
+    cmd /c "mklink /J `"$JunctionPath`" `"$TargetPath`"" 2>&1 | Out-Null
+}
+function Is-Junction([string]$Path) {
+    if (-not (Test-Path $Path -PathType Container)) { return $false }
+    return !!((Get-Item $Path -Force).Attributes -band [System.IO.FileAttributes]::ReparsePoint)
+}
+
+if (Test-Path $newDbDir) {
+    if (-not (Is-Junction $newDbDir)) {
+        # First run: convert real directory to junction
+        if (Test-Path $realDataDir) { Remove-Item $realDataDir -Recurse -Force -ErrorAction SilentlyContinue }
+        Rename-Item $newDbDir $realDataDir -Force
+        New-Junction $newDbDir $realDataDir
+        Write-Host "Converted NightSummary to junction (real data preserved at $realDataDir)" -ForegroundColor DarkGray
+    }
+} else {
+    # No existing data dir -- create real target and junction
+    New-Item -ItemType Directory -Force $realDataDir | Out-Null
+    New-Junction $newDbDir $realDataDir
+}
+
 # -- Paths --------------------------------------------------------------------
 
-$newDbDir     = "$env:LOCALAPPDATA\NINA\NightSummary"
+$newDbDir     = "$env:LOCALAPPDATA\NINA\NightSummary"        # junction -- NINA always writes here
 $newDbPath    = "$newDbDir\nightsummary.sqlite"
-$backupDir    = "$env:LOCALAPPDATA\NINA\NightSummary.test_backup"
-$backupPath   = "$backupDir\nightsummary.sqlite"
+$realDataDir  = "$env:LOCALAPPDATA\NINA\NightSummary_real"   # user's actual data (junction target)
+$testDataDir  = "$env:LOCALAPPDATA\NINA\NightSummary_test"   # per-test scratch dir (junction target)
+$backupPath   = "$realDataDir\nightsummary.sqlite"            # kept for Test 9 check compatibility
 $pluginsRoot  = "$env:LOCALAPPDATA\NINA\Plugins"
 
 # Fake version folders used as legacy source locations
@@ -253,23 +282,12 @@ function Restore-RealLegacyDbs {
     }
 }
 
-# Backs up the live database directory and replaces it with an empty dir so migration runs
+# Points the NightSummary junction at a fresh empty directory so migration runs
 function Setup-MigrationRun {
-    if (Test-Path $backupDir) { Remove-Item $backupDir -Recurse -Force -ErrorAction SilentlyContinue }
-    if (Test-Path $newDbDir) {
-        $deadline = (Get-Date).AddSeconds(20)
-        $renamed  = $false
-        while (-not $renamed) {
-            try {
-                Rename-Item $newDbDir $backupDir -Force -ErrorAction Stop
-                $renamed = $true
-            } catch {
-                if ((Get-Date) -ge $deadline) { throw "Could not rename $newDbDir after 20s -- $_" }
-                Start-Sleep -Milliseconds 500
-            }
-        }
-    }
-    New-Item -ItemType Directory -Force $newDbDir | Out-Null
+    Remove-Junction $newDbDir
+    if (Test-Path $testDataDir) { Remove-Item $testDataDir -Recurse -Force -ErrorAction SilentlyContinue }
+    New-Item -ItemType Directory -Force $testDataDir | Out-Null
+    New-Junction $newDbDir $testDataDir
     Hide-RealLegacyDbs
 }
 
@@ -303,7 +321,7 @@ function Run-Migration {
     }
 }
 
-# Restores the live database backup directory and removes fake legacy DBs
+# Points the NightSummary junction back at the real data directory
 function Teardown-MigrationRun {
     Restore-RealLegacyDbs
     if (-not $KeepLegacyDbs) {
@@ -311,9 +329,8 @@ function Teardown-MigrationRun {
         Remove-Item $legacyDb2 -Force -ErrorAction SilentlyContinue
         Remove-Item $legacyDb3 -Force -ErrorAction SilentlyContinue
     }
-    # Remove the test NightSummary dir and restore the backup dir
-    if (Test-Path $newDbDir) { Remove-Item $newDbDir -Recurse -Force -ErrorAction SilentlyContinue }
-    if (Test-Path $backupDir) { Rename-Item $backupDir $newDbDir -Force -ErrorAction SilentlyContinue }
+    Remove-Junction $newDbDir
+    New-Junction $newDbDir $realDataDir
 }
 
 $passCount = 0
