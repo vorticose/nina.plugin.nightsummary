@@ -336,12 +336,12 @@ Run-Migration
 
 if (Test-Path $newDbPath) {
     $conn   = Open-Db $newDbPath -ReadOnly
-    $count  = Query-Scalar $conn "SELECT COUNT(*) FROM Sessions"
-    $images = Query-Scalar $conn "SELECT COUNT(*) FROM Images"
-    $row    = @(Query-All  $conn "SELECT * FROM Sessions LIMIT 1")[0]
+    $count         = Query-Scalar $conn "SELECT COUNT(*) FROM Sessions"
+    $images        = Query-Scalar $conn "SELECT COUNT(*) FROM Images"
+    $migratedCount = Query-Scalar $conn "SELECT COUNT(*) FROM Sessions WHERE SessionId = '$($s1.SessionId)'"
+    $row           = @(Query-All  $conn "SELECT * FROM Sessions WHERE SessionId = '$($s1.SessionId)'")[0]
     $conn.Close(); $conn.Dispose()
 
-    $migratedCount = Query-Scalar $conn "SELECT COUNT(*) FROM Sessions WHERE SessionId = '$($s1.SessionId)'"
     Check ($migratedCount -eq 1)                   "Migrated session present by ID"
     Check ($images -eq 2)                          "Image count = 2"
     Check ($row["CamXSize"]        -eq 6248)       "CamXSize preserved"
