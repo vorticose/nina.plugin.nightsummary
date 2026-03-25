@@ -198,6 +198,29 @@ CREATE TABLE SessionEvents (
     $conn.Dispose()
 }
 
+# Renames all real legacy NightSummary DBs so they don't interfere with test scenarios.
+$fakeLegacyDirs = @($legacyDir1, $legacyDir2, $legacyDir3)
+function Hide-RealLegacyDbs {
+    if (-not (Test-Path $pluginsRoot)) { return }
+    foreach ($dir in Get-ChildItem $pluginsRoot -Directory) {
+        $db = Join-Path $dir.FullName "NightSummary\nightsummary.sqlite"
+        $isTestDir = $fakeLegacyDirs | Where-Object { $_ -like "*\$($dir.Name)\NightSummary" }
+        if ((Test-Path $db) -and -not $isTestDir) {
+            Rename-Item $db "$db.hidden" -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Restore-RealLegacyDbs {
+    if (-not (Test-Path $pluginsRoot)) { return }
+    foreach ($dir in Get-ChildItem $pluginsRoot -Directory) {
+        $hidden = Join-Path $dir.FullName "NightSummary\nightsummary.sqlite.hidden"
+        if (Test-Path $hidden) {
+            Rename-Item $hidden ($hidden -replace '\.hidden$', '') -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 # Backs up the live database (if it exists) and removes it so migration will run
 function Setup-MigrationRun {
     if (Test-Path $newDbPath) {
@@ -208,6 +231,7 @@ function Setup-MigrationRun {
     Remove-Item "$newDbPath.merge_state"     -Force -ErrorAction SilentlyContinue
     Remove-Item "$newDbPath.pre_merge_backup" -Force -ErrorAction SilentlyContinue
     Remove-Item "$newDbPath.migration_tmp"   -Force -ErrorAction SilentlyContinue
+    Hide-RealLegacyDbs
 }
 
 # Starts NINA, waits for the new DB to appear (migration complete), then kills NINA
@@ -235,6 +259,7 @@ function Run-Migration {
 
 # Restores the live database backup and removes fake legacy DBs
 function Teardown-MigrationRun {
+    Restore-RealLegacyDbs
     if (-not $KeepLegacyDbs) {
         Remove-Item $legacyDb1 -Force -ErrorAction SilentlyContinue
         Remove-Item $legacyDb2 -Force -ErrorAction SilentlyContinue
