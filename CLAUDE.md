@@ -66,6 +66,12 @@ See `scripts/TEST-MIGRATION-NOTES.md` for hard-won lessons from testing this.
 - **CAUTION**: after restoring the clean URL, verify `.git/config` has a non-empty URL.
   If the restore command fails (e.g., gh can't detect the remote), the URL will be blank.
   Repo URL: `https://github.com/vorticose/nina.plugin.nightsummary.git`
+- **Quick deploy from Mac**: mount `//RBFocus:@100.86.208.29/Night%20Summary`, copy DLL, unmount:
+  ```
+  mkdir -p /tmp/nina-deploy && mount_smbfs "//RBFocus:@100.86.208.29/Night%20Summary" /tmp/nina-deploy
+  cp NINA.Plugin.NightSummary/bin/Release/net8.0-windows/NINA.Plugin.NightSummary.dll /tmp/nina-deploy/
+  diskutil unmount /tmp/nina-deploy
+  ```
 - GitHub raw CDN caches aggressively -- use the Contents API for reliable downloads:
   `Invoke-RestMethod "https://api.github.com/repos/.../contents/..."`
 - PowerShell scripts must be pure ASCII -- no em dashes, box-drawing chars, or
