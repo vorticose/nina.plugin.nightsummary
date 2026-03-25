@@ -44,9 +44,10 @@ Start-Sleep -Seconds 2   # extra buffer for file handles to be released by the O
 $newDbDir     = "$env:LOCALAPPDATA\NINA\NightSummary"        # junction -- NINA always writes here
 $newDbPath    = "$newDbDir\nightsummary.sqlite"
 $realDataDir  = "$env:LOCALAPPDATA\NINA\NightSummary_real"   # user's actual data (junction target)
-$testDataDir  = "$env:LOCALAPPDATA\NINA\NightSummary_test"   # per-test scratch dir (junction target)
+$testDataBase = "$env:LOCALAPPDATA\NINA\NightSummary_test"   # per-test scratch dir base name
 $backupPath   = "$realDataDir\nightsummary.sqlite"            # kept for Test 9 check compatibility
 $pluginsRoot  = "$env:LOCALAPPDATA\NINA\Plugins"
+$script:testRunCount = 0
 
 # -- Junction helpers ----------------------------------------------------------
 # We use a directory junction at $newDbDir so Setup/Teardown can swap what NINA
@@ -284,8 +285,9 @@ function Restore-RealLegacyDbs {
 
 # Points the NightSummary junction at a fresh empty directory so migration runs
 function Setup-MigrationRun {
+    $script:testRunCount++
+    $testDataDir = "$testDataBase_$($script:testRunCount)"
     Remove-Junction $newDbDir
-    if (Test-Path $testDataDir) { Remove-Item $testDataDir -Recurse -Force -ErrorAction SilentlyContinue }
     New-Item -ItemType Directory -Force $testDataDir | Out-Null
     New-Junction $newDbDir $testDataDir
     Hide-RealLegacyDbs
@@ -592,9 +594,10 @@ Setup-MigrationRun
 Run-Migration
 
 if (Test-Path $newDbPath) {
+    $ids       = "'$($s8a.SessionId)','$($s8b.SessionId)','$($s8c.SessionId)'"
     $conn      = Open-Db $newDbPath -ReadOnly
-    $sessions  = Query-Scalar $conn "SELECT COUNT(*) FROM Sessions"
-    $images    = Query-Scalar $conn "SELECT COUNT(*) FROM Images"
+    $sessions  = Query-Scalar $conn "SELECT COUNT(*) FROM Sessions WHERE SessionId IN ($ids)"
+    $images    = Query-Scalar $conn "SELECT COUNT(*) FROM Images   WHERE SessionId IN ($ids)"
     $conn.Close(); $conn.Dispose()
 
     Check ($sessions -eq 3) "All 3 sessions present after three-way merge"
