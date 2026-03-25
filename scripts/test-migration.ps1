@@ -56,7 +56,7 @@ if (-not (Test-Path $NinaExePath)) {
     exit 1
 }
 
-$tempDir = "$env:TEMP\sqlite-ps"
+$tempDir = "$env:TEMP\sqlite-ps-$([System.Diagnostics.Process]::GetCurrentProcess().Id)"
 New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
 Copy-Item $managedDll $tempDir -Force
 Copy-Item $nativeDll  $tempDir -Force
@@ -291,7 +291,7 @@ Write-Host ""
 Write-Host "Test 1: Single legacy DB -- basic migration" -ForegroundColor White
 
 $s1 = New-Session -Profile "ScopeA" -CamX 6248 -PixelSize 3.76 -FocalLength 700 -Skipped 5
-New-LegacyDb $legacyDb1 @($s1) @(New-Image $s1.SessionId "L" 1.75, (New-Image $s1.SessionId "Ha" 2.1))
+New-LegacyDb $legacyDb1 @($s1) @((New-Image $s1.SessionId "L" 1.75), (New-Image $s1.SessionId "Ha" 2.1))
 Setup-MigrationRun
 Run-Migration
 
@@ -492,9 +492,9 @@ $s8a = New-Session -Profile "DB1Session"
 $s8b = New-Session -Profile "DB2Session"
 $s8c = New-Session -Profile "DB3Session"
 
-$imgs8a = @(New-Image $s8a.SessionId "L" 1.8, (New-Image $s8a.SessionId "Ha" 2.1))
+$imgs8a = @((New-Image $s8a.SessionId "L" 1.8), (New-Image $s8a.SessionId "Ha" 2.1))
 $imgs8b = @(New-Image $s8b.SessionId "R" 1.9)
-$imgs8c = @(New-Image $s8c.SessionId "G" 1.7, (New-Image $s8c.SessionId "B" 1.6), (New-Image $s8c.SessionId "OIII" 2.2))
+$imgs8c = @((New-Image $s8c.SessionId "G" 1.7), (New-Image $s8c.SessionId "B" 1.6), (New-Image $s8c.SessionId "OIII" 2.2))
 
 New-LegacyDb $legacyDb1 @($s8a) $imgs8a
 New-LegacyDb $legacyDb2 @($s8b) $imgs8b
