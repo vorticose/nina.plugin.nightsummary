@@ -9,7 +9,7 @@
 # PREREQUISITES
 #   - NINA is installed (default or custom path via -NinaExePath)
 #   - dotnet build has been run (SQLite DLL found via NuGet cache)
-#   - Your real data is safe — the script backs up your live DB before each test
+#   - Your real data is safe -- the script backs up your live DB before each test
 #     and restores it afterwards. Legacy source files are never touched.
 #
 # USAGE
@@ -48,11 +48,11 @@ $managedDll = "$sqliteDir\lib\netstandard2.0\System.Data.SQLite.dll"
 $nativeDll  = "$sqliteDir\runtimes\win-x64\native\SQLite.Interop.dll"
 
 if (-not (Test-Path $managedDll)) {
-    Write-Error "SQLite DLL not found at $managedDll — run 'dotnet build' first to populate the NuGet cache."
+    Write-Error "SQLite DLL not found at $managedDll -- run 'dotnet build' first to populate the NuGet cache."
     exit 1
 }
 if (-not (Test-Path $NinaExePath)) {
-    Write-Error "NINA.exe not found at $NinaExePath — use -NinaExePath to specify the correct path."
+    Write-Error "NINA.exe not found at $NinaExePath -- use -NinaExePath to specify the correct path."
     exit 1
 }
 
@@ -110,14 +110,14 @@ function New-LegacyDb([string]$Path, [array]$Sessions, [array]$Images = @(), [sw
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
 
     if ($Corrupt) {
-        # Write junk bytes — not a valid SQLite file
+        # Write junk bytes -- not a valid SQLite file
         [System.IO.File]::WriteAllText($Path, "THIS IS NOT A SQLITE DATABASE - CORRUPT FILE FOR TESTING")
         return
     }
 
     $conn = Open-Db $Path
 
-    # Sessions table — old schema omits camera columns and SkippedExposures
+    # Sessions table -- old schema omits camera columns and SkippedExposures
     if ($OldSchema) {
         Exec-Db $conn @"
 CREATE TABLE Sessions (
@@ -288,7 +288,7 @@ Write-Host "===================================" -ForegroundColor Cyan
 Write-Host ""
 
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Host "Test 1: Single legacy DB — basic migration" -ForegroundColor White
+Write-Host "Test 1: Single legacy DB -- basic migration" -ForegroundColor White
 
 $s1 = New-Session -Profile "ScopeA" -CamX 6248 -PixelSize 3.76 -FocalLength 700 -Skipped 5
 New-LegacyDb $legacyDb1 @($s1) @(New-Image $s1.SessionId "L" 1.75, (New-Image $s1.SessionId "Ha" 2.1))
@@ -316,7 +316,7 @@ Teardown-MigrationRun
 Write-Host ""
 
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Host "Test 2: Multiple legacy DBs with no overlap — all sessions merged" -ForegroundColor White
+Write-Host "Test 2: Multiple legacy DBs with no overlap -- all sessions merged" -ForegroundColor White
 
 $s2a = New-Session -Profile "ScopeA"
 $s2b = New-Session -Profile "ScopeB"
@@ -324,7 +324,7 @@ $s2c = New-Session -Profile "ScopeC"
 # DB1 is most recent (touched last), DB2 is older
 New-LegacyDb $legacyDb1 @($s2a, $s2b)
 Start-Sleep -Milliseconds 100
-New-LegacyDb $legacyDb2 @($s2c)   # older — will be merged into DB1's copy
+New-LegacyDb $legacyDb2 @($s2c)   # older -- will be merged into DB1's copy
 (Get-Item $legacyDb1).LastWriteTime = (Get-Date).AddSeconds(1)  # ensure DB1 is newer
 
 Setup-MigrationRun
@@ -344,7 +344,7 @@ Teardown-MigrationRun
 Write-Host ""
 
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Host "Test 3: Multiple legacy DBs with overlapping sessions — no duplicates" -ForegroundColor White
+Write-Host "Test 3: Multiple legacy DBs with overlapping sessions -- no duplicates" -ForegroundColor White
 
 $sharedId = [System.Guid]::NewGuid().ToString()
 $s3shared = New-Session -Id $sharedId -Profile "Shared"
@@ -361,7 +361,7 @@ if (Test-Path $newDbPath) {
     $count = Query-Scalar $conn "SELECT COUNT(*) FROM Sessions"
     $conn.Close(); $conn.Dispose()
 
-    Check ($count -eq 2) "2 sessions total — shared session not duplicated, unique session merged"
+    Check ($count -eq 2) "2 sessions total -- shared session not duplicated, unique session merged"
 } else {
     Fail "New database was not created"
 }
@@ -370,7 +370,7 @@ Teardown-MigrationRun
 Write-Host ""
 
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Host "Test 4: Corrupt primary DB — falls back to valid older DB" -ForegroundColor White
+Write-Host "Test 4: Corrupt primary DB -- falls back to valid older DB" -ForegroundColor White
 
 $s4 = New-Session -Profile "ValidFallback"
 New-LegacyDb $legacyDb2 @($s4)                              # valid, older (DB2)
@@ -396,7 +396,7 @@ Teardown-MigrationRun
 Write-Host ""
 
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Host "Test 5: All legacy DBs corrupt — starts fresh with empty DB" -ForegroundColor White
+Write-Host "Test 5: All legacy DBs corrupt -- starts fresh with empty DB" -ForegroundColor White
 
 New-LegacyDb $legacyDb1 -Corrupt
 New-LegacyDb $legacyDb2 -Corrupt
@@ -409,7 +409,7 @@ if (Test-Path $newDbPath) {
     $count = Query-Scalar $conn "SELECT COUNT(*) FROM Sessions"
     $conn.Close(); $conn.Dispose()
 
-    Check ($count -eq 0) "DB exists but is empty — started fresh as expected"
+    Check ($count -eq 0) "DB exists but is empty -- started fresh as expected"
 } else {
     # NINA creates the DB via InitializeDatabase even with no migration data
     Fail "New database was not created at all"
@@ -419,18 +419,18 @@ Teardown-MigrationRun
 Write-Host ""
 
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Host "Test 6: Interrupted merge resume — merge state file pre-seeded" -ForegroundColor White
+Write-Host "Test 6: Interrupted merge resume -- merge state file pre-seeded" -ForegroundColor White
 
 $s6a = New-Session -Profile "AlreadyMerged"
 $s6b = New-Session -Profile "NeedsToMerge"
-New-LegacyDb $legacyDb1 @($s6a)   # most recent — becomes base
-New-LegacyDb $legacyDb2 @($s6b)   # older — should be merged
+New-LegacyDb $legacyDb1 @($s6a)   # most recent -- becomes base
+New-LegacyDb $legacyDb2 @($s6b)   # older -- should be merged
 (Get-Item $legacyDb1).LastWriteTime = (Get-Date).AddSeconds(1)
 
 Setup-MigrationRun
 
 # Simulate a previous interrupted run: DB1 was already copied as the base,
-# and DB2 was already merged — only DB3 (which doesn't exist) remains.
+# and DB2 was already merged -- only DB3 (which doesn't exist) remains.
 # We pre-seed the merge state file to say DB2 was already done.
 New-Item -ItemType Directory -Force $newDbDir | Out-Null
 Copy-Item $legacyDb1 $newDbPath -Force  # simulate the base copy having succeeded
@@ -460,7 +460,7 @@ Teardown-MigrationRun
 Write-Host ""
 
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Host "Test 7: Old schema (missing columns) — sessions migrate with defaults" -ForegroundColor White
+Write-Host "Test 7: Old schema (missing columns) -- sessions migrate with defaults" -ForegroundColor White
 
 $s7 = New-Session -Profile "OldSchemaSession"
 New-LegacyDb $legacyDb1 @($s7) -OldSchema   # no CamXSize, PixelSizeMicrons, etc.
@@ -486,7 +486,7 @@ Teardown-MigrationRun
 Write-Host ""
 
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Host "Test 8: Three-way merge — images and events all survive" -ForegroundColor White
+Write-Host "Test 8: Three-way merge -- images and events all survive" -ForegroundColor White
 
 $s8a = New-Session -Profile "DB1Session"
 $s8b = New-Session -Profile "DB2Session"
@@ -535,7 +535,7 @@ New-LegacyDb $legacyDb2 @($s9b)
 Setup-MigrationRun
 Run-Migration
 
-# The pre-merge backup is kept after success (by design — safety net for one version cycle)
+# The pre-merge backup is kept after success (by design -- safety net for one version cycle)
 $backupExists = Test-Path "$newDbPath.pre_merge_backup"
 Check $backupExists "Pre-merge backup file exists after successful migration"
 
