@@ -125,7 +125,14 @@ function New-LegacyDb([string]$Path, [array]$Sessions, [array]$Images = @(), [sw
         return
     }
 
-    if (Test-Path $Path) { Remove-Item $Path -Force }
+    if (Test-Path $Path) {
+        $deadline = (Get-Date).AddSeconds(10)
+        while (Test-Path $Path) {
+            Remove-Item $Path -Force -ErrorAction SilentlyContinue
+            if ((Test-Path $Path) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 300 }
+            elseif (Test-Path $Path) { throw "Could not remove $Path -- file still locked after 10s" }
+        }
+    }
     $conn = Open-Db $Path
 
     # Sessions table -- old schema omits camera columns and SkippedExposures
@@ -344,9 +351,8 @@ Run-Migration
 
 if (Test-Path $newDbPath) {
     $conn   = Open-Db $newDbPath -ReadOnly
-    $count         = Query-Scalar $conn "SELECT COUNT(*) FROM Sessions"
-    $images        = Query-Scalar $conn "SELECT COUNT(*) FROM Images"
     $migratedCount = Query-Scalar $conn "SELECT COUNT(*) FROM Sessions WHERE SessionId = '$($s1.SessionId)'"
+    $images        = Query-Scalar $conn "SELECT COUNT(*) FROM Images WHERE SessionId = '$($s1.SessionId)'"
     $row           = @(Query-All  $conn "SELECT * FROM Sessions WHERE SessionId = '$($s1.SessionId)'")[0]
     $conn.Close(); $conn.Dispose()
 
@@ -518,8 +524,8 @@ Run-Migration
 
 if (Test-Path $newDbPath) {
     $conn  = Open-Db $newDbPath -ReadOnly
-    $count = Query-Scalar $conn "SELECT COUNT(*) FROM Sessions"
-    $row   = @(Query-All $conn "SELECT * FROM Sessions LIMIT 1")[0]
+    $count = Query-Scalar $conn "SELECT COUNT(*) FROM Sessions WHERE SessionId = '$($s7.SessionId)'"
+    $row   = @(Query-All $conn "SELECT * FROM Sessions WHERE SessionId = '$($s7.SessionId)'")[0]
     $conn.Close(); $conn.Dispose()
 
     Check ($count -eq 1)                         "Session migrated from old-schema DB"
