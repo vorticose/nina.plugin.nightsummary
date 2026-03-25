@@ -39,11 +39,21 @@ while ((Get-Process -Name "NINA","msedgewebview2" -ErrorAction SilentlyContinue)
 }
 Start-Sleep -Seconds 2   # extra buffer for file handles to be released by the OS
 
-# Convert $newDbDir to a directory junction so Setup/Teardown can swap targets
-# without needing to rename/delete the potentially-locked NightSummary directory.
+# -- Paths --------------------------------------------------------------------
+
+$newDbDir     = "$env:LOCALAPPDATA\NINA\NightSummary"        # junction -- NINA always writes here
+$newDbPath    = "$newDbDir\nightsummary.sqlite"
+$realDataDir  = "$env:LOCALAPPDATA\NINA\NightSummary_real"   # user's actual data (junction target)
+$testDataDir  = "$env:LOCALAPPDATA\NINA\NightSummary_test"   # per-test scratch dir (junction target)
+$backupPath   = "$realDataDir\nightsummary.sqlite"            # kept for Test 9 check compatibility
+$pluginsRoot  = "$env:LOCALAPPDATA\NINA\Plugins"
+
+# -- Junction helpers ----------------------------------------------------------
+# We use a directory junction at $newDbDir so Setup/Teardown can swap what NINA
+# sees without ever needing to rename or delete the potentially-locked directory.
+
 function Remove-Junction([string]$Path) {
-    # cmd rd (without /s) removes a junction without deleting the target contents
-    cmd /c "rd `"$Path`"" 2>&1 | Out-Null
+    cmd /c "rd `"$Path`"" 2>&1 | Out-Null   # rd without /s removes junction, not target
 }
 function New-Junction([string]$JunctionPath, [string]$TargetPath) {
     cmd /c "mklink /J `"$JunctionPath`" `"$TargetPath`"" 2>&1 | Out-Null
@@ -55,26 +65,16 @@ function Is-Junction([string]$Path) {
 
 if (Test-Path $newDbDir) {
     if (-not (Is-Junction $newDbDir)) {
-        # First run: convert real directory to junction
+        # First run: convert real directory to a junction
         if (Test-Path $realDataDir) { Remove-Item $realDataDir -Recurse -Force -ErrorAction SilentlyContinue }
         Rename-Item $newDbDir $realDataDir -Force
         New-Junction $newDbDir $realDataDir
         Write-Host "Converted NightSummary to junction (real data preserved at $realDataDir)" -ForegroundColor DarkGray
     }
 } else {
-    # No existing data dir -- create real target and junction
     New-Item -ItemType Directory -Force $realDataDir | Out-Null
     New-Junction $newDbDir $realDataDir
 }
-
-# -- Paths --------------------------------------------------------------------
-
-$newDbDir     = "$env:LOCALAPPDATA\NINA\NightSummary"        # junction -- NINA always writes here
-$newDbPath    = "$newDbDir\nightsummary.sqlite"
-$realDataDir  = "$env:LOCALAPPDATA\NINA\NightSummary_real"   # user's actual data (junction target)
-$testDataDir  = "$env:LOCALAPPDATA\NINA\NightSummary_test"   # per-test scratch dir (junction target)
-$backupPath   = "$realDataDir\nightsummary.sqlite"            # kept for Test 9 check compatibility
-$pluginsRoot  = "$env:LOCALAPPDATA\NINA\Plugins"
 
 # Fake version folders used as legacy source locations
 $legacyDir1   = "$pluginsRoot\1.0.0.0\NightSummary"
