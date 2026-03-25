@@ -271,8 +271,8 @@ function Run-Migration {
         $waited += 0.5
     }
 
-    Stop-Process -Id $nina.Id -Force -ErrorAction SilentlyContinue
-    # Wait for process to fully exit before reading the DB
+    # Kill NINA and all child processes (WebView2 etc.) using process tree kill
+    taskkill /PID $nina.Id /T /F 2>$null | Out-Null
     $nina.WaitForExit(15000) | Out-Null
     Start-Sleep -Seconds 1
 
