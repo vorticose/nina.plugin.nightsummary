@@ -257,8 +257,8 @@ function Run-Migration {
     }
 
     Stop-Process -Id $nina.Id -Force -ErrorAction SilentlyContinue
-    # Wait briefly for SQLite to flush WAL to the main file before we read it
-    Start-Sleep -Milliseconds 800
+    # Wait for NINA to fully release file handles and SQLite to flush WAL
+    Start-Sleep -Seconds 2
 
     if (-not (Test-Path $newDbPath)) {
         Write-Host "    WARNING: NINA did not create the database within ${NinaStartupSeconds}s" -ForegroundColor Yellow
