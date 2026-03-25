@@ -325,7 +325,7 @@ if (Test-Path $newDbPath) {
     $conn   = Open-Db $newDbPath -ReadOnly
     $count  = Query-Scalar $conn "SELECT COUNT(*) FROM Sessions"
     $images = Query-Scalar $conn "SELECT COUNT(*) FROM Images"
-    $row    = (Query-All   $conn "SELECT * FROM Sessions LIMIT 1")[0]
+    $row    = @(Query-All  $conn "SELECT * FROM Sessions LIMIT 1")[0]
     $conn.Close(); $conn.Dispose()
 
     Check ($count  -eq 1)                          "Session count = 1"
@@ -497,7 +497,7 @@ Run-Migration
 if (Test-Path $newDbPath) {
     $conn  = Open-Db $newDbPath -ReadOnly
     $count = Query-Scalar $conn "SELECT COUNT(*) FROM Sessions"
-    $row   = (Query-All $conn "SELECT * FROM Sessions LIMIT 1")[0]
+    $row   = @(Query-All $conn "SELECT * FROM Sessions LIMIT 1")[0]
     $conn.Close(); $conn.Dispose()
 
     Check ($count -eq 1)                         "Session migrated from old-schema DB"
