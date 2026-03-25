@@ -110,8 +110,18 @@ function New-LegacyDb([string]$Path, [array]$Sessions, [array]$Images = @(), [sw
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
 
     if ($Corrupt) {
-        # Write junk bytes -- not a valid SQLite file
-        [System.IO.File]::WriteAllText($Path, "THIS IS NOT A SQLITE DATABASE - CORRUPT FILE FOR TESTING")
+        # Write junk bytes -- not a valid SQLite file. Retry briefly in case a
+        # previous NINA run still has the file handle open.
+        $deadline = (Get-Date).AddSeconds(5)
+        while ($true) {
+            try {
+                [System.IO.File]::WriteAllText($Path, "THIS IS NOT A SQLITE DATABASE - CORRUPT FILE FOR TESTING")
+                break
+            } catch {
+                if ((Get-Date) -ge $deadline) { throw }
+                Start-Sleep -Milliseconds 200
+            }
+        }
         return
     }
 
