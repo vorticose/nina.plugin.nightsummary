@@ -29,7 +29,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
         public List<string> Warnings { get; } = new List<string>();
 
         // SVG theme colors (set at the start of each report generation)
-        private string svgBg, svgBorder, svgMuted, svgDim, svgAccent, svgChartBg, svgChartDark;
+        private string svgBg, svgBorder, svgMuted, svgDim, svgAccent, svgChartBg, svgChartDark, svgMoonStroke, svgMoonOpacity, svgSunrise;
 
         // Lazily-loaded plugin icon as a base64 data URI (embedded resource)
         private static string? _iconDataUri;
@@ -67,10 +67,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
             // Altitude chart keeps dark background in both modes for better line visibility
             if (lightMode) {
                 svgBg = "#f5f5f5"; svgBorder = "#c0c8d4"; svgMuted = "#666"; svgDim = "#888";
-                svgAccent = "#2563b8"; svgChartBg = "#0d1117"; svgChartDark = "#0f0f23";
+                svgAccent = "#2563b8"; svgChartBg = "#e8eef5"; svgChartDark = "#0f0f23";
+                svgMoonStroke = "#7a8a9e"; svgMoonOpacity = "0.75"; svgSunrise = "#c07a00";
             } else {
                 svgBg = "#1a1a2e"; svgBorder = "#2d2d5e"; svgMuted = "#888"; svgDim = "#555";
                 svgAccent = "#7eb8f7"; svgChartBg = "#0d1117"; svgChartDark = "#0f0f23";
+                svgMoonStroke = "#c0c0c0"; svgMoonOpacity = "0.45"; svgSunrise = "#f59e0b";
             }
 
             sb.AppendLine("<!DOCTYPE html>");
@@ -681,9 +683,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var sb = new StringBuilder();
             sb.AppendLine($"<svg viewBox='0 0 {svgW} {svgH}' width='102%' height='{svgH}' xmlns='http://www.w3.org/2000/svg' style='display:block;' preserveAspectRatio='none'>");
 
-            // Altitude chart always uses a dark palette for the night-sky aesthetic.
-            // Labels outside the plot rect use theme-aware colors so they read against the page background.
-            string altGrid = "#2d2d5e", altLabel = svgMuted, altAccent = svgAccent;
+            // All chart colors are theme-aware via svg* instance variables
+            string altGrid = svgBorder, altLabel = svgMuted, altAccent = svgAccent;
 
             // Background
             sb.AppendLine($"<rect x='{padL}' y='{padT}' width='{plotW}' height='{plotH}' fill='{svgChartBg}' rx='4'/>");
@@ -737,7 +738,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     pts.Append($"{X(t):F1},{Y(alt):F1} ");
                 sb.AppendLine("<g><title>Moon Position</title>");
                 sb.AppendLine($"<polyline points='{pts}' fill='none' stroke='transparent' stroke-width='12'/>");
-                sb.AppendLine($"<polyline points='{pts}' fill='none' stroke='#c0c0c0' stroke-width='1.5' stroke-dasharray='5,4' opacity='0.45'/>");
+                sb.AppendLine($"<polyline points='{pts}' fill='none' stroke='{svgMoonStroke}' stroke-width='1.5' stroke-dasharray='5,4' opacity='{svgMoonOpacity}'/>");
                 sb.AppendLine("</g>");
             }
             skipMoon:;
@@ -757,8 +758,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("</g>");
 
             // Sunset / sunrise edge markers
-            sb.AppendLine($"<text x='{padL + 2}' y='{padT + plotH - 4}' font-size='10' fill='#f59e0b' opacity='0.8'>&#9660; Sunset {dayStart:HH:mm}</text>");
-            sb.AppendLine($"<text x='{padL + plotW - 2}' y='{padT + plotH - 4}' text-anchor='end' font-size='10' fill='#f59e0b' opacity='0.8'>Sunrise {dayEnd:HH:mm} &#9650;</text>");
+            sb.AppendLine($"<text x='{padL + 2}' y='{padT + plotH - 4}' font-size='10' fill='{svgSunrise}' opacity='0.8'>&#9660; Sunset {dayStart:HH:mm}</text>");
+            sb.AppendLine($"<text x='{padL + plotW - 2}' y='{padT + plotH - 4}' text-anchor='end' font-size='10' fill='{svgSunrise}' opacity='0.8'>Sunrise {dayEnd:HH:mm} &#9650;</text>");
 
             // X-axis time labels — edge labels + intermediate ticks every 2h
             sb.AppendLine($"<text x='{padL}' y='{timeLabelY}' text-anchor='start' font-size='10' fill='{altLabel}'>{dayStart:HH:mm}</text>");
