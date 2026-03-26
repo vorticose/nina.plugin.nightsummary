@@ -102,10 +102,11 @@ namespace NINA.Plugin.NightSummary.Session {
             var item = sender as ISequenceItem;
             if (item == null) return;
 
-            if (item.Status == SequenceEntityStatus.SKIPPED) {
+            if (item.Status == SequenceEntityStatus.SKIPPED ||
+                item.Status == SequenceEntityStatus.FAILED) {
                 Interlocked.Increment(ref skippedExposures);
-                var name = (item as IExposureItem)?.ImageType ?? "unknown";
-                Logger.Info($"NightSummary: Exposure aborted (total aborted: {skippedExposures})");
+                var reason = item.Status == SequenceEntityStatus.FAILED ? "failed" : "skipped";
+                Logger.Info($"NightSummary: Exposure aborted ({reason}, total aborted: {skippedExposures})");
             }
 
             // Unsubscribe once we have a terminal status

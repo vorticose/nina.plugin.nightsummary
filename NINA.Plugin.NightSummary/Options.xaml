@@ -293,6 +293,14 @@
                                 <ComboBoxItem>Airmass</ComboBoxItem>
                                 <ComboBoxItem>Humidity (%)</ComboBoxItem>
                                 <ComboBoxItem>Focuser Position (steps)</ComboBoxItem>
+                                <ComboBoxItem>Sky Quality (mag/arcsec²)</ComboBoxItem>
+                                <ComboBoxItem>Cloud Cover (%)</ComboBoxItem>
+                                <ComboBoxItem>Camera Temp (°C)</ComboBoxItem>
+                                <ComboBoxItem>Dew Point (°C)</ComboBoxItem>
+                                <ComboBoxItem>Wind Speed (m/s)</ComboBoxItem>
+                                <ComboBoxItem>Pressure (hPa)</ComboBoxItem>
+                                <ComboBoxItem>Star Count</ComboBoxItem>
+                                <ComboBoxItem>Azimuth (°)</ComboBoxItem>
                             </ComboBox>
                         </StackPanel>
 
@@ -310,10 +318,19 @@
                                 <ComboBoxItem>Airmass</ComboBoxItem>
                                 <ComboBoxItem>Humidity (%)</ComboBoxItem>
                                 <ComboBoxItem>Focuser Position (steps)</ComboBoxItem>
+                                <ComboBoxItem>Sky Quality (mag/arcsec²)</ComboBoxItem>
+                                <ComboBoxItem>Cloud Cover (%)</ComboBoxItem>
+                                <ComboBoxItem>Camera Temp (°C)</ComboBoxItem>
+                                <ComboBoxItem>Dew Point (°C)</ComboBoxItem>
+                                <ComboBoxItem>Wind Speed (m/s)</ComboBoxItem>
+                                <ComboBoxItem>Pressure (hPa)</ComboBoxItem>
+                                <ComboBoxItem>Star Count</ComboBoxItem>
+                                <ComboBoxItem>Azimuth (°)</ComboBoxItem>
                             </ComboBox>
                             <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,2,0,0" MaxWidth="320">
                                 FWHM and Eccentricity require the Hocus Focus plugin. Focuser Temp requires a focuser with a built-in temperature sensor.
-                                Ambient Temp and Humidity require a device connected as a NINA weather data source (e.g. Pegasus UPB, AAG CloudWatcher).
+                                Ambient Temp, Humidity, Dew Point, Wind Speed, and Pressure require a device connected as a NINA weather data source (e.g. Pegasus UPB, AAG CloudWatcher).
+                                Sky Quality requires a sky quality meter and Cloud Cover requires a cloud sensor, both connected as NINA weather data sources.
                                 Focuser Position requires a motorized focuser.
                             </TextBlock>
                         </StackPanel>

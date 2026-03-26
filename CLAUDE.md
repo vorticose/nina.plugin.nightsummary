@@ -81,7 +81,8 @@ See `scripts/TEST-MIGRATION-NOTES.md` for hard-won lessons from testing this.
 
 To publish a new version:
 
-1. **Build**: `dotnet build NINA.Plugin.NightSummary.sln -c Release`
+1. **Run tests** (on Windows machine): `dotnet test NINA.Plugin.NightSummary.Tests` — must be 0 failures before release
+2. **Build**: `dotnet build NINA.Plugin.NightSummary.sln -c Release`
 2. **Package**: `cd NINA.Plugin.NightSummary/bin/Release/net8.0-windows && zip -r /tmp/NINA.Plugin.NightSummary.zip . --exclude "*.pdb" --exclude "*.xml"`
 3. **Checksum**: `shasum -a 256 /tmp/NINA.Plugin.NightSummary.zip | awk '{print toupper($1)}'`
 4. **GitHub Release**: Update existing or create new release tagged `vX.Y.Z`, upload ZIP

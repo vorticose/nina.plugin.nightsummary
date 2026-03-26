@@ -1,5 +1,8 @@
 ﻿using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+
+[assembly: InternalsVisibleTo("NINA.Plugin.NightSummary.Tests")]
 
 [assembly: Guid("682531D1-5A23-4627-B961-0794282ECB4E")]
 [assembly: AssemblyVersion("2.8.1.0")]

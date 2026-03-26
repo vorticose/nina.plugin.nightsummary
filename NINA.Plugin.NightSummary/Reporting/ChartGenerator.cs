@@ -23,9 +23,17 @@ namespace NINA.Plugin.NightSummary.Reporting {
         public const int PrimaryAirmass      = 7;
         public const int PrimaryHumidity     = 8;
         public const int PrimaryFocuserPos   = 9;
+        public const int PrimarySkyQuality   = 10;
+        public const int PrimaryCloudCover   = 11;
+        public const int PrimaryCameraTemp   = 12;
+        public const int PrimaryDewPoint     = 13;
+        public const int PrimaryWindSpeed    = 14;
+        public const int PrimaryPressure     = 15;
+        public const int PrimaryStarCount    = 16;
+        public const int PrimaryAzimuth      = 17;
 
         // Secondary metric indices (ChartSecondaryMetric setting, SelectedIndex in secondary ComboBox)
-        // Index 0 = None; indices 1–10 mirror the primary set offset by 1
+        // Index 0 = None; indices 1–N mirror the primary set offset by 1
         public const int SecNone         = 0;
         public const int SecHFR          = 1;
         public const int SecFWHM         = 2;
@@ -37,6 +45,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
         public const int SecAirmass      = 8;
         public const int SecHumidity     = 9;
         public const int SecFocuserPos   = 10;
+        public const int SecSkyQuality   = 11;
+        public const int SecCloudCover   = 12;
+        public const int SecCameraTemp   = 13;
+        public const int SecDewPoint     = 14;
+        public const int SecWindSpeed    = 15;
+        public const int SecPressure     = 16;
+        public const int SecStarCount    = 17;
+        public const int SecAzimuth      = 18;
 
         private const int Width        = 800;
         private const int Height       = 300;
@@ -140,16 +156,18 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine($"<rect width=\"{Width}\" height=\"{Height}\" fill=\"{ColorBackground}\" rx=\"6\"/>");
 
             // Horizontal grid lines + left Y labels
+            string leftFmt  = GetValueFormat(swapped ? secondaryMetric : primaryMetric, !swapped);
             const int ySteps = 5;
             for (int i = 0; i <= ySteps; i++) {
                 double v = minL + (rangeL / ySteps) * i;
                 double y = ToYL(v);
                 sb.AppendLine($"<line x1=\"{PadLeft}\" y1=\"{y:F1}\" x2=\"{Width - padRight}\" y2=\"{y:F1}\" stroke=\"{ColorGrid}\" stroke-width=\"1\"/>");
-                sb.AppendLine($"<text x=\"{PadLeft - 6}\" y=\"{y + 4:F1}\" fill=\"{ColorLabel}\" font-size=\"11\" text-anchor=\"end\">{v:F1}</text>");
+                sb.AppendLine($"<text x=\"{PadLeft - 6}\" y=\"{y + 4:F1}\" fill=\"{ColorLabel}\" font-size=\"11\" text-anchor=\"end\">{v.ToString(leftFmt)}</text>");
             }
 
             // Right Y axis
             if (hasDual) {
+                string rightFmt = GetValueFormat(secondaryMetric, false);
                 int rightLineX  = Width - padRight;
                 int rightLabelX = rightLineX + 6;
                 int rightTitleX = Width - 10;
@@ -157,7 +175,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 for (int i = 0; i <= ySteps; i++) {
                     double v = minR + (rangeR / ySteps) * i;
                     double y = ToYR(v);
-                    sb.AppendLine($"<text x=\"{rightLabelX}\" y=\"{y + 4:F1}\" fill=\"{ColorSecondary}\" font-size=\"11\" text-anchor=\"start\">{v:F1}</text>");
+                    sb.AppendLine($"<text x=\"{rightLabelX}\" y=\"{y + 4:F1}\" fill=\"{ColorSecondary}\" font-size=\"11\" text-anchor=\"start\">{v.ToString(rightFmt)}</text>");
                 }
                 sb.AppendLine($"<text x=\"{rightTitleX}\" y=\"{Height / 2}\" fill=\"{ColorSecondary}\" font-size=\"11\" text-anchor=\"middle\" transform=\"rotate(90,{rightTitleX},{Height / 2})\">{GetSecondaryAxisLabel(secondaryMetric)}</text>");
             }
@@ -184,17 +202,19 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var rightPoly = string.Join(" ", rightPts.Select(p => $"{ToX(p.t):F1},{ToYR(p.v):F1}"));
                 sb.AppendLine($"<polyline points=\"{rightPoly}\" fill=\"none\" stroke=\"{ColorSecondary}\" stroke-width=\"2\" stroke-linejoin=\"round\" stroke-dasharray=\"6,3\"/>");
                 string secUnit = GetTooltipUnit(secondaryMetric, false);
+                string secFmt  = GetValueFormat(secondaryMetric, false);
                 foreach (var p in rightPts)
-                    sb.AppendLine($"<circle cx=\"{ToX(p.t):F1}\" cy=\"{ToYR(p.v):F1}\" r=\"3\" fill=\"{ColorSecondaryDot}\"><title>{p.t:HH:mm} — {p.v:F2}{secUnit}</title></circle>");
+                    sb.AppendLine($"<circle cx=\"{ToX(p.t):F1}\" cy=\"{ToYR(p.v):F1}\" r=\"3\" fill=\"{ColorSecondaryDot}\"><title>{p.t:HH:mm} — {p.v.ToString(secFmt)}{secUnit}</title></circle>");
             }
 
             // Primary line
             var leftPoly = string.Join(" ", leftPts.Select(p => $"{ToX(p.t):F1},{ToYL(p.v):F1}"));
             sb.AppendLine($"<polyline points=\"{leftPoly}\" fill=\"none\" stroke=\"{leftColor}\" stroke-width=\"2\" stroke-linejoin=\"round\"/>");
             int leftMetricIdx = swapped ? secondaryMetric : primaryMetric;
-            string leftUnit = GetTooltipUnit(leftMetricIdx, !swapped);
+            string leftUnit    = GetTooltipUnit(leftMetricIdx, !swapped);
+            string leftTipFmt  = GetValueFormat(leftMetricIdx, !swapped);
             foreach (var p in leftPts)
-                sb.AppendLine($"<circle cx=\"{ToX(p.t):F1}\" cy=\"{ToYL(p.v):F1}\" r=\"3\" fill=\"{leftDotColor}\"><title>{p.t:HH:mm} — {p.v:F2}{leftUnit}</title></circle>");
+                sb.AppendLine($"<circle cx=\"{ToX(p.t):F1}\" cy=\"{ToYL(p.v):F1}\" r=\"3\" fill=\"{leftDotColor}\"><title>{p.t:HH:mm} — {p.v.ToString(leftTipFmt)}{leftUnit}</title></circle>");
 
             // Warning badge
             if (badgeText != null) {
@@ -226,6 +246,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 PrimaryAirmass      => images.Where(i => i.Airmass.HasValue)   .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.Airmass!.Value)).ToList(),
                 PrimaryHumidity     => images.Where(i => i.Humidity.HasValue)  .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.Humidity!.Value)).ToList(),
                 PrimaryFocuserPos   => images.Where(i => i.FocuserPosition.HasValue).OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, (double)i.FocuserPosition!.Value)).ToList(),
+                PrimarySkyQuality   => images.Where(i => i.SkyQuality.HasValue)   .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.SkyQuality!.Value)).ToList(),
+                PrimaryCloudCover   => images.Where(i => i.CloudCover.HasValue)   .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.CloudCover!.Value)).ToList(),
+                PrimaryCameraTemp   => images.Where(i => i.CameraTemp.HasValue)   .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.CameraTemp!.Value)).ToList(),
+                PrimaryDewPoint     => images.Where(i => i.DewPoint.HasValue)     .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.DewPoint!.Value)).ToList(),
+                PrimaryWindSpeed    => images.Where(i => i.WindSpeed.HasValue)    .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.WindSpeed!.Value)).ToList(),
+                PrimaryPressure     => images.Where(i => i.Pressure.HasValue)     .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.Pressure!.Value)).ToList(),
+                PrimaryStarCount    => images.Where(i => i.StarCount > 0)         .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, (double)i.StarCount)).ToList(),
+                PrimaryAzimuth      => images.Where(i => i.Azimuth.HasValue)      .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.Azimuth!.Value)).ToList(),
                 _                   => new List<(DateTime, double)>()
             };
         }
@@ -242,6 +270,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 SecAirmass      => images.Where(i => i.Airmass.HasValue)   .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.Airmass!.Value)).ToList(),
                 SecHumidity     => images.Where(i => i.Humidity.HasValue)  .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.Humidity!.Value)).ToList(),
                 SecFocuserPos   => images.Where(i => i.FocuserPosition.HasValue).OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, (double)i.FocuserPosition!.Value)).ToList(),
+                SecSkyQuality   => images.Where(i => i.SkyQuality.HasValue)   .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.SkyQuality!.Value)).ToList(),
+                SecCloudCover   => images.Where(i => i.CloudCover.HasValue)   .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.CloudCover!.Value)).ToList(),
+                SecCameraTemp   => images.Where(i => i.CameraTemp.HasValue)   .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.CameraTemp!.Value)).ToList(),
+                SecDewPoint     => images.Where(i => i.DewPoint.HasValue)     .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.DewPoint!.Value)).ToList(),
+                SecWindSpeed    => images.Where(i => i.WindSpeed.HasValue)    .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.WindSpeed!.Value)).ToList(),
+                SecPressure     => images.Where(i => i.Pressure.HasValue)     .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.Pressure!.Value)).ToList(),
+                SecStarCount    => images.Where(i => i.StarCount > 0)         .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, (double)i.StarCount)).ToList(),
+                SecAzimuth      => images.Where(i => i.Azimuth.HasValue)      .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.Azimuth!.Value)).ToList(),
                 _               => new List<(DateTime, double)>()
             };
         }
@@ -270,6 +306,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
             PrimaryAirmass      => 0.5,
             PrimaryHumidity     => 10.0,
             PrimaryFocuserPos   => 100.0,
+            PrimarySkyQuality   => 1.0,
+            PrimaryCloudCover   => 10.0,
+            PrimaryCameraTemp   => 2.0,
+            PrimaryDewPoint     => 2.0,
+            PrimaryWindSpeed    => 1.0,
+            PrimaryPressure     => 5.0,
+            PrimaryStarCount    => 50.0,
+            PrimaryAzimuth      => 10.0,
             _                   => 0.5
         };
 
@@ -281,6 +325,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
             SecAirmass      => 0.5,
             SecHumidity     => 10.0,
             SecFocuserPos   => 100.0,
+            SecSkyQuality   => 1.0,
+            SecCloudCover   => 10.0,
+            SecCameraTemp   => 2.0,
+            SecDewPoint     => 2.0,
+            SecWindSpeed    => 1.0,
+            SecPressure     => 5.0,
+            SecStarCount    => 50.0,
+            SecAzimuth      => 10.0,
             _               => 0.5
         };
 
@@ -297,6 +349,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
             PrimaryAirmass      => "Airmass",
             PrimaryHumidity     => "Humidity",
             PrimaryFocuserPos   => "Focuser Position",
+            PrimarySkyQuality   => "Sky Quality",
+            PrimaryCloudCover   => "Cloud Cover",
+            PrimaryCameraTemp   => "Camera Temp",
+            PrimaryDewPoint     => "Dew Point",
+            PrimaryWindSpeed    => "Wind Speed",
+            PrimaryPressure     => "Pressure",
+            PrimaryStarCount    => "Star Count",
+            PrimaryAzimuth      => "Azimuth",
             _                   => "HFR"
         };
 
@@ -311,6 +371,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
             SecAirmass      => "Airmass",
             SecHumidity     => "Humidity",
             SecFocuserPos   => "Focuser Position",
+            SecSkyQuality   => "Sky Quality",
+            SecCloudCover   => "Cloud Cover",
+            SecCameraTemp   => "Camera Temp",
+            SecDewPoint     => "Dew Point",
+            SecWindSpeed    => "Wind Speed",
+            SecPressure     => "Pressure",
+            SecStarCount    => "Star Count",
+            SecAzimuth      => "Azimuth",
             _               => ""
         };
 
@@ -325,6 +393,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
             PrimaryAirmass      => "Airmass",
             PrimaryHumidity     => "Humidity (%)",
             PrimaryFocuserPos   => "Position (steps)",
+            PrimarySkyQuality   => "SQM (mag/arcsec&#178;)",
+            PrimaryCloudCover   => "Cloud Cover (%)",
+            PrimaryCameraTemp   => "Temp (&#176;C)",
+            PrimaryDewPoint     => "Dew Point (&#176;C)",
+            PrimaryWindSpeed    => "Wind (m/s)",
+            PrimaryPressure     => "Pressure (hPa)",
+            PrimaryStarCount    => "Star Count",
+            PrimaryAzimuth      => "Azimuth (&#176;)",
             _                   => "HFR (px)"
         };
 
@@ -339,6 +415,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
             SecAirmass      => "Airmass",
             SecHumidity     => "Humidity (%)",
             SecFocuserPos   => "Position (steps)",
+            SecSkyQuality   => "SQM (mag/arcsec&#178;)",
+            SecCloudCover   => "Cloud Cover (%)",
+            SecCameraTemp   => "Temp (&#176;C)",
+            SecDewPoint     => "Dew Point (&#176;C)",
+            SecWindSpeed    => "Wind (m/s)",
+            SecPressure     => "Pressure (hPa)",
+            SecStarCount    => "Star Count",
+            SecAzimuth      => "Azimuth (&#176;)",
             _               => ""
         };
 
@@ -354,8 +438,36 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 6 => "°",         // Altitude
                 7 => "",          // Airmass
                 8 => "%",         // Humidity
-                9 => " steps",    // Focuser Position
+                9  => " steps",   // Focuser Position
+                10 => " mag/arcsec²", // Sky Quality
+                11 => "%",        // Cloud Cover
+                12 => " °C",      // Camera Temp
+                13 => " °C",      // Dew Point
+                14 => " m/s",     // Wind Speed
+                15 => " hPa",     // Pressure
+                16 => "",         // Star Count
+                17 => "°",        // Azimuth
                 _ => ""
+            };
+        }
+
+        // ── Value formatting ─────────────────────────────────────────────────
+
+        /// <summary>
+        /// Returns "F0" for metrics where integer precision is appropriate (large-scale or whole-number values),
+        /// and "F1" for metrics where one decimal place is meaningful.
+        /// </summary>
+        private static string GetValueFormat(int metric, bool isPrimary) {
+            int m = isPrimary ? metric : metric - 1;  // secondary indices offset by 1
+            return m switch {
+                6  => "F0",   // Altitude (degrees)
+                8  => "F0",   // Humidity (%)
+                9  => "F0",   // Focuser Position (steps)
+                11 => "F0",   // Cloud Cover (%)
+                15 => "F0",   // Pressure (hPa)
+                16 => "F0",   // Star Count
+                17 => "F0",   // Azimuth (degrees)
+                _  => "F1"
             };
         }
 
@@ -372,6 +484,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
             PrimaryAirmass      => "No airmass data recorded",
             PrimaryHumidity     => "No humidity data recorded",
             PrimaryFocuserPos   => "No focuser position data recorded",
+            PrimarySkyQuality   => "No sky quality (SQM) data recorded",
+            PrimaryCloudCover   => "No cloud cover data recorded",
+            PrimaryCameraTemp   => "No camera temperature data recorded",
+            PrimaryDewPoint     => "No dew point data recorded",
+            PrimaryWindSpeed    => "No wind speed data recorded",
+            PrimaryPressure     => "No atmospheric pressure data recorded",
+            PrimaryStarCount    => "No star count data recorded",
+            PrimaryAzimuth      => "No azimuth data recorded",
             _                   => "No data available"
         };
 
@@ -382,6 +502,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
             PrimaryEccentricity => "Requires Hocus Focus plugin",
             PrimaryHumidity     => "Requires NINA weather data source",
             PrimaryFocuserPos   => "Requires motorized focuser",
+            PrimarySkyQuality   => "Requires a sky quality meter connected as a NINA weather data source",
+            PrimaryCloudCover   => "Requires a cloud sensor connected as a NINA weather data source",
+            PrimaryDewPoint     => "Requires NINA weather data source",
+            PrimaryWindSpeed    => "Requires NINA weather data source",
+            PrimaryPressure     => "Requires NINA weather data source",
             _                   => null
         };
 
@@ -396,6 +521,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
             SecAirmass      => "No airmass data recorded",
             SecHumidity     => "No humidity data recorded",
             SecFocuserPos   => "No focuser position data recorded",
+            SecSkyQuality   => "No sky quality (SQM) data recorded",
+            SecCloudCover   => "No cloud cover data recorded",
+            SecCameraTemp   => "No camera temperature data recorded",
+            SecDewPoint     => "No dew point data recorded",
+            SecWindSpeed    => "No wind speed data recorded",
+            SecPressure     => "No atmospheric pressure data recorded",
+            SecStarCount    => "No star count data recorded",
+            SecAzimuth      => "No azimuth data recorded",
             _               => ""
         };
 
@@ -406,6 +539,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
             SecEccentricity => "Requires Hocus Focus plugin",
             SecHumidity     => "Requires NINA weather data source",
             SecFocuserPos   => "Requires motorized focuser",
+            SecSkyQuality   => "Requires a sky quality meter connected as a NINA weather data source",
+            SecCloudCover   => "Requires a cloud sensor connected as a NINA weather data source",
+            SecDewPoint     => "Requires NINA weather data source",
+            SecWindSpeed    => "Requires NINA weather data source",
+            SecPressure     => "Requires NINA weather data source",
             _               => null
         };
 
