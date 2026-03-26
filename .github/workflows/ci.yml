@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore NINA.Plugin.NightSummary.sln
+
+      - name: Build
+        run: dotnet build NINA.Plugin.NightSummary.sln -c Release --no-restore
+
+      - name: Test
+        run: dotnet test NINA.Plugin.NightSummary.Tests -c Release --no-build
