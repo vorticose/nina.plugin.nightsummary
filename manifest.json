@@ -7,7 +7,7 @@
                     "Patch":  1,
                     "Build":  0
                 },
-    "Author":  "Evan Pegors",
+    "Author":  "Evan Pegors @sleepypuppy15",
     "Homepage":  "https://github.com/vorticose/nina.plugin.nightsummary",
     "Repository":  "https://github.com/vorticose/nina.plugin.nightsummary",
     "License":  "MPL-2.0",
@@ -23,9 +23,9 @@
              ],
     "MinimumApplicationVersion":  {
                                       "Major":  3,
-                                      "Minor":  0,
+                                      "Minor":  2,
                                       "Patch":  0,
-                                      "Build":  2017
+                                      "Build":  9001
                                   },
     "Descriptions":  {
                          "ShortDescription":  "Logs imaging session data and sends summary reports via email, Discord, and Pushover.",
@@ -37,7 +37,7 @@
     "Installer":  {
                       "URL":  "https://github.com/vorticose/nina.plugin.nightsummary/releases/download/v2.8.1/NINA.Plugin.NightSummary.zip",
                       "Type":  "ARCHIVE",
-                      "Checksum":  "18D761E823D4E9AC45B46287ED17F84C6156EA48E6FD30D15513975D0657CEF2",
+                      "Checksum":  "2CFE2CD08BE98659210E2908D774683E114017EA8F1C683BD0E73A688C48622A",
                       "ChecksumType":  "SHA256"
                   }
 }
