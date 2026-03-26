@@ -151,6 +151,14 @@ elevation-adjusted). No code change needed but worth mentioning in the 3.3 relea
 
 ## Testing
 
+- Unit/integration tests: `dotnet test NINA.Plugin.NightSummary.Tests` (run on Windows machine)
+  - 73 tests covering ChartGenerator, SessionDatabase, ReportGenerator, FilterHelper
+  - Tests compile on Mac but must run on Windows (net8.0-windows target)
+  - **When adding new features, add corresponding tests to the test project**
+    - New metrics → add to ChartGeneratorTests Theory data
+    - New DB columns → add round-trip test to SessionDatabaseTests
+    - New report sections → add content check to ReportGeneratorTests
+    - New filter/calc logic → add to FilterHelperTests or a new test class
 - Migration tests: `scripts/test-migration.ps1` (run on Windows machine)
 - See `scripts/TEST-MIGRATION-NOTES.md` for prerequisites and known gotchas
 - All 19 migration scenarios pass as of v2.8.1
