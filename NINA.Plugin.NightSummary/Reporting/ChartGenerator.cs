@@ -141,10 +141,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             // Y scales
             double leftMinSpan = swapped ? GetSecondaryMinSpan(secondaryMetric) : GetPrimaryMinSpan(primaryMetric);
-            var (minL, maxL, rangeL) = ComputeScale(leftPts.Select(p => p.v), leftMinSpan);
-            double minR = 0, maxR = 0, rangeR = 1;
-            if (hasDual)
-                (minR, maxR, rangeR) = ComputeScale(rightPts.Select(p => p.v), GetSecondaryMinSpan(secondaryMetric));
+            var (minL, maxL, stepL) = ComputeNiceScale(leftPts.Select(p => p.v), leftMinSpan);
+            double rangeL = maxL - minL;
+            double minR = 0, maxR = 0, stepR = 1, rangeR = 1;
+            if (hasDual) {
+                (minR, maxR, stepR) = ComputeNiceScale(rightPts.Select(p => p.v), GetSecondaryMinSpan(secondaryMetric));
+                rangeR = maxR - minR;
+            }
 
             double ToX(DateTime t)  => PadLeft + ((t - minTime).TotalSeconds / totalSec) * plotW;
             double ToYL(double v)   => PadTop  + plotH - ((v - minL) / rangeL) * plotH;
@@ -157,9 +160,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             // Horizontal grid lines + left Y labels
             string leftFmt  = GetValueFormat(swapped ? secondaryMetric : primaryMetric, !swapped);
-            const int ySteps = 5;
-            for (int i = 0; i <= ySteps; i++) {
-                double v = minL + (rangeL / ySteps) * i;
+            for (double v = minL; v <= maxL + stepL * 0.001; v += stepL) {
                 double y = ToYL(v);
                 sb.AppendLine($"<line x1=\"{PadLeft}\" y1=\"{y:F1}\" x2=\"{Width - padRight}\" y2=\"{y:F1}\" stroke=\"{ColorGrid}\" stroke-width=\"1\"/>");
                 sb.AppendLine($"<text x=\"{PadLeft - 6}\" y=\"{y + 4:F1}\" fill=\"{ColorLabel}\" font-size=\"11\" text-anchor=\"end\">{v.ToString(leftFmt)}</text>");
@@ -172,8 +173,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 int rightLabelX = rightLineX + 6;
                 int rightTitleX = Width - 10;
                 sb.AppendLine($"<line x1=\"{rightLineX}\" y1=\"{PadTop}\" x2=\"{rightLineX}\" y2=\"{PadTop + plotH}\" stroke=\"{ColorAxis}\" stroke-width=\"1\"/>");
-                for (int i = 0; i <= ySteps; i++) {
-                    double v = minR + (rangeR / ySteps) * i;
+                for (double v = minR; v <= maxR + stepR * 0.001; v += stepR) {
                     double y = ToYR(v);
                     sb.AppendLine($"<text x=\"{rightLabelX}\" y=\"{y + 4:F1}\" fill=\"{ColorSecondary}\" font-size=\"11\" text-anchor=\"start\">{v.ToString(rightFmt)}</text>");
                 }
@@ -284,18 +284,33 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
         // ── Scale helpers ────────────────────────────────────────────────────
 
-        private static (double min, double max, double range) ComputeScale(IEnumerable<double> vals, double minSpan) {
-            var list  = vals.ToList();
-            var min   = Math.Floor(list.Min() * 10) / 10;
-            var max   = Math.Ceiling(list.Max() * 10) / 10;
-            var range = max - min;
-            if (range < minSpan) {
-                var mid = (min + max) / 2.0;
-                min   = Math.Round(mid - minSpan / 2, 1);
-                max   = Math.Round(mid + minSpan / 2, 1);
-                range = max - min;
+        private static (double min, double max, double step) ComputeNiceScale(IEnumerable<double> vals, double minSpan) {
+            var list   = vals.ToList();
+            double rawMin = list.Min();
+            double rawMax = list.Max();
+
+            // Enforce minimum span
+            if (rawMax - rawMin < minSpan) {
+                double mid = (rawMin + rawMax) / 2.0;
+                rawMin = mid - minSpan / 2;
+                rawMax = mid + minSpan / 2;
             }
-            return (min, max, range);
+
+            // Pick a nice step size targeting ~5 ticks
+            double range    = rawMax - rawMin;
+            double rough    = range / 4.0;
+            double mag      = Math.Pow(10, Math.Floor(Math.Log10(Math.Max(rough, 1e-10))));
+            double norm     = rough / mag;
+            double niceStep = norm < 1.5 ? mag
+                            : norm < 3.5 ? 2 * mag
+                            : norm < 7.5 ? 5 * mag
+                            :              10 * mag;
+
+            // Snap bounds to multiples of the step
+            double niceMin = Math.Floor(rawMin / niceStep) * niceStep;
+            double niceMax = Math.Ceiling(rawMax / niceStep) * niceStep;
+
+            return (niceMin, niceMax, niceStep);
         }
 
         private static double GetPrimaryMinSpan(int metric) => metric switch {
