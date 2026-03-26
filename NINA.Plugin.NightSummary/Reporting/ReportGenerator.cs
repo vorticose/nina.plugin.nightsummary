@@ -98,8 +98,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine(".stat-label { font-size: 12px; color: var(--muted); margin-top: 5px; }");
             sb.AppendLine("details.stat-breakdown > summary { list-style: none; cursor: pointer; display: block; }");
             sb.AppendLine("details.stat-breakdown > summary::-webkit-details-marker { display: none; }");
-            sb.AppendLine("details.stat-breakdown .stat-label::after { content: ' \\25BE'; font-size: 9px; color: var(--dim); }");
-            sb.AppendLine("details.stat-breakdown[open] .stat-label::after { content: ' \\25B4'; font-size: 9px; color: var(--dim); }");
+            sb.AppendLine("details.stat-breakdown .stat-value::after { content: ' \\25BC'; font-size: 14px; color: var(--accent); }");
+            sb.AppendLine("details.stat-breakdown[open] .stat-value::after { content: ' \\25B2'; font-size: 14px; color: var(--accent); }");
             sb.AppendLine(".stat-breakdown-body { margin-top: 8px; font-size: 11px; text-align: left; border-top: 1px solid var(--border); padding-top: 6px; }");
             sb.AppendLine(".stat-breakdown-row { display: flex; justify-content: space-between; padding: 1px 2px; }");
             sb.AppendLine(".stat-breakdown-filter { color: var(--accent-light); }");
