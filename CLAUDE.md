@@ -58,6 +58,35 @@ See `scripts/TEST-MIGRATION-NOTES.md` for hard-won lessons from testing this.
   a binary FITS file which passes the `> 500 bytes` check but browsers cannot
   render it as an image -- thumbnails silently disappear. Fixed after v2.8.1.
 
+## Branching Strategy
+
+```
+main       ← always matches the latest published release, tagged (v2.8.0, v2.8.1 etc.)
+dev        ← integration branch, accumulates features between releases
+feature/*  ← short-lived branches for individual features/fixes
+nina-3.3   ← long-running NINA 3.3 port, periodically synced from dev
+```
+
+**Day-to-day workflow:**
+1. Cut a feature branch from `dev`: `git checkout dev && git checkout -b feature/my-feature`
+2. Do the work, commit freely on the feature branch
+3. Merge back to `dev` when done: `git checkout dev && git merge feature/my-feature`
+4. Delete the feature branch: `git branch -d feature/my-feature`
+5. For trivial one-line fixes, committing directly to `dev` is fine
+
+**Releasing:**
+1. Run `dotnet test NINA.Plugin.NightSummary.Tests` on Windows — must be 0 failures
+2. Merge `dev` → `main`: `git checkout main && git merge dev`
+3. Tag the release: `git tag v2.8.1`
+4. Follow the full release process below
+
+**Keeping nina-3.3 in sync:**
+- Periodically (every few sessions or before a release): `git checkout nina-3.3 && git merge dev`
+- No conflicts expected — only difference is 3 lines in the .csproj
+
+**Note:** `main` should always reflect exactly what's published. Never commit unreleased
+work directly to `main`.
+
 ## Workflow Notes
 
 - Always push from Mac using `gh auth` credentials (token needs `repo` scope)
