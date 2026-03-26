@@ -96,6 +96,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine(".stat-box { background-color: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 15px; text-align: center; }");
             sb.AppendLine(".stat-value { font-size: 24px; color: var(--accent); font-weight: bold; }");
             sb.AppendLine(".stat-label { font-size: 12px; color: var(--muted); margin-top: 5px; }");
+            sb.AppendLine("details.stat-breakdown > summary { list-style: none; cursor: pointer; display: block; }");
+            sb.AppendLine("details.stat-breakdown > summary::-webkit-details-marker { display: none; }");
+            sb.AppendLine("details.stat-breakdown .stat-label::after { content: ' \\25BE'; font-size: 9px; color: var(--dim); }");
+            sb.AppendLine("details.stat-breakdown[open] .stat-label::after { content: ' \\25B4'; font-size: 9px; color: var(--dim); }");
+            sb.AppendLine(".stat-breakdown-body { margin-top: 8px; font-size: 11px; text-align: left; border-top: 1px solid var(--border); padding-top: 6px; }");
+            sb.AppendLine(".stat-breakdown-row { display: flex; justify-content: space-between; padding: 1px 2px; }");
+            sb.AppendLine(".stat-breakdown-filter { color: var(--accent-light); }");
             sb.AppendLine(".star-count-table { width: auto; margin-top: 8px; }");
             sb.AppendLine(".footnote { color: var(--dim); font-size: 12px; margin-top: 40px; }");
             sb.AppendLine(".target-section { border-top: 1px solid var(--border); margin-top: 24px; padding-top: 16px; }");
@@ -199,6 +206,22 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var totalExposureSec = data.Images.Sum(i => i.ExposureDuration);
             var targetCount      = data.Images.Select(i => i.TargetName).Distinct(StringComparer.OrdinalIgnoreCase).Count();
 
+            // Per-filter stats for expandable breakdown
+            var filterStats = data.Images
+                .GroupBy(i => string.IsNullOrEmpty(i.Filter) ? "—" : i.Filter)
+                .OrderBy(g => FilterSortKey(g.Key)).ThenBy(g => g.Key)
+                .Select(g => (filter: g.Key, count: g.Count(), expSec: g.Sum(i => i.ExposureDuration)))
+                .ToList();
+            var imageBreakdown = new StringBuilder("<div class='stat-breakdown-body'>");
+            var expBreakdown   = new StringBuilder("<div class='stat-breakdown-body'>");
+            foreach (var (filter, count, expSec) in filterStats) {
+                var safeFilter = System.Web.HttpUtility.HtmlEncode(filter);
+                imageBreakdown.Append($"<div class='stat-breakdown-row'><span class='stat-breakdown-filter'>{safeFilter}</span><span>{count}</span></div>");
+                expBreakdown.Append($"<div class='stat-breakdown-row'><span class='stat-breakdown-filter'>{safeFilter}</span><span>{TimeSpan.FromSeconds(expSec).TotalHours:F1}h</span></div>");
+            }
+            imageBreakdown.Append("</div>");
+            expBreakdown.Append("</div>");
+
             var yield = YieldCalculator.Calculate(data.Images, data.Events, data.Session.SessionStart, data.Session.SessionEnd);
             var yieldPct        = yield.YieldPct;
             var hasSafetyMonitor = yield.HasSafetyMonitor;
@@ -217,8 +240,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var imagesValue = data.SkippedExposures > 0
                 ? $"{data.Images.Count} <span style='font-size:60%; color:var(--skip-color);'>({data.SkippedExposures} aborted)</span>"
                 : $"{data.Images.Count}";
-            sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{imagesValue}</div><div class='stat-label'>Total Images</div></div>");
-            sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{TimeSpan.FromSeconds(totalExposureSec).TotalHours:F1}h</div><div class='stat-label'>Total Exposure</div></div>");
+            sb.AppendLine($"<div class='stat-box'><details class='stat-breakdown'><summary><div class='stat-value'>{imagesValue}</div><div class='stat-label'>Total Images</div></summary>{imageBreakdown}</details></div>");
+            sb.AppendLine($"<div class='stat-box'><details class='stat-breakdown'><summary><div class='stat-value'>{TimeSpan.FromSeconds(totalExposureSec).TotalHours:F1}h</div><div class='stat-label'>Total Exposure</div></summary>{expBreakdown}</details></div>");
             sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{targetCount}</div><div class='stat-label'>Targets</div></div>");
             if (detailLevel >= 1 && hfrImages.Any())
                 sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{hfrImages.Average(i => i.HFR):F2}px</div><div class='stat-label'>Avg HFR</div></div>");

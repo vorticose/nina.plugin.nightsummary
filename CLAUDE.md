@@ -69,6 +69,7 @@ nina-3.3   ← long-running NINA 3.3 port, periodically synced from dev
 
 **Day-to-day workflow:**
 1. Cut a feature branch from `dev`: `git checkout dev && git checkout -b feature/my-feature`
+   - Each GitHub issue gets its own feature branch (e.g. `feature/filter-breakdown` for issue #1)
 2. Do the work, commit freely on the feature branch
 3. Merge back to `dev` when done: `git checkout dev && git merge feature/my-feature`
 4. Delete the feature branch: `git branch -d feature/my-feature`
