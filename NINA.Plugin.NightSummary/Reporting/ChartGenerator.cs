@@ -154,7 +154,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             double ToYR(double v)   => PadTop  + plotH - ((v - minR) / rangeR) * plotH;
 
             var sb = new StringBuilder();
-            sb.AppendLine($"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {Width} {Height}\" style=\"width:100%;max-width:{Width}px;display:block;margin:0 auto;font-family:sans-serif\">");
+            sb.AppendLine($"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {Width} {Height}\" style=\"width:100%;max-width:{Width}px;display:block;margin:0 auto 16px;font-family:sans-serif\">");
             sb.AppendLine("<style>circle { cursor: pointer; }</style>");
             sb.AppendLine($"<rect width=\"{Width}\" height=\"{Height}\" fill=\"{ColorBackground}\" rx=\"6\"/>");
 
@@ -566,7 +566,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
         private static string GeneratePlaceholderSvg(List<string> messages) {
             var sb = new StringBuilder();
-            sb.AppendLine($"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {Width} {Height}\" style=\"width:100%;max-width:{Width}px;display:block;margin:0 auto;font-family:sans-serif\">");
+            sb.AppendLine($"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {Width} {Height}\" style=\"width:100%;max-width:{Width}px;display:block;margin:0 auto 16px;font-family:sans-serif\">");
             sb.AppendLine($"<rect width=\"{Width}\" height=\"{Height}\" fill=\"{ColorBackground}\" rx=\"6\"/>");
             int cx   = Width  / 2;
             int iconY = Height / 2 - (messages.Count > 1 ? 24 : 18);
