@@ -17,14 +17,24 @@ namespace NINA.Plugin.NightSummary {
             InitializeComponent();
         }
 
-        private void AddChart2_Click(object sender, RoutedEventArgs e) {
+        private void AddChart_Click(object sender, RoutedEventArgs e) {
             var plugin = (sender as Button)?.DataContext as NightSummaryPlugin;
-            if (plugin != null) plugin.ShowChart2 = true;
+            plugin?.AddAdditionalChart();
         }
 
-        private void RemoveChart2_Click(object sender, RoutedEventArgs e) {
-            var plugin = (sender as Button)?.DataContext as NightSummaryPlugin;
-            if (plugin != null) plugin.ShowChart2 = false;
+        private void RemoveChart_Click(object sender, RoutedEventArgs e) {
+            var button = sender as Button;
+            var config = button?.DataContext as ChartConfig;
+            if (config == null) return;
+            // DataContext inside the DataTemplate is ChartConfig; walk up to find NightSummaryPlugin
+            var element = System.Windows.Media.VisualTreeHelper.GetParent(button) as System.Windows.DependencyObject;
+            while (element != null) {
+                if (element is System.Windows.FrameworkElement fe && fe.DataContext is NightSummaryPlugin plugin) {
+                    plugin.RemoveAdditionalChart(config);
+                    return;
+                }
+                element = System.Windows.Media.VisualTreeHelper.GetParent(element);
+            }
         }
 
         private void BrowseSaveReportPath_Click(object sender, RoutedEventArgs e) {

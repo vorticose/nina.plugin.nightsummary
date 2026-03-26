@@ -624,11 +624,17 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine($"<h2>{ChartGenerator.GetChartTitle(primary, secondary)}</h2>");
                 sb.AppendLine(ChartGenerator.GenerateMetricChart(data.Images, primary, secondary));
 
-                if (Settings.Default.ShowChart2) {
-                    int primary2   = Settings.Default.Chart2PrimaryMetric;
-                    int secondary2 = Settings.Default.Chart2SecondaryMetric;
-                    sb.AppendLine($"<h2>{ChartGenerator.GetChartTitle(primary2, secondary2)}</h2>");
-                    sb.AppendLine(ChartGenerator.GenerateMetricChart(data.Images, primary2, secondary2));
+                var additionalRaw = Settings.Default.AdditionalChartConfigs;
+                if (!string.IsNullOrWhiteSpace(additionalRaw)) {
+                    foreach (var part in additionalRaw.Split('|')) {
+                        var tokens = part.Split(':');
+                        if (tokens.Length == 2
+                            && int.TryParse(tokens[0], out int p)
+                            && int.TryParse(tokens[1], out int s)) {
+                            sb.AppendLine($"<h2>{ChartGenerator.GetChartTitle(p, s)}</h2>");
+                            sb.AppendLine(ChartGenerator.GenerateMetricChart(data.Images, p, s));
+                        }
+                    }
                 }
             }
 

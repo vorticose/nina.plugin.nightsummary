@@ -337,37 +337,13 @@ namespace NINA.Plugin.NightSummary.MyPluginProperties {
 
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("False")]
-        public bool ShowChart2 {
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string AdditionalChartConfigs {
             get {
-                return ((bool)(this["ShowChart2"]));
+                return ((string)(this["AdditionalChartConfigs"]));
             }
             set {
-                this["ShowChart2"] = value;
-            }
-        }
-
-        [global::System.Configuration.UserScopedSettingAttribute()]
-        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("0")]
-        public int Chart2PrimaryMetric {
-            get {
-                return ((int)(this["Chart2PrimaryMetric"]));
-            }
-            set {
-                this["Chart2PrimaryMetric"] = value;
-            }
-        }
-
-        [global::System.Configuration.UserScopedSettingAttribute()]
-        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("0")]
-        public int Chart2SecondaryMetric {
-            get {
-                return ((int)(this["Chart2SecondaryMetric"]));
-            }
-            set {
-                this["Chart2SecondaryMetric"] = value;
+                this["AdditionalChartConfigs"] = value;
             }
         }
 

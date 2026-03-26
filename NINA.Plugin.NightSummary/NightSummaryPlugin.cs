@@ -527,31 +527,68 @@ namespace NINA.Plugin.NightSummary {
             }
         }
 
-        public bool ShowChart2 {
-            get => Settings.Default.ShowChart2;
-            set {
-                Settings.Default.ShowChart2 = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
+        public const int MaxAdditionalCharts = 4;
+
+        private static readonly List<string> _primaryMetricNames = new List<string> {
+            "HFR", "FWHM", "Guiding RMS", "Focuser Temp (°C)", "Ambient Temp (°C)",
+            "Eccentricity", "Altitude (°)", "Airmass", "Humidity (%)", "Focuser Position (steps)",
+            "Sky Quality (mag/arcsec²)", "Cloud Cover (%)", "Camera Temp (°C)", "Dew Point (°C)",
+            "Wind Speed (m/s)", "Pressure (hPa)", "Star Count", "Azimuth (°)"
+        };
+
+        private static readonly List<string> _secondaryMetricNames = new List<string> {
+            "None", "HFR", "FWHM", "Guiding RMS", "Focuser Temp (°C)", "Ambient Temp (°C)",
+            "Eccentricity", "Altitude (°)", "Airmass", "Humidity (%)", "Focuser Position (steps)",
+            "Sky Quality (mag/arcsec²)", "Cloud Cover (%)", "Camera Temp (°C)", "Dew Point (°C)",
+            "Wind Speed (m/s)", "Pressure (hPa)", "Star Count", "Azimuth (°)"
+        };
+
+        public IReadOnlyList<string> PrimaryMetricNames  => _primaryMetricNames;
+        public IReadOnlyList<string> SecondaryMetricNames => _secondaryMetricNames;
+
+        private ObservableCollection<ChartConfig> _additionalCharts;
+        public ObservableCollection<ChartConfig> AdditionalCharts {
+            get {
+                if (_additionalCharts == null) {
+                    _additionalCharts = DeserializeChartConfigs(Settings.Default.AdditionalChartConfigs);
+                    _additionalCharts.CollectionChanged += (_, __) => {
+                        SerializeChartConfigs();
+                        RaisePropertyChanged(nameof(CanAddChart));
+                    };
+                }
+                return _additionalCharts;
             }
         }
 
-        public int Chart2PrimaryMetric {
-            get => Settings.Default.Chart2PrimaryMetric;
-            set {
-                Settings.Default.Chart2PrimaryMetric = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+        public bool CanAddChart => AdditionalCharts.Count < MaxAdditionalCharts;
+
+        public void AddAdditionalChart() {
+            if (AdditionalCharts.Count >= MaxAdditionalCharts) return;
+            AdditionalCharts.Add(new ChartConfig(0, 0, SerializeChartConfigs));
         }
 
-        public int Chart2SecondaryMetric {
-            get => Settings.Default.Chart2SecondaryMetric;
-            set {
-                Settings.Default.Chart2SecondaryMetric = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
+        public void RemoveAdditionalChart(ChartConfig config) {
+            AdditionalCharts.Remove(config);
+        }
+
+        private void SerializeChartConfigs() {
+            Settings.Default.AdditionalChartConfigs =
+                string.Join("|", AdditionalCharts.Select(c => $"{c.Primary}:{c.Secondary}"));
+            Settings.Default.Save();
+        }
+
+        private ObservableCollection<ChartConfig> DeserializeChartConfigs(string raw) {
+            var col = new ObservableCollection<ChartConfig>();
+            if (string.IsNullOrWhiteSpace(raw)) return col;
+            foreach (var part in raw.Split('|')) {
+                var tokens = part.Split(':');
+                if (tokens.Length == 2
+                    && int.TryParse(tokens[0], out int p) && p >= 0 && p < _primaryMetricNames.Count
+                    && int.TryParse(tokens[1], out int s) && s >= 0 && s <= _secondaryMetricNames.Count) {
+                    col.Add(new ChartConfig(p, s, SerializeChartConfigs));
+                }
             }
+            return col;
         }
 
         public bool ShowNextNightPreview {
@@ -747,5 +784,31 @@ namespace NINA.Plugin.NightSummary {
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
+    }
+
+    public class ChartConfig : INotifyPropertyChanged {
+        private readonly Action _onChanged;
+        private int _primary;
+        private int _secondary;
+
+        public ChartConfig(int primary, int secondary, Action onChanged) {
+            _primary   = primary;
+            _secondary = secondary;
+            _onChanged = onChanged;
+        }
+
+        public int Primary {
+            get => _primary;
+            set { _primary = value; OnPropertyChanged(); _onChanged(); }
+        }
+
+        public int Secondary {
+            get => _secondary;
+            set { _secondary = value; OnPropertyChanged(); _onChanged(); }
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+        private void OnPropertyChanged([CallerMemberName] string name = null)
+            => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }
 }

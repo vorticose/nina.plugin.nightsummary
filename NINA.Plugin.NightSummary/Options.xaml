@@ -336,7 +336,7 @@
                         </StackPanel>
                     </StackPanel>
 
-                    <!-- Second metric chart: same enable conditions as first chart block -->
+                    <!-- Additional metric charts (N charts, up to MaxAdditionalCharts) -->
                     <StackPanel Margin="200,2,0,6">
                         <StackPanel.Style>
                             <Style TargetType="StackPanel">
@@ -355,83 +355,31 @@
                             </Style>
                         </StackPanel.Style>
 
-                        <!-- + Add Chart button: visible when ShowChart2 is false -->
-                        <Button Content="+ Add Chart" Click="AddChart2_Click" HorizontalAlignment="Left" Padding="8,2" Margin="0,2,0,2">
-                            <Button.Style>
-                                <Style TargetType="Button">
-                                    <Setter Property="Visibility" Value="Visible"/>
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding ShowChart2}" Value="True">
-                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Button.Style>
-                        </Button>
+                        <!-- One row per additional chart -->
+                        <ItemsControl ItemsSource="{Binding AdditionalCharts}" x:Name="AdditionalChartsControl">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0,3,0,3">
+                                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                                            <TextBlock Text="Primary Metric" Width="130" VerticalAlignment="Center" />
+                                            <ComboBox SelectedIndex="{Binding Primary, Mode=TwoWay}"
+                                                      ItemsSource="{Binding DataContext.PrimaryMetricNames, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                      MinWidth="160" />
+                                            <Button Content="✕" Click="RemoveChart_Click" Margin="8,0,0,0" Padding="6,2" ToolTip="Remove this chart" />
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                                            <TextBlock Text="Secondary Metric" Width="130" VerticalAlignment="Center" />
+                                            <ComboBox SelectedIndex="{Binding Secondary, Mode=TwoWay}"
+                                                      ItemsSource="{Binding DataContext.SecondaryMetricNames, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                      MinWidth="160" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
 
-                        <!-- Second chart config: visible when ShowChart2 is true -->
-                        <StackPanel>
-                            <StackPanel.Style>
-                                <Style TargetType="StackPanel">
-                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding ShowChart2}" Value="True">
-                                            <Setter Property="Visibility" Value="Visible"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </StackPanel.Style>
-
-                            <StackPanel Orientation="Horizontal" Margin="0,3">
-                                <TextBlock Text="Chart 2 Primary" Width="130" VerticalAlignment="Center" />
-                                <ComboBox SelectedIndex="{Binding Chart2PrimaryMetric}" MinWidth="160">
-                                    <ComboBoxItem>HFR</ComboBoxItem>
-                                    <ComboBoxItem>FWHM</ComboBoxItem>
-                                    <ComboBoxItem>Guiding RMS</ComboBoxItem>
-                                    <ComboBoxItem>Focuser Temp (°C)</ComboBoxItem>
-                                    <ComboBoxItem>Ambient Temp (°C)</ComboBoxItem>
-                                    <ComboBoxItem>Eccentricity</ComboBoxItem>
-                                    <ComboBoxItem>Altitude (°)</ComboBoxItem>
-                                    <ComboBoxItem>Airmass</ComboBoxItem>
-                                    <ComboBoxItem>Humidity (%)</ComboBoxItem>
-                                    <ComboBoxItem>Focuser Position (steps)</ComboBoxItem>
-                                    <ComboBoxItem>Sky Quality (mag/arcsec²)</ComboBoxItem>
-                                    <ComboBoxItem>Cloud Cover (%)</ComboBoxItem>
-                                    <ComboBoxItem>Camera Temp (°C)</ComboBoxItem>
-                                    <ComboBoxItem>Dew Point (°C)</ComboBoxItem>
-                                    <ComboBoxItem>Wind Speed (m/s)</ComboBoxItem>
-                                    <ComboBoxItem>Pressure (hPa)</ComboBoxItem>
-                                    <ComboBoxItem>Star Count</ComboBoxItem>
-                                    <ComboBoxItem>Azimuth (°)</ComboBoxItem>
-                                </ComboBox>
-                                <Button Content="✕" Click="RemoveChart2_Click" Margin="8,0,0,0" Padding="6,2" ToolTip="Remove second chart" />
-                            </StackPanel>
-
-                            <StackPanel Orientation="Horizontal" Margin="0,3">
-                                <TextBlock Text="Chart 2 Secondary" Width="130" VerticalAlignment="Top" Margin="0,4,0,0" />
-                                <ComboBox SelectedIndex="{Binding Chart2SecondaryMetric}" MinWidth="160" VerticalAlignment="Top">
-                                    <ComboBoxItem>None</ComboBoxItem>
-                                    <ComboBoxItem>HFR</ComboBoxItem>
-                                    <ComboBoxItem>FWHM</ComboBoxItem>
-                                    <ComboBoxItem>Guiding RMS</ComboBoxItem>
-                                    <ComboBoxItem>Focuser Temp (°C)</ComboBoxItem>
-                                    <ComboBoxItem>Ambient Temp (°C)</ComboBoxItem>
-                                    <ComboBoxItem>Eccentricity</ComboBoxItem>
-                                    <ComboBoxItem>Altitude (°)</ComboBoxItem>
-                                    <ComboBoxItem>Airmass</ComboBoxItem>
-                                    <ComboBoxItem>Humidity (%)</ComboBoxItem>
-                                    <ComboBoxItem>Focuser Position (steps)</ComboBoxItem>
-                                    <ComboBoxItem>Sky Quality (mag/arcsec²)</ComboBoxItem>
-                                    <ComboBoxItem>Cloud Cover (%)</ComboBoxItem>
-                                    <ComboBoxItem>Camera Temp (°C)</ComboBoxItem>
-                                    <ComboBoxItem>Dew Point (°C)</ComboBoxItem>
-                                    <ComboBoxItem>Wind Speed (m/s)</ComboBoxItem>
-                                    <ComboBoxItem>Pressure (hPa)</ComboBoxItem>
-                                    <ComboBoxItem>Star Count</ComboBoxItem>
-                                    <ComboBoxItem>Azimuth (°)</ComboBoxItem>
-                                </ComboBox>
-                            </StackPanel>
-                        </StackPanel>
+                        <Button Content="+ Add Chart" Click="AddChart_Click" IsEnabled="{Binding CanAddChart}"
+                                HorizontalAlignment="Left" Padding="8,2" Margin="0,4,0,2" />
                     </StackPanel>
 
                     <!-- Next Night Preview: disabled at Snapshot and Standard, or if TS not installed -->
