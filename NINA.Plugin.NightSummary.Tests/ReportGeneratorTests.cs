@@ -1,6 +1,7 @@
 using NINA.Plugin.NightSummary.MyPluginProperties;
 using NINA.Plugin.NightSummary.Reporting;
 using NINA.Plugin.NightSummary.Tests.Fixtures;
+using System.Linq;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -89,18 +90,23 @@ namespace NINA.Plugin.NightSummary.Tests {
             var data   = TestDataFactory.MakeReportData(imageCount: 10, skippedExp: 0);
             var report = await _generator.GenerateHtmlReport(data);
 
-            // The skip-color span should not appear when nothing was skipped
-            Assert.DoesNotContain("skip-color", report);
+            // The aborted span uses var(--skip-color) inline — should not appear when nothing was skipped
+            // Note: --skip-color is defined in the CSS block regardless; check for its usage in content
+            Assert.DoesNotContain("var(--skip-color)", report);
         }
 
         // ── Warnings ────────────────────────────────────────────────────────
 
         [Fact]
-        public async Task Warnings_AreEmpty_ForCleanData() {
+        public async Task Warnings_ContainNoUnexpectedEntries_ForCleanData() {
             var data = TestDataFactory.MakeReportData(imageCount: 10);
             await _generator.GenerateHtmlReport(data);
 
-            Assert.Empty(_generator.Warnings);
+            // TS API warning is expected when Target Scheduler is not running — filter it out
+            var unexpected = _generator.Warnings
+                .Where(w => !w.Contains("Tonight's Preview") && !w.Contains("Target Scheduler"))
+                .ToList();
+            Assert.Empty(unexpected);
         }
 
         // ── Size sanity check ────────────────────────────────────────────────
