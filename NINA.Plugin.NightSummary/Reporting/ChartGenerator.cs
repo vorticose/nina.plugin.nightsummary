@@ -353,7 +353,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
         // ── Label helpers ────────────────────────────────────────────────────
 
-        private static string GetPrimaryLabel(int metric) => metric switch {
+        internal static string GetPrimaryLabel(int metric) => metric switch {
             PrimaryHFR          => "HFR",
             PrimaryFWHM         => "FWHM",
             PrimaryGuidingRMS   => "Guiding RMS",

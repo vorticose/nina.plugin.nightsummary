@@ -623,6 +623,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 int secondary = Settings.Default.ChartSecondaryMetric;
                 sb.AppendLine($"<h2>{ChartGenerator.GetChartTitle(primary, secondary)}</h2>");
                 sb.AppendLine(ChartGenerator.GenerateMetricChart(data.Images, primary, secondary));
+
+                if (Settings.Default.ShowChart2) {
+                    int primary2   = Settings.Default.Chart2PrimaryMetric;
+                    int secondary2 = Settings.Default.Chart2SecondaryMetric;
+                    sb.AppendLine($"<h2>{ChartGenerator.GetChartTitle(primary2, secondary2)}</h2>");
+                    sb.AppendLine(ChartGenerator.GenerateMetricChart(data.Images, primary2, secondary2));
+                }
             }
 
             sb.AppendLine("</div>");

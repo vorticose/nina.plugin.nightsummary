@@ -527,6 +527,33 @@ namespace NINA.Plugin.NightSummary {
             }
         }
 
+        public bool ShowChart2 {
+            get => Settings.Default.ShowChart2;
+            set {
+                Settings.Default.ShowChart2 = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public int Chart2PrimaryMetric {
+            get => Settings.Default.Chart2PrimaryMetric;
+            set {
+                Settings.Default.Chart2PrimaryMetric = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public int Chart2SecondaryMetric {
+            get => Settings.Default.Chart2SecondaryMetric;
+            set {
+                Settings.Default.Chart2SecondaryMetric = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
         public bool ShowNextNightPreview {
             get => Settings.Default.ShowNextNightPreview;
             set {

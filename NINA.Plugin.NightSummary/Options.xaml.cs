@@ -17,6 +17,16 @@ namespace NINA.Plugin.NightSummary {
             InitializeComponent();
         }
 
+        private void AddChart2_Click(object sender, RoutedEventArgs e) {
+            var plugin = (sender as Button)?.DataContext as NightSummaryPlugin;
+            if (plugin != null) plugin.ShowChart2 = true;
+        }
+
+        private void RemoveChart2_Click(object sender, RoutedEventArgs e) {
+            var plugin = (sender as Button)?.DataContext as NightSummaryPlugin;
+            if (plugin != null) plugin.ShowChart2 = false;
+        }
+
         private void BrowseSaveReportPath_Click(object sender, RoutedEventArgs e) {
             var dialog = new OpenFolderDialog {
                 Title = "Select folder for saved reports"
