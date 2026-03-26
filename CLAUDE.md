@@ -111,6 +111,41 @@ To publish a new version:
 * validate-latest-manifest.js passes (schema valid, checksum verified)
 ```
 
+## NINA 3.3 Branch (`nina-3.3`)
+
+A separate branch exists for NINA 3.3 compatibility. NINA 3.3 is still in nightly builds
+and a stable release is expected several months away (as of March 2026).
+
+### What's different on `nina-3.3`
+- `TargetFramework`: `net10.0-windows` (was `net8.0`)
+- `NINA.Plugin`: `3.3.0.1017-nightly` (was `3.2.0.9001`)
+- `Microsoft.Web.WebView2`: `1.0.3650.58` (was `1.0.3296.44`, required by NINA 3.3)
+- No API changes were needed — the port compiled clean with 0 errors
+
+### Keeping branches in sync
+Periodically merge `main` into `nina-3.3` to keep them in sync (no need to do this
+after every commit — every few sessions or before a release is fine):
+```bash
+git checkout nina-3.3
+git merge main
+git push origin nina-3.3
+git checkout main
+```
+Merges will always be clean since the only difference is 3 lines in the `.csproj`.
+
+### When NINA 3.3 goes stable
+1. Test the `nina-3.3` DLL against a stable NINA 3.3 install
+2. Bump version in `manifest.json` + `repository.json`
+3. Set `MinimumApplicationVersion` to the stable 3.3 build number
+4. Create GitHub Release from the `nina-3.3` branch
+5. Add `manifests/n/Night Summary/3.3.0/manifest.json` to the manifests fork
+6. Submit PR to `isbeorn/nina.plugin.manifests` — both 3.2 and 3.3 manifests coexist,
+   NINA's plugin manager shows each version only to users on the matching NINA version
+
+### Pressure units note
+NINA 3.3 changed atmospheric pressure from MSL (sea level) to QFE (local,
+elevation-adjusted). No code change needed but worth mentioning in the 3.3 release notes.
+
 ## Testing
 
 - Migration tests: `scripts/test-migration.ps1` (run on Windows machine)
