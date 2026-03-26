@@ -365,7 +365,7 @@
                                             <ComboBox SelectedIndex="{Binding Primary, Mode=TwoWay}"
                                                       ItemsSource="{Binding DataContext.PrimaryMetricNames, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                       MinWidth="160" />
-                                            <Button Content="✕" Click="RemoveChart_Click" Margin="8,0,0,0" Padding="6,2" ToolTip="Remove this chart" />
+                                            <Button Content="✕" Click="RemoveChart_Click" Margin="8,0,0,0" MinWidth="30" ToolTip="Remove this chart" />
                                         </StackPanel>
                                         <StackPanel Orientation="Horizontal" Margin="0,2">
                                             <TextBlock Text="Secondary Metric" Width="130" VerticalAlignment="Center" />
@@ -379,7 +379,7 @@
                         </ItemsControl>
 
                         <Button Content="+ Add Chart" Click="AddChart_Click" IsEnabled="{Binding CanAddChart}"
-                                HorizontalAlignment="Left" Padding="8,2" Margin="0,4,0,2" />
+                                HorizontalAlignment="Left" Margin="0,4,0,2" MinWidth="110" />
                     </StackPanel>
 
                     <!-- Next Night Preview: disabled at Snapshot and Standard, or if TS not installed -->
@@ -491,7 +491,7 @@
                     <StackPanel Orientation="Horizontal" Margin="0,5">
                         <TextBlock Text="Save Path" Width="200" VerticalAlignment="Center" />
                         <TextBox Text="{Binding SaveReportPath, UpdateSourceTrigger=LostFocus}" Width="300" VerticalAlignment="Center" />
-                        <Button Content="Browse..." Click="BrowseSaveReportPath_Click" Margin="5,0,0,0" Padding="8,2" VerticalAlignment="Center" />
+                        <Button Content="Browse..." Click="BrowseSaveReportPath_Click" Margin="5,0,0,0" MinWidth="70" VerticalAlignment="Center" />
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,2,0,8">
                         <TextBlock Width="200" />

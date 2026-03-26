@@ -182,6 +182,12 @@ the wrong direction will pull the net10.0 csproj changes into main and break the
 NINA 3.3 changed atmospheric pressure from MSL (sea level) to QFE (local,
 elevation-adjusted). No code change needed but worth mentioning in the 3.3 release notes.
 
+## UI Standards (Options.xaml)
+
+- **Inline utility buttons** (Browse, + Add Chart, ✕ Remove, etc.): use `MinWidth` to ensure horizontal breathing room — NINA's ControlTemplate ignores `Padding`. No fixed Width.
+- **Primary action buttons** (Preview Report, Send Report, Send Test *): use `Width="180"` — no explicit padding
+- Apply these standards to any new buttons added in future
+
 ## Testing
 
 - Unit/integration tests: `dotnet test NINA.Plugin.NightSummary.Tests` (run on Windows machine)
