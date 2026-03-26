@@ -1,6 +1,21 @@
 # Night Summary — Changelog
 
 
+## v2.8.1
+
+**New features**
+- Light mode — reports can now be generated in a light theme, toggled in Options.
+- All metrics collected by NS that can be graphed in the metric chart are now available as options. Added sky quality, cloud cover, camera temperature, dew point, wind speed, atmospheric pressure, star count, and azimuth.
+
+**Improvements**
+- Added a backup thumbnail image service (NASA SkyView DSS2).
+- Reports with multiple targets generate noticeably faster (thumbnails fetched in parallel).
+
+**Bug fixes**
+- Fixed preview window failing to load on large sessions.
+- Fixed a database issue that would result in historical session data not being carried forward with NINA updates. The fix migrates all legacy NS databases to a folder unaffected by NINA updates.
+
+
 ## v2.8.0
 
 **New features**
