@@ -77,6 +77,40 @@ See `scripts/TEST-MIGRATION-NOTES.md` for hard-won lessons from testing this.
 - PowerShell scripts must be pure ASCII -- no em dashes, box-drawing chars, or
   smart quotes, even in comments
 
+## Release Process
+
+To publish a new version:
+
+1. **Build**: `dotnet build NINA.Plugin.NightSummary.sln -c Release`
+2. **Package**: `cd NINA.Plugin.NightSummary/bin/Release/net8.0-windows && zip -r /tmp/NINA.Plugin.NightSummary.zip . --exclude "*.pdb" --exclude "*.xml"`
+3. **Checksum**: `shasum -a 256 /tmp/NINA.Plugin.NightSummary.zip | awk '{print toupper($1)}'`
+4. **GitHub Release**: Update existing or create new release tagged `vX.Y.Z`, upload ZIP
+5. **Update our repo**: Update `manifest.json` and `repository.json` with new version, URL, checksum
+6. **Update manifest fork**: In `~/nina.plugin.manifests`, sync with upstream, update `manifests/n/Night Summary/3.0.0/manifest.json`
+7. **Validate**: `cd ~/nina.plugin.manifests && npm install && node gather.js` — must show 0 failed
+8. **Submit PR**: to `isbeorn/nina.plugin.manifests` from `vorticose:main`
+
+### Manifest fields to keep correct
+- `Author`: must be `"Evan Pegors @sleepypuppy15"` (easy to lose the @sleepypuppy15)
+- `MinimumApplicationVersion`: `3.2.0.9001` (not 3.0.0.2017)
+- Fork path: `~/nina.plugin.manifests` → `manifests/n/Night Summary/3.0.0/manifest.json`
+- Always sync fork with upstream before editing — the fork can fall behind and cause merge conflicts
+
+### PR template for isbeorn/nina.plugin.manifests
+```
+## Summary
+* Update Night Summary to vX.Y.Z
+* [one line describing what's new]
+
+## Changes
+* Version: X.Y.Z-1 → X.Y.Z
+* Updated download URL and SHA256 checksum
+* No changes to MinimumApplicationVersion or other manifest fields
+
+## Validation
+* validate-latest-manifest.js passes (schema valid, checksum verified)
+```
+
 ## Testing
 
 - Migration tests: `scripts/test-migration.ps1` (run on Windows machine)
