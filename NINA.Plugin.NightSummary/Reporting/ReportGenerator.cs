@@ -681,8 +681,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var sb = new StringBuilder();
             sb.AppendLine($"<svg viewBox='0 0 {svgW} {svgH}' width='102%' height='{svgH}' xmlns='http://www.w3.org/2000/svg' style='display:block;' preserveAspectRatio='none'>");
 
-            // Altitude chart always uses dark palette internally for contrast
-            string altGrid = "#2d2d5e", altLabel = "#555", altAccent = "#7eb8f7";
+            // Altitude chart always uses a dark palette for the night-sky aesthetic.
+            // Labels outside the plot rect use theme-aware colors so they read against the page background.
+            string altGrid = "#2d2d5e", altLabel = svgMuted, altAccent = svgAccent;
 
             // Background
             sb.AppendLine($"<rect x='{padL}' y='{padT}' width='{plotW}' height='{plotH}' fill='{svgChartBg}' rx='4'/>");
