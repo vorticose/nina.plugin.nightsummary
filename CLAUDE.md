@@ -112,7 +112,10 @@ work directly to `main`.
 To publish a new version:
 
 1. **Run tests** (on Windows machine): `dotnet test NINA.Plugin.NightSummary.Tests` — must be 0 failures before release
-2. **Build**: `dotnet build NINA.Plugin.NightSummary.sln -c Release`
+2. **Clean up dev markers** in `AssemblyInfo.cs`:
+   - Remove `*** DEV BUILD ***` from `AssemblyDescription`
+   - Remove `[assembly: AssemblyInformationalVersion("X.Y.Z-dev")]` line
+3. **Build**: `dotnet build NINA.Plugin.NightSummary.sln -c Release`
 2. **Package**: `cd NINA.Plugin.NightSummary/bin/Release/net8.0-windows && zip -r /tmp/NINA.Plugin.NightSummary.zip . --exclude "*.pdb" --exclude "*.xml"`
 3. **Checksum**: `shasum -a 256 /tmp/NINA.Plugin.NightSummary.zip | awk '{print toupper($1)}'`
 4. **GitHub Release**: Update existing or create new release tagged `vX.Y.Z`, upload ZIP

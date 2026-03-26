@@ -9,7 +9,7 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyFileVersion("2.9.0.0")]
 [assembly: AssemblyInformationalVersion("2.9.0-dev")]
 [assembly: AssemblyTitle("Night Summary")]
-[assembly: AssemblyDescription("Records your imaging session and delivers a detailed HTML report via email, Discord, or Pushover when your sequence ends.\n\nTo update: download the latest release from the link above and extract the zip to your existing NightSummary plugin folder, overwriting existing files.")]
+[assembly: AssemblyDescription("*** DEV BUILD *** Records your imaging session and delivers a detailed HTML report via email, Discord, or Pushover when your sequence ends.\n\nTo update: download the latest release from the link above and extract the zip to your existing NightSummary plugin folder, overwriting existing files.")]
 [assembly: AssemblyCompany("Evan Pegors")]
 [assembly: AssemblyProduct("Night Summary")]
 [assembly: AssemblyCopyright("Copyright © 2026 Evan Pegors")]
