@@ -132,6 +132,8 @@ git push origin nina-3.3
 git checkout main
 ```
 Merges will always be clean since the only difference is 3 lines in the `.csproj`.
+**Important**: always merge `main` → `nina-3.3`, NEVER `nina-3.3` → `main`. Merging
+the wrong direction will pull the net10.0 csproj changes into main and break the 3.2 build.
 
 ### When NINA 3.3 goes stable
 1. Test the `nina-3.3` DLL against a stable NINA 3.3 install
