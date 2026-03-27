@@ -114,10 +114,7 @@ namespace NINA.Plugin.NightSummary {
                     DiscordTestStatus.Text = "✗ Webhook URL is empty";
                     return;
                 }
-                if (!url.Contains("discord.com/api/webhooks")) {
-                    DiscordTestStatus.Text = "✗ URL doesn't look like a Discord webhook";
-                    return;
-                }
+
                 var sender = new DiscordSender(url);
                 bool ok = await sender.SendTestAsync();
                 DiscordTestStatus.Text = ok ? "✓ Sent" : "✗ Failed — check NINA log";
