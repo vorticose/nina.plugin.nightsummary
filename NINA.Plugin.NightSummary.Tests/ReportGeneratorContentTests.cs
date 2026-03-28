@@ -142,20 +142,13 @@ namespace NINA.Plugin.NightSummary.Tests {
         // ── Cumulative integration ────────────────────────────────────────────
 
         [Fact]
-        public async Task CumulativeIntegration_WhenPresent_ShowsCumulativeSection() {
-            var cumulative = new Dictionary<string, double> { ["M31"] = 18000 }; // 5h prior
-            var data = TestDataFactory.MakeReportData(imageCount: 10, targets: new[] { "M31" },
-                                                      cumulativeIntegration: cumulative);
-            var report = await _generator.GenerateHtmlReport(data);
-            Assert.Contains("Cumulative", report);
-        }
-
-        [Fact]
-        public async Task CumulativeIntegration_WhenEmpty_NoCumulativeSection() {
-            // CumulativeIntegrationSeconds is empty by default in MakeReportData
+        public async Task NoTSData_TsCumulativeSection_NotRendered() {
+            // CumulativeIntegrationSeconds is not used by ReportGenerator directly —
+            // the ts-cumulative paragraph only renders when TS progress bar data is present.
+            // Without TS data this section should be absent.
             var data   = TestDataFactory.MakeReportData(imageCount: 10, targets: new[] { "M31" });
             var report = await _generator.GenerateHtmlReport(data);
-            Assert.DoesNotContain("Cumulative", report);
+            Assert.DoesNotContain("ts-cumulative", report);
         }
 
         // ── Multi-target report ────────────────────────────────────────────────
@@ -197,7 +190,8 @@ namespace NINA.Plugin.NightSummary.Tests {
             var data   = TestDataFactory.MakeReportData(imageCount: 10);
             var report = await _generator.GenerateHtmlReport(data);
             Settings.Default.ExpandSectionsDefault = false; // reset
-            Assert.Contains("<details open", report);
+            // detailsOpen = " open" → rendered as <details class='...' open>
+            Assert.Contains("' open>", report);
         }
 
         [Fact]
@@ -205,7 +199,7 @@ namespace NINA.Plugin.NightSummary.Tests {
             Settings.Default.ExpandSectionsDefault = false;
             var data   = TestDataFactory.MakeReportData(imageCount: 10);
             var report = await _generator.GenerateHtmlReport(data);
-            Assert.DoesNotContain("<details open", report);
+            Assert.DoesNotContain("' open>", report);
         }
 
         // ── Footer ────────────────────────────────────────────────────────────
