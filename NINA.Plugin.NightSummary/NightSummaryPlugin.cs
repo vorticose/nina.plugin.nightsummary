@@ -453,7 +453,7 @@ namespace NINA.Plugin.NightSummary {
         }
 
         public bool ShowTSProgressBars {
-            get => Settings.Default.ShowTSProgressBars;
+            get => Settings.Default.ShowTSProgressBars && IsTsInstalled;
             set {
                 Settings.Default.ShowTSProgressBars = value;
                 Settings.Default.Save();
@@ -589,7 +589,7 @@ namespace NINA.Plugin.NightSummary {
         }
 
         public bool ShowNextNightPreview {
-            get => Settings.Default.ShowNextNightPreview;
+            get => Settings.Default.ShowNextNightPreview && IsTsInstalled && IsTsApiEnabled;
             set {
                 Settings.Default.ShowNextNightPreview = value;
                 Settings.Default.Save();
@@ -597,10 +597,19 @@ namespace NINA.Plugin.NightSummary {
             }
         }
 
-        public bool IsTsInstalled => new TargetSchedulerDatabase().IsAvailable;
+        public bool IsTsInstalled {
+            get {
+                var pluginsPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "NINA", "Plugins");
+                return Directory.Exists(pluginsPath) &&
+                    Directory.EnumerateFiles(pluginsPath, "*TargetScheduler*.dll", SearchOption.AllDirectories).Any();
+            }
+        }
 
         public bool IsTsApiEnabled {
             get {
+                if (!IsTsInstalled) return false;
                 var tsDb = new TargetSchedulerDatabase();
                 if (!tsDb.IsAvailable) return false;
                 var profileId = profileService?.ActiveProfile?.Id.ToString();
