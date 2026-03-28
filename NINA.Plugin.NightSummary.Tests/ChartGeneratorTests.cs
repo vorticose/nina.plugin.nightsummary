@@ -161,10 +161,10 @@ namespace NINA.Plugin.NightSummary.Tests {
         public void SecondaryNoData_WantedButMissing_ShowsBadge() {
             var sessionId = "test-session";
             var images    = TestDataFactory.MakeImageSeries(sessionId, 5); // HFR populated
-            // FocuserTemp = 0 → secondary has no data points
-            foreach (var img in images) img.FocuserTemp = 0;
+            // GuidingRMSTotal = 0 → SecGuidingRMS extraction filters on > 0 → returns empty → badge shown
+            foreach (var img in images) img.GuidingRMSTotal = 0;
 
-            var svg = ChartGenerator.GenerateMetricChart(images, ChartGenerator.PrimaryHFR, ChartGenerator.SecFocuserTemp);
+            var svg = ChartGenerator.GenerateMetricChart(images, ChartGenerator.PrimaryHFR, ChartGenerator.SecGuidingRMS);
 
             Assert.Contains("<svg", svg);
             Assert.Contains("no data", svg);
