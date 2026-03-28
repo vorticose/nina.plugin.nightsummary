@@ -84,7 +84,8 @@ namespace NINA.Plugin.NightSummary.Tests.Fixtures {
             int imageCount    = 10,
             int targetCount   = 1,
             int skippedExp    = 0,
-            string[]? targets = null) {
+            string[]? targets = null,
+            Dictionary<string, List<TargetSessionHistory>>? sessionHistory = null) {
 
             var sessionId = Guid.NewGuid().ToString();
             var session   = MakeSession(sessionId, skippedExposures: skippedExp);
@@ -110,7 +111,7 @@ namespace NINA.Plugin.NightSummary.Tests.Fixtures {
                 Events                       = events,
                 TsData                       = new List<TsTargetData>(),
                 CumulativeIntegrationSeconds = new Dictionary<string, double>(),
-                SessionHistory               = new Dictionary<string, List<TargetSessionHistory>>(),
+                SessionHistory               = sessionHistory ?? new Dictionary<string, List<TargetSessionHistory>>(),
                 CameraFovWidthDeg            = 2.5,
                 CameraFovHeightDeg           = 1.8,
                 ObserverLatitude             = 40.7128,
