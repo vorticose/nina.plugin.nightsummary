@@ -97,11 +97,13 @@ namespace NINA.Plugin.NightSummary.Tests {
         }
 
         [Fact]
-        public async Task AltitudeChartInTarget_ZeroObserverLocation_NoWrapper() {
+        public async Task AltitudeChartInTarget_ZeroObserverLocation_NoChartContent() {
             Settings.Default.ShowAltitudeChart = true;
             Settings.Default.ReportDetailLevel = 1;
 
-            // observerLat=0, observerLon=0 → BuildAltitudeChart returns empty → no wrapper
+            // observerLat=0, observerLon=0 → BuildAltitudeChart returns empty string →
+            // the ts-target-header wrapper is still rendered (showSideBySideChart=true),
+            // but the altitude-chart SVG itself is absent.
             var data     = TestDataFactory.MakeReportData(imageCount: 5, observerLat: 0, observerLon: 0);
             var baseTime = new DateTime(2025, 1, 15, 22, 0, 0);
             for (int i = 0; i < data.Images.Count; i++) {
@@ -110,7 +112,7 @@ namespace NINA.Plugin.NightSummary.Tests {
                 data.Images[i].Timestamp  = baseTime.AddMinutes(i * 30);
             }
             var html = await _gen.GenerateHtmlReport(data);
-            Assert.DoesNotContain("class='ts-target-header'", html);
+            Assert.DoesNotContain("altitude-chart", html);
         }
 
         [Fact]
