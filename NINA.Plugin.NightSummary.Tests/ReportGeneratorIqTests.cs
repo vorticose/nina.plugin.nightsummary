@@ -145,7 +145,7 @@ namespace NINA.Plugin.NightSummary.Tests {
             var data = TestDataFactory.MakeReportData(imageCount: 10);
             foreach (var img in data.Images) img.StarCount = 250;
             var html = await _gen.GenerateHtmlReport(data);
-            Assert.Contains("Star Count CV", html);
+            Assert.Contains("star-count-table", html);
         }
 
         [Fact]
@@ -197,9 +197,9 @@ namespace NINA.Plugin.NightSummary.Tests {
             Settings.Default.ReportDetailLevel = 1;
             var data = TestDataFactory.MakeReportData(imageCount: 10, targetCount: 2);
             var html = await _gen.GenerateHtmlReport(data);
-            // With per-target IQ off, iq-table should only appear once (in the session IQ section)
-            var count = CountOccurrences(html, "iq-table");
-            Assert.True(count <= 1, $"Expected at most 1 iq-table, found {count}");
+            // Use the attribute form to avoid matching the CSS rule ".iq-table { ... }"
+            var count = CountOccurrences(html, "class='iq-table'");
+            Assert.True(count <= 1, $"Expected at most 1 iq-table element, found {count}");
         }
 
         // ── Altitude chart ───────────────────────────────────────────────────
@@ -208,14 +208,15 @@ namespace NINA.Plugin.NightSummary.Tests {
         public async Task AltitudeChart_ValidCoords_SvgRendered() {
             Settings.Default.ShowSkyThumbnails = false;
             var data = TestDataFactory.MakeReportData(imageCount: 5);
-            // Provide non-zero RA/Dec so altitude chart is triggered
-            foreach (var img in data.Images) {
-                img.RaHours    = 5.5833; // Orion Nebula RA
-                img.DecDegrees = -5.3911;
+            // Spread timestamps so the altitude chart has a meaningful time range
+            var baseTime = new DateTime(2025, 1, 15, 22, 0, 0);
+            for (int i = 0; i < data.Images.Count; i++) {
+                data.Images[i].RaHours    = 5.5833; // Orion Nebula RA
+                data.Images[i].DecDegrees = -5.3911;
+                data.Images[i].Timestamp  = baseTime.AddMinutes(i * 30);
             }
-            // ObserverLatitude and ObserverLongitude are already set in MakeReportData
+            // ObserverLatitude and ObserverLongitude are already set in MakeReportData (40.7128 / -74.0060)
             var html = await _gen.GenerateHtmlReport(data);
-            // Altitude chart SVG should be present
             Assert.Contains("altitude-chart", html);
         }
 
