@@ -175,10 +175,9 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public void StdDev_KnownValues_IsCorrect() {
-            // Values: 2, 4, 4, 4, 5, 5, 7, 9 → stddev = 2.0
-            var values = new List<double> { 2, 4, 4, 4, 5, 5, 7, 9 };
-            var result = FilterHelper.StdDev(values);
-            Assert.Equal(2.0, result, precision: 1);
+            // {1, 2, 3} → mean=2, sample variance=(1+0+1)/2=1, sample stddev=1.0 exactly
+            var values = new List<double> { 1, 2, 3 };
+            Assert.Equal(1.0, FilterHelper.StdDev(values), precision: 10);
         }
 
         [Fact]
