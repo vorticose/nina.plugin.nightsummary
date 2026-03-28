@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Coverage settings for Night Summary test suite.
+  Excludes WPF/plugin infrastructure (untestable without a live NINA instance)
+  and generated code. Targets the logic layer: Reporting, Session, Data, Helpers.
+-->
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat Code Coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+          <!-- Exclude WPF code-behind, plugin lifecycle class, and generated settings -->
+          <ExcludeByFile>
+            **/NightSummaryPlugin.cs,
+            **/Options.xaml.cs,
+            **/PreviewWindow.xaml.cs,
+            **/Settings.Designer.cs,
+            **/AssemblyInfo.cs
+          </ExcludeByFile>
+          <ExcludeByAttribute>GeneratedCodeAttribute,CompilerGeneratedAttribute</ExcludeByAttribute>
+          <SingleHit>false</SingleHit>
+          <IncludeTestAssembly>false</IncludeTestAssembly>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

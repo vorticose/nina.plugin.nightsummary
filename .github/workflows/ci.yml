@@ -24,5 +24,33 @@ jobs:
       - name: Build
         run: dotnet build NINA.Plugin.NightSummary.sln -c Release --no-restore
 
-      - name: Test
-        run: dotnet test NINA.Plugin.NightSummary.Tests -c Release --no-build
+      - name: Test with coverage
+        run: dotnet test NINA.Plugin.NightSummary.Tests -c Release --no-build --collect:"XPlat Code Coverage" --settings coverage.runsettings --results-directory ./coverage-results
+
+      - name: Install ReportGenerator
+        run: dotnet tool install -g dotnet-reportgenerator-globaltool
+
+      - name: Generate coverage report
+        run: reportgenerator -reports:"./coverage-results/**/coverage.cobertura.xml" -targetdir:"./coverage-report" -reporttypes:"Html;TextSummary"
+
+      - name: Check 80% threshold
+        shell: pwsh
+        run: |
+          $file = Get-ChildItem -Recurse "coverage-results" -Filter "coverage.cobertura.xml" | Select-Object -First 1
+          [xml]$coverage = Get-Content $file.FullName
+          $lineRate = [double]$coverage.coverage.'line-rate'
+          $pct = [math]::Round($lineRate * 100, 1)
+          Write-Host "Logic layer line coverage: $pct%"
+          Add-Content $env:GITHUB_STEP_SUMMARY "## Coverage: $pct%"
+          if ($lineRate -lt 0.80) {
+            Write-Error "Coverage $pct% is below the 80% threshold on the logic layer"
+            exit 1
+          }
+          Write-Host "Coverage check passed: $pct% >= 80%"
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: ./coverage-report/
