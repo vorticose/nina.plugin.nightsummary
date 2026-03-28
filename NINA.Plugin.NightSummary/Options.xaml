@@ -30,7 +30,7 @@
                     <!-- ══ Target Scheduler ══════════════════════════════════════ -->
                     <Border Margin="0,10,0,20" Padding="0,0,0,0">
                         <StackPanel>
-                            <TextBlock Text="Target Scheduler" FontSize="12" FontWeight="Bold" Foreground="#7eb8f7" Margin="0,0,0,6"/>
+                            <TextBlock Text="Target Scheduler" FontSize="12" FontWeight="Bold" Foreground="White" Margin="0,0,0,6"/>
 
                             <!-- Section-level status when TS is not installed -->
                             <TextBlock Text="Target Scheduler is not installed — these options are unavailable"
@@ -62,7 +62,7 @@
                                         </Style.Triggers>
                                     </Style>
                                 </StackPanel.Style>
-                                <TextBlock Text="Show TS Progress Bars" Width="190" VerticalAlignment="Center" />
+                                <TextBlock Text="Show TS Progress Bars" Width="200" VerticalAlignment="Center" />
                                 <CheckBox IsChecked="{Binding ShowTSProgressBars}" VerticalAlignment="Center" />
                             </StackPanel>
 
@@ -87,7 +87,7 @@
                                         </Style.Triggers>
                                     </Style>
                                 </StackPanel.Style>
-                                <TextBlock Text="Show Tonight's Preview" Width="190" VerticalAlignment="Center" />
+                                <TextBlock Text="Show Tonight's Preview" Width="200" VerticalAlignment="Center" />
                                 <CheckBox IsChecked="{Binding ShowNextNightPreview}" VerticalAlignment="Center" />
                                 <TextBlock Text="API not enabled" Foreground="#CC8800" FontSize="11" FontStyle="Italic" Margin="8,0,0,0" VerticalAlignment="Center">
                                     <TextBlock.Style>
