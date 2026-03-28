@@ -148,7 +148,8 @@ namespace NINA.Plugin.NightSummary.Tests {
             // Without TS data this section should be absent.
             var data   = TestDataFactory.MakeReportData(imageCount: 10, targets: new[] { "M31" });
             var report = await _generator.GenerateHtmlReport(data);
-            Assert.DoesNotContain("ts-cumulative", report);
+            // ".ts-cumulative" is always present in the stylesheet — check for the rendered tag instead
+            Assert.DoesNotContain("<p class='ts-cumulative'", report);
         }
 
         // ── Multi-target report ────────────────────────────────────────────────
