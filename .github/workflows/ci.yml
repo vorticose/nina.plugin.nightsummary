@@ -33,7 +33,7 @@ jobs:
       - name: Generate coverage report
         run: reportgenerator -reports:"./coverage-results/**/coverage.cobertura.xml" -targetdir:"./coverage-report" -reporttypes:"Html;TextSummary"
 
-      - name: Check 80% threshold
+      - name: Check coverage threshold
         shell: pwsh
         run: |
           $file = Get-ChildItem -Recurse "coverage-results" -Filter "coverage.cobertura.xml" | Select-Object -First 1
@@ -42,11 +42,11 @@ jobs:
           $pct = [math]::Round($lineRate * 100, 1)
           Write-Host "Logic layer line coverage: $pct%"
           Add-Content $env:GITHUB_STEP_SUMMARY "## Coverage: $pct%"
-          if ($lineRate -lt 0.40) {
-            Write-Error "Coverage $pct% is below the 40% threshold on the logic layer"
+          if ($lineRate -lt 0.60) {
+            Write-Error "Coverage $pct% is below the 60% threshold on the logic layer"
             exit 1
           }
-          Write-Host "Coverage check passed: $pct% >= 80%"
+          Write-Host "Coverage check passed: $pct% >= 60%"
 
       - name: Upload coverage report
         if: always()
