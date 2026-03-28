@@ -61,7 +61,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
         }
 
-        private object BuildReportPayload(ReportData reportData) {
+        internal object BuildReportPayload(ReportData reportData) {
             var session = reportData.Session;
             var images  = reportData.Images;
             var events  = reportData.Events ?? new List<SessionEvent>();
