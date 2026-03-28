@@ -717,7 +717,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             int timeLabelY = padT + plotH + 18;
 
             var sb = new StringBuilder();
-            sb.AppendLine($"<svg viewBox='0 0 {svgW} {svgH}' width='102%' height='{svgH}' xmlns='http://www.w3.org/2000/svg' style='display:block;' preserveAspectRatio='none'>");
+            sb.AppendLine($"<svg class='altitude-chart' viewBox='0 0 {svgW} {svgH}' width='102%' height='{svgH}' xmlns='http://www.w3.org/2000/svg' style='display:block;' preserveAspectRatio='none'>");
 
             // All chart colors are theme-aware via svg* instance variables
             string altGrid = svgBorder, altLabel = svgMuted, altAccent = svgAccent;
