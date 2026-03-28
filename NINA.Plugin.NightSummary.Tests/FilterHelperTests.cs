@@ -1,3 +1,4 @@
+using NINA.Plugin.NightSummary.MyPluginProperties;
 using NINA.Plugin.NightSummary.Reporting;
 using System.Collections.Generic;
 using Xunit;
@@ -112,6 +113,38 @@ namespace NINA.Plugin.NightSummary.Tests {
         [Fact]
         public void IsExcluded_UnknownFilter_ReturnsFalse() {
             Assert.False(FilterHelper.IsExcluded("Ha"));
+        }
+
+        // ── User overrides (via FilterClassifications setting) ────────────────
+
+        [Fact]
+        public void IsBroadband_WithOverrideForcedB_ReturnsTrue() {
+            // "UV" normally not broadband; override forces it to B
+            Settings.Default.FilterClassifications = "UV=B";
+            FilterHelper.ReloadOverrides();
+            Assert.True(FilterHelper.IsBroadband("UV"));
+            Settings.Default.FilterClassifications = "";
+            FilterHelper.ReloadOverrides();
+        }
+
+        [Fact]
+        public void IsNarrowband_WithOverrideForcedN_ReturnsTrue() {
+            // "Lum" normally broadband; override forces it to N
+            Settings.Default.FilterClassifications = "Lum=N";
+            FilterHelper.ReloadOverrides();
+            Assert.True(FilterHelper.IsNarrowband("Lum"));
+            Assert.False(FilterHelper.IsBroadband("Lum"));
+            Settings.Default.FilterClassifications = "";
+            FilterHelper.ReloadOverrides();
+        }
+
+        [Fact]
+        public void IsExcluded_WithOverrideForcedX_ReturnsTrue() {
+            Settings.Default.FilterClassifications = "Ha=X";
+            FilterHelper.ReloadOverrides();
+            Assert.True(FilterHelper.IsExcluded("Ha"));
+            Settings.Default.FilterClassifications = "";
+            FilterHelper.ReloadOverrides();
         }
 
         // ── ParseClassifications ──────────────────────────────────────────────

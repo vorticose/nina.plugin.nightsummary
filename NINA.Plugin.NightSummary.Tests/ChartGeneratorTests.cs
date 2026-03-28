@@ -125,6 +125,51 @@ namespace NINA.Plugin.NightSummary.Tests {
             Assert.Contains("<svg", svg);
         }
 
+        // ── Light mode ────────────────────────────────────────────────────────
+
+        [Fact]
+        public void LightMode_GeneratesChart_WithLightColors() {
+            Settings.Default.ReportLightMode = true;
+            var sessionId = "test-session";
+            var images    = TestDataFactory.MakeImageSeries(sessionId, 5);
+            foreach (var img in images) img.FocuserTemp = 12.5;
+
+            var svg = ChartGenerator.GenerateMetricChart(images, ChartGenerator.PrimaryHFR, ChartGenerator.SecFocuserTemp);
+
+            Settings.Default.ReportLightMode = false; // reset
+            Assert.Contains("<svg", svg);
+            // Light mode uses a light background color
+            Assert.Contains("#f5f5f5", svg);
+        }
+
+        // ── Swapped mode (primary has no data, secondary does) ────────────────
+
+        [Fact]
+        public void SwappedMode_PrimaryNoData_SecondaryHasData_ShowsBadge() {
+            var sessionId = "test-session";
+            var images    = TestDataFactory.MakeImageSeries(sessionId, 5);
+            // Zero HFR = no primary data points; FocuserTemp = data for secondary
+            foreach (var img in images) { img.HFR = 0; img.FocuserTemp = 12.5; }
+
+            var svg = ChartGenerator.GenerateMetricChart(images, ChartGenerator.PrimaryHFR, ChartGenerator.SecFocuserTemp);
+
+            Assert.Contains("<svg", svg);
+            Assert.Contains("no data", svg);
+        }
+
+        [Fact]
+        public void SecondaryNoData_WantedButMissing_ShowsBadge() {
+            var sessionId = "test-session";
+            var images    = TestDataFactory.MakeImageSeries(sessionId, 5); // HFR populated
+            // FocuserTemp = 0 → secondary has no data points
+            foreach (var img in images) img.FocuserTemp = 0;
+
+            var svg = ChartGenerator.GenerateMetricChart(images, ChartGenerator.PrimaryHFR, ChartGenerator.SecFocuserTemp);
+
+            Assert.Contains("<svg", svg);
+            Assert.Contains("no data", svg);
+        }
+
         [Theory]
         [InlineData(ChartGenerator.PrimaryHFR)]
         [InlineData(ChartGenerator.PrimaryFWHM)]

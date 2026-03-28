@@ -10,13 +10,21 @@
       <DataCollector friendlyName="XPlat Code Coverage">
         <Configuration>
           <Format>cobertura</Format>
-          <!-- Exclude WPF code-behind, plugin lifecycle class, and generated settings -->
+          <!--
+            Exclude WPF code-behind, plugin lifecycle class, and generated settings.
+            Also exclude Session/* integration classes: they depend on NINA mediator
+            interfaces (IImageSaveMediator, ISafetyMonitorMediator, etc.) that cannot
+            be injected in unit tests — same rationale as NightSummaryPlugin.cs.
+          -->
           <ExcludeByFile>
             **/NightSummaryPlugin.cs,
             **/Options.xaml.cs,
             **/PreviewWindow.xaml.cs,
             **/Settings.Designer.cs,
-            **/AssemblyInfo.cs
+            **/AssemblyInfo.cs,
+            **/Session/SessionService.cs,
+            **/Session/SessionCollector.cs,
+            **/Session/SessionEventCollector.cs
           </ExcludeByFile>
           <ExcludeByAttribute>GeneratedCodeAttribute,CompilerGeneratedAttribute</ExcludeByAttribute>
           <SingleHit>false</SingleHit>
