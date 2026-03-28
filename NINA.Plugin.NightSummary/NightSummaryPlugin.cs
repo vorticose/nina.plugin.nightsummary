@@ -599,6 +599,16 @@ namespace NINA.Plugin.NightSummary {
 
         public bool IsTsInstalled => new TargetSchedulerDatabase().IsAvailable;
 
+        public bool IsTsApiEnabled {
+            get {
+                var tsDb = new TargetSchedulerDatabase();
+                if (!tsDb.IsAvailable) return false;
+                var profileId = profileService?.ActiveProfile?.Id.ToString();
+                var (enabled, _) = tsDb.GetApiSettings(profileId);
+                return enabled;
+            }
+        }
+
         // ── Filter classification ──
 
         private ObservableCollection<FilterClassificationItem> _filterItems = new ObservableCollection<FilterClassificationItem>();

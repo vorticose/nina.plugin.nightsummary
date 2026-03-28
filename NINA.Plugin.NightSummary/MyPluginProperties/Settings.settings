@@ -60,7 +60,7 @@
       <Value Profile="(Default)">True</Value>
     </Setting>
     <Setting Name="ShowTSProgressBars" Type="System.Boolean" Scope="User">
-      <Value Profile="(Default)">True</Value>
+      <Value Profile="(Default)">False</Value>
     </Setting>
     <Setting Name="ShowStarCountCV" Type="System.Boolean" Scope="User">
       <Value Profile="(Default)">True</Value>
@@ -81,7 +81,7 @@
       <Value Profile="(Default)" />
     </Setting>
     <Setting Name="ShowNextNightPreview" Type="System.Boolean" Scope="User">
-      <Value Profile="(Default)">True</Value>
+      <Value Profile="(Default)">False</Value>
     </Setting>
     <Setting Name="FilterClassifications" Type="System.String" Scope="User">
       <Value Profile="(Default)" />
