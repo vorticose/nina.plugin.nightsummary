@@ -472,14 +472,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     }
                 }
 
-                if (tsTarget == null && detailLevel >= 1 && Settings.Default.ShowTSProgressBars) {
+                if (tsTarget == null && detailLevel >= 1 && Settings.Default.ShowTSProgressBars && TargetSchedulerDatabase.IsPluginInstalled) {
                     if (data.TsData != null && data.TsData.Count > 0) {
                         // TS is installed but this specific target wasn't found in it
                         Warnings.Add($"Target Scheduler progress bars unavailable for {target.Key} — target not found in Target Scheduler");
                     }
                     // If TS isn't installed at all, silently skip — the Options UI already shows it's unavailable
                 }
-                if (tsTarget != null && detailLevel >= 1 && Settings.Default.ShowTSProgressBars) {
+                if (tsTarget != null && detailLevel >= 1 && Settings.Default.ShowTSProgressBars && TargetSchedulerDatabase.IsPluginInstalled) {
                     // TS progress bars — one per exposure plan row (template + filter)
                     sb.AppendLine("<p style='margin: 12px 0 4px; font-size: 13px; color: var(--accent-light);'><strong>Target Scheduler Progress</strong></p>");
                     double totalIntegrationSec = 0;

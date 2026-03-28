@@ -597,15 +597,7 @@ namespace NINA.Plugin.NightSummary {
             }
         }
 
-        public bool IsTsInstalled {
-            get {
-                var pluginsPath = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "NINA", "Plugins");
-                return Directory.Exists(pluginsPath) &&
-                    Directory.EnumerateFiles(pluginsPath, "*TargetScheduler*.dll", SearchOption.AllDirectories).Any();
-            }
-        }
+        public bool IsTsInstalled => TargetSchedulerDatabase.IsPluginInstalled;
 
         public bool IsTsApiEnabled {
             get {

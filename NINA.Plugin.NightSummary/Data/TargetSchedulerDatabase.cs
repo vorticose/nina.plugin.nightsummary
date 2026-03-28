@@ -24,6 +24,21 @@ namespace NINA.Plugin.NightSummary.Data {
             dbPath = customPath ?? DefaultDbPath;
         }
 
+        /// <summary>
+        /// True if the Target Scheduler plugin DLL is present in the NINA plugins folder.
+        /// Checks the plugin installation directory rather than the database, so that
+        /// a leftover DB from a previous install does not produce a false positive.
+        /// </summary>
+        public static bool IsPluginInstalled {
+            get {
+                var pluginsRoot = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "NINA", "Plugins");
+                if (!Directory.Exists(pluginsRoot)) return false;
+                return Directory.EnumerateFiles(pluginsRoot, "*TargetScheduler*.dll", SearchOption.AllDirectories).Any();
+            }
+        }
+
         public bool IsAvailable => File.Exists(dbPath);
 
         /// <summary>
