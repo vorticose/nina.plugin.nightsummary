@@ -39,6 +39,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
         public static bool IsBroadband(string filter) {
             if (string.IsNullOrEmpty(filter)) return false;
             if (Overrides.TryGetValue(filter, out var cls)) return cls == "B";
+            if (filter.Equals("None", StringComparison.OrdinalIgnoreCase)) return true;
             return BroadbandFirstLetters.Contains(char.ToUpperInvariant(filter[0]));
         }
 
@@ -64,6 +65,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// </summary>
         public static int SortKey(string filter) {
             if (string.IsNullOrEmpty(filter)) return int.MaxValue;
+            if (filter.Equals("None", StringComparison.OrdinalIgnoreCase)) return -1;
             var c = char.ToUpperInvariant(filter[0]);
             var idx = Array.IndexOf(SortPriority, c);
             return idx >= 0 ? idx : int.MaxValue;
