@@ -4,7 +4,6 @@
 - Expandable filter breakdown in the session overview stat boxes — click Total Images or Total Exposure to see a per-filter breakdown
 - Support for up to 4 additional metric charts per report — configure extra charts from the Options page, each with independent primary and secondary metric selection
 - Improved metric chart axis scaling — axis labels now use sensible round-number steps (e.g. 5° for altitude, 0.5px for HFR) instead of arbitrary intervals
-- Added 8 new metric chart options: Sky Quality, Cloud Cover, Camera Temperature, Dew Point, Wind Speed, Pressure, Star Count, and Azimuth
 
 **Improvements**
 - Target Scheduler settings grouped into a dedicated subsection in Options for clarity
