@@ -198,6 +198,9 @@ elevation-adjusted). No code change needed but worth mentioning in the 3.3 relea
     - New DB columns → add round-trip test to SessionDatabaseTests
     - New report sections → add content check to ReportGeneratorTests
     - New filter/calc logic → add to FilterHelperTests or a new test class
+  - **Before writing any HTML content assertion in a test, grep the production code first**
+    to confirm the exact string, CSS class, or attribute exists in the output. Never assume
+    a class or element name — verify it with Grep before asserting on it.
 - Migration tests: `scripts/test-migration.ps1` (run on Windows machine)
 - See `scripts/TEST-MIGRATION-NOTES.md` for prerequisites and known gotchas
 - All 19 migration scenarios pass as of v2.8.1
