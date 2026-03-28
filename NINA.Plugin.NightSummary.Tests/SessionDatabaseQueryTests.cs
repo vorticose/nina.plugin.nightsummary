@@ -239,5 +239,39 @@ namespace NINA.Plugin.NightSummary.Tests {
             Assert.False(updated.Accepted);
             Assert.Equal("star_trail", updated.RejectReason);
         }
+
+        // ── UpdateSessionCameraInfo ───────────────────────────────────────────
+
+        [Fact]
+        public void UpdateSessionCameraInfo_Persists_AllFields() {
+            var session = CreateSession(new DateTime(2025, 3, 1, 21, 0, 0));
+            _db.UpdateSessionCameraInfo(session.SessionId, 4656, 3520, 3.76, 540.0);
+
+            var updated = _db.GetSession(session.SessionId);
+            Assert.Equal(4656,  updated.CamXSize);
+            Assert.Equal(3520,  updated.CamYSize);
+            Assert.Equal(3.76,  updated.PixelSizeMicrons, precision: 2);
+            Assert.Equal(540.0, updated.FocalLengthMm,    precision: 1);
+        }
+
+        [Fact]
+        public void UpdateSessionCameraInfo_OnlyUpdatesWhenCamXSizeIsZero() {
+            // First update should apply (CamXSize starts at 0)
+            var session = CreateSession(new DateTime(2025, 3, 1, 21, 0, 0));
+            _db.UpdateSessionCameraInfo(session.SessionId, 4656, 3520, 3.76, 540.0);
+
+            // Second update should be ignored (CamXSize is now 4656, not 0)
+            _db.UpdateSessionCameraInfo(session.SessionId, 1234, 1000, 1.0, 100.0);
+
+            var result = _db.GetSession(session.SessionId);
+            Assert.Equal(4656, result.CamXSize);
+        }
+
+        [Fact]
+        public void UpdateSessionCameraInfo_UnknownSessionId_NoException() {
+            var ex = Record.Exception(() =>
+                _db.UpdateSessionCameraInfo("nonexistent-id", 4656, 3520, 3.76, 540.0));
+            Assert.Null(ex);
+        }
     }
 }

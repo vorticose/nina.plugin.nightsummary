@@ -653,7 +653,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             return EventTimelineGenerator.GenerateTimeline(data.Session, data.Images, events);
         }
 
-        private static string FormatRA(double raHours) {
+        internal static string FormatRA(double raHours) {
             var h     = (int)raHours;
             var mFrac = (raHours - h) * 60;
             var m     = (int)mFrac;
@@ -661,7 +661,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             return $"{h:D2}h {m:D2}m {s:F0}s";
         }
 
-        private static string FormatDec(double decDeg) {
+        internal static string FormatDec(double decDeg) {
             var sign  = decDeg >= 0 ? "+" : "-";
             var abs   = Math.Abs(decDeg);
             var d     = (int)abs;
@@ -1033,7 +1033,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             return sb.ToString();
         }
 
-        private static string FormatDuration(double seconds) {
+        internal static string FormatDuration(double seconds) {
             var ts = TimeSpan.FromSeconds(seconds);
             if (ts.TotalSeconds < 60)
                 return $"{(int)ts.TotalSeconds}s";
@@ -1048,7 +1048,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
         }
 
-        private static string FormatIntegration(double seconds) {
+        internal static string FormatIntegration(double seconds) {
             var ts = TimeSpan.FromSeconds(seconds);
             return ts.TotalHours >= 1 ? $"{ts.TotalHours:F1}h" : $"{ts.TotalMinutes:F0}m";
         }
@@ -1059,7 +1059,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// Uses a mean-anomaly approximation accurate to ~1–2%.
         /// Reference new moon: 2000-01-06 18:14 UTC (JD 2451549.5).
         /// </summary>
-        private static double MoonIllumination(DateTime localTime, out bool waxing) {
+        internal static double MoonIllumination(DateTime localTime, out bool waxing) {
             const double synodicPeriod = 29.53058868;
             var referenceNewMoon = new DateTime(2000, 1, 6, 18, 14, 0, DateTimeKind.Utc);
             var utc = localTime.Kind == DateTimeKind.Utc ? localTime : localTime.ToUniversalTime();
