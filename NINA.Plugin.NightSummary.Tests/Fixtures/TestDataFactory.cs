@@ -29,16 +29,17 @@ namespace NINA.Plugin.NightSummary.Tests.Fixtures {
 
         public static ImageRecord MakeImage(
             string sessionId,
-            string target   = "M31",
-            string filter   = "Ha",
-            double hfr      = 2.5,
-            double fwhm     = 3.2,
-            bool accepted   = true,
-            double raHours  = 0.0,
-            double decDeg   = 0.0) {
+            string target      = "M31",
+            string filter      = "Ha",
+            double hfr         = 2.5,
+            double fwhm        = 3.2,
+            bool accepted      = true,
+            double raHours     = 0.0,
+            double decDeg      = 0.0,
+            DateTime? timestamp = null) {
             return new ImageRecord {
                 SessionId         = sessionId,
-                Timestamp         = new DateTime(2025, 1, 15, 22, 0, 0),
+                Timestamp         = timestamp ?? new DateTime(2025, 1, 15, 22, 0, 0),
                 TargetName        = target,
                 Filter            = filter,
                 ExposureDuration  = 300,
@@ -62,11 +63,12 @@ namespace NINA.Plugin.NightSummary.Tests.Fixtures {
 
         public static SessionEvent MakeEvent(
             string sessionId,
-            string eventType = "AutoFocus",
-            bool afSucceeded = true) {
+            string eventType    = "AutoFocus",
+            bool afSucceeded    = true,
+            DateTime? timestamp = null) {
             return new SessionEvent {
                 SessionId   = sessionId,
-                Timestamp   = new DateTime(2025, 1, 15, 22, 30, 0),
+                Timestamp   = timestamp ?? new DateTime(2025, 1, 15, 22, 30, 0),
                 EventType   = eventType,
                 Description = $"Test {eventType} event",
                 AfSucceeded = afSucceeded,
