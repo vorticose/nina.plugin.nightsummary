@@ -1,6 +1,21 @@
 # Night Summary — Changelog
 
 
+## v2.9.0
+
+**New features**
+- Seeing FWHM metric — ASCOM seeing monitor star FWHM (arcseconds) is now recorded per image and available as a primary or secondary metric in the metric chart. Requires an ASCOM-compatible seeing monitor connected as a NINA weather data source.
+- Expandable filter breakdown in the session overview stat boxes — click Total Images or Total Exposure to see a per-filter breakdown
+- Support for up to 4 additional metric charts per report — configure extra charts from the Options page, each with independent primary and secondary metric selection
+
+**Improvements**
+- Improved metric chart axis scaling — axis labels now use sensible round-number steps (e.g. 5° for altitude, 0.5px for HFR) instead of arbitrary intervals
+- Target Scheduler settings grouped into a dedicated subsection in Options for clarity
+- Tonight's Preview toggle is now greyed out when the Target Scheduler API is not enabled, preventing misconfiguration
+- Target Scheduler progress bars are suppressed in the report when Target Scheduler is not installed, eliminating spurious warnings for users without TS
+- Discord webhook URL validation no longer rejects legacy discordapp.com webhook URLs — the actual API response is used to determine success or failure instead
+
+
 ## v2.8.1
 
 **New features**
