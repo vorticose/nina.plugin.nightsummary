@@ -456,7 +456,8 @@ namespace NINA.Plugin.NightSummary.Data {
                         SideOfPier TEXT,
                         ReadoutMode TEXT,
                         SkyQuality REAL,
-                        CloudCover REAL
+                        CloudCover REAL,
+                        SeeingFWHM REAL
                     )";
 
                 using (var cmd = new SQLiteCommand(createSessions, conn))
@@ -511,6 +512,7 @@ namespace NINA.Plugin.NightSummary.Data {
                 MigrateAddColumn(conn, "Images",        "ReadoutMode",      "TEXT");
                 MigrateAddColumn(conn, "Images",        "SkyQuality",       "REAL");
                 MigrateAddColumn(conn, "Images",        "CloudCover",       "REAL");
+                MigrateAddColumn(conn, "Images",        "SeeingFWHM",       "REAL");
                 MigrateAddColumn(conn, "SessionEvents", "AfSucceeded",      "INTEGER");
                 MigrateAddColumn(conn, "SessionEvents", "AfHfr",            "REAL");
                 MigrateAddColumn(conn, "Sessions",      "SkippedExposures", "INTEGER DEFAULT 0");
@@ -618,7 +620,7 @@ namespace NINA.Plugin.NightSummary.Data {
                         FocuserPosition, RotatorPosition,
                         Humidity, DewPoint, WindSpeed, Pressure,
                         GradingStatus, RejectReason,
-                        ImageType, Altitude, Azimuth, Airmass, SideOfPier, ReadoutMode, SkyQuality, CloudCover)
+                        ImageType, Altitude, Azimuth, Airmass, SideOfPier, ReadoutMode, SkyQuality, CloudCover, SeeingFWHM)
                     VALUES (
                         @SessionId, @Timestamp, @TargetName, @Filter, @ExposureDuration,
                         @HFR, @FWHM, @Eccentricity, @StarCount, @GuidingRMSTotal, @GuidingScale, @Accepted,
@@ -627,7 +629,7 @@ namespace NINA.Plugin.NightSummary.Data {
                         @FocuserPosition, @RotatorPosition,
                         @Humidity, @DewPoint, @WindSpeed, @Pressure,
                         @GradingStatus, @RejectReason,
-                        @ImageType, @Altitude, @Azimuth, @Airmass, @SideOfPier, @ReadoutMode, @SkyQuality, @CloudCover)";
+                        @ImageType, @Altitude, @Azimuth, @Airmass, @SideOfPier, @ReadoutMode, @SkyQuality, @CloudCover, @SeeingFWHM)";
 
                 using (var cmd = new SQLiteCommand(sql, conn)) {
                     cmd.Parameters.AddWithValue("@SessionId",       image.SessionId);
@@ -667,6 +669,7 @@ namespace NINA.Plugin.NightSummary.Data {
                     cmd.Parameters.AddWithValue("@ReadoutMode",     image.ReadoutMode  != null     ? (object)image.ReadoutMode           : DBNull.Value);
                     cmd.Parameters.AddWithValue("@SkyQuality",      image.SkyQuality.HasValue      ? (object)image.SkyQuality.Value      : DBNull.Value);
                     cmd.Parameters.AddWithValue("@CloudCover",      image.CloudCover.HasValue      ? (object)image.CloudCover.Value      : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@SeeingFWHM",      image.SeeingFWHM.HasValue      ? (object)image.SeeingFWHM.Value      : DBNull.Value);
                     cmd.ExecuteNonQuery();
                 }
             }
@@ -722,7 +725,8 @@ namespace NINA.Plugin.NightSummary.Data {
                                 SideOfPier      = reader["SideOfPier"]      == DBNull.Value ? null : reader["SideOfPier"].ToString(),
                                 ReadoutMode     = reader["ReadoutMode"]     == DBNull.Value ? null : reader["ReadoutMode"].ToString(),
                                 SkyQuality      = reader["SkyQuality"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["SkyQuality"]),
-                                CloudCover      = reader["CloudCover"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["CloudCover"])
+                                CloudCover      = reader["CloudCover"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["CloudCover"]),
+                                SeeingFWHM      = reader["SeeingFWHM"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["SeeingFWHM"])
                             });
                         }
                     }

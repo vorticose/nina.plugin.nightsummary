@@ -80,5 +80,8 @@ namespace NINA.Plugin.NightSummary.Data {
         // Sky quality and cloud cover; null = sensor not connected
         public double? SkyQuality { get; set; }    // mag/arcsec² (SQM)
         public double? CloudCover { get; set; }    // percentage
+
+        // ASCOM seeing monitor; null = device not connected
+        public double? SeeingFWHM { get; set; }    // star FWHM arcseconds from ASCOM seeing monitor
     }
 }

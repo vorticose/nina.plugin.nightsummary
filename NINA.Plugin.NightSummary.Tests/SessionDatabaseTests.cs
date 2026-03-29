@@ -152,6 +152,37 @@ namespace NINA.Plugin.NightSummary.Tests {
             Assert.Equal("AutoFocus", events[0].EventType);
         }
 
+        // ── SeeingFWHM round-trip ─────────────────────────────────────────────
+
+        [Fact]
+        public void SeeingFWHM_IsPersistedAndRetrieved() {
+            var sessionId = Guid.NewGuid().ToString();
+            CreateTestSession(sessionId);
+
+            var image = TestDataFactory.MakeImage(sessionId, seeingFwhm: 3.14);
+            _db.SaveImageRecord(image);
+
+            var images = _db.GetImagesForSession(sessionId);
+
+            Assert.Single(images);
+            Assert.NotNull(images[0].SeeingFWHM);
+            Assert.Equal(3.14, images[0].SeeingFWHM!.Value, precision: 2);
+        }
+
+        [Fact]
+        public void SeeingFWHM_Null_IsStoredAsNull() {
+            var sessionId = Guid.NewGuid().ToString();
+            CreateTestSession(sessionId);
+
+            var image = TestDataFactory.MakeImage(sessionId, seeingFwhm: null);
+            _db.SaveImageRecord(image);
+
+            var images = _db.GetImagesForSession(sessionId);
+
+            Assert.Single(images);
+            Assert.Null(images[0].SeeingFWHM);
+        }
+
         // ── Cumulative integration ────────────────────────────────────────────
 
         [Fact]

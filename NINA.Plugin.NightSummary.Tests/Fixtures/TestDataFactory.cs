@@ -29,14 +29,15 @@ namespace NINA.Plugin.NightSummary.Tests.Fixtures {
 
         public static ImageRecord MakeImage(
             string sessionId,
-            string target      = "M31",
-            string filter      = "Ha",
-            double hfr         = 2.5,
-            double fwhm        = 3.2,
-            bool accepted      = true,
-            double raHours     = 0.0,
-            double decDeg      = 0.0,
-            DateTime? timestamp = null) {
+            string target       = "M31",
+            string filter       = "Ha",
+            double hfr          = 2.5,
+            double fwhm         = 3.2,
+            bool accepted       = true,
+            double raHours      = 0.0,
+            double decDeg       = 0.0,
+            DateTime? timestamp = null,
+            double? seeingFwhm  = null) {
             return new ImageRecord {
                 SessionId         = sessionId,
                 Timestamp         = timestamp ?? new DateTime(2025, 1, 15, 22, 0, 0),
@@ -57,7 +58,8 @@ namespace NINA.Plugin.NightSummary.Tests.Fixtures {
                 Gain              = 100,
                 Offset            = 10,
                 Binning           = 1,
-                ImageType         = "LIGHT"
+                ImageType         = "LIGHT",
+                SeeingFWHM        = seeingFwhm
             };
         }
 

@@ -360,6 +360,7 @@
                                 <ComboBoxItem>Pressure (hPa)</ComboBoxItem>
                                 <ComboBoxItem>Star Count</ComboBoxItem>
                                 <ComboBoxItem>Azimuth (°)</ComboBoxItem>
+                                <ComboBoxItem>Seeing FWHM (")</ComboBoxItem>
                             </ComboBox>
                         </StackPanel>
 
@@ -385,6 +386,7 @@
                                 <ComboBoxItem>Pressure (hPa)</ComboBoxItem>
                                 <ComboBoxItem>Star Count</ComboBoxItem>
                                 <ComboBoxItem>Azimuth (°)</ComboBoxItem>
+                                <ComboBoxItem>Seeing FWHM (")</ComboBoxItem>
                             </ComboBox>
                             <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,2,0,0" MaxWidth="320">
                                 FWHM and Eccentricity require the Hocus Focus plugin. Focuser Temp requires a focuser with a built-in temperature sensor.

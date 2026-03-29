@@ -196,7 +196,9 @@ namespace NINA.Plugin.NightSummary.Session {
                     ReadoutMode      = string.IsNullOrEmpty(e.MetaData?.Camera?.ReadoutModeName) ? null : e.MetaData.Camera.ReadoutModeName,
                     // Sky conditions
                     SkyQuality       = NullIfNaN(e.MetaData?.WeatherData?.SkyQuality),
-                    CloudCover       = NullIfNaN(e.MetaData?.WeatherData?.CloudCover)
+                    CloudCover       = NullIfNaN(e.MetaData?.WeatherData?.CloudCover),
+                    // ASCOM seeing monitor
+                    SeeingFWHM       = NullIfNaN(e.MetaData?.WeatherData?.StarFWHM)
                 };
 
                 database.SaveImageRecord(record);

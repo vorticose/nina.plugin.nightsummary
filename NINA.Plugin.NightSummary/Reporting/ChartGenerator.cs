@@ -31,6 +31,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
         public const int PrimaryPressure     = 15;
         public const int PrimaryStarCount    = 16;
         public const int PrimaryAzimuth      = 17;
+        public const int PrimarySeeingFWHM   = 18;
 
         // Secondary metric indices (ChartSecondaryMetric setting, SelectedIndex in secondary ComboBox)
         // Index 0 = None; indices 1–N mirror the primary set offset by 1
@@ -53,6 +54,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
         public const int SecPressure     = 16;
         public const int SecStarCount    = 17;
         public const int SecAzimuth      = 18;
+        public const int SecSeeingFWHM   = 19;
 
         private const int Width        = 800;
         private const int Height       = 300;
@@ -254,6 +256,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 PrimaryPressure     => images.Where(i => i.Pressure.HasValue)     .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.Pressure!.Value)).ToList(),
                 PrimaryStarCount    => images.Where(i => i.StarCount > 0)         .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, (double)i.StarCount)).ToList(),
                 PrimaryAzimuth      => images.Where(i => i.Azimuth.HasValue)      .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.Azimuth!.Value)).ToList(),
+                PrimarySeeingFWHM   => images.Where(i => i.SeeingFWHM.HasValue)  .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.SeeingFWHM!.Value)).ToList(),
                 _                   => new List<(DateTime, double)>()
             };
         }
@@ -278,6 +281,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 SecPressure     => images.Where(i => i.Pressure.HasValue)     .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.Pressure!.Value)).ToList(),
                 SecStarCount    => images.Where(i => i.StarCount > 0)         .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, (double)i.StarCount)).ToList(),
                 SecAzimuth      => images.Where(i => i.Azimuth.HasValue)      .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.Azimuth!.Value)).ToList(),
+                SecSeeingFWHM   => images.Where(i => i.SeeingFWHM.HasValue)  .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.SeeingFWHM!.Value)).ToList(),
                 _               => new List<(DateTime, double)>()
             };
         }
@@ -372,6 +376,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             PrimaryPressure     => "Pressure",
             PrimaryStarCount    => "Star Count",
             PrimaryAzimuth      => "Azimuth",
+            PrimarySeeingFWHM   => "Seeing (FWHM)",
             _                   => "HFR"
         };
 
@@ -394,6 +399,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             SecPressure     => "Pressure",
             SecStarCount    => "Star Count",
             SecAzimuth      => "Azimuth",
+            SecSeeingFWHM   => "Seeing (FWHM)",
             _               => ""
         };
 
@@ -416,6 +422,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             PrimaryPressure     => "Pressure (hPa)",
             PrimaryStarCount    => "Star Count",
             PrimaryAzimuth      => "Azimuth (&#176;)",
+            PrimarySeeingFWHM   => "Seeing FWHM (\")",
             _                   => "HFR (px)"
         };
 
@@ -438,6 +445,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             SecPressure     => "Pressure (hPa)",
             SecStarCount    => "Star Count",
             SecAzimuth      => "Azimuth (&#176;)",
+            SecSeeingFWHM   => "Seeing FWHM (\")",
             _               => ""
         };
 
@@ -462,6 +470,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 15 => " hPa",     // Pressure
                 16 => "",         // Star Count
                 17 => "°",        // Azimuth
+                18 => "\"",       // Seeing FWHM
                 _ => ""
             };
         }
@@ -507,6 +516,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             PrimaryPressure     => "No atmospheric pressure data recorded",
             PrimaryStarCount    => "No star count data recorded",
             PrimaryAzimuth      => "No azimuth data recorded",
+            PrimarySeeingFWHM   => "No seeing FWHM data recorded",
             _                   => "No data available"
         };
 
@@ -522,6 +532,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             PrimaryDewPoint     => "Requires NINA weather data source",
             PrimaryWindSpeed    => "Requires NINA weather data source",
             PrimaryPressure     => "Requires NINA weather data source",
+            PrimarySeeingFWHM   => "Requires an ASCOM seeing monitor connected as a NINA weather data source",
             _                   => null
         };
 
@@ -544,6 +555,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             SecPressure     => "No atmospheric pressure data recorded",
             SecStarCount    => "No star count data recorded",
             SecAzimuth      => "No azimuth data recorded",
+            SecSeeingFWHM   => "No seeing FWHM data recorded",
             _               => ""
         };
 
@@ -559,6 +571,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             SecDewPoint     => "Requires NINA weather data source",
             SecWindSpeed    => "Requires NINA weather data source",
             SecPressure     => "Requires NINA weather data source",
+            SecSeeingFWHM   => "Requires an ASCOM seeing monitor connected as a NINA weather data source",
             _               => null
         };
 
