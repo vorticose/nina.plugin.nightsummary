@@ -144,6 +144,7 @@ namespace NINA.Plugin.NightSummary.Session {
                 if (Settings.Default.EmailEnabled) channels.Add("Email");
                 if (Settings.Default.PushoverEnabled) channels.Add("Pushover");
                 if (Settings.Default.DiscordEnabled) channels.Add("Discord");
+                if (Settings.Default.DashboardEnabled) channels.Add("Dashboard");
                 Logger.Info($"NightSummary: Delivering report to: {(channels.Any() ? string.Join(", ", channels) : "no channels enabled")}");
 
                 var tasks = new List<Task>();
@@ -155,6 +156,8 @@ namespace NINA.Plugin.NightSummary.Session {
                     tasks.Add(SendPushoverWithDataAsync(reportData));
                 if (Settings.Default.DiscordEnabled)
                     tasks.Add(SendDiscordWithDataAsync(reportData, htmlReport));
+                if (Settings.Default.DashboardEnabled)
+                    tasks.Add(SendDashboardWithDataAsync(reportData, htmlReport));
 
                 await Task.WhenAll(tasks);
                 Notification.ShowSuccess("Night Summary: Report delivered successfully");
@@ -221,6 +224,8 @@ namespace NINA.Plugin.NightSummary.Session {
                     tasks.Add(SendPushoverWithDataAsync(reportData));
                 if (Settings.Default.DiscordEnabled)
                     tasks.Add(SendDiscordWithDataAsync(reportData, htmlReport));
+                if (Settings.Default.DashboardEnabled)
+                    tasks.Add(SendDashboardWithDataAsync(reportData, htmlReport));
 
                 await Task.WhenAll(tasks);
                 Notification.ShowSuccess("Night Summary: Report delivered successfully");
@@ -285,6 +290,98 @@ namespace NINA.Plugin.NightSummary.Session {
                 await sender.SendReportAsync(reportData, htmlReport);
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to send Discord report. {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Uploads all sessions from the given database to the dashboard server.
+        /// Skips sessions that already exist on the server (server returns "already_exists").
+        /// </summary>
+        public async Task<(int uploaded, int skipped, int failed)> UploadAllToDashboardAsync(
+            string dbPath, Action<int, int> onProgress = null) {
+
+            var dashboardUrl = Settings.Default.DashboardUrl;
+            var apiKey       = Settings.Default.DashboardApiKey;
+
+            if (string.IsNullOrWhiteSpace(dashboardUrl)) {
+                Logger.Warning("NightSummary: Dashboard URL not configured");
+                return (0, 0, 0);
+            }
+
+            var db       = new SessionDatabase(dbPath);
+            var sessions = db.GetAllSessions();
+            var sender   = new DashboardSender(dashboardUrl, apiKey ?? "");
+            int uploaded = 0, skipped = 0, failed = 0;
+
+            for (int i = 0; i < sessions.Count; i++) {
+                var session = sessions[i];
+                onProgress?.Invoke(i + 1, sessions.Count);
+
+                try {
+                    var images     = db.GetImagesForSession(session.SessionId);
+                    var events     = db.GetEventsForSession(session.SessionId);
+                    var profileId  = profileService?.ActiveProfile?.Id.ToString();
+                    var tsData     = FetchTsData(images, profileId);
+                    var cumulative = db.GetCumulativeIntegrationByTarget(session.SessionId);
+                    var history    = BuildSessionHistory(db, images, session.SessionId);
+                    var (fovW, fovH) = ComputeCameraFov(session);
+                    var (lat, lon)   = GetObserverCoords();
+                    var reportData = new ReportData {
+                        Session                      = session,
+                        Images                       = images,
+                        Events                       = events,
+                        TsData                       = tsData,
+                        CumulativeIntegrationSeconds = cumulative,
+                        SessionHistory               = history,
+                        CameraFovWidthDeg            = fovW,
+                        CameraFovHeightDeg           = fovH,
+                        ObserverLatitude             = lat,
+                        ObserverLongitude            = lon,
+                        ActiveProfileId              = profileId
+                    };
+
+                    var htmlReport = await GenerateReportForDashboard(reportData);
+                    bool ok = await sender.SendReportAsync(reportData, htmlReport);
+                    if (ok) uploaded++; else skipped++;
+                } catch (Exception ex) {
+                    Logger.Warning($"NightSummary: Failed to upload session {session.SessionId}. {ex.Message}");
+                    failed++;
+                }
+            }
+
+            Logger.Info($"NightSummary: Dashboard bulk upload complete — {uploaded} uploaded, {skipped} skipped, {failed} failed");
+            return (uploaded, skipped, failed);
+        }
+
+        private async Task SendDashboardWithDataAsync(ReportData reportData, string htmlReport = null) {
+            try {
+                var dashboardUrl = Settings.Default.DashboardUrl;
+                var apiKey       = Settings.Default.DashboardApiKey;
+
+                if (string.IsNullOrWhiteSpace(dashboardUrl)) {
+                    Logger.Warning("NightSummary: Dashboard URL not configured — skipping");
+                    return;
+                }
+
+                htmlReport ??= await GenerateReportForDashboard(reportData);
+                var sender     = new DashboardSender(dashboardUrl, apiKey ?? "");
+                await sender.SendReportAsync(reportData, htmlReport);
+            } catch (Exception ex) {
+                Logger.Error($"NightSummary: Failed to upload to dashboard. {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Generates an HTML report with Tonight's Preview disabled, since the dashboard
+        /// is for historical review and the preview section only shows the current night.
+        /// </summary>
+        private async Task<string> GenerateReportForDashboard(ReportData reportData) {
+            var savedPreview = Settings.Default.ShowNextNightPreview;
+            try {
+                Settings.Default.ShowNextNightPreview = false;
+                return await reportGenerator.GenerateHtmlReport(reportData);
+            } finally {
+                Settings.Default.ShowNextNightPreview = savedPreview;
             }
         }
 

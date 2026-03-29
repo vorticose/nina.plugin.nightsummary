@@ -59,11 +59,13 @@ namespace NINA.Plugin.NightSummary {
             set { _searchResultText = value; RaisePropertyChanged(); }
         }
 
-        public ButtonStatus EmailTestStatus   { get; } = new ButtonStatus();
-        public ButtonStatus DiscordTestStatus { get; } = new ButtonStatus();
-        public ButtonStatus PushoverTestStatus{ get; } = new ButtonStatus();
-        public ButtonStatus ResendStatus      { get; } = new ButtonStatus();
-        public ButtonStatus TestReportStatus  { get; } = new ButtonStatus();
+        public ButtonStatus EmailTestStatus      { get; } = new ButtonStatus();
+        public ButtonStatus DiscordTestStatus    { get; } = new ButtonStatus();
+        public ButtonStatus PushoverTestStatus   { get; } = new ButtonStatus();
+        public ButtonStatus DashboardTestStatus  { get; } = new ButtonStatus();
+        public ButtonStatus DashboardUploadStatus{ get; } = new ButtonStatus();
+        public ButtonStatus ResendStatus         { get; } = new ButtonStatus();
+        public ButtonStatus TestReportStatus     { get; } = new ButtonStatus();
 
         [ImportingConstructor]
         public NightSummaryPlugin(
@@ -139,6 +141,40 @@ namespace NINA.Plugin.NightSummary {
                 var sender = new PushoverSender(appToken, userKey);
                 bool ok = await sender.SendAsync("Night Summary", "Pushover is configured correctly!");
                 PushoverTestStatus.Text = ok ? "✓ Sent" : "✗ Failed — check NINA log";
+            });
+
+            TestDashboardCommand = new RelayCommand(async () => {
+                DashboardTestStatus.Text = "";
+                var url = Settings.Default.DashboardUrl;
+                if (string.IsNullOrWhiteSpace(url)) {
+                    DashboardTestStatus.Text = "✗ Dashboard URL is empty";
+                    return;
+                }
+                var sender = new DashboardSender(url, Settings.Default.DashboardApiKey ?? "");
+                bool ok = await sender.TestConnectionAsync();
+                DashboardTestStatus.Text = ok ? "✓ Connected" : "✗ Failed — check NINA log";
+            });
+
+            UploadAllToDashboardCommand = new RelayCommand(async () => {
+                DashboardUploadStatus.Text = "";
+                if (!File.Exists(liveDbPath)) {
+                    DashboardUploadStatus.Text = "✗ No session database found";
+                    return;
+                }
+                var url = Settings.Default.DashboardUrl;
+                if (string.IsNullOrWhiteSpace(url)) {
+                    DashboardUploadStatus.Text = "✗ Dashboard URL is empty";
+                    return;
+                }
+                DashboardUploadStatus.Text = "Uploading...";
+                var (uploaded, skipped, failed) = await this.sessionService.UploadAllToDashboardAsync(
+                    liveDbPath,
+                    (current, total) => {
+                        System.Windows.Application.Current.Dispatcher.Invoke(() => {
+                            DashboardUploadStatus.Text = $"Uploading {current}/{total}...";
+                        });
+                    });
+                DashboardUploadStatus.Text = $"✓ Done — {uploaded} uploaded, {skipped} skipped, {failed} failed";
             });
 
             SendTestReportCommand = new RelayCommand(async () => {
@@ -373,6 +409,33 @@ namespace NINA.Plugin.NightSummary {
             get => Settings.Default.DiscordWebhookUrl;
             set {
                 Settings.Default.DiscordWebhookUrl = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public bool DashboardEnabled {
+            get => Settings.Default.DashboardEnabled;
+            set {
+                Settings.Default.DashboardEnabled = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public string DashboardUrl {
+            get => Settings.Default.DashboardUrl;
+            set {
+                Settings.Default.DashboardUrl = value;
+                Settings.Default.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public string DashboardApiKey {
+            get => Settings.Default.DashboardApiKey;
+            set {
+                Settings.Default.DashboardApiKey = value;
                 Settings.Default.Save();
                 RaisePropertyChanged();
             }
@@ -673,6 +736,8 @@ namespace NINA.Plugin.NightSummary {
         public ICommand TestEmailCommand { get; }
         public ICommand TestDiscordCommand { get; }
         public ICommand TestPushoverCommand { get; }
+        public ICommand TestDashboardCommand { get; }
+        public ICommand UploadAllToDashboardCommand { get; }
         public ICommand SendTestReportCommand { get; }
         public ICommand ResendLastSessionCommand { get; }
         public ICommand ResendSessionCommand { get; }
