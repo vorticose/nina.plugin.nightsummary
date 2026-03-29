@@ -530,14 +530,14 @@ namespace NINA.Plugin.NightSummary {
             "HFR", "FWHM", "Guiding RMS", "Focuser Temp (°C)", "Ambient Temp (°C)",
             "Eccentricity", "Altitude (°)", "Airmass", "Humidity (%)", "Focuser Position (steps)",
             "Sky Quality (mag/arcsec²)", "Cloud Cover (%)", "Camera Temp (°C)", "Dew Point (°C)",
-            "Wind Speed (m/s)", "Pressure (hPa)", "Star Count", "Azimuth (°)"
+            "Wind Speed (m/s)", "Pressure (hPa)", "Star Count", "Azimuth (°)", "Seeing FWHM (arcsec)"
         };
 
         private static readonly List<string> _secondaryMetricNames = new List<string> {
             "None", "HFR", "FWHM", "Guiding RMS", "Focuser Temp (°C)", "Ambient Temp (°C)",
             "Eccentricity", "Altitude (°)", "Airmass", "Humidity (%)", "Focuser Position (steps)",
             "Sky Quality (mag/arcsec²)", "Cloud Cover (%)", "Camera Temp (°C)", "Dew Point (°C)",
-            "Wind Speed (m/s)", "Pressure (hPa)", "Star Count", "Azimuth (°)"
+            "Wind Speed (m/s)", "Pressure (hPa)", "Star Count", "Azimuth (°)", "Seeing FWHM (arcsec)"
         };
 
         public IReadOnlyList<string> PrimaryMetricNames  => _primaryMetricNames;
