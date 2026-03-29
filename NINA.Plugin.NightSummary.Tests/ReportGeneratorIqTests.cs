@@ -206,6 +206,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task AltitudeChart_ValidCoords_SvgRendered() {
+            Settings.Default.ShowAltitudeChart = true;
             Settings.Default.ShowSkyThumbnails = false;
             var data = TestDataFactory.MakeReportData(imageCount: 5);
             // Spread timestamps so the altitude chart has a meaningful time range
