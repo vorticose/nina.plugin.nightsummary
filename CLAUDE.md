@@ -190,19 +190,42 @@ elevation-adjusted). No code change needed but worth mentioning in the 3.3 relea
 
 ## Testing
 
-- Unit/integration tests: `dotnet test NINA.Plugin.NightSummary.Tests` (run on Windows machine)
-  - 73 tests covering ChartGenerator, SessionDatabase, ReportGenerator, FilterHelper
-  - Tests compile on Mac but must run on Windows (net8.0-windows target)
-  - **When adding new features, add corresponding tests to the test project**
-    - New metrics → add to ChartGeneratorTests Theory data
-    - New DB columns → add round-trip test to SessionDatabaseTests
-    - New report sections → add content check to ReportGeneratorTests
-    - New filter/calc logic → add to FilterHelperTests or a new test class
-  - **Before writing any HTML content assertion in a test, grep the production code first**
-    to confirm the exact string, CSS class, or attribute exists in the output. Never assume
-    a class or element name — verify it with Grep before asserting on it.
-- Migration tests: `scripts/test-migration.ps1` (run on Windows machine)
-- See `scripts/TEST-MIGRATION-NOTES.md` for prerequisites and known gotchas
+### Standing rule: tests ship with every feature
+For every feature or bug fix implemented, **immediately evaluate whether unit tests
+are practical and write them in the same commit or the next one**. Don't defer tests
+to a separate "coverage push" session — keep coverage growing continuously.
+
+**What's testable (always write tests):**
+- Pure logic: FilterHelper, YieldCalculator, ChartGenerator, AltitudeCalculator
+- Report HTML output: any new section, setting branch, or conditional in ReportGenerator
+- Database CRUD: new columns, new query methods in SessionDatabase
+- Discord/Email payload construction (DiscordSender.BuildReportPayload is internal)
+
+**What's not testable without live NINA (skip gracefully):**
+- Session/SessionService, SessionCollector, SessionEventCollector (NINA mediators)
+- EmailSender.SendAsync, PushoverSender.SendAsync (network I/O)
+- WPF code-behind (Options.xaml.cs, PreviewWindow.xaml.cs)
+
+**Per-feature guidance:**
+- New chart metric → add InlineData entry to ChartGeneratorTests Theory
+- New DB column → add round-trip assertion to SessionDatabaseTests
+- New report section or toggle → add presence/absence test to the relevant ReportGenerator*Tests file
+- New filter/classification logic → add to FilterHelperTests
+- New ReportGenerator HTML string → grep production code first to confirm exact string before asserting
+
+### Coverage baseline
+- Current: **67.5%** logic layer line coverage (316 tests, CI threshold 60%)
+- Session/* integration classes excluded from scope (require live NINA)
+- Raise the CI threshold in `.github/workflows/ci.yml` as coverage grows
+
+### Running tests
+- `dotnet test NINA.Plugin.NightSummary.Tests` — must run on Windows (net8.0-windows)
+- Tests compile on Mac but require Windows to execute
+- **Before writing any HTML content assertion, grep production code first** to confirm
+  the exact string/class/attribute exists. Never assert on a string you haven't verified.
+
+### Migration tests
+- `scripts/test-migration.ps1` (Windows machine)
+- See `scripts/TEST-MIGRATION-NOTES.md` for prerequisites
 - All 19 migration scenarios pass as of v2.8.1
-- After running the test suite, `NightSummary` is left as a directory junction --
-  this is normal and NINA works correctly through it
+- After running, `NightSummary` is left as a directory junction — normal, NINA works through it
