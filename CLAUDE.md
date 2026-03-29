@@ -61,25 +61,38 @@ See `scripts/TEST-MIGRATION-NOTES.md` for hard-won lessons from testing this.
 ## Branching Strategy
 
 ```
-main       ← always matches the latest published release, tagged (v2.8.0, v2.8.1 etc.)
-dev        ← integration branch, accumulates features between releases
-feature/*  ← short-lived branches for individual features/fixes
+main       ← always matches the latest published release, tagged (v2.9.0, v2.10.0 etc.)
+dev        ← integration branch for 2.x fixes and small features
+v3-dev     ← long-lived branch for v3.0.0 features (dashboard server, etc.)
+feature/*  ← short-lived branches cut from dev or v3-dev
 nina-3.3   ← long-running NINA 3.3 port, periodically synced from dev
 ```
 
 **Day-to-day workflow:**
-1. Cut a feature branch from `dev`: `git checkout dev && git checkout -b feature/my-feature`
-   - Each GitHub issue gets its own feature branch (e.g. `feature/filter-breakdown` for issue #1)
-2. Do the work, commit freely on the feature branch
-3. Merge back to `dev` when done: `git checkout dev && git merge feature/my-feature`
-4. Delete the feature branch: `git branch -d feature/my-feature`
-5. For trivial one-line fixes, committing directly to `dev` is fine
+- Small fixes and 2.x features → cut from `dev`, merge back to `dev`
+- Big v3 features → work directly on `v3-dev` or cut a feature branch from `v3-dev`
+- For trivial one-line fixes, committing directly to `dev` is fine
 
-**Releasing:**
+1. Cut a feature branch: `git checkout dev && git checkout -b feature/my-feature`
+   (or `git checkout v3-dev && git checkout -b feature/my-v3-feature` for v3 work)
+2. Do the work, commit freely on the feature branch
+3. Merge back: `git checkout dev && git merge feature/my-feature` (or `v3-dev`)
+4. Delete the feature branch: `git branch -d feature/my-feature`
+
+**Releasing 2.x:**
 1. Run `dotnet test NINA.Plugin.NightSummary.Tests` on Windows — must be 0 failures
 2. Merge `dev` → `main`: `git checkout main && git merge dev`
-3. Tag the release: `git tag v2.8.1`
+3. Tag the release: `git tag v2.X.Y`
 4. Follow the full release process below
+
+**Releasing v3.0.0:**
+1. Merge `dev` into `v3-dev` first to pick up any 2.x fixes: `git checkout v3-dev && git merge dev`
+2. Run tests, strip dev markers, build, then merge `v3-dev` → `main`
+3. Tag: `git tag v3.0.0`
+
+**Keeping v3-dev current with 2.x fixes:**
+- Periodically: `git checkout v3-dev && git merge dev`
+- Do this before starting any v3 feature work to avoid drift
 
 **Keeping nina-3.3 in sync:**
 - Periodically (every few sessions or before a release): `git checkout nina-3.3 && git merge dev`
