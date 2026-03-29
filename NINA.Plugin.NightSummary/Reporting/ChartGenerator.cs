@@ -222,7 +222,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
             if (badgeText != null) {
                 int bx = PadLeft + 8;
                 int by = PadTop  + 6;
-                int bw = Math.Min(plotW - 16, 280);
+                // Estimate width from text length: ~6.5px/char for badgeText (font 11), ~5.7px/char for subtext (font 10)
+                int neededW = (int)Math.Max(
+                    (badgeText.Length * 6.5) + 34,
+                    (badgeSubtext?.Length ?? 0) * 5.7 + 14);
+                int bw = Math.Min(plotW - 16, Math.Max(neededW, 180));
                 int bh = badgeSubtext != null ? 32 : 20;
                 sb.AppendLine($"<rect x=\"{bx}\" y=\"{by}\" width=\"{bw}\" height=\"{bh}\" rx=\"3\" fill=\"{ColorWarningBg}\" stroke=\"{ColorWarning}\" stroke-width=\"1\" opacity=\"0.92\"/>");
                 sb.AppendLine($"<text x=\"{bx + 7}\" y=\"{by + 14}\" fill=\"{ColorWarning}\" font-size=\"11\">&#x26A0; {EscapeXml(badgeText)}</text>");
