@@ -532,7 +532,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             PrimaryDewPoint     => "Requires NINA weather data source",
             PrimaryWindSpeed    => "Requires NINA weather data source",
             PrimaryPressure     => "Requires NINA weather data source",
-            PrimarySeeingFWHM   => "Requires an ASCOM seeing monitor connected as a NINA weather data source",
+            PrimarySeeingFWHM   => "Requires an ASCOM seeing monitor as a NINA weather data source",
             _                   => null
         };
 
@@ -571,7 +571,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             SecDewPoint     => "Requires NINA weather data source",
             SecWindSpeed    => "Requires NINA weather data source",
             SecPressure     => "Requires NINA weather data source",
-            SecSeeingFWHM   => "Requires an ASCOM seeing monitor connected as a NINA weather data source",
+            SecSeeingFWHM   => "Requires an ASCOM seeing monitor as a NINA weather data source",
             _               => null
         };
 
