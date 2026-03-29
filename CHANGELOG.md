@@ -10,6 +10,7 @@
 
 **Improvements**
 - Improved metric chart axis scaling — axis labels now use sensible round-number steps (e.g. 5° for altitude, 0.5px for HFR) instead of arbitrary intervals
+- Aborted exposure count now includes image download and save failures in addition to skipped exposures
 - Target Scheduler settings grouped into a dedicated subsection in Options for clarity
 - Tonight's Preview toggle is now greyed out when the Target Scheduler API is not enabled, preventing misconfiguration
 - Target Scheduler progress bars are suppressed in the report when Target Scheduler is not installed, eliminating spurious warnings for users without TS
