@@ -1,4 +1,4 @@
-using NINA.Plugin.NightSummary.MyPluginProperties;
+using NINA.Plugin.NightSummary.Data;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -28,7 +28,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
         private static Dictionary<string, string> Overrides {
             get {
                 if (_overrides == null)
-                    _overrides = ParseClassifications(Settings.Default.FilterClassifications);
+                    _overrides = ParseClassifications(SettingsManager.Instance.Current.FilterClassifications);
                 return _overrides;
             }
         }

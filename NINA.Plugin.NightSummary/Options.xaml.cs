@@ -42,7 +42,7 @@ namespace NINA.Plugin.NightSummary {
                 Title = "Select folder for saved reports"
             };
 
-            var currentPath = MyPluginProperties.Settings.Default.SaveReportPath;
+            var currentPath = Data.SettingsManager.Instance.Current.SaveReportPath;
             if (!string.IsNullOrWhiteSpace(currentPath) && System.IO.Directory.Exists(currentPath)) {
                 dialog.InitialDirectory = currentPath;
             }

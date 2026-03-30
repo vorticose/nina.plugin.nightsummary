@@ -2,14 +2,12 @@ using NINA.Core.Utility;
 using NINA.Core.Utility.Notification;
 using NINA.Plugin;
 using NINA.Plugin.Interfaces;
-using NINA.Plugin.NightSummary.MyPluginProperties;
+using NINA.Plugin.NightSummary.Data;
 using NINA.Plugin.NightSummary.Reporting;
 using NINA.Plugin.NightSummary.Session;
 using NINA.Profile.Interfaces;
 using NINA.WPF.Base.Interfaces.Mediator;
 using NINA.WPF.Base.Interfaces.ViewModel;
-using NINA.Plugin.NightSummary.Data;
-using NINA.Plugin.NightSummary.Reporting;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -79,10 +77,10 @@ namespace NINA.Plugin.NightSummary {
 
             TestEmailCommand = new RelayCommand(async () => {
                 EmailTestStatus.Text = "";
-                var senderAddr = Settings.Default.SenderAddress;
-                var password   = Settings.Default.SmtpPassword;
-                var recipient  = Settings.Default.RecipientAddress;
-                var smtpHost   = Settings.Default.SmtpHost;
+                var senderAddr = S.SenderAddress;
+                var password   = S.SmtpPassword;
+                var recipient  = S.RecipientAddress;
+                var smtpHost   = S.SmtpHost;
                 if (string.IsNullOrWhiteSpace(senderAddr) || string.IsNullOrWhiteSpace(password) || string.IsNullOrWhiteSpace(recipient)) {
                     EmailTestStatus.Text = "✗ Fill in all email fields first";
                     return;
@@ -99,11 +97,11 @@ namespace NINA.Plugin.NightSummary {
                     EmailTestStatus.Text = "✗ SMTP server is required";
                     return;
                 }
-                bool useGmail = Settings.Default.UseGmailSmtp;
+                bool useGmail = S.UseGmailSmtp;
                 var sender = new EmailSender(
                     useGmail ? "smtp.gmail.com" : smtpHost,
-                    useGmail ? 587 : Settings.Default.SmtpPort,
-                    useGmail ? true : Settings.Default.SmtpSsl,
+                    useGmail ? 587 : S.SmtpPort,
+                    useGmail ? true : S.SmtpSsl,
                     senderAddr, password, recipient);
                 bool ok = await sender.SendTestAsync();
                 EmailTestStatus.Text = ok ? "✓ Sent" : "✗ Failed — check NINA log";
@@ -111,7 +109,7 @@ namespace NINA.Plugin.NightSummary {
 
             TestDiscordCommand = new RelayCommand(async () => {
                 DiscordTestStatus.Text = "";
-                var url = Settings.Default.DiscordWebhookUrl;
+                var url = S.DiscordWebhookUrl;
                 if (string.IsNullOrWhiteSpace(url)) {
                     DiscordTestStatus.Text = "✗ Webhook URL is empty";
                     return;
@@ -124,8 +122,8 @@ namespace NINA.Plugin.NightSummary {
 
             TestPushoverCommand = new RelayCommand(async () => {
                 PushoverTestStatus.Text = "";
-                var appToken = Settings.Default.PushoverAppToken;
-                var userKey  = Settings.Default.PushoverUserKey;
+                var appToken = S.PushoverAppToken;
+                var userKey  = S.PushoverUserKey;
                 if (string.IsNullOrWhiteSpace(appToken) || string.IsNullOrWhiteSpace(userKey)) {
                     PushoverTestStatus.Text = "✗ App token or user key is empty";
                     return;
@@ -145,12 +143,12 @@ namespace NINA.Plugin.NightSummary {
 
             TestDashboardCommand = new RelayCommand(async () => {
                 DashboardTestStatus.Text = "";
-                var url = Settings.Default.DashboardUrl;
+                var url = S.DashboardUrl;
                 if (string.IsNullOrWhiteSpace(url)) {
                     DashboardTestStatus.Text = "✗ Dashboard URL is empty";
                     return;
                 }
-                var sender = new DashboardSender(url, Settings.Default.DashboardApiKey ?? "");
+                var sender = new DashboardSender(url, S.DashboardApiKey ?? "");
                 bool ok = await sender.TestConnectionAsync();
                 DashboardTestStatus.Text = ok ? "✓ Connected" : "✗ Failed — check NINA log";
             });
@@ -161,7 +159,7 @@ namespace NINA.Plugin.NightSummary {
                     DashboardUploadStatus.Text = "✗ No session database found";
                     return;
                 }
-                var url = Settings.Default.DashboardUrl;
+                var url = S.DashboardUrl;
                 if (string.IsNullOrWhiteSpace(url)) {
                     DashboardUploadStatus.Text = "✗ Dashboard URL is empty";
                     return;
@@ -262,200 +260,125 @@ namespace NINA.Plugin.NightSummary {
         }
 
         public override async Task Teardown() {
-            Settings.Default.Save();
+            SettingsManager.Instance.Save();
             Logger.Info("NightSummary: Plugin torn down");
             await base.Teardown();
         }
 
         // Settings properties bound to the Options UI
+        private NightSummarySettings S => SettingsManager.Instance.Current;
+        private void SaveSettings() => SettingsManager.Instance.Save();
+
         public bool UseGmailSmtp {
-            get => Settings.Default.UseGmailSmtp;
-            set {
-                Settings.Default.UseGmailSmtp = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-                RaisePropertyChanged(nameof(UseCustomSmtp));
-            }
+            get => S.UseGmailSmtp;
+            set { S.UseGmailSmtp = value; SaveSettings(); RaisePropertyChanged(); RaisePropertyChanged(nameof(UseCustomSmtp)); }
         }
 
         public bool UseCustomSmtp {
-            get => !Settings.Default.UseGmailSmtp;
-            set {
-                Settings.Default.UseGmailSmtp = !value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-                RaisePropertyChanged(nameof(UseGmailSmtp));
-            }
+            get => !S.UseGmailSmtp;
+            set { S.UseGmailSmtp = !value; SaveSettings(); RaisePropertyChanged(); RaisePropertyChanged(nameof(UseGmailSmtp)); }
         }
 
         public string SenderAddress {
-            get => Settings.Default.SenderAddress;
-            set {
-                Settings.Default.SenderAddress = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.SenderAddress;
+            set { S.SenderAddress = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public string SmtpPassword {
-            get => Settings.Default.SmtpPassword;
-            set {
-                Settings.Default.SmtpPassword = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.SmtpPassword;
+            set { S.SmtpPassword = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public string SmtpHost {
-            get => Settings.Default.SmtpHost;
-            set {
-                Settings.Default.SmtpHost = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.SmtpHost;
+            set { S.SmtpHost = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public int SmtpPort {
-            get => Settings.Default.SmtpPort;
-            set {
-                Settings.Default.SmtpPort = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.SmtpPort;
+            set { S.SmtpPort = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public bool SmtpSsl {
-            get => Settings.Default.SmtpSsl;
-            set {
-                Settings.Default.SmtpSsl = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.SmtpSsl;
+            set { S.SmtpSsl = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public string RecipientAddress {
-            get => Settings.Default.RecipientAddress;
-            set {
-                Settings.Default.RecipientAddress = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.RecipientAddress;
+            set { S.RecipientAddress = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public bool SaveReportLocally {
-            get => Settings.Default.SaveReportLocally;
-            set {
-                Settings.Default.SaveReportLocally = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.SaveReportLocally;
+            set { S.SaveReportLocally = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public string SaveReportPath {
-            get => Settings.Default.SaveReportPath;
-            set {
-                Settings.Default.SaveReportPath = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.SaveReportPath;
+            set { S.SaveReportPath = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public bool EmailEnabled {
-            get => Settings.Default.EmailEnabled;
-            set {
-                Settings.Default.EmailEnabled = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.EmailEnabled;
+            set { S.EmailEnabled = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public bool PushoverEnabled {
-            get => Settings.Default.PushoverEnabled;
-            set {
-                Settings.Default.PushoverEnabled = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.PushoverEnabled;
+            set { S.PushoverEnabled = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public string PushoverAppToken {
-            get => Settings.Default.PushoverAppToken;
-            set {
-                Settings.Default.PushoverAppToken = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.PushoverAppToken;
+            set { S.PushoverAppToken = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public string PushoverUserKey {
-            get => Settings.Default.PushoverUserKey;
-            set {
-                Settings.Default.PushoverUserKey = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.PushoverUserKey;
+            set { S.PushoverUserKey = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public bool DiscordEnabled {
-            get => Settings.Default.DiscordEnabled;
-            set {
-                Settings.Default.DiscordEnabled = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.DiscordEnabled;
+            set { S.DiscordEnabled = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public string DiscordWebhookUrl {
-            get => Settings.Default.DiscordWebhookUrl;
-            set {
-                Settings.Default.DiscordWebhookUrl = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.DiscordWebhookUrl;
+            set { S.DiscordWebhookUrl = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public bool DashboardEnabled {
-            get => Settings.Default.DashboardEnabled;
-            set {
-                Settings.Default.DashboardEnabled = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.DashboardEnabled;
+            set { S.DashboardEnabled = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public string DashboardUrl {
-            get => Settings.Default.DashboardUrl;
-            set {
-                Settings.Default.DashboardUrl = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.DashboardUrl;
+            set { S.DashboardUrl = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public string DashboardApiKey {
-            get => Settings.Default.DashboardApiKey;
-            set {
-                Settings.Default.DashboardApiKey = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.DashboardApiKey;
+            set { S.DashboardApiKey = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public int ReportDetailLevel {
-            get => Settings.Default.ReportDetailLevel;
+            get => S.ReportDetailLevel;
             set {
-                Settings.Default.ReportDetailLevel = value;
-                Settings.Default.ShowSkyThumbnails  = true;
-                Settings.Default.ShowAltitudeChart  = true;
-                Settings.Default.ShowMoonCurve      = true;
-                Settings.Default.ShowMinAltitude    = true;
-                Settings.Default.ShowTSProgressBars = true;
-                Settings.Default.ShowSessionHistory = true;
-                Settings.Default.ShowStarCountCV    = true;
-                Settings.Default.ShowHFRGraph       = true;
-                Settings.Default.ShowPerTargetIQ       = true;
-                Settings.Default.ShowNextNightPreview  = true;
-                Settings.Default.Save();
+                S.ReportDetailLevel     = value;
+                S.ShowSkyThumbnails     = true;
+                S.ShowAltitudeChart     = true;
+                S.ShowMoonCurve         = true;
+                S.ShowMinAltitude       = true;
+                S.ShowTSProgressBars    = true;
+                S.ShowSessionHistory    = true;
+                S.ShowStarCountCV       = true;
+                S.ShowHFRGraph          = true;
+                S.ShowPerTargetIQ       = true;
+                S.ShowNextNightPreview  = true;
+                SaveSettings();
                 RaisePropertyChanged();
                 RaisePropertyChanged(nameof(ShowSkyThumbnails));
                 RaisePropertyChanged(nameof(ShowAltitudeChart));
@@ -471,120 +394,68 @@ namespace NINA.Plugin.NightSummary {
         }
 
         public bool ShowSkyThumbnails {
-            get => Settings.Default.ShowSkyThumbnails;
-            set {
-                Settings.Default.ShowSkyThumbnails = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.ShowSkyThumbnails;
+            set { S.ShowSkyThumbnails = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public bool ShowMoonCurve {
-            get => Settings.Default.ShowMoonCurve;
-            set {
-                Settings.Default.ShowMoonCurve = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.ShowMoonCurve;
+            set { S.ShowMoonCurve = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public bool ShowMinAltitude {
-            get => Settings.Default.ShowMinAltitude;
-            set {
-                Settings.Default.ShowMinAltitude = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.ShowMinAltitude;
+            set { S.ShowMinAltitude = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public bool ShowSessionHistory {
-            get => Settings.Default.ShowSessionHistory;
-            set {
-                Settings.Default.ShowSessionHistory = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.ShowSessionHistory;
+            set { S.ShowSessionHistory = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public bool ShowAltitudeChart {
-            get => Settings.Default.ShowAltitudeChart;
-            set {
-                Settings.Default.ShowAltitudeChart = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.ShowAltitudeChart;
+            set { S.ShowAltitudeChart = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public bool ShowTSProgressBars {
-            get => Settings.Default.ShowTSProgressBars && IsTsInstalled;
-            set {
-                Settings.Default.ShowTSProgressBars = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.ShowTSProgressBars && IsTsInstalled;
+            set { S.ShowTSProgressBars = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public bool ShowStarCountCV {
-            get => Settings.Default.ShowStarCountCV;
-            set {
-                Settings.Default.ShowStarCountCV = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.ShowStarCountCV;
+            set { S.ShowStarCountCV = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public bool ShowHFRGraph {
-            get => Settings.Default.ShowHFRGraph;
-            set {
-                Settings.Default.ShowHFRGraph = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.ShowHFRGraph;
+            set { S.ShowHFRGraph = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public bool ShowPerTargetIQ {
-            get => Settings.Default.ShowPerTargetIQ;
-            set {
-                Settings.Default.ShowPerTargetIQ = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.ShowPerTargetIQ;
+            set { S.ShowPerTargetIQ = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public bool ReportLightMode {
-            get => Settings.Default.ReportLightMode;
-            set {
-                Settings.Default.ReportLightMode = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.ReportLightMode;
+            set { S.ReportLightMode = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public bool ExpandSectionsDefault {
-            get => Settings.Default.ExpandSectionsDefault;
-            set {
-                Settings.Default.ExpandSectionsDefault = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.ExpandSectionsDefault;
+            set { S.ExpandSectionsDefault = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public int ChartPrimaryMetric {
-            get => Settings.Default.ChartPrimaryMetric;
-            set {
-                Settings.Default.ChartPrimaryMetric = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.ChartPrimaryMetric;
+            set { S.ChartPrimaryMetric = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public int ChartSecondaryMetric {
-            get => Settings.Default.ChartSecondaryMetric;
-            set {
-                Settings.Default.ChartSecondaryMetric = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.ChartSecondaryMetric;
+            set { S.ChartSecondaryMetric = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public const int MaxAdditionalCharts = 4;
@@ -610,7 +481,7 @@ namespace NINA.Plugin.NightSummary {
         public ObservableCollection<ChartConfig> AdditionalCharts {
             get {
                 if (_additionalCharts == null) {
-                    _additionalCharts = DeserializeChartConfigs(Settings.Default.AdditionalChartConfigs);
+                    _additionalCharts = DeserializeChartConfigs(S.AdditionalChartConfigs);
                     _additionalCharts.CollectionChanged += (_, __) => {
                         SerializeChartConfigs();
                         RaisePropertyChanged(nameof(CanAddChart));
@@ -632,9 +503,9 @@ namespace NINA.Plugin.NightSummary {
         }
 
         private void SerializeChartConfigs() {
-            Settings.Default.AdditionalChartConfigs =
+            S.AdditionalChartConfigs =
                 string.Join("|", AdditionalCharts.Select(c => $"{c.Primary}:{c.Secondary}"));
-            Settings.Default.Save();
+            SaveSettings();
         }
 
         private ObservableCollection<ChartConfig> DeserializeChartConfigs(string raw) {
@@ -652,12 +523,8 @@ namespace NINA.Plugin.NightSummary {
         }
 
         public bool ShowNextNightPreview {
-            get => Settings.Default.ShowNextNightPreview && IsTsInstalled && IsTsApiEnabled;
-            set {
-                Settings.Default.ShowNextNightPreview = value;
-                Settings.Default.Save();
-                RaisePropertyChanged();
-            }
+            get => S.ShowNextNightPreview && IsTsInstalled && IsTsApiEnabled;
+            set { S.ShowNextNightPreview = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public bool IsTsInstalled => TargetSchedulerDatabase.IsPluginInstalled;
@@ -688,7 +555,7 @@ namespace NINA.Plugin.NightSummary {
                 var filters = profileService?.ActiveProfile?.FilterWheelSettings?.FilterWheelFilters;
                 if (filters == null || filters.Count == 0) return;
 
-                var saved = ParseFilterClassifications(Settings.Default.FilterClassifications);
+                var saved = ParseFilterClassifications(S.FilterClassifications);
 
                 System.Windows.Application.Current.Dispatcher.Invoke(() => {
                     FilterItems.Clear();
@@ -709,8 +576,8 @@ namespace NINA.Plugin.NightSummary {
             var parts = FilterItems
                 .Where(f => f.Classification != "A")
                 .Select(f => $"{f.Name}={f.Classification}");
-            Settings.Default.FilterClassifications = string.Join(",", parts);
-            Settings.Default.Save();
+            S.FilterClassifications = string.Join(",", parts);
+            SaveSettings();
         }
 
         internal static Dictionary<string, string> ParseFilterClassifications(string raw) =>
