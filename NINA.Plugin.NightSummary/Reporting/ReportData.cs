@@ -47,5 +47,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// Number of exposures that were skipped/aborted during the session (e.g. by RMS triggers, safety events).
         /// </summary>
         public int SkippedExposures { get; init; }
+        /// <summary>
+        /// Live Stack images captured during the session. Empty if Live Stack plugin is not running.
+        /// </summary>
+        public List<Session.LiveStackImage> LiveStackImages { get; init; } = new();
     }
 }

@@ -1,6 +1,7 @@
 using NINA.Core.Utility;
 using NINA.Core.Utility.Notification;
 using NINA.Equipment.Interfaces.Mediator;
+using NINA.Plugin.Interfaces;
 using NINA.Plugin.NightSummary.Data;
 using NINA.Plugin.NightSummary.Reporting;
 using NINA.Profile.Interfaces;
@@ -24,6 +25,8 @@ namespace NINA.Plugin.NightSummary.Session {
         private readonly ReportGenerator       reportGenerator;
         private readonly IProfileService       profileService;
         private readonly ICameraMediator       cameraMediator;
+        private IMessageBroker                 messageBroker;
+        private LiveStackCapture               liveStackCapture;
 
         private static NightSummarySettings S => SettingsManager.Instance.Current;
 
@@ -43,6 +46,10 @@ namespace NINA.Plugin.NightSummary.Session {
             this.collector       = new SessionCollector(imageSaveMediator, sequenceMediator, database);
             this.eventCollector  = new SessionEventCollector(database, safetyMonitorMediator, focuserMediator, telescopeMediator);
             this.reportGenerator = new ReportGenerator();
+        }
+
+        public void SetMessageBroker(IMessageBroker broker) {
+            this.messageBroker = broker;
         }
 
         public void StartSession(string profileName) {
@@ -67,6 +74,10 @@ namespace NINA.Plugin.NightSummary.Session {
             } catch (Exception ex) {
                 Logger.Warning($"NightSummary: Could not read camera info at session start. {ex.Message}");
             }
+
+            if (messageBroker != null && S.ShowLiveStackImages) {
+                liveStackCapture = new LiveStackCapture(messageBroker);
+            }
         }
 
         public void EndSession() {
@@ -78,6 +89,8 @@ namespace NINA.Plugin.NightSummary.Session {
             var sessionId = collector.GetCurrentSessionId();
             collector.EndSession();
             eventCollector.EndSession();
+            var liveStackImages = liveStackCapture?.StopAndCollect() ?? new List<LiveStackImage>();
+            liveStackCapture = null;
 
             var database   = collector.Database;
             var session    = database.GetSession(sessionId);
@@ -112,7 +125,8 @@ namespace NINA.Plugin.NightSummary.Session {
                 ObserverLatitude             = lat,
                 ObserverLongitude            = lon,
                 ActiveProfileId              = profileId,
-                SkippedExposures             = collector.SkippedExposures
+                SkippedExposures             = collector.SkippedExposures,
+                LiveStackImages              = liveStackImages
             };
 
             _ = Task.Run(async () => {

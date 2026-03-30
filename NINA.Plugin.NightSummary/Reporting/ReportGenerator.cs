@@ -110,6 +110,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine(".ts-thumb-wrap { position: relative; width: 200px; height: 200px; flex-shrink: 0; }");
             sb.AppendLine(".ts-thumb-wrap img { width: 200px; height: 200px; border-radius: 6px; border: 1px solid var(--border); display: block; }");
             sb.AppendLine(".ts-thumb-wrap svg { position: absolute; top: 0; left: 0; border-radius: 6px; }");
+            sb.AppendLine(".ts-livestack-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }");
+            sb.AppendLine(".ts-livestack-item { text-align: center; }");
+            sb.AppendLine(".ts-livestack-img { border-radius: 6px; border: 1px solid var(--border); display: block; width: 100%; }");
+            sb.AppendLine(".ts-livestack-label { font-size: 11px; color: var(--muted); margin-top: 4px; }");
+            sb.AppendLine(".ts-livestack-composite { margin: 12px 0; text-align: center; }");
+            sb.AppendLine(".ts-livestack-composite img { border-radius: 6px; border: 1px solid var(--border); display: block; width: 100%; }");
             sb.AppendLine(".ts-target-info { flex: 1; }");
             sb.AppendLine(".ts-coords { font-size: 12px; color: var(--muted); margin: 4px 0 12px; }");
             sb.AppendLine(".ts-filter-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }");
@@ -391,6 +397,15 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     sb.AppendLine("</div>"); // ts-target-header
                 }
 
+                // Live Stack images
+                if (SettingsManager.Instance.Current.ShowLiveStackImages && data.LiveStackImages.Count > 0) {
+                    var targetImages = data.LiveStackImages
+                        .Where(i => i.Target.Equals(target.Key, StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+                    if (targetImages.Count > 0)
+                        sb.Append(BuildLiveStackRow(targetImages));
+                }
+
                 // Session filter table
                 sb.AppendLine("<table>");
                 sb.AppendLine("<tr><th>Filter</th><th>Images</th><th>Exposure</th><th>Total Time</th></tr>");
@@ -536,6 +551,39 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 }
 
                 sb.AppendLine("</div>"); // target-section
+            }
+
+            return sb.ToString();
+        }
+
+        private static string BuildLiveStackRow(List<Session.LiveStackImage> images) {
+            var sb = new StringBuilder();
+            var monoImages = images.Where(i => i.IsMonochrome && !i.Filter.Equals("RGB", StringComparison.OrdinalIgnoreCase)).ToList();
+            var composites = images.Where(i => !i.IsMonochrome || i.Filter.Equals("RGB", StringComparison.OrdinalIgnoreCase)).ToList();
+
+            // Per-filter row (mono stacks side by side)
+            if (monoImages.Count > 0) {
+                int perRow = Math.Min(monoImages.Count, 4);
+                int itemWidth = (760 - (perRow - 1) * 8) / perRow;
+                sb.AppendLine("<div class='ts-livestack-row'>");
+                foreach (var img in monoImages) {
+                    sb.AppendLine($"<div class='ts-livestack-item' style='width:{itemWidth}px;'>");
+                    sb.AppendLine($"<img class='ts-livestack-img' src='data:image/jpeg;base64,{Convert.ToBase64String(img.JpegData)}' alt='{img.Filter} stack' />");
+                    sb.AppendLine($"<div class='ts-livestack-label'>{img.Filter} &middot; {img.StackCount} frames</div>");
+                    sb.AppendLine("</div>");
+                }
+                sb.AppendLine("</div>");
+            }
+
+            // Color composite row (full width)
+            foreach (var img in composites) {
+                sb.AppendLine("<div class='ts-livestack-composite'>");
+                sb.AppendLine($"<img src='data:image/jpeg;base64,{Convert.ToBase64String(img.JpegData)}' alt='Live Stack composite' />");
+                string label = img.RedStackCount.HasValue
+                    ? $"Live Stack Composite &middot; R:{img.RedStackCount} G:{img.GreenStackCount} B:{img.BlueStackCount}"
+                    : $"Live Stack &middot; {img.StackCount} frames";
+                sb.AppendLine($"<div class='ts-livestack-label'>{label}</div>");
+                sb.AppendLine("</div>");
             }
 
             return sb.ToString();
