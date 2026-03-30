@@ -1,6 +1,5 @@
 using NINA.Core.Utility;
 using NINA.Plugin.NightSummary.Data;
-using NINA.Plugin.NightSummary.MyPluginProperties;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -61,7 +60,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             FilterHelper.ReloadOverrides();
             var sb = new StringBuilder();
 
-            bool lightMode = Settings.Default.ReportLightMode;
+            bool lightMode = SettingsManager.Instance.Current.ReportLightMode;
 
             // Set SVG theme colors (SVG attributes can't use CSS variables)
             // Altitude chart keeps dark background in both modes for better line visibility
@@ -153,8 +152,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 return sb.ToString();
             }
 
-            int detailLevel = Settings.Default.ReportDetailLevel;
-            string detailsOpen = Settings.Default.ExpandSectionsDefault ? " open" : "";
+            int detailLevel = SettingsManager.Instance.Current.ReportDetailLevel;
+            string detailsOpen = SettingsManager.Instance.Current.ExpandSectionsDefault ? " open" : "";
 
             if (detailLevel >= 1) sb.Append(BuildEventTimelineSection(data));
             sb.Append(BuildOverviewStatsSection(data, detailLevel));
@@ -285,7 +284,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             // ── Pre-fetch all sky thumbnails in parallel ──────────────────────
             var thumbResults = new Dictionary<string, (string imgSrc, bool usedFallback)>();
-            if (Settings.Default.ShowSkyThumbnails) {
+            if (SettingsManager.Instance.Current.ShowSkyThumbnails) {
                 var thumbTasks = new List<(string targetName, double raDeg, double decD, Task<(string imgSrc, bool usedFallback)> task)>();
 
                 foreach (var target in targets) {
@@ -350,8 +349,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine("<div class='target-section'>");
                 sb.AppendLine($"<h3>{target.Key}{h3Subtitle}</h3>");
 
-                bool showThumb         = (raH != 0 || decD != 0) && Settings.Default.ShowSkyThumbnails;
-                bool showSideBySideChart = (raH != 0 || decD != 0) && detailLevel >= 1 && Settings.Default.ShowAltitudeChart;
+                bool showThumb         = (raH != 0 || decD != 0) && SettingsManager.Instance.Current.ShowSkyThumbnails;
+                bool showSideBySideChart = (raH != 0 || decD != 0) && detailLevel >= 1 && SettingsManager.Instance.Current.ShowAltitudeChart;
 
                 // Build thumbnail HTML from pre-fetched results
                 string thumbHtml = "";
@@ -382,7 +381,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     sb.AppendLine("<div class='ts-target-header'>");
                     sb.Append(thumbHtml);
                     if (showSideBySideChart) {
-                        double minAlt = Settings.Default.ShowMinAltitude ? (tsTarget?.MinimumAltitude ?? 0) : 0;
+                        double minAlt = SettingsManager.Instance.Current.ShowMinAltitude ? (tsTarget?.MinimumAltitude ?? 0) : 0;
                         var altChart = BuildAltitudeChart(raH, decD, data.ObserverLatitude, data.ObserverLongitude,
                                                           targetImgStart, targetImgEnd, width: 500,
                                                           minimumAltitude: minAlt);
@@ -406,7 +405,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine($"<tr><td><strong>Total</strong></td><td><strong>{target.Count()}</strong></td><td></td><td><strong>{FormatDuration(targetTotal.TotalSeconds)}</strong></td></tr>");
                 sb.AppendLine("</table>");
 
-                if (detailLevel >= 1 && Settings.Default.ShowStarCountCV) {
+                if (detailLevel >= 1 && SettingsManager.Instance.Current.ShowStarCountCV) {
                     // Star count CV
                     var broadbandImages  = target.Where(i => IsBroadband(i.Filter)  && i.StarCount > 0).ToList();
                     var narrowbandImages = target.Where(i => IsNarrowband(i.Filter) && i.StarCount > 0).ToList();
@@ -437,7 +436,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 }
 
                 // Per-target image quality (collapsible) — only for multi-target sessions
-                if (detailLevel >= 1 && multiTarget && Settings.Default.ShowPerTargetIQ) {
+                if (detailLevel >= 1 && multiTarget && SettingsManager.Instance.Current.ShowPerTargetIQ) {
                     var targetList = target.ToList();
                     bool hasData = targetList.Any(i => i.HFR > 0 || i.FWHM > 0 || i.Eccentricity > 0 || i.GuidingRMSTotal > 0);
                     if (hasData) {
@@ -452,7 +451,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 }
 
                 // Session history (collapsible)
-                if (detailLevel >= 2 && Settings.Default.ShowSessionHistory) {
+                if (detailLevel >= 2 && SettingsManager.Instance.Current.ShowSessionHistory) {
                     List<TargetSessionHistory> history = null;
                     data.SessionHistory?.TryGetValue(target.Key, out history);
                     if (history != null && history.Any()) {
@@ -472,14 +471,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     }
                 }
 
-                if (tsTarget == null && detailLevel >= 1 && Settings.Default.ShowTSProgressBars && TargetSchedulerDatabase.IsPluginInstalled) {
+                if (tsTarget == null && detailLevel >= 1 && SettingsManager.Instance.Current.ShowTSProgressBars && TargetSchedulerDatabase.IsPluginInstalled) {
                     if (data.TsData != null && data.TsData.Count > 0) {
                         // TS is installed but this specific target wasn't found in it
                         Warnings.Add($"Target Scheduler progress bars unavailable for {target.Key} — target not found in Target Scheduler");
                     }
                     // If TS isn't installed at all, silently skip — the Options UI already shows it's unavailable
                 }
-                if (tsTarget != null && detailLevel >= 1 && Settings.Default.ShowTSProgressBars && TargetSchedulerDatabase.IsPluginInstalled) {
+                if (tsTarget != null && detailLevel >= 1 && SettingsManager.Instance.Current.ShowTSProgressBars && TargetSchedulerDatabase.IsPluginInstalled) {
                     // TS progress bars — one per exposure plan row (template + filter)
                     sb.AppendLine("<p style='margin: 12px 0 4px; font-size: 13px; color: var(--accent-light);'><strong>Target Scheduler Progress</strong></p>");
                     double totalIntegrationSec = 0;
@@ -618,13 +617,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
             AppendIqRows(sb, data.Images, detailsOpen);
             sb.AppendLine("</div>"); // iq-table
 
-            if (detailLevel >= 2 && Settings.Default.ShowHFRGraph) {
-                int primary   = Settings.Default.ChartPrimaryMetric;
-                int secondary = Settings.Default.ChartSecondaryMetric;
+            if (detailLevel >= 2 && SettingsManager.Instance.Current.ShowHFRGraph) {
+                int primary   = SettingsManager.Instance.Current.ChartPrimaryMetric;
+                int secondary = SettingsManager.Instance.Current.ChartSecondaryMetric;
                 sb.AppendLine($"<h2>{ChartGenerator.GetChartTitle(primary, secondary)}</h2>");
                 sb.AppendLine(ChartGenerator.GenerateMetricChart(data.Images, primary, secondary));
 
-                var additionalRaw = Settings.Default.AdditionalChartConfigs;
+                var additionalRaw = SettingsManager.Instance.Current.AdditionalChartConfigs;
                 if (!string.IsNullOrWhiteSpace(additionalRaw)) {
                     foreach (var part in additionalRaw.Split('|')) {
                         var tokens = part.Split(':');
@@ -755,7 +754,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             // ── Moon altitude curve ──────────────────────────────────────────────
-            if (!Settings.Default.ShowMoonCurve) goto skipMoon;
+            if (!SettingsManager.Instance.Current.ShowMoonCurve) goto skipMoon;
             var moonPoints = AltitudeCalculator.GetMoonAltitudeCurve(latDeg, lonDeg, dayStart, dayEnd, stepMinutes: 5);
             var moonSegments = new List<List<(DateTime t, double alt)>>();
             List<(DateTime t, double alt)> moonSeg = null;
@@ -823,7 +822,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
         }
 
         private string BuildNextNightPreviewSection(ReportData data) {
-            if (!Settings.Default.ShowNextNightPreview) return "";
+            if (!SettingsManager.Instance.Current.ShowNextNightPreview) return "";
 
             var tsDb = new TargetSchedulerDatabase();
             if (!tsDb.IsAvailable)
@@ -996,7 +995,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     var filterGroups = allExposures
                         .GroupBy(e => (e.FilterName, e.Exposure))
                         .OrderBy(g => FilterSortKey(g.Key.FilterName)).ThenBy(g => g.Key.FilterName).ThenBy(g => g.Key.Exposure);
-                    string detailsOpen = Settings.Default.ExpandSectionsDefault ? " open" : "";
+                    string detailsOpen = SettingsManager.Instance.Current.ExpandSectionsDefault ? " open" : "";
                     sb.AppendLine($"<details class='history-section'{detailsOpen}>");
                     sb.AppendLine($"<summary>{targetGroup.Key} - Filter Breakdown</summary>");
                     sb.AppendLine("<table style='margin-top:8px;width:auto;'>");

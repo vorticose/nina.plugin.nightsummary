@@ -1,5 +1,4 @@
 using NINA.Plugin.NightSummary.Data;
-using NINA.Plugin.NightSummary.MyPluginProperties;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -64,7 +63,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
         private const int PadTop       = 20;
         private const int PadBottom    = 45;
 
-        private static bool IsLight => Settings.Default.ReportLightMode;
+        private static bool IsLight => SettingsManager.Instance.Current.ReportLightMode;
 
         private static string ColorBackground   => IsLight ? "#f5f5f5" : "#1a1a2e";
         private static string ColorGrid         => IsLight ? "#c8cdd4" : "#2a2a4a";

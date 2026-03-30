@@ -1,5 +1,4 @@
 using NINA.Plugin.NightSummary.Data;
-using NINA.Plugin.NightSummary.MyPluginProperties;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -73,7 +72,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("<div class='timeline-container' style='position:relative;'>");
 
             // Floating tooltip div — positioned by JS on mousemove
-            bool light = Settings.Default.ReportLightMode;
+            bool light = SettingsManager.Instance.Current.ReportLightMode;
             string tooltipBg = light ? "#ffffff" : "#1e1e2e";
             string tooltipFg = light ? "#1a1a2e" : "#e0e0e0";
             string tooltipShadow = light ? "rgba(0,0,0,0.15)" : "rgba(0,0,0,0.6)";

@@ -2,7 +2,6 @@ using NINA.Core.Utility;
 using NINA.Core.Utility.Notification;
 using NINA.Equipment.Interfaces.Mediator;
 using NINA.Plugin.NightSummary.Data;
-using NINA.Plugin.NightSummary.MyPluginProperties;
 using NINA.Plugin.NightSummary.Reporting;
 using NINA.Profile.Interfaces;
 using NINA.Sequencer.Interfaces.Mediator;
@@ -25,6 +24,8 @@ namespace NINA.Plugin.NightSummary.Session {
         private readonly ReportGenerator       reportGenerator;
         private readonly IProfileService       profileService;
         private readonly ICameraMediator       cameraMediator;
+
+        private static NightSummarySettings S => SettingsManager.Instance.Current;
 
         [ImportingConstructor]
         public SessionService(
@@ -140,20 +141,20 @@ namespace NINA.Plugin.NightSummary.Session {
 
                 // Build list of enabled delivery channels
                 var channels = new List<string>();
-                if (Settings.Default.SaveReportLocally) channels.Add("Local Save");
-                if (Settings.Default.EmailEnabled) channels.Add("Email");
-                if (Settings.Default.PushoverEnabled) channels.Add("Pushover");
-                if (Settings.Default.DiscordEnabled) channels.Add("Discord");
+                if (S.SaveReportLocally) channels.Add("Local Save");
+                if (S.EmailEnabled) channels.Add("Email");
+                if (S.PushoverEnabled) channels.Add("Pushover");
+                if (S.DiscordEnabled) channels.Add("Discord");
                 Logger.Info($"NightSummary: Delivering report to: {(channels.Any() ? string.Join(", ", channels) : "no channels enabled")}");
 
                 var tasks = new List<Task>();
-                if (Settings.Default.SaveReportLocally)
+                if (S.SaveReportLocally)
                     tasks.Add(SaveReportLocallyAsync(reportData, htmlReport));
-                if (Settings.Default.EmailEnabled)
+                if (S.EmailEnabled)
                     tasks.Add(SendReportWithDataAsync(reportData, htmlReport));
-                if (Settings.Default.PushoverEnabled)
+                if (S.PushoverEnabled)
                     tasks.Add(SendPushoverWithDataAsync(reportData));
-                if (Settings.Default.DiscordEnabled)
+                if (S.DiscordEnabled)
                     tasks.Add(SendDiscordWithDataAsync(reportData, htmlReport));
 
                 await Task.WhenAll(tasks);
@@ -213,13 +214,13 @@ namespace NINA.Plugin.NightSummary.Session {
                 }
 
                 var tasks = new List<Task>();
-                if (Settings.Default.SaveReportLocally)
+                if (S.SaveReportLocally)
                     tasks.Add(SaveReportLocallyAsync(reportData, htmlReport));
-                if (Settings.Default.EmailEnabled)
+                if (S.EmailEnabled)
                     tasks.Add(SendReportWithDataAsync(reportData, htmlReport));
-                if (Settings.Default.PushoverEnabled)
+                if (S.PushoverEnabled)
                     tasks.Add(SendPushoverWithDataAsync(reportData));
-                if (Settings.Default.DiscordEnabled)
+                if (S.DiscordEnabled)
                     tasks.Add(SendDiscordWithDataAsync(reportData, htmlReport));
 
                 await Task.WhenAll(tasks);
@@ -232,7 +233,7 @@ namespace NINA.Plugin.NightSummary.Session {
 
         private async Task SaveReportLocallyAsync(ReportData reportData, string htmlReport = null) {
             try {
-                var customPath = Settings.Default.SaveReportPath;
+                var customPath = S.SaveReportPath;
                 var saveDir = !string.IsNullOrWhiteSpace(customPath)
                     ? customPath
                     : Path.Combine(
@@ -254,8 +255,8 @@ namespace NINA.Plugin.NightSummary.Session {
 
         private async Task SendPushoverWithDataAsync(ReportData reportData) {
             try {
-                var appToken = Settings.Default.PushoverAppToken;
-                var userKey  = Settings.Default.PushoverUserKey;
+                var appToken = S.PushoverAppToken;
+                var userKey  = S.PushoverUserKey;
 
                 if (string.IsNullOrWhiteSpace(appToken) || string.IsNullOrWhiteSpace(userKey)) {
                     Logger.Warning("NightSummary: Pushover not configured — skipping notification");
@@ -273,7 +274,7 @@ namespace NINA.Plugin.NightSummary.Session {
 
         private async Task SendDiscordWithDataAsync(ReportData reportData, string htmlReport = null) {
             try {
-                var webhookUrl = Settings.Default.DiscordWebhookUrl;
+                var webhookUrl = S.DiscordWebhookUrl;
 
                 if (string.IsNullOrWhiteSpace(webhookUrl)) {
                     Logger.Warning("NightSummary: Discord webhook URL not configured — skipping");
@@ -290,9 +291,9 @@ namespace NINA.Plugin.NightSummary.Session {
 
         private async Task SendReportWithDataAsync(ReportData reportData, string htmlReport = null) {
             try {
-                var senderAddress = Settings.Default.SenderAddress;
-                var smtpPassword  = Settings.Default.SmtpPassword;
-                var recipient     = Settings.Default.RecipientAddress;
+                var senderAddress = S.SenderAddress;
+                var smtpPassword  = S.SmtpPassword;
+                var recipient     = S.RecipientAddress;
 
                 if (string.IsNullOrWhiteSpace(senderAddress) ||
                     string.IsNullOrWhiteSpace(smtpPassword) ||
@@ -308,11 +309,11 @@ namespace NINA.Plugin.NightSummary.Session {
                 var body       = BuildSessionSummary(reportData, compact: false);
 
                 var attachmentFileName = $"NightSummary_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.html";
-                bool useGmail = Settings.Default.UseGmailSmtp;
+                bool useGmail = S.UseGmailSmtp;
                 var sender = new EmailSender(
-                    useGmail ? "smtp.gmail.com" : Settings.Default.SmtpHost,
-                    useGmail ? 587 : Settings.Default.SmtpPort,
-                    useGmail ? true : Settings.Default.SmtpSsl,
+                    useGmail ? "smtp.gmail.com" : S.SmtpHost,
+                    useGmail ? 587 : S.SmtpPort,
+                    useGmail ? true : S.SmtpSsl,
                     senderAddress, smtpPassword, recipient);
                 var success = await sender.SendReportAsync(subject, htmlReport, body.ToString(), attachmentFileName);
 
