@@ -1,5 +1,5 @@
 using NINA.Plugin.NightSummary.Data;
-using NINA.Plugin.NightSummary.MyPluginProperties;
+
 using NINA.Plugin.NightSummary.Reporting;
 using NINA.Plugin.NightSummary.Tests.Fixtures;
 using System;
@@ -19,15 +19,15 @@ namespace NINA.Plugin.NightSummary.Tests {
         private readonly ReportGenerator _generator;
 
         public ReportGeneratorContentTests() {
-            Settings.Default.ReportLightMode        = false;
-            Settings.Default.ReportDetailLevel      = 2;
-            Settings.Default.ShowHFRGraph           = false;
-            Settings.Default.ShowStarCountCV        = false;
-            Settings.Default.ShowPerTargetIQ        = false;
-            Settings.Default.ShowSessionHistory     = false;
-            Settings.Default.ShowNextNightPreview   = false;
-            Settings.Default.AdditionalChartConfigs = "";
-            Settings.Default.ExpandSectionsDefault  = false;
+            SettingsManager.Instance.Current.ReportLightMode        = false;
+            SettingsManager.Instance.Current.ReportDetailLevel      = 2;
+            SettingsManager.Instance.Current.ShowHFRGraph           = false;
+            SettingsManager.Instance.Current.ShowStarCountCV        = false;
+            SettingsManager.Instance.Current.ShowPerTargetIQ        = false;
+            SettingsManager.Instance.Current.ShowSessionHistory     = false;
+            SettingsManager.Instance.Current.ShowNextNightPreview   = false;
+            SettingsManager.Instance.Current.AdditionalChartConfigs = "";
+            SettingsManager.Instance.Current.ExpandSectionsDefault  = false;
             _generator = new ReportGenerator();
         }
 
@@ -187,17 +187,17 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task ExpandSectionsDefault_True_SectionsHaveOpenAttribute() {
-            Settings.Default.ExpandSectionsDefault = true;
+            SettingsManager.Instance.Current.ExpandSectionsDefault = true;
             var data   = TestDataFactory.MakeReportData(imageCount: 10);
             var report = await _generator.GenerateHtmlReport(data);
-            Settings.Default.ExpandSectionsDefault = false; // reset
+            SettingsManager.Instance.Current.ExpandSectionsDefault = false; // reset
             // detailsOpen = " open" → rendered as <details class='...' open>
             Assert.Contains("' open>", report);
         }
 
         [Fact]
         public async Task ExpandSectionsDefault_False_SectionsHaveNoOpenAttribute() {
-            Settings.Default.ExpandSectionsDefault = false;
+            SettingsManager.Instance.Current.ExpandSectionsDefault = false;
             var data   = TestDataFactory.MakeReportData(imageCount: 10);
             var report = await _generator.GenerateHtmlReport(data);
             Assert.DoesNotContain("' open>", report);

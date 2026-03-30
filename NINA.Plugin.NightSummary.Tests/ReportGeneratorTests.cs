@@ -1,4 +1,4 @@
-using NINA.Plugin.NightSummary.MyPluginProperties;
+using NINA.Plugin.NightSummary.Data;
 using NINA.Plugin.NightSummary.Reporting;
 using NINA.Plugin.NightSummary.Tests.Fixtures;
 using System.Linq;
@@ -11,7 +11,7 @@ namespace NINA.Plugin.NightSummary.Tests {
         private readonly ReportGenerator _generator;
 
         public ReportGeneratorTests() {
-            Settings.Default.ReportLightMode = false;
+            SettingsManager.Instance.Current.ReportLightMode = false;
             _generator = new ReportGenerator();
         }
 
@@ -62,13 +62,13 @@ namespace NINA.Plugin.NightSummary.Tests {
         public async Task LightModeReport_ContainsDifferentCssThanDarkMode() {
             var data = TestDataFactory.MakeReportData(imageCount: 10);
 
-            Settings.Default.ReportLightMode = false;
+            SettingsManager.Instance.Current.ReportLightMode = false;
             var darkReport  = await _generator.GenerateHtmlReport(data);
 
-            Settings.Default.ReportLightMode = true;
+            SettingsManager.Instance.Current.ReportLightMode = true;
             var lightReport = await _generator.GenerateHtmlReport(data);
 
-            Settings.Default.ReportLightMode = false; // reset
+            SettingsManager.Instance.Current.ReportLightMode = false; // reset
 
             Assert.NotEqual(darkReport, lightReport);
         }

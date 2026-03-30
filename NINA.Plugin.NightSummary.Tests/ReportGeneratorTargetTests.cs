@@ -1,5 +1,5 @@
 using NINA.Plugin.NightSummary.Data;
-using NINA.Plugin.NightSummary.MyPluginProperties;
+
 using NINA.Plugin.NightSummary.Reporting;
 using NINA.Plugin.NightSummary.Tests.Fixtures;
 using System;
@@ -19,18 +19,18 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         public ReportGeneratorTargetTests() {
             _gen = new ReportGenerator();
-            Settings.Default.ReportLightMode        = false;
-            Settings.Default.ReportDetailLevel      = 2;
-            Settings.Default.ShowHFRGraph           = false;
-            Settings.Default.ShowStarCountCV        = false;
-            Settings.Default.ShowPerTargetIQ        = false;
-            Settings.Default.ShowSessionHistory     = false;
-            Settings.Default.ShowSkyThumbnails      = false;
-            Settings.Default.ShowAltitudeChart      = false;
-            Settings.Default.ShowNextNightPreview   = false;
-            Settings.Default.ShowTSProgressBars     = false;
-            Settings.Default.AdditionalChartConfigs = "";
-            Settings.Default.ExpandSectionsDefault  = false;
+            SettingsManager.Instance.Current.ReportLightMode        = false;
+            SettingsManager.Instance.Current.ReportDetailLevel      = 2;
+            SettingsManager.Instance.Current.ShowHFRGraph           = false;
+            SettingsManager.Instance.Current.ShowStarCountCV        = false;
+            SettingsManager.Instance.Current.ShowPerTargetIQ        = false;
+            SettingsManager.Instance.Current.ShowSessionHistory     = false;
+            SettingsManager.Instance.Current.ShowSkyThumbnails      = false;
+            SettingsManager.Instance.Current.ShowAltitudeChart      = false;
+            SettingsManager.Instance.Current.ShowNextNightPreview   = false;
+            SettingsManager.Instance.Current.ShowTSProgressBars     = false;
+            SettingsManager.Instance.Current.AdditionalChartConfigs = "";
+            SettingsManager.Instance.Current.ExpandSectionsDefault  = false;
         }
 
         // ── Coordinate subtitle ───────────────────────────────────────────────
@@ -82,8 +82,8 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task AltitudeChartInTarget_WithCoords_ShowsChartWrapper() {
-            Settings.Default.ShowAltitudeChart = true;
-            Settings.Default.ReportDetailLevel = 1;
+            SettingsManager.Instance.Current.ShowAltitudeChart = true;
+            SettingsManager.Instance.Current.ReportDetailLevel = 1;
 
             var data     = TestDataFactory.MakeReportData(imageCount: 5, observerLat: 40.7128, observerLon: -74.0060);
             var baseTime = new DateTime(2025, 1, 15, 22, 0, 0);
@@ -98,8 +98,8 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task AltitudeChartInTarget_ZeroObserverLocation_NoChartContent() {
-            Settings.Default.ShowAltitudeChart = true;
-            Settings.Default.ReportDetailLevel = 1;
+            SettingsManager.Instance.Current.ShowAltitudeChart = true;
+            SettingsManager.Instance.Current.ReportDetailLevel = 1;
 
             // observerLat=0, observerLon=0 → BuildAltitudeChart returns empty string →
             // the ts-target-header wrapper is still rendered (showSideBySideChart=true),
@@ -117,7 +117,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task AltitudeChartInTarget_Disabled_NoWrapper() {
-            Settings.Default.ShowAltitudeChart = false;
+            SettingsManager.Instance.Current.ShowAltitudeChart = false;
 
             var data     = TestDataFactory.MakeReportData(imageCount: 5, observerLat: 40.7128, observerLon: -74.0060);
             var baseTime = new DateTime(2025, 1, 15, 22, 0, 0);
@@ -269,8 +269,8 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task StarCountCV_BroadbandAndNarrowband_BothCVsShown() {
-            Settings.Default.ShowStarCountCV   = true;
-            Settings.Default.ReportDetailLevel = 1;
+            SettingsManager.Instance.Current.ShowStarCountCV   = true;
+            SettingsManager.Instance.Current.ReportDetailLevel = 1;
 
             var sessionId = System.Guid.NewGuid().ToString();
             var session   = TestDataFactory.MakeSession(sessionId);
@@ -301,8 +301,8 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task StarCountCV_BroadbandOnlyOneImage_ShowsDashForBroadbandCV() {
-            Settings.Default.ShowStarCountCV   = true;
-            Settings.Default.ReportDetailLevel = 1;
+            SettingsManager.Instance.Current.ShowStarCountCV   = true;
+            SettingsManager.Instance.Current.ReportDetailLevel = 1;
 
             var sessionId = System.Guid.NewGuid().ToString();
             var session   = TestDataFactory.MakeSession(sessionId);
@@ -332,8 +332,8 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task SessionHistory_ZeroAvgHFR_ShowsDashForHFR() {
-            Settings.Default.ShowSessionHistory = true;
-            Settings.Default.ReportDetailLevel  = 2;
+            SettingsManager.Instance.Current.ShowSessionHistory = true;
+            SettingsManager.Instance.Current.ReportDetailLevel  = 2;
 
             var history = new Dictionary<string, List<TargetSessionHistory>> {
                 ["M31"] = new List<TargetSessionHistory> {
@@ -356,8 +356,8 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task SessionHistory_NonZeroMetrics_ShowsFormattedValues() {
-            Settings.Default.ShowSessionHistory = true;
-            Settings.Default.ReportDetailLevel  = 2;
+            SettingsManager.Instance.Current.ShowSessionHistory = true;
+            SettingsManager.Instance.Current.ReportDetailLevel  = 2;
 
             var history = new Dictionary<string, List<TargetSessionHistory>> {
                 ["M31"] = new List<TargetSessionHistory> {
