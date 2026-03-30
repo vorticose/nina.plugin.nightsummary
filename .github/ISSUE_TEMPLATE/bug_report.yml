@@ -1,0 +1,100 @@
+name: Bug Report
+description: Report a bug or unexpected behavior in Night Summary
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill out the sections below so we can reproduce and fix the issue.
+
+  - type: input
+    id: nina-version
+    attributes:
+      label: NINA Version
+      description: "Found in NINA > Help > About (e.g. 3.2.0.9001)"
+      placeholder: "3.2.0.9001"
+    validations:
+      required: true
+
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Night Summary Version
+      description: "Found in NINA > Options > Plugins > Night Summary"
+      placeholder: "2.7.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the bug. What did you expect to happen vs what actually happened?
+      placeholder: "After the imaging session ended, Night Summary did not send the email report..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: How can we reproduce the issue? Be as specific as possible.
+      placeholder: |
+        1. Start an imaging sequence with ...
+        2. Wait for the session to end
+        3. Check email — no report received
+    validations:
+      required: false
+
+  - type: dropdown
+    id: channels
+    attributes:
+      label: Which delivery channels are affected?
+      description: Select all that apply
+      multiple: true
+      options:
+        - Email
+        - Discord
+        - Pushover
+        - Local file save
+        - Dashboard
+        - Not channel-specific
+    validations:
+      required: false
+
+  - type: dropdown
+    id: camera-type
+    attributes:
+      label: Camera type
+      options:
+        - Mono (filter wheel)
+        - OSC (one-shot color)
+        - Not relevant
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: |
+        Paste any relevant log output. NINA logs are in `%LOCALAPPDATA%\NINA\Logs\`.
+        Search for "NightSummary" to find plugin-specific entries.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Screenshots, report HTML, sequence details, or anything else that might help.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: target-scheduler
+    attributes:
+      label: Target Scheduler
+      options:
+        - label: I use Target Scheduler with Night Summary
