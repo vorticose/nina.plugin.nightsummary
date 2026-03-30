@@ -92,9 +92,3 @@ body:
     validations:
       required: false
 
-  - type: checkboxes
-    id: target-scheduler
-    attributes:
-      label: Target Scheduler
-      options:
-        - label: I use Target Scheduler with Night Summary

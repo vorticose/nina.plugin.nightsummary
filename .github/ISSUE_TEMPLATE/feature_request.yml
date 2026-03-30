@@ -41,14 +41,6 @@ body:
       required: false
 
   - type: textarea
-    id: alternatives
-    attributes:
-      label: Alternatives considered
-      description: Have you tried any workarounds, or are there other ways this could be solved?
-    validations:
-      required: false
-
-  - type: textarea
     id: context
     attributes:
       label: Additional context
