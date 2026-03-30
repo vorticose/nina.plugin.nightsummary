@@ -233,15 +233,26 @@ namespace NINA.Plugin.NightSummary.Session {
 
         private async Task SaveReportLocallyAsync(ReportData reportData, string htmlReport = null) {
             try {
-                var customPath = S.SaveReportPath;
-                var saveDir = !string.IsNullOrWhiteSpace(customPath)
-                    ? customPath
+                var basePath = S.SaveReportPath;
+                var saveDir = !string.IsNullOrWhiteSpace(basePath)
+                    ? basePath
                     : Path.Combine(
                         Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
                         "N.I.N.A.", "Night Summary", "Saved Reports");
-                Directory.CreateDirectory(saveDir);
 
-                var filename = $"NightSummary_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.html";
+                var pattern = S.SaveReportFilePattern;
+                string filename;
+                if (!string.IsNullOrWhiteSpace(pattern)) {
+                    var resolved = ResolveFilePattern(pattern);
+                    // Pattern may contain path separators for subdirectories
+                    var fullPath = Path.Combine(saveDir, resolved + ".html");
+                    saveDir  = Path.GetDirectoryName(fullPath);
+                    filename = Path.GetFileName(fullPath);
+                } else {
+                    filename = $"NightSummary_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.html";
+                }
+
+                Directory.CreateDirectory(saveDir);
                 var filePath = Path.Combine(saveDir, filename);
 
                 htmlReport ??= await reportGenerator.GenerateHtmlReport(reportData);
@@ -251,6 +262,31 @@ namespace NINA.Plugin.NightSummary.Session {
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to save report locally. {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Resolves NINA-style $$PATTERN$$ variables in a file pattern string.
+        /// Supports the date/time patterns relevant to report saving.
+        /// </summary>
+        internal static string ResolveFilePattern(string pattern) {
+            var now = DateTime.Now;
+            var utcNow = DateTime.UtcNow;
+            var minus12 = now.AddHours(-12);
+
+            var result = pattern
+                .Replace("$$DATEMINUS12$$", minus12.ToString("yyyy-MM-dd"))
+                .Replace("$$DATE$$", now.ToString("yyyy-MM-dd"))
+                .Replace("$$DATEUTC$$", utcNow.ToString("yyyy-MM-dd"))
+                .Replace("$$DATETIME$$", now.ToString("yyyy-MM-dd_HH-mm-ss"))
+                .Replace("$$TIME$$", now.ToString("HH-mm-ss"))
+                .Replace("$$TIMEUTC$$", utcNow.ToString("HH-mm-ss"))
+                .Replace("$$SEQUENCETITLE$$", "");  // populated below if available
+
+            // Sanitize each path segment
+            var segments = result.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
+            return Path.Combine(segments.Select(s => string.Join("_",
+                s.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries)).Trim()
+            ).ToArray());
         }
 
         private async Task SendPushoverWithDataAsync(ReportData reportData) {

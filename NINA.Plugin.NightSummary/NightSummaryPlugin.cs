@@ -280,7 +280,25 @@ namespace NINA.Plugin.NightSummary {
 
         public string SaveReportPath {
             get => S.SaveReportPath;
-            set { S.SaveReportPath = value; SaveSettings(); RaisePropertyChanged(); }
+            set { S.SaveReportPath = value; SaveSettings(); RaisePropertyChanged(); RaisePropertyChanged(nameof(SaveReportPatternPreview)); }
+        }
+
+        public string SaveReportFilePattern {
+            get => S.SaveReportFilePattern;
+            set { S.SaveReportFilePattern = value; SaveSettings(); RaisePropertyChanged(); RaisePropertyChanged(nameof(SaveReportPatternPreview)); }
+        }
+
+        public string SaveReportPatternPreview {
+            get {
+                var basePath = !string.IsNullOrWhiteSpace(S.SaveReportPath)
+                    ? S.SaveReportPath
+                    : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                        "N.I.N.A.", "Night Summary", "Saved Reports");
+                var pattern = S.SaveReportFilePattern;
+                if (string.IsNullOrWhiteSpace(pattern)) return Path.Combine(basePath, "NightSummary_<timestamp>.html");
+                var resolved = Session.SessionService.ResolveFilePattern(pattern);
+                return Path.Combine(basePath, resolved + ".html");
+            }
         }
 
         public bool EmailEnabled {
