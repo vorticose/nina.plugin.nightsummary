@@ -296,7 +296,13 @@ namespace NINA.Plugin.NightSummary {
                         "N.I.N.A.", "Night Summary", "Saved Reports");
                 var pattern = S.SaveReportFilePattern;
                 if (string.IsNullOrWhiteSpace(pattern)) return Path.Combine(basePath, "NightSummary_<timestamp>.html");
-                var resolved = Session.SessionService.ResolveFilePattern(pattern);
+                var preview = new Dictionary<string, string> {
+                    ["$$CAMERA$$"] = "ZWO ASI2600MM",
+                    ["$$TELESCOPE$$"] = "My Telescope",
+                    ["$$SEQUENCETITLE$$"] = "MySequence",
+                    ["$$TSPROJECTNAME$$"] = "SHO Long"
+                };
+                var resolved = Session.SessionService.ResolveFilePattern(pattern, preview);
                 return Path.Combine(basePath, resolved + ".html");
             }
         }

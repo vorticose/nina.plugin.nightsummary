@@ -24,6 +24,7 @@ namespace NINA.Plugin.NightSummary.Session {
         private readonly ReportGenerator       reportGenerator;
         private readonly IProfileService       profileService;
         private readonly ICameraMediator       cameraMediator;
+        private readonly ISequenceMediator     sequenceMediator;
 
         private static NightSummarySettings S => SettingsManager.Instance.Current;
 
@@ -37,9 +38,10 @@ namespace NINA.Plugin.NightSummary.Session {
             ICameraMediator        cameraMediator,
             ISequenceMediator      sequenceMediator) {
 
-            this.profileService  = profileService;
-            this.cameraMediator  = cameraMediator;
-            var database         = new SessionDatabase();
+            this.profileService    = profileService;
+            this.cameraMediator    = cameraMediator;
+            this.sequenceMediator  = sequenceMediator;
+            var database           = new SessionDatabase();
             this.collector       = new SessionCollector(imageSaveMediator, sequenceMediator, database);
             this.eventCollector  = new SessionEventCollector(database, safetyMonitorMediator, focuserMediator, telescopeMediator);
             this.reportGenerator = new ReportGenerator();
@@ -241,15 +243,16 @@ namespace NINA.Plugin.NightSummary.Session {
                         "N.I.N.A.", "Night Summary", "Saved Reports");
 
                 var pattern = S.SaveReportFilePattern;
+                var context = BuildPatternContext(reportData);
                 string filename;
                 if (!string.IsNullOrWhiteSpace(pattern)) {
-                    var resolved = ResolveFilePattern(pattern);
-                    // Pattern may contain path separators for subdirectories
+                    var resolved = ResolveFilePattern(pattern, context);
+                    // Pattern may contain path separators for subdirectories (local save only)
                     var fullPath = Path.Combine(saveDir, resolved + ".html");
                     saveDir  = Path.GetDirectoryName(fullPath);
                     filename = Path.GetFileName(fullPath);
                 } else {
-                    filename = $"NightSummary_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.html";
+                    filename = GetReportFileName(reportData);
                 }
 
                 Directory.CreateDirectory(saveDir);
@@ -266,9 +269,10 @@ namespace NINA.Plugin.NightSummary.Session {
 
         /// <summary>
         /// Resolves NINA-style $$PATTERN$$ variables in a file pattern string.
-        /// Supports the date/time patterns relevant to report saving.
+        /// Date/time patterns always resolve. Equipment/session patterns resolve
+        /// when context values are provided (null values become empty strings).
         /// </summary>
-        internal static string ResolveFilePattern(string pattern) {
+        internal static string ResolveFilePattern(string pattern, Dictionary<string, string> context = null) {
             var now = DateTime.Now;
             var utcNow = DateTime.UtcNow;
             var minus12 = now.AddHours(-12);
@@ -280,13 +284,50 @@ namespace NINA.Plugin.NightSummary.Session {
                 .Replace("$$DATETIME$$", now.ToString("yyyy-MM-dd_HH-mm-ss"))
                 .Replace("$$TIME$$", now.ToString("HH-mm-ss"))
                 .Replace("$$TIMEUTC$$", utcNow.ToString("HH-mm-ss"))
-                .Replace("$$SEQUENCETITLE$$", "");  // populated below if available
+                .Replace("$$CAMERA$$", context?.GetValueOrDefault("$$CAMERA$$") ?? "")
+                .Replace("$$TELESCOPE$$", context?.GetValueOrDefault("$$TELESCOPE$$") ?? "")
+                .Replace("$$SEQUENCETITLE$$", context?.GetValueOrDefault("$$SEQUENCETITLE$$") ?? "")
+                .Replace("$$TSPROJECTNAME$$", context?.GetValueOrDefault("$$TSPROJECTNAME$$") ?? "");
 
             // Sanitize each path segment
             var segments = result.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
             return Path.Combine(segments.Select(s => string.Join("_",
                 s.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries)).Trim()
             ).ToArray());
+        }
+
+        /// <summary>
+        /// Builds the context dictionary for pattern resolution from available session data.
+        /// </summary>
+        private Dictionary<string, string> BuildPatternContext(ReportData reportData) {
+            var ctx = new Dictionary<string, string>();
+
+            try { ctx["$$CAMERA$$"] = cameraMediator?.GetInfo()?.Name ?? ""; } catch { ctx["$$CAMERA$$"] = ""; }
+            try { ctx["$$TELESCOPE$$"] = profileService?.ActiveProfile?.TelescopeSettings?.Name ?? ""; } catch { ctx["$$TELESCOPE$$"] = ""; }
+            try {
+                var seqPath = sequenceMediator?.GetAdvancedSequencerSavePath();
+                ctx["$$SEQUENCETITLE$$"] = !string.IsNullOrEmpty(seqPath) ? Path.GetFileNameWithoutExtension(seqPath) : "";
+            } catch { ctx["$$SEQUENCETITLE$$"] = ""; }
+
+            // TS project name: use first project name from TS data if available
+            var tsProject = reportData?.TsData?.FirstOrDefault()?.ProjectName;
+            ctx["$$TSPROJECTNAME$$"] = tsProject ?? "";
+
+            return ctx;
+        }
+
+        /// <summary>
+        /// Returns the resolved report filename (no directory, with .html extension).
+        /// Used by all delivery channels for consistent naming.
+        /// </summary>
+        internal string GetReportFileName(ReportData reportData = null) {
+            var pattern = S.SaveReportFilePattern;
+            if (string.IsNullOrWhiteSpace(pattern))
+                return $"NightSummary_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.html";
+            var context = reportData != null ? BuildPatternContext(reportData) : null;
+            var resolved = ResolveFilePattern(pattern, context);
+            // Strip any directory parts — only the filename portion applies to non-local channels
+            return Path.GetFileName(resolved) + ".html";
         }
 
         private async Task SendPushoverWithDataAsync(ReportData reportData) {
@@ -318,8 +359,9 @@ namespace NINA.Plugin.NightSummary.Session {
                 }
 
                 htmlReport ??= await reportGenerator.GenerateHtmlReport(reportData);
+                var fileName   = GetReportFileName(reportData);
                 var sender     = new DiscordSender(webhookUrl);
-                await sender.SendReportAsync(reportData, htmlReport);
+                await sender.SendReportAsync(reportData, htmlReport, fileName);
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to send Discord report. {ex.Message}");
             }
@@ -344,7 +386,7 @@ namespace NINA.Plugin.NightSummary.Session {
                 var subject    = $"Night Summary Report - {session.SessionStart:yyyy-MM-dd} - {images.Count} images";
                 var body       = BuildSessionSummary(reportData, compact: false);
 
-                var attachmentFileName = $"NightSummary_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.html";
+                var attachmentFileName = GetReportFileName(reportData);
                 bool useGmail = S.UseGmailSmtp;
                 var sender = new EmailSender(
                     useGmail ? "smtp.gmail.com" : S.SmtpHost,

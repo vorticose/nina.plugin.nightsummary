@@ -451,6 +451,51 @@
 
                     <Separator Margin="0,20,0,10" />
 
+                    <TextBlock Text="Report File Naming" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
+
+                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                        <TextBlock Text="File Name Pattern" Width="200" VerticalAlignment="Center" />
+                        <TextBox x:Name="FilePatternTextBox"
+                                 Text="{Binding SaveReportFilePattern, UpdateSourceTrigger=PropertyChanged}"
+                                 Width="300" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,2">
+                        <TextBlock Width="200" />
+                        <WrapPanel>
+                            <Button Content="$$DATEMINUS12$$" Tag="$$DATEMINUS12$$" Click="InsertPattern_Click"
+                                    Padding="6,2" Margin="0,0,4,4" FontSize="11" />
+                            <Button Content="$$DATE$$" Tag="$$DATE$$" Click="InsertPattern_Click"
+                                    Padding="6,2" Margin="0,0,4,4" FontSize="11" />
+                            <Button Content="$$DATETIME$$" Tag="$$DATETIME$$" Click="InsertPattern_Click"
+                                    Padding="6,2" Margin="0,0,4,4" FontSize="11" />
+                            <Button Content="$$TIME$$" Tag="$$TIME$$" Click="InsertPattern_Click"
+                                    Padding="6,2" Margin="0,0,4,4" FontSize="11" />
+                            <Button Content="$$DATEUTC$$" Tag="$$DATEUTC$$" Click="InsertPattern_Click"
+                                    Padding="6,2" Margin="0,0,4,4" FontSize="11" />
+                            <Button Content="$$TIMEUTC$$" Tag="$$TIMEUTC$$" Click="InsertPattern_Click"
+                                    Padding="6,2" Margin="0,0,4,4" FontSize="11" />
+                            <Button Content="$$CAMERA$$" Tag="$$CAMERA$$" Click="InsertPattern_Click"
+                                    Padding="6,2" Margin="0,0,4,4" FontSize="11" />
+                            <Button Content="$$TELESCOPE$$" Tag="$$TELESCOPE$$" Click="InsertPattern_Click"
+                                    Padding="6,2" Margin="0,0,4,4" FontSize="11" />
+                            <Button Content="$$SEQUENCETITLE$$" Tag="$$SEQUENCETITLE$$" Click="InsertPattern_Click"
+                                    Padding="6,2" Margin="0,0,4,4" FontSize="11" />
+                            <Button Content="$$TSPROJECTNAME$$" Tag="$$TSPROJECTNAME$$" Click="InsertPattern_Click"
+                                    Padding="6,2" Margin="0,0,4,4" FontSize="11" />
+                        </WrapPanel>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,2,0,2">
+                        <TextBlock Width="200" />
+                        <TextBlock Text="{Binding SaveReportPatternPreview}" Foreground="Gray" FontSize="11" MaxWidth="350" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,2,0,4">
+                        <TextBlock Width="200" />
+                        <TextBlock Text="Applies to all delivery channels. Use \ to create subdirectories for local saves."
+                                   TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="350" />
+                    </StackPanel>
+
+                    <Separator Margin="0,20,0,10" />
+
                     <TextBlock Text="Resend Previous Session" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
 
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
@@ -519,22 +564,6 @@
                                    TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="350" />
                     </StackPanel>
 
-                    <StackPanel Orientation="Horizontal" Margin="0,5">
-                        <TextBlock Text="File Name Pattern" Width="200" VerticalAlignment="Center" />
-                        <TextBox Text="{Binding SaveReportFilePattern, UpdateSourceTrigger=PropertyChanged}" Width="300" VerticalAlignment="Center" />
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,2,0,2">
-                        <TextBlock Width="200" />
-                        <TextBlock Text="{Binding SaveReportPatternPreview}" Foreground="Gray" FontSize="11" MaxWidth="350" TextWrapping="Wrap" />
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,2,0,8">
-                        <TextBlock Width="200" />
-                        <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="350">
-                            <Run Text="Supported patterns: $$DATE$$, $$DATEMINUS12$$, $$DATETIME$$, $$TIME$$, $$DATEUTC$$, $$TIMEUTC$$" />
-                            <LineBreak />
-                            <Run Text="Use \ to create subdirectories, e.g. $$DATEMINUS12$$\NightSummary_$$DATETIME$$" />
-                        </TextBlock>
-                    </StackPanel>
 
                     <Separator Margin="0,20,0,10" />
 

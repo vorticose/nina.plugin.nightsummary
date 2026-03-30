@@ -25,12 +25,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// <summary>
         /// Sends a session summary embed to Discord with the full HTML report attached as a file.
         /// </summary>
-        public async Task<bool> SendReportAsync(ReportData reportData, string htmlReport) {
+        public async Task<bool> SendReportAsync(ReportData reportData, string htmlReport, string fileName = null) {
             try {
                 Logger.Info("NightSummary: Sending Discord report");
                 var payload  = BuildReportPayload(reportData);
                 var json     = JsonSerializer.Serialize(payload);
-                var fileName = $"NightSummary_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.html";
+                fileName   ??= $"NightSummary_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.html";
                 return await PostWithAttachment(json, htmlReport, fileName);
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to send Discord report. {ex.Message}");

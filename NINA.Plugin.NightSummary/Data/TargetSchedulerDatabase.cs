@@ -149,6 +149,7 @@ namespace NINA.Plugin.NightSummary.Data {
             var sql = @"
                 SELECT
                     t.name        AS TargetName,
+                    p.name        AS ProjectName,
                     t.ra          AS RA,
                     t.dec         AS Dec,
                     t.rotation    AS Rotation,
@@ -167,7 +168,7 @@ namespace NINA.Plugin.NightSummary.Data {
                 (profileId != null ? " AND p.ProfileId = @ProfileId" : "") +
                 " ORDER BY t.name, et.filtername, et.name";
 
-            var rows = new List<(string Name, double RA, double Dec, double Rotation, double MinimumAltitude, string TemplateName, string Filter, double ExposureSec, int Desired, int Acquired, int Accepted)>();
+            var rows = new List<(string Name, string ProjectName, double RA, double Dec, double Rotation, double MinimumAltitude, string TemplateName, string Filter, double ExposureSec, int Desired, int Acquired, int Accepted)>();
 
             using (var cmd = new SQLiteCommand(sql, conn)) {
                 if (profileId != null) cmd.Parameters.AddWithValue("@ProfileId", profileId);
@@ -178,6 +179,7 @@ namespace NINA.Plugin.NightSummary.Data {
 
                         rows.Add((
                             Name:         name,
+                            ProjectName:  reader["ProjectName"]?.ToString() ?? "",
                             RA:           Convert.ToDouble(reader["RA"]),
                             Dec:          Convert.ToDouble(reader["Dec"]),
                             Rotation:     reader["Rotation"]   == DBNull.Value ? 0 : Convert.ToDouble(reader["Rotation"]),
@@ -198,6 +200,7 @@ namespace NINA.Plugin.NightSummary.Data {
                 .GroupBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
                 .Select(g => new TsTargetData {
                     TargetName      = g.Key,
+                    ProjectName     = g.First().ProjectName,
                     RA              = g.First().RA,
                     Dec             = g.First().Dec,
                     Rotation        = g.First().Rotation,
