@@ -1,5 +1,5 @@
 using NINA.Plugin.NightSummary.Data;
-using NINA.Plugin.NightSummary.MyPluginProperties;
+
 using NINA.Plugin.NightSummary.Reporting;
 using NINA.Plugin.NightSummary.Tests.Fixtures;
 using System;
@@ -10,7 +10,7 @@ namespace NINA.Plugin.NightSummary.Tests {
     public class EventTimelineGeneratorTests {
 
         public EventTimelineGeneratorTests() {
-            Settings.Default.ReportLightMode = false;
+            SettingsManager.Instance.Current.ReportLightMode = false;
         }
 
         // Helper: session with precise start/end
@@ -198,9 +198,9 @@ namespace NINA.Plugin.NightSummary.Tests {
             var session = Session(start, start.AddHours(6));
             var images  = TestDataFactory.MakeImageSeries(session.SessionId, 5);
 
-            Settings.Default.ReportLightMode = true;
+            SettingsManager.Instance.Current.ReportLightMode = true;
             var lightResult = EventTimelineGenerator.GenerateTimeline(session, images, new List<SessionEvent>());
-            Settings.Default.ReportLightMode = false;
+            SettingsManager.Instance.Current.ReportLightMode = false;
             var darkResult = EventTimelineGenerator.GenerateTimeline(session, images, new List<SessionEvent>());
 
             Assert.Contains("#d0d4da", lightResult); // light idle bg

@@ -1,4 +1,4 @@
-using NINA.Plugin.NightSummary.MyPluginProperties;
+using NINA.Plugin.NightSummary.Data;
 using NINA.Plugin.NightSummary.Reporting;
 using NINA.Plugin.NightSummary.Tests.Fixtures;
 using System.Collections.Generic;
@@ -8,7 +8,7 @@ namespace NINA.Plugin.NightSummary.Tests {
     public class ChartGeneratorTests {
 
         public ChartGeneratorTests() {
-            Settings.Default.ReportLightMode = false;
+            SettingsManager.Instance.Current.ReportLightMode = false;
         }
 
         // ── Primary metric coverage ──────────────────────────────────────────
@@ -131,14 +131,14 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public void LightMode_GeneratesChart_WithLightColors() {
-            Settings.Default.ReportLightMode = true;
+            SettingsManager.Instance.Current.ReportLightMode = true;
             var sessionId = "test-session";
             var images    = TestDataFactory.MakeImageSeries(sessionId, 5);
             foreach (var img in images) img.FocuserTemp = 12.5;
 
             var svg = ChartGenerator.GenerateMetricChart(images, ChartGenerator.PrimaryHFR, ChartGenerator.SecFocuserTemp);
 
-            Settings.Default.ReportLightMode = false; // reset
+            SettingsManager.Instance.Current.ReportLightMode = false; // reset
             Assert.Contains("<svg", svg);
             // Light mode uses a light background color
             Assert.Contains("#f5f5f5", svg);

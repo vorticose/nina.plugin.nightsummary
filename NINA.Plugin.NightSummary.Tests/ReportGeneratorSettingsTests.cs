@@ -1,5 +1,5 @@
 using NINA.Plugin.NightSummary.Data;
-using NINA.Plugin.NightSummary.MyPluginProperties;
+
 using NINA.Plugin.NightSummary.Reporting;
 using NINA.Plugin.NightSummary.Tests.Fixtures;
 using System;
@@ -18,17 +18,17 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         public ReportGeneratorSettingsTests() {
             // Establish a known baseline for all settings-controlled branches
-            Settings.Default.ReportLightMode         = false;
-            Settings.Default.ReportDetailLevel       = 2;   // Full
-            Settings.Default.ShowHFRGraph            = true;
-            Settings.Default.ChartPrimaryMetric      = 0;   // HFR
-            Settings.Default.ChartSecondaryMetric    = 0;   // SecNone
-            Settings.Default.AdditionalChartConfigs  = "";
-            Settings.Default.ShowStarCountCV         = false;
-            Settings.Default.ShowPerTargetIQ         = false;
-            Settings.Default.ShowSessionHistory      = false;
-            Settings.Default.ShowNextNightPreview    = false;
-            Settings.Default.ExpandSectionsDefault   = false;
+            SettingsManager.Instance.Current.ReportLightMode         = false;
+            SettingsManager.Instance.Current.ReportDetailLevel       = 2;   // Full
+            SettingsManager.Instance.Current.ShowHFRGraph            = true;
+            SettingsManager.Instance.Current.ChartPrimaryMetric      = 0;   // HFR
+            SettingsManager.Instance.Current.ChartSecondaryMetric    = 0;   // SecNone
+            SettingsManager.Instance.Current.AdditionalChartConfigs  = "";
+            SettingsManager.Instance.Current.ShowStarCountCV         = false;
+            SettingsManager.Instance.Current.ShowPerTargetIQ         = false;
+            SettingsManager.Instance.Current.ShowSessionHistory      = false;
+            SettingsManager.Instance.Current.ShowNextNightPreview    = false;
+            SettingsManager.Instance.Current.ExpandSectionsDefault   = false;
             _generator = new ReportGenerator();
         }
 
@@ -36,7 +36,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task DetailLevel0_NoAvgHFR_InOverview() {
-            Settings.Default.ReportDetailLevel = 0;
+            SettingsManager.Instance.Current.ReportDetailLevel = 0;
             var data   = TestDataFactory.MakeReportData(imageCount: 10);
             var report = await _generator.GenerateHtmlReport(data);
             Assert.DoesNotContain("Avg HFR", report);
@@ -44,7 +44,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task DetailLevel0_NoYieldBox() {
-            Settings.Default.ReportDetailLevel = 0;
+            SettingsManager.Instance.Current.ReportDetailLevel = 0;
             var data   = TestDataFactory.MakeReportData(imageCount: 10);
             var report = await _generator.GenerateHtmlReport(data);
             Assert.DoesNotContain(">Yield", report);
@@ -52,7 +52,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task DetailLevel0_NoMoonBox() {
-            Settings.Default.ReportDetailLevel = 0;
+            SettingsManager.Instance.Current.ReportDetailLevel = 0;
             var data   = TestDataFactory.MakeReportData(imageCount: 10);
             var report = await _generator.GenerateHtmlReport(data);
             Assert.DoesNotContain(">Moon<", report);
@@ -60,7 +60,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task DetailLevel1_HasAvgHFR_InOverview() {
-            Settings.Default.ReportDetailLevel = 1;
+            SettingsManager.Instance.Current.ReportDetailLevel = 1;
             var data   = TestDataFactory.MakeReportData(imageCount: 10);
             var report = await _generator.GenerateHtmlReport(data);
             Assert.Contains("Avg HFR", report);
@@ -68,7 +68,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task DetailLevel1_HasAvgGuidingRMS_InOverview() {
-            Settings.Default.ReportDetailLevel = 1;
+            SettingsManager.Instance.Current.ReportDetailLevel = 1;
             var data   = TestDataFactory.MakeReportData(imageCount: 10);
             var report = await _generator.GenerateHtmlReport(data);
             Assert.Contains("Avg Guiding RMS", report);
@@ -76,7 +76,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task DetailLevel2_HasYieldBox() {
-            Settings.Default.ReportDetailLevel = 2;
+            SettingsManager.Instance.Current.ReportDetailLevel = 2;
             var data   = TestDataFactory.MakeReportData(imageCount: 10);
             var report = await _generator.GenerateHtmlReport(data);
             Assert.Contains(">Yield", report);
@@ -84,7 +84,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task DetailLevel2_HasMoonBox() {
-            Settings.Default.ReportDetailLevel = 2;
+            SettingsManager.Instance.Current.ReportDetailLevel = 2;
             var data   = TestDataFactory.MakeReportData(imageCount: 10);
             var report = await _generator.GenerateHtmlReport(data);
             Assert.Contains(">Moon<", report);
@@ -94,7 +94,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task DetailLevel0_NoIQSection() {
-            Settings.Default.ReportDetailLevel = 0;
+            SettingsManager.Instance.Current.ReportDetailLevel = 0;
             var data   = TestDataFactory.MakeReportData(imageCount: 10);
             var report = await _generator.GenerateHtmlReport(data);
             Assert.DoesNotContain("Session Image Quality", report);
@@ -102,7 +102,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task DetailLevel1_HasIQSection() {
-            Settings.Default.ReportDetailLevel = 1;
+            SettingsManager.Instance.Current.ReportDetailLevel = 1;
             var data   = TestDataFactory.MakeReportData(imageCount: 10);
             var report = await _generator.GenerateHtmlReport(data);
             Assert.Contains("Session Image Quality", report);
@@ -112,7 +112,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task DetailLevel0_NoEventTimeline() {
-            Settings.Default.ReportDetailLevel = 0;
+            SettingsManager.Instance.Current.ReportDetailLevel = 0;
             var data   = TestDataFactory.MakeReportData(imageCount: 10);
             var report = await _generator.GenerateHtmlReport(data);
             Assert.DoesNotContain("Session Timeline", report);
@@ -120,7 +120,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task DetailLevel1_HasEventTimeline_WhenEventsPresent() {
-            Settings.Default.ReportDetailLevel = 1;
+            SettingsManager.Instance.Current.ReportDetailLevel = 1;
             var data   = TestDataFactory.MakeReportData(imageCount: 10);
             // MakeReportData includes one AutoFocus event by default
             var report = await _generator.GenerateHtmlReport(data);
@@ -131,8 +131,8 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task ShowHFRGraph_True_DetailLevel2_ChartAppears() {
-            Settings.Default.ShowHFRGraph      = true;
-            Settings.Default.ReportDetailLevel = 2;
+            SettingsManager.Instance.Current.ShowHFRGraph      = true;
+            SettingsManager.Instance.Current.ReportDetailLevel = 2;
             var data   = TestDataFactory.MakeReportData(imageCount: 10);
             var report = await _generator.GenerateHtmlReport(data);
             Assert.Contains("HFR Vs. Time", report);
@@ -140,8 +140,8 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task ShowHFRGraph_False_NoChart() {
-            Settings.Default.ShowHFRGraph      = false;
-            Settings.Default.ReportDetailLevel = 2;
+            SettingsManager.Instance.Current.ShowHFRGraph      = false;
+            SettingsManager.Instance.Current.ReportDetailLevel = 2;
             var data   = TestDataFactory.MakeReportData(imageCount: 10);
             var report = await _generator.GenerateHtmlReport(data);
             Assert.DoesNotContain("HFR Vs. Time", report);
@@ -150,8 +150,8 @@ namespace NINA.Plugin.NightSummary.Tests {
         [Fact]
         public async Task ShowHFRGraph_True_DetailLevel1_NoChart() {
             // Chart requires detailLevel >= 2
-            Settings.Default.ShowHFRGraph      = true;
-            Settings.Default.ReportDetailLevel = 1;
+            SettingsManager.Instance.Current.ShowHFRGraph      = true;
+            SettingsManager.Instance.Current.ReportDetailLevel = 1;
             var data   = TestDataFactory.MakeReportData(imageCount: 10);
             var report = await _generator.GenerateHtmlReport(data);
             Assert.DoesNotContain("HFR Vs. Time", report);
@@ -159,10 +159,10 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task AdditionalChartConfig_AddsSecondChart() {
-            Settings.Default.ShowHFRGraph           = true;
-            Settings.Default.ReportDetailLevel      = 2;
-            Settings.Default.ChartPrimaryMetric     = 0; // HFR
-            Settings.Default.AdditionalChartConfigs = "1:0"; // FWHM:SecNone
+            SettingsManager.Instance.Current.ShowHFRGraph           = true;
+            SettingsManager.Instance.Current.ReportDetailLevel      = 2;
+            SettingsManager.Instance.Current.ChartPrimaryMetric     = 0; // HFR
+            SettingsManager.Instance.Current.AdditionalChartConfigs = "1:0"; // FWHM:SecNone
             var data   = TestDataFactory.MakeReportData(imageCount: 10);
             var report = await _generator.GenerateHtmlReport(data);
             Assert.Contains("HFR Vs. Time",  report);
@@ -171,9 +171,9 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task EmptyAdditionalChartConfig_NoExtraChart() {
-            Settings.Default.ShowHFRGraph           = true;
-            Settings.Default.ReportDetailLevel      = 2;
-            Settings.Default.AdditionalChartConfigs = "";
+            SettingsManager.Instance.Current.ShowHFRGraph           = true;
+            SettingsManager.Instance.Current.ReportDetailLevel      = 2;
+            SettingsManager.Instance.Current.AdditionalChartConfigs = "";
             var data   = TestDataFactory.MakeReportData(imageCount: 10);
             var report = await _generator.GenerateHtmlReport(data);
             // Only one chart — "HFR Vs. Time" should appear exactly once as an h2
@@ -185,8 +185,8 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task ShowStarCountCV_True_DetailLevel1_SectionPresent() {
-            Settings.Default.ShowStarCountCV   = true;
-            Settings.Default.ReportDetailLevel = 1;
+            SettingsManager.Instance.Current.ShowStarCountCV   = true;
+            SettingsManager.Instance.Current.ReportDetailLevel = 1;
             var data   = TestDataFactory.MakeReportData(imageCount: 10);
             var report = await _generator.GenerateHtmlReport(data);
             Assert.Contains("Star Count Consistency", report);
@@ -194,7 +194,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task ShowStarCountCV_False_SectionAbsent() {
-            Settings.Default.ShowStarCountCV = false;
+            SettingsManager.Instance.Current.ShowStarCountCV = false;
             var data   = TestDataFactory.MakeReportData(imageCount: 10);
             var report = await _generator.GenerateHtmlReport(data);
             Assert.DoesNotContain("Star Count Consistency", report);
@@ -204,8 +204,8 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task ShowPerTargetIQ_True_MultiTarget_SectionPresent() {
-            Settings.Default.ShowPerTargetIQ   = true;
-            Settings.Default.ReportDetailLevel = 1;
+            SettingsManager.Instance.Current.ShowPerTargetIQ   = true;
+            SettingsManager.Instance.Current.ReportDetailLevel = 1;
             // Multi-target needed to trigger per-target IQ
             var data   = TestDataFactory.MakeReportData(imageCount: 20, targetCount: 2);
             var report = await _generator.GenerateHtmlReport(data);
@@ -217,8 +217,8 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task ShowSessionHistory_True_WithData_HistoryTablePresent() {
-            Settings.Default.ShowSessionHistory = true;
-            Settings.Default.ReportDetailLevel  = 2;
+            SettingsManager.Instance.Current.ShowSessionHistory = true;
+            SettingsManager.Instance.Current.ReportDetailLevel  = 2;
             var history = new Dictionary<string, List<TargetSessionHistory>> {
                 ["M31"] = new List<TargetSessionHistory> {
                     new TargetSessionHistory {
@@ -238,8 +238,8 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task ShowSessionHistory_True_NoData_HistoryAbsent() {
-            Settings.Default.ShowSessionHistory = true;
-            Settings.Default.ReportDetailLevel  = 2;
+            SettingsManager.Instance.Current.ShowSessionHistory = true;
+            SettingsManager.Instance.Current.ReportDetailLevel  = 2;
             var data   = TestDataFactory.MakeReportData(imageCount: 10);
             // SessionHistory is empty by default in MakeReportData
             var report = await _generator.GenerateHtmlReport(data);
@@ -250,7 +250,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task DetailLevel2_NoSafetyMonitor_FootnotePresent() {
-            Settings.Default.ReportDetailLevel = 2;
+            SettingsManager.Instance.Current.ReportDetailLevel = 2;
             var data   = TestDataFactory.MakeReportData(imageCount: 10);
             // No roof events → hasSafetyMonitor = false → footnote "*" appears
             var report = await _generator.GenerateHtmlReport(data);
@@ -261,8 +261,8 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task ShowNextNightPreview_True_NoExceptionWhenTsNotRunning() {
-            Settings.Default.ShowNextNightPreview = true;
-            Settings.Default.ReportDetailLevel    = 2;
+            SettingsManager.Instance.Current.ShowNextNightPreview = true;
+            SettingsManager.Instance.Current.ReportDetailLevel    = 2;
             var data   = TestDataFactory.MakeReportData(imageCount: 10);
             // Should not throw — TS not running returns empty section gracefully
             var report = await _generator.GenerateHtmlReport(data);
