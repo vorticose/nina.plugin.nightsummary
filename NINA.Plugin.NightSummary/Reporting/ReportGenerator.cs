@@ -565,11 +565,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var monoImages = images.Where(i => i.IsMonochrome && !i.Filter.Equals("RGB", StringComparison.OrdinalIgnoreCase)).ToList();
             var composites = images.Where(i => !i.IsMonochrome || i.Filter.Equals("RGB", StringComparison.OrdinalIgnoreCase)).ToList();
 
-            // Per-filter row (mono stacks side by side)
+            // Per-filter row (mono stacks side by side, centered)
             if (monoImages.Count > 0) {
                 int perRow = Math.Min(monoImages.Count, 4);
-                int itemWidth = (760 - (perRow - 1) * 8) / perRow;
-                sb.AppendLine("<div class='ts-livestack-row'>");
+                int itemWidth = monoImages.Count == 1 ? 400 : (760 - (perRow - 1) * 8) / perRow;
+                sb.AppendLine("<div class='ts-livestack-row' style='justify-content:center;'>");
                 foreach (var img in monoImages) {
                     sb.AppendLine($"<div class='ts-livestack-item' style='width:{itemWidth}px;'>");
                     sb.AppendLine($"<img class='ts-livestack-img' src='data:image/jpeg;base64,{Convert.ToBase64String(img.JpegData)}' alt='{img.Filter} stack' />");
