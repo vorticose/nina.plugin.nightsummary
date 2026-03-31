@@ -842,7 +842,7 @@ namespace NINA.Plugin.NightSummary.Data {
         /// Returns per-session aggregate stats for a target across all sessions except the current one.
         /// Ordered most-recent-first, limited to <paramref name="limit"/> rows.
         /// </summary>
-        public List<TargetSessionHistory> GetSessionHistoryForTarget(string targetName, string excludeSessionId, int limit = 5) {
+        public List<TargetSessionHistory> GetSessionHistoryForTarget(string targetName, string excludeSessionId) {
             var result = new List<TargetSessionHistory>();
             using (var conn = new SQLiteConnection(connectionString)) {
                 conn.Open();
@@ -858,13 +858,11 @@ namespace NINA.Plugin.NightSummary.Data {
                     WHERE i.TargetName = @TargetName
                       AND i.SessionId != @ExcludeSessionId
                     GROUP BY i.SessionId
-                    ORDER BY s.SessionStart DESC
-                    LIMIT @Limit";
+                    ORDER BY s.SessionStart DESC";
 
                 using (var cmd = new SQLiteCommand(sql, conn)) {
                     cmd.Parameters.AddWithValue("@TargetName",       targetName       ?? "");
                     cmd.Parameters.AddWithValue("@ExcludeSessionId", excludeSessionId ?? "");
-                    cmd.Parameters.AddWithValue("@Limit",            limit);
                     using (var reader = cmd.ExecuteReader()) {
                         while (reader.Read()) {
                             result.Add(new TargetSessionHistory {

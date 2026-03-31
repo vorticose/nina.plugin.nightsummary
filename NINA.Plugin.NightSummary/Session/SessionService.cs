@@ -330,7 +330,7 @@ namespace NINA.Plugin.NightSummary.Session {
         private Dictionary<string, List<TargetSessionHistory>> BuildSessionHistory(SessionDatabase database, List<ImageRecord> images, string sessionId) {
             var result = new Dictionary<string, List<TargetSessionHistory>>(StringComparer.OrdinalIgnoreCase);
             foreach (var targetName in images.Select(i => i.TargetName).Distinct()) {
-                result[targetName] = database.GetSessionHistoryForTarget(targetName, sessionId, 5);
+                result[targetName] = database.GetSessionHistoryForTarget(targetName, sessionId);
             }
             return result;
         }
