@@ -216,7 +216,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             foreach (var (filter, count, expSec) in filterStats) {
                 var safeFilter = System.Web.HttpUtility.HtmlEncode(filter);
                 imageBreakdown.Append($"<div class='stat-breakdown-row'><span class='stat-breakdown-filter'>{safeFilter}</span><span>{count}</span></div>");
-                expBreakdown.Append($"<div class='stat-breakdown-row'><span class='stat-breakdown-filter'>{safeFilter}</span><span>{TimeSpan.FromSeconds(expSec).TotalHours:F1}h</span></div>");
+                expBreakdown.Append($"<div class='stat-breakdown-row'><span class='stat-breakdown-filter'>{safeFilter}</span><span>{FormatDuration(expSec)}</span></div>");
             }
             imageBreakdown.Append("</div>");
             expBreakdown.Append("</div>");
