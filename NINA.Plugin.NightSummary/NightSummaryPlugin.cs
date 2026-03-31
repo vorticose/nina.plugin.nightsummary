@@ -298,10 +298,8 @@ namespace NINA.Plugin.NightSummary {
                     ["$$SEQUENCETITLE$$"] = "MySequence",
                     ["$$TSPROJECTNAME$$"] = "SHO Long"
                 };
-                var resolved = Session.SessionService.ResolveFilePattern(pattern, preview);
-                // Use NINA-style arrow separators for path segments
-                var segments = (resolved + ".html").Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
-                return string.Join(" \u203A ", segments);
+                var resolved = Session.SessionService.ResolveFilePattern(pattern, preview) + ".html";
+                return resolved.Replace("\\", " \u203A ");
             }
         }
 
