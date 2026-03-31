@@ -334,13 +334,19 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
                 // Build subtitle for the h3 heading: start/end times, coords, moon separation
                 var timePart   = $"Start: {targetImgStart:HH:mm} &nbsp;&#8594;&nbsp; End: {targetImgEnd:HH:mm}";
+                // Sky position angle: prefer TS data, fall back to plate solve PA from images
+                double rotation = (tsTarget != null && tsTarget.Rotation != 0) ? tsTarget.Rotation
+                    : target.Where(i => i.PositionAngle.HasValue && i.PositionAngle.Value != 0)
+                            .Select(i => i.PositionAngle.Value).DefaultIfEmpty(0).Average();
+
                 string h3Subtitle;
                 if (raH != 0 || decD != 0) {
                     var sessMid    = targetImgStart.AddMinutes((targetImgEnd - targetImgStart).TotalMinutes / 2);
                     var (moonRa, moonDec) = AltitudeCalculator.GetMoonPosition(sessMid.ToUniversalTime());
                     double moonSep = AltitudeCalculator.AngularSeparation(raH, decD, moonRa, moonDec);
+                    var rotPart = rotation != 0 ? $" &nbsp;·&nbsp; &#x21BB; {rotation:F0}&#176;" : "";
                     h3Subtitle = $" <span style='font-weight:normal; font-size:12px; color:var(--muted);'>" +
-                                 $"— {timePart} &nbsp;·&nbsp; R.A. {FormatRA(raH)} &nbsp;·&nbsp; Dec. {FormatDec(decD)} &nbsp;·&nbsp; &#127769; &#8596; {moonSep:F0}&#176;" +
+                                 $"— {timePart} &nbsp;·&nbsp; R.A. {FormatRA(raH)} &nbsp;·&nbsp; Dec. {FormatDec(decD)}{rotPart} &nbsp;·&nbsp; &#127769; &#8596; {moonSep:F0}&#176;" +
                                  $"</span>";
                 } else {
                     h3Subtitle = $" <span style='font-weight:normal; font-size:12px; color:var(--muted);'>— {timePart}</span>";
@@ -356,7 +362,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 string thumbHtml = "";
                 if (showThumb && thumbResults.TryGetValue(target.Key, out var thumbResult)) {
                     var tSb = new StringBuilder();
-                    var svgAngle = tsTarget != null ? -tsTarget.Rotation : 0.0;
+                    var svgAngle = -rotation;
                     tSb.AppendLine($"<div class='ts-thumb-wrap'>");
                     tSb.AppendLine($"  <img src='{thumbResult.imgSrc}' alt='{target.Key}' />");
                     tSb.AppendLine($"  <svg width='{thumbPx}' height='{thumbPx}' xmlns='http://www.w3.org/2000/svg'>");

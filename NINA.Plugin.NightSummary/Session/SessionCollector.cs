@@ -178,6 +178,7 @@ namespace NINA.Plugin.NightSummary.Session {
                     // Equipment state
                     FocuserPosition  = e.MetaData?.Focuser?.Position,
                     RotatorPosition  = NullIfNaN(e.MetaData?.Rotator?.Position),
+                    PositionAngle    = NullIfNaN(e.MetaData?.Target?.PositionAngle),
                     // Extended weather
                     Humidity         = NullIfNaN(e.MetaData?.WeatherData?.Humidity),
                     DewPoint         = NullIfNaN(e.MetaData?.WeatherData?.DewPoint),
