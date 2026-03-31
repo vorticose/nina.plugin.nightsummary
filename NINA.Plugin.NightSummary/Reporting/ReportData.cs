@@ -20,7 +20,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// </summary>
         public Dictionary<string, double> CumulativeIntegrationSeconds { get; init; }
         /// <summary>
-        /// Per-target session history for historical comparison (up to 5 previous sessions), keyed by target name.
+        /// Per-target session history for historical comparison (all previous sessions), keyed by target name.
         /// </summary>
         public Dictionary<string, List<TargetSessionHistory>> SessionHistory { get; init; }
         /// <summary>

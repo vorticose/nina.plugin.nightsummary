@@ -280,7 +280,26 @@ namespace NINA.Plugin.NightSummary {
 
         public string SaveReportPath {
             get => S.SaveReportPath;
-            set { S.SaveReportPath = value; SaveSettings(); RaisePropertyChanged(); }
+            set { S.SaveReportPath = value; SaveSettings(); RaisePropertyChanged(); RaisePropertyChanged(nameof(SaveReportPatternPreview)); }
+        }
+
+        public string SaveReportFilePattern {
+            get => S.SaveReportFilePattern;
+            set { S.SaveReportFilePattern = value; SaveSettings(); RaisePropertyChanged(); RaisePropertyChanged(nameof(SaveReportPatternPreview)); }
+        }
+
+        public string SaveReportPatternPreview {
+            get {
+                var pattern = S.SaveReportFilePattern;
+                if (string.IsNullOrWhiteSpace(pattern)) return "NightSummary_<timestamp>.html";
+                var preview = new Dictionary<string, string> {
+                    ["$$CAMERA$$"] = "ZWO ASI2600MM",
+                    ["$$TELESCOPE$$"] = "My Telescope",
+                    ["$$SEQUENCETITLE$$"] = "MySequence"
+                };
+                var resolved = Session.SessionService.ResolveFilePattern(pattern, preview) + ".html";
+                return resolved.Replace("\\", " \u203A ");
+            }
         }
 
         public bool EmailEnabled {
@@ -499,6 +518,8 @@ namespace NINA.Plugin.NightSummary {
 
         public ICommand RefreshFiltersCommand { get; private set; }
 
+        private bool _loadingFilters;
+
         private void LoadFilterClassifications() {
             try {
                 var filters = profileService?.ActiveProfile?.FilterWheelSettings?.FilterWheelFilters;
@@ -506,22 +527,51 @@ namespace NINA.Plugin.NightSummary {
 
                 var saved = ParseFilterClassifications(S.FilterClassifications);
 
-                System.Windows.Application.Current.Dispatcher.Invoke(() => {
-                    FilterItems.Clear();
-                    foreach (var f in filters) {
-                        if (string.IsNullOrWhiteSpace(f.Name)) continue;
-                        var item = new FilterClassificationItem(f.Name, this);
-                        if (saved.TryGetValue(f.Name, out var cls))
-                            item.Classification = cls;
-                        FilterItems.Add(item);
-                    }
-                });
+                // Also preserve any classifications already in the UI (for refresh)
+                foreach (var existing in FilterItems) {
+                    if (existing.Classification != "A" && !saved.ContainsKey(existing.Name))
+                        saved[existing.Name] = existing.Classification;
+                }
+
+                _loadingFilters = true;
+                try {
+                    System.Windows.Application.Current.Dispatcher.Invoke(() => {
+                        // Build new filter names from profile
+                        var profileNames = new HashSet<string>(
+                            filters.Where(f => !string.IsNullOrWhiteSpace(f.Name)).Select(f => f.Name));
+
+                        // Remove filters no longer in profile
+                        for (int i = FilterItems.Count - 1; i >= 0; i--) {
+                            if (!profileNames.Contains(FilterItems[i].Name))
+                                FilterItems.RemoveAt(i);
+                        }
+
+                        // Add new filters, preserve existing
+                        var existingNames = new HashSet<string>(FilterItems.Select(f => f.Name));
+                        foreach (var f in filters) {
+                            if (string.IsNullOrWhiteSpace(f.Name) || existingNames.Contains(f.Name)) continue;
+                            var item = new FilterClassificationItem(f.Name, this);
+                            if (saved.TryGetValue(f.Name, out var cls))
+                                item.Classification = cls;
+                            FilterItems.Add(item);
+                        }
+
+                        // Restore classifications for existing items that may have been reset
+                        foreach (var item in FilterItems) {
+                            if (saved.TryGetValue(item.Name, out var cls) && item.Classification != cls)
+                                item.Classification = cls;
+                        }
+                    });
+                } finally {
+                    _loadingFilters = false;
+                }
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to load filter classifications. {ex.Message}");
             }
         }
 
         internal void SaveFilterClassifications() {
+            if (_loadingFilters) return;
             var parts = FilterItems
                 .Where(f => f.Classification != "A")
                 .Select(f => $"{f.Name}={f.Classification}");

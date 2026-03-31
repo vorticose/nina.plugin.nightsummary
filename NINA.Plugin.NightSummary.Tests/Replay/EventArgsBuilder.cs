@@ -48,6 +48,8 @@ namespace NINA.Plugin.NightSummary.Tests.Replay {
                 metadata.Target.Coordinates = new Coordinates(
                     data.RaHours, data.DecDegrees, Epoch.J2000, Coordinates.RAType.Hours);
             }
+            if (data.PositionAngle.HasValue)
+                metadata.Target.PositionAngle = data.PositionAngle.Value;
 
             // Filter
             metadata.FilterWheel.Filter = data.Filter ?? "None";

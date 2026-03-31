@@ -24,6 +24,7 @@ namespace NINA.Plugin.NightSummary.Session {
         private readonly ReportGenerator       reportGenerator;
         private readonly IProfileService       profileService;
         private readonly ICameraMediator       cameraMediator;
+        private readonly ISequenceMediator     sequenceMediator;
 
         private static NightSummarySettings S => SettingsManager.Instance.Current;
 
@@ -55,9 +56,10 @@ namespace NINA.Plugin.NightSummary.Session {
             ISequenceMediator      sequenceMediator,
             string                 databasePath) {
 
-            this.profileService  = profileService;
-            this.cameraMediator  = cameraMediator;
-            var database         = databasePath != null ? new SessionDatabase(databasePath) : new SessionDatabase();
+            this.profileService    = profileService;
+            this.cameraMediator    = cameraMediator;
+            this.sequenceMediator  = sequenceMediator;
+            var database           = databasePath != null ? new SessionDatabase(databasePath) : new SessionDatabase();
             this.collector       = new SessionCollector(imageSaveMediator, sequenceMediator, database);
             this.eventCollector  = new SessionEventCollector(database, safetyMonitorMediator, focuserMediator, telescopeMediator);
             this.reportGenerator = new ReportGenerator();
@@ -251,15 +253,27 @@ namespace NINA.Plugin.NightSummary.Session {
 
         private async Task SaveReportLocallyAsync(ReportData reportData, string htmlReport = null) {
             try {
-                var customPath = S.SaveReportPath;
-                var saveDir = !string.IsNullOrWhiteSpace(customPath)
-                    ? customPath
+                var basePath = S.SaveReportPath;
+                var saveDir = !string.IsNullOrWhiteSpace(basePath)
+                    ? basePath
                     : Path.Combine(
                         Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
                         "N.I.N.A.", "Night Summary", "Saved Reports");
-                Directory.CreateDirectory(saveDir);
 
-                var filename = $"NightSummary_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.html";
+                var pattern = S.SaveReportFilePattern;
+                var context = BuildPatternContext(reportData);
+                string filename;
+                if (!string.IsNullOrWhiteSpace(pattern)) {
+                    var resolved = ResolveFilePattern(pattern, context);
+                    // Pattern may contain path separators for subdirectories (local save only)
+                    var fullPath = Path.Combine(saveDir, resolved + ".html");
+                    saveDir  = Path.GetDirectoryName(fullPath);
+                    filename = Path.GetFileName(fullPath);
+                } else {
+                    filename = GetReportFileName(reportData);
+                }
+
+                Directory.CreateDirectory(saveDir);
                 var filePath = Path.Combine(saveDir, filename);
 
                 htmlReport ??= await reportGenerator.GenerateHtmlReport(reportData);
@@ -269,6 +283,64 @@ namespace NINA.Plugin.NightSummary.Session {
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to save report locally. {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Resolves NINA-style $$PATTERN$$ variables in a file pattern string.
+        /// Date/time patterns always resolve. Equipment/session patterns resolve
+        /// when context values are provided (null values become empty strings).
+        /// </summary>
+        internal static string ResolveFilePattern(string pattern, Dictionary<string, string> context = null) {
+            var now = DateTime.Now;
+            var utcNow = DateTime.UtcNow;
+            var minus12 = now.AddHours(-12);
+
+            var result = pattern
+                .Replace("$$DATEMINUS12$$", minus12.ToString("yyyy-MM-dd"))
+                .Replace("$$DATE$$", now.ToString("yyyy-MM-dd"))
+                .Replace("$$DATEUTC$$", utcNow.ToString("yyyy-MM-dd"))
+                .Replace("$$DATETIME$$", now.ToString("yyyy-MM-dd_HH-mm-ss"))
+                .Replace("$$TIME$$", now.ToString("HH-mm-ss"))
+                .Replace("$$TIMEUTC$$", utcNow.ToString("HH-mm-ss"))
+                .Replace("$$CAMERA$$", context?.GetValueOrDefault("$$CAMERA$$") ?? "")
+                .Replace("$$TELESCOPE$$", context?.GetValueOrDefault("$$TELESCOPE$$") ?? "")
+                .Replace("$$SEQUENCETITLE$$", context?.GetValueOrDefault("$$SEQUENCETITLE$$") ?? "");
+
+            // Sanitize each path segment
+            var segments = result.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
+            return Path.Combine(segments.Select(s => string.Join("_",
+                s.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries)).Trim()
+            ).ToArray());
+        }
+
+        /// <summary>
+        /// Builds the context dictionary for pattern resolution from available session data.
+        /// </summary>
+        private Dictionary<string, string> BuildPatternContext(ReportData reportData) {
+            var ctx = new Dictionary<string, string>();
+
+            try { ctx["$$CAMERA$$"] = cameraMediator?.GetInfo()?.Name ?? ""; } catch { ctx["$$CAMERA$$"] = ""; }
+            try { ctx["$$TELESCOPE$$"] = profileService?.ActiveProfile?.TelescopeSettings?.Name ?? ""; } catch { ctx["$$TELESCOPE$$"] = ""; }
+            try {
+                var seqPath = sequenceMediator?.GetAdvancedSequencerSavePath();
+                ctx["$$SEQUENCETITLE$$"] = !string.IsNullOrEmpty(seqPath) ? Path.GetFileNameWithoutExtension(seqPath) : "";
+            } catch { ctx["$$SEQUENCETITLE$$"] = ""; }
+
+            return ctx;
+        }
+
+        /// <summary>
+        /// Returns the resolved report filename (no directory, with .html extension).
+        /// Used by all delivery channels for consistent naming.
+        /// </summary>
+        internal string GetReportFileName(ReportData reportData = null) {
+            var pattern = S.SaveReportFilePattern;
+            if (string.IsNullOrWhiteSpace(pattern))
+                return $"NightSummary_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.html";
+            var context = reportData != null ? BuildPatternContext(reportData) : null;
+            var resolved = ResolveFilePattern(pattern, context);
+            // Strip any directory parts — only the filename portion applies to non-local channels
+            return Path.GetFileName(resolved) + ".html";
         }
 
         private async Task SendPushoverWithDataAsync(ReportData reportData) {
@@ -300,8 +372,9 @@ namespace NINA.Plugin.NightSummary.Session {
                 }
 
                 htmlReport ??= await reportGenerator.GenerateHtmlReport(reportData);
+                var fileName   = GetReportFileName(reportData);
                 var sender     = new DiscordSender(webhookUrl);
-                await sender.SendReportAsync(reportData, htmlReport);
+                await sender.SendReportAsync(reportData, htmlReport, fileName);
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to send Discord report. {ex.Message}");
             }
@@ -326,7 +399,7 @@ namespace NINA.Plugin.NightSummary.Session {
                 var subject    = $"Night Summary Report - {session.SessionStart:yyyy-MM-dd} - {images.Count} images";
                 var body       = BuildSessionSummary(reportData, compact: false);
 
-                var attachmentFileName = $"NightSummary_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.html";
+                var attachmentFileName = GetReportFileName(reportData);
                 bool useGmail = S.UseGmailSmtp;
                 var sender = new EmailSender(
                     useGmail ? "smtp.gmail.com" : S.SmtpHost,
@@ -348,7 +421,7 @@ namespace NINA.Plugin.NightSummary.Session {
         private Dictionary<string, List<TargetSessionHistory>> BuildSessionHistory(SessionDatabase database, List<ImageRecord> images, string sessionId) {
             var result = new Dictionary<string, List<TargetSessionHistory>>(StringComparer.OrdinalIgnoreCase);
             foreach (var targetName in images.Select(i => i.TargetName).Distinct()) {
-                result[targetName] = database.GetSessionHistoryForTarget(targetName, sessionId, 5);
+                result[targetName] = database.GetSessionHistoryForTarget(targetName, sessionId);
             }
             return result;
         }

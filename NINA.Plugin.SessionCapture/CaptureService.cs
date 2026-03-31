@@ -157,7 +157,8 @@ namespace NINA.Plugin.SessionCapture {
                     ReadoutMode = string.IsNullOrEmpty(meta?.Camera?.ReadoutModeName) ? null : meta.Camera.ReadoutModeName,
                     SkyQuality = NullIfNaN(meta?.WeatherData?.SkyQuality),
                     CloudCover = NullIfNaN(meta?.WeatherData?.CloudCover),
-                    SeeingFWHM = NullIfNaN(meta?.WeatherData?.StarFWHM)
+                    SeeingFWHM = NullIfNaN(meta?.WeatherData?.StarFWHM),
+                    PositionAngle = NullIfNaN(meta?.Target?.PositionAngle)
                 };
 
                 AddEvent("ImageSaved", data);

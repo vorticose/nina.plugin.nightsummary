@@ -498,6 +498,7 @@ namespace NINA.Plugin.NightSummary.Data {
                 MigrateAddColumn(conn, "Images",        "CoolerSetpoint",   "REAL");
                 MigrateAddColumn(conn, "Images",        "FocuserPosition",  "INTEGER");
                 MigrateAddColumn(conn, "Images",        "RotatorPosition",  "REAL");
+                MigrateAddColumn(conn, "Images",        "PositionAngle",    "REAL");
                 MigrateAddColumn(conn, "Images",        "Humidity",         "REAL");
                 MigrateAddColumn(conn, "Images",        "DewPoint",         "REAL");
                 MigrateAddColumn(conn, "Images",        "WindSpeed",        "REAL");
@@ -617,7 +618,7 @@ namespace NINA.Plugin.NightSummary.Data {
                         HFR, FWHM, Eccentricity, StarCount, GuidingRMSTotal, GuidingScale, Accepted,
                         RaHours, DecDegrees, FocuserTemp, AmbientTemp,
                         Gain, Offset, Binning, CameraTemp, CoolerSetpoint,
-                        FocuserPosition, RotatorPosition,
+                        FocuserPosition, RotatorPosition, PositionAngle,
                         Humidity, DewPoint, WindSpeed, Pressure,
                         GradingStatus, RejectReason,
                         ImageType, Altitude, Azimuth, Airmass, SideOfPier, ReadoutMode, SkyQuality, CloudCover, SeeingFWHM)
@@ -626,7 +627,7 @@ namespace NINA.Plugin.NightSummary.Data {
                         @HFR, @FWHM, @Eccentricity, @StarCount, @GuidingRMSTotal, @GuidingScale, @Accepted,
                         @RaHours, @DecDegrees, @FocuserTemp, @AmbientTemp,
                         @Gain, @Offset, @Binning, @CameraTemp, @CoolerSetpoint,
-                        @FocuserPosition, @RotatorPosition,
+                        @FocuserPosition, @RotatorPosition, @PositionAngle,
                         @Humidity, @DewPoint, @WindSpeed, @Pressure,
                         @GradingStatus, @RejectReason,
                         @ImageType, @Altitude, @Azimuth, @Airmass, @SideOfPier, @ReadoutMode, @SkyQuality, @CloudCover, @SeeingFWHM)";
@@ -655,6 +656,7 @@ namespace NINA.Plugin.NightSummary.Data {
                     cmd.Parameters.AddWithValue("@CoolerSetpoint",  image.CoolerSetpoint.HasValue  ? (object)image.CoolerSetpoint.Value  : DBNull.Value);
                     cmd.Parameters.AddWithValue("@FocuserPosition", image.FocuserPosition.HasValue ? (object)image.FocuserPosition.Value : DBNull.Value);
                     cmd.Parameters.AddWithValue("@RotatorPosition", image.RotatorPosition.HasValue ? (object)image.RotatorPosition.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@PositionAngle",   image.PositionAngle.HasValue   ? (object)image.PositionAngle.Value   : DBNull.Value);
                     cmd.Parameters.AddWithValue("@Humidity",        image.Humidity.HasValue        ? (object)image.Humidity.Value        : DBNull.Value);
                     cmd.Parameters.AddWithValue("@DewPoint",        image.DewPoint.HasValue        ? (object)image.DewPoint.Value        : DBNull.Value);
                     cmd.Parameters.AddWithValue("@WindSpeed",       image.WindSpeed.HasValue       ? (object)image.WindSpeed.Value       : DBNull.Value);
@@ -712,6 +714,7 @@ namespace NINA.Plugin.NightSummary.Data {
                                 CoolerSetpoint  = reader["CoolerSetpoint"]  == DBNull.Value ? (double?)null : Convert.ToDouble(reader["CoolerSetpoint"]),
                                 FocuserPosition = reader["FocuserPosition"] == DBNull.Value ? (int?)null    : Convert.ToInt32(reader["FocuserPosition"]),
                                 RotatorPosition = reader["RotatorPosition"] == DBNull.Value ? (double?)null : Convert.ToDouble(reader["RotatorPosition"]),
+                                PositionAngle   = reader["PositionAngle"]   == DBNull.Value ? (double?)null : Convert.ToDouble(reader["PositionAngle"]),
                                 Humidity        = reader["Humidity"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["Humidity"]),
                                 DewPoint        = reader["DewPoint"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["DewPoint"]),
                                 WindSpeed       = reader["WindSpeed"]       == DBNull.Value ? (double?)null : Convert.ToDouble(reader["WindSpeed"]),
@@ -842,7 +845,7 @@ namespace NINA.Plugin.NightSummary.Data {
         /// Returns per-session aggregate stats for a target across all sessions except the current one.
         /// Ordered most-recent-first, limited to <paramref name="limit"/> rows.
         /// </summary>
-        public List<TargetSessionHistory> GetSessionHistoryForTarget(string targetName, string excludeSessionId, int limit = 5) {
+        public List<TargetSessionHistory> GetSessionHistoryForTarget(string targetName, string excludeSessionId) {
             var result = new List<TargetSessionHistory>();
             using (var conn = new SQLiteConnection(connectionString)) {
                 conn.Open();
@@ -858,13 +861,11 @@ namespace NINA.Plugin.NightSummary.Data {
                     WHERE i.TargetName = @TargetName
                       AND i.SessionId != @ExcludeSessionId
                     GROUP BY i.SessionId
-                    ORDER BY s.SessionStart DESC
-                    LIMIT @Limit";
+                    ORDER BY s.SessionStart DESC";
 
                 using (var cmd = new SQLiteCommand(sql, conn)) {
                     cmd.Parameters.AddWithValue("@TargetName",       targetName       ?? "");
                     cmd.Parameters.AddWithValue("@ExcludeSessionId", excludeSessionId ?? "");
-                    cmd.Parameters.AddWithValue("@Limit",            limit);
                     using (var reader = cmd.ExecuteReader()) {
                         while (reader.Read()) {
                             result.Add(new TargetSessionHistory {

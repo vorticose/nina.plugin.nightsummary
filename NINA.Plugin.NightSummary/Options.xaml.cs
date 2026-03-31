@@ -37,6 +37,71 @@ namespace NINA.Plugin.NightSummary {
             }
         }
 
+        private int _lastPatternCaretIndex = -1;
+        private DateTime _patternLostFocusTime = DateTime.MinValue;
+
+        private void PatternTextBox_LostFocus(object sender, RoutedEventArgs e) {
+            var textBox = sender as TextBox;
+            if (textBox != null) {
+                _lastPatternCaretIndex = textBox.CaretIndex;
+                _patternLostFocusTime = DateTime.UtcNow;
+            }
+        }
+
+        private void InsertPattern_Click(object sender, RoutedEventArgs e) {
+            var button = sender as Button;
+            var pattern = button?.Tag as string;
+            if (string.IsNullOrEmpty(pattern)) return;
+
+            var textBox = FindPatternTextBox(button);
+            if (textBox == null) return;
+
+            // Insert at cursor if textbox just lost focus (user clicked a button directly),
+            // otherwise append to end
+            bool recentlyFocused = (DateTime.UtcNow - _patternLostFocusTime).TotalMilliseconds < 500;
+            int caretIndex;
+            if (textBox.IsFocused) {
+                caretIndex = textBox.CaretIndex;
+            } else if (recentlyFocused && _lastPatternCaretIndex >= 0 && _lastPatternCaretIndex <= textBox.Text.Length) {
+                caretIndex = _lastPatternCaretIndex;
+            } else {
+                caretIndex = textBox.Text.Length;
+            }
+
+            textBox.Text = textBox.Text.Insert(caretIndex, pattern);
+            textBox.CaretIndex = caretIndex + pattern.Length;
+            textBox.Focus();
+        }
+
+        private TextBox FindPatternTextBox(DependencyObject start) {
+            var parent = System.Windows.Media.VisualTreeHelper.GetParent(start);
+            while (parent != null) {
+                if (parent is StackPanel sp) {
+                    // Look for sibling StackPanels that contain the named TextBox
+                    var container = System.Windows.Media.VisualTreeHelper.GetParent(sp);
+                    if (container != null) {
+                        for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(container); i++) {
+                            var child = System.Windows.Media.VisualTreeHelper.GetChild(container, i);
+                            var found = FindChild<TextBox>(child, "FilePatternTextBox");
+                            if (found != null) return found;
+                        }
+                    }
+                }
+                parent = System.Windows.Media.VisualTreeHelper.GetParent(parent);
+            }
+            return null;
+        }
+
+        private static T FindChild<T>(DependencyObject parent, string name) where T : FrameworkElement {
+            for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); i++) {
+                var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
+                if (child is T t && t.Name == name) return t;
+                var result = FindChild<T>(child, name);
+                if (result != null) return result;
+            }
+            return null;
+        }
+
         private void BrowseSaveReportPath_Click(object sender, RoutedEventArgs e) {
             var dialog = new OpenFolderDialog {
                 Title = "Select folder for saved reports"

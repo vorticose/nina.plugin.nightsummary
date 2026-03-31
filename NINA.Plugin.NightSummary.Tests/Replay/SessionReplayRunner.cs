@@ -68,6 +68,26 @@ namespace NINA.Plugin.NightSummary.Tests.Replay {
         }
 
         /// <summary>
+        /// Overrides camera info for recordings where the camera wasn't connected
+        /// at capture start. Sets both the mock camera mediator and profile settings
+        /// so SessionService.StartSession captures correct hardware info.
+        /// </summary>
+        public void OverrideCameraInfo(int xSize, int ySize, double pixelSize) {
+            _cameraMediator.ConfiguredInfo = new CameraInfo {
+                XSize = xSize,
+                YSize = ySize,
+                PixelSize = pixelSize
+            };
+            var camSettings = _profileService.Profile.CameraSettings as MockCameraSettings;
+            if (camSettings != null) camSettings.PixelSize = pixelSize;
+            var framingSettings = _profileService.Profile.FramingAssistantSettings as MockFramingAssistantSettings;
+            if (framingSettings != null) {
+                framingSettings.CameraWidth = xSize;
+                framingSettings.CameraHeight = ySize;
+            }
+        }
+
+        /// <summary>
         /// Allows tests to configure settings before replay.
         /// </summary>
         public void ConfigureSettings(Action<NightSummarySettings> configure) {

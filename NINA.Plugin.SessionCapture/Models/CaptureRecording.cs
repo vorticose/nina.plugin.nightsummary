@@ -71,6 +71,7 @@ namespace NINA.Plugin.SessionCapture.Models {
         public double? SkyQuality { get; set; }
         public double? CloudCover { get; set; }
         public double? SeeingFWHM { get; set; }
+        public double? PositionAngle { get; set; }
     }
 
     public class AutoFocusEventData {

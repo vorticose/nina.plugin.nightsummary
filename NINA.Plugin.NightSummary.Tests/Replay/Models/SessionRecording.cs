@@ -79,6 +79,7 @@ namespace NINA.Plugin.NightSummary.Tests.Replay.Models {
         public double? SkyQuality { get; set; }
         public double? CloudCover { get; set; }
         public double? SeeingFWHM { get; set; }
+        public double? PositionAngle { get; set; }
     }
 
     internal class AutoFocusData {
