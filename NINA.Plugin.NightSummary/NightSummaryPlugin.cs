@@ -280,7 +280,26 @@ namespace NINA.Plugin.NightSummary {
 
         public string SaveReportPath {
             get => S.SaveReportPath;
-            set { S.SaveReportPath = value; SaveSettings(); RaisePropertyChanged(); }
+            set { S.SaveReportPath = value; SaveSettings(); RaisePropertyChanged(); RaisePropertyChanged(nameof(SaveReportPatternPreview)); }
+        }
+
+        public string SaveReportFilePattern {
+            get => S.SaveReportFilePattern;
+            set { S.SaveReportFilePattern = value; SaveSettings(); RaisePropertyChanged(); RaisePropertyChanged(nameof(SaveReportPatternPreview)); }
+        }
+
+        public string SaveReportPatternPreview {
+            get {
+                var pattern = S.SaveReportFilePattern;
+                if (string.IsNullOrWhiteSpace(pattern)) return "NightSummary_<timestamp>.html";
+                var preview = new Dictionary<string, string> {
+                    ["$$CAMERA$$"] = "ZWO ASI2600MM",
+                    ["$$TELESCOPE$$"] = "My Telescope",
+                    ["$$SEQUENCETITLE$$"] = "MySequence"
+                };
+                var resolved = Session.SessionService.ResolveFilePattern(pattern, preview) + ".html";
+                return resolved.Replace("\\", " \u203A ");
+            }
         }
 
         public bool EmailEnabled {
