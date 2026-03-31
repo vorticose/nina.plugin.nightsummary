@@ -457,7 +457,8 @@
                         <TextBlock Text="File name pattern" Width="200" VerticalAlignment="Center" />
                         <TextBox x:Name="FilePatternTextBox"
                                  Text="{Binding SaveReportFilePattern, UpdateSourceTrigger=PropertyChanged}"
-                                 Width="300" VerticalAlignment="Center" />
+                                 Width="300" VerticalAlignment="Center"
+                                 LostFocus="PatternTextBox_LostFocus" />
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,4,0,4">
                         <TextBlock Text="Pattern preview" Width="200" VerticalAlignment="Center" Foreground="Gray" />

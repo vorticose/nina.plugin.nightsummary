@@ -37,17 +37,37 @@ namespace NINA.Plugin.NightSummary {
             }
         }
 
+        private int _lastPatternCaretIndex = -1;
+        private DateTime _patternLostFocusTime = DateTime.MinValue;
+
+        private void PatternTextBox_LostFocus(object sender, RoutedEventArgs e) {
+            var textBox = sender as TextBox;
+            if (textBox != null) {
+                _lastPatternCaretIndex = textBox.CaretIndex;
+                _patternLostFocusTime = DateTime.UtcNow;
+            }
+        }
+
         private void InsertPattern_Click(object sender, RoutedEventArgs e) {
             var button = sender as Button;
             var pattern = button?.Tag as string;
             if (string.IsNullOrEmpty(pattern)) return;
 
-            // Find the pattern TextBox by name
             var textBox = FindPatternTextBox(button);
             if (textBox == null) return;
 
-            // If user hasn't clicked into the textbox, append to end
-            var caretIndex = textBox.IsFocused ? textBox.CaretIndex : textBox.Text.Length;
+            // Insert at cursor if textbox just lost focus (user clicked a button directly),
+            // otherwise append to end
+            bool recentlyFocused = (DateTime.UtcNow - _patternLostFocusTime).TotalMilliseconds < 500;
+            int caretIndex;
+            if (textBox.IsFocused) {
+                caretIndex = textBox.CaretIndex;
+            } else if (recentlyFocused && _lastPatternCaretIndex >= 0 && _lastPatternCaretIndex <= textBox.Text.Length) {
+                caretIndex = _lastPatternCaretIndex;
+            } else {
+                caretIndex = textBox.Text.Length;
+            }
+
             textBox.Text = textBox.Text.Insert(caretIndex, pattern);
             textBox.CaretIndex = caretIndex + pattern.Length;
             textBox.Focus();
