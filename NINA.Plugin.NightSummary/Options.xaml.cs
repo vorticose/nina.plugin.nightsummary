@@ -46,7 +46,8 @@ namespace NINA.Plugin.NightSummary {
             var textBox = FindPatternTextBox(button);
             if (textBox == null) return;
 
-            var caretIndex = textBox.CaretIndex;
+            // If user hasn't clicked into the textbox, append to end
+            var caretIndex = textBox.IsFocused ? textBox.CaretIndex : textBox.Text.Length;
             textBox.Text = textBox.Text.Insert(caretIndex, pattern);
             textBox.CaretIndex = caretIndex + pattern.Length;
             textBox.Focus();

@@ -290,12 +290,8 @@ namespace NINA.Plugin.NightSummary {
 
         public string SaveReportPatternPreview {
             get {
-                var basePath = !string.IsNullOrWhiteSpace(S.SaveReportPath)
-                    ? S.SaveReportPath
-                    : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                        "N.I.N.A.", "Night Summary", "Saved Reports");
                 var pattern = S.SaveReportFilePattern;
-                if (string.IsNullOrWhiteSpace(pattern)) return Path.Combine(basePath, "NightSummary_<timestamp>.html");
+                if (string.IsNullOrWhiteSpace(pattern)) return "NightSummary_<timestamp>.html";
                 var preview = new Dictionary<string, string> {
                     ["$$CAMERA$$"] = "ZWO ASI2600MM",
                     ["$$TELESCOPE$$"] = "My Telescope",
@@ -303,7 +299,9 @@ namespace NINA.Plugin.NightSummary {
                     ["$$TSPROJECTNAME$$"] = "SHO Long"
                 };
                 var resolved = Session.SessionService.ResolveFilePattern(pattern, preview);
-                return Path.Combine(basePath, resolved + ".html");
+                // Use NINA-style arrow separators for path segments
+                var segments = (resolved + ".html").Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
+                return string.Join(" \u203A ", segments);
             }
         }
 
