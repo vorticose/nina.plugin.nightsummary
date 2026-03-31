@@ -26,7 +26,7 @@ namespace NINA.Plugin.NightSummary.Session {
         private readonly IProfileService       profileService;
         private readonly ICameraMediator       cameraMediator;
         private readonly ISequenceMediator     sequenceMediator;
-        private IMessageBroker                 messageBroker;
+        private readonly IMessageBroker         messageBroker;
         private LiveStackCapture               liveStackCapture;
 
         private static NightSummarySettings S => SettingsManager.Instance.Current;
@@ -39,19 +39,18 @@ namespace NINA.Plugin.NightSummary.Session {
             IFocuserMediator       focuserMediator,
             ITelescopeMediator     telescopeMediator,
             ICameraMediator        cameraMediator,
-            ISequenceMediator      sequenceMediator) {
+            ISequenceMediator      sequenceMediator,
+            IMessageBroker         messageBroker) {
 
             this.profileService    = profileService;
             this.cameraMediator    = cameraMediator;
             this.sequenceMediator  = sequenceMediator;
+            this.messageBroker     = messageBroker;
             var database           = new SessionDatabase();
             this.collector       = new SessionCollector(imageSaveMediator, sequenceMediator, database);
             this.eventCollector  = new SessionEventCollector(database, safetyMonitorMediator, focuserMediator, telescopeMediator);
             this.reportGenerator = new ReportGenerator();
-        }
-
-        public void SetMessageBroker(IMessageBroker broker) {
-            this.messageBroker = broker;
+            Logger.Info($"NightSummary: SessionService created — messageBroker={messageBroker != null}");
         }
 
         public void StartSession(string profileName) {
@@ -79,6 +78,9 @@ namespace NINA.Plugin.NightSummary.Session {
 
             if (messageBroker != null && S.ShowLiveStackImages) {
                 liveStackCapture = new LiveStackCapture(messageBroker);
+                Logger.Info("NightSummary: LiveStack capture started for this session");
+            } else {
+                Logger.Info($"NightSummary: LiveStack capture skipped — broker={messageBroker != null}, setting={S.ShowLiveStackImages}");
             }
         }
 

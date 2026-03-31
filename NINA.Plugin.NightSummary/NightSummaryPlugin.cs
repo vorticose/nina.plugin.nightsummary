@@ -68,12 +68,10 @@ namespace NINA.Plugin.NightSummary {
             IProfileService profileService,
             IOptionsVM options,
             IImageSaveMediator imageSaveMediator,
-            IMessageBroker messageBroker,
             SessionService sessionService) {
 
             this.sessionService = sessionService;
             this.profileService = profileService;
-            sessionService.SetMessageBroker(messageBroker);
 
             TestEmailCommand = new RelayCommand(async () => {
                 EmailTestStatus.Text = "";

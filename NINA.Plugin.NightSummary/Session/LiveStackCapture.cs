@@ -49,13 +49,20 @@ namespace NINA.Plugin.NightSummary.Session {
 
         public Task OnMessageReceived(IMessage message) {
             try {
+                Logger.Info($"NightSummary: LiveStack broadcast received — Topic={message.Topic}, ContentType={message.Content?.GetType().FullName ?? "null"}");
+
                 dynamic content = message.Content;
                 string target = content.Target;
                 string filter = content.Filter;
                 bool isMono = content.IsMonochrome;
                 BitmapSource bitmap = content.Image;
 
-                if (bitmap == null || string.IsNullOrEmpty(target)) return Task.CompletedTask;
+                Logger.Info($"NightSummary: LiveStack broadcast — Target={target}, Filter={filter}, IsMono={isMono}, HasImage={bitmap != null}");
+
+                if (bitmap == null || string.IsNullOrEmpty(target)) {
+                    Logger.Warning($"NightSummary: LiveStack broadcast skipped — bitmap={bitmap != null}, target='{target}'");
+                    return Task.CompletedTask;
+                }
 
                 int stackCount = 0;
                 int? redCount = null, greenCount = null, blueCount = null;
@@ -69,10 +76,13 @@ namespace NINA.Plugin.NightSummary.Session {
                     stackCount = (redCount ?? 0) + (greenCount ?? 0) + (blueCount ?? 0);
                 }
 
+                Logger.Info($"NightSummary: LiveStack converting to JPEG — {bitmap.PixelWidth}x{bitmap.PixelHeight}, StackCount={stackCount}");
                 var jpeg = ConvertToJpeg(bitmap, JpegQualityHigh);
                 if (jpeg.Length > MaxJpegBytes) {
+                    Logger.Info($"NightSummary: LiveStack JPEG too large ({jpeg.Length / 1024}KB), re-encoding at quality {JpegQualityLow}");
                     jpeg = ConvertToJpeg(bitmap, JpegQualityLow);
                 }
+                Logger.Info($"NightSummary: LiveStack JPEG stored — {target}/{filter}, {jpeg.Length / 1024}KB, {stackCount} frames");
 
                 var img = new LiveStackImage {
                     Target = target,
@@ -88,7 +98,8 @@ namespace NINA.Plugin.NightSummary.Session {
                 images[(target.ToUpperInvariant(), filter)] = img;
 
             } catch (Exception ex) {
-                Logger.Warning($"NightSummary: Failed to process Live Stack broadcast: {ex.Message}");
+                Logger.Warning($"NightSummary: Failed to process Live Stack broadcast: {ex.GetType().Name}: {ex.Message}");
+                Logger.Warning($"NightSummary: Live Stack broadcast stack trace: {ex.StackTrace}");
             }
             return Task.CompletedTask;
         }

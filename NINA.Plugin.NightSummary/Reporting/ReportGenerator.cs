@@ -402,8 +402,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     var targetImages = data.LiveStackImages
                         .Where(i => i.Target.Equals(target.Key, StringComparison.OrdinalIgnoreCase))
                         .ToList();
-                    if (targetImages.Count > 0)
+                    if (targetImages.Count > 0) {
+                        Logger.Info($"NightSummary: Rendering {targetImages.Count} live stack image(s) for target '{target.Key}'");
                         sb.Append(BuildLiveStackRow(targetImages));
+                    }
+                } else if (data.LiveStackImages.Count == 0) {
+                    Logger.Info($"NightSummary: No live stack images available for report");
                 }
 
                 // Session filter table
