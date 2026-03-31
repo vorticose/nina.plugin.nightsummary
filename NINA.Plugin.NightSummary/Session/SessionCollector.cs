@@ -43,7 +43,7 @@ namespace NINA.Plugin.NightSummary.Session {
             }
             currentSession = new SessionRecord {
                 SessionId = Guid.NewGuid().ToString(),
-                SessionStart = DateTime.Now,
+                SessionStart = Clock.Now(),
                 ProfileName = profileName,
                 ReportSent = false
             };
@@ -53,7 +53,8 @@ namespace NINA.Plugin.NightSummary.Session {
             // Start monitoring for skipped exposures
             skippedExposures = 0;
             trackedItems.Clear();
-            skipPollTimer = new Timer(PollRunningItems, null, TimeSpan.Zero, TimeSpan.FromSeconds(1));
+            if (!Clock.DisableSkipPolling)
+                skipPollTimer = new Timer(PollRunningItems, null, TimeSpan.Zero, TimeSpan.FromSeconds(1));
 
             isCollecting = true;
             Logger.Info($"NightSummary: Session started. SessionId={currentSession.SessionId}");
@@ -71,7 +72,7 @@ namespace NINA.Plugin.NightSummary.Session {
                 Logger.Info($"NightSummary: {skippedExposures} exposure(s) were aborted during session");
 
             isCollecting = false;
-            database.FinalizeSession(currentSession.SessionId, DateTime.Now, false, skippedExposures);
+            database.FinalizeSession(currentSession.SessionId, Clock.Now(), false, skippedExposures);
             Logger.Info($"NightSummary: Session ended. SessionId={currentSession.SessionId}");
             currentSession = null;
         }
@@ -153,7 +154,7 @@ namespace NINA.Plugin.NightSummary.Session {
 
                 var record = new ImageRecord {
                     SessionId        = currentSession.SessionId,
-                    Timestamp        = DateTime.Now,
+                    Timestamp        = Clock.Now(),
                     TargetName       = e.MetaData?.Target?.Name ?? "Unknown",
                     Filter           = e.MetaData?.FilterWheel?.Filter ?? "None",
                     ExposureDuration = e.MetaData?.Image?.ExposureTime ?? 0,

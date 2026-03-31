@@ -35,11 +35,29 @@ namespace NINA.Plugin.NightSummary.Session {
             IFocuserMediator       focuserMediator,
             ITelescopeMediator     telescopeMediator,
             ICameraMediator        cameraMediator,
-            ISequenceMediator      sequenceMediator) {
+            ISequenceMediator      sequenceMediator)
+            : this(imageSaveMediator, profileService, safetyMonitorMediator,
+                   focuserMediator, telescopeMediator, cameraMediator, sequenceMediator,
+                   databasePath: null) { }
+
+        /// <summary>
+        /// Internal constructor for test replay. Accepts an explicit database path
+        /// to isolate tests from the production LOCALAPPDATA database.
+        /// When databasePath is null, uses the default production path.
+        /// </summary>
+        internal SessionService(
+            IImageSaveMediator     imageSaveMediator,
+            IProfileService        profileService,
+            ISafetyMonitorMediator safetyMonitorMediator,
+            IFocuserMediator       focuserMediator,
+            ITelescopeMediator     telescopeMediator,
+            ICameraMediator        cameraMediator,
+            ISequenceMediator      sequenceMediator,
+            string                 databasePath) {
 
             this.profileService  = profileService;
             this.cameraMediator  = cameraMediator;
-            var database         = new SessionDatabase();
+            var database         = databasePath != null ? new SessionDatabase(databasePath) : new SessionDatabase();
             this.collector       = new SessionCollector(imageSaveMediator, sequenceMediator, database);
             this.eventCollector  = new SessionEventCollector(database, safetyMonitorMediator, focuserMediator, telescopeMediator);
             this.reportGenerator = new ReportGenerator();
