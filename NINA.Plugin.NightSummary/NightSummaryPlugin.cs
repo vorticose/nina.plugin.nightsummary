@@ -295,8 +295,7 @@ namespace NINA.Plugin.NightSummary {
                 var preview = new Dictionary<string, string> {
                     ["$$CAMERA$$"] = "ZWO ASI2600MM",
                     ["$$TELESCOPE$$"] = "My Telescope",
-                    ["$$SEQUENCETITLE$$"] = "MySequence",
-                    ["$$TSPROJECTNAME$$"] = "SHO Long"
+                    ["$$SEQUENCETITLE$$"] = "MySequence"
                 };
                 var resolved = Session.SessionService.ResolveFilePattern(pattern, preview) + ".html";
                 return resolved.Replace("\\", " \u203A ");

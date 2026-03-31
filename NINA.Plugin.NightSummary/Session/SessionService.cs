@@ -286,8 +286,7 @@ namespace NINA.Plugin.NightSummary.Session {
                 .Replace("$$TIMEUTC$$", utcNow.ToString("HH-mm-ss"))
                 .Replace("$$CAMERA$$", context?.GetValueOrDefault("$$CAMERA$$") ?? "")
                 .Replace("$$TELESCOPE$$", context?.GetValueOrDefault("$$TELESCOPE$$") ?? "")
-                .Replace("$$SEQUENCETITLE$$", context?.GetValueOrDefault("$$SEQUENCETITLE$$") ?? "")
-                .Replace("$$TSPROJECTNAME$$", context?.GetValueOrDefault("$$TSPROJECTNAME$$") ?? "");
+                .Replace("$$SEQUENCETITLE$$", context?.GetValueOrDefault("$$SEQUENCETITLE$$") ?? "");
 
             // Sanitize each path segment
             var segments = result.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
@@ -308,10 +307,6 @@ namespace NINA.Plugin.NightSummary.Session {
                 var seqPath = sequenceMediator?.GetAdvancedSequencerSavePath();
                 ctx["$$SEQUENCETITLE$$"] = !string.IsNullOrEmpty(seqPath) ? Path.GetFileNameWithoutExtension(seqPath) : "";
             } catch { ctx["$$SEQUENCETITLE$$"] = ""; }
-
-            // TS project name: use first project name from TS data if available
-            var tsProject = reportData?.TsData?.FirstOrDefault()?.ProjectName;
-            ctx["$$TSPROJECTNAME$$"] = tsProject ?? "";
 
             return ctx;
         }
