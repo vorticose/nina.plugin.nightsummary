@@ -3,6 +3,7 @@ using NINA.Equipment.Equipment.MyFocuser;
 using NINA.Equipment.Equipment.MySafetyMonitor;
 using NINA.Equipment.Interfaces.Mediator;
 using NINA.Plugin.SessionCapture.Models;
+using NINA.Plugin.SessionCapture.Serialization;
 using NINA.Profile.Interfaces;
 using NINA.Sequencer.Interfaces.Mediator;
 using NINA.WPF.Base.Interfaces.Mediator;
@@ -10,7 +11,6 @@ using System;
 using System.ComponentModel.Composition;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
@@ -39,7 +39,14 @@ namespace NINA.Plugin.SessionCapture {
         private static readonly JsonSerializerOptions JsonOptions = new() {
             WriteIndented = true,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-            Converters = { new JsonStringEnumConverter() }
+            Converters = {
+                new JsonStringEnumConverter(),
+                new CoordinatesConverter(),
+                new RmsConverter(),
+                new StarDetectionAnalysisConverter(),
+                new ImageStatisticsConverter(),
+                new BitmapSourceSkipConverter()
+            }
         };
 
         [ImportingConstructor]
@@ -111,58 +118,26 @@ namespace NINA.Plugin.SessionCapture {
         private void OnImageSaved(object sender, ImageSavedEventArgs e) {
             if (!isCapturing) return;
             try {
-                var meta = e.MetaData;
-                double guidingScale = meta?.Image?.RecordedRMS?.Scale ?? 1;
-                double guidingTotal = (meta?.Image?.RecordedRMS?.Total ?? 0) * guidingScale;
-
-                // Read FWHM/Eccentricity via reflection (Hocus Focus)
-                double fwhm = 0, eccentricity = 0;
-                var analysis = e.StarDetectionAnalysis;
-                if (analysis != null) {
-                    var type = analysis.GetType();
-                    fwhm = ReadDouble(type.GetProperty("FWHM"), analysis);
-                    eccentricity = ReadDouble(type.GetProperty("Eccentricity"), analysis);
-                }
-
-                var data = new ImageSavedEventData {
-                    ImageType = meta?.Image?.ImageType ?? "",
-                    TargetName = meta?.Target?.Name ?? "Unknown",
-                    Filter = meta?.FilterWheel?.Filter ?? "None",
-                    ExposureTime = meta?.Image?.ExposureTime ?? 0,
-                    HFR = e.StarDetectionAnalysis?.HFR ?? 0,
-                    FWHM = fwhm,
-                    Eccentricity = eccentricity,
-                    DetectedStars = e.StarDetectionAnalysis?.DetectedStars ?? 0,
-                    GuidingRmsTotal = guidingTotal,
-                    GuidingScale = guidingScale,
-                    RaHours = meta?.Target?.Coordinates?.RA ?? 0,
-                    DecDegrees = meta?.Target?.Coordinates?.Dec ?? 0,
-                    Gain = meta?.Camera?.Gain ?? -1,
-                    Offset = meta?.Camera?.Offset ?? -1,
-                    BinX = meta?.Camera?.BinX ?? 0,
-                    FocuserTemp = NullIfNaN(meta?.Focuser?.Temperature),
-                    FocuserPosition = meta?.Focuser?.Position,
-                    AmbientTemp = NullIfNaN(meta?.WeatherData?.Temperature),
-                    CameraTemp = NullIfNaN(meta?.Camera?.Temperature),
-                    CoolerSetpoint = NullIfNaN(meta?.Camera?.SetPoint),
-                    RotatorPosition = NullIfNaN(meta?.Rotator?.Position),
-                    Humidity = NullIfNaN(meta?.WeatherData?.Humidity),
-                    DewPoint = NullIfNaN(meta?.WeatherData?.DewPoint),
-                    WindSpeed = NullIfNaN(meta?.WeatherData?.WindSpeed),
-                    Pressure = NullIfNaN(meta?.WeatherData?.Pressure),
-                    Altitude = NullIfNaN(meta?.Telescope?.Altitude),
-                    Azimuth = NullIfNaN(meta?.Telescope?.Azimuth),
-                    Airmass = NullIfNaN(meta?.Telescope?.Airmass),
-                    SideOfPier = meta?.Telescope?.SideOfPier.ToString(),
-                    ReadoutMode = string.IsNullOrEmpty(meta?.Camera?.ReadoutModeName) ? null : meta.Camera.ReadoutModeName,
-                    SkyQuality = NullIfNaN(meta?.WeatherData?.SkyQuality),
-                    CloudCover = NullIfNaN(meta?.WeatherData?.CloudCover),
-                    SeeingFWHM = NullIfNaN(meta?.WeatherData?.StarFWHM),
-                    PositionAngle = NullIfNaN(meta?.Target?.PositionAngle)
+                // Serialize the full event — all metadata, star detection, image stats, path.
+                // Custom JsonConverters handle Coordinates, RMS, IStarDetectionAnalysis,
+                // IImageStatistics, and skip BitmapSource (pixel data).
+                var data = new ImageSavedSnapshot {
+                    MetaData             = e.MetaData,
+                    StarDetectionAnalysis = e.StarDetectionAnalysis,
+                    Statistics           = e.Statistics,
+                    PathToImage          = e.PathToImage?.ToString(),
+                    FileType             = e.FileType.ToString(),
+                    IsBayered            = e.IsBayered,
+                    Duration             = e.Duration,
+                    Filter               = e.Filter
                 };
 
                 AddEvent("ImageSaved", data);
-                Logger.Info($"SessionCapture: Recorded ImageSaved — {data.TargetName}/{data.Filter}, HFR={data.HFR:F2}, Stars={data.DetectedStars}");
+                var target = e.MetaData?.Target?.Name ?? "Unknown";
+                var filter = e.MetaData?.FilterWheel?.Filter ?? "?";
+                var hfr    = e.StarDetectionAnalysis?.HFR ?? 0;
+                var stars  = e.StarDetectionAnalysis?.DetectedStars ?? 0;
+                Logger.Info($"SessionCapture: Recorded ImageSaved — {target}/{filter}, HFR={hfr:F2}, Stars={stars}");
             } catch (Exception ex) {
                 Logger.Error($"SessionCapture: Failed to record ImageSaved event. {ex.Message}");
             }
@@ -233,16 +208,30 @@ namespace NINA.Plugin.SessionCapture {
             var filters = profile?.FilterWheelSettings?.FilterWheelFilters?
                 .Select(f => f.Name).ToList() ?? new System.Collections.Generic.List<string>();
 
+            // Camera info from live mediator; fall back to profile settings if camera
+            // isn't connected yet (e.g. capture starts before camera connect in sequence)
+            var pixelSize = camInfo?.PixelSize ?? 0;
+            var camX      = camInfo?.XSize ?? 0;
+            var camY      = camInfo?.YSize ?? 0;
+            var camName   = camInfo?.Name ?? "";
+
+            if (pixelSize <= 0)
+                pixelSize = profile?.CameraSettings?.PixelSize ?? 0;
+            if (camX <= 0)
+                camX = profile?.FramingAssistantSettings?.CameraWidth ?? 0;
+            if (camY <= 0)
+                camY = profile?.FramingAssistantSettings?.CameraHeight ?? 0;
+
             return new CaptureInitialState {
                 ProfileName = profile?.Name ?? "Unknown",
                 ProfileId = profile?.Id.ToString() ?? "",
                 FocalLength = profile?.TelescopeSettings?.FocalLength ?? 0,
                 Latitude = profile?.AstrometrySettings?.Latitude ?? 0,
                 Longitude = profile?.AstrometrySettings?.Longitude ?? 0,
-                PixelSize = camInfo?.PixelSize ?? 0,
-                CameraXSize = camInfo?.XSize ?? 0,
-                CameraYSize = camInfo?.YSize ?? 0,
-                CameraName = camInfo?.Name ?? "Unknown",
+                PixelSize = pixelSize,
+                CameraXSize = camX,
+                CameraYSize = camY,
+                CameraName = string.IsNullOrEmpty(camName) ? "Unknown" : camName,
                 Filters = filters
             };
         }
@@ -260,12 +249,5 @@ namespace NINA.Plugin.SessionCapture {
             }
         }
 
-        private static double ReadDouble(PropertyInfo prop, object obj) {
-            if (prop == null) return 0;
-            try { return Convert.ToDouble(prop.GetValue(obj)); } catch { return 0; }
-        }
-
-        private static double? NullIfNaN(double? value) =>
-            value.HasValue && !double.IsNaN(value.Value) ? value : null;
     }
 }

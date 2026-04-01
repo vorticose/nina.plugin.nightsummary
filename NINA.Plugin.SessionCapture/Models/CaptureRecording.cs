@@ -1,3 +1,5 @@
+using NINA.Image.ImageData;
+using NINA.Image.Interfaces;
 using System;
 using System.Collections.Generic;
 
@@ -8,9 +10,9 @@ namespace NINA.Plugin.SessionCapture.Models {
     /// This format is consumed by the Night Summary replay test harness.
     /// </summary>
     public class CaptureRecording {
-        public int FormatVersion { get; set; } = 1;
+        public int FormatVersion { get; set; } = 2;
         public string NinaVersion { get; set; } = "";
-        public string SessionCaptureVersion { get; set; } = "1.0.0";
+        public string SessionCaptureVersion { get; set; } = "1.1.0";
         public DateTime RecordedAt { get; set; }
         public CaptureInitialState InitialState { get; set; } = new();
         public List<CaptureEvent> Events { get; set; } = new();
@@ -37,41 +39,20 @@ namespace NINA.Plugin.SessionCapture.Models {
 
     // ── Event data classes ───────────────────────────────────────────────────
 
-    public class ImageSavedEventData {
-        public string ImageType { get; set; } = "";
-        public string TargetName { get; set; } = "";
-        public string Filter { get; set; } = "";
-        public double ExposureTime { get; set; }
-        public double HFR { get; set; }
-        public double FWHM { get; set; }
-        public double Eccentricity { get; set; }
-        public int DetectedStars { get; set; }
-        public double GuidingRmsTotal { get; set; }
-        public double GuidingScale { get; set; }
-        public double RaHours { get; set; }
-        public double DecDegrees { get; set; }
-        public int Gain { get; set; }
-        public int Offset { get; set; }
-        public int BinX { get; set; }
-        public double? FocuserTemp { get; set; }
-        public int? FocuserPosition { get; set; }
-        public double? AmbientTemp { get; set; }
-        public double? CameraTemp { get; set; }
-        public double? CoolerSetpoint { get; set; }
-        public double? RotatorPosition { get; set; }
-        public double? Humidity { get; set; }
-        public double? DewPoint { get; set; }
-        public double? WindSpeed { get; set; }
-        public double? Pressure { get; set; }
-        public double? Altitude { get; set; }
-        public double? Azimuth { get; set; }
-        public double? Airmass { get; set; }
-        public string SideOfPier { get; set; }
-        public string ReadoutMode { get; set; }
-        public double? SkyQuality { get; set; }
-        public double? CloudCover { get; set; }
-        public double? SeeingFWHM { get; set; }
-        public double? PositionAngle { get; set; }
+    /// <summary>
+    /// Full snapshot of an ImageSaved event. Serializes the entire ImageMetaData tree,
+    /// star detection analysis, and image statistics — capturing everything NINA exposes
+    /// so future Night Summary features can use data from existing recordings.
+    /// </summary>
+    public class ImageSavedSnapshot {
+        public ImageMetaData MetaData { get; set; }
+        public IStarDetectionAnalysis StarDetectionAnalysis { get; set; }
+        public IImageStatistics Statistics { get; set; }
+        public string PathToImage { get; set; }
+        public string FileType { get; set; }
+        public bool IsBayered { get; set; }
+        public double Duration { get; set; }
+        public string Filter { get; set; }
     }
 
     public class AutoFocusEventData {
