@@ -222,6 +222,12 @@ namespace NINA.Plugin.NightSummary.Session {
                     SkippedExposures             = session.SkippedExposures
                 };
 
+                // Try to load persisted live stack masters for this session
+                var (resolvedDir, resolvedFilename) = ResolveReportSavePath(reportData);
+                if (resolvedDir != null) {
+                    reportData.LiveStackImages = LoadLiveStackMasters(resolvedDir, resolvedFilename);
+                }
+
                 var htmlReport = await reportGenerator.GenerateHtmlReport(reportData);
 
                 if (reportGenerator.Warnings.Any()) {
@@ -249,38 +255,136 @@ namespace NINA.Plugin.NightSummary.Session {
             }
         }
 
+        /// <summary>
+        /// Resolves the save directory and filename for a report based on current settings.
+        /// The resolved pattern becomes a session folder, with the HTML file inside using the same name.
+        /// e.g. pattern "$DATEMINUS12$" → Saved Reports/NightSummary_2026-03-31/NightSummary_2026-03-31.html
+        /// </summary>
+        private (string dir, string filename) ResolveReportSavePath(ReportData reportData) {
+            var basePath = S.SaveReportPath;
+            var saveRoot = !string.IsNullOrWhiteSpace(basePath)
+                ? basePath
+                : Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                    "N.I.N.A.", "Night Summary", "Saved Reports");
+
+            var pattern = S.SaveReportFilePattern;
+            var context = BuildPatternContext(reportData);
+            string folderName;
+            if (!string.IsNullOrWhiteSpace(pattern)) {
+                folderName = ResolveFilePattern(pattern, context);
+            } else {
+                // Strip .html from default filename to use as folder name
+                folderName = Path.GetFileNameWithoutExtension(GetReportFileName(reportData));
+            }
+
+            var sessionDir = Path.Combine(saveRoot, folderName);
+            var filename = folderName;
+            // If pattern included path separators, use only the last segment as filename
+            if (filename.Contains(Path.DirectorySeparatorChar) || filename.Contains(Path.AltDirectorySeparatorChar)) {
+                filename = Path.GetFileName(filename);
+            }
+
+            return (sessionDir, filename + ".html");
+        }
+
         private async Task SaveReportLocallyAsync(ReportData reportData, string htmlReport = null) {
             try {
-                var basePath = S.SaveReportPath;
-                var saveDir = !string.IsNullOrWhiteSpace(basePath)
-                    ? basePath
-                    : Path.Combine(
-                        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                        "N.I.N.A.", "Night Summary", "Saved Reports");
-
-                var pattern = S.SaveReportFilePattern;
-                var context = BuildPatternContext(reportData);
-                string filename;
-                if (!string.IsNullOrWhiteSpace(pattern)) {
-                    var resolved = ResolveFilePattern(pattern, context);
-                    // Pattern may contain path separators for subdirectories (local save only)
-                    var fullPath = Path.Combine(saveDir, resolved + ".html");
-                    saveDir  = Path.GetDirectoryName(fullPath);
-                    filename = Path.GetFileName(fullPath);
-                } else {
-                    filename = GetReportFileName(reportData);
-                }
-
+                var (saveDir, filename) = ResolveReportSavePath(reportData);
                 Directory.CreateDirectory(saveDir);
                 var filePath = Path.Combine(saveDir, filename);
 
                 htmlReport ??= await reportGenerator.GenerateHtmlReport(reportData);
                 await File.WriteAllTextAsync(filePath, htmlReport);
-
                 Logger.Info($"NightSummary: Report saved locally to {filePath}");
+
+                // Save live stack master images alongside the report
+                SaveLiveStackMasters(saveDir, filename, reportData);
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to save report locally. {ex.Message}");
             }
+        }
+
+        private static void SaveLiveStackMasters(string reportDir, string reportFilename, ReportData reportData) {
+            if (reportData.LiveStackImages == null || reportData.LiveStackImages.Count == 0) return;
+
+            var assetsDir = Path.Combine(reportDir, "assets");
+
+            try {
+                Directory.CreateDirectory(assetsDir);
+                var manifest = new List<Dictionary<string, object>>();
+                foreach (var img in reportData.LiveStackImages) {
+                    var data = img.MasterJpegData ?? img.JpegData;
+                    var safeName = SanitizeFileName($"{img.Target}_{img.Filter}");
+                    var jpgFile = safeName + ".jpg";
+                    File.WriteAllBytes(Path.Combine(assetsDir, jpgFile), data);
+
+                    manifest.Add(new Dictionary<string, object> {
+                        ["file"] = jpgFile,
+                        ["target"] = img.Target,
+                        ["filter"] = img.Filter,
+                        ["isMonochrome"] = img.IsMonochrome,
+                        ["stackCount"] = img.StackCount,
+                        ["redStackCount"] = img.RedStackCount,
+                        ["greenStackCount"] = img.GreenStackCount,
+                        ["blueStackCount"] = img.BlueStackCount
+                    });
+                }
+
+                var json = System.Text.Json.JsonSerializer.Serialize(manifest, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(Path.Combine(assetsDir, "livestack.json"), json);
+                Logger.Info($"NightSummary: Saved {reportData.LiveStackImages.Count} live stack master(s) to {assetsDir}");
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Failed to save live stack masters: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Loads live stack master images from an assets directory alongside a saved report.
+        /// Returns empty list if no assets found.
+        /// </summary>
+        internal static List<LiveStackImage> LoadLiveStackMasters(string reportDir, string reportFilename) {
+            var assetsDir = Path.Combine(reportDir, "assets");
+            var manifestPath = Path.Combine(assetsDir, "livestack.json");
+
+            if (!File.Exists(manifestPath)) return new List<LiveStackImage>();
+
+            try {
+                var json = File.ReadAllText(manifestPath);
+                var entries = System.Text.Json.JsonSerializer.Deserialize<List<Dictionary<string, System.Text.Json.JsonElement>>>(json);
+                var images = new List<LiveStackImage>();
+
+                foreach (var entry in entries) {
+                    var jpgPath = Path.Combine(assetsDir, entry["file"].GetString());
+                    if (!File.Exists(jpgPath)) continue;
+
+                    var masterData = File.ReadAllBytes(jpgPath);
+                    // Re-scale master to report-embed size for inline base64
+                    var reportData = LiveStackCapture.ScaleJpegForReport(masterData);
+                    images.Add(new LiveStackImage {
+                        Target = entry["target"].GetString(),
+                        Filter = entry["filter"].GetString(),
+                        IsMonochrome = entry["isMonochrome"].GetBoolean(),
+                        JpegData = reportData,
+                        MasterJpegData = masterData,
+                        StackCount = entry["stackCount"].GetInt32(),
+                        RedStackCount = entry.TryGetValue("redStackCount", out var r) && r.ValueKind != System.Text.Json.JsonValueKind.Null ? r.GetInt32() : null,
+                        GreenStackCount = entry.TryGetValue("greenStackCount", out var g) && g.ValueKind != System.Text.Json.JsonValueKind.Null ? g.GetInt32() : null,
+                        BlueStackCount = entry.TryGetValue("blueStackCount", out var b) && b.ValueKind != System.Text.Json.JsonValueKind.Null ? b.GetInt32() : null,
+                    });
+                }
+
+                Logger.Info($"NightSummary: Loaded {images.Count} live stack master(s) from {assetsDir}");
+                return images;
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Failed to load live stack masters: {ex.Message}");
+                return new List<LiveStackImage>();
+            }
+        }
+
+        private static string SanitizeFileName(string name) {
+            var invalid = Path.GetInvalidFileNameChars();
+            return string.Concat(name.Select(c => invalid.Contains(c) ? '_' : c));
         }
 
         /// <summary>

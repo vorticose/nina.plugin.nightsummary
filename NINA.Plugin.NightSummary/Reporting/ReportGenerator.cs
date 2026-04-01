@@ -135,6 +135,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("details.iq-section > summary::-webkit-details-marker { display: none; }");
             sb.AppendLine("details.iq-section > summary::before { content: '\\25B6\\00A0'; }");
             sb.AppendLine("details.iq-section[open] > summary::before { content: '\\25BC\\00A0'; }");
+            sb.AppendLine("details.livestack-section { margin-top: 12px; }");
+            sb.AppendLine("details.livestack-section > summary { cursor: pointer; color: var(--accent-light); font-size: 14px; font-weight: bold; list-style: none; }");
+            sb.AppendLine("details.livestack-section > summary::-webkit-details-marker { display: none; }");
+            sb.AppendLine("details.livestack-section > summary::before { content: '\\25B6\\00A0'; }");
+            sb.AppendLine("details.livestack-section[open] > summary::before { content: '\\25BC\\00A0'; }");
             sb.AppendLine(".iq-table { width: 100%; margin-top: 8px; }");
             sb.AppendLine(".iq-row-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr; }");
             sb.AppendLine(".iq-header { background-color: var(--border); color: var(--accent); padding: 8px; text-align: left; font-weight: bold; }");
@@ -404,7 +409,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
                         .ToList();
                     if (targetImages.Count > 0) {
                         Logger.Info($"NightSummary: Rendering {targetImages.Count} live stack image(s) for target '{target.Key}'");
+                        sb.AppendLine("<details class='livestack-section' open>");
+                        sb.AppendLine($"<summary>Live Stack ({targetImages.Count} {(targetImages.Count == 1 ? "image" : "images")})</summary>");
                         sb.Append(BuildLiveStackRow(targetImages));
+                        sb.AppendLine("</details>");
                     }
                 } else if (data.LiveStackImages.Count == 0) {
                     Logger.Info($"NightSummary: No live stack images available for report");

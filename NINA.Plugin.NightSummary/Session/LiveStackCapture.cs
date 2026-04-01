@@ -19,7 +19,10 @@ namespace NINA.Plugin.NightSummary.Session {
         public string Target { get; init; }
         public string Filter { get; init; }
         public bool IsMonochrome { get; init; }
+        /// <summary>JPEG at report-embed resolution (760px wide, q75).</summary>
         public byte[] JpegData { get; init; }
+        /// <summary>JPEG master at archive resolution (2000px wide, q90) for persistence.</summary>
+        public byte[] MasterJpegData { get; init; }
         public int StackCount { get; init; }
         public int? RedStackCount { get; init; }
         public int? GreenStackCount { get; init; }
@@ -33,10 +36,12 @@ namespace NINA.Plugin.NightSummary.Session {
     /// </summary>
     public class LiveStackCapture : ISubscriber {
         private const string StackUpdateTopic = "Livestack_LivestackDockable_StackUpdateBroadcast";
-        private const int TargetWidthPx = 760;
-        private const int JpegQualityHigh = 75;
-        private const int JpegQualityLow = 60;
-        private const int MaxJpegBytes = 500_000;
+        private const int ReportWidthPx = 760;
+        private const int MasterWidthPx = 2000;
+        private const int ReportJpegQualityHigh = 75;
+        private const int ReportJpegQualityLow = 60;
+        private const int MasterJpegQuality = 90;
+        private const int MaxReportJpegBytes = 500_000;
 
         private readonly IMessageBroker broker;
         private readonly ConcurrentDictionary<(string targetUpper, string filter), LiveStackImage> images = new();
@@ -77,18 +82,24 @@ namespace NINA.Plugin.NightSummary.Session {
                 }
 
                 Logger.Info($"NightSummary: LiveStack converting to JPEG — {bitmap.PixelWidth}x{bitmap.PixelHeight}, StackCount={stackCount}");
-                var jpeg = ConvertToJpeg(bitmap, JpegQualityHigh);
-                if (jpeg.Length > MaxJpegBytes) {
-                    Logger.Info($"NightSummary: LiveStack JPEG too large ({jpeg.Length / 1024}KB), re-encoding at quality {JpegQualityLow}");
-                    jpeg = ConvertToJpeg(bitmap, JpegQualityLow);
+
+                // Report-embed version (760px, q75)
+                var jpeg = ConvertToJpeg(bitmap, ReportWidthPx, ReportJpegQualityHigh);
+                if (jpeg.Length > MaxReportJpegBytes) {
+                    Logger.Info($"NightSummary: LiveStack report JPEG too large ({jpeg.Length / 1024}KB), re-encoding at quality {ReportJpegQualityLow}");
+                    jpeg = ConvertToJpeg(bitmap, ReportWidthPx, ReportJpegQualityLow);
                 }
-                Logger.Info($"NightSummary: LiveStack JPEG stored — {target}/{filter}, {jpeg.Length / 1024}KB, {stackCount} frames");
+
+                // Master archive version (2000px, q90)
+                var master = ConvertToJpeg(bitmap, MasterWidthPx, MasterJpegQuality);
+                Logger.Info($"NightSummary: LiveStack JPEG stored — {target}/{filter}, report={jpeg.Length / 1024}KB, master={master.Length / 1024}KB, {stackCount} frames");
 
                 var img = new LiveStackImage {
                     Target = target,
                     Filter = filter,
                     IsMonochrome = isMono,
                     JpegData = jpeg,
+                    MasterJpegData = master,
                     StackCount = stackCount,
                     RedStackCount = redCount,
                     GreenStackCount = greenCount,
@@ -114,8 +125,27 @@ namespace NINA.Plugin.NightSummary.Session {
             return result;
         }
 
-        private static byte[] ConvertToJpeg(BitmapSource source, int quality) {
-            var resized = ResizeToWidth(source, TargetWidthPx);
+        /// <summary>
+        /// Re-scales a master JPEG (from disk) down to report-embed resolution.
+        /// </summary>
+        public static byte[] ScaleJpegForReport(byte[] masterJpeg) {
+            using var input = new MemoryStream(masterJpeg);
+            var decoder = new JpegBitmapDecoder(input, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+            var frame = decoder.Frames[0];
+
+            if (frame.PixelWidth <= ReportWidthPx) return masterJpeg;
+
+            var resized = ResizeToWidth(frame, ReportWidthPx);
+            var encoder = new JpegBitmapEncoder { QualityLevel = ReportJpegQualityHigh };
+            encoder.Frames.Add(BitmapFrame.Create(resized));
+
+            using var output = new MemoryStream();
+            encoder.Save(output);
+            return output.ToArray();
+        }
+
+        private static byte[] ConvertToJpeg(BitmapSource source, int targetWidth, int quality) {
+            var resized = ResizeToWidth(source, targetWidth);
             var encoder = new JpegBitmapEncoder { QualityLevel = quality };
             encoder.Frames.Add(BitmapFrame.Create(resized));
 

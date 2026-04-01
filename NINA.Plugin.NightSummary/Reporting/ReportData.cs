@@ -50,6 +50,6 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// <summary>
         /// Live Stack images captured during the session. Empty if Live Stack plugin is not running.
         /// </summary>
-        public List<Session.LiveStackImage> LiveStackImages { get; init; } = new();
+        public List<Session.LiveStackImage> LiveStackImages { get; set; } = new();
     }
 }
