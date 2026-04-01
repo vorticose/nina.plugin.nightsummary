@@ -131,6 +131,13 @@ foreach ($col in @(
     @{ Table = “SessionEvents”; Def = “AfSucceeded INTEGER” }
     @{ Table = “SessionEvents”; Def = “AfHfr REAL” }
     @{ Table = “Sessions”;      Def = “SkippedExposures INTEGER DEFAULT 0” }
+    @{ Table = “Sessions”;      Def = “CameraName TEXT” }
+    @{ Table = “Sessions”;      Def = “TelescopeName TEXT” }
+    @{ Table = “Sessions”;      Def = “MountName TEXT” }
+    @{ Table = “Sessions”;      Def = “FilterWheelName TEXT” }
+    @{ Table = “Sessions”;      Def = “FocuserName TEXT” }
+    @{ Table = “Sessions”;      Def = “RotatorName TEXT” }
+    @{ Table = “Sessions”;      Def = “GuiderName TEXT” }
 )) {
     try { Exec “ALTER TABLE $($col.Table) ADD COLUMN $($col.Def)” } catch { }
 }
@@ -165,8 +172,8 @@ $camY     = 4176
 $pixelSz  = 3.76
 $focalLen = 700.0
 
-Exec "INSERT INTO Sessions (SessionId, SessionStart, SessionEnd, ProfileName, Notes, ReportSent, CamXSize, CamYSize, PixelSizeMicrons, FocalLengthMm, SkippedExposures)
-      VALUES (@sid, @start, @end, @prof, @notes, 0, @cx, @cy, @px, @fl, @skipped)" @{
+Exec "INSERT INTO Sessions (SessionId, SessionStart, SessionEnd, ProfileName, Notes, ReportSent, CamXSize, CamYSize, PixelSizeMicrons, FocalLengthMm, SkippedExposures, CameraName, TelescopeName, MountName, FilterWheelName, FocuserName, RotatorName, GuiderName)
+      VALUES (@sid, @start, @end, @prof, @notes, 0, @cx, @cy, @px, @fl, @skipped, @cam, @scope, @mount, @fw, @foc, @rot, @guide)" @{
     "@sid"     = $sessionId
     "@start"   = $sessionStart.ToString("o")
     "@end"     = $sessionEnd.ToString("o")
@@ -177,6 +184,13 @@ Exec "INSERT INTO Sessions (SessionId, SessionStart, SessionEnd, ProfileName, No
     "@px"      = $pixelSz
     "@fl"      = $focalLen
     "@skipped" = 5
+    "@cam"     = "ZWO ASI2600MM Pro"
+    "@scope"   = "Sky-Watcher Esprit 100ED"
+    "@mount"   = "Sky-Watcher EQ6-R Pro"
+    "@fw"      = "ZWO EFW 7x36mm"
+    "@foc"     = "ZWO EAF"
+    "@rot"     = $null
+    "@guide"   = "PHD2"
 }
 
 Write-Host "Session: $sessionId" -ForegroundColor Cyan

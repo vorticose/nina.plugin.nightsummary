@@ -124,6 +124,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("details.history-section > summary::-webkit-details-marker { display: none; }");
             sb.AppendLine("details.history-section > summary::before { content: '\\25B6\\00A0'; }");
             sb.AppendLine("details.history-section[open] > summary::before { content: '\\25BC\\00A0'; }");
+            sb.AppendLine("details.equipment-section { margin-top: 4px; margin-bottom: 8px; }");
+            sb.AppendLine("details.equipment-section > summary { cursor: pointer; color: var(--accent-light); font-size: 13px; font-weight: bold; list-style: none; }");
+            sb.AppendLine("details.equipment-section > summary::-webkit-details-marker { display: none; }");
+            sb.AppendLine("details.equipment-section > summary::before { content: '\\25B6\\00A0'; }");
+            sb.AppendLine("details.equipment-section[open] > summary::before { content: '\\25BC\\00A0'; }");
+            sb.AppendLine(".equipment-grid { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin-top: 6px; font-size: 13px; }");
+            sb.AppendLine(".equipment-label { color: var(--muted); }");
+            sb.AppendLine(".equipment-value { color: var(--text); }");
             sb.AppendLine("details.iq-section { margin-top: 12px; }");
             sb.AppendLine("details.iq-section > summary { cursor: pointer; color: var(--accent-light); font-size: 14px; font-weight: bold; list-style: none; }");
             sb.AppendLine("details.iq-section > summary::-webkit-details-marker { display: none; }");
@@ -198,6 +206,21 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine($"<p><strong>Session Start:</strong> {data.Session.SessionStart:HH:mm:ss} &nbsp;&nbsp; <strong>Session End:</strong> {data.Session.SessionEnd:HH:mm:ss}</p>");
             sb.AppendLine($"<p><strong>Duration:</strong> {(data.Session.SessionEnd - data.Session.SessionStart).TotalHours:F1} hours</p>");
             sb.AppendLine($"<p><strong>Profile:</strong> {data.Session.ProfileName}</p>");
+
+            // Equipment profile section (collapsed by default)
+            if (SettingsManager.Instance.Current.ShowEquipmentProfile && data.Equipment != null && data.Equipment.Count > 0) {
+                sb.AppendLine("<details class='equipment-section'>");
+                sb.AppendLine("<summary>Equipment</summary>");
+                sb.AppendLine("<div class='equipment-grid'>");
+                foreach (var kvp in data.Equipment) {
+                    var safeLabel = System.Web.HttpUtility.HtmlEncode(kvp.Key);
+                    var safeValue = System.Web.HttpUtility.HtmlEncode(kvp.Value);
+                    sb.AppendLine($"<span class='equipment-label'>{safeLabel}</span><span class='equipment-value'>{safeValue}</span>");
+                }
+                sb.AppendLine("</div>");
+                sb.AppendLine("</details>");
+            }
+
             return sb.ToString();
         }
 

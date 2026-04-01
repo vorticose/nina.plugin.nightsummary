@@ -517,6 +517,13 @@ namespace NINA.Plugin.NightSummary.Data {
                 MigrateAddColumn(conn, "SessionEvents", "AfSucceeded",      "INTEGER");
                 MigrateAddColumn(conn, "SessionEvents", "AfHfr",            "REAL");
                 MigrateAddColumn(conn, "Sessions",      "SkippedExposures", "INTEGER DEFAULT 0");
+                MigrateAddColumn(conn, "Sessions",      "CameraName",       "TEXT");
+                MigrateAddColumn(conn, "Sessions",      "TelescopeName",    "TEXT");
+                MigrateAddColumn(conn, "Sessions",      "MountName",        "TEXT");
+                MigrateAddColumn(conn, "Sessions",      "FilterWheelName",  "TEXT");
+                MigrateAddColumn(conn, "Sessions",      "FocuserName",      "TEXT");
+                MigrateAddColumn(conn, "Sessions",      "RotatorName",      "TEXT");
+                MigrateAddColumn(conn, "Sessions",      "GuiderName",       "TEXT");
 
                 string createTimingEvents = @"
                     CREATE TABLE IF NOT EXISTS SessionTimingEvents (
@@ -591,6 +598,40 @@ namespace NINA.Plugin.NightSummary.Data {
                     cmd.Parameters.AddWithValue("@CamYSize",         camYSize);
                     cmd.Parameters.AddWithValue("@PixelSizeMicrons", pixelSizeMicrons);
                     cmd.Parameters.AddWithValue("@FocalLengthMm",    focalLengthMm);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Updates equipment names for a session. Only overwrites fields that are currently empty,
+        /// so calling at both session start and end fills in late-connecting equipment without
+        /// overwriting values captured earlier.
+        /// </summary>
+        public void UpdateSessionEquipment(string sessionId, string camera, string telescope, string mount,
+            string filterWheel, string focuser, string rotator, string guider) {
+            using (var conn = new SQLiteConnection(connectionString)) {
+                conn.Open();
+                string sql = @"
+                    UPDATE Sessions SET
+                        CameraName      = CASE WHEN CameraName      IS NULL OR CameraName      = '' THEN @Camera      ELSE CameraName      END,
+                        TelescopeName   = CASE WHEN TelescopeName   IS NULL OR TelescopeName   = '' THEN @Telescope   ELSE TelescopeName   END,
+                        MountName       = CASE WHEN MountName       IS NULL OR MountName       = '' THEN @Mount       ELSE MountName       END,
+                        FilterWheelName = CASE WHEN FilterWheelName IS NULL OR FilterWheelName = '' THEN @FilterWheel ELSE FilterWheelName END,
+                        FocuserName     = CASE WHEN FocuserName     IS NULL OR FocuserName     = '' THEN @Focuser     ELSE FocuserName     END,
+                        RotatorName     = CASE WHEN RotatorName     IS NULL OR RotatorName     = '' THEN @Rotator     ELSE RotatorName     END,
+                        GuiderName      = CASE WHEN GuiderName      IS NULL OR GuiderName      = '' THEN @Guider      ELSE GuiderName      END
+                    WHERE SessionId = @SessionId";
+
+                using (var cmd = new SQLiteCommand(sql, conn)) {
+                    cmd.Parameters.AddWithValue("@SessionId",   sessionId);
+                    cmd.Parameters.AddWithValue("@Camera",      (object)camera      ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Telescope",   (object)telescope   ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Mount",       (object)mount       ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@FilterWheel", (object)filterWheel ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Focuser",     (object)focuser     ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Rotator",     (object)rotator     ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Guider",      (object)guider      ?? DBNull.Value);
                     cmd.ExecuteNonQuery();
                 }
             }
@@ -1081,7 +1122,14 @@ namespace NINA.Plugin.NightSummary.Data {
                 CamYSize         = reader["CamYSize"]         == DBNull.Value ? 0 : Convert.ToInt32(reader["CamYSize"]),
                 PixelSizeMicrons = reader["PixelSizeMicrons"] == DBNull.Value ? 0 : Convert.ToDouble(reader["PixelSizeMicrons"]),
                 FocalLengthMm    = reader["FocalLengthMm"]    == DBNull.Value ? 0 : Convert.ToDouble(reader["FocalLengthMm"]),
-                SkippedExposures = reader["SkippedExposures"] == DBNull.Value ? 0 : Convert.ToInt32(reader["SkippedExposures"])
+                SkippedExposures = reader["SkippedExposures"] == DBNull.Value ? 0 : Convert.ToInt32(reader["SkippedExposures"]),
+                CameraName       = reader["CameraName"]      == DBNull.Value ? null : reader["CameraName"].ToString(),
+                TelescopeName    = reader["TelescopeName"]   == DBNull.Value ? null : reader["TelescopeName"].ToString(),
+                MountName        = reader["MountName"]       == DBNull.Value ? null : reader["MountName"].ToString(),
+                FilterWheelName  = reader["FilterWheelName"] == DBNull.Value ? null : reader["FilterWheelName"].ToString(),
+                FocuserName      = reader["FocuserName"]     == DBNull.Value ? null : reader["FocuserName"].ToString(),
+                RotatorName      = reader["RotatorName"]     == DBNull.Value ? null : reader["RotatorName"].ToString(),
+                GuiderName       = reader["GuiderName"]      == DBNull.Value ? null : reader["GuiderName"].ToString()
             };
         }
     }

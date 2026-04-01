@@ -37,6 +37,15 @@ namespace NINA.Plugin.NightSummary.Data {
         // Number of exposures skipped/aborted during the session
         public int SkippedExposures { get; set; }
 
+        // Equipment names captured at session start/end
+        public string CameraName      { get; set; }
+        public string TelescopeName   { get; set; }
+        public string MountName       { get; set; }
+        public string FilterWheelName { get; set; }
+        public string FocuserName     { get; set; }
+        public string RotatorName     { get; set; }
+        public string GuiderName      { get; set; }
+
         // Display string for session picker dropdown
         public string DisplayLabel => $"{SessionStart:yyyy-MM-dd  HH:mm}  —  {ProfileName}";
     }

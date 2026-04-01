@@ -52,5 +52,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// Empty if log parsing was unavailable or produced no results.
         /// </summary>
         public List<TimingEvent> TimingEvents { get; init; }
+
+        /// <summary>
+        /// Equipment names for the session, keyed by role (Camera, Telescope, Mount, etc.).
+        /// Values are display names (user override if set, otherwise NINA-detected name).
+        /// Empty entries are omitted.
+        /// </summary>
+        public Dictionary<string, string> Equipment { get; init; } = new();
     }
 }

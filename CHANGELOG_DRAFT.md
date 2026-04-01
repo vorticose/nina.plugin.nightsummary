@@ -6,6 +6,7 @@
 - NINA filename pattern variables in report save path — use the same path variables as NINA's file save patterns, with clickable insertion buttons
 - Customizable x-axis on metric charts — choose Time, Frame Index, or any metric (Altitude, Temperature, etc.) as the x-axis
 - Sky position angle displayed in target headers and FOV overlay on sky thumbnails
+- Collapsible equipment profile section in report header — shows all connected equipment with user-overridable display names
 
 **Improvements**
 - Session history now returns all previous sessions instead of a capped limit

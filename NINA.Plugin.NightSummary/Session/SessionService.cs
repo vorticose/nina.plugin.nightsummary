@@ -24,7 +24,12 @@ namespace NINA.Plugin.NightSummary.Session {
         private readonly ReportGenerator       reportGenerator;
         private readonly IProfileService       profileService;
         private readonly ICameraMediator       cameraMediator;
+        private readonly ITelescopeMediator    telescopeMediator;
         private readonly ISequenceMediator     sequenceMediator;
+        private readonly IFilterWheelMediator  filterWheelMediator;
+        private readonly IFocuserMediator      focuserMediator;
+        private readonly IRotatorMediator      rotatorMediator;
+        private readonly IGuiderMediator       guiderMediator;
 
         private static NightSummarySettings S => SettingsManager.Instance.Current;
 
@@ -36,9 +41,13 @@ namespace NINA.Plugin.NightSummary.Session {
             IFocuserMediator       focuserMediator,
             ITelescopeMediator     telescopeMediator,
             ICameraMediator        cameraMediator,
-            ISequenceMediator      sequenceMediator)
+            ISequenceMediator      sequenceMediator,
+            IFilterWheelMediator   filterWheelMediator,
+            IRotatorMediator       rotatorMediator,
+            IGuiderMediator        guiderMediator)
             : this(imageSaveMediator, profileService, safetyMonitorMediator,
                    focuserMediator, telescopeMediator, cameraMediator, sequenceMediator,
+                   filterWheelMediator, rotatorMediator, guiderMediator,
                    databasePath: null) { }
 
         /// <summary>
@@ -54,12 +63,20 @@ namespace NINA.Plugin.NightSummary.Session {
             ITelescopeMediator     telescopeMediator,
             ICameraMediator        cameraMediator,
             ISequenceMediator      sequenceMediator,
+            IFilterWheelMediator   filterWheelMediator,
+            IRotatorMediator       rotatorMediator,
+            IGuiderMediator        guiderMediator,
             string                 databasePath) {
 
-            this.profileService    = profileService;
-            this.cameraMediator    = cameraMediator;
-            this.sequenceMediator  = sequenceMediator;
-            var database           = databasePath != null ? new SessionDatabase(databasePath) : new SessionDatabase();
+            this.profileService      = profileService;
+            this.cameraMediator      = cameraMediator;
+            this.telescopeMediator   = telescopeMediator;
+            this.sequenceMediator    = sequenceMediator;
+            this.filterWheelMediator = filterWheelMediator;
+            this.focuserMediator     = focuserMediator;
+            this.rotatorMediator     = rotatorMediator;
+            this.guiderMediator      = guiderMediator;
+            var database             = databasePath != null ? new SessionDatabase(databasePath) : new SessionDatabase();
             this.collector       = new SessionCollector(imageSaveMediator, sequenceMediator, database);
             this.eventCollector  = new SessionEventCollector(database, safetyMonitorMediator, focuserMediator, telescopeMediator);
             this.reportGenerator = new ReportGenerator();
@@ -87,6 +104,8 @@ namespace NINA.Plugin.NightSummary.Session {
             } catch (Exception ex) {
                 Logger.Warning($"NightSummary: Could not read camera info at session start. {ex.Message}");
             }
+
+            CaptureEquipmentNames();
         }
 
         public void EndSession() {
@@ -96,6 +115,10 @@ namespace NINA.Plugin.NightSummary.Session {
             }
 
             var sessionId = collector.GetCurrentSessionId();
+
+            // Fill in any equipment that wasn't connected at session start
+            CaptureEquipmentNames();
+
             collector.EndSession();
             eventCollector.EndSession();
 
@@ -144,7 +167,8 @@ namespace NINA.Plugin.NightSummary.Session {
                 ObserverLongitude            = lon,
                 ActiveProfileId              = profileId,
                 SkippedExposures             = collector.SkippedExposures,
-                TimingEvents                 = timingEvents
+                TimingEvents                 = timingEvents,
+                Equipment                    = BuildEquipmentDictionary(session)
             };
 
             _ = Task.Run(async () => {
@@ -233,7 +257,8 @@ namespace NINA.Plugin.NightSummary.Session {
                     ObserverLatitude             = lat,
                     ObserverLongitude            = lon,
                     ActiveProfileId              = profileId,
-                    SkippedExposures             = session.SkippedExposures
+                    SkippedExposures             = session.SkippedExposures,
+                    Equipment                    = BuildEquipmentDictionary(session)
                 };
 
                 var htmlReport = await reportGenerator.GenerateHtmlReport(reportData);
@@ -483,6 +508,68 @@ namespace NINA.Plugin.NightSummary.Session {
         /// Computes the imaging camera's field of view in degrees.
         /// Primary source: camera hardware info stored in the session record (captured from the first image).
         /// Fallback: pixel size and focal length from the active NINA profile, with sensor size from FramingAssistantSettings.
+        /// <summary>
+        /// Builds an ordered dictionary of equipment names for the report, applying user overrides where set.
+        /// Empty/null entries are omitted.
+        /// </summary>
+        private static Dictionary<string, string> BuildEquipmentDictionary(SessionRecord session) {
+            var overrides = ParseEquipmentOverrides(S.EquipmentOverrides);
+            var equipment = new Dictionary<string, string>();
+
+            void Add(string key, string dbValue) {
+                var value = overrides.TryGetValue(key, out var ov) && !string.IsNullOrWhiteSpace(ov) ? ov : dbValue;
+                if (!string.IsNullOrWhiteSpace(value))
+                    equipment[key] = value;
+            }
+
+            Add("Camera",       session.CameraName);
+            Add("Telescope",    session.TelescopeName);
+            Add("Mount",        session.MountName);
+            Add("Filter Wheel", session.FilterWheelName);
+            Add("Focuser",      session.FocuserName);
+            Add("Rotator",      session.RotatorName);
+            Add("Guider",       session.GuiderName);
+
+            return equipment;
+        }
+
+        internal static Dictionary<string, string> ParseEquipmentOverrides(string raw) =>
+            string.IsNullOrWhiteSpace(raw)
+                ? new Dictionary<string, string>()
+                : raw.Split(',')
+                    .Select(p => p.Split(':', 2))
+                    .Where(p => p.Length == 2)
+                    .ToDictionary(p => p[0].Trim(), p => p[1].Trim(), StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Captures equipment names from all connected mediators and stores them in the session database.
+        /// Uses COALESCE logic in SQL so calling this multiple times only fills empty fields.
+        /// </summary>
+        private void CaptureEquipmentNames() {
+            var sessionId = collector.GetCurrentSessionId();
+            if (sessionId == null) return;
+
+            try {
+                string SafeName(Func<string> getter) { try { return getter(); } catch { return null; } }
+
+                var camera      = SafeName(() => cameraMediator?.GetInfo()?.Name);
+                var telescope   = SafeName(() => profileService?.ActiveProfile?.TelescopeSettings?.Name);
+                var mount       = SafeName(() => telescopeMediator?.GetInfo()?.Name);
+                var filterWheel = SafeName(() => filterWheelMediator?.GetInfo()?.Name);
+                var focuser     = SafeName(() => focuserMediator?.GetInfo()?.Name);
+                var rotator     = SafeName(() => rotatorMediator?.GetInfo()?.Name);
+                var guider      = SafeName(() => guiderMediator?.GetInfo()?.Name);
+
+                collector.Database.UpdateSessionEquipment(sessionId,
+                    camera, telescope, mount, filterWheel, focuser, rotator, guider);
+
+                Logger.Info($"NightSummary: Equipment captured — Camera={camera ?? "n/a"}, Telescope={telescope ?? "n/a"}, Mount={mount ?? "n/a"}, " +
+                    $"FilterWheel={filterWheel ?? "n/a"}, Focuser={focuser ?? "n/a"}, Rotator={rotator ?? "n/a"}, Guider={guider ?? "n/a"}");
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Could not capture equipment names. {ex.Message}");
+            }
+        }
+
         /// Falls back to (1.0, 1.0) if no usable values are found.
         /// </summary>
         private (double widthDeg, double heightDeg) ComputeCameraFov(SessionRecord session = null) {
@@ -559,7 +646,8 @@ namespace NINA.Plugin.NightSummary.Session {
                 ObserverLatitude             = lat,
                 ObserverLongitude            = lon,
                 ActiveProfileId              = profileId,
-                SkippedExposures             = session.SkippedExposures
+                SkippedExposures             = session.SkippedExposures,
+                Equipment                    = BuildEquipmentDictionary(session)
             };
         }
 
