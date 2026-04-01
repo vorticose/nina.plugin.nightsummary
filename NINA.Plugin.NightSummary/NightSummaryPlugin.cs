@@ -482,8 +482,17 @@ namespace NINA.Plugin.NightSummary {
             "Wind Speed (m/s)", "Pressure (hPa)", "Star Count", "Azimuth (°)", "Seeing FWHM (arcsec)"
         };
 
+        private static readonly List<string> _xAxisMetricNames = new List<string> {
+            "Time", "Frame Index",
+            "HFR", "FWHM", "Guiding RMS", "Focuser Temp (°C)", "Ambient Temp (°C)",
+            "Eccentricity", "Altitude (°)", "Airmass", "Humidity (%)", "Focuser Position (steps)",
+            "Sky Quality (mag/arcsec²)", "Cloud Cover (%)", "Camera Temp (°C)", "Dew Point (°C)",
+            "Wind Speed (m/s)", "Pressure (hPa)", "Star Count", "Azimuth (°)", "Seeing FWHM (arcsec)"
+        };
+
         public IReadOnlyList<string> PrimaryMetricNames  => _primaryMetricNames;
         public IReadOnlyList<string> SecondaryMetricNames => _secondaryMetricNames;
+        public IReadOnlyList<string> XAxisMetricNames     => _xAxisMetricNames;
 
         private ObservableCollection<ChartConfig> _additionalCharts;
         public ObservableCollection<ChartConfig> AdditionalCharts {
@@ -512,7 +521,7 @@ namespace NINA.Plugin.NightSummary {
 
         private void SerializeChartConfigs() {
             S.AdditionalChartConfigs =
-                string.Join("|", AdditionalCharts.Select(c => $"{c.Primary}:{c.Secondary}"));
+                string.Join("|", AdditionalCharts.Select(c => $"{c.Primary}:{c.Secondary}:{c.XAxis}"));
             SaveSettings();
         }
 
@@ -521,10 +530,11 @@ namespace NINA.Plugin.NightSummary {
             if (string.IsNullOrWhiteSpace(raw)) return col;
             foreach (var part in raw.Split('|')) {
                 var tokens = part.Split(':');
-                if (tokens.Length == 2
+                if (tokens.Length >= 2
                     && int.TryParse(tokens[0], out int p) && p >= 0 && p < _primaryMetricNames.Count
                     && int.TryParse(tokens[1], out int s) && s >= 0 && s <= _secondaryMetricNames.Count) {
-                    col.Add(new ChartConfig(p, s, SerializeChartConfigs));
+                    int xAxis = tokens.Length >= 3 && int.TryParse(tokens[2], out int a) ? a : 0;
+                    col.Add(new ChartConfig(p, s, SerializeChartConfigs, xAxis));
                 }
             }
             return col;
@@ -767,10 +777,12 @@ namespace NINA.Plugin.NightSummary {
         private readonly Action _onChanged;
         private int _primary;
         private int _secondary;
+        private int _xAxis;
 
-        public ChartConfig(int primary, int secondary, Action onChanged) {
+        public ChartConfig(int primary, int secondary, Action onChanged, int xAxis = 0) {
             _primary   = primary;
             _secondary = secondary;
+            _xAxis     = xAxis;
             _onChanged = onChanged;
         }
 
@@ -782,6 +794,11 @@ namespace NINA.Plugin.NightSummary {
         public int Secondary {
             get => _secondary;
             set { _secondary = value; OnPropertyChanged(); _onChanged(); }
+        }
+
+        public int XAxis {
+            get => _xAxis;
+            set { _xAxis = value; OnPropertyChanged(); _onChanged(); }
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
