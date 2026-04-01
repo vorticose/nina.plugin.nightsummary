@@ -1,12 +1,8 @@
 # v2.10.0 Draft Changelog
 
 **New features**
-- Customizable x-axis on metric charts — choose Time, Frame Index, or any metric (Altitude, Temperature, etc.) as the x-axis (#17)
-
-# v2.9.0 Draft Changelog
-
-**New features**
 - Overhead breakdown section — parses NINA logs at session end to show a per-category timing breakdown (camera download, filter changes, dithering, autofocus, plate solves, star detection, image saves, centering, temp comp focus) with a stacked bar chart and detailed table. Includes a yield cross-validation metric that compares parsed overhead against the existing yield calculation to measure coverage completeness.
+- Customizable x-axis on metric charts — choose Time, Frame Index, or any metric (Altitude, Temperature, etc.) as the x-axis
 - Expandable filter breakdown in the session overview stat boxes — click Total Images or Total Exposure to see a per-filter breakdown
 - Support for up to 4 additional metric charts per report — configure extra charts from the Options page, each with independent primary and secondary metric selection
 - Improved metric chart axis scaling — axis labels now use sensible round-number steps (e.g. 5° for altitude, 0.5px for HFR) instead of arbitrary intervals
