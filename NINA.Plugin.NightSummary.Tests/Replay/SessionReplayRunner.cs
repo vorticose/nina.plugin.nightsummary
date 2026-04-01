@@ -114,6 +114,7 @@ namespace NINA.Plugin.NightSummary.Tests.Replay {
                 null, // filterWheelMediator — not needed for replay
                 null, // rotatorMediator
                 null, // guiderMediator
+                null, // messageBroker — not needed for replay
                 _dbPath);
 
             // Set clock to the first event timestamp (or recordedAt) for session start

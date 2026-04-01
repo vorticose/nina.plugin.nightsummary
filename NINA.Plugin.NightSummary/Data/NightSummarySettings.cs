@@ -41,6 +41,7 @@ namespace NINA.Plugin.NightSummary.Data {
         public bool   ExpandSectionsDefault  { get; set; } = false;
         public bool   ShowMoonCurve          { get; set; } = true;
         public bool   ShowSkyThumbnails      { get; set; } = true;
+        public bool   ShowLiveStackImages   { get; set; } = true;
         public bool   ShowSessionHistory     { get; set; } = true;
         public bool   ShowAltitudeChart      { get; set; } = true;
         public bool   ShowMinAltitude        { get; set; } = true;

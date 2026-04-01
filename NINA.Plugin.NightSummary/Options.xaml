@@ -122,6 +122,13 @@
                         <CheckBox IsChecked="{Binding ShowSkyThumbnails}" VerticalAlignment="Center" />
                     </StackPanel>
 
+                    <StackPanel Orientation="Horizontal" Margin="0,4">
+                        <TextBlock Text="Show Live Stack Images" Width="200" VerticalAlignment="Center" />
+                        <CheckBox IsChecked="{Binding ShowLiveStackImages}" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <TextBlock Text="Requires the Live Stack plugin to be installed and running during imaging."
+                               FontStyle="Italic" Foreground="Gray" FontSize="11" Margin="24,0,0,0" />
+
                     <!-- Altitude Charts + Moon Curve on one row; whole row disabled at Snapshot -->
                     <StackPanel Orientation="Horizontal" Margin="0,4">
                         <StackPanel.Style>
@@ -516,19 +523,19 @@
 
                     <TextBlock Text="Report File Naming" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
 
-                    <StackPanel Orientation="Horizontal" Margin="0,5">
-                        <TextBlock Text="File name pattern" Width="200" VerticalAlignment="Center" />
+                    <DockPanel Margin="0,5">
+                        <TextBlock Text="File name pattern" Width="200" VerticalAlignment="Center" DockPanel.Dock="Left" />
                         <TextBox x:Name="FilePatternTextBox"
                                  Text="{Binding SaveReportFilePattern, UpdateSourceTrigger=PropertyChanged}"
-                                 Width="300" VerticalAlignment="Center"
+                                 MinWidth="300" VerticalAlignment="Center"
                                  LostFocus="PatternTextBox_LostFocus" />
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,4,0,4">
-                        <TextBlock Text="Pattern preview" Width="200" VerticalAlignment="Center" Foreground="Gray" />
+                    </DockPanel>
+                    <DockPanel Margin="0,4,0,4">
+                        <TextBlock Text="Pattern preview" Width="200" VerticalAlignment="Center" Foreground="Gray" DockPanel.Dock="Left" />
                         <TextBox Text="{Binding SaveReportPatternPreview, Mode=OneWay}" IsReadOnly="True"
-                                 Width="300" VerticalAlignment="Center" FontSize="12"
+                                 MinWidth="300" VerticalAlignment="Center" FontSize="12"
                                  Background="Transparent" BorderBrush="Gray" BorderThickness="1" />
-                    </StackPanel>
+                    </DockPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,4,0,2">
                         <TextBlock Width="200" />
                         <WrapPanel MaxWidth="400">

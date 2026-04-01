@@ -59,5 +59,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// Empty entries are omitted.
         /// </summary>
         public Dictionary<string, string> Equipment { get; init; } = new();
+        /// <summary>
+        /// Live Stack images captured during the session. Empty if Live Stack plugin is not running.
+        /// </summary>
+        public List<Session.LiveStackImage> LiveStackImages { get; set; } = new();
     }
 }

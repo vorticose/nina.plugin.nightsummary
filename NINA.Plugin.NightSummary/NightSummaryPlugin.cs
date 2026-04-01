@@ -365,6 +365,7 @@ namespace NINA.Plugin.NightSummary {
             set {
                 S.ReportDetailLevel     = value;
                 S.ShowSkyThumbnails     = true;
+                S.ShowLiveStackImages   = true;
                 S.ShowAltitudeChart     = true;
                 S.ShowMoonCurve         = true;
                 S.ShowMinAltitude       = true;
@@ -377,6 +378,7 @@ namespace NINA.Plugin.NightSummary {
                 SaveSettings();
                 RaisePropertyChanged();
                 RaisePropertyChanged(nameof(ShowSkyThumbnails));
+                RaisePropertyChanged(nameof(ShowLiveStackImages));
                 RaisePropertyChanged(nameof(ShowAltitudeChart));
                 RaisePropertyChanged(nameof(ShowMoonCurve));
                 RaisePropertyChanged(nameof(ShowMinAltitude));
@@ -392,6 +394,11 @@ namespace NINA.Plugin.NightSummary {
         public bool ShowSkyThumbnails {
             get => S.ShowSkyThumbnails;
             set { S.ShowSkyThumbnails = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
+        public bool ShowLiveStackImages {
+            get => S.ShowLiveStackImages;
+            set { S.ShowLiveStackImages = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public bool ShowMoonCurve {
