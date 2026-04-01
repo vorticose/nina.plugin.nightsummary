@@ -47,5 +47,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// Number of exposures that were skipped/aborted during the session (e.g. by RMS triggers, safety events).
         /// </summary>
         public int SkippedExposures { get; init; }
+        /// <summary>
+        /// Per-event timing data parsed from NINA logs for overhead breakdown analysis.
+        /// Empty if log parsing was unavailable or produced no results.
+        /// </summary>
+        public List<TimingEvent> TimingEvents { get; init; }
     }
 }

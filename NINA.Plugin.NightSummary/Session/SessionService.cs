@@ -114,6 +114,17 @@ namespace NINA.Plugin.NightSummary.Session {
             // Reload images so report uses updated Accepted/GradingStatus/RejectReason values
             images = database.GetImagesForSession(sessionId);
 
+            // Parse NINA logs for per-event overhead timing data
+            List<TimingEvent> timingEvents;
+            try {
+                timingEvents = NinaLogParser.Parse(session.SessionStart, session.SessionEnd, images.Count);
+                if (timingEvents.Any())
+                    database.SaveTimingEvents(sessionId, timingEvents);
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Log parsing failed — overhead breakdown will be unavailable. {ex.Message}");
+                timingEvents = new List<TimingEvent>();
+            }
+
             var profileId    = profileService?.ActiveProfile?.Id.ToString();
             var tsData       = FetchTsData(images, profileId);
             var cumulative   = database.GetCumulativeIntegrationByTarget(sessionId);
@@ -132,7 +143,8 @@ namespace NINA.Plugin.NightSummary.Session {
                 ObserverLatitude             = lat,
                 ObserverLongitude            = lon,
                 ActiveProfileId              = profileId,
-                SkippedExposures             = collector.SkippedExposures
+                SkippedExposures             = collector.SkippedExposures,
+                TimingEvents                 = timingEvents
             };
 
             _ = Task.Run(async () => {

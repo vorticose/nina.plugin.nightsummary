@@ -159,6 +159,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.Append(BuildOverviewStatsSection(data, detailLevel));
             sb.Append(await BuildTargetSection(data, detailLevel, detailsOpen));
             if (detailLevel >= 1) sb.Append(BuildImageQualitySection(data, detailLevel, detailsOpen));
+            if (detailLevel >= 2) sb.Append(BuildOverheadBreakdownSection(data, detailsOpen));
             if (detailLevel >= 2) sb.Append(BuildNextNightPreviewSection(data));
             sb.Append(BuildFooter());
 
@@ -262,6 +263,122 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine("<p style='font-size:11px; color:var(--muted); margin-top:4px;'>* Yield calculated without cloud exclusion — no safety monitor events recorded</p>");
             return sb.ToString();
         }
+
+        private string BuildOverheadBreakdownSection(ReportData data, string detailsOpen = "") {
+            var timingEvents = data.TimingEvents;
+            if (timingEvents == null || !timingEvents.Any()) return "";
+
+            // Exclude Exposure events from overhead — they represent useful imaging time
+            var overheadEvents = timingEvents.Where(e => e.EventType != "Exposure").ToList();
+            if (!overheadEvents.Any()) return "";
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"<details class='iq-section'{detailsOpen}>");
+            sb.AppendLine("<summary>Overhead Breakdown</summary>");
+
+            // Group by event type, sum durations, order by total descending
+            var groups = overheadEvents
+                .GroupBy(e => e.EventType)
+                .Select(g => new {
+                    Type = g.Key,
+                    Count = g.Count(),
+                    TotalSeconds = g.Sum(e => e.DurationSeconds),
+                    AvgSeconds = g.Average(e => e.DurationSeconds)
+                })
+                .OrderByDescending(g => g.TotalSeconds)
+                .ToList();
+
+            var totalOverheadSec = groups.Sum(g => g.TotalSeconds);
+            var totalExposureSec = data.Images.Sum(i => i.ExposureDuration);
+
+            // Yield cross-validation: compare parsed overhead against yield-implied overhead
+            var yield = YieldCalculator.Calculate(data.Images, data.Events, data.Session.SessionStart, data.Session.SessionEnd);
+            var firstImage = data.Images.Min(i => i.Timestamp);
+            var lastImage = data.Images.Max(i => i.Timestamp);
+            var windowSec = (lastImage - firstImage).TotalSeconds;
+            var impliedOverheadSec = windowSec - totalExposureSec;
+            if (yield.HasSafetyMonitor) {
+                var roofClosedSec = windowSec - (totalExposureSec / (yield.YieldPct / 100.0));
+                impliedOverheadSec = windowSec - totalExposureSec - Math.Max(0, roofClosedSec);
+            }
+            var coveragePct = impliedOverheadSec > 0 ? Math.Min(totalOverheadSec / impliedOverheadSec * 100.0, 100.0) : 0;
+            var unaccountedSec = Math.Max(0, impliedOverheadSec - totalOverheadSec);
+
+            // Summary stat boxes
+            sb.AppendLine("<div style='display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:10px 0;'>");
+            sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{FormatDuration(totalOverheadSec)}</div><div class='stat-label'>Total Overhead</div></div>");
+            sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{coveragePct:F1}%</div><div class='stat-label'>Overhead Accounted</div></div>");
+            if (unaccountedSec > 10)
+                sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{FormatDuration(unaccountedSec)}</div><div class='stat-label'>Unaccounted</div></div>");
+            else
+                sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{groups.Count}</div><div class='stat-label'>Categories</div></div>");
+            sb.AppendLine("</div>");
+
+            // Horizontal stacked bar chart
+            if (totalOverheadSec > 0) {
+                var barColors = new Dictionary<string, string> {
+                    ["CameraDownload"] = "#4a9eff",
+                    ["FilterChange"]   = "#f59e0b",
+                    ["Dither"]         = "#10b981",
+                    ["TempCompFocus"]  = "#8b5cf6",
+                    ["Autofocus"]      = "#ef4444",
+                    ["PlateSolve"]     = "#06b6d4",
+                    ["StarDetection"]  = "#ec4899",
+                    ["ImageSave"]      = "#f97316",
+                    ["Centering"]      = "#6366f1",
+                    ["MeridianFlip"]   = "#14b8a6"
+                };
+
+                sb.AppendLine("<div style='display:flex; height:24px; border-radius:6px; overflow:hidden; margin:8px 0;'>");
+                foreach (var g in groups) {
+                    var pct = g.TotalSeconds / totalOverheadSec * 100.0;
+                    if (pct < 0.5) continue;
+                    var color = barColors.TryGetValue(g.Type, out var c) ? c : "#888";
+                    var label = FormatEventTypeName(g.Type);
+                    sb.AppendLine($"<div style='width:{pct:F1}%; background:{color}; display:flex; align-items:center; justify-content:center; font-size:11px; color:#fff; white-space:nowrap; overflow:hidden;' title='{label}: {FormatDuration(g.TotalSeconds)} ({pct:F1}%)'>{(pct > 8 ? label : "")}</div>");
+                }
+                sb.AppendLine("</div>");
+            }
+
+            // Detail table
+            sb.AppendLine("<table style='width:100%; border-collapse:collapse; margin-top:8px; font-size:13px;'>");
+            sb.AppendLine("<tr style='border-bottom:2px solid var(--border);'>");
+            sb.AppendLine("<th style='text-align:left; padding:6px 8px; color:var(--accent);'>Category</th>");
+            sb.AppendLine("<th style='text-align:right; padding:6px 8px; color:var(--accent);'>Count</th>");
+            sb.AppendLine("<th style='text-align:right; padding:6px 8px; color:var(--accent);'>Total</th>");
+            sb.AppendLine("<th style='text-align:right; padding:6px 8px; color:var(--accent);'>Avg</th>");
+            sb.AppendLine("<th style='text-align:right; padding:6px 8px; color:var(--accent);'>% of Overhead</th>");
+            sb.AppendLine("</tr>");
+
+            bool even = false;
+            foreach (var g in groups) {
+                var pct = totalOverheadSec > 0 ? g.TotalSeconds / totalOverheadSec * 100.0 : 0;
+                var bgStyle = even ? " background-color:var(--surface);" : "";
+                sb.AppendLine($"<tr style='border-bottom:1px solid var(--border);{bgStyle}'>");
+                sb.AppendLine($"<td style='padding:6px 8px;'>{FormatEventTypeName(g.Type)}</td>");
+                sb.AppendLine($"<td style='text-align:right; padding:6px 8px;'>{g.Count}</td>");
+                sb.AppendLine($"<td style='text-align:right; padding:6px 8px;'>{FormatDuration(g.TotalSeconds)}</td>");
+                sb.AppendLine($"<td style='text-align:right; padding:6px 8px;'>{g.AvgSeconds:F1}s</td>");
+                sb.AppendLine($"<td style='text-align:right; padding:6px 8px;'>{pct:F1}%</td>");
+                sb.AppendLine("</tr>");
+                even = !even;
+            }
+            sb.AppendLine("</table>");
+            sb.AppendLine("</details>");
+
+            return sb.ToString();
+        }
+
+        private static string FormatEventTypeName(string eventType) => eventType switch {
+            "CameraDownload" => "Camera Download",
+            "FilterChange"   => "Filter Change",
+            "TempCompFocus"  => "Temp Comp Focus",
+            "PlateSolve"     => "Plate Solve",
+            "StarDetection"  => "Star Detection",
+            "ImageSave"      => "Image Save",
+            "MeridianFlip"   => "Meridian Flip",
+            _                => eventType
+        };
 
         private async Task<string> BuildTargetSection(ReportData data, int detailLevel, string detailsOpen = "") {
             var sb = new StringBuilder();
