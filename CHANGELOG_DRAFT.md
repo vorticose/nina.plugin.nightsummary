@@ -4,9 +4,10 @@
 - Live Stack integration — captures live-stacked thumbnails from the Live Stack plugin and displays them in the report per target/filter
 - Imaging overhead breakdown section — parses NINA logs at session end to show a per-category timing breakdown (camera download, filter changes, dithering, autofocus, plate solves, star detection, image saves, centering, temp comp focus) with a stacked bar chart and detailed table. Includes a yield cross-validation metric that compares parsed overhead against the existing yield calculation to measure coverage completeness.
 - NINA filename pattern variables in report save path — use the same path variables as NINA's file save patterns, with clickable insertion buttons
+- Collapsible equipment profile section in report header — shows all connected equipment with user-overridable display names
 - Customizable x-axis on metric charts — choose Time, Frame Index, or any metric (Altitude, Temperature, etc.) as the x-axis
 - Sky position angle displayed in target headers and FOV overlay on sky thumbnails
-- Collapsible equipment profile section in report header — shows all connected equipment with user-overridable display names
+
 
 **Improvements**
 - Session history now returns all previous sessions instead of a capped limit
