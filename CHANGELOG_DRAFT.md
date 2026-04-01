@@ -6,6 +6,7 @@
 - Live Stack integration — captures live-stacked thumbnails from the Live Stack plugin and displays them in the report per target/filter
 - NINA filename pattern variables in report save path — use the same path variables as NINA's file save patterns, with clickable insertion buttons
 - Sky position angle displayed in target headers and FOV overlay on sky thumbnails
+
 **Improvements**
 - Session history now returns all previous sessions instead of a capped limit
 - Plugin version, NINA version, and author credit shown in report footer
