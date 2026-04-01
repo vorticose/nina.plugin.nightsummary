@@ -283,6 +283,34 @@ namespace NINA.Plugin.NightSummary {
             set { S.SaveReportPath = value; SaveSettings(); RaisePropertyChanged(); RaisePropertyChanged(nameof(SaveReportPatternPreview)); }
         }
 
+        public bool ShowEquipmentProfile {
+            get => S.ShowEquipmentProfile;
+            set { S.ShowEquipmentProfile = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
+        // Equipment override properties — parse from/serialize to comma-separated string
+        private string GetEquipmentOverride(string key) {
+            var overrides = Session.SessionService.ParseEquipmentOverrides(S.EquipmentOverrides);
+            return overrides.TryGetValue(key, out var val) ? val : "";
+        }
+        private void SetEquipmentOverride(string key, string value) {
+            var overrides = Session.SessionService.ParseEquipmentOverrides(S.EquipmentOverrides);
+            if (string.IsNullOrWhiteSpace(value))
+                overrides.Remove(key);
+            else
+                overrides[key] = value.Trim();
+            S.EquipmentOverrides = string.Join(",", overrides.Select(kv => $"{kv.Key}:{kv.Value}"));
+            SaveSettings();
+        }
+
+        public string EquipmentCamera      { get => GetEquipmentOverride("Camera");       set { SetEquipmentOverride("Camera", value);       RaisePropertyChanged(); } }
+        public string EquipmentTelescope    { get => GetEquipmentOverride("Telescope");    set { SetEquipmentOverride("Telescope", value);    RaisePropertyChanged(); } }
+        public string EquipmentMount        { get => GetEquipmentOverride("Mount");        set { SetEquipmentOverride("Mount", value);        RaisePropertyChanged(); } }
+        public string EquipmentFilterWheel  { get => GetEquipmentOverride("Filter Wheel"); set { SetEquipmentOverride("Filter Wheel", value); RaisePropertyChanged(); } }
+        public string EquipmentFocuser      { get => GetEquipmentOverride("Focuser");      set { SetEquipmentOverride("Focuser", value);      RaisePropertyChanged(); } }
+        public string EquipmentRotator      { get => GetEquipmentOverride("Rotator");      set { SetEquipmentOverride("Rotator", value);      RaisePropertyChanged(); } }
+        public string EquipmentGuider       { get => GetEquipmentOverride("Guider");       set { SetEquipmentOverride("Guider", value);       RaisePropertyChanged(); } }
+
         public string SaveReportFilePattern {
             get => S.SaveReportFilePattern;
             set { S.SaveReportFilePattern = value; SaveSettings(); RaisePropertyChanged(); RaisePropertyChanged(nameof(SaveReportPatternPreview)); }

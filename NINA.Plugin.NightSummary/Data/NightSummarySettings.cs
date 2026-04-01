@@ -55,5 +55,10 @@ namespace NINA.Plugin.NightSummary.Data {
 
         // ── Filter classification ─────────────────────────────────────────────
         public string FilterClassifications  { get; set; } = "";
+
+        // ── Equipment overrides ──────────────────────────────────────────────
+        // Comma-separated key:value pairs, e.g. "Camera:My ASI2600,Telescope:Esprit 100ED"
+        public string EquipmentOverrides { get; set; } = "";
+        public bool   ShowEquipmentProfile { get; set; } = true;
     }
 }

@@ -47,5 +47,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// Number of exposures that were skipped/aborted during the session (e.g. by RMS triggers, safety events).
         /// </summary>
         public int SkippedExposures { get; init; }
+
+        /// <summary>
+        /// Equipment names for the session, keyed by role (Camera, Telescope, Mount, etc.).
+        /// Values are display names (user override if set, otherwise NINA-detected name).
+        /// Empty entries are omitted.
+        /// </summary>
+        public Dictionary<string, string> Equipment { get; init; } = new();
     }
 }

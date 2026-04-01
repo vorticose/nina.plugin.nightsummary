@@ -1,3 +1,23 @@
+# v2.10.0 Draft Changelog
+
+**New features**
+- NINA-style filename patterns for saved reports — use variables like `$DATEMINUS12$`, `$DATE$`, `$CAMERAID$`, `$TELESCOPEID$`, `$SEQUENCETITLE$` with clickable insertion buttons and live preview (#11)
+- Sky position angle displayed in target headers and FOV overlay — uses plate solve PA, falls back gracefully when unavailable (#18)
+- Plugin version, NINA version, and author credit shown in report footer (#14)
+- Collapsible equipment profile section in report header — shows all connected equipment with user-overridable display names (#15)
+
+**Improvements**
+- Settings now persist to a stable JSON file that survives NINA updates
+- Per-filter exposure breakdown in overview uses human-readable duration format instead of decimal hours (#13)
+- Session history no longer artificially capped — all previous sessions for a target are shown (#16)
+- CI workflow publishes dev build artifacts for beta testers
+
+**Bug fixes**
+- Fixed filter classification progressive reset when loading or refreshing options (#12)
+
+**In progress (not yet merged)**
+- Live Stack plugin integration — embed stacked images in reports (#6)
+
 # v2.9.0 Draft Changelog
 
 **New features**
