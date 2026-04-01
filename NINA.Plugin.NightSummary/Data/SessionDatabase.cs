@@ -517,6 +517,20 @@ namespace NINA.Plugin.NightSummary.Data {
                 MigrateAddColumn(conn, "SessionEvents", "AfSucceeded",      "INTEGER");
                 MigrateAddColumn(conn, "SessionEvents", "AfHfr",            "REAL");
                 MigrateAddColumn(conn, "Sessions",      "SkippedExposures", "INTEGER DEFAULT 0");
+
+                string createTimingEvents = @"
+                    CREATE TABLE IF NOT EXISTS SessionTimingEvents (
+                        Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        SessionId TEXT NOT NULL,
+                        EventType TEXT NOT NULL,
+                        StartTime TEXT,
+                        EndTime TEXT,
+                        DurationSeconds REAL,
+                        Details TEXT
+                    )";
+
+                using (var cmd = new SQLiteCommand(createTimingEvents, conn))
+                    cmd.ExecuteNonQuery();
             }
         }
 
@@ -804,6 +818,54 @@ namespace NINA.Plugin.NightSummary.Data {
                                 Description = reader["Description"] == DBNull.Value ? "" : reader["Description"].ToString(),
                                 AfSucceeded = reader["AfSucceeded"] == DBNull.Value ? (bool?)null : Convert.ToInt32(reader["AfSucceeded"]) == 1,
                                 AfHfr       = reader["AfHfr"]       == DBNull.Value ? (double?)null : Convert.ToDouble(reader["AfHfr"])
+                            });
+                        }
+                    }
+                }
+            }
+            return events;
+        }
+
+        public void SaveTimingEvents(string sessionId, List<TimingEvent> events) {
+            if (events == null || events.Count == 0) return;
+            using (var conn = new SQLiteConnection(connectionString)) {
+                conn.Open();
+                using (var transaction = conn.BeginTransaction()) {
+                    string sql = @"
+                        INSERT INTO SessionTimingEvents (SessionId, EventType, StartTime, EndTime, DurationSeconds, Details)
+                        VALUES (@SessionId, @EventType, @StartTime, @EndTime, @DurationSeconds, @Details)";
+
+                    foreach (var evt in events) {
+                        using (var cmd = new SQLiteCommand(sql, conn)) {
+                            cmd.Parameters.AddWithValue("@SessionId",       sessionId);
+                            cmd.Parameters.AddWithValue("@EventType",       evt.EventType ?? "");
+                            cmd.Parameters.AddWithValue("@StartTime",       evt.StartTime == DateTime.MinValue ? (object)DBNull.Value : evt.StartTime.ToString("o"));
+                            cmd.Parameters.AddWithValue("@EndTime",         evt.EndTime   == DateTime.MinValue ? (object)DBNull.Value : evt.EndTime.ToString("o"));
+                            cmd.Parameters.AddWithValue("@DurationSeconds", evt.DurationSeconds);
+                            cmd.Parameters.AddWithValue("@Details",         evt.Details != null ? (object)evt.Details : DBNull.Value);
+                            cmd.ExecuteNonQuery();
+                        }
+                    }
+                    transaction.Commit();
+                }
+            }
+        }
+
+        public List<TimingEvent> GetTimingEventsForSession(string sessionId) {
+            var events = new List<TimingEvent>();
+            using (var conn = new SQLiteConnection(connectionString)) {
+                conn.Open();
+                string sql = "SELECT * FROM SessionTimingEvents WHERE SessionId = @SessionId ORDER BY StartTime";
+                using (var cmd = new SQLiteCommand(sql, conn)) {
+                    cmd.Parameters.AddWithValue("@SessionId", sessionId);
+                    using (var reader = cmd.ExecuteReader()) {
+                        while (reader.Read()) {
+                            events.Add(new TimingEvent {
+                                EventType       = reader["EventType"]       == DBNull.Value ? "" : reader["EventType"].ToString(),
+                                StartTime       = reader["StartTime"]       == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["StartTime"].ToString()),
+                                EndTime         = reader["EndTime"]         == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["EndTime"].ToString()),
+                                DurationSeconds = reader["DurationSeconds"] == DBNull.Value ? 0 : Convert.ToDouble(reader["DurationSeconds"]),
+                                Details         = reader["Details"]         == DBNull.Value ? null : reader["Details"].ToString()
                             });
                         }
                     }
