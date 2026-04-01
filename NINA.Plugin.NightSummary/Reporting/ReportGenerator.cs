@@ -115,7 +115,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine(".ts-livestack-img { border-radius: 6px; border: 1px solid var(--border); display: block; width: 100%; }");
             sb.AppendLine(".ts-livestack-label { font-size: 11px; color: var(--muted); margin-top: 4px; }");
             sb.AppendLine(".ts-livestack-composite { margin: 12px 0; text-align: center; }");
-            sb.AppendLine(".ts-livestack-composite img { border-radius: 6px; border: 1px solid var(--border); display: block; width: 100%; }");
+            sb.AppendLine(".ts-livestack-composite img { border-radius: 6px; border: 1px solid var(--border); display: block; max-width: 520px; height: auto; margin: 0 auto; }");
             sb.AppendLine(".ts-target-info { flex: 1; }");
             sb.AppendLine(".ts-coords { font-size: 12px; color: var(--muted); margin: 4px 0 12px; }");
             sb.AppendLine(".ts-filter-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }");
@@ -409,9 +409,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
                         .ToList();
                     if (targetImages.Count > 0) {
                         Logger.Info($"NightSummary: Rendering {targetImages.Count} live stack image(s) for target '{target.Key}'");
+                        // Build filter → total integration lookup from session image records
+                        var filterIntegration = target
+                            .GroupBy(i => i.Filter, StringComparer.OrdinalIgnoreCase)
+                            .ToDictionary(g => g.Key, g => g.Sum(i => i.ExposureDuration), StringComparer.OrdinalIgnoreCase);
                         sb.AppendLine("<details class='livestack-section' open>");
                         sb.AppendLine($"<summary>Live Stack ({targetImages.Count} {(targetImages.Count == 1 ? "image" : "images")})</summary>");
-                        sb.Append(BuildLiveStackRow(targetImages));
+                        sb.Append(BuildLiveStackRow(targetImages, filterIntegration));
                         sb.AppendLine("</details>");
                     }
                 } else if (data.LiveStackImages.Count == 0) {
@@ -568,37 +572,77 @@ namespace NINA.Plugin.NightSummary.Reporting {
             return sb.ToString();
         }
 
-        private static string BuildLiveStackRow(List<Session.LiveStackImage> images) {
+        private static string BuildLiveStackRow(List<Session.LiveStackImage> images, Dictionary<string, double> filterIntegration = null) {
             var sb = new StringBuilder();
             var monoImages = images.Where(i => i.IsMonochrome && !i.Filter.Equals("RGB", StringComparison.OrdinalIgnoreCase)).ToList();
             var composites = images.Where(i => !i.IsMonochrome || i.Filter.Equals("RGB", StringComparison.OrdinalIgnoreCase)).ToList();
 
-            // Per-filter row (mono stacks side by side, centered)
+            // Group mono images by filter type: broadband first, then narrowband
             if (monoImages.Count > 0) {
-                int perRow = Math.Min(monoImages.Count, 4);
-                int itemWidth = monoImages.Count == 1 ? 400 : (760 - (perRow - 1) * 8) / perRow;
-                sb.AppendLine("<div class='ts-livestack-row' style='justify-content:center;'>");
-                foreach (var img in monoImages) {
-                    sb.AppendLine($"<div class='ts-livestack-item' style='width:{itemWidth}px;'>");
-                    sb.AppendLine($"<img class='ts-livestack-img' src='data:image/jpeg;base64,{Convert.ToBase64String(img.JpegData)}' alt='{img.Filter} stack' />");
-                    sb.AppendLine($"<div class='ts-livestack-label'>{img.Filter} &middot; {img.StackCount} frames</div>");
-                    sb.AppendLine("</div>");
+                var broadband  = monoImages.Where(i => IsBroadband(i.Filter)).ToList();
+                var narrowband = monoImages.Where(i => IsNarrowband(i.Filter)).ToList();
+                var other      = monoImages.Where(i => !IsBroadband(i.Filter) && !IsNarrowband(i.Filter)).ToList();
+
+                // Group by classification when we have a clean split and >4 images.
+                // Otherwise fall back to simple row wrapping (max 4 per row).
+                var rows = new List<List<Session.LiveStackImage>>();
+                bool cleanSplit = other.Count == 0 && broadband.Count > 0 && narrowband.Count > 0;
+
+                if (monoImages.Count > 4 && cleanSplit) {
+                    rows.Add(broadband);
+                    rows.Add(narrowband);
+                } else {
+                    // Simple chunking: max 4 per row, centered
+                    for (int i = 0; i < monoImages.Count; i += 4) {
+                        rows.Add(monoImages.GetRange(i, Math.Min(4, monoImages.Count - i)));
+                    }
                 }
-                sb.AppendLine("</div>");
+
+                foreach (var row in rows) {
+                    AppendMonoRow(sb, row, filterIntegration);
+                }
             }
 
             // Color composite row (full width)
             foreach (var img in composites) {
                 sb.AppendLine("<div class='ts-livestack-composite'>");
                 sb.AppendLine($"<img src='data:image/jpeg;base64,{Convert.ToBase64String(img.JpegData)}' alt='Live Stack composite' />");
-                string label = img.RedStackCount.HasValue
-                    ? $"Live Stack Composite &middot; R:{img.RedStackCount} G:{img.GreenStackCount} B:{img.BlueStackCount}"
-                    : $"Live Stack &middot; {img.StackCount} frames";
+                string label;
+                if (img.RedStackCount.HasValue) {
+                    label = $"Live Stack Composite &middot; R:{img.RedStackCount} G:{img.GreenStackCount} B:{img.BlueStackCount}";
+                    // Add total integration across all RGB channels
+                    if (filterIntegration != null) {
+                        double totalSec = filterIntegration.Values.Sum();
+                        if (totalSec > 0) label += $" &middot; {FormatDuration(totalSec)}";
+                    }
+                } else {
+                    label = $"Live Stack &middot; {img.StackCount} frames";
+                    if (filterIntegration != null && filterIntegration.TryGetValue(img.Filter, out var totalSec) && totalSec > 0) {
+                        label += $" &middot; {FormatDuration(totalSec)}";
+                    }
+                }
                 sb.AppendLine($"<div class='ts-livestack-label'>{label}</div>");
                 sb.AppendLine("</div>");
             }
 
             return sb.ToString();
+        }
+
+        private static void AppendMonoRow(StringBuilder sb, List<Session.LiveStackImage> row, Dictionary<string, double> filterIntegration = null) {
+            int perRow = Math.Min(row.Count, 4);
+            int itemWidth = row.Count == 1 ? 400 : (760 - (perRow - 1) * 8) / perRow;
+            sb.AppendLine("<div class='ts-livestack-row' style='justify-content:center;'>");
+            foreach (var img in row) {
+                var label = $"{img.Filter} &middot; {img.StackCount} frames";
+                if (filterIntegration != null && filterIntegration.TryGetValue(img.Filter, out var totalSec) && totalSec > 0) {
+                    label += $" &middot; {FormatDuration(totalSec)}";
+                }
+                sb.AppendLine($"<div class='ts-livestack-item' style='width:{itemWidth}px;'>");
+                sb.AppendLine($"<img class='ts-livestack-img' src='data:image/jpeg;base64,{Convert.ToBase64String(img.JpegData)}' alt='{img.Filter} stack' />");
+                sb.AppendLine($"<div class='ts-livestack-label'>{label}</div>");
+                sb.AppendLine("</div>");
+            }
+            sb.AppendLine("</div>");
         }
 
         private void AppendIqRows(StringBuilder sb, List<ImageRecord> images, string detailsOpen = "") {
