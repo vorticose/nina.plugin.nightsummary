@@ -340,6 +340,33 @@
                         </StackPanel.Style>
 
                         <StackPanel Orientation="Horizontal" Margin="0,3">
+                            <TextBlock Text="X-Axis" Width="130" VerticalAlignment="Center" />
+                            <ComboBox SelectedIndex="{Binding ChartXAxisMetric}" MinWidth="160">
+                                <ComboBoxItem>Time</ComboBoxItem>
+                                <ComboBoxItem>Frame Index</ComboBoxItem>
+                                <ComboBoxItem>HFR</ComboBoxItem>
+                                <ComboBoxItem>FWHM</ComboBoxItem>
+                                <ComboBoxItem>Guiding RMS</ComboBoxItem>
+                                <ComboBoxItem>Focuser Temp (°C)</ComboBoxItem>
+                                <ComboBoxItem>Ambient Temp (°C)</ComboBoxItem>
+                                <ComboBoxItem>Eccentricity</ComboBoxItem>
+                                <ComboBoxItem>Altitude (°)</ComboBoxItem>
+                                <ComboBoxItem>Airmass</ComboBoxItem>
+                                <ComboBoxItem>Humidity (%)</ComboBoxItem>
+                                <ComboBoxItem>Focuser Position (steps)</ComboBoxItem>
+                                <ComboBoxItem>Sky Quality (mag/arcsec²)</ComboBoxItem>
+                                <ComboBoxItem>Cloud Cover (%)</ComboBoxItem>
+                                <ComboBoxItem>Camera Temp (°C)</ComboBoxItem>
+                                <ComboBoxItem>Dew Point (°C)</ComboBoxItem>
+                                <ComboBoxItem>Wind Speed (m/s)</ComboBoxItem>
+                                <ComboBoxItem>Pressure (hPa)</ComboBoxItem>
+                                <ComboBoxItem>Star Count</ComboBoxItem>
+                                <ComboBoxItem>Azimuth (°)</ComboBoxItem>
+                                <ComboBoxItem>Seeing FWHM (arcsec)</ComboBoxItem>
+                            </ComboBox>
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,3">
                             <TextBlock Text="Primary Metric" Width="130" VerticalAlignment="Center" />
                             <ComboBox SelectedIndex="{Binding ChartPrimaryMetric}" MinWidth="160">
                                 <ComboBoxItem>HFR</ComboBoxItem>

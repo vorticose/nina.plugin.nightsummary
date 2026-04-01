@@ -1,3 +1,8 @@
+# v2.10.0 Draft Changelog
+
+**New features**
+- Customizable x-axis on metric charts — choose Time, Frame Index, or any metric (Altitude, Temperature, etc.) as the x-axis (#17)
+
 # v2.9.0 Draft Changelog
 
 **New features**

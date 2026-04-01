@@ -416,6 +416,11 @@ namespace NINA.Plugin.NightSummary {
             set { S.ExpandSectionsDefault = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
+        public int ChartXAxisMetric {
+            get => S.ChartXAxisMetric;
+            set { S.ChartXAxisMetric = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
         public int ChartPrimaryMetric {
             get => S.ChartPrimaryMetric;
             set { S.ChartPrimaryMetric = value; SaveSettings(); RaisePropertyChanged(); }

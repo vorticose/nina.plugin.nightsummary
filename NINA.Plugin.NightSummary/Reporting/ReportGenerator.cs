@@ -626,18 +626,20 @@ namespace NINA.Plugin.NightSummary.Reporting {
             if (detailLevel >= 2 && SettingsManager.Instance.Current.ShowHFRGraph) {
                 int primary   = SettingsManager.Instance.Current.ChartPrimaryMetric;
                 int secondary = SettingsManager.Instance.Current.ChartSecondaryMetric;
-                sb.AppendLine($"<h2>{ChartGenerator.GetChartTitle(primary, secondary)}</h2>");
-                sb.AppendLine(ChartGenerator.GenerateMetricChart(data.Images, primary, secondary));
+                int xAxis     = SettingsManager.Instance.Current.ChartXAxisMetric;
+                sb.AppendLine($"<h2>{ChartGenerator.GetChartTitle(primary, secondary, xAxis)}</h2>");
+                sb.AppendLine(ChartGenerator.GenerateMetricChart(data.Images, primary, secondary, xAxis));
 
                 var additionalRaw = SettingsManager.Instance.Current.AdditionalChartConfigs;
                 if (!string.IsNullOrWhiteSpace(additionalRaw)) {
                     foreach (var part in additionalRaw.Split('|')) {
                         var tokens = part.Split(':');
-                        if (tokens.Length == 2
+                        if (tokens.Length >= 2
                             && int.TryParse(tokens[0], out int p)
                             && int.TryParse(tokens[1], out int s)) {
-                            sb.AppendLine($"<h2>{ChartGenerator.GetChartTitle(p, s)}</h2>");
-                            sb.AppendLine(ChartGenerator.GenerateMetricChart(data.Images, p, s));
+                            int ax = tokens.Length >= 3 && int.TryParse(tokens[2], out int a) ? a : 0;
+                            sb.AppendLine($"<h2>{ChartGenerator.GetChartTitle(p, s, ax)}</h2>");
+                            sb.AppendLine(ChartGenerator.GenerateMetricChart(data.Images, p, s, ax));
                         }
                     }
                 }
