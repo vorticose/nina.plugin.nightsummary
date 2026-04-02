@@ -262,6 +262,20 @@ namespace NINA.Plugin.NightSummary.Session {
                 var history      = BuildSessionHistory(testDb, images, session.SessionId);
                 var (fovW, fovH) = ComputeCameraFov(session);
                 var (lat, lon)   = GetObserverCoords();
+
+                // Load or re-parse timing events for overhead breakdown
+                var timingEvents = testDb.GetTimingEventsForSession(session.SessionId);
+                if (!timingEvents.Any()) {
+                    try {
+                        timingEvents = NinaLogParser.Parse(session.SessionStart, session.SessionEnd, images.Count);
+                        if (timingEvents.Any())
+                            testDb.SaveTimingEvents(session.SessionId, timingEvents);
+                    } catch (Exception ex) {
+                        Logger.Warning($"NightSummary: Log re-parse failed — {ex.Message}");
+                        timingEvents = new List<TimingEvent>();
+                    }
+                }
+
                 var reportData   = new ReportData {
                     Session                      = session,
                     Images                       = images,
@@ -275,7 +289,8 @@ namespace NINA.Plugin.NightSummary.Session {
                     ObserverLongitude            = lon,
                     ActiveProfileId              = profileId,
                     SkippedExposures             = session.SkippedExposures,
-                    Equipment                    = BuildEquipmentDictionary(session)
+                    Equipment                    = BuildEquipmentDictionary(session),
+                    TimingEvents                 = timingEvents
                 };
 
                 // Try to load persisted live stack masters for this session
@@ -755,7 +770,20 @@ namespace NINA.Plugin.NightSummary.Session {
             var (fovW, fovH) = ComputeCameraFov(session);
             var (lat, lon)   = GetObserverCoords();
 
-            return new ReportData {
+            // Load or re-parse timing events for overhead breakdown
+            var timingEvents = db.GetTimingEventsForSession(session.SessionId);
+            if (!timingEvents.Any()) {
+                try {
+                    timingEvents = NinaLogParser.Parse(session.SessionStart, session.SessionEnd, images.Count);
+                    if (timingEvents.Any())
+                        db.SaveTimingEvents(session.SessionId, timingEvents);
+                } catch (Exception ex) {
+                    Logger.Warning($"NightSummary: Log re-parse failed — {ex.Message}");
+                    timingEvents = new List<TimingEvent>();
+                }
+            }
+
+            var reportData = new ReportData {
                 Session                      = session,
                 Images                       = images,
                 Events                       = events,
@@ -768,8 +796,17 @@ namespace NINA.Plugin.NightSummary.Session {
                 ObserverLongitude            = lon,
                 ActiveProfileId              = profileId,
                 SkippedExposures             = session.SkippedExposures,
-                Equipment                    = BuildEquipmentDictionary(session)
+                Equipment                    = BuildEquipmentDictionary(session),
+                TimingEvents                 = timingEvents
             };
+
+            // Try to load persisted live stack masters for this session
+            var (resolvedDir, resolvedFilename) = ResolveReportSavePath(reportData);
+            if (resolvedDir != null) {
+                reportData.LiveStackImages = LoadLiveStackMasters(resolvedDir, resolvedFilename);
+            }
+
+            return reportData;
         }
 
         /// <summary>
