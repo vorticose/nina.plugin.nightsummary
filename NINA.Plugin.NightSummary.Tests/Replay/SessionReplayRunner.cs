@@ -114,6 +114,10 @@ namespace NINA.Plugin.NightSummary.Tests.Replay {
                 null, // filterWheelMediator — not needed for replay
                 null, // rotatorMediator
                 null, // guiderMediator
+                null, // domeMediator
+                null, // flatDeviceMediator
+                null, // weatherDataMediator
+                null, // switchMediator
                 null, // messageBroker — not needed for replay
                 _dbPath);
 

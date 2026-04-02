@@ -62,5 +62,7 @@ namespace NINA.Plugin.NightSummary.Data {
         // Comma-separated key:value pairs, e.g. "Camera:My ASI2600,Telescope:Esprit 100ED"
         public string EquipmentOverrides { get; set; } = "";
         public bool   ShowEquipmentProfile { get; set; } = true;
+        // Comma-separated list of equipment fields to show in the report
+        public string EquipmentVisibleFields { get; set; } = "Camera,Telescope,Mount,Filter Wheel,Focuser,Rotator,Guider";
     }
 }

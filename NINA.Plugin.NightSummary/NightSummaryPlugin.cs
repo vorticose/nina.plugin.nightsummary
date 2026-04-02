@@ -303,13 +303,45 @@ namespace NINA.Plugin.NightSummary {
             SaveSettings();
         }
 
-        public string EquipmentCamera      { get => GetEquipmentOverride("Camera");       set { SetEquipmentOverride("Camera", value);       RaisePropertyChanged(); } }
-        public string EquipmentTelescope    { get => GetEquipmentOverride("Telescope");    set { SetEquipmentOverride("Telescope", value);    RaisePropertyChanged(); } }
-        public string EquipmentMount        { get => GetEquipmentOverride("Mount");        set { SetEquipmentOverride("Mount", value);        RaisePropertyChanged(); } }
-        public string EquipmentFilterWheel  { get => GetEquipmentOverride("Filter Wheel"); set { SetEquipmentOverride("Filter Wheel", value); RaisePropertyChanged(); } }
-        public string EquipmentFocuser      { get => GetEquipmentOverride("Focuser");      set { SetEquipmentOverride("Focuser", value);      RaisePropertyChanged(); } }
-        public string EquipmentRotator      { get => GetEquipmentOverride("Rotator");      set { SetEquipmentOverride("Rotator", value);      RaisePropertyChanged(); } }
-        public string EquipmentGuider       { get => GetEquipmentOverride("Guider");       set { SetEquipmentOverride("Guider", value);       RaisePropertyChanged(); } }
+        public string EquipmentCamera        { get => GetEquipmentOverride("Camera");         set { SetEquipmentOverride("Camera", value);         RaisePropertyChanged(); } }
+        public string EquipmentTelescope     { get => GetEquipmentOverride("Telescope");      set { SetEquipmentOverride("Telescope", value);      RaisePropertyChanged(); } }
+        public string EquipmentMount         { get => GetEquipmentOverride("Mount");           set { SetEquipmentOverride("Mount", value);           RaisePropertyChanged(); } }
+        public string EquipmentFilterWheel   { get => GetEquipmentOverride("Filter Wheel");   set { SetEquipmentOverride("Filter Wheel", value);   RaisePropertyChanged(); } }
+        public string EquipmentFocuser       { get => GetEquipmentOverride("Focuser");        set { SetEquipmentOverride("Focuser", value);        RaisePropertyChanged(); } }
+        public string EquipmentRotator       { get => GetEquipmentOverride("Rotator");        set { SetEquipmentOverride("Rotator", value);        RaisePropertyChanged(); } }
+        public string EquipmentGuider        { get => GetEquipmentOverride("Guider");         set { SetEquipmentOverride("Guider", value);         RaisePropertyChanged(); } }
+        public string EquipmentDome          { get => GetEquipmentOverride("Dome");           set { SetEquipmentOverride("Dome", value);           RaisePropertyChanged(); } }
+        public string EquipmentFlatPanel     { get => GetEquipmentOverride("Flat Panel");     set { SetEquipmentOverride("Flat Panel", value);     RaisePropertyChanged(); } }
+        public string EquipmentSafetyMonitor { get => GetEquipmentOverride("Safety Monitor"); set { SetEquipmentOverride("Safety Monitor", value); RaisePropertyChanged(); } }
+        public string EquipmentWeather       { get => GetEquipmentOverride("Weather");        set { SetEquipmentOverride("Weather", value);        RaisePropertyChanged(); } }
+        public string EquipmentSwitch        { get => GetEquipmentOverride("Switch");         set { SetEquipmentOverride("Switch", value);         RaisePropertyChanged(); } }
+
+        // Per-field visibility toggles
+        private bool IsEquipmentFieldVisible(string key) =>
+            (S.EquipmentVisibleFields ?? "").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .Contains(key, StringComparer.OrdinalIgnoreCase);
+
+        private void SetEquipmentFieldVisible(string key, bool visible) {
+            var fields = new HashSet<string>(
+                (S.EquipmentVisibleFields ?? "").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
+                StringComparer.OrdinalIgnoreCase);
+            if (visible) fields.Add(key); else fields.Remove(key);
+            S.EquipmentVisibleFields = string.Join(",", fields);
+            SaveSettings();
+        }
+
+        public bool ShowCamera        { get => IsEquipmentFieldVisible("Camera");         set { SetEquipmentFieldVisible("Camera", value);         RaisePropertyChanged(); } }
+        public bool ShowTelescope     { get => IsEquipmentFieldVisible("Telescope");      set { SetEquipmentFieldVisible("Telescope", value);      RaisePropertyChanged(); } }
+        public bool ShowMount         { get => IsEquipmentFieldVisible("Mount");           set { SetEquipmentFieldVisible("Mount", value);           RaisePropertyChanged(); } }
+        public bool ShowFilterWheel   { get => IsEquipmentFieldVisible("Filter Wheel");   set { SetEquipmentFieldVisible("Filter Wheel", value);   RaisePropertyChanged(); } }
+        public bool ShowFocuser       { get => IsEquipmentFieldVisible("Focuser");        set { SetEquipmentFieldVisible("Focuser", value);        RaisePropertyChanged(); } }
+        public bool ShowRotator       { get => IsEquipmentFieldVisible("Rotator");        set { SetEquipmentFieldVisible("Rotator", value);        RaisePropertyChanged(); } }
+        public bool ShowGuider        { get => IsEquipmentFieldVisible("Guider");         set { SetEquipmentFieldVisible("Guider", value);         RaisePropertyChanged(); } }
+        public bool ShowDome          { get => IsEquipmentFieldVisible("Dome");           set { SetEquipmentFieldVisible("Dome", value);           RaisePropertyChanged(); } }
+        public bool ShowFlatPanel     { get => IsEquipmentFieldVisible("Flat Panel");     set { SetEquipmentFieldVisible("Flat Panel", value);     RaisePropertyChanged(); } }
+        public bool ShowSafetyMonitor { get => IsEquipmentFieldVisible("Safety Monitor"); set { SetEquipmentFieldVisible("Safety Monitor", value); RaisePropertyChanged(); } }
+        public bool ShowWeather       { get => IsEquipmentFieldVisible("Weather");        set { SetEquipmentFieldVisible("Weather", value);        RaisePropertyChanged(); } }
+        public bool ShowSwitch        { get => IsEquipmentFieldVisible("Switch");         set { SetEquipmentFieldVisible("Switch", value);         RaisePropertyChanged(); } }
 
         public string SaveReportFilePattern {
             get => S.SaveReportFilePattern;

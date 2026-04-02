@@ -23,14 +23,19 @@ namespace NINA.Plugin.NightSummary.Session {
         private readonly SessionCollector      collector;
         private readonly SessionEventCollector eventCollector;
         private readonly ReportGenerator       reportGenerator;
-        private readonly IProfileService       profileService;
-        private readonly ICameraMediator       cameraMediator;
-        private readonly ITelescopeMediator    telescopeMediator;
-        private readonly ISequenceMediator     sequenceMediator;
-        private readonly IFilterWheelMediator  filterWheelMediator;
-        private readonly IFocuserMediator      focuserMediator;
-        private readonly IRotatorMediator      rotatorMediator;
-        private readonly IGuiderMediator       guiderMediator;
+        private readonly IProfileService        profileService;
+        private readonly ICameraMediator        cameraMediator;
+        private readonly ITelescopeMediator     telescopeMediator;
+        private readonly ISequenceMediator      sequenceMediator;
+        private readonly IFilterWheelMediator   filterWheelMediator;
+        private readonly IFocuserMediator       focuserMediator;
+        private readonly IRotatorMediator       rotatorMediator;
+        private readonly IGuiderMediator        guiderMediator;
+        private readonly ISafetyMonitorMediator safetyMonitorMediator;
+        private readonly IDomeMediator          domeMediator;
+        private readonly IFlatDeviceMediator    flatDeviceMediator;
+        private readonly IWeatherDataMediator   weatherDataMediator;
+        private readonly ISwitchMediator        switchMediator;
         private readonly IMessageBroker         messageBroker;
         private LiveStackCapture               liveStackCapture;
 
@@ -48,11 +53,16 @@ namespace NINA.Plugin.NightSummary.Session {
             IFilterWheelMediator   filterWheelMediator,
             IRotatorMediator       rotatorMediator,
             IGuiderMediator        guiderMediator,
+            IDomeMediator          domeMediator,
+            IFlatDeviceMediator    flatDeviceMediator,
+            IWeatherDataMediator   weatherDataMediator,
+            ISwitchMediator        switchMediator,
             IMessageBroker         messageBroker)
             : this(imageSaveMediator, profileService, safetyMonitorMediator,
                    focuserMediator, telescopeMediator, cameraMediator, sequenceMediator,
-                   filterWheelMediator, rotatorMediator, guiderMediator, messageBroker,
-                   databasePath: null) { }
+                   filterWheelMediator, rotatorMediator, guiderMediator,
+                   domeMediator, flatDeviceMediator, weatherDataMediator, switchMediator,
+                   messageBroker, databasePath: null) { }
 
         /// <summary>
         /// Internal constructor for test replay. Accepts an explicit database path
@@ -70,18 +80,27 @@ namespace NINA.Plugin.NightSummary.Session {
             IFilterWheelMediator   filterWheelMediator,
             IRotatorMediator       rotatorMediator,
             IGuiderMediator        guiderMediator,
+            IDomeMediator          domeMediator,
+            IFlatDeviceMediator    flatDeviceMediator,
+            IWeatherDataMediator   weatherDataMediator,
+            ISwitchMediator        switchMediator,
             IMessageBroker         messageBroker,
             string                 databasePath) {
 
-            this.profileService      = profileService;
-            this.cameraMediator      = cameraMediator;
-            this.telescopeMediator   = telescopeMediator;
-            this.sequenceMediator    = sequenceMediator;
-            this.filterWheelMediator = filterWheelMediator;
-            this.focuserMediator     = focuserMediator;
-            this.rotatorMediator     = rotatorMediator;
-            this.guiderMediator      = guiderMediator;
-            this.messageBroker       = messageBroker;
+            this.profileService        = profileService;
+            this.cameraMediator        = cameraMediator;
+            this.telescopeMediator     = telescopeMediator;
+            this.sequenceMediator      = sequenceMediator;
+            this.filterWheelMediator   = filterWheelMediator;
+            this.focuserMediator       = focuserMediator;
+            this.rotatorMediator       = rotatorMediator;
+            this.guiderMediator        = guiderMediator;
+            this.safetyMonitorMediator = safetyMonitorMediator;
+            this.domeMediator          = domeMediator;
+            this.flatDeviceMediator    = flatDeviceMediator;
+            this.weatherDataMediator   = weatherDataMediator;
+            this.switchMediator        = switchMediator;
+            this.messageBroker         = messageBroker;
             var database             = databasePath != null ? new SessionDatabase(databasePath) : new SessionDatabase();
             this.collector       = new SessionCollector(imageSaveMediator, sequenceMediator, database);
             this.eventCollector  = new SessionEventCollector(database, safetyMonitorMediator, focuserMediator, telescopeMediator);
@@ -693,13 +712,26 @@ namespace NINA.Plugin.NightSummary.Session {
                     equipment[key] = value;
             }
 
-            Add("Camera",       session.CameraName);
-            Add("Telescope",    session.TelescopeName);
-            Add("Mount",        session.MountName);
-            Add("Filter Wheel", session.FilterWheelName);
-            Add("Focuser",      session.FocuserName);
-            Add("Rotator",      session.RotatorName);
-            Add("Guider",       session.GuiderName);
+            var visible = new HashSet<string>(
+                (S.EquipmentVisibleFields ?? "").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
+                StringComparer.OrdinalIgnoreCase);
+
+            void AddIfVisible(string key, string dbValue) {
+                if (visible.Contains(key)) Add(key, dbValue);
+            }
+
+            AddIfVisible("Camera",         session.CameraName);
+            AddIfVisible("Telescope",      session.TelescopeName);
+            AddIfVisible("Mount",          session.MountName);
+            AddIfVisible("Filter Wheel",   session.FilterWheelName);
+            AddIfVisible("Focuser",        session.FocuserName);
+            AddIfVisible("Rotator",        session.RotatorName);
+            AddIfVisible("Guider",         session.GuiderName);
+            AddIfVisible("Dome",           session.DomeName);
+            AddIfVisible("Flat Panel",     session.FlatDeviceName);
+            AddIfVisible("Safety Monitor", session.SafetyMonitorName);
+            AddIfVisible("Weather",        session.WeatherName);
+            AddIfVisible("Switch",         session.SwitchName);
 
             return equipment;
         }
@@ -723,16 +755,22 @@ namespace NINA.Plugin.NightSummary.Session {
             try {
                 string SafeName(Func<string> getter) { try { return getter(); } catch { return null; } }
 
-                var camera      = SafeName(() => cameraMediator?.GetInfo()?.Name);
-                var telescope   = SafeName(() => profileService?.ActiveProfile?.TelescopeSettings?.Name);
-                var mount       = SafeName(() => telescopeMediator?.GetInfo()?.Name);
-                var filterWheel = SafeName(() => filterWheelMediator?.GetInfo()?.Name);
-                var focuser     = SafeName(() => focuserMediator?.GetInfo()?.Name);
-                var rotator     = SafeName(() => rotatorMediator?.GetInfo()?.Name);
-                var guider      = SafeName(() => guiderMediator?.GetInfo()?.Name);
+                var camera        = SafeName(() => cameraMediator?.GetInfo()?.Name);
+                var telescope     = SafeName(() => profileService?.ActiveProfile?.TelescopeSettings?.Name);
+                var mount         = SafeName(() => telescopeMediator?.GetInfo()?.Name);
+                var filterWheel   = SafeName(() => filterWheelMediator?.GetInfo()?.Name);
+                var focuser       = SafeName(() => focuserMediator?.GetInfo()?.Name);
+                var rotator       = SafeName(() => rotatorMediator?.GetInfo()?.Name);
+                var guider        = SafeName(() => guiderMediator?.GetInfo()?.Name);
+                var dome          = SafeName(() => domeMediator?.GetInfo()?.Name);
+                var flatDevice    = SafeName(() => flatDeviceMediator?.GetInfo()?.Name);
+                var safetyMonitor = SafeName(() => safetyMonitorMediator?.GetInfo()?.Name);
+                var weather       = SafeName(() => weatherDataMediator?.GetInfo()?.Name);
+                var switchHub     = SafeName(() => switchMediator?.GetInfo()?.Name);
 
                 collector.Database.UpdateSessionEquipment(sessionId,
-                    camera, telescope, mount, filterWheel, focuser, rotator, guider);
+                    camera, telescope, mount, filterWheel, focuser, rotator, guider,
+                    dome, flatDevice, safetyMonitor, weather, switchHub);
 
                 Logger.Info($"NightSummary: Equipment captured — Camera={camera ?? "n/a"}, Telescope={telescope ?? "n/a"}, Mount={mount ?? "n/a"}, " +
                     $"FilterWheel={filterWheel ?? "n/a"}, Focuser={focuser ?? "n/a"}, Rotator={rotator ?? "n/a"}, Guider={guider ?? "n/a"}");

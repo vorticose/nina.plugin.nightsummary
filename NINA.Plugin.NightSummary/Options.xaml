@@ -493,10 +493,11 @@
 
                     <TextBlock Text="Equipment Profile" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
                     <CheckBox IsChecked="{Binding ShowEquipmentProfile}" Content="Show equipment section in report" Margin="0,0,0,8" />
-                    <TextBlock Text="Override NINA's detected equipment names. Leave blank to use the auto-detected name."
+                    <TextBlock Text="Toggle which equipment types appear in the report. Override names are used instead of NINA's auto-detected names when set."
                                FontStyle="Italic" Foreground="Gray" FontSize="11" Margin="0,0,0,8" TextWrapping="Wrap" />
                     <Grid Margin="0,0,0,4">
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="30" />
                             <ColumnDefinition Width="120" />
                             <ColumnDefinition Width="*" MaxWidth="350" />
                         </Grid.ColumnDefinitions>
@@ -508,21 +509,48 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Camera" VerticalAlignment="Center" Margin="0,2" />
-                        <TextBox   Grid.Row="0" Grid.Column="1" Text="{Binding EquipmentCamera, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Telescope" VerticalAlignment="Center" Margin="0,2" />
-                        <TextBox   Grid.Row="1" Grid.Column="1" Text="{Binding EquipmentTelescope, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Mount" VerticalAlignment="Center" Margin="0,2" />
-                        <TextBox   Grid.Row="2" Grid.Column="1" Text="{Binding EquipmentMount, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
-                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Filter Wheel" VerticalAlignment="Center" Margin="0,2" />
-                        <TextBox   Grid.Row="3" Grid.Column="1" Text="{Binding EquipmentFilterWheel, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
-                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Focuser" VerticalAlignment="Center" Margin="0,2" />
-                        <TextBox   Grid.Row="4" Grid.Column="1" Text="{Binding EquipmentFocuser, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
-                        <TextBlock Grid.Row="5" Grid.Column="0" Text="Rotator" VerticalAlignment="Center" Margin="0,2" />
-                        <TextBox   Grid.Row="5" Grid.Column="1" Text="{Binding EquipmentRotator, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
-                        <TextBlock Grid.Row="6" Grid.Column="0" Text="Guider" VerticalAlignment="Center" Margin="0,2" />
-                        <TextBox   Grid.Row="6" Grid.Column="1" Text="{Binding EquipmentGuider, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                        <CheckBox  Grid.Row="0"  Grid.Column="0" IsChecked="{Binding ShowCamera}"        VerticalAlignment="Center" Margin="0,2" />
+                        <TextBlock Grid.Row="0"  Grid.Column="1" Text="Camera" VerticalAlignment="Center" Margin="0,2" />
+                        <TextBox   Grid.Row="0"  Grid.Column="2" Text="{Binding EquipmentCamera, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                        <CheckBox  Grid.Row="1"  Grid.Column="0" IsChecked="{Binding ShowTelescope}"     VerticalAlignment="Center" Margin="0,2" />
+                        <TextBlock Grid.Row="1"  Grid.Column="1" Text="Telescope" VerticalAlignment="Center" Margin="0,2" />
+                        <TextBox   Grid.Row="1"  Grid.Column="2" Text="{Binding EquipmentTelescope, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                        <CheckBox  Grid.Row="2"  Grid.Column="0" IsChecked="{Binding ShowMount}"         VerticalAlignment="Center" Margin="0,2" />
+                        <TextBlock Grid.Row="2"  Grid.Column="1" Text="Mount" VerticalAlignment="Center" Margin="0,2" />
+                        <TextBox   Grid.Row="2"  Grid.Column="2" Text="{Binding EquipmentMount, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                        <CheckBox  Grid.Row="3"  Grid.Column="0" IsChecked="{Binding ShowFilterWheel}"   VerticalAlignment="Center" Margin="0,2" />
+                        <TextBlock Grid.Row="3"  Grid.Column="1" Text="Filter Wheel" VerticalAlignment="Center" Margin="0,2" />
+                        <TextBox   Grid.Row="3"  Grid.Column="2" Text="{Binding EquipmentFilterWheel, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                        <CheckBox  Grid.Row="4"  Grid.Column="0" IsChecked="{Binding ShowFocuser}"       VerticalAlignment="Center" Margin="0,2" />
+                        <TextBlock Grid.Row="4"  Grid.Column="1" Text="Focuser" VerticalAlignment="Center" Margin="0,2" />
+                        <TextBox   Grid.Row="4"  Grid.Column="2" Text="{Binding EquipmentFocuser, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                        <CheckBox  Grid.Row="5"  Grid.Column="0" IsChecked="{Binding ShowRotator}"       VerticalAlignment="Center" Margin="0,2" />
+                        <TextBlock Grid.Row="5"  Grid.Column="1" Text="Rotator" VerticalAlignment="Center" Margin="0,2" />
+                        <TextBox   Grid.Row="5"  Grid.Column="2" Text="{Binding EquipmentRotator, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                        <CheckBox  Grid.Row="6"  Grid.Column="0" IsChecked="{Binding ShowGuider}"        VerticalAlignment="Center" Margin="0,2" />
+                        <TextBlock Grid.Row="6"  Grid.Column="1" Text="Guider" VerticalAlignment="Center" Margin="0,2" />
+                        <TextBox   Grid.Row="6"  Grid.Column="2" Text="{Binding EquipmentGuider, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                        <CheckBox  Grid.Row="7"  Grid.Column="0" IsChecked="{Binding ShowDome}"          VerticalAlignment="Center" Margin="0,2" />
+                        <TextBlock Grid.Row="7"  Grid.Column="1" Text="Dome" VerticalAlignment="Center" Margin="0,2" />
+                        <TextBox   Grid.Row="7"  Grid.Column="2" Text="{Binding EquipmentDome, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                        <CheckBox  Grid.Row="8"  Grid.Column="0" IsChecked="{Binding ShowFlatPanel}"     VerticalAlignment="Center" Margin="0,2" />
+                        <TextBlock Grid.Row="8"  Grid.Column="1" Text="Flat Panel" VerticalAlignment="Center" Margin="0,2" />
+                        <TextBox   Grid.Row="8"  Grid.Column="2" Text="{Binding EquipmentFlatPanel, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                        <CheckBox  Grid.Row="9"  Grid.Column="0" IsChecked="{Binding ShowSafetyMonitor}" VerticalAlignment="Center" Margin="0,2" />
+                        <TextBlock Grid.Row="9"  Grid.Column="1" Text="Safety Monitor" VerticalAlignment="Center" Margin="0,2" />
+                        <TextBox   Grid.Row="9"  Grid.Column="2" Text="{Binding EquipmentSafetyMonitor, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                        <CheckBox  Grid.Row="10" Grid.Column="0" IsChecked="{Binding ShowWeather}"       VerticalAlignment="Center" Margin="0,2" />
+                        <TextBlock Grid.Row="10" Grid.Column="1" Text="Weather" VerticalAlignment="Center" Margin="0,2" />
+                        <TextBox   Grid.Row="10" Grid.Column="2" Text="{Binding EquipmentWeather, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                        <CheckBox  Grid.Row="11" Grid.Column="0" IsChecked="{Binding ShowSwitch}"        VerticalAlignment="Center" Margin="0,2" />
+                        <TextBlock Grid.Row="11" Grid.Column="1" Text="Switch" VerticalAlignment="Center" Margin="0,2" />
+                        <TextBox   Grid.Row="11" Grid.Column="2" Text="{Binding EquipmentSwitch, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
                     </Grid>
 
                     <Separator Margin="0,20,0,10" />
