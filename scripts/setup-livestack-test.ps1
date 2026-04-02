@@ -47,7 +47,27 @@ $folderName = (Get-Item $reportDir).Name
 Write-Host "  Folder name: $folderName" -ForegroundColor Gray
 
 # Get the most recent session's targets from the database
-Add-Type -Path (Join-Path $PSScriptRoot "..\NINA.Plugin.NightSummary\bin\Release\net8.0-windows\System.Data.SQLite.dll")
+# Try multiple locations for the SQLite DLL
+$sqliteDll = $null
+$candidates = @(
+    (Join-Path $PSScriptRoot "..\NINA.Plugin.NightSummary\bin\Release\net8.0-windows\System.Data.SQLite.dll"),
+    (Join-Path $env:LOCALAPPDATA "NINA\Plugins\3.0.0\Night Summary\System.Data.SQLite.dll"),
+    (Join-Path $env:LOCALAPPDATA "NINA\CoreDLL\System.Data.SQLite.dll")
+)
+foreach ($c in $candidates) {
+    if (Test-Path $c) { $sqliteDll = $c; break }
+}
+if (-not $sqliteDll) {
+    # Fallback: search NINA install directory
+    $ninaDir = Get-ChildItem -Path "$env:LOCALAPPDATA\NINA" -Recurse -Filter "System.Data.SQLite.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($ninaDir) { $sqliteDll = $ninaDir.FullName }
+}
+if (-not $sqliteDll) {
+    Write-Error "Could not find System.Data.SQLite.dll. Ensure NINA or the plugin is installed."
+    exit 1
+}
+Write-Host "  Using SQLite DLL: $sqliteDll" -ForegroundColor Gray
+Add-Type -Path $sqliteDll
 $conn = New-Object System.Data.SQLite.SQLiteConnection("Data Source=$dbPath;Version=3;Read Only=True;")
 $conn.Open()
 
