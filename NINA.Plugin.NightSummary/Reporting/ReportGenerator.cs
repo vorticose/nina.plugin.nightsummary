@@ -175,10 +175,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
             string detailsOpen = SettingsManager.Instance.Current.ExpandSectionsDefault ? " open" : "";
 
             if (detailLevel >= 1) sb.Append(BuildEventTimelineSection(data));
+            if (detailLevel >= 2) sb.Append(BuildOverheadBreakdownSection(data, detailsOpen));
             sb.Append(BuildOverviewStatsSection(data, detailLevel));
             sb.Append(await BuildTargetSection(data, detailLevel, detailsOpen));
             if (detailLevel >= 1) sb.Append(BuildImageQualitySection(data, detailLevel, detailsOpen));
-            if (detailLevel >= 2) sb.Append(BuildOverheadBreakdownSection(data, detailsOpen));
             if (detailLevel >= 2) sb.Append(BuildNextNightPreviewSection(data));
             sb.Append(BuildFooter());
 
@@ -302,8 +302,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var timingEvents = data.TimingEvents;
             if (timingEvents == null || !timingEvents.Any()) return "";
 
-            // Exclude Exposure events from overhead — they represent useful imaging time
-            var overheadEvents = timingEvents.Where(e => e.EventType != "Exposure").ToList();
+            // Exclude Exposure events (useful imaging time) and zero-duration events
+            // (e.g. StarDetection which are instantaneous log entries, not timed operations)
+            var overheadEvents = timingEvents.Where(e => e.EventType != "Exposure" && e.DurationSeconds > 0).ToList();
             if (!overheadEvents.Any()) return "";
 
             var sb = new StringBuilder();
@@ -369,7 +370,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     if (pct < 0.5) continue;
                     var color = barColors.TryGetValue(g.Type, out var c) ? c : "#888";
                     var label = FormatEventTypeName(g.Type);
-                    sb.AppendLine($"<div style='width:{pct:F1}%; background:{color}; display:flex; align-items:center; justify-content:center; font-size:11px; color:#fff; white-space:nowrap; overflow:hidden;' title='{label}: {FormatDuration(g.TotalSeconds)} ({pct:F1}%)'>{(pct > 8 ? label : "")}</div>");
+                    // Only show text label if the block is wide enough (~7px per character at 11px font)
+                    var minPctForLabel = label.Length * 0.9;
+                    var showLabel = pct >= minPctForLabel;
+                    sb.AppendLine($"<div style='width:{pct:F1}%; background:{color}; display:flex; align-items:center; justify-content:center; font-size:11px; color:#fff; white-space:nowrap; overflow:hidden;' title='{label}: {FormatDuration(g.TotalSeconds)} ({pct:F1}%)'>{(showLabel ? label : "")}</div>");
                 }
                 sb.AppendLine("</div>");
             }
