@@ -356,7 +356,42 @@ namespace NINA.Plugin.NightSummary.Session {
                 filename = Path.GetFileName(filename);
             }
 
+            // If the resolved path doesn't exist on disk (common for historical sessions where
+            // the pattern includes timestamps), scan for a matching folder by session date
+            if (!Directory.Exists(sessionDir) && reportData?.Session != null) {
+                var found = FindSavedReportDir(saveRoot, reportData.Session.SessionStart);
+                if (found != null) {
+                    sessionDir = found;
+                    filename = Path.GetFileName(found);
+                }
+            }
+
             return (sessionDir, filename + ".html");
+        }
+
+        /// <summary>
+        /// Scans the save root for existing report folders whose name contains the session date.
+        /// Checks both the session start date and the next calendar day (since reports are
+        /// typically generated in the early morning after an overnight session).
+        /// Returns the most recently modified match, or null if none found.
+        /// </summary>
+        private static string FindSavedReportDir(string saveRoot, DateTime sessionStart) {
+            if (!Directory.Exists(saveRoot)) return null;
+
+            var dateStr = sessionStart.ToString("yyyy-MM-dd");
+            var nextDayStr = sessionStart.AddDays(1).ToString("yyyy-MM-dd");
+            try {
+                var matches = Directory.GetDirectories(saveRoot)
+                    .Where(d => {
+                        var name = Path.GetFileName(d);
+                        return name.Contains(dateStr) || name.Contains(nextDayStr);
+                    })
+                    .OrderByDescending(d => Directory.GetLastWriteTime(d))
+                    .ToList();
+                return matches.FirstOrDefault();
+            } catch {
+                return null;
+            }
         }
 
         private async Task SaveReportLocallyAsync(ReportData reportData, string htmlReport = null) {
