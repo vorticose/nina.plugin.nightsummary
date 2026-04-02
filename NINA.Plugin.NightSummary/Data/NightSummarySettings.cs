@@ -17,8 +17,9 @@ namespace NINA.Plugin.NightSummary.Data {
         public bool   EmailEnabled      { get; set; } = false;
 
         // ── Local save ────────────────────────────────────────────────────────
-        public bool   SaveReportLocally { get; set; } = false;
-        public string SaveReportPath    { get; set; } = "";
+        public bool   SaveReportLocally      { get; set; } = false;
+        public string SaveReportPath         { get; set; } = "";
+        public string SaveReportFilePattern  { get; set; } = "NightSummary_$$DATEMINUS12$$";
 
         // ── Pushover ──────────────────────────────────────────────────────────
         public bool   PushoverEnabled   { get; set; } = false;
@@ -40,6 +41,7 @@ namespace NINA.Plugin.NightSummary.Data {
         public bool   ExpandSectionsDefault  { get; set; } = false;
         public bool   ShowMoonCurve          { get; set; } = true;
         public bool   ShowSkyThumbnails      { get; set; } = true;
+        public bool   ShowLiveStackImages   { get; set; } = true;
         public bool   ShowSessionHistory     { get; set; } = true;
         public bool   ShowAltitudeChart      { get; set; } = true;
         public bool   ShowMinAltitude        { get; set; } = true;
@@ -51,8 +53,16 @@ namespace NINA.Plugin.NightSummary.Data {
         public int    ChartPrimaryMetric     { get; set; } = 0;
         public int    ChartSecondaryMetric   { get; set; } = 0;
         public string AdditionalChartConfigs { get; set; } = "";
+        public int    ChartXAxisMetric     { get; set; } = 0;
 
         // ── Filter classification ─────────────────────────────────────────────
         public string FilterClassifications  { get; set; } = "";
+
+        // ── Equipment overrides ──────────────────────────────────────────────
+        // Comma-separated key:value pairs, e.g. "Camera:My ASI2600,Telescope:Esprit 100ED"
+        public string EquipmentOverrides { get; set; } = "";
+        public bool   ShowEquipmentProfile { get; set; } = true;
+        // Comma-separated list of equipment fields to show in the report
+        public string EquipmentVisibleFields { get; set; } = "Camera,Telescope,Mount,Filter Wheel,Focuser,Rotator,Guider";
     }
 }

@@ -121,6 +121,7 @@ foreach ($col in @(
     @{ Table = “Images”;   Def = “CoolerSetpoint REAL” }
     @{ Table = “Images”;   Def = “FocuserPosition INTEGER” }
     @{ Table = “Images”;   Def = “RotatorPosition REAL” }
+    @{ Table = “Images”;   Def = “PositionAngle REAL” }
     @{ Table = “Images”;   Def = “Humidity REAL” }
     @{ Table = “Images”;   Def = “DewPoint REAL” }
     @{ Table = “Images”;   Def = “WindSpeed REAL” }
@@ -130,6 +131,13 @@ foreach ($col in @(
     @{ Table = “SessionEvents”; Def = “AfSucceeded INTEGER” }
     @{ Table = “SessionEvents”; Def = “AfHfr REAL” }
     @{ Table = “Sessions”;      Def = “SkippedExposures INTEGER DEFAULT 0” }
+    @{ Table = “Sessions”;      Def = “CameraName TEXT” }
+    @{ Table = “Sessions”;      Def = “TelescopeName TEXT” }
+    @{ Table = “Sessions”;      Def = “MountName TEXT” }
+    @{ Table = “Sessions”;      Def = “FilterWheelName TEXT” }
+    @{ Table = “Sessions”;      Def = “FocuserName TEXT” }
+    @{ Table = “Sessions”;      Def = “RotatorName TEXT” }
+    @{ Table = “Sessions”;      Def = “GuiderName TEXT” }
 )) {
     try { Exec “ALTER TABLE $($col.Table) ADD COLUMN $($col.Def)” } catch { }
 }
@@ -164,8 +172,8 @@ $camY     = 4176
 $pixelSz  = 3.76
 $focalLen = 700.0
 
-Exec "INSERT INTO Sessions (SessionId, SessionStart, SessionEnd, ProfileName, Notes, ReportSent, CamXSize, CamYSize, PixelSizeMicrons, FocalLengthMm, SkippedExposures)
-      VALUES (@sid, @start, @end, @prof, @notes, 0, @cx, @cy, @px, @fl, @skipped)" @{
+Exec "INSERT INTO Sessions (SessionId, SessionStart, SessionEnd, ProfileName, Notes, ReportSent, CamXSize, CamYSize, PixelSizeMicrons, FocalLengthMm, SkippedExposures, CameraName, TelescopeName, MountName, FilterWheelName, FocuserName, RotatorName, GuiderName)
+      VALUES (@sid, @start, @end, @prof, @notes, 0, @cx, @cy, @px, @fl, @skipped, @cam, @scope, @mount, @fw, @foc, @rot, @guide)" @{
     "@sid"     = $sessionId
     "@start"   = $sessionStart.ToString("o")
     "@end"     = $sessionEnd.ToString("o")
@@ -176,6 +184,13 @@ Exec "INSERT INTO Sessions (SessionId, SessionStart, SessionEnd, ProfileName, No
     "@px"      = $pixelSz
     "@fl"      = $focalLen
     "@skipped" = 5
+    "@cam"     = "ZWO ASI2600MM Pro"
+    "@scope"   = "Sky-Watcher Esprit 100ED"
+    "@mount"   = "Sky-Watcher EQ6-R Pro"
+    "@fw"      = "ZWO EFW 7x36mm"
+    "@foc"     = "ZWO EAF"
+    "@rot"     = $null
+    "@guide"   = "PHD2"
 }
 
 Write-Host "Session: $sessionId" -ForegroundColor Cyan
@@ -185,8 +200,9 @@ Write-Host "  $($sessionStart.ToString('yyyy-MM-dd HH:mm')) â†’ $($sessionE
 
 $targets = @(
     @{
-        Name       = "M31 - Andromeda Galaxy"
-        RaHours    = 0.7123    # 00h 42m 44s
+        Name          = "M31 - Andromeda Galaxy"
+        RaHours       = 0.7123    # 00h 42m 44s
+        PositionAngle = 35.0      # sky PA degrees E of N
         DecDegrees = 41.269    # +41Â° 16'
         Filters    = @(
             @{ Name = "L";  ExpSec = 120; Count = 30; BaseHFR = 1.75; BaseFWHM = 2.00; BaseEcc = 0.37; BaseStars = 420 }
@@ -197,8 +213,9 @@ $targets = @(
         StartOffset = 10       # minutes from session start (9:10 PM)
     }
     @{
-        Name       = "Rosette Nebula - NGC 2244"
-        RaHours    = 6.5625    # 06h 33m 45s
+        Name          = "Rosette Nebula - NGC 2244"
+        RaHours       = 6.5625    # 06h 33m 45s
+        PositionAngle = 270.0     # sky PA degrees E of N
         DecDegrees = 4.998     # +04 59'
         Filters    = @(
             @{ Name = "Ha";   ExpSec = 300; Count = 10; BaseHFR = 2.05; BaseFWHM = 2.30; BaseEcc = 0.43; BaseStars = 290 }
@@ -268,14 +285,14 @@ INSERT INTO Images (
     HFR, FWHM, Eccentricity, StarCount, GuidingRMSTotal, GuidingScale, Accepted,
     RaHours, DecDegrees, FocuserTemp, AmbientTemp,
     Gain, Offset, Binning, CameraTemp, CoolerSetpoint,
-    FocuserPosition, RotatorPosition, Humidity, DewPoint, WindSpeed, Pressure,
+    FocuserPosition, RotatorPosition, PositionAngle, Humidity, DewPoint, WindSpeed, Pressure,
     GradingStatus, RejectReason
 ) VALUES (
     @sid, @ts, @target, @filter, @exp,
     @hfr, @fwhm, @ecc, @stars, @rms, 1.32, @accepted,
     @ra, @dec, @focTemp, @ambTemp,
     100, 50, 1, -10.0, -10.0,
-    @focPos, NULL, 45.0, 5.2, 8.3, 1015.0,
+    @focPos, NULL, @pa, 45.0, 5.2, 8.3, 1015.0,
     @gradingStatus, @rejectReason
 )
 "@ @{
@@ -292,6 +309,7 @@ INSERT INTO Images (
                 "@accepted"      = $accepted
                 "@ra"            = $target.RaHours
                 "@dec"           = $target.DecDegrees
+                "@pa"            = $target.PositionAngle
                 "@focTemp"       = $focTemp
                 "@ambTemp"       = $ambTemp
                 "@focPos"        = $focPos

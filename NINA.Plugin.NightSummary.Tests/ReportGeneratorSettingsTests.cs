@@ -24,6 +24,7 @@ namespace NINA.Plugin.NightSummary.Tests {
             SettingsManager.Instance.Current.ChartPrimaryMetric      = 0;   // HFR
             SettingsManager.Instance.Current.ChartSecondaryMetric    = 0;   // SecNone
             SettingsManager.Instance.Current.AdditionalChartConfigs  = "";
+            SettingsManager.Instance.Current.ChartXAxisMetric        = 0;   // Time
             SettingsManager.Instance.Current.ShowStarCountCV         = false;
             SettingsManager.Instance.Current.ShowPerTargetIQ         = false;
             SettingsManager.Instance.Current.ShowSessionHistory      = false;
@@ -167,6 +168,42 @@ namespace NINA.Plugin.NightSummary.Tests {
             var report = await _generator.GenerateHtmlReport(data);
             Assert.Contains("HFR Vs. Time",  report);
             Assert.Contains("FWHM Vs. Time", report);
+        }
+
+        [Fact]
+        public async Task AdditionalChartConfig_ThreeTokenFormat_SetsXAxis() {
+            SettingsManager.Instance.Current.ShowHFRGraph           = true;
+            SettingsManager.Instance.Current.ReportDetailLevel      = 2;
+            SettingsManager.Instance.Current.ChartPrimaryMetric     = 0; // HFR
+            // 3-token format: FWHM:SecNone:FrameIndex
+            SettingsManager.Instance.Current.AdditionalChartConfigs = $"1:0:{ChartGenerator.XAxisFrameIndex}";
+            var data   = TestDataFactory.MakeReportData(imageCount: 10);
+            var report = await _generator.GenerateHtmlReport(data);
+            Assert.Contains("HFR Vs. Time",  report);  // default chart still uses Time
+            Assert.Contains("FWHM Vs. Frame", report);  // additional chart uses Frame x-axis
+        }
+
+        [Fact]
+        public async Task AdditionalChartConfig_TwoTokenFormat_DefaultsToTimeXAxis() {
+            SettingsManager.Instance.Current.ShowHFRGraph           = true;
+            SettingsManager.Instance.Current.ReportDetailLevel      = 2;
+            SettingsManager.Instance.Current.ChartPrimaryMetric     = 0; // HFR
+            SettingsManager.Instance.Current.AdditionalChartConfigs = "1:0";
+            var data   = TestDataFactory.MakeReportData(imageCount: 10);
+            var report = await _generator.GenerateHtmlReport(data);
+            Assert.Contains("FWHM Vs. Time", report);
+        }
+
+        [Fact]
+        public async Task DefaultXAxisSetting_AppliesToMainChart() {
+            SettingsManager.Instance.Current.ShowHFRGraph           = true;
+            SettingsManager.Instance.Current.ReportDetailLevel      = 2;
+            SettingsManager.Instance.Current.ChartPrimaryMetric     = 0; // HFR
+            SettingsManager.Instance.Current.ChartXAxisMetric       = ChartGenerator.XAxisFrameIndex;
+            var data   = TestDataFactory.MakeReportData(imageCount: 10);
+            var report = await _generator.GenerateHtmlReport(data);
+            Assert.Contains("HFR Vs. Frame", report);
+            Assert.DoesNotContain("HFR Vs. Time", report);
         }
 
         [Fact]

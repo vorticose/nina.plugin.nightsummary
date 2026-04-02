@@ -316,7 +316,86 @@ namespace NINA.Plugin.NightSummary {
 
         public string SaveReportPath {
             get => S.SaveReportPath;
-            set { S.SaveReportPath = value; SaveSettings(); RaisePropertyChanged(); }
+            set { S.SaveReportPath = value; SaveSettings(); RaisePropertyChanged(); RaisePropertyChanged(nameof(SaveReportPatternPreview)); }
+        }
+
+        public bool ShowEquipmentProfile {
+            get => S.ShowEquipmentProfile;
+            set { S.ShowEquipmentProfile = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
+        // Equipment override properties — parse from/serialize to comma-separated string
+        private string GetEquipmentOverride(string key) {
+            var overrides = Session.SessionService.ParseEquipmentOverrides(S.EquipmentOverrides);
+            return overrides.TryGetValue(key, out var val) ? val : "";
+        }
+        private void SetEquipmentOverride(string key, string value) {
+            var overrides = Session.SessionService.ParseEquipmentOverrides(S.EquipmentOverrides);
+            if (string.IsNullOrWhiteSpace(value))
+                overrides.Remove(key);
+            else
+                overrides[key] = value.Trim();
+            S.EquipmentOverrides = string.Join(",", overrides.Select(kv => $"{kv.Key}:{kv.Value}"));
+            SaveSettings();
+        }
+
+        public string EquipmentCamera        { get => GetEquipmentOverride("Camera");         set { SetEquipmentOverride("Camera", value);         RaisePropertyChanged(); } }
+        public string EquipmentTelescope     { get => GetEquipmentOverride("Telescope");      set { SetEquipmentOverride("Telescope", value);      RaisePropertyChanged(); } }
+        public string EquipmentMount         { get => GetEquipmentOverride("Mount");           set { SetEquipmentOverride("Mount", value);           RaisePropertyChanged(); } }
+        public string EquipmentFilterWheel   { get => GetEquipmentOverride("Filter Wheel");   set { SetEquipmentOverride("Filter Wheel", value);   RaisePropertyChanged(); } }
+        public string EquipmentFocuser       { get => GetEquipmentOverride("Focuser");        set { SetEquipmentOverride("Focuser", value);        RaisePropertyChanged(); } }
+        public string EquipmentRotator       { get => GetEquipmentOverride("Rotator");        set { SetEquipmentOverride("Rotator", value);        RaisePropertyChanged(); } }
+        public string EquipmentGuider        { get => GetEquipmentOverride("Guider");         set { SetEquipmentOverride("Guider", value);         RaisePropertyChanged(); } }
+        public string EquipmentDome          { get => GetEquipmentOverride("Dome");           set { SetEquipmentOverride("Dome", value);           RaisePropertyChanged(); } }
+        public string EquipmentFlatPanel     { get => GetEquipmentOverride("Flat Panel");     set { SetEquipmentOverride("Flat Panel", value);     RaisePropertyChanged(); } }
+        public string EquipmentSafetyMonitor { get => GetEquipmentOverride("Safety Monitor"); set { SetEquipmentOverride("Safety Monitor", value); RaisePropertyChanged(); } }
+        public string EquipmentWeather       { get => GetEquipmentOverride("Weather");        set { SetEquipmentOverride("Weather", value);        RaisePropertyChanged(); } }
+        public string EquipmentSwitch        { get => GetEquipmentOverride("Switch");         set { SetEquipmentOverride("Switch", value);         RaisePropertyChanged(); } }
+
+        // Per-field visibility toggles
+        private bool IsEquipmentFieldVisible(string key) =>
+            (S.EquipmentVisibleFields ?? "").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .Contains(key, StringComparer.OrdinalIgnoreCase);
+
+        private void SetEquipmentFieldVisible(string key, bool visible) {
+            var fields = new HashSet<string>(
+                (S.EquipmentVisibleFields ?? "").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
+                StringComparer.OrdinalIgnoreCase);
+            if (visible) fields.Add(key); else fields.Remove(key);
+            S.EquipmentVisibleFields = string.Join(",", fields);
+            SaveSettings();
+        }
+
+        public bool ShowCamera        { get => IsEquipmentFieldVisible("Camera");         set { SetEquipmentFieldVisible("Camera", value);         RaisePropertyChanged(); } }
+        public bool ShowTelescope     { get => IsEquipmentFieldVisible("Telescope");      set { SetEquipmentFieldVisible("Telescope", value);      RaisePropertyChanged(); } }
+        public bool ShowMount         { get => IsEquipmentFieldVisible("Mount");           set { SetEquipmentFieldVisible("Mount", value);           RaisePropertyChanged(); } }
+        public bool ShowFilterWheel   { get => IsEquipmentFieldVisible("Filter Wheel");   set { SetEquipmentFieldVisible("Filter Wheel", value);   RaisePropertyChanged(); } }
+        public bool ShowFocuser       { get => IsEquipmentFieldVisible("Focuser");        set { SetEquipmentFieldVisible("Focuser", value);        RaisePropertyChanged(); } }
+        public bool ShowRotator       { get => IsEquipmentFieldVisible("Rotator");        set { SetEquipmentFieldVisible("Rotator", value);        RaisePropertyChanged(); } }
+        public bool ShowGuider        { get => IsEquipmentFieldVisible("Guider");         set { SetEquipmentFieldVisible("Guider", value);         RaisePropertyChanged(); } }
+        public bool ShowDome          { get => IsEquipmentFieldVisible("Dome");           set { SetEquipmentFieldVisible("Dome", value);           RaisePropertyChanged(); } }
+        public bool ShowFlatPanel     { get => IsEquipmentFieldVisible("Flat Panel");     set { SetEquipmentFieldVisible("Flat Panel", value);     RaisePropertyChanged(); } }
+        public bool ShowSafetyMonitor { get => IsEquipmentFieldVisible("Safety Monitor"); set { SetEquipmentFieldVisible("Safety Monitor", value); RaisePropertyChanged(); } }
+        public bool ShowWeather       { get => IsEquipmentFieldVisible("Weather");        set { SetEquipmentFieldVisible("Weather", value);        RaisePropertyChanged(); } }
+        public bool ShowSwitch        { get => IsEquipmentFieldVisible("Switch");         set { SetEquipmentFieldVisible("Switch", value);         RaisePropertyChanged(); } }
+
+        public string SaveReportFilePattern {
+            get => S.SaveReportFilePattern;
+            set { S.SaveReportFilePattern = value; SaveSettings(); RaisePropertyChanged(); RaisePropertyChanged(nameof(SaveReportPatternPreview)); }
+        }
+
+        public string SaveReportPatternPreview {
+            get {
+                var pattern = S.SaveReportFilePattern;
+                if (string.IsNullOrWhiteSpace(pattern)) return "NightSummary_<timestamp>.html";
+                var preview = new Dictionary<string, string> {
+                    ["$$CAMERA$$"] = "ZWO ASI2600MM",
+                    ["$$TELESCOPE$$"] = "My Telescope",
+                    ["$$SEQUENCETITLE$$"] = "MySequence"
+                };
+                var resolved = Session.SessionService.ResolveFilePattern(pattern, preview) + ".html";
+                return resolved.Replace("\\", " \u203A ");
+            }
         }
 
         public bool EmailEnabled {
@@ -369,6 +448,7 @@ namespace NINA.Plugin.NightSummary {
             set {
                 S.ReportDetailLevel     = value;
                 S.ShowSkyThumbnails     = true;
+                S.ShowLiveStackImages   = true;
                 S.ShowAltitudeChart     = true;
                 S.ShowMoonCurve         = true;
                 S.ShowMinAltitude       = true;
@@ -381,6 +461,7 @@ namespace NINA.Plugin.NightSummary {
                 SaveSettings();
                 RaisePropertyChanged();
                 RaisePropertyChanged(nameof(ShowSkyThumbnails));
+                RaisePropertyChanged(nameof(ShowLiveStackImages));
                 RaisePropertyChanged(nameof(ShowAltitudeChart));
                 RaisePropertyChanged(nameof(ShowMoonCurve));
                 RaisePropertyChanged(nameof(ShowMinAltitude));
@@ -396,6 +477,11 @@ namespace NINA.Plugin.NightSummary {
         public bool ShowSkyThumbnails {
             get => S.ShowSkyThumbnails;
             set { S.ShowSkyThumbnails = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
+        public bool ShowLiveStackImages {
+            get => S.ShowLiveStackImages;
+            set { S.ShowLiveStackImages = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public bool ShowMoonCurve {
@@ -448,6 +534,11 @@ namespace NINA.Plugin.NightSummary {
             set { S.ExpandSectionsDefault = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
+        public int ChartXAxisMetric {
+            get => S.ChartXAxisMetric;
+            set { S.ChartXAxisMetric = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
         public int ChartPrimaryMetric {
             get => S.ChartPrimaryMetric;
             set { S.ChartPrimaryMetric = value; SaveSettings(); RaisePropertyChanged(); }
@@ -474,8 +565,17 @@ namespace NINA.Plugin.NightSummary {
             "Wind Speed (m/s)", "Pressure (hPa)", "Star Count", "Azimuth (°)", "Seeing FWHM (arcsec)"
         };
 
+        private static readonly List<string> _xAxisMetricNames = new List<string> {
+            "Time", "Frame Index",
+            "HFR", "FWHM", "Guiding RMS", "Focuser Temp (°C)", "Ambient Temp (°C)",
+            "Eccentricity", "Altitude (°)", "Airmass", "Humidity (%)", "Focuser Position (steps)",
+            "Sky Quality (mag/arcsec²)", "Cloud Cover (%)", "Camera Temp (°C)", "Dew Point (°C)",
+            "Wind Speed (m/s)", "Pressure (hPa)", "Star Count", "Azimuth (°)", "Seeing FWHM (arcsec)"
+        };
+
         public IReadOnlyList<string> PrimaryMetricNames  => _primaryMetricNames;
         public IReadOnlyList<string> SecondaryMetricNames => _secondaryMetricNames;
+        public IReadOnlyList<string> XAxisMetricNames     => _xAxisMetricNames;
 
         private ObservableCollection<ChartConfig> _additionalCharts;
         public ObservableCollection<ChartConfig> AdditionalCharts {
@@ -504,7 +604,7 @@ namespace NINA.Plugin.NightSummary {
 
         private void SerializeChartConfigs() {
             S.AdditionalChartConfigs =
-                string.Join("|", AdditionalCharts.Select(c => $"{c.Primary}:{c.Secondary}"));
+                string.Join("|", AdditionalCharts.Select(c => $"{c.Primary}:{c.Secondary}:{c.XAxis}"));
             SaveSettings();
         }
 
@@ -513,10 +613,11 @@ namespace NINA.Plugin.NightSummary {
             if (string.IsNullOrWhiteSpace(raw)) return col;
             foreach (var part in raw.Split('|')) {
                 var tokens = part.Split(':');
-                if (tokens.Length == 2
+                if (tokens.Length >= 2
                     && int.TryParse(tokens[0], out int p) && p >= 0 && p < _primaryMetricNames.Count
                     && int.TryParse(tokens[1], out int s) && s >= 0 && s <= _secondaryMetricNames.Count) {
-                    col.Add(new ChartConfig(p, s, SerializeChartConfigs));
+                    int xAxis = tokens.Length >= 3 && int.TryParse(tokens[2], out int a) ? a : 0;
+                    col.Add(new ChartConfig(p, s, SerializeChartConfigs, xAxis));
                 }
             }
             return col;
@@ -550,6 +651,8 @@ namespace NINA.Plugin.NightSummary {
 
         public ICommand RefreshFiltersCommand { get; private set; }
 
+        private bool _loadingFilters;
+
         private void LoadFilterClassifications() {
             try {
                 var filters = profileService?.ActiveProfile?.FilterWheelSettings?.FilterWheelFilters;
@@ -557,22 +660,51 @@ namespace NINA.Plugin.NightSummary {
 
                 var saved = ParseFilterClassifications(S.FilterClassifications);
 
-                System.Windows.Application.Current.Dispatcher.Invoke(() => {
-                    FilterItems.Clear();
-                    foreach (var f in filters) {
-                        if (string.IsNullOrWhiteSpace(f.Name)) continue;
-                        var item = new FilterClassificationItem(f.Name, this);
-                        if (saved.TryGetValue(f.Name, out var cls))
-                            item.Classification = cls;
-                        FilterItems.Add(item);
-                    }
-                });
+                // Also preserve any classifications already in the UI (for refresh)
+                foreach (var existing in FilterItems) {
+                    if (existing.Classification != "A" && !saved.ContainsKey(existing.Name))
+                        saved[existing.Name] = existing.Classification;
+                }
+
+                _loadingFilters = true;
+                try {
+                    System.Windows.Application.Current.Dispatcher.Invoke(() => {
+                        // Build new filter names from profile
+                        var profileNames = new HashSet<string>(
+                            filters.Where(f => !string.IsNullOrWhiteSpace(f.Name)).Select(f => f.Name));
+
+                        // Remove filters no longer in profile
+                        for (int i = FilterItems.Count - 1; i >= 0; i--) {
+                            if (!profileNames.Contains(FilterItems[i].Name))
+                                FilterItems.RemoveAt(i);
+                        }
+
+                        // Add new filters, preserve existing
+                        var existingNames = new HashSet<string>(FilterItems.Select(f => f.Name));
+                        foreach (var f in filters) {
+                            if (string.IsNullOrWhiteSpace(f.Name) || existingNames.Contains(f.Name)) continue;
+                            var item = new FilterClassificationItem(f.Name, this);
+                            if (saved.TryGetValue(f.Name, out var cls))
+                                item.Classification = cls;
+                            FilterItems.Add(item);
+                        }
+
+                        // Restore classifications for existing items that may have been reset
+                        foreach (var item in FilterItems) {
+                            if (saved.TryGetValue(item.Name, out var cls) && item.Classification != cls)
+                                item.Classification = cls;
+                        }
+                    });
+                } finally {
+                    _loadingFilters = false;
+                }
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to load filter classifications. {ex.Message}");
             }
         }
 
         internal void SaveFilterClassifications() {
+            if (_loadingFilters) return;
             var parts = FilterItems
                 .Where(f => f.Classification != "A")
                 .Select(f => $"{f.Name}={f.Classification}");
@@ -730,10 +862,12 @@ namespace NINA.Plugin.NightSummary {
         private readonly Action _onChanged;
         private int _primary;
         private int _secondary;
+        private int _xAxis;
 
-        public ChartConfig(int primary, int secondary, Action onChanged) {
+        public ChartConfig(int primary, int secondary, Action onChanged, int xAxis = 0) {
             _primary   = primary;
             _secondary = secondary;
+            _xAxis     = xAxis;
             _onChanged = onChanged;
         }
 
@@ -745,6 +879,11 @@ namespace NINA.Plugin.NightSummary {
         public int Secondary {
             get => _secondary;
             set { _secondary = value; OnPropertyChanged(); _onChanged(); }
+        }
+
+        public int XAxis {
+            get => _xAxis;
+            set { _xAxis = value; OnPropertyChanged(); _onChanged(); }
         }
 
         public event PropertyChangedEventHandler PropertyChanged;

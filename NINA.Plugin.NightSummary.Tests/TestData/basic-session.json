@@ -1,0 +1,292 @@
+{
+  "formatVersion": 1,
+  "ninaVersion": "3.2.0.9001",
+  "nightSummaryVersion": "2.10.0",
+  "recordedAt": "2026-03-15T21:00:00",
+  "initialState": {
+    "profileName": "Deep Sky Rig",
+    "profileId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "focalLength": 714,
+    "latitude": 40.7128,
+    "longitude": -74.006,
+    "pixelSize": 3.76,
+    "cameraXSize": 4656,
+    "cameraYSize": 3520,
+    "cameraName": "ASI2600MM Pro",
+    "filters": ["L", "Ha", "OIII", "SII"]
+  },
+  "events": [
+    {
+      "timestamp": "2026-03-15T21:05:00",
+      "type": "ImageSaved",
+      "data": {
+        "imageType": "LIGHT",
+        "targetName": "M31",
+        "filter": "Ha",
+        "exposureTime": 300,
+        "hfr": 2.35,
+        "fwhm": 3.1,
+        "eccentricity": 0.42,
+        "detectedStars": 312,
+        "guidingRmsTotal": 0.65,
+        "guidingScale": 1.08,
+        "raHours": 0.7122,
+        "decDegrees": 41.269,
+        "gain": 100,
+        "offset": 10,
+        "binX": 1,
+        "focuserTemp": 12.5,
+        "focuserPosition": 24500,
+        "ambientTemp": 8.0,
+        "humidity": 65.0,
+        "pressure": 1013.25,
+        "altitude": 62.3,
+        "azimuth": 145.2,
+        "airmass": 1.12,
+        "sideOfPier": "pierEast"
+      }
+    },
+    {
+      "timestamp": "2026-03-15T21:10:15",
+      "type": "ImageSaved",
+      "data": {
+        "imageType": "LIGHT",
+        "targetName": "M31",
+        "filter": "Ha",
+        "exposureTime": 300,
+        "hfr": 2.41,
+        "fwhm": 3.2,
+        "eccentricity": 0.44,
+        "detectedStars": 298,
+        "guidingRmsTotal": 0.71,
+        "guidingScale": 1.08,
+        "raHours": 0.7122,
+        "decDegrees": 41.269,
+        "gain": 100,
+        "offset": 10,
+        "binX": 1,
+        "focuserTemp": 12.3,
+        "focuserPosition": 24500,
+        "ambientTemp": 7.8,
+        "altitude": 63.1,
+        "azimuth": 147.5,
+        "airmass": 1.11
+      }
+    },
+    {
+      "timestamp": "2026-03-15T21:15:30",
+      "type": "ImageSaved",
+      "data": {
+        "imageType": "LIGHT",
+        "targetName": "M31",
+        "filter": "OIII",
+        "exposureTime": 300,
+        "hfr": 2.38,
+        "fwhm": 3.15,
+        "eccentricity": 0.43,
+        "detectedStars": 305,
+        "guidingRmsTotal": 0.62,
+        "guidingScale": 1.08,
+        "raHours": 0.7122,
+        "decDegrees": 41.269,
+        "gain": 100,
+        "offset": 10,
+        "binX": 1,
+        "focuserTemp": 12.1,
+        "focuserPosition": 24510,
+        "ambientTemp": 7.5,
+        "altitude": 63.8,
+        "azimuth": 149.7,
+        "airmass": 1.10
+      }
+    },
+    {
+      "timestamp": "2026-03-15T21:45:00",
+      "type": "AutoFocusComplete",
+      "data": {
+        "filter": "Ha",
+        "temperature": 11.8,
+        "position": 24515
+      }
+    },
+    {
+      "timestamp": "2026-03-15T21:50:00",
+      "type": "ImageSaved",
+      "data": {
+        "imageType": "LIGHT",
+        "targetName": "M31",
+        "filter": "Ha",
+        "exposureTime": 300,
+        "hfr": 2.15,
+        "fwhm": 2.9,
+        "eccentricity": 0.38,
+        "detectedStars": 345,
+        "guidingRmsTotal": 0.58,
+        "guidingScale": 1.08,
+        "raHours": 0.7122,
+        "decDegrees": 41.269,
+        "gain": 100,
+        "offset": 10,
+        "binX": 1,
+        "focuserTemp": 11.5,
+        "focuserPosition": 24515,
+        "ambientTemp": 7.2,
+        "altitude": 65.2,
+        "azimuth": 155.3,
+        "airmass": 1.08
+      }
+    },
+    {
+      "timestamp": "2026-03-15T22:30:00",
+      "type": "SafetyStateChanged",
+      "data": { "isSafe": false }
+    },
+    {
+      "timestamp": "2026-03-15T22:50:00",
+      "type": "SafetyStateChanged",
+      "data": { "isSafe": true }
+    },
+    {
+      "timestamp": "2026-03-15T23:00:00",
+      "type": "ImageSaved",
+      "data": {
+        "imageType": "LIGHT",
+        "targetName": "M31",
+        "filter": "Ha",
+        "exposureTime": 300,
+        "hfr": 2.52,
+        "fwhm": 3.3,
+        "eccentricity": 0.46,
+        "detectedStars": 278,
+        "guidingRmsTotal": 0.82,
+        "guidingScale": 1.08,
+        "raHours": 0.7122,
+        "decDegrees": 41.269,
+        "gain": 100,
+        "offset": 10,
+        "binX": 1,
+        "focuserTemp": 10.8,
+        "focuserPosition": 24515,
+        "ambientTemp": 6.5,
+        "altitude": 58.1,
+        "azimuth": 170.2,
+        "airmass": 1.18
+      }
+    },
+    {
+      "timestamp": "2026-03-16T00:30:00",
+      "type": "MeridianFlip",
+      "data": {
+        "success": true,
+        "raHours": 0.7122,
+        "decDegrees": 41.269
+      }
+    },
+    {
+      "timestamp": "2026-03-16T00:40:00",
+      "type": "AutoFocusComplete",
+      "data": {
+        "filter": "OIII",
+        "temperature": 9.5,
+        "position": 24530
+      }
+    },
+    {
+      "timestamp": "2026-03-16T00:45:00",
+      "type": "ImageSaved",
+      "data": {
+        "imageType": "LIGHT",
+        "targetName": "M42",
+        "filter": "L",
+        "exposureTime": 120,
+        "hfr": 2.22,
+        "fwhm": 2.95,
+        "eccentricity": 0.40,
+        "detectedStars": 410,
+        "guidingRmsTotal": 0.55,
+        "guidingScale": 1.08,
+        "raHours": 5.5883,
+        "decDegrees": -5.391,
+        "gain": 100,
+        "offset": 10,
+        "binX": 1,
+        "focuserTemp": 9.2,
+        "focuserPosition": 24530,
+        "ambientTemp": 5.8,
+        "altitude": 35.5,
+        "azimuth": 210.8,
+        "airmass": 1.72,
+        "sideOfPier": "pierWest"
+      }
+    },
+    {
+      "timestamp": "2026-03-16T00:48:00",
+      "type": "ImageSaved",
+      "data": {
+        "imageType": "LIGHT",
+        "targetName": "M42",
+        "filter": "L",
+        "exposureTime": 120,
+        "hfr": 2.18,
+        "fwhm": 2.88,
+        "eccentricity": 0.39,
+        "detectedStars": 425,
+        "guidingRmsTotal": 0.52,
+        "guidingScale": 1.08,
+        "raHours": 5.5883,
+        "decDegrees": -5.391,
+        "gain": 100,
+        "offset": 10,
+        "binX": 1,
+        "focuserTemp": 9.0,
+        "focuserPosition": 24530,
+        "ambientTemp": 5.6,
+        "altitude": 35.2,
+        "azimuth": 211.5,
+        "airmass": 1.73
+      }
+    },
+    {
+      "timestamp": "2026-03-16T00:51:00",
+      "type": "ImageSaved",
+      "data": {
+        "imageType": "LIGHT",
+        "targetName": "M42",
+        "filter": "Ha",
+        "exposureTime": 300,
+        "hfr": 2.25,
+        "fwhm": 3.0,
+        "eccentricity": 0.41,
+        "detectedStars": 395,
+        "guidingRmsTotal": 0.60,
+        "guidingScale": 1.08,
+        "raHours": 5.5883,
+        "decDegrees": -5.391,
+        "gain": 100,
+        "offset": 10,
+        "binX": 1,
+        "focuserTemp": 8.8,
+        "focuserPosition": 24530,
+        "ambientTemp": 5.5,
+        "altitude": 34.8,
+        "azimuth": 212.1,
+        "airmass": 1.75
+      }
+    },
+    {
+      "timestamp": "2026-03-16T00:57:00",
+      "type": "ImageSaved",
+      "data": {
+        "imageType": "DARK",
+        "targetName": "M42",
+        "filter": "Ha",
+        "exposureTime": 300,
+        "hfr": 0,
+        "detectedStars": 0,
+        "gain": 100,
+        "offset": 10,
+        "binX": 1
+      }
+    }
+  ]
+}
