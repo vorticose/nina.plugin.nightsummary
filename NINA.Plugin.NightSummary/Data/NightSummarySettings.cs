@@ -35,6 +35,10 @@ namespace NINA.Plugin.NightSummary.Data {
         public string DashboardUrl      { get; set; } = "";
         public string DashboardApiKey   { get; set; } = "";
 
+        // ── Local Dashboard Server ────────────────────────────────────────────
+        public bool   LocalServerEnabled { get; set; } = false;
+        public int    LocalServerPort    { get; set; } = 8181;
+
         // ── Report display ────────────────────────────────────────────────────
         public int    ReportDetailLevel      { get; set; } = 2;
         public bool   ReportLightMode        { get; set; } = false;

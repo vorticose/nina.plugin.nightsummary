@@ -892,6 +892,36 @@
 
                     <Separator Margin="0,20,0,10" />
 
+                    <TextBlock Text="Local Dashboard" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
+
+                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                        <TextBlock Text="Enable Local Dashboard" Width="200" VerticalAlignment="Center" />
+                        <CheckBox IsChecked="{Binding LocalServerEnabled}" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                        <TextBlock Text="Port" Width="200" VerticalAlignment="Center" />
+                        <TextBox MinWidth="80" Text="{Binding LocalServerPort, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,10">
+                        <TextBlock Width="200" />
+                        <Button Content="Start Server" Command="{Binding StartLocalServerCommand}" Width="180" />
+                        <Button Content="Stop Server" Command="{Binding StopLocalServerCommand}" Width="180" Margin="10,0,0,0" />
+                        <TextBlock Text="{Binding LocalServerStatus.Text}"
+                                   Foreground="{Binding LocalServerStatus.Foreground}"
+                                   Visibility="{Binding LocalServerStatus.Visibility}"
+                                   VerticalAlignment="Center" Margin="10,0,0,0" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                        <TextBlock Width="200" />
+                        <TextBlock Text="Serves an interactive web dashboard at http://localhost on the configured port. Auto-starts with NINA when enabled."
+                                   TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="400" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <Separator Margin="0,20,0,10" />
+
                     <TextBlock Text="Test Report" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
 
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,10">

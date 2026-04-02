@@ -4,6 +4,7 @@ using NINA.Plugin;
 using NINA.Plugin.Interfaces;
 using NINA.Plugin.NightSummary.Data;
 using NINA.Plugin.NightSummary.Reporting;
+using NINA.Plugin.NightSummary.Server;
 using NINA.Plugin.NightSummary.Session;
 using NINA.Profile.Interfaces;
 using NINA.WPF.Base.Interfaces.Mediator;
@@ -27,6 +28,7 @@ namespace NINA.Plugin.NightSummary {
         private readonly SessionService sessionService;
         private readonly IProfileService profileService;
         private readonly string liveDbPath;
+        private DashboardServer dashboardServer;
         private ObservableCollection<SessionRecord> _availableSessions = new ObservableCollection<SessionRecord>();
         public ObservableCollection<SessionRecord> AvailableSessions {
             get => _availableSessions;
@@ -253,16 +255,59 @@ namespace NINA.Plugin.NightSummary {
                 window.Show();
             });
 
+            StartLocalServerCommand = new RelayCommand(async () => {
+                LocalServerStatus.Text = "";
+                try {
+                    await StartLocalServerAsync();
+                    LocalServerStatus.Text = $"✓ Running at {dashboardServer?.Url}";
+                    RaisePropertyChanged(nameof(IsLocalServerRunning));
+                } catch (Exception ex) {
+                    LocalServerStatus.Text = $"✗ {ex.Message}";
+                }
+            });
+
+            StopLocalServerCommand = new RelayCommand(async () => {
+                LocalServerStatus.Text = "";
+                await StopLocalServerAsync();
+                LocalServerStatus.Text = "Stopped";
+                RaisePropertyChanged(nameof(IsLocalServerRunning));
+            });
+
             LoadSessions();
             LoadFilterClassifications();
+
+            // Auto-start local dashboard if enabled
+            if (S.LocalServerEnabled) {
+                _ = Task.Run(async () => {
+                    try {
+                        await StartLocalServerAsync();
+                    } catch (Exception ex) {
+                        Logger.Error($"NightSummary: Failed to auto-start local dashboard. {ex.Message}");
+                    }
+                });
+            }
 
             Logger.Info("NightSummary: Plugin initialized successfully");
         }
 
         public override async Task Teardown() {
+            await StopLocalServerAsync();
             SettingsManager.Instance.Save();
             Logger.Info("NightSummary: Plugin torn down");
             await base.Teardown();
+        }
+
+        private async Task StartLocalServerAsync() {
+            if (dashboardServer?.IsRunning == true) return;
+            dashboardServer = new DashboardServer(liveDbPath);
+            await dashboardServer.StartAsync(S.LocalServerPort);
+        }
+
+        private async Task StopLocalServerAsync() {
+            if (dashboardServer != null) {
+                await dashboardServer.StopAsync();
+                dashboardServer = null;
+            }
         }
 
         // Settings properties bound to the Options UI
@@ -442,6 +487,20 @@ namespace NINA.Plugin.NightSummary {
             get => S.DashboardApiKey;
             set { S.DashboardApiKey = value; SaveSettings(); RaisePropertyChanged(); }
         }
+
+        public bool LocalServerEnabled {
+            get => S.LocalServerEnabled;
+            set { S.LocalServerEnabled = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
+        public int LocalServerPort {
+            get => S.LocalServerPort;
+            set { S.LocalServerPort = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
+        public bool IsLocalServerRunning => dashboardServer?.IsRunning == true;
+        public string LocalServerUrl => dashboardServer?.Url ?? "";
+        public ButtonStatus LocalServerStatus { get; } = new ButtonStatus();
 
         public int ReportDetailLevel {
             get => S.ReportDetailLevel;
@@ -744,6 +803,8 @@ namespace NINA.Plugin.NightSummary {
         public ICommand SearchSessionsCommand { get; }
         public ICommand ClearSearchCommand { get; }
         public ICommand PreviewReportCommand { get; private set; }
+        public ICommand StartLocalServerCommand { get; }
+        public ICommand StopLocalServerCommand { get; }
 
         public event PropertyChangedEventHandler PropertyChanged;
         protected void RaisePropertyChanged([CallerMemberName] string propertyName = null) {
