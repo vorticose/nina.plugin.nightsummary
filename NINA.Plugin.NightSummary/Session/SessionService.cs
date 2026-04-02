@@ -807,6 +807,7 @@ namespace NINA.Plugin.NightSummary.Session {
 
             // Load or re-parse timing events for overhead breakdown
             var timingEvents = db.GetTimingEventsForSession(session.SessionId);
+            Logger.Info($"NightSummary: Preview — loaded {timingEvents.Count} timing events from DB for session {session.SessionId}");
             if (!timingEvents.Any()) {
                 try {
                     timingEvents = NinaLogParser.Parse(session.SessionStart, session.SessionEnd, images.Count);
