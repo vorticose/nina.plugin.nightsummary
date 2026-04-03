@@ -357,7 +357,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine($"<div class='stat-box' title='Wall-clock time spent on non-imaging tasks. Overlapping operations (e.g. image saves during the next exposure) are counted once.'><div class='stat-value'>{FormatDuration(mergedOverheadSec)}</div><div class='stat-label'>Total Overhead</div></div>");
             sb.AppendLine($"<div class='stat-box' title='Percentage of implied overhead (imaging window minus exposure time) accounted for by parsed log events.'><div class='stat-value'>{coveragePct:F1}%</div><div class='stat-label'>Overhead Accounted</div></div>");
             if (unaccountedSec > 10)
-                sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{FormatDuration(unaccountedSec)}</div><div class='stat-label'>Unaccounted</div></div>");
+                sb.AppendLine($"<div class='stat-box' title='Time not attributed to any parsed event. Includes NINA internal processing between sequence items (trigger evaluations, scheduler planning, plugin hooks).'><div class='stat-value'>{FormatDuration(unaccountedSec)}</div><div class='stat-label'>Unaccounted</div></div>");
             else
                 sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{groups.Count}</div><div class='stat-label'>Categories</div></div>");
             sb.AppendLine("</div>");

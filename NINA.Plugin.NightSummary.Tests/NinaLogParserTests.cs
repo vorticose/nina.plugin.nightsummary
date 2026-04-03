@@ -114,12 +114,13 @@ namespace NINA.Plugin.NightSummary.Tests {
         }
 
         [Fact]
-        public void DoesNotParsePlateSolvesFromImageSolver() {
-            // Plate solves from ImageSolver.cs are sub-operations of centering/autofocus
-            // and are no longer parsed to avoid double-counting with parent SequenceItems
+        public void ParsesPlateSolvesFromImageSolver() {
             var events = NinaLogParser.ParseFile(_logPath, SessionStart, SessionEnd);
             var solves = events.Where(e => e.EventType == "PlateSolve").ToList();
-            Assert.Empty(solves);
+
+            Assert.Equal(2, solves.Count);
+            Assert.Equal("Success", solves[0].Details);
+            Assert.InRange(solves[0].DurationSeconds, 1, 5);
         }
 
         [Fact]
@@ -236,9 +237,8 @@ namespace NINA.Plugin.NightSummary.Tests {
             Assert.Contains("Autofocus", types);
             Assert.Contains("ImageSave", types);
             Assert.Contains("TempCompFocus", types);
-            // PlateSolve, StarDetection, and Centering are no longer parsed as standalone events
-            // (they are sub-operations of parent SequenceItems like Center, RunAutofocus)
-            Assert.DoesNotContain("PlateSolve", types);
+            Assert.Contains("PlateSolve", types);
+            // StarDetection is not parsed (zero-duration, single timestamp)
             Assert.DoesNotContain("StarDetection", types);
         }
     }
