@@ -114,25 +114,21 @@ namespace NINA.Plugin.NightSummary.Tests {
         }
 
         [Fact]
-        public void ParsesPlateSolveStartEnd() {
+        public void DoesNotParsePlateSolvesFromImageSolver() {
+            // Plate solves from ImageSolver.cs are sub-operations of centering/autofocus
+            // and are no longer parsed to avoid double-counting with parent SequenceItems
             var events = NinaLogParser.ParseFile(_logPath, SessionStart, SessionEnd);
             var solves = events.Where(e => e.EventType == "PlateSolve").ToList();
-
-            Assert.Equal(2, solves.Count);
-            Assert.Equal("Success", solves[0].Details);
-            // First solve: 21:49:11 to 21:49:14 = ~2.1s
-            Assert.InRange(solves[0].DurationSeconds, 1, 5);
+            Assert.Empty(solves);
         }
 
         [Fact]
-        public void ParsesStarDetectionSingleTimestamp() {
+        public void DoesNotParseStarDetectionEvents() {
+            // Star detection events from HocusFocusStarDetection.cs are sub-operations
+            // and are no longer parsed (they were zero-duration anyway)
             var events = NinaLogParser.ParseFile(_logPath, SessionStart, SessionEnd);
             var stars = events.Where(e => e.EventType == "StarDetection").ToList();
-
-            Assert.Equal(2, stars.Count);
-            Assert.Equal(0, stars[0].DurationSeconds);
-            Assert.Contains("HFR 1.604", stars[0].Details);
-            Assert.Contains("Stars 1394", stars[0].Details);
+            Assert.Empty(stars);
         }
 
         [Fact]
@@ -148,13 +144,12 @@ namespace NINA.Plugin.NightSummary.Tests {
         }
 
         [Fact]
-        public void ParsesCenteringSolverSequence() {
+        public void DoesNotParseCenteringSolverDirectly() {
+            // Centering is now tracked via SequenceItem Center/CenterAndRotate, not CenteringSolver.cs
+            // The test log doesn't have a SequenceItem Center, so no centering events expected
             var events = NinaLogParser.ParseFile(_logPath, SessionStart, SessionEnd);
             var centering = events.Where(e => e.EventType == "Centering").ToList();
-
-            Assert.Single(centering);
-            // 21:35:41 to 21:36:26 = ~44s
-            Assert.InRange(centering[0].DurationSeconds, 40, 50);
+            Assert.Empty(centering);
         }
 
         [Fact]

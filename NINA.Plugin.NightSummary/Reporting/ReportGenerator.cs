@@ -373,10 +373,20 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     ["TempCompFocus"]  = "#8b5cf6",
                     ["Autofocus"]      = "#ef4444",
                     ["PlateSolve"]     = "#06b6d4",
-                    ["StarDetection"]  = "#ec4899",
                     ["ImageSave"]      = "#f97316",
                     ["Centering"]      = "#6366f1",
-                    ["MeridianFlip"]   = "#14b8a6"
+                    ["MeridianFlip"]   = "#14b8a6",
+                    ["Slew"]           = "#a855f7",
+                    ["DomeSync"]       = "#2dd4bf",
+                    ["DomeOps"]        = "#0d9488",
+                    ["FlatPanel"]      = "#fbbf24",
+                    ["CameraTemp"]     = "#60a5fa",
+                    ["MountOps"]       = "#c084fc",
+                    ["Guiding"]        = "#34d399",
+                    ["SafetyWait"]     = "#f472b6",
+                    ["FocuserMove"]    = "#a78bfa",
+                    ["Rotator"]        = "#818cf8",
+                    ["Switch"]         = "#94a3b8"
                 };
 
                 sb.AppendLine("<div style='display:flex; height:24px; border-radius:6px; overflow:hidden; margin:8px 0;'>");
@@ -466,9 +476,15 @@ namespace NINA.Plugin.NightSummary.Reporting {
             "FilterChange"   => "Filter Change",
             "TempCompFocus"  => "Temp Comp Focus",
             "PlateSolve"     => "Plate Solve",
-            "StarDetection"  => "Star Detection",
             "ImageSave"      => "Image Save",
             "MeridianFlip"   => "Meridian Flip",
+            "DomeSync"       => "Dome Sync",
+            "DomeOps"        => "Dome",
+            "FlatPanel"      => "Flat Panel",
+            "CameraTemp"     => "Camera Temp",
+            "MountOps"       => "Mount",
+            "SafetyWait"     => "Safety Wait",
+            "FocuserMove"    => "Focuser Move",
             _                => eventType
         };
 
