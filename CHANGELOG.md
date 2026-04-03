@@ -1,6 +1,30 @@
 # Night Summary — Changelog
 
 
+## v2.10.0-beta1
+
+**New features**
+- Live Stack integration — captures live-stacked thumbnails from the Live Stack plugin and displays them in the report per target/filter, with broadband/narrowband grouping and composite support
+- Yield and Imaging Overhead Analysis — parses NINA logs to show a per-category timing breakdown with stacked bar chart and detailed table. Tracks all major NINA sequence items (camera download, filter changes, dithering, autofocus, plate solves, image saves, centering, slew, guiding, dome operations, flat panel, camera temp, mount operations, and more). Uses interval merging to accurately handle overlapping concurrent events. Coverage validated at ~89% with unaccounted time explained via tooltip.
+- Equipment profile section in report header — shows all 12 NINA equipment types (Camera, Telescope, Mount, Filter Wheel, Focuser, Rotator, Guider, Dome, Flat Panel, Safety Monitor, Weather, Switch) with per-field visibility toggles and user-overridable display names
+- NINA filename pattern variables in report save path — use the same path variables as NINA's file save patterns, with clickable insertion buttons
+- Customizable x-axis on metric charts — choose Time, Frame Index, or any metric (Altitude, Temperature, etc.) as the x-axis, independently configurable per chart
+- Sky position angle displayed in target headers and FOV overlay on sky thumbnails
+
+**Improvements**
+- Tonight's Preview now shown even when session has zero images (weather-interrupted sessions)
+- Session history now returns all previous sessions instead of a capped limit
+- Plugin version, and NINA version shown in report footer
+- Settings now persist to a stable JSON file that survives NINA plugin updates
+- Per-filter exposure breakdown in overview now uses FormatDuration for consistent time formatting
+- Active sessions show "In Progress" with duration so far instead of negative numbers
+- Preview and resend paths always re-parse NINA logs to pick up parser improvements
+- Enhanced beta diagnostics logging for log parser and live stack integration
+
+**Bug fixes**
+- Fixed filter classification progressive reset on settings load/refresh
+
+
 ## v2.9.0
 
 **New features**
