@@ -331,12 +331,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var totalOverheadSec = groups.Sum(g => g.TotalSeconds);
 
             // Total integration = shutter-open time only (the ground truth for yield).
-            // Implied overhead = imaging window minus integration time = everything that
-            // ISN'T collecting light (download, saves, slews, dither, autofocus, etc.)
+            // The session window spans from the earliest parsed event to the latest,
+            // which includes pre-imaging setup (cool camera, slew, center, autofocus)
+            // and post-imaging teardown (warm camera, park) — not just first-to-last image.
             var totalIntegrationSec = data.Images.Sum(i => i.ExposureDuration);
-            var firstImage = data.Images.Min(i => i.Timestamp);
-            var lastImage = data.Images.Max(i => i.Timestamp);
-            var windowSec = (lastImage - firstImage).TotalSeconds;
+            var allEvents = timingEvents.Where(e => e.DurationSeconds > 0).ToList();
+            var windowStart = allEvents.Min(e => e.StartTime);
+            var windowEnd = allEvents.Max(e => e.EndTime);
+            var windowSec = (windowEnd - windowStart).TotalSeconds;
             var impliedOverheadSec = windowSec - totalIntegrationSec;
 
             // Merge all overhead intervals to compute wall-clock overhead, deduplicating
