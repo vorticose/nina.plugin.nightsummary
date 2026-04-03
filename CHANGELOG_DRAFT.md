@@ -7,25 +7,19 @@
 - NINA filename pattern variables in report save path — use the same path variables as NINA's file save patterns, with clickable insertion buttons
 - Customizable x-axis on metric charts — choose Time, Frame Index, or any metric (Altitude, Temperature, etc.) as the x-axis, independently configurable per chart
 - Sky position angle displayed in target headers and FOV overlay on sky thumbnails
-- Tonight's Preview now shown even when session has zero images (weather-interrupted sessions)
 
 **Improvements**
+- Tonight's Preview now shown even when session has zero images (weather-interrupted sessions)
 - Session history now returns all previous sessions instead of a capped limit
-- Plugin version, NINA version, and author credit shown in report footer
+- Plugin version, and NINA version shown in report footer
 - Settings now persist to a stable JSON file that survives NINA plugin updates
 - Per-filter exposure breakdown in overview now uses FormatDuration for consistent time formatting
-- Equipment and overhead sections expanded by default for better discoverability
-- Overhead stat boxes have info icons with hover tooltips explaining each metric
-- Note below overhead table explains that category totals may exceed overall overhead due to concurrent operations
 - Active sessions show "In Progress" with duration so far instead of negative numbers
 - Preview and resend paths always re-parse NINA logs to pick up parser improvements
-- Deploy scripts now save/restore current branch for seamless multi-branch workflows
 - Enhanced beta diagnostics logging for log parser and live stack integration
 
 **Bug fixes**
 - Fixed filter classification progressive reset on settings load/refresh
-- Fixed additional metric charts not inheriting x-axis setting
-- Fixed live stack images not loading for historical sessions (report path resolution)
 
 # v2.8.0 Draft Changelog
 
