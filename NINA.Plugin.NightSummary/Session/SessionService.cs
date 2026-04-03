@@ -314,7 +314,7 @@ namespace NINA.Plugin.NightSummary.Session {
                 };
 
                 // Try to load persisted live stack masters for this session
-                var (resolvedDir, resolvedFilename) = ResolveReportSavePath(reportData);
+                var (resolvedDir, resolvedFilename) = ResolveReportSavePath(reportData, scanForExisting: true);
                 if (resolvedDir != null) {
                     reportData.LiveStackImages = LoadLiveStackMasters(resolvedDir, resolvedFilename);
                 }
@@ -351,7 +351,14 @@ namespace NINA.Plugin.NightSummary.Session {
         /// The resolved pattern becomes a session folder, with the HTML file inside using the same name.
         /// e.g. pattern "$DATEMINUS12$" → Saved Reports/NightSummary_2026-03-31/NightSummary_2026-03-31.html
         /// </summary>
-        private (string dir, string filename) ResolveReportSavePath(ReportData reportData) {
+        /// <summary>
+        /// Resolves the save directory and filename for a report.
+        /// When scanForExisting is true (used by preview/resend to load assets),
+        /// falls back to scanning for an existing folder by session date if the
+        /// resolved path doesn't exist. When false (used by live save), always
+        /// creates a new folder.
+        /// </summary>
+        private (string dir, string filename) ResolveReportSavePath(ReportData reportData, bool scanForExisting = false) {
             var basePath = S.SaveReportPath;
             var saveRoot = !string.IsNullOrWhiteSpace(basePath)
                 ? basePath
@@ -376,9 +383,8 @@ namespace NINA.Plugin.NightSummary.Session {
                 filename = Path.GetFileName(filename);
             }
 
-            // If the resolved path doesn't exist on disk (common for historical sessions where
-            // the pattern includes timestamps), scan for a matching folder by session date
-            if (!Directory.Exists(sessionDir) && reportData?.Session != null) {
+            // Only scan for existing folders when loading assets (preview/resend), not when saving
+            if (scanForExisting && !Directory.Exists(sessionDir) && reportData?.Session != null) {
                 Logger.Info($"NightSummary: Resolved report path doesn't exist: {sessionDir}, scanning for date match...");
                 var found = FindSavedReportDir(saveRoot, reportData.Session.SessionStart);
                 if (found != null) {
@@ -886,7 +892,7 @@ namespace NINA.Plugin.NightSummary.Session {
             };
 
             // Try to load persisted live stack masters for this session
-            var (resolvedDir, resolvedFilename) = ResolveReportSavePath(reportData);
+            var (resolvedDir, resolvedFilename) = ResolveReportSavePath(reportData, scanForExisting: true);
             if (resolvedDir != null) {
                 reportData.LiveStackImages = LoadLiveStackMasters(resolvedDir, resolvedFilename);
             }
