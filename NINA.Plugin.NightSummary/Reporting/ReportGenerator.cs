@@ -354,10 +354,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             // Summary stat boxes
             sb.AppendLine("<div style='display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:10px 0;'>");
-            sb.AppendLine($"<div class='stat-box' title='Wall-clock time spent on non-imaging tasks. Overlapping operations (e.g. image saves during the next exposure) are counted once.'><div class='stat-value'>{FormatDuration(mergedOverheadSec)}</div><div class='stat-label'>Total Overhead</div></div>");
-            sb.AppendLine($"<div class='stat-box' title='Percentage of implied overhead (imaging window minus exposure time) accounted for by parsed log events.'><div class='stat-value'>{coveragePct:F1}%</div><div class='stat-label'>Overhead Accounted</div></div>");
+            var infoIcon = "<span style='cursor:help; opacity:0.5; margin-left:4px; font-size:12px;'>&#9432;</span>";
+            sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{FormatDuration(mergedOverheadSec)}</div><div class='stat-label'>Total Overhead <span title='Wall-clock time spent on non-imaging tasks. Overlapping operations (e.g. image saves during the next exposure) are counted once.'>{infoIcon}</span></div></div>");
+            sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{coveragePct:F1}%</div><div class='stat-label'>Overhead Accounted <span title='Percentage of implied overhead (imaging window minus exposure time) accounted for by parsed log events.'>{infoIcon}</span></div></div>");
             if (unaccountedSec > 10)
-                sb.AppendLine($"<div class='stat-box' title='Time not attributed to any parsed event. Includes NINA internal processing between sequence items (trigger evaluations, scheduler planning, plugin hooks).'><div class='stat-value'>{FormatDuration(unaccountedSec)}</div><div class='stat-label'>Unaccounted</div></div>");
+                sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{FormatDuration(unaccountedSec)}</div><div class='stat-label'>Unaccounted <span title='Time not attributed to any parsed event. Includes NINA internal processing between sequence items (trigger evaluations, scheduler planning, plugin hooks).'>{infoIcon}</span></div></div>");
             else
                 sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{groups.Count}</div><div class='stat-label'>Categories</div></div>");
             sb.AppendLine("</div>");
