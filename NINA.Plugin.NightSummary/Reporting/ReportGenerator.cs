@@ -347,8 +347,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             // Summary stat boxes
             sb.AppendLine("<div style='display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:10px 0;'>");
-            sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{FormatDuration(mergedOverheadSec)}</div><div class='stat-label'>Total Overhead</div></div>");
-            sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{coveragePct:F1}%</div><div class='stat-label'>Overhead Accounted</div></div>");
+            sb.AppendLine($"<div class='stat-box' title='Wall-clock time spent on non-imaging tasks. Overlapping operations (e.g. image saves during the next exposure) are counted once.'><div class='stat-value'>{FormatDuration(mergedOverheadSec)}</div><div class='stat-label'>Total Overhead</div></div>");
+            sb.AppendLine($"<div class='stat-box' title='Percentage of implied overhead (imaging window minus exposure time) accounted for by parsed log events.'><div class='stat-value'>{coveragePct:F1}%</div><div class='stat-label'>Overhead Accounted</div></div>");
             if (unaccountedSec > 10)
                 sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{FormatDuration(unaccountedSec)}</div><div class='stat-label'>Unaccounted</div></div>");
             else
@@ -385,6 +385,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             // Detail table
+            sb.AppendLine("<p style='font-size:11px; color:var(--dim); margin:8px 0 0;'>Category totals may exceed the overall overhead because some operations run concurrently.</p>");
             sb.AppendLine("<table style='width:100%; border-collapse:collapse; margin-top:8px; font-size:13px;'>");
             sb.AppendLine("<tr style='border-bottom:2px solid var(--border);'>");
             sb.AppendLine("<th style='text-align:left; padding:6px 8px; color:var(--accent);'>Category</th>");
