@@ -843,17 +843,18 @@ namespace NINA.Plugin.NightSummary.Session {
             var (fovW, fovH) = ComputeCameraFov(session);
             var (lat, lon)   = GetObserverCoords();
 
-            // Load or re-parse timing events for overhead breakdown
-            var timingEvents = db.GetTimingEventsForSession(session.SessionId);
-            if (!timingEvents.Any()) {
-                try {
-                    timingEvents = NinaLogParser.Parse(session.SessionStart, session.SessionEnd, images.Count);
-                    if (timingEvents.Any())
-                        db.SaveTimingEvents(session.SessionId, timingEvents);
-                } catch (Exception ex) {
-                    Logger.Warning($"NightSummary: Log re-parse failed — {ex.Message}");
-                    timingEvents = new List<TimingEvent>();
+            // Always re-parse timing events from logs (fast, < 1s) to pick up parser improvements.
+            // Falls back to cached DB data only if the log file is no longer available.
+            List<TimingEvent> timingEvents;
+            try {
+                timingEvents = NinaLogParser.Parse(session.SessionStart, session.SessionEnd, images.Count);
+                if (timingEvents.Any()) {
+                    db.ClearTimingEvents(session.SessionId);
+                    db.SaveTimingEvents(session.SessionId, timingEvents);
                 }
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Log re-parse failed, using cached data — {ex.Message}");
+                timingEvents = db.GetTimingEventsForSession(session.SessionId);
             }
 
             var reportData = new ReportData {
