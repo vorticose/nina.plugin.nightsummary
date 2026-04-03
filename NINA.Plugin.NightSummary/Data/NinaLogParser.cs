@@ -86,18 +86,10 @@ namespace NINA.Plugin.NightSummary.Data {
             ["MeridianFlip"]            = "MeridianFlip",
         };
 
-        /// <summary>
-        /// Container items that wrap child items — skip these to avoid double-counting.
-        /// </summary>
-        private static readonly HashSet<string> ContainerItems = new(StringComparer.OrdinalIgnoreCase) {
-            "TakeManyExposures", "SmartExposure", "SkyFlat",
-            "TrainedFlatExposure", "TrainedDarkFlatExposure",
-            "AutoExposureFlat", "AutoBrightnessFlat",
-            "DitherAfterExposures",
-            // Utility items with no meaningful overhead
-            "Annotation", "MessageBox", "SaveSequence",
-            "ResetVariable", "ResetVariableToDate", "Variable", "GlobalVariable", "GlobalConstant",
-        };
+        // Only items in ItemCategoryMap (plus TakeExposure/TakeSubframeExposure) are tracked.
+        // Everything else — containers, triggers, conditions, utility items — is silently skipped.
+        // This allow-list approach is more robust than a deny-list since NINA and plugins
+        // can introduce arbitrary new sequence items.
 
         /// <summary>
         /// Parses the NINA log file for the given session window and returns timing events.
@@ -169,14 +161,14 @@ namespace NINA.Plugin.NightSummary.Data {
                 // === SequenceItem.cs|Run — Starting/Finishing pairs ===
                 if (source == "SequenceItem.cs" && member == "Run") {
                     var itemName = ExtractItemName(message);
-                    if (itemName == null || ContainerItems.Contains(itemName)) {
-                        // Skip containers and unparseable messages
+                    if (itemName == null) {
+                        // Unparseable message
                     } else if (message.StartsWith("Starting ")) {
                         if (itemName == "TakeExposure" || itemName == "TakeSubframeExposure") {
                             exposureStart = timestamp;
                             exposureDetails = ExtractExposureDetails(message);
                             exposureRequestedSeconds = ExtractExposureTime(message);
-                        } else {
+                        } else if (ItemCategoryMap.ContainsKey(itemName)) {
                             pendingStarts[itemName] = timestamp;
                         }
                     } else if (message.StartsWith("Finishing ")) {

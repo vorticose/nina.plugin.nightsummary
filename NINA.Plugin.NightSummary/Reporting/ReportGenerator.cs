@@ -315,7 +315,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine($"<details class='iq-section'{detailsOpen}>");
             sb.AppendLine("<summary>Overhead Breakdown</summary>");
 
-            // Group by event type, sum durations, order by total descending
+            // Group by event type, sum durations, filter out negligible categories (< 1s total)
             var groups = overheadEvents
                 .GroupBy(e => e.EventType)
                 .Select(g => new {
@@ -324,6 +324,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     TotalSeconds = g.Sum(e => e.DurationSeconds),
                     AvgSeconds = g.Average(e => e.DurationSeconds)
                 })
+                .Where(g => g.TotalSeconds >= 1.0)
                 .OrderByDescending(g => g.TotalSeconds)
                 .ToList();
 
