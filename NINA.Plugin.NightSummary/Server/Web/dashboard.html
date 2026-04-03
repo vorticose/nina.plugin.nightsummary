@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Night Summary</title>
+<style>
+{{STYLES}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div class="header-left">
+      <h1>Night Summary</h1>
+      <div class="subtitle" id="page-subtitle">Session history</div>
+    </div>
+    <div class="header-right">
+      <nav id="nav">
+        <a href="#/sessions" class="nav-link active" data-page="sessions">Sessions</a>
+        <a href="#/stats" class="nav-link" data-page="stats">Stats</a>
+      </nav>
+      <button class="theme-toggle" id="theme-toggle" title="Toggle light/dark mode"></button>
+    </div>
+  </header>
+  <div id="content">
+    <div class="loading">Loading...</div>
+  </div>
+  <footer class="footnote">
+    Night Summary Dashboard
+  </footer>
+</div>
+<script>
+{{SCRIPTS}}
+</script>
+</body>
+</html>

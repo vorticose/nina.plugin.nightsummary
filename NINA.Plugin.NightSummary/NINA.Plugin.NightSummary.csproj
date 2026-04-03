@@ -30,6 +30,15 @@
     <EmbeddedResource Include="..\assets\plugin-icon.png">
       <LogicalName>plugin-icon.png</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="Server\Web\dashboard.html">
+      <LogicalName>dashboard.html</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Server\Web\dashboard.css">
+      <LogicalName>dashboard.css</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Server\Web\dashboard.js">
+      <LogicalName>dashboard.js</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>
