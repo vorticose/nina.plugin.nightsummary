@@ -1,0 +1,5 @@
+# Keep version files branch-local during merges (v3-dev vs dev/main)
+NINA.Plugin.NightSummary/Properties/AssemblyInfo.cs merge=ours
+NINA.Plugin.NightSummary/NINA.Plugin.NightSummary.csproj merge=ours
+manifest.json merge=ours
+repository.json merge=ours
