@@ -7,7 +7,7 @@ using System.Runtime.InteropServices;
 [assembly: Guid("682531D1-5A23-4627-B961-0794282ECB4E")]
 [assembly: AssemblyVersion("2.10.0.0")]
 [assembly: AssemblyFileVersion("2.10.0.0")]
-[assembly: AssemblyInformationalVersion("2.10.0-beta1")]
+[assembly: AssemblyInformationalVersion("2.10.0-beta2")]
 [assembly: AssemblyTitle("Night Summary")]
 [assembly: AssemblyDescription("*** BETA *** Records your imaging session and delivers a detailed HTML report via email, Discord, or Pushover when your sequence ends.\n\nTo update: download the latest release from the link above and extract the zip to your existing NightSummary plugin folder, overwriting existing files.")]
 [assembly: AssemblyCompany("Evan Pegors")]
