@@ -259,8 +259,11 @@ namespace NINA.Plugin.NightSummary {
                 LocalServerStatus.Text = "";
                 try {
                     await StartLocalServerAsync();
-                    LocalServerStatus.Text = $"✓ Running at {dashboardServer?.Url}";
+                    LocalServerStatus.Text = "✓ Running";
                     RaisePropertyChanged(nameof(IsLocalServerRunning));
+                    RaisePropertyChanged(nameof(LocalServerUrl));
+                    RaisePropertyChanged(nameof(TailscaleUrl));
+                    RaisePropertyChanged(nameof(HasTailscaleUrl));
                 } catch (Exception ex) {
                     LocalServerStatus.Text = $"✗ {ex.Message}";
                 }
@@ -271,6 +274,9 @@ namespace NINA.Plugin.NightSummary {
                 await StopLocalServerAsync();
                 LocalServerStatus.Text = "Stopped";
                 RaisePropertyChanged(nameof(IsLocalServerRunning));
+                RaisePropertyChanged(nameof(LocalServerUrl));
+                RaisePropertyChanged(nameof(TailscaleUrl));
+                RaisePropertyChanged(nameof(HasTailscaleUrl));
             });
 
             GenerateAllDashboardReportsCommand = new RelayCommand(async () => {
@@ -517,7 +523,19 @@ namespace NINA.Plugin.NightSummary {
 
         public bool IsLocalServerRunning => dashboardServer?.IsRunning == true;
         public string LocalServerUrl => dashboardServer?.Url ?? "";
+        public string TailscaleUrl => dashboardServer?.TailscaleUrl ?? "";
+        public bool HasTailscaleUrl => !string.IsNullOrEmpty(dashboardServer?.TailscaleUrl);
         public ButtonStatus LocalServerStatus { get; } = new ButtonStatus();
+
+        public ICommand CopyLocalUrlCommand => new RelayCommand(async () => {
+            if (!string.IsNullOrEmpty(LocalServerUrl))
+                System.Windows.Clipboard.SetText(LocalServerUrl);
+        });
+
+        public ICommand CopyTailscaleUrlCommand => new RelayCommand(async () => {
+            if (!string.IsNullOrEmpty(TailscaleUrl))
+                System.Windows.Clipboard.SetText(TailscaleUrl);
+        });
 
         public int ReportDetailLevel {
             get => S.ReportDetailLevel;

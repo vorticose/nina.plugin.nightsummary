@@ -30,6 +30,7 @@ namespace NINA.Plugin.NightSummary.Server {
 
         public bool IsRunning { get; private set; }
         public string Url { get; private set; }
+        public string TailscaleUrl { get; private set; }
 
         public DashboardServer(string dbPath) {
             this.dbPath = dbPath;
@@ -50,12 +51,15 @@ namespace NINA.Plugin.NightSummary.Server {
 
                 var hostname = Dns.GetHostName();
                 Url = $"http://{hostname}:{port}";
+                TailscaleUrl = GetTailscaleUrl(port);
                 IsRunning = true;
 
                 // Fire-and-forget the request loop
                 _ = AcceptLoop(cts.Token);
 
                 Logger.Info($"NightSummary: Local dashboard started at {Url}");
+                if (TailscaleUrl != null)
+                    Logger.Info($"NightSummary: Tailnet URL: {TailscaleUrl}");
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to start local dashboard. {ex.Message}");
                 IsRunning = false;
@@ -75,6 +79,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 listener = null;
                 IsRunning = false;
                 Url = null;
+                TailscaleUrl = null;
                 Logger.Info("NightSummary: Local dashboard stopped");
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Error stopping local dashboard. {ex.Message}");
@@ -434,6 +439,29 @@ namespace NINA.Plugin.NightSummary.Server {
                 firstSession = sessions.Count > 0 ? sessions.Last().SessionStart.ToString("o") : null,
                 lastSession = sessions.Count > 0 ? sessions.First().SessionStart.ToString("o") : null
             });
+        }
+
+        // ── Tailscale Detection ──────────────────────────────────────────────────
+
+        private static string GetTailscaleUrl(int port) {
+            try {
+                var psi = new System.Diagnostics.ProcessStartInfo {
+                    FileName = "tailscale",
+                    Arguments = "ip -4",
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                using var proc = System.Diagnostics.Process.Start(psi);
+                var ip = proc.StandardOutput.ReadToEnd().Trim();
+                proc.WaitForExit(3000);
+                if (proc.ExitCode == 0 && !string.IsNullOrEmpty(ip) && ip.StartsWith("100.")) {
+                    return $"http://{ip}:{port}";
+                }
+            } catch {
+                // Tailscale not installed or not running — silently ignore
+            }
+            return null;
         }
 
         // ── Dashboard HTML (from embedded resources) ──────────────────────────

@@ -919,9 +919,24 @@
                                    VerticalAlignment="Center" Margin="10,0,0,0" />
                     </StackPanel>
 
+                    <!-- URL display with copy buttons (visible when server is running) -->
+                    <StackPanel Margin="0,8,0,0" Visibility="{Binding IsLocalServerRunning, Converter={StaticResource BooleanToVisibilityCollapsedConverter}}">
+                        <StackPanel Orientation="Horizontal" Margin="0,4">
+                            <TextBlock Text="Local URL" Width="200" VerticalAlignment="Center" Foreground="Gray" FontSize="11" />
+                            <TextBlock Text="{Binding LocalServerUrl}" VerticalAlignment="Center" Foreground="#7eb8f7" FontSize="12" />
+                            <Button Content="Copy" Command="{Binding CopyLocalUrlCommand}" Margin="8,0,0,0" Padding="8,2" FontSize="11" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,4"
+                                    Visibility="{Binding HasTailscaleUrl, Converter={StaticResource BooleanToVisibilityCollapsedConverter}}">
+                            <TextBlock Text="Tailnet URL" Width="200" VerticalAlignment="Center" Foreground="Gray" FontSize="11" />
+                            <TextBlock Text="{Binding TailscaleUrl}" VerticalAlignment="Center" Foreground="#7eb8f7" FontSize="12" />
+                            <Button Content="Copy" Command="{Binding CopyTailscaleUrlCommand}" Margin="8,0,0,0" Padding="8,2" FontSize="11" />
+                        </StackPanel>
+                    </StackPanel>
+
                     <StackPanel Orientation="Horizontal" Margin="0,5">
                         <TextBlock Width="200" />
-                        <TextBlock Text="Serves an interactive web dashboard at http://localhost on the configured port. Auto-starts with NINA when enabled."
+                        <TextBlock Text="Serves an interactive web dashboard on the configured port. Accessible from any device on your local network or Tailnet. Auto-starts with NINA when enabled."
                                    TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="400" VerticalAlignment="Center" />
                     </StackPanel>
 
