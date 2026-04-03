@@ -396,6 +396,7 @@ namespace NINA.Plugin.NightSummary {
             get => S.ReportDetailLevel;
             set {
                 S.ReportDetailLevel     = value;
+                S.ShowOverheadBreakdown = true;
                 S.ShowSkyThumbnails     = true;
                 S.ShowLiveStackImages   = true;
                 S.ShowAltitudeChart     = true;
@@ -409,6 +410,7 @@ namespace NINA.Plugin.NightSummary {
                 S.ShowNextNightPreview  = true;
                 SaveSettings();
                 RaisePropertyChanged();
+                RaisePropertyChanged(nameof(ShowOverheadBreakdown));
                 RaisePropertyChanged(nameof(ShowSkyThumbnails));
                 RaisePropertyChanged(nameof(ShowLiveStackImages));
                 RaisePropertyChanged(nameof(ShowAltitudeChart));
@@ -421,6 +423,11 @@ namespace NINA.Plugin.NightSummary {
                 RaisePropertyChanged(nameof(ShowPerTargetIQ));
                 RaisePropertyChanged(nameof(ShowNextNightPreview));
             }
+        }
+
+        public bool ShowOverheadBreakdown {
+            get => S.ShowOverheadBreakdown;
+            set { S.ShowOverheadBreakdown = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public bool ShowSkyThumbnails {

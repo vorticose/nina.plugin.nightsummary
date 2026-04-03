@@ -178,7 +178,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             if (detailLevel >= 1) sb.Append(BuildEventTimelineSection(data));
             sb.Append(BuildOverviewStatsSection(data, detailLevel));
-            if (detailLevel >= 2) sb.Append(BuildOverheadBreakdownSection(data, detailsOpen));
+            if (detailLevel >= 2 && SettingsManager.Instance.Current.ShowOverheadBreakdown) sb.Append(BuildOverheadBreakdownSection(data, detailsOpen));
             sb.Append(await BuildTargetSection(data, detailLevel, detailsOpen));
             if (detailLevel >= 1) sb.Append(BuildImageQualitySection(data, detailLevel, detailsOpen));
             if (detailLevel >= 2) sb.Append(BuildNextNightPreviewSection(data));

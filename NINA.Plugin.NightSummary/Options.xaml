@@ -118,6 +118,11 @@
                     <!-- ══════════════════════════════════════════════════════════ -->
 
                     <StackPanel Orientation="Horizontal" Margin="0,4">
+                        <TextBlock Text="Show Yield and Overhead Analysis" Width="200" VerticalAlignment="Center" />
+                        <CheckBox IsChecked="{Binding ShowOverheadBreakdown}" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,4">
                         <TextBlock Text="Show Sky Thumbnails" Width="200" VerticalAlignment="Center" />
                         <CheckBox IsChecked="{Binding ShowSkyThumbnails}" VerticalAlignment="Center" />
                     </StackPanel>
