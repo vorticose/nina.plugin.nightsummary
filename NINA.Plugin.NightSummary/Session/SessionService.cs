@@ -477,7 +477,10 @@ namespace NINA.Plugin.NightSummary.Session {
             var assetsDir = Path.Combine(reportDir, "assets");
             var manifestPath = Path.Combine(assetsDir, "livestack.json");
 
-            if (!File.Exists(manifestPath)) return new List<LiveStackImage>();
+            if (!File.Exists(manifestPath)) {
+                Logger.Info($"NightSummary: No livestack.json manifest at {manifestPath}");
+                return new List<LiveStackImage>();
+            }
 
             try {
                 var json = File.ReadAllText(manifestPath);
@@ -486,7 +489,10 @@ namespace NINA.Plugin.NightSummary.Session {
 
                 foreach (var entry in entries) {
                     var jpgPath = Path.Combine(assetsDir, entry["file"].GetString());
-                    if (!File.Exists(jpgPath)) continue;
+                    if (!File.Exists(jpgPath)) {
+                        Logger.Warning($"NightSummary: Live stack JPEG missing: {jpgPath}");
+                        continue;
+                    }
 
                     var masterData = File.ReadAllBytes(jpgPath);
                     // Re-scale master to report-embed size for inline base64

@@ -121,7 +121,12 @@ namespace NINA.Plugin.NightSummary.Session {
         public List<LiveStackImage> StopAndCollect() {
             broker.Unsubscribe(StackUpdateTopic, this);
             var result = images.Values.ToList();
-            Logger.Info($"NightSummary: LiveStackCapture collected {result.Count} image(s) across {result.Select(i => i.Target).Distinct().Count()} target(s)");
+            if (result.Count > 0) {
+                var targets = result.Select(i => $"{i.Target}/{i.Filter}").Distinct();
+                Logger.Info($"NightSummary: LiveStackCapture collected {result.Count} image(s): {string.Join(", ", targets)}");
+            } else {
+                Logger.Warning("NightSummary: LiveStackCapture collected 0 images — Live Stack plugin may not be installed or no stacks were broadcast during the session");
+            }
             return result;
         }
 
