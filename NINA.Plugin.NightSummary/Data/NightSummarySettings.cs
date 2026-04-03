@@ -17,7 +17,7 @@ namespace NINA.Plugin.NightSummary.Data {
         public bool   EmailEnabled      { get; set; } = false;
 
         // ── Local save ────────────────────────────────────────────────────────
-        public bool   SaveReportLocally      { get; set; } = false;
+        public bool   SaveReportLocally      { get; set; } = true;
         public string SaveReportPath         { get; set; } = "";
         public string SaveReportFilePattern  { get; set; } = "NightSummary_$$DATEMINUS12$$";
 
