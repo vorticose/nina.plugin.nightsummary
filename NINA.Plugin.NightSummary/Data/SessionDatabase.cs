@@ -909,6 +909,16 @@ namespace NINA.Plugin.NightSummary.Data {
             }
         }
 
+        public void ClearTimingEvents(string sessionId) {
+            using (var conn = new SQLiteConnection(connectionString)) {
+                conn.Open();
+                using (var cmd = new SQLiteCommand("DELETE FROM SessionTimingEvents WHERE SessionId = @SessionId", conn)) {
+                    cmd.Parameters.AddWithValue("@SessionId", sessionId);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
         public List<TimingEvent> GetTimingEventsForSession(string sessionId) {
             var events = new List<TimingEvent>();
             using (var conn = new SQLiteConnection(connectionString)) {

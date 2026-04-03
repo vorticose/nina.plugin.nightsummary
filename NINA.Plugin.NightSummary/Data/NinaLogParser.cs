@@ -18,6 +18,88 @@ namespace NINA.Plugin.NightSummary.Data {
         private static readonly string[] KnownNinaVersionPrefixes = { "3.2.", "3.1.", "3.0.", "3.3." };
 
         /// <summary>
+        /// Maps NINA SequenceItem names to overhead event categories.
+        /// Unknown items not in this map use their raw name as the category.
+        /// </summary>
+        private static readonly Dictionary<string, string> ItemCategoryMap = new(StringComparer.OrdinalIgnoreCase) {
+            // Imaging (special-cased for download derivation, not in generic path)
+            // ["TakeExposure"] handled separately
+
+            // Filter
+            ["SwitchFilter"]              = "FilterChange",
+
+            // Focusing
+            ["RunAutofocus"]              = "Autofocus",
+            ["MoveFocuserByTemperature"]  = "TempCompFocus",
+            ["MoveFocuserAbsolute"]       = "FocuserMove",
+            ["MoveFocuserRelative"]       = "FocuserMove",
+
+            // Guiding
+            ["Dither"]                    = "Dither",
+            ["StartGuiding"]             = "Guiding",
+            ["StopGuiding"]              = "Guiding",
+
+            // Mount / Slew
+            ["SlewScopeToRaDec"]         = "Slew",
+            ["SlewScopeToAltAz"]         = "Slew",
+            ["ParkScope"]                = "MountOps",
+            ["UnparkScope"]              = "MountOps",
+            ["FindHome"]                 = "MountOps",
+            ["SetTracking"]              = "MountOps",
+
+            // Centering / Plate solving
+            ["Center"]                   = "Centering",
+            ["CenterAndRotate"]          = "Centering",
+            ["SolveAndSync"]             = "PlateSolve",
+            ["SolveAndRotate"]           = "PlateSolve",
+
+            // Dome
+            ["SynchronizeDome"]          = "DomeSync",
+            ["OpenDomeShutter"]          = "DomeOps",
+            ["CloseDomeShutter"]         = "DomeOps",
+            ["ParkDome"]                 = "DomeOps",
+            ["FindHomeDome"]             = "DomeOps",
+            ["SlewDomeAzimuth"]          = "DomeOps",
+            ["EnableDomeSynchronization"]  = "DomeOps",
+            ["DisableDomeSynchronization"] = "DomeOps",
+
+            // Flat panel
+            ["SetBrightness"]            = "FlatPanel",
+            ["ToggleLight"]              = "FlatPanel",
+            ["OpenCover"]                = "FlatPanel",
+            ["CloseCover"]               = "FlatPanel",
+
+            // Camera temp
+            ["CoolCamera"]              = "CameraTemp",
+            ["WarmCamera"]              = "CameraTemp",
+
+            // Rotator
+            ["MoveRotatorMechanical"]   = "Rotator",
+
+            // Switch
+            ["SetSwitchValue"]          = "Switch",
+
+            // Safety
+            ["WaitUntilSafe"]           = "SafetyWait",
+
+            // Meridian flip
+            ["MeridianFlip"]            = "MeridianFlip",
+        };
+
+        /// <summary>
+        /// Container items that wrap child items — skip these to avoid double-counting.
+        /// </summary>
+        private static readonly HashSet<string> ContainerItems = new(StringComparer.OrdinalIgnoreCase) {
+            "TakeManyExposures", "SmartExposure", "SkyFlat",
+            "TrainedFlatExposure", "TrainedDarkFlatExposure",
+            "AutoExposureFlat", "AutoBrightnessFlat",
+            "DitherAfterExposures",
+            // Utility items with no meaningful overhead
+            "Annotation", "MessageBox", "SaveSequence",
+            "ResetVariable", "ResetVariableToDate", "Variable", "GlobalVariable", "GlobalConstant",
+        };
+
+        /// <summary>
         /// Parses the NINA log file for the given session window and returns timing events.
         /// </summary>
         /// <param name="sessionStart">Session start time (used to locate the correct log file).</param>
@@ -59,20 +141,8 @@ namespace NINA.Plugin.NightSummary.Data {
             string exposureDetails = null;
             double exposureRequestedSeconds = 0;
 
-            DateTime? filterStart = null;
-            string filterDetails = null;
-
-            DateTime? ditherStart = null;
-
-            DateTime? tempCompStart = null;
-            string tempCompDetails = null;
-
-            DateTime? autofocusStart = null;
-
-            DateTime? plateSolveStart = null;
-
-            DateTime? centeringFirstEntry = null;
-            DateTime centeringLastEntry = default;
+            // Generic tracker for all non-exposure SequenceItem Starting/Finishing pairs
+            var pendingStarts = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
 
             int parsedExposureCount = 0;
             int parsedImageSaveCount = 0;
@@ -98,24 +168,19 @@ namespace NINA.Plugin.NightSummary.Data {
 
                 // === SequenceItem.cs|Run — Starting/Finishing pairs ===
                 if (source == "SequenceItem.cs" && member == "Run") {
-                    if (message.StartsWith("Starting ")) {
-                        if (message.Contains("Item: TakeExposure")) {
+                    var itemName = ExtractItemName(message);
+                    if (itemName == null || ContainerItems.Contains(itemName)) {
+                        // Skip containers and unparseable messages
+                    } else if (message.StartsWith("Starting ")) {
+                        if (itemName == "TakeExposure" || itemName == "TakeSubframeExposure") {
                             exposureStart = timestamp;
                             exposureDetails = ExtractExposureDetails(message);
                             exposureRequestedSeconds = ExtractExposureTime(message);
-                        } else if (message.Contains("Item: SwitchFilter")) {
-                            filterStart = timestamp;
-                            filterDetails = ExtractFilterName(message);
-                        } else if (message.Contains("Item: Dither") && !message.Contains("Item: DitherAfterExposures")) {
-                            ditherStart = timestamp;
-                        } else if (message.Contains("Item: MoveFocuserByTemperature")) {
-                            tempCompStart = timestamp;
-                            tempCompDetails = ExtractTempCompDetails(message);
-                        } else if (message.Contains("Item: RunAutofocus")) {
-                            autofocusStart = timestamp;
+                        } else {
+                            pendingStarts[itemName] = timestamp;
                         }
                     } else if (message.StartsWith("Finishing ")) {
-                        if (message.Contains("Item: TakeExposure") && exposureStart.HasValue) {
+                        if ((itemName == "TakeExposure" || itemName == "TakeSubframeExposure") && exposureStart.HasValue) {
                             var totalDuration = (timestamp - exposureStart.Value).TotalSeconds;
                             events.Add(new TimingEvent {
                                 EventType = "Exposure",
@@ -141,77 +206,21 @@ namespace NINA.Plugin.NightSummary.Data {
                             exposureStart = null;
                             exposureDetails = null;
                             exposureRequestedSeconds = 0;
-                        } else if (message.Contains("Item: SwitchFilter") && filterStart.HasValue) {
+                        } else if (pendingStarts.TryGetValue(itemName, out var startTime)) {
+                            var eventType = ItemCategoryMap.TryGetValue(itemName, out var mapped) ? mapped : itemName;
                             events.Add(new TimingEvent {
-                                EventType = "FilterChange",
-                                StartTime = filterStart.Value,
+                                EventType = eventType,
+                                StartTime = startTime,
                                 EndTime = timestamp,
-                                DurationSeconds = (timestamp - filterStart.Value).TotalSeconds,
-                                Details = filterDetails
+                                DurationSeconds = (timestamp - startTime).TotalSeconds,
+                                Details = ExtractItemDetails(itemName, message)
                             });
-                            filterStart = null;
-                            filterDetails = null;
-                        } else if (message.Contains("Item: Dither") && !message.Contains("Item: DitherAfterExposures") && ditherStart.HasValue) {
-                            events.Add(new TimingEvent {
-                                EventType = "Dither",
-                                StartTime = ditherStart.Value,
-                                EndTime = timestamp,
-                                DurationSeconds = (timestamp - ditherStart.Value).TotalSeconds
-                            });
-                            ditherStart = null;
-                        } else if (message.Contains("Item: MoveFocuserByTemperature") && tempCompStart.HasValue) {
-                            events.Add(new TimingEvent {
-                                EventType = "TempCompFocus",
-                                StartTime = tempCompStart.Value,
-                                EndTime = timestamp,
-                                DurationSeconds = (timestamp - tempCompStart.Value).TotalSeconds,
-                                Details = tempCompDetails
-                            });
-                            tempCompStart = null;
-                            tempCompDetails = null;
-                        } else if (message.Contains("Item: RunAutofocus") && autofocusStart.HasValue) {
-                            events.Add(new TimingEvent {
-                                EventType = "Autofocus",
-                                StartTime = autofocusStart.Value,
-                                EndTime = timestamp,
-                                DurationSeconds = (timestamp - autofocusStart.Value).TotalSeconds
-                            });
-                            autofocusStart = null;
+                            pendingStarts.Remove(itemName);
                         }
                     }
                 }
 
-                // === ImageSolver.cs|Solve — Plate solve start/end ===
-                else if (source == "ImageSolver.cs" && member == "Solve") {
-                    if (message.StartsWith("Platesolving with parameters")) {
-                        plateSolveStart = timestamp;
-                    } else if (message.StartsWith("Platesolve successful") || message.StartsWith("Platesolve failed")) {
-                        if (plateSolveStart.HasValue) {
-                            events.Add(new TimingEvent {
-                                EventType = "PlateSolve",
-                                StartTime = plateSolveStart.Value,
-                                EndTime = timestamp,
-                                DurationSeconds = (timestamp - plateSolveStart.Value).TotalSeconds,
-                                Details = message.StartsWith("Platesolve successful") ? "Success" : "Failed"
-                            });
-                            plateSolveStart = null;
-                        }
-                    }
-                }
-
-                // === HocusFocusStarDetection.cs|Detect — single-timestamp event ===
-                else if (source == "HocusFocusStarDetection.cs" && member == "Detect") {
-                    var starInfo = ExtractStarDetectionDetails(message);
-                    events.Add(new TimingEvent {
-                        EventType = "StarDetection",
-                        StartTime = timestamp,
-                        EndTime = timestamp,
-                        DurationSeconds = 0,
-                        Details = starInfo
-                    });
-                }
-
-                // === ImageSaveController.cs|DoWork — self-contained timing ===
+                // === ImageSaveController.cs|DoWork — self-contained timing (async, runs during next exposure) ===
                 else if (source == "ImageSaveController.cs" && member == "DoWork") {
                     var saveDuration = ExtractImageSaveDuration(message);
                     if (saveDuration > 0) {
@@ -225,52 +234,13 @@ namespace NINA.Plugin.NightSummary.Data {
                         parsedImageSaveCount++;
                     }
                 }
-
-                // === CenteringSolver.cs|Center — track first/last entries ===
-                else if (source == "CenteringSolver.cs" && member == "Center") {
-                    if (!centeringFirstEntry.HasValue) {
-                        centeringFirstEntry = timestamp;
-                    }
-                    centeringLastEntry = timestamp;
-
-                    // Check if this is the last centering line (filter restore or within-threshold)
-                    if (message.Contains("Restoring filter") || message.Contains("Threshold: 1")) {
-                        // Look ahead to see if next centering line is much later (new sequence)
-                        // For now, emit when we see "Restoring filter" as it marks the end of a centering sequence
-                        if (message.Contains("Restoring filter") && centeringFirstEntry.HasValue) {
-                            events.Add(new TimingEvent {
-                                EventType = "Centering",
-                                StartTime = centeringFirstEntry.Value,
-                                EndTime = timestamp,
-                                DurationSeconds = (timestamp - centeringFirstEntry.Value).TotalSeconds
-                            });
-                            centeringFirstEntry = null;
-                        }
-                    }
-                }
-            }
-
-            // Flush any remaining centering sequence
-            if (centeringFirstEntry.HasValue && centeringLastEntry != default) {
-                events.Add(new TimingEvent {
-                    EventType = "Centering",
-                    StartTime = centeringFirstEntry.Value,
-                    EndTime = centeringLastEntry,
-                    DurationSeconds = (centeringLastEntry - centeringFirstEntry.Value).TotalSeconds
-                });
             }
 
             // Warn about unmatched starts
             if (exposureStart.HasValue)
                 Logger.Warning($"NightSummary: LogParser — unmatched TakeExposure start at {exposureStart.Value:o}");
-            if (filterStart.HasValue)
-                Logger.Warning($"NightSummary: LogParser — unmatched SwitchFilter start at {filterStart.Value:o}");
-            if (ditherStart.HasValue)
-                Logger.Warning($"NightSummary: LogParser — unmatched Dither start at {ditherStart.Value:o}");
-            if (autofocusStart.HasValue)
-                Logger.Warning($"NightSummary: LogParser — unmatched RunAutofocus start at {autofocusStart.Value:o}");
-            if (plateSolveStart.HasValue)
-                Logger.Warning($"NightSummary: LogParser — unmatched PlateSolve start at {plateSolveStart.Value:o}");
+            foreach (var pending in pendingStarts)
+                Logger.Warning($"NightSummary: LogParser — unmatched {pending.Key} start at {pending.Value:o}");
 
             // Cross-check exposure count
             if (expectedImageCount >= 0 && parsedExposureCount != expectedImageCount) {
@@ -337,6 +307,26 @@ namespace NINA.Plugin.NightSummary.Data {
             return match.Success ? match.Groups[1].Value : null;
         }
 
+        /// <summary>
+        /// Extracts the item name from a SequenceItem log message.
+        /// Format: "Starting Category: X, Item: SwitchFilter, ..."
+        /// </summary>
+        private static string ExtractItemName(string message) {
+            var match = Regex.Match(message, @"Item:\s*(\w+)");
+            return match.Success ? match.Groups[1].Value : null;
+        }
+
+        /// <summary>
+        /// Extracts relevant details from a SequenceItem log message based on the item type.
+        /// </summary>
+        private static string ExtractItemDetails(string itemName, string message) {
+            return itemName switch {
+                "SwitchFilter" => ExtractFilterName(message),
+                "MoveFocuserByTemperature" => ExtractTempCompDetails(message),
+                _ => null
+            };
+        }
+
         private static string ExtractExposureDetails(string message) {
             // "Starting Category: Scheduler, Item: TakeExposure, ExposureTime 600, Gain 100, Offset 19, ImageType LIGHT, Binning 1x1"
             var match = Regex.Match(message, @"ExposureTime (\d+(?:\.\d+)?),.*?Gain (\d+)");
@@ -363,15 +353,6 @@ namespace NINA.Plugin.NightSummary.Data {
             var match = Regex.Match(message, @"Slope:\s*([-\d.]+),\s*Intercept\s*([-\d.]+)");
             if (match.Success)
                 return $"Slope {match.Groups[1].Value}, Intercept {match.Groups[2].Value}";
-            return null;
-        }
-
-        private static string ExtractStarDetectionDetails(string message) {
-            // "Average HFR: 1.62, HFR MAD: 0.066, Detected Stars 1213, Region: 0"
-            var hfrMatch = Regex.Match(message, @"Average HFR:\s*([\d.]+)");
-            var starsMatch = Regex.Match(message, @"Detected Stars\s*(\d+)");
-            if (hfrMatch.Success && starsMatch.Success)
-                return $"HFR {hfrMatch.Groups[1].Value}, Stars {starsMatch.Groups[1].Value}";
             return null;
         }
 

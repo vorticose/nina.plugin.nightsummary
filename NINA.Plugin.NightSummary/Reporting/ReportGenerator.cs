@@ -165,14 +165,16 @@ namespace NINA.Plugin.NightSummary.Reporting {
             const string warningsPlaceholder = "<!--WARNINGS_PLACEHOLDER-->";
             sb.AppendLine(warningsPlaceholder);
 
+            int detailLevel = SettingsManager.Instance.Current.ReportDetailLevel;
+            string detailsOpen = SettingsManager.Instance.Current.ExpandSectionsDefault ? " open" : "";
+
             if (!data.Images.Any()) {
                 sb.AppendLine("<p><em>No images were recorded during this session.</em></p>");
+                if (detailLevel >= 2) sb.Append(BuildNextNightPreviewSection(data));
+                sb.Append(BuildFooter());
                 sb.AppendLine("</body></html>");
                 return sb.ToString();
             }
-
-            int detailLevel = SettingsManager.Instance.Current.ReportDetailLevel;
-            string detailsOpen = SettingsManager.Instance.Current.ExpandSectionsDefault ? " open" : "";
 
             if (detailLevel >= 1) sb.Append(BuildEventTimelineSection(data));
             if (detailLevel >= 2) sb.Append(BuildOverheadBreakdownSection(data, detailsOpen));
@@ -214,8 +216,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine("<h1>Night Summary Report</h1>");
             }
             sb.AppendLine($"<p><strong>Session Date:</strong> {data.Session.SessionStart:yyyy-MM-dd}</p>");
-            sb.AppendLine($"<p><strong>Session Start:</strong> {data.Session.SessionStart:HH:mm:ss} &nbsp;&nbsp; <strong>Session End:</strong> {data.Session.SessionEnd:HH:mm:ss}</p>");
-            sb.AppendLine($"<p><strong>Duration:</strong> {(data.Session.SessionEnd - data.Session.SessionStart).TotalHours:F1} hours</p>");
+            var sessionEnd = data.Session.SessionEnd > data.Session.SessionStart ? data.Session.SessionEnd : DateTime.Now;
+            var isActive = data.Session.SessionEnd <= data.Session.SessionStart;
+            sb.AppendLine($"<p><strong>Session Start:</strong> {data.Session.SessionStart:HH:mm:ss} &nbsp;&nbsp; <strong>Session End:</strong> {(isActive ? "In Progress" : sessionEnd.ToString("HH:mm:ss"))}</p>");
+            sb.AppendLine($"<p><strong>Duration:</strong> {(sessionEnd - data.Session.SessionStart).TotalHours:F1} hours{(isActive ? " (so far)" : "")}</p>");
             sb.AppendLine($"<p><strong>Profile:</strong> {data.Session.ProfileName}</p>");
 
             // Equipment profile section (collapsed by default)
@@ -324,6 +328,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 .ToList();
 
             var totalOverheadSec = groups.Sum(g => g.TotalSeconds);
+
+            // Wall-clock overhead: merge overlapping intervals to avoid double-counting
+            // (e.g. ImageSave runs concurrently with the next exposure, CameraDownload
+            // overlaps with other operations). Per-category sums still show raw totals
+            // since "how much total autofocus time" is useful, but coverage % uses merged time.
+            var mergedOverheadSec = MergeOverheadIntervals(overheadEvents);
             var totalExposureSec = data.Images.Sum(i => i.ExposureDuration);
 
             // Yield cross-validation: compare parsed overhead against yield-implied overhead
@@ -336,13 +346,18 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var roofClosedSec = windowSec - (totalExposureSec / (yield.YieldPct / 100.0));
                 impliedOverheadSec = windowSec - totalExposureSec - Math.Max(0, roofClosedSec);
             }
-            var coveragePct = impliedOverheadSec > 0 ? Math.Min(totalOverheadSec / impliedOverheadSec * 100.0, 100.0) : 0;
-            var unaccountedSec = Math.Max(0, impliedOverheadSec - totalOverheadSec);
+            var rawCoveragePct = impliedOverheadSec > 0 ? mergedOverheadSec / impliedOverheadSec * 100.0 : 0;
+            var coveragePct = Math.Min(rawCoveragePct, 100.0);
+            var unaccountedSec = Math.Max(0, impliedOverheadSec - mergedOverheadSec);
+
+            Logger.Info($"NightSummary: Overhead — window={windowSec:F0}s, exposure={totalExposureSec:F0}s, " +
+                $"implied={impliedOverheadSec:F0}s, rawSum={totalOverheadSec:F0}s, merged={mergedOverheadSec:F0}s, " +
+                $"rawCoverage={rawCoveragePct:F1}%, capped={coveragePct:F1}%");
 
             // Summary stat boxes
             sb.AppendLine("<div style='display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:10px 0;'>");
-            sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{FormatDuration(totalOverheadSec)}</div><div class='stat-label'>Total Overhead</div></div>");
-            sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{coveragePct:F1}%</div><div class='stat-label'>Overhead Accounted</div></div>");
+            sb.AppendLine($"<div class='stat-box' title='Wall-clock time spent on non-imaging tasks. Overlapping operations (e.g. image saves during the next exposure) are counted once.'><div class='stat-value'>{FormatDuration(mergedOverheadSec)}</div><div class='stat-label'>Total Overhead</div></div>");
+            sb.AppendLine($"<div class='stat-box' title='Percentage of implied overhead (imaging window minus exposure time) accounted for by parsed log events.'><div class='stat-value'>{coveragePct:F1}%</div><div class='stat-label'>Overhead Accounted</div></div>");
             if (unaccountedSec > 10)
                 sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{FormatDuration(unaccountedSec)}</div><div class='stat-label'>Unaccounted</div></div>");
             else
@@ -358,10 +373,20 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     ["TempCompFocus"]  = "#8b5cf6",
                     ["Autofocus"]      = "#ef4444",
                     ["PlateSolve"]     = "#06b6d4",
-                    ["StarDetection"]  = "#ec4899",
                     ["ImageSave"]      = "#f97316",
                     ["Centering"]      = "#6366f1",
-                    ["MeridianFlip"]   = "#14b8a6"
+                    ["MeridianFlip"]   = "#14b8a6",
+                    ["Slew"]           = "#a855f7",
+                    ["DomeSync"]       = "#2dd4bf",
+                    ["DomeOps"]        = "#0d9488",
+                    ["FlatPanel"]      = "#fbbf24",
+                    ["CameraTemp"]     = "#60a5fa",
+                    ["MountOps"]       = "#c084fc",
+                    ["Guiding"]        = "#34d399",
+                    ["SafetyWait"]     = "#f472b6",
+                    ["FocuserMove"]    = "#a78bfa",
+                    ["Rotator"]        = "#818cf8",
+                    ["Switch"]         = "#94a3b8"
                 };
 
                 sb.AppendLine("<div style='display:flex; height:24px; border-radius:6px; overflow:hidden; margin:8px 0;'>");
@@ -379,6 +404,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             // Detail table
+            sb.AppendLine("<p style='font-size:11px; color:var(--dim); margin:8px 0 0;'>Category totals may exceed the overall overhead because some operations run concurrently.</p>");
             sb.AppendLine("<table style='width:100%; border-collapse:collapse; margin-top:8px; font-size:13px;'>");
             sb.AppendLine("<tr style='border-bottom:2px solid var(--border);'>");
             sb.AppendLine("<th style='text-align:left; padding:6px 8px; color:var(--accent);'>Category</th>");
@@ -407,14 +433,58 @@ namespace NINA.Plugin.NightSummary.Reporting {
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Merges overlapping time intervals to compute actual wall-clock overhead seconds.
+        /// Many overhead events run concurrently (e.g. ImageSave during next exposure,
+        /// CameraDownload overlapping with other operations), so naively summing durations
+        /// double-counts shared time. This returns the true elapsed overhead time.
+        /// </summary>
+        internal static double MergeOverheadIntervals(List<TimingEvent> events) {
+            if (events == null || events.Count == 0) return 0;
+
+            var intervals = events
+                .Where(e => e.StartTime != DateTime.MinValue && e.EndTime != DateTime.MinValue && e.EndTime > e.StartTime)
+                .OrderBy(e => e.StartTime)
+                .ToList();
+
+            if (intervals.Count == 0) return 0;
+
+            double totalSeconds = 0;
+            var currentStart = intervals[0].StartTime;
+            var currentEnd = intervals[0].EndTime;
+
+            for (int i = 1; i < intervals.Count; i++) {
+                if (intervals[i].StartTime <= currentEnd) {
+                    // Overlapping — extend the current interval
+                    if (intervals[i].EndTime > currentEnd)
+                        currentEnd = intervals[i].EndTime;
+                } else {
+                    // Gap — flush the current interval and start a new one
+                    totalSeconds += (currentEnd - currentStart).TotalSeconds;
+                    currentStart = intervals[i].StartTime;
+                    currentEnd = intervals[i].EndTime;
+                }
+            }
+            // Flush the last interval
+            totalSeconds += (currentEnd - currentStart).TotalSeconds;
+
+            return totalSeconds;
+        }
+
         private static string FormatEventTypeName(string eventType) => eventType switch {
             "CameraDownload" => "Camera Download",
             "FilterChange"   => "Filter Change",
             "TempCompFocus"  => "Temp Comp Focus",
             "PlateSolve"     => "Plate Solve",
-            "StarDetection"  => "Star Detection",
             "ImageSave"      => "Image Save",
             "MeridianFlip"   => "Meridian Flip",
+            "DomeSync"       => "Dome Sync",
+            "DomeOps"        => "Dome",
+            "FlatPanel"      => "Flat Panel",
+            "CameraTemp"     => "Camera Temp",
+            "MountOps"       => "Mount",
+            "SafetyWait"     => "Safety Wait",
+            "FocuserMove"    => "Focuser Move",
             _                => eventType
         };
 
