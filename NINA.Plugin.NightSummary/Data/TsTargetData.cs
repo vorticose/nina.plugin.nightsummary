@@ -30,9 +30,9 @@ namespace NINA.Plugin.NightSummary.Data {
     /// Target Scheduler data for a single target: coordinates and per-filter progress.
     /// </summary>
     public class TsTargetData {
-        public string                  TargetName { get; set; }
-        public double                  RA         { get; set; }  // decimal hours
-        public double                  Dec        { get; set; }  // decimal degrees
+        public string                  TargetName      { get; set; }
+        public double                  RA              { get; set; }  // decimal hours
+        public double                  Dec             { get; set; }  // decimal degrees
         public double                  Rotation        { get; set; }  // position angle degrees East of North
         public double                  MinimumAltitude { get; set; }  // degrees; 0 = not set
         public List<TsFilterProgress>  Filters         { get; set; } = new List<TsFilterProgress>();

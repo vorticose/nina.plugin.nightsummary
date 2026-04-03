@@ -177,15 +177,15 @@ namespace NINA.Plugin.NightSummary.Tests {
         }
 
         [Fact]
-        public void GetSessionHistoryForTarget_LimitRespected() {
+        public void GetSessionHistoryForTarget_ReturnsAllPriorSessions() {
             var sessions = Enumerable.Range(1, 6)
                 .Select(i => CreateSession(new DateTime(2025, i, 1, 21, 0, 0)))
                 .ToList();
             foreach (var s in sessions)
                 _db.SaveImageRecord(TestDataFactory.MakeImage(s.SessionId, target: "M42"));
             var current = sessions.Last();
-            var result  = _db.GetSessionHistoryForTarget("M42", current.SessionId, limit: 3);
-            Assert.Equal(3, result.Count);
+            var result  = _db.GetSessionHistoryForTarget("M42", current.SessionId);
+            Assert.Equal(5, result.Count);
         }
 
         [Fact]

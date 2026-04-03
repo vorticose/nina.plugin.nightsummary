@@ -1,0 +1,102 @@
+[
+  {
+    "file": "S_stack_0.jpg",
+    "target": "Seagull Nebula",
+    "filter": "S",
+    "isMonochrome": true,
+    "stackCount": 5,
+    "redStackCount": null,
+    "greenStackCount": null,
+    "blueStackCount": null
+  },
+  {
+    "file": "H_stack_1.jpg",
+    "target": "Seagull Nebula",
+    "filter": "H",
+    "isMonochrome": true,
+    "stackCount": 5,
+    "redStackCount": null,
+    "greenStackCount": null,
+    "blueStackCount": null
+  },
+  {
+    "file": "Live_Stack_composite_2.jpg",
+    "target": "Seagull Nebula",
+    "filter": "RGB",
+    "isMonochrome": false,
+    "stackCount": 15,
+    "redStackCount": 5,
+    "greenStackCount": 5,
+    "blueStackCount": 5
+  },
+  {
+    "file": "H_stack_3.jpg",
+    "target": "M 101",
+    "filter": "H",
+    "isMonochrome": true,
+    "stackCount": 8,
+    "redStackCount": null,
+    "greenStackCount": null,
+    "blueStackCount": null
+  },
+  {
+    "file": "B_stack_4.jpg",
+    "target": "M 101",
+    "filter": "O",
+    "isMonochrome": true,
+    "stackCount": 6,
+    "redStackCount": null,
+    "greenStackCount": null,
+    "blueStackCount": null
+  },
+  {
+    "file": "R_stack_5.jpg",
+    "target": "Lagoon Nebula",
+    "filter": "R",
+    "isMonochrome": true,
+    "stackCount": 4,
+    "redStackCount": null,
+    "greenStackCount": null,
+    "blueStackCount": null
+  },
+  {
+    "file": "H_stack_6.jpg",
+    "target": "Lagoon Nebula",
+    "filter": "H",
+    "isMonochrome": true,
+    "stackCount": 10,
+    "redStackCount": null,
+    "greenStackCount": null,
+    "blueStackCount": null
+  },
+  {
+    "file": "S_stack_7.jpg",
+    "target": "Lagoon Nebula",
+    "filter": "S",
+    "isMonochrome": true,
+    "stackCount": 7,
+    "redStackCount": null,
+    "greenStackCount": null,
+    "blueStackCount": null
+  },
+  {
+    "file": "O_stack_8.jpg",
+    "target": "Lagoon Nebula",
+    "filter": "O",
+    "isMonochrome": true,
+    "stackCount": 5,
+    "redStackCount": null,
+    "greenStackCount": null,
+    "blueStackCount": null
+  },
+  {
+    "file": "G_stack_9.jpg",
+    "target": "Lagoon Nebula",
+    "filter": "G",
+    "isMonochrome": true,
+    "stackCount": 3,
+    "redStackCount": null,
+    "greenStackCount": null,
+    "blueStackCount": null
+  }
+]

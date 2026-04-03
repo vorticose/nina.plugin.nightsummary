@@ -1,5 +1,4 @@
 using NINA.Plugin.NightSummary.Data;
-using NINA.Plugin.NightSummary.MyPluginProperties;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -11,6 +10,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
     /// Supports any combination of primary and secondary metrics on dual Y axes.
     /// </summary>
     public static class ChartGenerator {
+
+        // X-axis metric indices (ChartXAxisMetric setting)
+        public const int XAxisTime       = 0;
+        public const int XAxisFrameIndex = 1;
+        // Indices 2–20 mirror the primary metrics offset by 2
+        public const int XAxisMetricOffset = 2;
 
         // Primary metric indices (ChartPrimaryMetric setting, SelectedIndex in primary ComboBox)
         public const int PrimaryHFR          = 0;
@@ -64,7 +69,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
         private const int PadTop       = 20;
         private const int PadBottom    = 45;
 
-        private static bool IsLight => Settings.Default.ReportLightMode;
+        private static bool IsLight => SettingsManager.Instance.Current.ReportLightMode;
 
         private static string ColorBackground   => IsLight ? "#f5f5f5" : "#1a1a2e";
         private static string ColorGrid         => IsLight ? "#c8cdd4" : "#2a2a4a";
@@ -80,21 +85,42 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// <summary>
         /// Returns the chart section heading based on configured metrics.
         /// </summary>
-        public static string GetChartTitle(int primaryMetric, int secondaryMetric) {
+        public static string GetChartTitle(int primaryMetric, int secondaryMetric, int xAxisMetric = XAxisTime) {
             string primary = GetPrimaryLabel(primaryMetric);
-            if (secondaryMetric == SecNone) return $"{primary} Vs. Time";
-            return $"{primary} and {GetSecondaryLabel(secondaryMetric)} Vs. Time";
+            string xLabel = GetXAxisLabel(xAxisMetric);
+            if (secondaryMetric == SecNone) return $"{primary} Vs. {xLabel}";
+            return $"{primary} and {GetSecondaryLabel(secondaryMetric)} Vs. {xLabel}";
         }
+
+        internal static string GetXAxisLabel(int xMetric) => xMetric switch {
+            XAxisTime       => "Time",
+            XAxisFrameIndex => "Frame",
+            _ => GetPrimaryLabel(xMetric - XAxisMetricOffset)
+        };
+
+        private static string GetXAxisAxisLabel(int xMetric) => xMetric switch {
+            XAxisTime       => "Time",
+            XAxisFrameIndex => "Frame #",
+            _ => GetPrimaryAxisLabel(xMetric - XAxisMetricOffset)
+        };
 
         /// <summary>
         /// Generates an inline SVG chart. Always returns a non-empty SVG —
         /// shows a placeholder when no data is available.
         /// </summary>
-        public static string GenerateMetricChart(List<ImageRecord> images, int primaryMetric, int secondaryMetric) {
-            var primaryPts   = ExtractPrimary(images, primaryMetric);
-            var secondaryPts = secondaryMetric > SecNone
+        public static string GenerateMetricChart(List<ImageRecord> images, int primaryMetric, int secondaryMetric, int xAxisMetric = XAxisTime) {
+            // Extract y-axis data (still keyed by timestamp for joining)
+            var primaryRaw   = ExtractPrimary(images, primaryMetric);
+            var secondaryRaw = secondaryMetric > SecNone
                 ? ExtractSecondary(images, secondaryMetric)
                 : new List<(DateTime t, double v)>();
+
+            // Build x-axis values keyed by timestamp for joining
+            var xByTime = BuildXAxisLookup(images, xAxisMetric);
+
+            // Join: only include points that have valid x AND y values
+            var primaryPts   = JoinWithXAxis(primaryRaw, xByTime);
+            var secondaryPts = JoinWithXAxis(secondaryRaw, xByTime);
 
             bool hasPrimary    = primaryPts.Count >= 2;
             bool hasSecondary  = secondaryPts.Count >= 2;
@@ -111,7 +137,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             bool swapped = !hasPrimary && hasSecondary;
 
             var leftPts  = swapped ? secondaryPts : primaryPts;
-            var rightPts = (!swapped && hasSecondary) ? secondaryPts : new List<(DateTime t, double v)>();
+            var rightPts = (!swapped && hasSecondary) ? secondaryPts : new List<(double x, double y, DateTime t)>();
             bool hasDual = rightPts.Count >= 2;
 
             string leftColor     = swapped ? ColorSecondary    : ColorPrimary;
@@ -136,24 +162,24 @@ namespace NINA.Plugin.NightSummary.Reporting {
             int plotH    = Height - PadTop  - PadBottom;
 
             // X range — union of all points
-            var allTimes    = leftPts.Select(p => p.t).Concat(rightPts.Select(p => p.t)).ToList();
-            var minTime     = allTimes.Min();
-            var maxTime     = allTimes.Max();
-            double totalSec = Math.Max((maxTime - minTime).TotalSeconds, 1);
+            var allX    = leftPts.Select(p => p.x).Concat(rightPts.Select(p => p.x)).ToList();
+            double minX = allX.Min();
+            double maxX = allX.Max();
+            double xRange = Math.Max(maxX - minX, xAxisMetric == XAxisFrameIndex ? 1 : 0.001);
 
             // Y scales
             double leftMinSpan = swapped ? GetSecondaryMinSpan(secondaryMetric) : GetPrimaryMinSpan(primaryMetric);
-            var (minL, maxL, stepL) = ComputeNiceScale(leftPts.Select(p => p.v), leftMinSpan);
+            var (minL, maxL, stepL) = ComputeNiceScale(leftPts.Select(p => p.y), leftMinSpan);
             double rangeL = maxL - minL;
             double minR = 0, maxR = 0, stepR = 1, rangeR = 1;
             if (hasDual) {
-                (minR, maxR, stepR) = ComputeNiceScale(rightPts.Select(p => p.v), GetSecondaryMinSpan(secondaryMetric));
+                (minR, maxR, stepR) = ComputeNiceScale(rightPts.Select(p => p.y), GetSecondaryMinSpan(secondaryMetric));
                 rangeR = maxR - minR;
             }
 
-            double ToX(DateTime t)  => PadLeft + ((t - minTime).TotalSeconds / totalSec) * plotW;
-            double ToYL(double v)   => PadTop  + plotH - ((v - minL) / rangeL) * plotH;
-            double ToYR(double v)   => PadTop  + plotH - ((v - minR) / rangeR) * plotH;
+            double ToXPx(double xVal) => PadLeft + ((xVal - minX) / xRange) * plotW;
+            double ToYL(double v)     => PadTop  + plotH - ((v - minL) / rangeL) * plotH;
+            double ToYR(double v)     => PadTop  + plotH - ((v - minR) / rangeR) * plotH;
 
             var sb = new StringBuilder();
             sb.AppendLine($"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {Width} {Height}\" style=\"width:100%;max-width:{Width}px;display:block;margin:0 auto 16px;font-family:sans-serif\">");
@@ -182,14 +208,15 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine($"<text x=\"{rightTitleX}\" y=\"{Height / 2}\" fill=\"{ColorSecondary}\" font-size=\"11\" text-anchor=\"middle\" transform=\"rotate(90,{rightTitleX},{Height / 2})\">{GetSecondaryAxisLabel(secondaryMetric)}</text>");
             }
 
-            // X axis time labels
-            int xSteps = Math.Max(1, Math.Min(6, leftPts.Count - 1));
-            if (hasDual) xSteps = Math.Max(1, Math.Min(6, Math.Max(leftPts.Count, rightPts.Count) - 1));
+            // X axis labels
+            int pointCount = Math.Max(leftPts.Count, hasDual ? rightPts.Count : 0);
+            int xSteps = Math.Max(1, Math.Min(6, pointCount - 1));
             for (int i = 0; i <= xSteps; i++) {
-                var t    = minTime + TimeSpan.FromSeconds(totalSec / xSteps * i);
-                double x = ToX(t);
-                sb.AppendLine($"<line x1=\"{x:F1}\" y1=\"{PadTop}\" x2=\"{x:F1}\" y2=\"{PadTop + plotH}\" stroke=\"{ColorGrid}\" stroke-width=\"1\"/>");
-                sb.AppendLine($"<text x=\"{x:F1}\" y=\"{Height - 10}\" fill=\"{ColorLabel}\" font-size=\"11\" text-anchor=\"middle\">{t:HH:mm}</text>");
+                double xVal = minX + (xRange / xSteps * i);
+                double xPx  = ToXPx(xVal);
+                sb.AppendLine($"<line x1=\"{xPx:F1}\" y1=\"{PadTop}\" x2=\"{xPx:F1}\" y2=\"{PadTop + plotH}\" stroke=\"{ColorGrid}\" stroke-width=\"1\"/>");
+                string xLabel = FormatXAxisValue(xVal, xAxisMetric, leftPts.Count > 0 ? leftPts[0].t : DateTime.MinValue, minX);
+                sb.AppendLine($"<text x=\"{xPx:F1}\" y=\"{Height - 10}\" fill=\"{ColorLabel}\" font-size=\"11\" text-anchor=\"middle\">{xLabel}</text>");
             }
 
             // Left and bottom axes
@@ -199,30 +226,38 @@ namespace NINA.Plugin.NightSummary.Reporting {
             // Left Y axis title
             sb.AppendLine($"<text x=\"14\" y=\"{Height / 2}\" fill=\"{(swapped ? ColorSecondary : ColorLabel)}\" font-size=\"11\" text-anchor=\"middle\" transform=\"rotate(-90,14,{Height / 2})\">{leftAxisLabel}</text>");
 
+            // X axis title (for non-time axes)
+            if (xAxisMetric != XAxisTime) {
+                sb.AppendLine($"<text x=\"{PadLeft + plotW / 2}\" y=\"{Height - 2}\" fill=\"{ColorLabel}\" font-size=\"10\" text-anchor=\"middle\">{GetXAxisAxisLabel(xAxisMetric)}</text>");
+            }
+
             // Secondary line (drawn first so primary renders on top)
             if (hasDual) {
-                var rightPoly = string.Join(" ", rightPts.Select(p => $"{ToX(p.t):F1},{ToYR(p.v):F1}"));
+                var rightPoly = string.Join(" ", rightPts.Select(p => $"{ToXPx(p.x):F1},{ToYR(p.y):F1}"));
                 sb.AppendLine($"<polyline points=\"{rightPoly}\" fill=\"none\" stroke=\"{ColorSecondary}\" stroke-width=\"2\" stroke-linejoin=\"round\" stroke-dasharray=\"6,3\"/>");
                 string secUnit = GetTooltipUnit(secondaryMetric, false);
                 string secFmt  = GetValueFormat(secondaryMetric, false);
-                foreach (var p in rightPts)
-                    sb.AppendLine($"<circle cx=\"{ToX(p.t):F1}\" cy=\"{ToYR(p.v):F1}\" r=\"3\" fill=\"{ColorSecondaryDot}\"><title>{p.t:HH:mm} — {p.v.ToString(secFmt)}{secUnit}</title></circle>");
+                foreach (var p in rightPts) {
+                    string tip = FormatTooltipX(p, xAxisMetric, minX) + $" — {p.y.ToString(secFmt)}{secUnit}";
+                    sb.AppendLine($"<circle cx=\"{ToXPx(p.x):F1}\" cy=\"{ToYR(p.y):F1}\" r=\"3\" fill=\"{ColorSecondaryDot}\"><title>{tip}</title></circle>");
+                }
             }
 
             // Primary line
-            var leftPoly = string.Join(" ", leftPts.Select(p => $"{ToX(p.t):F1},{ToYL(p.v):F1}"));
+            var leftPoly = string.Join(" ", leftPts.Select(p => $"{ToXPx(p.x):F1},{ToYL(p.y):F1}"));
             sb.AppendLine($"<polyline points=\"{leftPoly}\" fill=\"none\" stroke=\"{leftColor}\" stroke-width=\"2\" stroke-linejoin=\"round\"/>");
             int leftMetricIdx = swapped ? secondaryMetric : primaryMetric;
             string leftUnit    = GetTooltipUnit(leftMetricIdx, !swapped);
             string leftTipFmt  = GetValueFormat(leftMetricIdx, !swapped);
-            foreach (var p in leftPts)
-                sb.AppendLine($"<circle cx=\"{ToX(p.t):F1}\" cy=\"{ToYL(p.v):F1}\" r=\"3\" fill=\"{leftDotColor}\"><title>{p.t:HH:mm} — {p.v.ToString(leftTipFmt)}{leftUnit}</title></circle>");
+            foreach (var p in leftPts) {
+                string tip = FormatTooltipX(p, xAxisMetric, minX) + $" — {p.y.ToString(leftTipFmt)}{leftUnit}";
+                sb.AppendLine($"<circle cx=\"{ToXPx(p.x):F1}\" cy=\"{ToYL(p.y):F1}\" r=\"3\" fill=\"{leftDotColor}\"><title>{tip}</title></circle>");
+            }
 
             // Warning badge
             if (badgeText != null) {
                 int bx = PadLeft + 8;
                 int by = PadTop  + 6;
-                // Estimate width from text length: ~6.5px/char for badgeText (font 11), ~5.7px/char for subtext (font 10)
                 int neededW = (int)Math.Max(
                     (badgeText.Length * 6.5) + 34,
                     (badgeSubtext?.Length ?? 0) * 5.7 + 14);
@@ -236,6 +271,71 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             sb.AppendLine("</svg>");
             return sb.ToString();
+        }
+
+        // ── X-axis helpers ──────────────────────────────────────────────────
+
+        /// <summary>
+        /// Builds a lookup from Timestamp → x-axis value for joining with y-axis data.
+        /// </summary>
+        private static Dictionary<DateTime, double> BuildXAxisLookup(List<ImageRecord> images, int xMetric) {
+            var ordered = images.OrderBy(i => i.Timestamp).ToList();
+            var lookup = new Dictionary<DateTime, double>();
+
+            if (xMetric == XAxisTime) {
+                if (ordered.Count == 0) return lookup;
+                var minTime = ordered[0].Timestamp;
+                foreach (var img in ordered)
+                    lookup[img.Timestamp] = (img.Timestamp - minTime).TotalSeconds;
+            } else if (xMetric == XAxisFrameIndex) {
+                for (int i = 0; i < ordered.Count; i++)
+                    lookup[ordered[i].Timestamp] = i + 1;
+            } else {
+                // Use a primary metric as the x-axis
+                var metricPts = ExtractPrimary(ordered, xMetric - XAxisMetricOffset);
+                foreach (var (t, v) in metricPts)
+                    lookup[t] = v;
+            }
+
+            return lookup;
+        }
+
+        /// <summary>
+        /// Joins y-axis data with x-axis values, returning only points with valid x AND y.
+        /// Sorted by x value.
+        /// </summary>
+        private static List<(double x, double y, DateTime t)> JoinWithXAxis(
+            List<(DateTime t, double v)> yData,
+            Dictionary<DateTime, double> xByTime) {
+            return yData
+                .Where(p => xByTime.ContainsKey(p.t))
+                .Select(p => (x: xByTime[p.t], y: p.v, t: p.t))
+                .OrderBy(p => p.x)
+                .ToList();
+        }
+
+        private static string FormatXAxisValue(double xVal, int xMetric, DateTime baseTime, double minX) {
+            if (xMetric == XAxisTime) {
+                var t = baseTime + TimeSpan.FromSeconds(xVal - minX);
+                return t.ToString("HH:mm");
+            }
+            if (xMetric == XAxisFrameIndex)
+                return ((int)Math.Round(xVal)).ToString();
+            // Metric x-axis: use the metric's format
+            int primaryIdx = xMetric - XAxisMetricOffset;
+            string fmt = GetValueFormat(primaryIdx, true);
+            return xVal.ToString(fmt);
+        }
+
+        private static string FormatTooltipX((double x, double y, DateTime t) p, int xMetric, double minX) {
+            if (xMetric == XAxisTime)
+                return p.t.ToString("HH:mm");
+            if (xMetric == XAxisFrameIndex)
+                return $"#{(int)Math.Round(p.x)}";
+            int primaryIdx = xMetric - XAxisMetricOffset;
+            string fmt = GetValueFormat(primaryIdx, true);
+            string unit = GetTooltipUnit(primaryIdx, true);
+            return $"{p.x.ToString(fmt)}{unit}";
         }
 
         // ── Data extraction ──────────────────────────────────────────────────

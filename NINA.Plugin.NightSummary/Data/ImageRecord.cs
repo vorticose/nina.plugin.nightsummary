@@ -51,7 +51,8 @@ namespace NINA.Plugin.NightSummary.Data {
 
         // Equipment state at capture time; null = device not connected
         public int?    FocuserPosition { get; set; }  // absolute focuser step position
-        public double? RotatorPosition { get; set; }  // rotator angle in degrees
+        public double? RotatorPosition { get; set; }  // mechanical rotator angle in degrees
+        public double? PositionAngle   { get; set; }  // sky position angle from plate solve (degrees E of N)
 
         // Extended weather data; null = weather device not connected
         public double? Humidity { get; set; }   // relative humidity %

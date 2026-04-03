@@ -1,4 +1,4 @@
-using NINA.Plugin.NightSummary.MyPluginProperties;
+using NINA.Plugin.NightSummary.Data;
 using NINA.Plugin.NightSummary.Reporting;
 using NINA.Plugin.NightSummary.Tests.Fixtures;
 using System.Collections.Generic;
@@ -19,14 +19,14 @@ namespace NINA.Plugin.NightSummary.Tests {
         public ReportGeneratorIqTests() {
             _gen = new ReportGenerator();
             // Defaults that exercise the IQ section
-            Settings.Default.ReportLightMode  = false;
-            Settings.Default.ReportDetailLevel = 1;
-            Settings.Default.ShowHFRGraph      = false;
-            Settings.Default.ShowStarCountCV   = true;
-            Settings.Default.ShowPerTargetIQ   = false;
-            Settings.Default.ShowSkyThumbnails = false;
-            Settings.Default.ShowSessionHistory = false;
-            Settings.Default.ShowTSProgressBars = false;
+            SettingsManager.Instance.Current.ReportLightMode  = false;
+            SettingsManager.Instance.Current.ReportDetailLevel = 1;
+            SettingsManager.Instance.Current.ShowHFRGraph      = false;
+            SettingsManager.Instance.Current.ShowStarCountCV   = true;
+            SettingsManager.Instance.Current.ShowPerTargetIQ   = false;
+            SettingsManager.Instance.Current.ShowSkyThumbnails = false;
+            SettingsManager.Instance.Current.ShowSessionHistory = false;
+            SettingsManager.Instance.Current.ShowTSProgressBars = false;
         }
 
         // ── IQ section presence ───────────────────────────────────────────────
@@ -141,7 +141,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task StarCountCV_Enabled_StarCountTableAppears() {
-            Settings.Default.ShowStarCountCV = true;
+            SettingsManager.Instance.Current.ShowStarCountCV = true;
             var data = TestDataFactory.MakeReportData(imageCount: 10);
             foreach (var img in data.Images) img.StarCount = 250;
             var html = await _gen.GenerateHtmlReport(data);
@@ -150,7 +150,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task StarCountCV_Disabled_TableAbsent() {
-            Settings.Default.ShowStarCountCV = false;
+            SettingsManager.Instance.Current.ShowStarCountCV = false;
             var data = TestDataFactory.MakeReportData(imageCount: 10);
             var html = await _gen.GenerateHtmlReport(data);
             Assert.DoesNotContain("Star Count CV", html);
@@ -158,7 +158,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task StarCountCV_InsufficientImages_NotShown() {
-            Settings.Default.ShowStarCountCV = true;
+            SettingsManager.Instance.Current.ShowStarCountCV = true;
             var data = TestDataFactory.MakeReportData(imageCount: 1);
             foreach (var img in data.Images) img.StarCount = 250;
             var html = await _gen.GenerateHtmlReport(data);
@@ -183,8 +183,8 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task PerTargetIQ_Enabled_MultiTarget_IqSectionPerTarget() {
-            Settings.Default.ShowPerTargetIQ   = true;
-            Settings.Default.ReportDetailLevel = 1;
+            SettingsManager.Instance.Current.ShowPerTargetIQ   = true;
+            SettingsManager.Instance.Current.ReportDetailLevel = 1;
             var data = TestDataFactory.MakeReportData(imageCount: 10, targetCount: 2);
             var html = await _gen.GenerateHtmlReport(data);
             // Per-target IQ adds an iq-table within each target section
@@ -193,8 +193,8 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task PerTargetIQ_Disabled_NoExtraIqTable() {
-            Settings.Default.ShowPerTargetIQ   = false;
-            Settings.Default.ReportDetailLevel = 1;
+            SettingsManager.Instance.Current.ShowPerTargetIQ   = false;
+            SettingsManager.Instance.Current.ReportDetailLevel = 1;
             var data = TestDataFactory.MakeReportData(imageCount: 10, targetCount: 2);
             var html = await _gen.GenerateHtmlReport(data);
             // Use the attribute form to avoid matching the CSS rule ".iq-table { ... }"
@@ -206,8 +206,8 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task AltitudeChart_ValidCoords_SvgRendered() {
-            Settings.Default.ShowAltitudeChart = true;
-            Settings.Default.ShowSkyThumbnails = false;
+            SettingsManager.Instance.Current.ShowAltitudeChart = true;
+            SettingsManager.Instance.Current.ShowSkyThumbnails = false;
             var data = TestDataFactory.MakeReportData(imageCount: 5);
             // Spread timestamps so the altitude chart has a meaningful time range
             var baseTime = new DateTime(2025, 1, 15, 22, 0, 0);
@@ -223,7 +223,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task AltitudeChart_ZeroCoords_NotRendered() {
-            Settings.Default.ShowSkyThumbnails = false;
+            SettingsManager.Instance.Current.ShowSkyThumbnails = false;
             var data = TestDataFactory.MakeReportData(imageCount: 5);
             // RA=0/Dec=0 is the default from MakeReportData — no altitude chart
             var html = await _gen.GenerateHtmlReport(data);
@@ -232,7 +232,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task AltitudeChart_ZeroObserverLocation_NotRendered() {
-            Settings.Default.ShowSkyThumbnails = false;
+            SettingsManager.Instance.Current.ShowSkyThumbnails = false;
             // Pass zero lat/lon via factory
             var data = TestDataFactory.MakeReportData(imageCount: 5, observerLat: 0, observerLon: 0);
             foreach (var img in data.Images) {
@@ -247,7 +247,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task OverviewStats_DetailLevel2_SafetyMonitorFootnoteAppears() {
-            Settings.Default.ReportDetailLevel = 2;
+            SettingsManager.Instance.Current.ReportDetailLevel = 2;
             var data = TestDataFactory.MakeReportData(imageCount: 5);
             // Session has no safety monitor data by default
             var html = await _gen.GenerateHtmlReport(data);
@@ -256,7 +256,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task OverviewStats_DetailLevel2_YieldBoxPresent() {
-            Settings.Default.ReportDetailLevel = 2;
+            SettingsManager.Instance.Current.ReportDetailLevel = 2;
             var data = TestDataFactory.MakeReportData(imageCount: 5);
             var html = await _gen.GenerateHtmlReport(data);
             Assert.Contains("Yield", html);
@@ -264,7 +264,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task OverviewStats_FwhmInOverview_DetailLevel2() {
-            Settings.Default.ReportDetailLevel = 2;
+            SettingsManager.Instance.Current.ReportDetailLevel = 2;
             var data = TestDataFactory.MakeReportData(imageCount: 5);
             foreach (var img in data.Images) img.FWHM = 3.5;
             var html = await _gen.GenerateHtmlReport(data);
