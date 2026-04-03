@@ -43,10 +43,11 @@ namespace NINA.Plugin.NightSummary.Server {
             try {
                 cts = new CancellationTokenSource();
                 listener = new HttpListener();
-                listener.Prefixes.Add($"http://localhost:{port}/");
+                listener.Prefixes.Add($"http://+:{port}/");
                 listener.Start();
 
-                Url = $"http://localhost:{port}";
+                var hostname = Dns.GetHostName();
+                Url = $"http://{hostname}:{port}";
                 IsRunning = true;
 
                 // Fire-and-forget the request loop
