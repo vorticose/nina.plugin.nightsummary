@@ -224,7 +224,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             // Equipment profile section (collapsed by default)
             if (SettingsManager.Instance.Current.ShowEquipmentProfile && data.Equipment != null && data.Equipment.Count > 0) {
-                sb.AppendLine("<details class='equipment-section'>");
+                sb.AppendLine("<details class='equipment-section' open>");
                 sb.AppendLine("<summary>Equipment</summary>");
                 sb.AppendLine("<div class='equipment-grid'>");
                 foreach (var kvp in data.Equipment) {
