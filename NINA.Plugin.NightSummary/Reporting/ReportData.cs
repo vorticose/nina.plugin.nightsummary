@@ -63,5 +63,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// Live Stack images captured during the session. Empty if Live Stack plugin is not running.
         /// </summary>
         public List<Session.LiveStackImage> LiveStackImages { get; set; } = new();
+        /// <summary>
+        /// Absolute path to the PierView timelapse MP4 for this session, or null if not found.
+        /// </summary>
+        public string TimelapseVideoPath { get; set; }
     }
 }

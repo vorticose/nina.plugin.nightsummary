@@ -2,6 +2,7 @@ using NINA.Core.Utility;
 using NINA.Plugin.NightSummary.Data;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Reflection;
@@ -148,6 +149,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("details.livestack-section > summary::-webkit-details-marker { display: none; }");
             sb.AppendLine("details.livestack-section > summary::before { content: '\\25B6\\00A0'; }");
             sb.AppendLine("details.livestack-section[open] > summary::before { content: '\\25BC\\00A0'; }");
+            sb.AppendLine(".timelapse-section { margin-top: 24px; }");
+            sb.AppendLine(".timelapse-video { width: 100%; max-width: 720px; border-radius: 8px; border: 1px solid var(--border); }");
             sb.AppendLine(".iq-table { width: 100%; margin-top: 8px; }");
             sb.AppendLine(".iq-row-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr; }");
             sb.AppendLine(".iq-header { background-color: var(--border); color: var(--accent); padding: 8px; text-align: left; font-weight: bold; }");
@@ -186,6 +189,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
             sb.Append(await BuildTargetSection(data, detailLevel, detailsOpen));
             if (detailLevel >= 1) sb.Append(BuildImageQualitySection(data, detailLevel, detailsOpen));
+            if (detailLevel >= 1) sb.Append(BuildTimelapseSection(data));
             if (detailLevel >= 2) sb.Append(BuildNextNightPreviewSection(data));
             sb.Append(BuildFooter());
 
@@ -1154,6 +1158,32 @@ namespace NINA.Plugin.NightSummary.Reporting {
         private string PreviewNotice(string message) {
             Warnings.Add($"Tonight's Preview: {message}");
             return $"<div class='target-section'><h2>Tonight's Preview</h2><p style='color:var(--muted);font-style:italic;'>{message}</p></div>";
+        }
+
+        private string BuildTimelapseSection(ReportData data) {
+            if (string.IsNullOrEmpty(data.TimelapseVideoPath)) return "";
+            if (!SettingsManager.Instance.Current.ShowTimelapse) return "";
+
+            var sb = new StringBuilder();
+            sb.AppendLine("<h2>Timelapse</h2>");
+
+            var fileUri = new Uri(data.TimelapseVideoPath).AbsoluteUri;
+            sb.AppendLine("<div class='timelapse-section'>");
+            sb.AppendLine($"<video class='timelapse-video' controls preload='metadata'>");
+            sb.AppendLine($"  <source src='{fileUri}' type='video/mp4' />");
+            sb.AppendLine($"  <p>Timelapse video: {System.Web.HttpUtility.HtmlEncode(data.TimelapseVideoPath)}</p>");
+            sb.AppendLine("</video>");
+
+            try {
+                var size = new FileInfo(data.TimelapseVideoPath).Length;
+                var sizeStr = size > 1024 * 1024
+                    ? $"{size / (1024.0 * 1024.0):F1} MB"
+                    : $"{size / 1024.0:F0} KB";
+                sb.AppendLine($"<p style='font-size:11px; color:var(--muted); margin-top:4px;'>PierView timelapse -- {sizeStr}</p>");
+            } catch { }
+
+            sb.AppendLine("</div>");
+            return sb.ToString();
         }
 
         private string BuildNextNightPreviewSection(ReportData data) {

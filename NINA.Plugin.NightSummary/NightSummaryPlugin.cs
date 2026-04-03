@@ -509,6 +509,7 @@ namespace NINA.Plugin.NightSummary {
                 S.ShowOverheadBreakdown = true;
                 S.ShowSkyThumbnails     = true;
                 S.ShowLiveStackImages   = true;
+                S.ShowTimelapse         = true;
                 S.ShowAltitudeChart     = true;
                 S.ShowMoonCurve         = true;
                 S.ShowMinAltitude       = true;
@@ -523,6 +524,7 @@ namespace NINA.Plugin.NightSummary {
                 RaisePropertyChanged(nameof(ShowOverheadBreakdown));
                 RaisePropertyChanged(nameof(ShowSkyThumbnails));
                 RaisePropertyChanged(nameof(ShowLiveStackImages));
+                RaisePropertyChanged(nameof(ShowTimelapse));
                 RaisePropertyChanged(nameof(ShowAltitudeChart));
                 RaisePropertyChanged(nameof(ShowMoonCurve));
                 RaisePropertyChanged(nameof(ShowMinAltitude));
@@ -548,6 +550,16 @@ namespace NINA.Plugin.NightSummary {
         public bool ShowLiveStackImages {
             get => S.ShowLiveStackImages;
             set { S.ShowLiveStackImages = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
+        public bool ShowTimelapse {
+            get => S.ShowTimelapse;
+            set { S.ShowTimelapse = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
+        public string TimelapseFolderPath {
+            get => S.TimelapseFolderPath;
+            set { S.TimelapseFolderPath = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public bool ShowMoonCurve {

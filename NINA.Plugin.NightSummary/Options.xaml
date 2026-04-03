@@ -134,6 +134,18 @@
                     <TextBlock Text="Requires the Live Stack plugin to be installed and running during imaging."
                                FontStyle="Italic" Foreground="Gray" FontSize="11" Margin="24,0,0,0" />
 
+                    <StackPanel Orientation="Horizontal" Margin="0,4">
+                        <TextBlock Text="Show PierView Timelapse" Width="200" VerticalAlignment="Center" />
+                        <CheckBox IsChecked="{Binding ShowTimelapse}" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="24,4,0,0">
+                        <TextBlock Text="Timelapse folder" Width="100" VerticalAlignment="Center" />
+                        <TextBox Text="{Binding TimelapseFolderPath, UpdateSourceTrigger=LostFocus}" Width="300" VerticalAlignment="Center" />
+                        <Button Content="Browse..." Margin="8,0,0,0" Padding="8,2" Click="BrowseTimelapsePath_Click" />
+                    </StackPanel>
+                    <TextBlock Text="Path to PierView timelapse folder. Leave blank to auto-detect."
+                               FontStyle="Italic" Foreground="Gray" FontSize="11" Margin="24,0,0,0" />
+
                     <!-- Altitude Charts + Moon Curve on one row; whole row disabled at Snapshot -->
                     <StackPanel Orientation="Horizontal" Margin="0,4">
                         <StackPanel.Style>

@@ -10,6 +10,7 @@ using NINA.WPF.Base.Interfaces.Mediator;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -207,7 +208,8 @@ namespace NINA.Plugin.NightSummary.Session {
                 SkippedExposures             = collector.SkippedExposures,
                 TimingEvents                 = timingEvents,
                 Equipment                    = BuildEquipmentDictionary(session),
-                LiveStackImages              = liveStackImages
+                LiveStackImages              = liveStackImages,
+                TimelapseVideoPath           = FindTimelapseForSession(session.SessionStart, session.SessionEnd)
             };
 
             _ = Task.Run(async () => {
@@ -933,6 +935,47 @@ namespace NINA.Plugin.NightSummary.Session {
             }
         }
 
+        private static string FindTimelapseForSession(DateTime sessionStart, DateTime sessionEnd) {
+            var S = SettingsManager.Instance.Current;
+            if (!S.ShowTimelapse) return null;
+
+            var root = S.TimelapseFolderPath;
+            if (string.IsNullOrWhiteSpace(root)) {
+                root = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                    "N.I.N.A", "PierView", "timelapse");
+            }
+
+            if (!Directory.Exists(root)) return null;
+
+            var windowStart = sessionStart.AddMinutes(-30);
+            var windowEnd   = sessionEnd.AddMinutes(30);
+            string bestMatch = null;
+            var bestDelta = TimeSpan.MaxValue;
+
+            foreach (var dir in Directory.GetDirectories(root)) {
+                var dirName = Path.GetFileName(dir);
+                if (DateTime.TryParseExact(dirName, "yyyy-MM-dd_HHmmss", CultureInfo.InvariantCulture,
+                        DateTimeStyles.None, out var tlStart)) {
+                    if (tlStart >= windowStart && tlStart <= windowEnd) {
+                        var delta = (tlStart - sessionStart).Duration();
+                        if (delta < bestDelta) {
+                            var mp4 = Path.Combine(dir, $"timelapse_{dirName}.mp4");
+                            if (File.Exists(mp4)) {
+                                bestMatch = mp4;
+                                bestDelta = delta;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (bestMatch != null)
+                Logger.Info($"NightSummary: Found timelapse for session: {bestMatch}");
+
+            return bestMatch;
+        }
+
         private (double lat, double lon) GetObserverCoords() {
             try {
                 var lat = profileService?.ActiveProfile?.AstrometrySettings?.Latitude  ?? 0;
@@ -996,6 +1039,8 @@ namespace NINA.Plugin.NightSummary.Session {
             if (resolvedDir != null) {
                 reportData.LiveStackImages = LoadLiveStackMasters(resolvedDir, resolvedFilename);
             }
+
+            reportData.TimelapseVideoPath = FindTimelapseForSession(session.SessionStart, session.SessionEnd);
 
             return reportData;
         }

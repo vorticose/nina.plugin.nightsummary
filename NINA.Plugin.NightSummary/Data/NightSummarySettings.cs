@@ -47,6 +47,8 @@ namespace NINA.Plugin.NightSummary.Data {
         public bool   ShowOverheadBreakdown  { get; set; } = true;
         public bool   ShowSkyThumbnails      { get; set; } = true;
         public bool   ShowLiveStackImages   { get; set; } = true;
+        public bool   ShowTimelapse         { get; set; } = true;
+        public string TimelapseFolderPath   { get; set; } = "";
         public bool   ShowSessionHistory     { get; set; } = true;
         public bool   ShowAltitudeChart      { get; set; } = true;
         public bool   ShowMinAltitude        { get; set; } = true;

@@ -119,5 +119,23 @@ namespace NINA.Plugin.NightSummary {
                 }
             }
         }
+
+        private void BrowseTimelapsePath_Click(object sender, RoutedEventArgs e) {
+            var dialog = new OpenFolderDialog {
+                Title = "Select PierView timelapse folder"
+            };
+
+            var currentPath = Data.SettingsManager.Instance.Current.TimelapseFolderPath;
+            if (!string.IsNullOrWhiteSpace(currentPath) && System.IO.Directory.Exists(currentPath)) {
+                dialog.InitialDirectory = currentPath;
+            }
+
+            if (dialog.ShowDialog() == true) {
+                var plugin = (sender as Button)?.DataContext as NightSummaryPlugin;
+                if (plugin != null) {
+                    plugin.TimelapseFolderPath = dialog.FolderName;
+                }
+            }
+        }
     }
 }
