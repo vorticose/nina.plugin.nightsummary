@@ -234,11 +234,12 @@ namespace NINA.Plugin.NightSummary.Tests {
             Assert.Contains("FilterChange", types);
             Assert.Contains("Dither", types);
             Assert.Contains("Autofocus", types);
-            Assert.Contains("PlateSolve", types);
-            Assert.Contains("StarDetection", types);
             Assert.Contains("ImageSave", types);
-            Assert.Contains("Centering", types);
             Assert.Contains("TempCompFocus", types);
+            // PlateSolve, StarDetection, and Centering are no longer parsed as standalone events
+            // (they are sub-operations of parent SequenceItems like Center, RunAutofocus)
+            Assert.DoesNotContain("PlateSolve", types);
+            Assert.DoesNotContain("StarDetection", types);
         }
     }
 }
