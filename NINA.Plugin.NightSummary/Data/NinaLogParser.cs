@@ -135,6 +135,7 @@ namespace NINA.Plugin.NightSummary.Data {
 
             // Generic tracker for all non-exposure SequenceItem Starting/Finishing pairs
             var pendingStarts = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+            DateTime? plateSolveStart = null;
 
             int parsedExposureCount = 0;
             int parsedImageSaveCount = 0;
@@ -212,7 +213,28 @@ namespace NINA.Plugin.NightSummary.Data {
                     }
                 }
 
-                // === ImageSaveController.cs|DoWork — self-contained timing (async, runs during next exposure) ===
+                // === ImageSolver.cs|Solve — Plate solve start/end ===
+                // Post-exposure plate solves run between SequenceItems (not inside CenterAndRotate).
+                // They typically overlap with ImageSave so won't affect coverage %, but provide
+                // useful per-category info in the table.
+                else if (source == "ImageSolver.cs" && member == "Solve") {
+                    if (message.StartsWith("Platesolving with parameters")) {
+                        plateSolveStart = timestamp;
+                    } else if (message.StartsWith("Platesolve successful") || message.StartsWith("Platesolve failed")) {
+                        if (plateSolveStart.HasValue) {
+                            events.Add(new TimingEvent {
+                                EventType = "PlateSolve",
+                                StartTime = plateSolveStart.Value,
+                                EndTime = timestamp,
+                                DurationSeconds = (timestamp - plateSolveStart.Value).TotalSeconds,
+                                Details = message.StartsWith("Platesolve successful") ? "Success" : "Failed"
+                            });
+                            plateSolveStart = null;
+                        }
+                    }
+                }
+
+                // === ImageSaveController.cs|DoWork — self-contained timing ===
                 else if (source == "ImageSaveController.cs" && member == "DoWork") {
                     var saveDuration = ExtractImageSaveDuration(message);
                     if (saveDuration > 0) {
