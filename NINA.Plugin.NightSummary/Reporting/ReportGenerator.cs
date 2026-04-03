@@ -324,6 +324,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 .ToList();
 
             var totalOverheadSec = groups.Sum(g => g.TotalSeconds);
+
+            // Wall-clock overhead: merge overlapping intervals to avoid double-counting
+            // (e.g. ImageSave runs concurrently with the next exposure, CameraDownload
+            // overlaps with other operations). Per-category sums still show raw totals
+            // since "how much total autofocus time" is useful, but coverage % uses merged time.
+            var mergedOverheadSec = MergeOverheadIntervals(overheadEvents);
             var totalExposureSec = data.Images.Sum(i => i.ExposureDuration);
 
             // Yield cross-validation: compare parsed overhead against yield-implied overhead
@@ -336,12 +342,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var roofClosedSec = windowSec - (totalExposureSec / (yield.YieldPct / 100.0));
                 impliedOverheadSec = windowSec - totalExposureSec - Math.Max(0, roofClosedSec);
             }
-            var coveragePct = impliedOverheadSec > 0 ? Math.Min(totalOverheadSec / impliedOverheadSec * 100.0, 100.0) : 0;
-            var unaccountedSec = Math.Max(0, impliedOverheadSec - totalOverheadSec);
+            var coveragePct = impliedOverheadSec > 0 ? Math.Min(mergedOverheadSec / impliedOverheadSec * 100.0, 100.0) : 0;
+            var unaccountedSec = Math.Max(0, impliedOverheadSec - mergedOverheadSec);
 
             // Summary stat boxes
             sb.AppendLine("<div style='display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:10px 0;'>");
-            sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{FormatDuration(totalOverheadSec)}</div><div class='stat-label'>Total Overhead</div></div>");
+            sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{FormatDuration(mergedOverheadSec)}</div><div class='stat-label'>Total Overhead</div></div>");
             sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{coveragePct:F1}%</div><div class='stat-label'>Overhead Accounted</div></div>");
             if (unaccountedSec > 10)
                 sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{FormatDuration(unaccountedSec)}</div><div class='stat-label'>Unaccounted</div></div>");
@@ -405,6 +411,44 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("</details>");
 
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Merges overlapping time intervals to compute actual wall-clock overhead seconds.
+        /// Many overhead events run concurrently (e.g. ImageSave during next exposure,
+        /// CameraDownload overlapping with other operations), so naively summing durations
+        /// double-counts shared time. This returns the true elapsed overhead time.
+        /// </summary>
+        internal static double MergeOverheadIntervals(List<TimingEvent> events) {
+            if (events == null || events.Count == 0) return 0;
+
+            var intervals = events
+                .Where(e => e.StartTime != DateTime.MinValue && e.EndTime != DateTime.MinValue && e.EndTime > e.StartTime)
+                .OrderBy(e => e.StartTime)
+                .ToList();
+
+            if (intervals.Count == 0) return 0;
+
+            double totalSeconds = 0;
+            var currentStart = intervals[0].StartTime;
+            var currentEnd = intervals[0].EndTime;
+
+            for (int i = 1; i < intervals.Count; i++) {
+                if (intervals[i].StartTime <= currentEnd) {
+                    // Overlapping — extend the current interval
+                    if (intervals[i].EndTime > currentEnd)
+                        currentEnd = intervals[i].EndTime;
+                } else {
+                    // Gap — flush the current interval and start a new one
+                    totalSeconds += (currentEnd - currentStart).TotalSeconds;
+                    currentStart = intervals[i].StartTime;
+                    currentEnd = intervals[i].EndTime;
+                }
+            }
+            // Flush the last interval
+            totalSeconds += (currentEnd - currentStart).TotalSeconds;
+
+            return totalSeconds;
         }
 
         private static string FormatEventTypeName(string eventType) => eventType switch {
