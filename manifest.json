@@ -3,9 +3,9 @@
     "Identifier":  "682531D1-5A23-4627-B961-0794282ECB4E",
     "Version":  {
                     "Major":  2,
-                    "Minor":  9,
+                    "Minor":  10,
                     "Patch":  0,
-                    "Build":  0
+                    "Build":  1
                 },
     "Author":  "Evan Pegors @sleepypuppy15",
     "Homepage":  "https://github.com/vorticose/nina.plugin.nightsummary",
@@ -21,6 +21,7 @@
                  "discord",
                  "pushover"
              ],
+    "Channel":  "Beta",
     "MinimumApplicationVersion":  {
                                       "Major":  3,
                                       "Minor":  2,
@@ -35,9 +36,9 @@
                          "AltScreenshotURL":  ""
                      },
     "Installer":  {
-                      "URL":  "https://github.com/vorticose/nina.plugin.nightsummary/releases/download/v2.9.0/NINA.Plugin.NightSummary.zip",
+                      "URL":  "https://github.com/vorticose/nina.plugin.nightsummary/releases/download/v2.10.0-beta1/NINA.Plugin.NightSummary.zip",
                       "Type":  "ARCHIVE",
-                      "Checksum":  "6DC0BCCF11F879AD0D600E3CD2033CC96139993EE9986F0F816090EC5F71CA66",
+                      "Checksum":  "FD53DED7B0FD090E98D9AF9347D245F7BD44537A4192957D1CE8218D098F319C",
                       "ChecksumType":  "SHA256"
                   }
 }
