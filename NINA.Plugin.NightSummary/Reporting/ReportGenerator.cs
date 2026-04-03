@@ -330,25 +330,24 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             var totalOverheadSec = groups.Sum(g => g.TotalSeconds);
 
-            // Compute wall-clock overhead by merging ALL parsed events (exposure + overhead)
-            // into a single timeline, then subtracting exposure time. This correctly handles
-            // any events that overlap with exposures or with each other.
-            var allParsedEvents = timingEvents.Where(e => e.DurationSeconds > 0).ToList();
-            var mergedAllSec = MergeOverheadIntervals(allParsedEvents);
-            var mergedExposureSec = MergeOverheadIntervals(
-                timingEvents.Where(e => e.EventType == "Exposure").ToList());
-            var mergedOverheadSec = mergedAllSec - mergedExposureSec;
-
+            // Total integration = shutter-open time only (the ground truth for yield).
+            // Implied overhead = imaging window minus integration time = everything that
+            // ISN'T collecting light (download, saves, slews, dither, autofocus, etc.)
+            var totalIntegrationSec = data.Images.Sum(i => i.ExposureDuration);
             var firstImage = data.Images.Min(i => i.Timestamp);
             var lastImage = data.Images.Max(i => i.Timestamp);
             var windowSec = (lastImage - firstImage).TotalSeconds;
-            var impliedOverheadSec = windowSec - mergedExposureSec;
+            var impliedOverheadSec = windowSec - totalIntegrationSec;
+
+            // Merge all overhead intervals to compute wall-clock overhead, deduplicating
+            // any events that overlap with each other in time.
+            var mergedOverheadSec = MergeOverheadIntervals(overheadEvents);
             var coveragePct = impliedOverheadSec > 0
                 ? Math.Min(mergedOverheadSec / impliedOverheadSec * 100.0, 100.0) : 0;
             var unaccountedSec = Math.Max(0, impliedOverheadSec - mergedOverheadSec);
 
-            Logger.Info($"NightSummary: Overhead — window={windowSec:F0}s, mergedExposure={mergedExposureSec:F0}s, " +
-                $"implied={impliedOverheadSec:F0}s, rawSum={totalOverheadSec:F0}s, mergedOverhead={mergedOverheadSec:F0}s, " +
+            Logger.Info($"NightSummary: Overhead — window={windowSec:F0}s, integration={totalIntegrationSec:F0}s, " +
+                $"implied={impliedOverheadSec:F0}s, rawSum={totalOverheadSec:F0}s, merged={mergedOverheadSec:F0}s, " +
                 $"coverage={coveragePct:F1}%, unaccounted={unaccountedSec:F0}s");
 
             // Summary stat boxes
