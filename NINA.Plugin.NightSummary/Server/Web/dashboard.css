@@ -444,6 +444,55 @@ details[open] > summary::before {
   transition: width 0.3s;
 }
 
+/* ── Report viewer ── */
+.report-section { padding: 15px; }
+
+.report-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.report-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.report-btn {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--accent);
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: Arial, sans-serif;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.report-btn:hover {
+  border-color: var(--accent);
+  text-decoration: none;
+}
+
+.report-container {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.report-iframe {
+  width: 100%;
+  height: 80vh;
+  border: none;
+  background: #fff;
+}
+
 /* ── States ── */
 .loading { text-align: center; padding: 40px; color: var(--muted); }
 .empty { text-align: center; padding: 60px 20px; color: var(--muted); }

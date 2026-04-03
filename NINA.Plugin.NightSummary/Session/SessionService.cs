@@ -255,6 +255,10 @@ namespace NINA.Plugin.NightSummary.Session {
                 if (S.DashboardEnabled)
                     tasks.Add(SendDashboardWithDataAsync(reportData, htmlReport));
 
+                // Always save a copy to the local dashboard reports directory
+                // so the embedded dashboard server can serve it
+                tasks.Add(SaveReportForDashboardAsync(reportData.Session.SessionId, htmlReport));
+
                 await Task.WhenAll(tasks);
                 Notification.ShowSuccess("Night Summary: Report delivered successfully");
             } catch (Exception ex) {
@@ -345,6 +349,8 @@ namespace NINA.Plugin.NightSummary.Session {
                     tasks.Add(SendDiscordWithDataAsync(reportData, htmlReport));
                 if (S.DashboardEnabled)
                     tasks.Add(SendDashboardWithDataAsync(reportData, htmlReport));
+
+                tasks.Add(SaveReportForDashboardAsync(reportData.Session.SessionId, htmlReport));
 
                 await Task.WhenAll(tasks);
                 Notification.ShowSuccess("Night Summary: Report delivered successfully");
@@ -446,6 +452,25 @@ namespace NINA.Plugin.NightSummary.Session {
                 SaveLiveStackMasters(saveDir, filename, reportData);
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to save report locally. {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Saves an HTML report to the local dashboard reports directory so the embedded
+        /// DashboardServer can serve it. This is always called on report generation,
+        /// independent of the user's "Save Report Locally" setting.
+        /// </summary>
+        private async Task SaveReportForDashboardAsync(string sessionId, string htmlReport) {
+            try {
+                var reportsDir = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "NINA", "NightSummary", "reports");
+                Directory.CreateDirectory(reportsDir);
+                var filePath = Path.Combine(reportsDir, $"{sessionId}.html");
+                await File.WriteAllTextAsync(filePath, htmlReport);
+                Logger.Debug($"NightSummary: Report saved to dashboard directory: {filePath}");
+            } catch (Exception ex) {
+                Logger.Error($"NightSummary: Failed to save report to dashboard directory. {ex.Message}");
             }
         }
 
@@ -690,6 +715,77 @@ namespace NINA.Plugin.NightSummary.Session {
 
             Logger.Info($"NightSummary: Dashboard bulk upload complete — {uploaded} uploaded, {skipped} skipped, {failed} failed");
             return (uploaded, skipped, failed);
+        }
+
+        /// <summary>
+        /// Generates HTML reports for all sessions in the database that don't already have
+        /// a report saved in the local dashboard reports directory. Used to backfill reports
+        /// for users who enable the dashboard after already having session history.
+        /// </summary>
+        public async Task<(int generated, int skipped, int failed)> GenerateAllDashboardReportsAsync(
+            string dbPath, Action<int, int> onProgress = null) {
+
+            var reportsDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "NINA", "NightSummary", "reports");
+            Directory.CreateDirectory(reportsDir);
+
+            var db       = new SessionDatabase(dbPath);
+            var sessions = db.GetAllSessions();
+            int generated = 0, skipped = 0, failed = 0;
+
+            for (int i = 0; i < sessions.Count; i++) {
+                var session = sessions[i];
+                onProgress?.Invoke(i + 1, sessions.Count);
+
+                var reportPath = Path.Combine(reportsDir, $"{session.SessionId}.html");
+                if (File.Exists(reportPath)) {
+                    skipped++;
+                    continue;
+                }
+
+                try {
+                    var images     = db.GetImagesForSession(session.SessionId);
+                    var events     = db.GetEventsForSession(session.SessionId);
+                    var profileId  = profileService?.ActiveProfile?.Id.ToString();
+                    var tsData     = FetchTsData(images, profileId);
+                    var cumulative = db.GetCumulativeIntegrationByTarget(session.SessionId);
+                    var history    = BuildSessionHistory(db, images, session.SessionId);
+                    var (fovW, fovH) = ComputeCameraFov(session);
+                    var (lat, lon)   = GetObserverCoords();
+                    var timingEvents = db.GetTimingEventsForSession(session.SessionId);
+                    var reportData = new ReportData {
+                        Session                      = session,
+                        Images                       = images,
+                        Events                       = events,
+                        TsData                       = tsData,
+                        CumulativeIntegrationSeconds = cumulative,
+                        SessionHistory               = history,
+                        CameraFovWidthDeg            = fovW,
+                        CameraFovHeightDeg           = fovH,
+                        ObserverLatitude             = lat,
+                        ObserverLongitude            = lon,
+                        ActiveProfileId              = profileId,
+                        TimingEvents                 = timingEvents
+                    };
+
+                    // Try to load persisted live stack masters for this session
+                    var (resolvedDir, resolvedFilename) = ResolveReportSavePath(reportData, scanForExisting: true);
+                    if (resolvedDir != null) {
+                        reportData.LiveStackImages = LoadLiveStackMasters(resolvedDir, resolvedFilename);
+                    }
+
+                    var htmlReport = await GenerateReportForDashboard(reportData);
+                    await File.WriteAllTextAsync(reportPath, htmlReport);
+                    generated++;
+                } catch (Exception ex) {
+                    Logger.Warning($"NightSummary: Failed to generate dashboard report for session {session.SessionId}. {ex.Message}");
+                    failed++;
+                }
+            }
+
+            Logger.Info($"NightSummary: Dashboard report generation complete — {generated} generated, {skipped} already existed, {failed} failed");
+            return (generated, skipped, failed);
         }
 
         private async Task SendDashboardWithDataAsync(ReportData reportData, string htmlReport = null) {

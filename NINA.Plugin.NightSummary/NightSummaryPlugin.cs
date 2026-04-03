@@ -273,6 +273,23 @@ namespace NINA.Plugin.NightSummary {
                 RaisePropertyChanged(nameof(IsLocalServerRunning));
             });
 
+            GenerateAllDashboardReportsCommand = new RelayCommand(async () => {
+                GenerateDashboardReportsStatus.Text = "";
+                if (!File.Exists(liveDbPath)) {
+                    GenerateDashboardReportsStatus.Text = "✗ No session database found";
+                    return;
+                }
+                GenerateDashboardReportsStatus.Text = "Generating...";
+                var (generated, skipped, failed) = await this.sessionService.GenerateAllDashboardReportsAsync(
+                    liveDbPath,
+                    (current, total) => {
+                        System.Windows.Application.Current.Dispatcher.Invoke(() => {
+                            GenerateDashboardReportsStatus.Text = $"Generating {current}/{total}...";
+                        });
+                    });
+                GenerateDashboardReportsStatus.Text = $"✓ Done — {generated} generated, {skipped} already existed, {failed} failed";
+            });
+
             LoadSessions();
             LoadFilterClassifications();
 
@@ -812,6 +829,8 @@ namespace NINA.Plugin.NightSummary {
         public ICommand PreviewReportCommand { get; private set; }
         public ICommand StartLocalServerCommand { get; }
         public ICommand StopLocalServerCommand { get; }
+        public ICommand GenerateAllDashboardReportsCommand { get; }
+        public ButtonStatus GenerateDashboardReportsStatus { get; } = new ButtonStatus();
 
         public event PropertyChangedEventHandler PropertyChanged;
         protected void RaisePropertyChanged([CallerMemberName] string propertyName = null) {

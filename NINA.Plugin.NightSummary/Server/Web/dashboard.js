@@ -368,17 +368,50 @@ function renderSessionDetail(sessionId) {
       html += '</tbody></table></div></details></div>';
     }
 
-    // Report link
+    // Embedded report viewer
     if (detail.hasReport) {
-      html += '<div style="text-align:center;margin:16px 0">' +
-        '<a href="/api/sessions/' + sessionId + '/report" target="_blank" ' +
-        'style="color:var(--accent);font-size:14px">View Full Report \u2192</a></div>';
+      html += '<div class="detail-section report-section">' +
+        '<div class="report-header">' +
+          '<h2>Full Report</h2>' +
+          '<div class="report-actions">' +
+            '<button class="report-btn" id="toggle-report">\u25BC Show Report</button>' +
+            '<a href="/api/sessions/' + sessionId + '/report" target="_blank" class="report-btn">Open in New Tab \u2192</a>' +
+          '</div>' +
+        '</div>' +
+        '<div id="report-container" class="report-container" style="display:none">' +
+          '<iframe id="report-iframe" class="report-iframe" sandbox="allow-same-origin"></iframe>' +
+        '</div>' +
+      '</div>';
     }
 
     el.innerHTML = html;
+    bindReportToggle(sessionId);
   }).catch(function(err) {
     el.innerHTML = '<a class="back-btn" href="#/sessions">\u2190 All Sessions</a>' +
       '<div class="error">Failed to load session: ' + esc(err.message) + '</div>';
+  });
+}
+
+function bindReportToggle(sessionId) {
+  var btn = document.getElementById('toggle-report');
+  var container = document.getElementById('report-container');
+  var iframe = document.getElementById('report-iframe');
+  if (!btn || !container || !iframe) return;
+
+  var loaded = false;
+  btn.addEventListener('click', function() {
+    var visible = container.style.display !== 'none';
+    if (visible) {
+      container.style.display = 'none';
+      btn.textContent = '\u25BC Show Report';
+    } else {
+      container.style.display = 'block';
+      if (!loaded) {
+        iframe.src = '/api/sessions/' + sessionId + '/report';
+        loaded = true;
+      }
+      btn.textContent = '\u25B2 Hide Report';
+    }
   });
 }
 
