@@ -379,10 +379,14 @@ namespace NINA.Plugin.NightSummary.Session {
             // If the resolved path doesn't exist on disk (common for historical sessions where
             // the pattern includes timestamps), scan for a matching folder by session date
             if (!Directory.Exists(sessionDir) && reportData?.Session != null) {
+                Logger.Info($"NightSummary: Resolved report path doesn't exist: {sessionDir}, scanning for date match...");
                 var found = FindSavedReportDir(saveRoot, reportData.Session.SessionStart);
                 if (found != null) {
+                    Logger.Info($"NightSummary: Found saved report folder by date: {found}");
                     sessionDir = found;
                     filename = Path.GetFileName(found);
+                } else {
+                    Logger.Info($"NightSummary: No saved report folder found for session date {reportData.Session.SessionStart:yyyy-MM-dd}");
                 }
             }
 
