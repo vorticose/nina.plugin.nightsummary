@@ -178,7 +178,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             if (detailLevel >= 1) sb.Append(BuildEventTimelineSection(data));
             sb.Append(BuildOverviewStatsSection(data, detailLevel));
-            if (detailLevel >= 2 && SettingsManager.Instance.Current.ShowOverheadBreakdown) sb.Append(BuildOverheadBreakdownSection(data, detailsOpen));
+            if (detailLevel >= 2 && SettingsManager.Instance.Current.ShowOverheadBreakdown) {
+                Logger.Info($"NightSummary: Overhead section — TimingEvents={data.TimingEvents?.Count ?? -1}, detailLevel={detailLevel}, ShowOverheadBreakdown={SettingsManager.Instance.Current.ShowOverheadBreakdown}");
+                sb.Append(BuildOverheadBreakdownSection(data, detailsOpen));
+            } else {
+                Logger.Info($"NightSummary: Overhead section SKIPPED — TimingEvents={data.TimingEvents?.Count ?? -1}, detailLevel={detailLevel}, ShowOverheadBreakdown={SettingsManager.Instance.Current.ShowOverheadBreakdown}");
+            }
             sb.Append(await BuildTargetSection(data, detailLevel, detailsOpen));
             if (detailLevel >= 1) sb.Append(BuildImageQualitySection(data, detailLevel, detailsOpen));
             if (detailLevel >= 2) sb.Append(BuildNextNightPreviewSection(data));

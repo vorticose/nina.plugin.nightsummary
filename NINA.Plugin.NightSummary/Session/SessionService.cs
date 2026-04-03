@@ -175,11 +175,14 @@ namespace NINA.Plugin.NightSummary.Session {
             // Parse NINA logs for per-event overhead timing data
             List<TimingEvent> timingEvents;
             try {
+                Logger.Info($"NightSummary: EndSession — parsing logs for session {sessionId} (start={session.SessionStart:o}, end={session.SessionEnd:o}, images={images.Count})");
                 timingEvents = NinaLogParser.Parse(session.SessionStart, session.SessionEnd, images.Count);
+                Logger.Info($"NightSummary: EndSession — parser returned {timingEvents.Count} events");
                 if (timingEvents.Any())
                     database.SaveTimingEvents(sessionId, timingEvents);
             } catch (Exception ex) {
                 Logger.Warning($"NightSummary: Log parsing failed — overhead breakdown will be unavailable. {ex.Message}");
+                Logger.Warning($"NightSummary: Log parsing stack trace: {ex.StackTrace}");
                 timingEvents = new List<TimingEvent>();
             }
 
