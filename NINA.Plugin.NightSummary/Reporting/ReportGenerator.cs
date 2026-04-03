@@ -330,37 +330,26 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             var totalOverheadSec = groups.Sum(g => g.TotalSeconds);
 
-            // Wall-clock overhead: merge overlapping intervals to avoid double-counting.
-            // Exclude CameraDownload from coverage calc since it's already included in the
-            // actual TakeExposure duration (used for implied overhead below). CameraDownload
-            // still appears in the per-category table as informational.
-            var coverageEvents = overheadEvents.Where(e => e.EventType != "CameraDownload").ToList();
-            var mergedOverheadSec = MergeOverheadIntervals(coverageEvents);
+            // Compute wall-clock overhead by merging ALL parsed events (exposure + overhead)
+            // into a single timeline, then subtracting exposure time. This correctly handles
+            // any events that overlap with exposures or with each other.
+            var allParsedEvents = timingEvents.Where(e => e.DurationSeconds > 0).ToList();
+            var mergedAllSec = MergeOverheadIntervals(allParsedEvents);
+            var mergedExposureSec = MergeOverheadIntervals(
+                timingEvents.Where(e => e.EventType == "Exposure").ToList());
+            var mergedOverheadSec = mergedAllSec - mergedExposureSec;
 
-            // Use actual TakeExposure durations from parsed events (includes download time)
-            // rather than requested exposure times from image metadata, since the camera is
-            // busy for the full TakeExposure duration (shutter open + download).
-            var exposureEvents = timingEvents.Where(e => e.EventType == "Exposure").ToList();
-            var actualExposureSec = exposureEvents.Any()
-                ? exposureEvents.Sum(e => e.DurationSeconds)
-                : data.Images.Sum(i => i.ExposureDuration); // fallback to requested times
-
-            var yield = YieldCalculator.Calculate(data.Images, data.Events, data.Session.SessionStart, data.Session.SessionEnd);
             var firstImage = data.Images.Min(i => i.Timestamp);
             var lastImage = data.Images.Max(i => i.Timestamp);
             var windowSec = (lastImage - firstImage).TotalSeconds;
-            var impliedOverheadSec = windowSec - actualExposureSec;
-            if (yield.HasSafetyMonitor) {
-                var roofClosedSec = windowSec - (actualExposureSec / (yield.YieldPct / 100.0));
-                impliedOverheadSec = windowSec - actualExposureSec - Math.Max(0, roofClosedSec);
-            }
-            var rawCoveragePct = impliedOverheadSec > 0 ? mergedOverheadSec / impliedOverheadSec * 100.0 : 0;
-            var coveragePct = Math.Min(rawCoveragePct, 100.0);
+            var impliedOverheadSec = windowSec - mergedExposureSec;
+            var coveragePct = impliedOverheadSec > 0
+                ? Math.Min(mergedOverheadSec / impliedOverheadSec * 100.0, 100.0) : 0;
             var unaccountedSec = Math.Max(0, impliedOverheadSec - mergedOverheadSec);
 
-            Logger.Info($"NightSummary: Overhead — window={windowSec:F0}s, actualExposure={actualExposureSec:F0}s, " +
-                $"implied={impliedOverheadSec:F0}s, rawSum={totalOverheadSec:F0}s, merged={mergedOverheadSec:F0}s, " +
-                $"rawCoverage={rawCoveragePct:F1}%, capped={coveragePct:F1}%");
+            Logger.Info($"NightSummary: Overhead — window={windowSec:F0}s, mergedExposure={mergedExposureSec:F0}s, " +
+                $"implied={impliedOverheadSec:F0}s, rawSum={totalOverheadSec:F0}s, mergedOverhead={mergedOverheadSec:F0}s, " +
+                $"coverage={coveragePct:F1}%, unaccounted={unaccountedSec:F0}s");
 
             // Summary stat boxes
             sb.AppendLine("<div style='display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:10px 0;'>");
