@@ -3,6 +3,14 @@
 
 ## v2.10.0-beta2
 
+**Bug fixes**
+- Fixed Yield and Imaging Overhead section not appearing in live session reports
+- Fixed new reports overwriting previous session's saved report folder
+- Fixed new settings defaulting to off for users upgrading from a previous version
+
+
+## v2.10.0-beta1
+
 **Beta release** — please report any issues at https://github.com/vorticose/nina.plugin.nightsummary/issues
 
 **New features**
@@ -22,9 +30,6 @@
 - Active sessions show "In Progress" with duration so far within the preview window instead of negative numbers
 
 **Bug fixes**
-- Fixed Yield and Imaging Overhead section not appearing in live session reports
-- Fixed new reports overwriting previous session's saved report folder
-- Fixed new settings defaulting to off for users upgrading from a previous version
 - Fixed filter classification progressive reset on settings load/refresh
 
 
