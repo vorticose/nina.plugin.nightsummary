@@ -139,6 +139,11 @@ namespace NINA.Plugin.NightSummary.Data {
 
             int parsedExposureCount = 0;
             int parsedImageSaveCount = 0;
+            int parsedPlateSolveCount = 0;
+
+            // Track skipped items for beta diagnostics
+            var skippedItems = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            int totalSequenceItemLines = 0;
 
             for (int i = 0; i < lines.Length; i++) {
                 var parts = lines[i].Split('|');
@@ -163,14 +168,17 @@ namespace NINA.Plugin.NightSummary.Data {
                 if (source == "SequenceItem.cs" && member == "Run") {
                     var itemName = ExtractItemName(message);
                     if (itemName == null) {
-                        // Unparseable message
+                        // Unparseable message (containers, custom items without "Item:" prefix)
                     } else if (message.StartsWith("Starting ")) {
+                        totalSequenceItemLines++;
                         if (itemName == "TakeExposure" || itemName == "TakeSubframeExposure") {
                             exposureStart = timestamp;
                             exposureDetails = ExtractExposureDetails(message);
                             exposureRequestedSeconds = ExtractExposureTime(message);
                         } else if (ItemCategoryMap.ContainsKey(itemName)) {
                             pendingStarts[itemName] = timestamp;
+                        } else {
+                            skippedItems[itemName] = skippedItems.GetValueOrDefault(itemName) + 1;
                         }
                     } else if (message.StartsWith("Finishing ")) {
                         if ((itemName == "TakeExposure" || itemName == "TakeSubframeExposure") && exposureStart.HasValue) {
@@ -229,6 +237,7 @@ namespace NINA.Plugin.NightSummary.Data {
                                 DurationSeconds = (timestamp - plateSolveStart.Value).TotalSeconds,
                                 Details = message.StartsWith("Platesolve successful") ? "Success" : "Failed"
                             });
+                            parsedPlateSolveCount++;
                             plateSolveStart = null;
                         }
                     }
@@ -261,7 +270,40 @@ namespace NINA.Plugin.NightSummary.Data {
                 Logger.Warning($"NightSummary: LogParser — parsed {parsedExposureCount} exposures but Night Summary recorded {expectedImageCount} images");
             }
 
-            Logger.Info($"NightSummary: LogParser — parsed {events.Count} timing events ({parsedExposureCount} exposures, {parsedImageSaveCount} saves) from {logPath}");
+            // Summary logging for beta diagnostics
+            Logger.Info($"NightSummary: LogParser — parsed {events.Count} timing events from {logPath}");
+            Logger.Info($"NightSummary: LogParser — {totalSequenceItemLines} SequenceItem starts, " +
+                $"{parsedExposureCount} exposures, {parsedImageSaveCount} saves, {parsedPlateSolveCount} plate solves");
+
+            // Per-category breakdown
+            var categoryCounts = events
+                .Where(e => e.EventType != "Exposure")
+                .GroupBy(e => e.EventType)
+                .OrderByDescending(g => g.Sum(e => e.DurationSeconds))
+                .Select(g => $"{g.Key}:{g.Count()}({g.Sum(e => e.DurationSeconds):F0}s)")
+                .ToList();
+            if (categoryCounts.Any())
+                Logger.Info($"NightSummary: LogParser — overhead categories: {string.Join(", ", categoryCounts)}");
+
+            // Log skipped items so users can report items we should add
+            if (skippedItems.Any()) {
+                var skippedSummary = string.Join(", ", skippedItems
+                    .OrderByDescending(kv => kv.Value)
+                    .Select(kv => $"{kv.Key}:{kv.Value}"));
+                Logger.Info($"NightSummary: LogParser — skipped (not in allow-list): {skippedSummary}");
+            }
+
+            // Flag any suspicious events for debugging
+            var negativeEvents = events.Where(e => e.DurationSeconds < 0).ToList();
+            if (negativeEvents.Any())
+                Logger.Warning($"NightSummary: LogParser — {negativeEvents.Count} events with negative duration (possible timestamp issue)");
+
+            var longEvents = events.Where(e => e.DurationSeconds > 3600 && e.EventType != "Exposure").ToList();
+            if (longEvents.Any()) {
+                foreach (var e in longEvents)
+                    Logger.Warning($"NightSummary: LogParser — unusually long event: {e.EventType} = {e.DurationSeconds:F0}s ({e.StartTime:HH:mm:ss}→{e.EndTime:HH:mm:ss})");
+            }
+
             return events;
         }
 
