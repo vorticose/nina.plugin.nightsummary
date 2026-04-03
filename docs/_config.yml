@@ -14,7 +14,7 @@ nav_sort: order
 
 search_enabled: true
 
-footer_content: "Night Summary is an open-source plugin for <a href=\"https://nighttime-imaging.eu/\">N.I.N.A.</a> by Evan Pegors."
+footer_content: "Night Summary is an open-source plugin for <a href=\"https://nighttime-imaging.eu/\">N.I.N.A.</a> by Evan Pegors @sleepypuppy15."
 
 exclude:
   - LIVESTACK_INTEGRATION.md

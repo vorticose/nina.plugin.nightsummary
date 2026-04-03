@@ -16,7 +16,7 @@ Sends the full HTML report as an email. The report renders inline in most email 
 
 1. In Night Summary settings, enable **Email Reports** and select **Gmail**
 2. Enter your **Gmail address**
-3. Generate a **Gmail App Password**:
+3. Generate a **Gmail App Password**: 
    - Go to [myaccount.google.com](https://myaccount.google.com)
    - Navigate to **Security > App Passwords** (you must have 2-Factor Authentication enabled)
    - Create a new app password for "Mail"
@@ -26,7 +26,7 @@ Sends the full HTML report as an email. The report renders inline in most email 
 6. Click **Send Test Email** to verify
 
 {: .important }
-> Do **not** use your regular Gmail password. Google requires an App Password for third-party SMTP access. If you don't see the App Passwords option, enable 2-Factor Authentication first.
+> Do **NOT** use your regular Gmail password. Google requires an App Password for third-party SMTP access. If you don't see the App Passwords option, enable 2-Factor Authentication first.
 
 ### Other Email Providers
 
@@ -46,13 +46,15 @@ Select **Other provider** to configure any SMTP-capable email service:
 
 ## Discord
 
-Posts a summary message with key stats to a Discord channel via webhook. The message includes an embedded summary (not the full HTML report).
+Posts a summary message with key stats to a Discord channel via webhook. The message includes an embedded summary plus the full HTML report attached as a file.
+
+<!-- TODO: Screenshot — Discord channel showing a Night Summary embed message with stats and the attached HTML report file. -->
 
 ### Setup
 
 1. In your Discord server, go to the channel where you want reports
-2. Click the **gear icon** (Edit Channel) > **Integrations** > **Webhooks**
-3. Click **New Webhook**, give it a name (e.g., "Night Summary"), and copy the webhook URL
+2. Click the **gear icon** (Edit Channel) > **Integrations**
+3. Click **Create Webhook**, give it a name (e.g., "Night Summary"), and copy the webhook URL
 4. In Night Summary settings, enable **Discord** and paste the **Webhook URL**
 5. Click **Send Test Message** to verify
 
@@ -87,6 +89,6 @@ All enabled channels are triggered simultaneously when your sequence ends. If on
 
 ## Test Buttons
 
-Each channel has a **Send Test** button in settings. These use your most recent session data (or test data) to generate and deliver a real report, so you can verify your setup without waiting for a full imaging session.
+Each channel has a **Send Test** button in settings. These send a simple test message to verify your credentials and connection are working.
 
-There's also a **Send Test Report** section at the bottom of settings that sends through all enabled channels at once using a test database.
+There's also a **Send Test Report** section at the bottom of settings that generates and sends a full report using test data through all enabled channels at once.

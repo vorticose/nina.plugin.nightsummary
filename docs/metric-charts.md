@@ -6,18 +6,18 @@ nav_order: 11
 
 # Metric Charts
 
-Night Summary can generate scatter-plot charts showing how imaging metrics changed over the course of your session. This helps you spot trends, correlations, and problems.
+Night Summary can generate charts showing how imaging metrics changed over the course of your session. This helps you spot trends, correlations, and problems.
 
 Available at **Full** detail level only.
 
 ## Primary and Secondary Metrics
 
-Each chart plots up to two metrics:
+Each chart's Y-axis can show up to two metrics:
 
-- **Primary Metric** — plotted as the main data series (left Y-axis)
-- **Secondary Metric** — optional second series on a separate right Y-axis. Set to "None" to show only the primary.
+- **Primary Metric** — plotted as the main data series (left Y-axis, solid line)
+- **Secondary Metric** — optional second series on a separate right Y-axis (dashed line). Set to "None" to show only the primary.
 
-Plotting two metrics on the same chart is useful for spotting correlations — for example, HFR vs. temperature to see how focus changes with cooling.
+Plotting two metrics on the same Y-axis is useful for spotting correlations — for example, HFR vs. temperature to see how focus changes with cooling.
 
 ## X-Axis Options
 
@@ -29,7 +29,7 @@ The horizontal axis can be set to any of the following:
 | **Frame Index** | Sequential frame number (1, 2, 3...) |
 | Any metric | Use any metric listed below as the X-axis for correlation plots |
 
-Setting the X-axis to a metric instead of time creates a true scatter plot — useful for questions like "does my HFR correlate with altitude?"
+Setting the X-axis to a metric instead of time is useful for correlation analysis — for example, "does my HFR correlate with altitude?"
 
 ## Available Metrics
 
@@ -55,7 +55,7 @@ All of these can be used as primary metric, secondary metric, or X-axis:
 | **Pressure** | hPa | Atmospheric pressure. Requires a weather data source. |
 | **Star Count** | | Number of stars detected in each frame |
 | **Azimuth** | degrees | Target azimuth |
-| **Seeing FWHM** | arcsec | Atmospheric seeing measurement |
+| **Seeing FWHM** | arcsec | Atmospheric seeing measurement. Requires an ASCOM-compatible seeing monitor connected as a NINA weather data source. |
 
 {: .note }
 > Metrics that require external hardware or plugins will show no data if the equipment isn't connected. The chart simply omits data points where the metric value is zero or missing.

@@ -1,0 +1,611 @@
+{"0": {
+    "doc": "Delivery Channels",
+    "title": "Delivery Channels",
+    "content": "Night Summary can deliver your report through four channels. You can enable any combination — they all run in parallel when the session ends. ",
+    "url": "/nina.plugin.nightsummary/delivery-channels.html",
+    
+    "relUrl": "/delivery-channels.html"
+  },"1": {
+    "doc": "Delivery Channels",
+    "title": "Email",
+    "content": "Sends the full HTML report as an email. The report renders inline in most email clients (Gmail, Outlook, Apple Mail). Gmail Setup . | In Night Summary settings, enable Email Reports and select Gmail | Enter your Gmail address | Generate a Gmail App Password: . | Go to myaccount.google.com | Navigate to Security &gt; App Passwords (you must have 2-Factor Authentication enabled) | Create a new app password for “Mail” | Copy the 16-character password | . | Paste the app password into the App Password field | Enter the Recipient Email Address (can be the same as your Gmail address, or any other address) | Click Send Test Email to verify | . Do NOT use your regular Gmail password. Google requires an App Password for third-party SMTP access. If you don’t see the App Passwords option, enable 2-Factor Authentication first. Other Email Providers . Select Other provider to configure any SMTP-capable email service: . | Enter your Sender Email, App Password / API Key, and Recipient Email Address | Configure the SMTP server settings: | . | Provider | SMTP Server | Port | TLS | . | Outlook.com | smtp-mail.outlook.com | 587 | On | . | Yahoo | smtp.mail.yahoo.com | 587 | On | . | iCloud | smtp.mail.me.com | 587 | On | . All major providers require an App Password or API key — not your regular account password. Check your provider’s security settings to generate one. ",
+    "url": "/nina.plugin.nightsummary/delivery-channels.html#email",
+    
+    "relUrl": "/delivery-channels.html#email"
+  },"2": {
+    "doc": "Delivery Channels",
+    "title": "Discord",
+    "content": "Posts a summary message with key stats to a Discord channel via webhook. The message includes an embedded summary plus the full HTML report attached as a file. Setup . | In your Discord server, go to the channel where you want reports | Click the gear icon (Edit Channel) &gt; Integrations | Click Create Webhook, give it a name (e.g., “Night Summary”), and copy the webhook URL | In Night Summary settings, enable Discord and paste the Webhook URL | Click Send Test Message to verify | . ",
+    "url": "/nina.plugin.nightsummary/delivery-channels.html#discord",
+    
+    "relUrl": "/delivery-channels.html#discord"
+  },"3": {
+    "doc": "Delivery Channels",
+    "title": "Pushover",
+    "content": "Sends a push notification to your phone with key session stats (total images, exposure time, targets). Good for a quick heads-up that your session completed. Setup . | Install the Pushover app on your phone (iOS / Android) | Create an account at pushover.net | Create a new application at pushover.net/apps/build — name it “Night Summary” or similar | Copy your App Token (from the application page) and User Key (from your Pushover dashboard) | In Night Summary settings, enable Pushover and paste both keys | Click Send Test Notification to verify | . ",
+    "url": "/nina.plugin.nightsummary/delivery-channels.html#pushover",
+    
+    "relUrl": "/delivery-channels.html#pushover"
+  },"4": {
+    "doc": "Delivery Channels",
+    "title": "Local File Save",
+    "content": "Saves the HTML report as a file on your computer. Useful for archiving or viewing reports in a browser. Setup . | Enable Save Report Locally | Optionally set a Save Path — leave blank to use the default: Documents\\N.I.N.A.\\Night Summary\\Saved Reports\\ | Configure the File name pattern if you want custom naming (see File Naming Patterns) | . Reports are saved as .html files inside a session-specific subfolder. You can open them in any web browser. ",
+    "url": "/nina.plugin.nightsummary/delivery-channels.html#local-file-save",
+    
+    "relUrl": "/delivery-channels.html#local-file-save"
+  },"5": {
+    "doc": "Delivery Channels",
+    "title": "Delivery Timing",
+    "content": "All enabled channels are triggered simultaneously when your sequence ends. If one channel fails (e.g., network issue with Discord), the others still deliver independently. Check NINA’s notification area for success/failure messages. ",
+    "url": "/nina.plugin.nightsummary/delivery-channels.html#delivery-timing",
+    
+    "relUrl": "/delivery-channels.html#delivery-timing"
+  },"6": {
+    "doc": "Delivery Channels",
+    "title": "Test Buttons",
+    "content": "Each channel has a Send Test button in settings. These send a simple test message to verify your credentials and connection are working. There’s also a Send Test Report section at the bottom of settings that generates and sends a full report using test data through all enabled channels at once. ",
+    "url": "/nina.plugin.nightsummary/delivery-channels.html#test-buttons",
+    
+    "relUrl": "/delivery-channels.html#test-buttons"
+  },"7": {
+    "doc": "Equipment Profile",
+    "title": "Equipment Profile",
+    "content": "The equipment profile is a collapsible section in the report header that lists all your connected equipment. It helps you (and anyone you share reports with) quickly see what gear was used for the session. ",
+    "url": "/nina.plugin.nightsummary/equipment-profile.html",
+    
+    "relUrl": "/equipment-profile.html"
+  },"8": {
+    "doc": "Equipment Profile",
+    "title": "How Auto-Detection Works",
+    "content": "When a session starts, Night Summary reads the current equipment names from NINA’s mediators — the same names you see in NINA’s equipment panels. It captures names again at session end to pick up any equipment that was connected after the session started. For best results, place the Night Summary Start instruction in your sequence after all equipment is connected (after cool camera, connect guider, etc.). This ensures the equipment profile captures all your gear on the first pass rather than waiting until session end. Auto-detected names come directly from the equipment drivers. For example, your camera might report as “ZWO ASI2600MM Pro” and your mount as “iOptron CEM70G”. ",
+    "url": "/nina.plugin.nightsummary/equipment-profile.html#how-auto-detection-works",
+    
+    "relUrl": "/equipment-profile.html#how-auto-detection-works"
+  },"9": {
+    "doc": "Equipment Profile",
+    "title": "Overriding Names",
+    "content": "If you want friendlier names (or your driver reports something unhelpful), you can set override names for any equipment type. The override replaces the auto-detected name in the report. For example: . | Camera auto-detects as “ZWO ASI2600MM Pro” — override to “ASI2600MM” | Telescope auto-detects as “(No Name)” — override to “Esprit 100ED” | . To set an override, type a name in the text box next to the equipment type in the Equipment Profile section of settings. Leave it blank to use the auto-detected name. ",
+    "url": "/nina.plugin.nightsummary/equipment-profile.html#overriding-names",
+    
+    "relUrl": "/equipment-profile.html#overriding-names"
+  },"10": {
+    "doc": "Equipment Profile",
+    "title": "Per-Field Toggles",
+    "content": "Each of the 12 equipment types has an independent toggle to show or hide it in the report. This lets you include only the equipment that’s relevant. Shown by default: Camera, Telescope, Mount, Filter Wheel, Focuser, Rotator, Guider . Hidden by default: Dome, Flat Panel, Safety Monitor, Weather, Switch . Toggle any field on or off with the checkbox next to its name. ",
+    "url": "/nina.plugin.nightsummary/equipment-profile.html#per-field-toggles",
+    
+    "relUrl": "/equipment-profile.html#per-field-toggles"
+  },"11": {
+    "doc": "Equipment Profile",
+    "title": "Master Toggle",
+    "content": "The Show equipment section in report checkbox is a master switch. When off, the entire equipment section is hidden from the report regardless of individual field toggles. ",
+    "url": "/nina.plugin.nightsummary/equipment-profile.html#master-toggle",
+    
+    "relUrl": "/equipment-profile.html#master-toggle"
+  },"12": {
+    "doc": "Equipment Profile",
+    "title": "Equipment Types",
+    "content": "| Type | What It Shows | . | Camera | Imaging camera name (e.g., “ZWO ASI2600MM Pro”) | . | Telescope | Optical tube assembly name | . | Mount | Equatorial or alt-az mount name | . | Filter Wheel | Filter wheel model | . | Focuser | Electronic focuser name | . | Rotator | Camera rotator name | . | Guider | Guide camera or guiding software name | . | Dome | Observatory dome or roll-off roof controller | . | Flat Panel | Flat panel or light box | . | Safety Monitor | Cloud/rain/wind safety device | . | Weather | Weather station or environmental sensor | . | Switch | USB switch hub or power distribution device | . ",
+    "url": "/nina.plugin.nightsummary/equipment-profile.html#equipment-types",
+    
+    "relUrl": "/equipment-profile.html#equipment-types"
+  },"13": {
+    "doc": "Equipment Profile",
+    "title": "Report Appearance",
+    "content": "In the report, the equipment section appears as a collapsible block labeled Equipment just below the session header. Click to expand and see a two-column grid of equipment labels and values. Equipment that is not connected (and has no override set) is automatically excluded — you won’t see empty rows. ",
+    "url": "/nina.plugin.nightsummary/equipment-profile.html#report-appearance",
+    
+    "relUrl": "/equipment-profile.html#report-appearance"
+  },"14": {
+    "doc": "FAQ & Troubleshooting",
+    "title": "FAQ &amp; Troubleshooting",
+    "content": " ",
+    "url": "/nina.plugin.nightsummary/faq.html#faq--troubleshooting",
+    
+    "relUrl": "/faq.html#faq--troubleshooting"
+  },"15": {
+    "doc": "FAQ & Troubleshooting",
+    "title": "General",
+    "content": "How does Night Summary know when my session starts and ends? . Night Summary uses two sequence instructions: Night Summary Start and Night Summary End. Place Start near the beginning of your sequence (before imaging) and End at the very end (after all imaging and park/warm-up steps). The session begins when Start executes and ends when End executes or the sequence is stopped. Can I use Night Summary without any delivery channels enabled? . Yes. Night Summary always records session data to its local database. You can enable delivery channels later and use the Resend Previous Session feature to generate reports for past sessions. Where is my data stored? . Session data is stored in a SQLite database at: . %LOCALAPPDATA%\\NINA\\NightSummary\\nightsummary.sqlite . Plugin settings are stored as a JSON file in the same directory. Do settings survive plugin updates? . Yes. Settings are stored outside the plugin folder in the NINA data directory, so they persist across plugin updates and NINA version changes. ",
+    "url": "/nina.plugin.nightsummary/faq.html#general",
+    
+    "relUrl": "/faq.html#general"
+  },"16": {
+    "doc": "FAQ & Troubleshooting",
+    "title": "Report Issues",
+    "content": "My report didn’t send / I didn’t receive it . | Make sure both Night Summary Start and Night Summary End instructions are in your sequence — the End instruction is what triggers report generation | Check NINA’s notification area (bottom of the screen) for error messages | Verify your delivery channel settings using the Send Test buttons | For email: check your spam/junk folder | For Discord: verify the webhook URL is still valid (webhooks can be deleted from the Discord server side) | For Pushover: verify your app token and user key are correct | . Sky thumbnails are missing . Sky thumbnails are fetched from the CDS HiPS2FITS service, which requires an internet connection. If thumbnails are missing: . | Check your internet connection | The CDS service may be temporarily unavailable — thumbnails will be missing for that report but should work next time | Verify Show Sky Thumbnails is enabled in settings | . The report preview window is blank or shows an error . The preview window uses Microsoft WebView2, which is normally installed with Windows 10/11. If you see a blank window: . | Check if WebView2 is installed: look for “Microsoft Edge WebView2 Runtime” in Settings &gt; Apps | If missing, download it from developer.microsoft.com/en-us/microsoft-edge/webview2 | Install the “Evergreen Bootstrapper” version | . Charts show no data for some metrics . Metrics require the corresponding equipment or plugin to be connected: . | FWHM, Eccentricity — requires the Hocus Focus plugin | Focuser Temp — requires a focuser with a built-in temperature sensor | Ambient Temp, Humidity, Dew Point, Wind Speed, Pressure — requires a device connected as a NINA weather data source (e.g., Pegasus UPB, AAG CloudWatcher) | Sky Quality — requires a sky quality meter connected as a NINA weather data source | Cloud Cover — requires a cloud sensor connected as a NINA weather data source | . If the equipment isn’t connected, those data points are simply omitted from charts. Yield and overhead analysis shows high “Unaccounted” time . Some unaccounted time is normal — it represents gaps between operations that the log parser can’t attribute to a specific category (NINA internal processing, brief pauses between sequence items, etc.). If unaccounted time is unusually high: . | Check if you have custom sequence items or third-party plugins that add operations not tracked by the parser | Verify the NINA log file exists and is accessible (the parser reads from %LOCALAPPDATA%\\NINA\\Logs\\) | . ",
+    "url": "/nina.plugin.nightsummary/faq.html#report-issues",
+    
+    "relUrl": "/faq.html#report-issues"
+  },"17": {
+    "doc": "FAQ & Troubleshooting",
+    "title": "Email",
+    "content": "Gmail says “Less secure app access” or blocks my login . Gmail requires an App Password, not your regular password. You must also have 2-Factor Authentication enabled on your Google account: . | Go to myaccount.google.com &gt; Security | Enable 2-Step Verification if not already on | Go to App Passwords | Generate a new app password for “Mail” | Use this 16-character password in Night Summary settings | . Email test succeeds but I don’t receive it . | Check your spam/junk folder — automated emails often land there | If using a different recipient than sender, verify the recipient address is correct | Some corporate email servers may block or delay automated SMTP messages | . ",
+    "url": "/nina.plugin.nightsummary/faq.html#email",
+    
+    "relUrl": "/faq.html#email"
+  },"18": {
+    "doc": "FAQ & Troubleshooting",
+    "title": "Target Scheduler",
+    "content": "Target Scheduler options are greyed out . This means Target Scheduler is not installed or not detected. Install Target Scheduler from NINA’s plugin manager and restart NINA. Tonight’s Preview doesn’t appear . The preview requires the Target Scheduler API to be enabled: . | In Target Scheduler, go to Target Management | Select your active profile | Click the gear icon &gt; API Preferences | Enable the API | . Also check that your detail level is set to Full and the Show Tonight’s Preview toggle is on. ",
+    "url": "/nina.plugin.nightsummary/faq.html#target-scheduler",
+    
+    "relUrl": "/faq.html#target-scheduler"
+  },"19": {
+    "doc": "FAQ & Troubleshooting",
+    "title": "Live Stack",
+    "content": "Live Stack images don’t appear in my report . | Live Stack must be installed and running during the imaging session | The Show Live Stack Images setting must be enabled | Live Stack must have received at least one frame for the target | If you started Live Stack after imaging a target, images won’t be captured for that target | . Can I see Live Stack images when resending an old report? . Only if you had Save Report Locally enabled when the original report was generated. Live stack master images are saved alongside the HTML report. Without local save, the images aren’t persisted and can’t be recovered for resend. ",
+    "url": "/nina.plugin.nightsummary/faq.html#live-stack",
+    
+    "relUrl": "/faq.html#live-stack"
+  },"20": {
+    "doc": "FAQ & Troubleshooting",
+    "title": "Performance",
+    "content": "Report generation seems slow . The most time-consuming parts of report generation are: . | Sky thumbnails — each thumbnail requires an HTTP request to the CDS service (~1-2 seconds per target) | Tonight’s Preview — if Target Scheduler API is enabled, TS needs to compute the full night plan | Log parsing — for very long sessions, parsing the NINA log takes a few seconds | . If speed is a concern, you can disable sky thumbnails and tonight’s preview in settings. Does Night Summary affect imaging performance? . No. Night Summary’s data recording is lightweight — it subscribes to NINA’s existing events and writes to a local SQLite database. The report is generated only after the sequence ends, so it never interferes with active imaging. The only background activity during imaging is Live Stack image capture, which compresses received images asynchronously (~1 MB of work per broadcast, typically every few minutes). ",
+    "url": "/nina.plugin.nightsummary/faq.html#performance",
+    
+    "relUrl": "/faq.html#performance"
+  },"21": {
+    "doc": "FAQ & Troubleshooting",
+    "title": "FAQ & Troubleshooting",
+    "content": " ",
+    "url": "/nina.plugin.nightsummary/faq.html",
+    
+    "relUrl": "/faq.html"
+  },"22": {
+    "doc": "File Naming Patterns",
+    "title": "File Naming Patterns",
+    "content": "Night Summary uses NINA-style $$PATTERN$$ variables for report filenames. These work the same way as NINA’s file save patterns, so the syntax should be familiar. ",
+    "url": "/nina.plugin.nightsummary/file-naming-patterns.html",
+    
+    "relUrl": "/file-naming-patterns.html"
+  },"23": {
+    "doc": "File Naming Patterns",
+    "title": "Setting the Pattern",
+    "content": "Go to Options &gt; Night Summary Settings &gt; Report File Naming: . | Type or edit the pattern in the File name pattern field | The Pattern preview field shows what the current pattern resolves to in real time | Use the clickable variable buttons below the field to insert variables at the cursor position | . The default pattern is NightSummary_$$DATEMINUS12$$, which produces filenames like NightSummary_2026-03-31. ",
+    "url": "/nina.plugin.nightsummary/file-naming-patterns.html#setting-the-pattern",
+    
+    "relUrl": "/file-naming-patterns.html#setting-the-pattern"
+  },"24": {
+    "doc": "File Naming Patterns",
+    "title": "Available Variables",
+    "content": "| Variable | Description | Example Output | . | $$DATEMINUS12$$ | Session date, shifted back 12 hours (so a session ending at 3 AM on April 1 shows as March 31) | 2026-03-31 | . | $$DATE$$ | Current date at report generation time | 2026-04-01 | . | $$DATETIME$$ | Current date and time | 2026-04-01_03-45-12 | . | $$TIME$$ | Current time | 03-45-12 | . | $$DATEUTC$$ | Current UTC date | 2026-04-01 | . | $$TIMEUTC$$ | Current UTC time | 10-45-12 | . | $$CAMERA$$ | Camera name from NINA | ZWO ASI2600MM Pro | . | $$TELESCOPE$$ | Telescope name from NINA | Esprit 100ED | . | $$SEQUENCETITLE$$ | Title of the NINA sequence that was running | Spring Galaxies | . ",
+    "url": "/nina.plugin.nightsummary/file-naming-patterns.html#available-variables",
+    
+    "relUrl": "/file-naming-patterns.html#available-variables"
+  },"25": {
+    "doc": "File Naming Patterns",
+    "title": "Subdirectories",
+    "content": "Use backslashes (\\) in the pattern to create subdirectories within the save path. For example: . | Pattern: $$CAMERA$$\\$$DATEMINUS12$$ | Result: Saved Reports\\ZWO ASI2600MM Pro\\2026-03-31\\2026-03-31.html | . ",
+    "url": "/nina.plugin.nightsummary/file-naming-patterns.html#subdirectories",
+    
+    "relUrl": "/file-naming-patterns.html#subdirectories"
+  },"26": {
+    "doc": "File Naming Patterns",
+    "title": "How It Works",
+    "content": "The pattern is applied to all delivery channels that use filenames: . | Local save — the pattern becomes a subfolder name inside the save directory, with the HTML file inside using the same resolved name | Email — the pattern is used as the email subject suffix | Discord / Pushover — the pattern appears in the message metadata | . Each session gets its own folder. For example, with pattern $$DATEMINUS12$$: . Saved Reports/ NightSummary_2026-03-31/ NightSummary_2026-03-31.html (assets folder with live stack master images, if saved) NightSummary_2026-04-01/ NightSummary_2026-04-01.html . ",
+    "url": "/nina.plugin.nightsummary/file-naming-patterns.html#how-it-works",
+    
+    "relUrl": "/file-naming-patterns.html#how-it-works"
+  },"27": {
+    "doc": "File Naming Patterns",
+    "title": "Tips",
+    "content": ". | $$DATEMINUS12$$ is the most useful for astrophotography since imaging sessions typically span midnight. A session that ends at 3 AM on April 1 will be filed under March 31. | Combine variables for detailed naming: $$CAMERA$$_$$DATEMINUS12$$ produces ZWO ASI2600MM Pro_2026-03-31 | Keep patterns simple — long filenames with many variables can be hard to scan when browsing your report archive | . ",
+    "url": "/nina.plugin.nightsummary/file-naming-patterns.html#tips",
+    
+    "relUrl": "/file-naming-patterns.html#tips"
+  },"28": {
+    "doc": "Getting Started",
+    "title": "Getting Started",
+    "content": "This guide walks you through installing Night Summary, configuring basic settings, and generating your first report. ",
+    "url": "/nina.plugin.nightsummary/getting-started.html",
+    
+    "relUrl": "/getting-started.html"
+  },"29": {
+    "doc": "Getting Started",
+    "title": "Install the Plugin",
+    "content": ". | Open NINA and click the Plugins icon in the left sidebar (the puzzle piece) | In the Available tab, search for Night Summary | Click Install and restart NINA when prompted | . Night Summary can also be downloaded dirctly from the GitHub repo. https://github.com/vorticose/nina.plugin.nightsummary/releases . Night Summary requires NINA 3.2 or later. After installation, Night Summary appears under Options &gt; Night Summary Settings in the NINA sidebar. ",
+    "url": "/nina.plugin.nightsummary/getting-started.html#install-the-plugin",
+    
+    "relUrl": "/getting-started.html#install-the-plugin"
+  },"30": {
+    "doc": "Getting Started",
+    "title": "How It Works",
+    "content": "Night Summary uses two sequence instructions to mark the start and end of your session: . | Night Summary Start — place this near the top of your sequence, after equipment connection steps (cool camera, connect guider, etc.) but before any imaging begins. This ensures the equipment profile captures all your connected gear. | Night Summary End — place this at the very end of your sequence, after all imaging and any park/warm-up steps | . Note: If you use loops for imaging, place the Night Summary instructions outside of the loop condition in order to ensure they only run once, otherwise the session may not be recorded properly or multiple reports may be generated. Once the sequence runs: . | Session starts when the Night Summary Start instruction executes | Data is recorded for every exposure — HFR, guiding RMS, star count, filter, temperature, and more | Session ends when the Night Summary End instruction executes | Report is generated and delivered through your enabled channels | . If you use Target Scheduler, place Night Summary Start before the Target Scheduler Container and Night Summary End after it. NOTE: If you stop the sequence manually before Night Summary End executes, no report is sent and some session data (overhead timing, live stack images, Target Scheduler grading) won’t be finalized. The basic exposure data is still saved — you can generate a partial report later using Resend Previous Session in the plugin settings. ",
+    "url": "/nina.plugin.nightsummary/getting-started.html#how-it-works",
+    
+    "relUrl": "/getting-started.html#how-it-works"
+  },"31": {
+    "doc": "Getting Started",
+    "title": "Basic Configuration",
+    "content": "Open Options &gt; Night Summary Settings to configure the plugin. Choose a Detail Level . The Detail Level dropdown controls how much information your report includes: . | Snapshot — just the essentials: header, stat boxes, and filter table. Good for a quick glance. | Standard — adds event timeline, altitude charts, image quality tables, and Target Scheduler progress bars. The best balance for most users. | Full — everything in Standard plus overhead breakdown, customizable metric charts, session history, and tonight’s preview. For users who want maximum detail. | . Set Up a Delivery Channel . Night Summary can deliver reports through four channels. You need at least one enabled to receive reports. See Delivery Channels for detailed setup instructions. | Email — full HTML report sent to your inbox | Discord — summary with stats and HTML report attachement posted to a Discord channel via webhook | Pushover — push notification to your phone with key session stats | Local Save — HTML file saved to a folder on your computer | . Preview Your Report . Before waiting for a real imaging session, you can preview how your report will look: . | Click Preview Report at the bottom of the Report Content section | A preview window opens showing a report generated from your most recent session data (or test data if no sessions exist) | . This lets you tweak settings like detail level, chart metrics, and toggles to get the report looking the way you want. ",
+    "url": "/nina.plugin.nightsummary/getting-started.html#basic-configuration",
+    
+    "relUrl": "/getting-started.html#basic-configuration"
+  },"32": {
+    "doc": "Getting Started",
+    "title": "Your First Real Report",
+    "content": ". | Make sure Night Summary Start and Night Summary End are in your sequence (see How It Works above) | Check your configured delivery channel (email, Discord, etc.) for the report | Run the sequence as you normally would | When the sequence completes, Night Summary automatically generates and delivers your report | . If something doesn’t look right, check the FAQ for common issues, or adjust settings and use Preview Report to iterate. ",
+    "url": "/nina.plugin.nightsummary/getting-started.html#your-first-real-report",
+    
+    "relUrl": "/getting-started.html#your-first-real-report"
+  },"33": {
+    "doc": "Getting Started",
+    "title": "Resending a Previous Report",
+    "content": "If you need to resend a report (for example, after changing delivery settings): . | Go to Options &gt; Night Summary Settings and scroll to Resend Previous Session | Select a session from the dropdown (shows the 30 most recent by default) | Click Send Report to deliver it through all currently enabled channels | . Use the Search older sessions expander to find sessions by date range. ",
+    "url": "/nina.plugin.nightsummary/getting-started.html#resending-a-previous-report",
+    
+    "relUrl": "/getting-started.html#resending-a-previous-report"
+  },"34": {
+    "doc": "Getting Started",
+    "title": "Next Steps",
+    "content": ". | Report Sections — understand what each part of the report shows | Settings Reference — full list of every setting and what it does | Delivery Channels — detailed setup for email, Discord, Pushover, and local save | . ",
+    "url": "/nina.plugin.nightsummary/getting-started.html#next-steps",
+    
+    "relUrl": "/getting-started.html#next-steps"
+  },"35": {
+    "doc": "Home",
+    "title": "Night Summary",
+    "content": "Night Summary is a plugin for N.I.N.A. that automatically records your imaging sessions and generates detailed HTML reports when your sequence ends. Whether you run a remote observatory or image from your backyard, Night Summary gives you a comprehensive look at what happened overnight — saved locally or delivered to your email, Discord, or Pushover. ",
+    "url": "/nina.plugin.nightsummary/#night-summary",
+    
+    "relUrl": "/#night-summary"
+  },"36": {
+    "doc": "Home",
+    "title": "Key Features",
+    "content": ". | Session recording — captures every exposure with full metadata (HFR, guiding RMS, star count, filter, temperature, and more), plus autofocus runs, meridian flips, and safety monitor events | Rich HTML reports — event timelines, yield/overhead breakdowns, altitude charts, sky thumbnails, image quality tables, metric charts and more | Multiple delivery channels — email, Discord webhook, Pushover notifications, or local file save | Live Stack integration — includes live-stacked thumbnails from the Live Stack plugin (if installed and enabled) in your report | Target Scheduler integration — shows acquisition progress bars, minimum altitude lines, and a preview of tonight’s imaging plan when Target Scheduler is installed | Metric charts — plot any combination of HFR, FWHM, guiding RMS, temperature, humidity, and 15+ other metrics | Yield and imaging overhead analysis — parses NINA logs to show exactly where your non-imaging time went (downloads, filter changes, autofocus, dithering, etc.) | Equipment profile — collapsible section showing all connected equipment with customizable display names | Session history — cumulative integration time per target across all sessions | Customizable detail levels — Snapshot, Standard, or Full reports to match your preference | Light and dark mode — reports render in your choice of color scheme | File naming patterns — use NINA-style $$PATTERN$$ variables in report filenames | . ",
+    "url": "/nina.plugin.nightsummary/#key-features",
+    
+    "relUrl": "/#key-features"
+  },"37": {
+    "doc": "Home",
+    "title": "Installation",
+    "content": ". | Open NINA and go to Plugins (the puzzle piece icon in the sidebar) | Search for Night Summary | Click Install | Restart NINA when prompted | . Can also be downloaded dirctly from the GitHub repo. https://github.com/vorticose/nina.plugin.nightsummary/releases . Night Summary requires NINA 3.2 or later. ",
+    "url": "/nina.plugin.nightsummary/#installation",
+    
+    "relUrl": "/#installation"
+  },"38": {
+    "doc": "Home",
+    "title": "Quick Start",
+    "content": "Add the Night Summary Start and Night Summary End instructions to your sequence, and Night Summary records your session and generates a report automatically when the sequence ends. To actually receive the report, set up at least one delivery channel. See Getting Started for a walkthrough. ",
+    "url": "/nina.plugin.nightsummary/#quick-start",
+    
+    "relUrl": "/#quick-start"
+  },"39": {
+    "doc": "Home",
+    "title": "Report Detail Levels",
+    "content": "Night Summary offers three detail levels that control how much information appears in your report: . | Level | What’s Included | . | Snapshot | Header, stat boxes, filter table | . | Standard | + Event timeline, altitude charts, image quality, per-target IQ, Target Scheduler bars | . | Full | + Yield and overhead analysis, metric charts, session history, tonight’s preview | . ",
+    "url": "/nina.plugin.nightsummary/#report-detail-levels",
+    
+    "relUrl": "/#report-detail-levels"
+  },"40": {
+    "doc": "Home",
+    "title": "Version",
+    "content": "This documentation covers Night Summary v2.10.0+ for NINA 3.2+. ",
+    "url": "/nina.plugin.nightsummary/#version",
+    
+    "relUrl": "/#version"
+  },"41": {
+    "doc": "Home",
+    "title": "Home",
+    "content": " ",
+    "url": "/nina.plugin.nightsummary/",
+    
+    "relUrl": "/"
+  },"42": {
+    "doc": "Live Stack Integration",
+    "title": "Live Stack Integration",
+    "content": "Night Summary can capture and display live-stacked images from the Live Stack plugin in your report. This shows you what your camera actually captured during the session — not just the sky survey thumbnail. ",
+    "url": "/nina.plugin.nightsummary/live-stack-integration.html",
+    
+    "relUrl": "/live-stack-integration.html"
+  },"43": {
+    "doc": "Live Stack Integration",
+    "title": "Requirements",
+    "content": ". | Live Stack plugin must be installed in NINA | Live Stack must be running during your imaging session (it auto-stacks frames as they arrive) | The Show Live Stack Images setting must be enabled (on by default) | . No configuration is needed in Live Stack itself — Night Summary captures images automatically via NINA’s message broker. ",
+    "url": "/nina.plugin.nightsummary/live-stack-integration.html#requirements",
+    
+    "relUrl": "/live-stack-integration.html#requirements"
+  },"44": {
+    "doc": "Live Stack Integration",
+    "title": "How It Works",
+    "content": ". | When a session starts, Night Summary subscribes to Live Stack’s broadcast messages | Every time Live Stack processes a new frame, it broadcasts the current stacked image | Night Summary captures and compresses the latest image for each target and filter | When the session ends, the most recent stacked image for each target/filter is included in the report | . Images are compressed to JPEG as they arrive (typically 150-300 KB each), so memory usage stays reasonable even across a full night. ",
+    "url": "/nina.plugin.nightsummary/live-stack-integration.html#how-it-works",
+    
+    "relUrl": "/live-stack-integration.html#how-it-works"
+  },"45": {
+    "doc": "Live Stack Integration",
+    "title": "Display Layout",
+    "content": "The layout depends on your camera type: . Color Cameras (OSC / One-Shot Color) . A single full-width color composite image is shown for each target: . [DSS Sky Thumbnail] [Altitude Chart] [Live Stack — full width color composite ] \"Live Stack · 47 frames · 1h 34m\" [Filter Table] . Monochrome Cameras . Per-filter grayscale images are shown side by side, plus a color composite if one was created in Live Stack: . [DSS Sky Thumbnail] [Altitude Chart] [ H stack ] [ S stack ] [ O stack ] \"H · 47 · 1h 34m\" \"S · 38 · 1h 16m\" \"O · 12 · 1h 0m\" [SHO Composite — full width ] \"Live Stack Composite · R:47 G:38 B:12 · 3h 50m\" [Filter Table] . | Up to 4 filters per row; wraps to a second row for 5+ filters | Each image is labeled with the filter name, frame count, and total integration time | The color composite is always shown below the per-filter images when available | . ",
+    "url": "/nina.plugin.nightsummary/live-stack-integration.html#display-layout",
+    
+    "relUrl": "/live-stack-integration.html#display-layout"
+  },"46": {
+    "doc": "Live Stack Integration",
+    "title": "Image Sizing",
+    "content": ". | Per-filter images scale to fill the available width divided by the number of filters (with gaps) | Color composites are capped at 520px wide, centered in the report | All images preserve their native aspect ratio from your camera sensor | Images are captured at their native resolution and compressed to JPEG quality 75 (re-encoded at quality 60 if the result exceeds 500 KB) | . ",
+    "url": "/nina.plugin.nightsummary/live-stack-integration.html#image-sizing",
+    
+    "relUrl": "/live-stack-integration.html#image-sizing"
+  },"47": {
+    "doc": "Live Stack Integration",
+    "title": "When Live Stack Images Don’t Appear",
+    "content": "If you don’t see live stack images in your report: . | Live Stack wasn’t running — it must be actively stacking during the session. Starting it after the session begins will capture images from that point forward. | Live Stack wasn’t installed — the setting is greyed out in Options if the plugin isn’t detected | The setting is disabled — check that Show Live Stack Images is enabled in Night Summary settings | No frames were stacked — if Live Stack received no frames for a target (e.g., it was started after that target finished), no image appears for that target | . ",
+    "url": "/nina.plugin.nightsummary/live-stack-integration.html#when-live-stack-images-dont-appear",
+    
+    "relUrl": "/live-stack-integration.html#when-live-stack-images-dont-appear"
+  },"48": {
+    "doc": "Live Stack Integration",
+    "title": "Resending Reports with Live Stack",
+    "content": "When resending a previous report, Night Summary looks for saved live stack master images in the report’s save directory. These are persisted alongside the HTML file when saving locally. If the originals aren’t available (e.g., local save was disabled for that session), the resent report won’t include live stack images. ",
+    "url": "/nina.plugin.nightsummary/live-stack-integration.html#resending-reports-with-live-stack",
+    
+    "relUrl": "/live-stack-integration.html#resending-reports-with-live-stack"
+  },"49": {
+    "doc": "Metric Charts",
+    "title": "Metric Charts",
+    "content": "Night Summary can generate charts showing how imaging metrics changed over the course of your session. This helps you spot trends, correlations, and problems. Available at Full detail level only. ",
+    "url": "/nina.plugin.nightsummary/metric-charts.html",
+    
+    "relUrl": "/metric-charts.html"
+  },"50": {
+    "doc": "Metric Charts",
+    "title": "Primary and Secondary Metrics",
+    "content": "Each chart’s Y-axis can show up to two metrics: . | Primary Metric — plotted as the main data series (left Y-axis, solid line) | Secondary Metric — optional second series on a separate right Y-axis (dashed line). Set to “None” to show only the primary. | . Plotting two metrics on the same Y-axis is useful for spotting correlations — for example, HFR vs. temperature to see how focus changes with cooling. ",
+    "url": "/nina.plugin.nightsummary/metric-charts.html#primary-and-secondary-metrics",
+    
+    "relUrl": "/metric-charts.html#primary-and-secondary-metrics"
+  },"51": {
+    "doc": "Metric Charts",
+    "title": "X-Axis Options",
+    "content": "The horizontal axis can be set to any of the following: . | X-Axis | Description | . | Time | Wall-clock timestamp of each exposure (default) | . | Frame Index | Sequential frame number (1, 2, 3…) | . | Any metric | Use any metric listed below as the X-axis for correlation plots | . Setting the X-axis to a metric instead of time is useful for correlation analysis — for example, “does my HFR correlate with altitude?” . ",
+    "url": "/nina.plugin.nightsummary/metric-charts.html#x-axis-options",
+    
+    "relUrl": "/metric-charts.html#x-axis-options"
+  },"52": {
+    "doc": "Metric Charts",
+    "title": "Available Metrics",
+    "content": "All of these can be used as primary metric, secondary metric, or X-axis: . | Metric | Unit | Notes | . | HFR | pixels | Half-flux radius — NINA’s native focus quality metric | . | FWHM | arcsec | Full-width at half-maximum. Requires the Hocus Focus plugin. | . | Guiding RMS | arcsec | Total guiding RMS from PHD2 or similar | . | Focuser Temp | C | Temperature sensor on the focuser. Requires a focuser with built-in temp sensor. | . | Ambient Temp | C | Outside air temperature. Requires a weather data source. | . | Eccentricity |   | Star elongation metric. Requires the Hocus Focus plugin. | . | Altitude | degrees | Target altitude above the horizon | . | Airmass |   | Atmospheric airmass (derived from altitude) | . | Humidity | % | Relative humidity. Requires a weather data source. | . | Focuser Position | steps | Motorized focuser position in steps | . | Sky Quality | mag/arcsec2 | Sky brightness. Requires a sky quality meter. | . | Cloud Cover | % | Cloud coverage. Requires a cloud sensor. | . | Camera Temp | C | Sensor cooling temperature | . | Dew Point | C | Dew point temperature. Requires a weather data source. | . | Wind Speed | m/s | Wind speed. Requires a weather data source. | . | Pressure | hPa | Atmospheric pressure. Requires a weather data source. | . | Star Count |   | Number of stars detected in each frame | . | Azimuth | degrees | Target azimuth | . | Seeing FWHM | arcsec | Atmospheric seeing measurement. Requires an ASCOM-compatible seeing monitor connected as a NINA weather data source. | . Metrics that require external hardware or plugins will show no data if the equipment isn’t connected. The chart simply omits data points where the metric value is zero or missing. ",
+    "url": "/nina.plugin.nightsummary/metric-charts.html#available-metrics",
+    
+    "relUrl": "/metric-charts.html#available-metrics"
+  },"53": {
+    "doc": "Metric Charts",
+    "title": "Additional Charts",
+    "content": "You can add more charts beyond the primary one: . | Click + Add Chart in the settings | Configure the primary metric, secondary metric, and X-axis for the new chart | Click the X button next to a chart to remove it | . Each additional chart has its own independent metric selections. This lets you create a dashboard-style report with multiple views of your session data — for example, one chart for HFR over time, another for temperature vs. focuser position, and a third for guiding RMS vs. altitude. ",
+    "url": "/nina.plugin.nightsummary/metric-charts.html#additional-charts",
+    
+    "relUrl": "/metric-charts.html#additional-charts"
+  },"54": {
+    "doc": "Metric Charts",
+    "title": "Chart Interaction",
+    "content": "In the HTML report, chart data points show hover tooltips with the exact timestamp and value. This makes it easy to identify specific frames with unusual values. ",
+    "url": "/nina.plugin.nightsummary/metric-charts.html#chart-interaction",
+    
+    "relUrl": "/metric-charts.html#chart-interaction"
+  },"55": {
+    "doc": "Metric Charts",
+    "title": "Common Chart Configurations",
+    "content": "Here are some useful metric combinations to try: . | Purpose | Primary | Secondary | X-Axis | . | Focus quality over time | HFR | Focuser Temp | Time | . | Guiding performance | Guiding RMS | Altitude | Time | . | Focus vs temperature | HFR | — | Focuser Temp | . | Star count consistency | Star Count | Humidity | Time | . | Altitude effects | HFR | Airmass | Altitude | . | Seeing conditions | FWHM | Wind Speed | Time | . ",
+    "url": "/nina.plugin.nightsummary/metric-charts.html#common-chart-configurations",
+    
+    "relUrl": "/metric-charts.html#common-chart-configurations"
+  },"56": {
+    "doc": "Yield and Overhead Analysis",
+    "title": "Yield and Imaging Overhead Analysis",
+    "content": "This section parses your NINA log file after the session ends to show exactly where your non-imaging time was spent. It helps you identify bottlenecks and optimize your imaging workflow. Available at Full detail level only. ",
+    "url": "/nina.plugin.nightsummary/overhead-breakdown.html#yield-and-imaging-overhead-analysis",
+    
+    "relUrl": "/overhead-breakdown.html#yield-and-imaging-overhead-analysis"
+  },"57": {
+    "doc": "Yield and Overhead Analysis",
+    "title": "What It Shows",
+    "content": "Summary Stat Boxes . | Total Overhead — wall-clock time spent on non-imaging tasks. Overlapping operations (like image saves running during the next exposure) are counted only once using merged intervals. | Overhead Accounted — percentage of “implied overhead” that the log parser was able to categorize. Implied overhead = imaging window minus total exposure time. | Unaccounted — time the parser couldn’t attribute to any category. Small amounts are normal (inter-step gaps, NINA internal processing). If this is large, it may indicate operations not yet tracked by the parser. | . Stacked Bar Chart . A color-coded horizontal bar showing the relative proportion of each overhead category. Categories with less than 0.5% of total overhead are excluded for readability. Detailed Table . Each overhead category with: . | Event count (how many times it occurred) | Total time spent | Average time per event | . ",
+    "url": "/nina.plugin.nightsummary/overhead-breakdown.html#what-it-shows",
+    
+    "relUrl": "/overhead-breakdown.html#what-it-shows"
+  },"58": {
+    "doc": "Yield and Overhead Analysis",
+    "title": "Overhead Categories",
+    "content": "| Category | What It Tracks | . | Camera Download | Time between exposure completion and readout. Derived by subtracting the requested exposure time from the total TakeExposure duration. | . | Filter Change | SwitchFilter operations | . | Dither | Guiding dither operations between exposures | . | Autofocus | RunAutofocus sequences | . | Temp Comp Focus | Temperature compensation focuser moves (MoveFocuserByTemperature) | . | Focuser Move | Direct focuser position moves (absolute or relative) | . | Plate Solve | SolveAndSync, SolveAndRotate operations | . | Centering | Center and CenterAndRotate operations | . | Image Save | Async image save operations (measured from NINA’s ImageSaveController). These typically overlap with the next exposure. | . | Slew | Telescope slew operations (SlewScopeToRaDec, SlewScopeToAltAz) | . | Meridian Flip | Meridian flip operations | . | Guiding | StartGuiding and StopGuiding operations | . | Mount Ops | Park, unpark, find home, set tracking | . | Dome Sync | Dome synchronization | . | Dome Ops | Open/close shutter, park, slew dome | . | Flat Panel | Set brightness, toggle light, open/close cover | . | Camera Temp | CoolCamera and WarmCamera operations | . | Rotator | Mechanical rotator moves | . | Switch | USB switch value changes | . | Safety Wait | WaitUntilSafe operations (waiting for conditions to be safe) | . Safety Wait time appears as an overhead category here so you can see how much time was lost to unsafe conditions. However, the Yield percentage (in the session overview) excludes roof-closed time from the effective imaging window — so unsafe weather doesn’t penalize your yield score. ",
+    "url": "/nina.plugin.nightsummary/overhead-breakdown.html#overhead-categories",
+    
+    "relUrl": "/overhead-breakdown.html#overhead-categories"
+  },"59": {
+    "doc": "Yield and Overhead Analysis",
+    "title": "How Coverage Is Calculated",
+    "content": "The parser uses merged intervals to calculate total overhead, not simple sums. This matters because some operations run concurrently: . | Image saves happen asynchronously during the next exposure | Camera download overlaps with the end of the exposure command | . To calculate coverage percentage: . | Imaging window = time from first parsed event to last parsed event | Implied overhead = imaging window minus total exposure time | Merged overhead = all overhead intervals merged to remove overlaps | Coverage = merged overhead / implied overhead (capped at 100%) | . ",
+    "url": "/nina.plugin.nightsummary/overhead-breakdown.html#how-coverage-is-calculated",
+    
+    "relUrl": "/overhead-breakdown.html#how-coverage-is-calculated"
+  },"60": {
+    "doc": "Yield and Overhead Analysis",
+    "title": "Yield Cross-Validation",
+    "content": "The overhead breakdown includes a cross-validation step that compares its parsed overhead against the yield calculation (which uses a completely different method). This helps validate that the log parser is correctly accounting for overhead time. ",
+    "url": "/nina.plugin.nightsummary/overhead-breakdown.html#yield-cross-validation",
+    
+    "relUrl": "/overhead-breakdown.html#yield-cross-validation"
+  },"61": {
+    "doc": "Yield and Overhead Analysis",
+    "title": "Tips for Reducing Overhead",
+    "content": ". | Camera download — if this is a large portion of your overhead, consider whether your USB connection speed can be improved (USB 3.0 vs 2.0, shorter cables) | Autofocus — frequent autofocus is good for image quality but adds up. Consider whether temperature compensation can reduce the number of autofocus runs needed | Filter changes — mechanical filter wheels take time. Consider trade-offs between using filter offsets and sequencial filter changes (LRGB LRGB) with imaging with a single filter at a time (LLLLLLLL). | Dithering — necessary for good results, but aggressive dither settings result in lots of lost imaging time. Imaging using filter offsets and sequencial filter changes may reduce the number of required dithers. | Image saves — these should mostly overlap with exposures. If they don’t (high unaccounted time), your disk may be slow | . ",
+    "url": "/nina.plugin.nightsummary/overhead-breakdown.html#tips-for-reducing-overhead",
+    
+    "relUrl": "/overhead-breakdown.html#tips-for-reducing-overhead"
+  },"62": {
+    "doc": "Yield and Overhead Analysis",
+    "title": "Yield and Overhead Analysis",
+    "content": " ",
+    "url": "/nina.plugin.nightsummary/overhead-breakdown.html",
+    
+    "relUrl": "/overhead-breakdown.html"
+  },"63": {
+    "doc": "Report Sections",
+    "title": "Report Sections",
+    "content": "Night Summary reports are built from several sections, each providing different information about your imaging session. This page explains what each section shows and which detail level is required. ",
+    "url": "/nina.plugin.nightsummary/report-sections.html",
+    
+    "relUrl": "/report-sections.html"
+  },"64": {
+    "doc": "Report Sections",
+    "title": "Header",
+    "content": "Always shown. The report header includes: . | Session date and times — start time, end time (or “In Progress” if the session is still running), and total duration in hours | Profile name — the active NINA equipment profile | Equipment profile — a collapsible section listing all connected equipment (camera, telescope, mount, etc.). See Equipment Profile for details. | . ",
+    "url": "/nina.plugin.nightsummary/report-sections.html#header",
+    
+    "relUrl": "/report-sections.html#header"
+  },"65": {
+    "doc": "Report Sections",
+    "title": "Session Overview (Stat Boxes)",
+    "content": "Always shown. Additional stats appear at higher detail levels. A row of summary stat boxes showing key metrics at a glance: . | Stat | Detail Level | Description | . | Total Images | All | Number of captured exposures, with per-filter breakdown on click. Shows aborted count if any. | . | Total Exposure | All | Cumulative exposure time, with per-filter breakdown on click | . | Targets | All | Number of distinct targets imaged | . | Avg HFR | Standard+ | Average half-flux radius across all images (pixels) | . | Avg Guiding RMS | Standard+ | Average guiding RMS total across all images (arcsec) | . | Avg FWHM | Full | Average full-width at half-maximum (arcsec). Requires the Hocus Focus plugin. | . | Yield | Full | Percentage of imaging window spent actually exposing. If a safety monitor is connected, roof-closed time is excluded. | . | Moon | Full | Moon illumination percentage with waxing/waning arrow | . The Total Images and Total Exposure boxes are expandable — click to see the per-filter breakdown. ",
+    "url": "/nina.plugin.nightsummary/report-sections.html#session-overview-stat-boxes",
+    
+    "relUrl": "/report-sections.html#session-overview-stat-boxes"
+  },"66": {
+    "doc": "Report Sections",
+    "title": "Event Timeline",
+    "content": "Standard and Full detail levels. A visual timeline showing what happened during your session in chronological order. Events include sequence start/end, target changes, autofocus runs, meridian flips, and safety monitor events (roof open/close). ",
+    "url": "/nina.plugin.nightsummary/report-sections.html#event-timeline",
+    
+    "relUrl": "/report-sections.html#event-timeline"
+  },"67": {
+    "doc": "Report Sections",
+    "title": "Yield and Imaging Overhead Analysis",
+    "content": "Full detail level only. See Yield and Overhead Analysis for a deep dive. Parses your NINA log file to show exactly where non-imaging time was spent. Includes: . | Summary stat boxes — total overhead time, percentage of overhead accounted for, and unaccounted time | Stacked bar chart — color-coded horizontal bar showing the relative proportion of each overhead category | Detailed table — each category with event count, total time, and average time per event | . Categories include camera download, filter changes, dithering, autofocus, plate solves, centering, image saves, temperature compensation focus, meridian flips, and more. ",
+    "url": "/nina.plugin.nightsummary/report-sections.html#yield-and-imaging-overhead-analysis",
+    
+    "relUrl": "/report-sections.html#yield-and-imaging-overhead-analysis"
+  },"68": {
+    "doc": "Report Sections",
+    "title": "Target Details",
+    "content": "Always shown. Content varies by detail level and available data. For each target imaged during the session: . Target Header . | Target name | Coordinates (RA/Dec) | FOV sky rotation angle | Session time window (first to last image) | Moon separation angle | . Sky Thumbnail . A sky survey image showing where the target is located, with an FOV (field of view) rectangle overlay showing your camera’s framing and rotation. The thumbnail is fetched from the CDS HiPS2FITS color survey. If CDS is unavailable, Night Summary falls back to NASA SkyView DSS2 Red (monochrome). If both services are down, a remote CDS URL is embedded so the browser can fetch it directly when you view the report. Controlled by the Show Sky Thumbnails setting. Altitude Chart (Standard+) . An SVG altitude plot showing the target’s path across the sky during the session, with markers for each exposure. Optionally includes: . | Moon curve — moon altitude shown as a dashed line | Minimum altitude line — dotted red line at the Target Scheduler project’s minimum altitude (requires Target Scheduler) | . Live Stack Images . Thumbnails captured from the Live Stack plugin during the session. See Live Stack Integration. Filter Table . A table showing per-filter statistics: filter name, image count, individual exposure time, and total time. Target Scheduler Progress Bars (Standard+) . Per-filter acquisition progress when Target Scheduler is installed. Shows accepted vs. acquired frames against the plan’s desired total. See Target Scheduler Integration. Per-Target Image Quality (Standard+) . Expandable table showing HFR, FWHM, Eccentricity, and Guiding RMS with min/max/mean/CV for the target. Click to expand individual rows for per-filter breakdowns. Session History (Full) . Cumulative integration time for the target across all recorded sessions — not just tonight. ",
+    "url": "/nina.plugin.nightsummary/report-sections.html#target-details",
+    
+    "relUrl": "/report-sections.html#target-details"
+  },"69": {
+    "doc": "Report Sections",
+    "title": "Image Quality Section",
+    "content": "Standard and Full detail levels. A session-wide image quality summary with: . | Star Count CV — coefficient of variation of star counts across the session, with a per-filter breakdown table. Useful for detecting cloud passages or other consistency issues. You can configure filter classifications to group broadband and narrowband separately. | Metric Chart (Full) — customizable chart with up to three metrics: a primary and secondary Y-axis metric, plus the X-axis can be set to any metric (not just time). See Metric Charts. | . ",
+    "url": "/nina.plugin.nightsummary/report-sections.html#image-quality-section",
+    
+    "relUrl": "/report-sections.html#image-quality-section"
+  },"70": {
+    "doc": "Report Sections",
+    "title": "Tonight’s Preview",
+    "content": "Full detail level only. Requires Target Scheduler with its API enabled. Shows what Target Scheduler plans to image tonight — target names, planned exposure times, and filter sequences. Useful for reviewing the upcoming session. See Target Scheduler Integration. ",
+    "url": "/nina.plugin.nightsummary/report-sections.html#tonights-preview",
+    
+    "relUrl": "/report-sections.html#tonights-preview"
+  },"71": {
+    "doc": "Report Sections",
+    "title": "Footer",
+    "content": "Always shown. Shows the plugin version, NINA version, and author credit. ",
+    "url": "/nina.plugin.nightsummary/report-sections.html#footer",
+    
+    "relUrl": "/report-sections.html#footer"
+  },"72": {
+    "doc": "Settings Reference",
+    "title": "Settings Reference",
+    "content": "All Night Summary settings are found under Options &gt; Night Summary Settings in NINA. Settings persist to a JSON file in the plugin data directory, so they survive NINA updates and plugin reinstalls. ",
+    "url": "/nina.plugin.nightsummary/settings-reference.html",
+    
+    "relUrl": "/settings-reference.html"
+  },"73": {
+    "doc": "Settings Reference",
+    "title": "Report Content",
+    "content": "Detail Level . Controls how much information appears in the report. | Value | Description | Default | . | Snapshot | Header, stat boxes, and filter table only |   | . | Standard | Adds timeline, altitude charts, image quality, per-target IQ, and TS progress bars |   | . | Full | Adds yield and overhead analysis, metric charts, session history, and tonight’s preview | Yes | . Target Scheduler Options . These options are only available when Target Scheduler is installed. | Setting | Default | Detail Level | Description | . | Show TS Progress Bars | On | Standard+ | Per-filter acquisition progress bars showing accepted vs. acquired frames | . | Show Tonight’s Preview | On | Full | What Target Scheduler plans to image tonight. Requires the TS API to be enabled. | . To enable the Target Scheduler API: in Target Scheduler, go to Target Management &gt; select your active profile &gt; gear icon &gt; API Preferences &gt; enable API. This will increase report generation time as Target Scheduler computes the full night plan. Report Display Toggles . | Setting | Default | Detail Level | Description | . | Show Yield and Overhead Analysis | On | Full | Yield and imaging overhead breakdown parsed from NINA logs | . | Show Sky Thumbnails | On | All | CDS HiPS2FITS sky survey images with FOV overlay for each target | . | Show Live Stack Images | On | All | Live-stacked thumbnails from the Live Stack plugin | . | Show Altitude Charts | On | Standard+ | Per-target altitude plots with exposure markers | . | Show Moon Curve | On | Standard+ | Moon altitude line on altitude charts (requires altitude charts on) | . | Show Min Altitude | On | Standard+ | Target Scheduler minimum altitude line on altitude charts (requires TS) | . | Show Star Count CV | On | Standard+ | Star count coefficient of variation with per-filter breakdown | . | Show Per-Target Image Quality | On | Standard+ | Expandable per-filter HFR, FWHM, guiding, etc. for each target | . | Expand Sections by Default | Off | All | Open all collapsible report sections by default | . | Light Mode Report | Off | All | Use light color scheme instead of dark | . | Show Session History | On | Full | Cumulative integration time per target across all sessions | . | Show Metric Chart | On | Full | Customizable chart of session metrics | . Filter Classifications . Controls how filters are classified for Star Count CV grouping. Filters are read from your NINA profile. | Classification | Description | . | Auto | Uses first-letter matching: L, R, G, B = broadband; H, S, O = narrowband | . | Broadband | Force-classify as broadband | . | Narrowband | Force-classify as narrowband | . | Exclude | Exclude from Star Count CV calculations | . Click the refresh button to reload filters from your current NINA profile. Metric Chart Settings . Available at Full detail level when the metric chart is enabled. See Metric Charts for details. | Setting | Default | Description | . | X-Axis | Time | What the horizontal axis represents | . | Primary Metric | HFR | The main metric plotted | . | Secondary Metric | None | Optional second metric on a separate Y-axis | . | Additional Charts | (none) | Add extra charts with independent metric selections | . ",
+    "url": "/nina.plugin.nightsummary/settings-reference.html#report-content",
+    
+    "relUrl": "/settings-reference.html#report-content"
+  },"74": {
+    "doc": "Settings Reference",
+    "title": "Equipment Profile",
+    "content": "Controls the collapsible equipment section in the report header. See Equipment Profile. | Setting | Default | Description | . | Show equipment section | On | Master toggle for the entire equipment section | . | Per-field toggles | Camera, Telescope, Mount, Filter Wheel, Focuser, Rotator, Guider on; others off | Show/hide individual equipment types | . | Override names | (blank) | Custom display name used instead of NINA’s auto-detected name | . Equipment types: Camera, Telescope, Mount, Filter Wheel, Focuser, Rotator, Guider, Dome, Flat Panel, Safety Monitor, Weather, Switch. ",
+    "url": "/nina.plugin.nightsummary/settings-reference.html#equipment-profile",
+    
+    "relUrl": "/settings-reference.html#equipment-profile"
+  },"75": {
+    "doc": "Settings Reference",
+    "title": "Report File Naming",
+    "content": "| Setting | Default | Description | . | File name pattern | NightSummary_$$DATEMINUS12$$ | Pattern for report filenames, using NINA-style variables | . | Pattern preview | (read-only) | Shows what the current pattern resolves to | . See File Naming Patterns for available variables. ",
+    "url": "/nina.plugin.nightsummary/settings-reference.html#report-file-naming",
+    
+    "relUrl": "/settings-reference.html#report-file-naming"
+  },"76": {
+    "doc": "Settings Reference",
+    "title": "Resend Previous Session",
+    "content": "Not a persistent setting — a utility for resending reports from past sessions through all currently enabled channels. Includes date-range search for finding older sessions. ",
+    "url": "/nina.plugin.nightsummary/settings-reference.html#resend-previous-session",
+    
+    "relUrl": "/settings-reference.html#resend-previous-session"
+  },"77": {
+    "doc": "Settings Reference",
+    "title": "Saved Reports",
+    "content": "| Setting | Default | Description | . | Save Report Locally | On | Save HTML report to disk after each session | . | Save Path | (blank) | Custom save directory. Default: Documents\\N.I.N.A.\\Night Summary\\Saved Reports\\ | . ",
+    "url": "/nina.plugin.nightsummary/settings-reference.html#saved-reports",
+    
+    "relUrl": "/settings-reference.html#saved-reports"
+  },"78": {
+    "doc": "Settings Reference",
+    "title": "Email Report Settings",
+    "content": "| Setting | Default | Description | . | Enable Email Reports | Off | Master toggle for email delivery | . | Email Provider | Gmail | Gmail (simplified setup) or Other (custom SMTP) | . Gmail Settings . | Setting | Description | . | Gmail Address | Your Gmail email address | . | App Password | 16-character Gmail App Password (not your regular password) | . | Recipient Email Address | Where to send the report | . Custom SMTP Settings . | Setting | Default | Description | . | Sender Email |   | Your email address | . | App Password / API Key |   | Provider-specific app password | . | Recipient Email Address |   | Where to send the report | . | SMTP Server | smtp.gmail.com | Your provider’s SMTP hostname | . | Port | 587 | SMTP port number | . | Use TLS/SSL | On | Enable TLS encryption | . ",
+    "url": "/nina.plugin.nightsummary/settings-reference.html#email-report-settings",
+    
+    "relUrl": "/settings-reference.html#email-report-settings"
+  },"79": {
+    "doc": "Settings Reference",
+    "title": "Pushover Notifications",
+    "content": "| Setting | Default | Description | . | Enable Pushover | Off | Master toggle for Pushover delivery | . | App Token |   | From your Pushover application settings | . | User Key |   | From your Pushover dashboard | . ",
+    "url": "/nina.plugin.nightsummary/settings-reference.html#pushover-notifications",
+    
+    "relUrl": "/settings-reference.html#pushover-notifications"
+  },"80": {
+    "doc": "Settings Reference",
+    "title": "Discord Notifications",
+    "content": "| Setting | Default | Description | . | Enable Discord | Off | Master toggle for Discord delivery | . | Webhook URL |   | Discord channel webhook URL | . ",
+    "url": "/nina.plugin.nightsummary/settings-reference.html#discord-notifications",
+    
+    "relUrl": "/settings-reference.html#discord-notifications"
+  },"81": {
+    "doc": "Settings Reference",
+    "title": "Test Report",
+    "content": "Generates and sends a full report through all currently enabled channels using a test database. Night Summary ships with built-in test data so this works out of the box. If you want to test with your own data, replace the nightsummary.sqlite file in the test subfolder of the Night Summary plugin data directory. ",
+    "url": "/nina.plugin.nightsummary/settings-reference.html#test-report",
+    
+    "relUrl": "/settings-reference.html#test-report"
+  },"82": {
+    "doc": "Target Scheduler Integration",
+    "title": "Target Scheduler Integration",
+    "content": "Night Summary integrates with the Target Scheduler plugin to show acquisition progress and planning data. All Target Scheduler features are optional — they silently skip when Target Scheduler isn’t installed. ",
+    "url": "/nina.plugin.nightsummary/target-scheduler-integration.html",
+    
+    "relUrl": "/target-scheduler-integration.html"
+  },"83": {
+    "doc": "Target Scheduler Integration",
+    "title": "Progress Bars",
+    "content": "Available at Standard and Full detail levels. For each target, Night Summary shows per-filter progress bars comparing your actual acquisition against Target Scheduler’s plan: . | Accepted (solid accent color) — frames that passed Target Scheduler’s image grading criteria | Acquired (lighter color) — frames captured but not yet accepted (pending grading, or rejected) | Desired (full bar width) — the total number of frames Target Scheduler is aiming for | . Each bar is labeled with counts like “12 / 15 accepted, 14 acquired” so you can see at a glance how close you are to completing each filter’s plan. Below the per-filter bars, a cumulative integration time summary shows the total accepted exposure time for the target. Grading Sync . At the end of each session, Night Summary syncs accepted frame counts from Target Scheduler’s database so the progress bars accurately reflect TS grading decisions, even if grading happened after image capture. ",
+    "url": "/nina.plugin.nightsummary/target-scheduler-integration.html#progress-bars",
+    
+    "relUrl": "/target-scheduler-integration.html#progress-bars"
+  },"84": {
+    "doc": "Target Scheduler Integration",
+    "title": "Minimum Altitude Line",
+    "content": "Available at Standard and Full detail levels. Requires altitude charts to be enabled. When Target Scheduler is installed, the altitude chart for each target can show a dotted red line at the project’s minimum altitude setting. This helps you see when a target dipped below your usable altitude threshold. The minimum altitude value comes from your Target Scheduler project settings. Toggle this with the Show Min Altitude checkbox in Night Summary settings. ",
+    "url": "/nina.plugin.nightsummary/target-scheduler-integration.html#minimum-altitude-line",
+    
+    "relUrl": "/target-scheduler-integration.html#minimum-altitude-line"
+  },"85": {
+    "doc": "Target Scheduler Integration",
+    "title": "Tonight’s Preview",
+    "content": "Available at Full detail level only. Requires the Target Scheduler API to be enabled. Shows what Target Scheduler plans to image tonight — including target names, planned filter sequences, and estimated exposure counts. This section appears at the bottom of the report and helps you review the upcoming session. Enabling the Target Scheduler API . The preview section requires Target Scheduler’s API to be running: . | In NINA, open Target Scheduler (or the relevant plugin panel) | Go to Target Management | Select your active profile | Click the gear icon to open settings | Navigate to API Preferences | Enable the API | . Enabling the TS API will increase report generation time because Target Scheduler needs to compute the full night plan. This is a one-time computation per report. If the API is not enabled, the Tonight’s Preview section is simply omitted from the report — no error is shown. ",
+    "url": "/nina.plugin.nightsummary/target-scheduler-integration.html#tonights-preview",
+    
+    "relUrl": "/target-scheduler-integration.html#tonights-preview"
+  },"86": {
+    "doc": "Target Scheduler Integration",
+    "title": "When Target Scheduler Is Not Installed",
+    "content": ". | All TS-related settings are greyed out in Night Summary options with a red message: “Target Scheduler is not installed — these options are unavailable” | TS progress bars, minimum altitude lines, and tonight’s preview are silently skipped in reports | No error messages or toast notifications appear — the report generates normally with the remaining sections | Night Summary does not require Target Scheduler to function; all TS features are additive | . ",
+    "url": "/nina.plugin.nightsummary/target-scheduler-integration.html#when-target-scheduler-is-not-installed",
+    
+    "relUrl": "/target-scheduler-integration.html#when-target-scheduler-is-not-installed"
+  }
+}

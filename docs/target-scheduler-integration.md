@@ -20,11 +20,13 @@ For each target, Night Summary shows per-filter progress bars comparing your act
 
 Each bar is labeled with counts like "12 / 15 accepted, 14 acquired" so you can see at a glance how close you are to completing each filter's plan.
 
+<!-- TODO: Screenshot — Target Scheduler progress bars from a real report showing multiple filters with varying completion levels, accepted/acquired segments, and cumulative integration total. -->
+
 Below the per-filter bars, a **cumulative integration time** summary shows the total accepted exposure time for the target.
 
 ### Grading Sync
 
-Night Summary syncs Target Scheduler's grading results (accepted/rejected status and reject reasons) into its own database at the end of each session. This means your report accurately reflects TS grading decisions, even if grading happened after image capture.
+At the end of each session, Night Summary syncs accepted frame counts from Target Scheduler's database so the progress bars accurately reflect TS grading decisions, even if grading happened after image capture.
 
 ## Minimum Altitude Line
 

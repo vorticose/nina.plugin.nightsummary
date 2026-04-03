@@ -6,7 +6,7 @@ nav_order: 3
 
 # Report Sections
 
-Night Summary reports are built from several sections, each providing a different view of your imaging session. This page explains what each section shows and which detail level is required.
+Night Summary reports are built from several sections, each providing different information about your imaging session. This page explains what each section shows and which detail level is required.
 
 ## Header
 
@@ -37,11 +37,15 @@ A row of summary stat boxes showing key metrics at a glance:
 
 The Total Images and Total Exposure boxes are expandable — click to see the per-filter breakdown.
 
+<!-- TODO: Screenshot — Report header and stat boxes row, showing the session date/time, equipment profile collapsed, and all 8 stat boxes at Full detail level. -->
+
 ## Event Timeline
 
 **Standard and Full detail levels.**
 
 A visual timeline showing what happened during your session in chronological order. Events include sequence start/end, target changes, autofocus runs, meridian flips, and safety monitor events (roof open/close).
+
+<!-- TODO: Screenshot — Event timeline SVG showing a multi-target session with autofocus, meridian flip, and target change events. -->
 
 ## Yield and Imaging Overhead Analysis
 
@@ -55,6 +59,8 @@ Parses your NINA log file to show exactly where non-imaging time was spent. Incl
 
 Categories include camera download, filter changes, dithering, autofocus, plate solves, centering, image saves, temperature compensation focus, meridian flips, and more.
 
+<!-- TODO: Screenshot — Yield and overhead section showing the three stat boxes, color-coded stacked bar chart, and detailed category table. -->
+
 ## Target Details
 
 **Always shown.** Content varies by detail level and available data.
@@ -62,13 +68,16 @@ Categories include camera download, filter changes, dithering, autofocus, plate 
 For each target imaged during the session:
 
 ### Target Header
-- Target name with sky position angle
+- Target name 
 - Coordinates (RA/Dec)
+- FOV sky rotation angle
 - Session time window (first to last image)
 - Moon separation angle
 
+<!-- TODO: Screenshot — Target header area showing target name, coordinates, rotation angle, time window, moon separation, sky thumbnail with FOV overlay, and altitude chart side by side. -->
+
 ### Sky Thumbnail
-A 200x200 image from the CDS HiPS2FITS sky survey showing where the target is located, with an FOV (field of view) rectangle overlay showing your camera's framing. Controlled by the **Show Sky Thumbnails** setting.
+A sky survey image showing where the target is located, with an FOV (field of view) rectangle overlay showing your camera's framing and rotation. The thumbnail is fetched from the CDS HiPS2FITS color survey. If CDS is unavailable, Night Summary falls back to NASA SkyView DSS2 Red (monochrome). If both services are down, a remote CDS URL is embedded so the browser can fetch it directly when you view the report. Controlled by the **Show Sky Thumbnails** setting.
 
 ### Altitude Chart (Standard+)
 An SVG altitude plot showing the target's path across the sky during the session, with markers for each exposure. Optionally includes:
@@ -84,8 +93,12 @@ A table showing per-filter statistics: filter name, image count, individual expo
 ### Target Scheduler Progress Bars (Standard+)
 Per-filter acquisition progress when Target Scheduler is installed. Shows accepted vs. acquired frames against the plan's desired total. See [Target Scheduler Integration]({% link target-scheduler-integration.md %}).
 
+<!-- TODO: Screenshot — Target Scheduler progress bars showing multiple filters with accepted/acquired/desired counts and a cumulative integration total. -->
+
 ### Per-Target Image Quality (Standard+)
-Expandable table showing HFR, star count, guiding RMS, and other metrics for each exposure of the target. Click to expand individual rows for full per-frame details.
+Expandable table showing HFR, FWHM, Eccentricity, and Guiding RMS with min/max/mean/CV for the target. Click to expand individual rows for per-filter breakdowns.
+
+<!-- TODO: Screenshot — Per-target image quality table with one metric row expanded to show the per-filter breakdown. -->
 
 ### Session History (Full)
 Cumulative integration time for the target across all recorded sessions — not just tonight.
@@ -97,7 +110,9 @@ Cumulative integration time for the target across all recorded sessions — not 
 A session-wide image quality summary with:
 
 - **Star Count CV** — coefficient of variation of star counts across the session, with a per-filter breakdown table. Useful for detecting cloud passages or other consistency issues. You can configure [filter classifications]({% link settings-reference.md %}#filter-classifications) to group broadband and narrowband separately.
-- **Metric Chart** (Full) — customizable scatter plot of any two metrics. See [Metric Charts]({% link metric-charts.md %}).
+- **Metric Chart** (Full) — customizable chart with up to three metrics: a primary and secondary Y-axis metric, plus the X-axis can be set to any metric (not just time). See [Metric Charts]({% link metric-charts.md %}).
+
+<!-- TODO: Screenshot — Metric chart showing HFR (primary, solid) and Focuser Temp (secondary, dashed) over time, with hover tooltip visible on one data point. -->
 
 ## Tonight's Preview
 

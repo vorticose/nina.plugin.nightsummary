@@ -35,8 +35,8 @@ A single full-width color composite image is shown for each target:
 
 ```
 [DSS Sky Thumbnail]     [Altitude Chart]
-[Live Stack — full width color composite ]
-  "Live Stack - 47 frames"
+[Live Stack — full width color composite       ]
+  "Live Stack · 47 frames · 1h 34m"
 [Filter Table]
 ```
 
@@ -46,21 +46,23 @@ Per-filter grayscale images are shown side by side, plus a color composite if on
 
 ```
 [DSS Sky Thumbnail]     [Altitude Chart]
-[ H stack ]  [ S stack ]  [ O stack ]
-  "H - 47"    "S - 38"    "O - 12"
-[SHO Composite — full width             ]
-  "SHO Composite"
+[  H stack  ]  [  S stack  ]  [  O stack  ]
+ "H · 47 · 1h 34m"  "S · 38 · 1h 16m"  "O · 12 · 1h 0m"
+[SHO Composite — full width                   ]
+  "Live Stack Composite · R:47 G:38 B:12 · 3h 50m"
 [Filter Table]
 ```
 
 - Up to 4 filters per row; wraps to a second row for 5+ filters
-- Each image is labeled with the filter name and frame count
+- Each image is labeled with the filter name, frame count, and total integration time
 - The color composite is always shown below the per-filter images when available
+
+<!-- TODO: Screenshot — Live Stack section in a report showing per-filter monochrome stacks in a row with a color composite below, including labels with frame counts and integration times. -->
 
 ## Image Sizing
 
 - Per-filter images scale to fill the available width divided by the number of filters (with gaps)
-- Color composites span the full report width (~760px)
+- Color composites are capped at 520px wide, centered in the report
 - All images preserve their native aspect ratio from your camera sensor
 - Images are captured at their native resolution and compressed to JPEG quality 75 (re-encoded at quality 60 if the result exceeds 500 KB)
 

@@ -12,6 +12,9 @@ The equipment profile is a collapsible section in the report header that lists a
 
 When a session starts, Night Summary reads the current equipment names from NINA's mediators — the same names you see in NINA's equipment panels. It captures names again at session end to pick up any equipment that was connected after the session started.
 
+{: .note }
+> For best results, place the **Night Summary Start** instruction in your sequence after all equipment is connected (after cool camera, connect guider, etc.). This ensures the equipment profile captures all your gear on the first pass rather than waiting until session end.
+
 Auto-detected names come directly from the equipment drivers. For example, your camera might report as "ZWO ASI2600MM Pro" and your mount as "iOptron CEM70G".
 
 ## Overriding Names
@@ -23,6 +26,8 @@ For example:
 - Telescope auto-detects as "(No Name)" — override to "Esprit 100ED"
 
 To set an override, type a name in the text box next to the equipment type in the Equipment Profile section of settings. Leave it blank to use the auto-detected name.
+
+<!-- TODO: Screenshot — Equipment Profile settings section in NINA showing the per-field toggles, override text boxes, and master toggle. -->
 
 ## Per-Field Toggles
 
@@ -60,3 +65,5 @@ The **Show equipment section in report** checkbox is a master switch. When off, 
 In the report, the equipment section appears as a collapsible block labeled **Equipment** just below the session header. Click to expand and see a two-column grid of equipment labels and values.
 
 Equipment that is not connected (and has no override set) is automatically excluded — you won't see empty rows.
+
+<!-- TODO: Screenshot — Equipment profile section in a report, expanded to show the two-column grid of equipment labels and values. -->
