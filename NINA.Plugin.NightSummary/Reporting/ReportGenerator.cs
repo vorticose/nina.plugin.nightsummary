@@ -177,8 +177,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             if (detailLevel >= 1) sb.Append(BuildEventTimelineSection(data));
-            if (detailLevel >= 2) sb.Append(BuildOverheadBreakdownSection(data, detailsOpen));
             sb.Append(BuildOverviewStatsSection(data, detailLevel));
+            if (detailLevel >= 2) sb.Append(BuildOverheadBreakdownSection(data, detailsOpen));
             sb.Append(await BuildTargetSection(data, detailLevel, detailsOpen));
             if (detailLevel >= 1) sb.Append(BuildImageQualitySection(data, detailLevel, detailsOpen));
             if (detailLevel >= 2) sb.Append(BuildNextNightPreviewSection(data));
@@ -313,7 +313,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             var sb = new StringBuilder();
             sb.AppendLine("<details class='iq-section' open>");
-            sb.AppendLine("<summary>Overhead Breakdown</summary>");
+            sb.AppendLine("<summary>Yield and Imaging Overhead</summary>");
 
             // Group by event type, sum durations, filter out negligible categories (< 1s total)
             var groups = overheadEvents
