@@ -1,18 +1,18 @@
-﻿using System.Reflection;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 [assembly: InternalsVisibleTo("NINA.Plugin.NightSummary.Tests")]
 
 [assembly: Guid("682531D1-5A23-4627-B961-0794282ECB4E")]
-[assembly: AssemblyVersion("2.10.0.2")]
-[assembly: AssemblyFileVersion("2.10.0.2")]
-[assembly: AssemblyInformationalVersion("2.10.0-beta2")]
+// AssemblyVersion and AssemblyFileVersion are auto-generated at build time
+// from VersionPrefix in the .csproj + git commit count (see SetGitBuildNumber target)
+[assembly: AssemblyInformationalVersion("3.0.0-dev")]
 [assembly: AssemblyTitle("Night Summary")]
 [assembly: AssemblyDescription("*** BETA *** Records your imaging session and delivers a detailed HTML report via email, Discord, or Pushover when your sequence ends.\n\nTo update: download the latest release from the link above and extract the zip to your existing NightSummary plugin folder, overwriting existing files.")]
 [assembly: AssemblyCompany("Evan Pegors")]
 [assembly: AssemblyProduct("Night Summary")]
-[assembly: AssemblyCopyright("Copyright © 2026 Evan Pegors")]
+[assembly: AssemblyCopyright("Copyright � 2026 Evan Pegors")]
 [assembly: AssemblyMetadata("MinimumApplicationVersion", "3.2.0.9001")]
 [assembly: AssemblyMetadata("License", "MPL-2.0")]
 [assembly: AssemblyMetadata("LicenseURL", "https://www.mozilla.org/en-US/MPL/2.0/")]
@@ -23,32 +23,32 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyMetadata("FeaturedImageURL", "https://i.imgur.com/uvcC1dC.png")]
 [assembly: AssemblyMetadata("ScreenshotURL", "")]
 [assembly: AssemblyMetadata("AltScreenshotURL", "")]
-[assembly: AssemblyMetadata("LongDescription", @"Night Summary automatically records your astrophotography session as it runs and delivers a rich HTML report the moment your sequence completes — so you wake up to a full breakdown of the night.
+[assembly: AssemblyMetadata("LongDescription", @"Night Summary automatically records your astrophotography session as it runs and delivers a rich HTML report the moment your sequence completes � so you wake up to a full breakdown of the night.
 
 **How to use**
 
-Add the ""Night Summary Start"" instruction near the beginning of your sequence and ""Night Summary End"" at the end. That's it — Night Summary handles the rest automatically.
+Add the ""Night Summary Start"" instruction near the beginning of your sequence and ""Night Summary End"" at the end. That's it � Night Summary handles the rest automatically.
 
 **What's in the report**
 - Session overview with at-a-glance stats: total images, total exposure time, target count, average HFR, average FWHM, average guiding RMS, and imaging yield
 - Session event timeline showing AutoFocus runs, meridian flips, and safety monitor events
-- Per-target imaging summary with filter breakdown, exposure counts, and total integration time — including a DSS sky survey thumbnail with FOV overlay and an altitude chart
+- Per-target imaging summary with filter breakdown, exposure counts, and total integration time � including a DSS sky survey thumbnail with FOV overlay and an altitude chart
 - Per-target image quality stats: HFR, FWHM, Eccentricity, and guiding RMS with per-filter breakdowns
-- Star count consistency — CV (Coefficient of Variation) measures how stable your star counts were across exposures. A low CV means consistent transparency and focus; a high CV suggests passing clouds, dew, or focus drift. Reported separately for broadband and narrowband filters.
-- Target Scheduler integration — shows desired, acquired, and accepted frame counts per filter with a visual progress bar
+- Star count consistency � CV (Coefficient of Variation) measures how stable your star counts were across exposures. A low CV means consistent transparency and focus; a high CV suggests passing clouds, dew, or focus drift. Reported separately for broadband and narrowband filters.
+- Target Scheduler integration � shows desired, acquired, and accepted frame counts per filter with a visual progress bar
 - Session history table summarizing all past sessions for each target, including cumulative integration time
-- Configurable Metric Chart showing any two metrics over time — choose from HFR, FWHM, Eccentricity, Guiding RMS, Focuser Temperature, or Ambient Temperature
-- Tonight's Preview — a visual timeline of what Target Scheduler plans to image tonight, with per-target filter breakdowns
+- Configurable Metric Chart showing any two metrics over time � choose from HFR, FWHM, Eccentricity, Guiding RMS, Focuser Temperature, or Ambient Temperature
+- Tonight's Preview � a visual timeline of what Target Scheduler plans to image tonight, with per-target filter breakdowns
 
 **Report detail levels**
 Three levels let you control how much is included: Snapshot (header and filter table only), Standard (adds timeline, charts, and image quality), and Full (adds metric chart and session history). Each section can also be toggled individually.
 
 **Optional plugin integrations**
-- **Target Scheduler** — when installed, Night Summary reads your imaging targets and frame counts directly from the Target Scheduler database, adding per-filter progress bars and cumulative integration tracking to the report. With the Target Scheduler API enabled (Target Management → select your active profile → gear icon → API Preferences → enable API), the report also includes a Tonight's Preview showing the planned schedule for tonight. Without Target Scheduler, targets and coordinates are still captured from NINA's sequence data.
-- **Hocus Focus** — when installed, Night Summary reads FWHM and Eccentricity measurements from each saved image. Without it, only HFR (provided natively by NINA) is included in image quality stats.
+- **Target Scheduler** � when installed, Night Summary reads your imaging targets and frame counts directly from the Target Scheduler database, adding per-filter progress bars and cumulative integration tracking to the report. With the Target Scheduler API enabled (Target Management ? select your active profile ? gear icon ? API Preferences ? enable API), the report also includes a Tonight's Preview showing the planned schedule for tonight. Without Target Scheduler, targets and coordinates are still captured from NINA's sequence data.
+- **Hocus Focus** � when installed, Night Summary reads FWHM and Eccentricity measurements from each saved image. Without it, only HFR (provided natively by NINA) is included in image quality stats.
 
 **Delivery options**
-- Email via SMTP — Gmail is the default and easiest to set up, but any SMTP provider is supported (Outlook, Yahoo, iCloud, and others)
+- Email via SMTP � Gmail is the default and easiest to set up, but any SMTP provider is supported (Outlook, Yahoo, iCloud, and others)
 - Discord webhook (embed summary + HTML file attachment)
 - Pushover push notification (short text summary)
 - Save report locally to Documents\N.I.N.A.\Night Summary\Saved Reports
@@ -61,7 +61,7 @@ All channels can be enabled independently and tested directly from the plugin op
 - *Email not sending:* Most providers require an App Password rather than your regular account password. For Gmail, generate one at myaccount.google.com under Security > App Passwords. For other providers, check your account's security settings for app-specific password or SMTP access options.
 - *FOV overlay or survey image looks wrong:* The camera field of view box is calculated from your sensor dimensions and focal length as configured in your NINA equipment profile. If the box or image appears too large, too small, or misaligned, verify that your sensor pixel size, width, and height are correctly set in your NINA camera profile.
 - *FWHM and Eccentricity not appearing:* These metrics require the Hocus Focus plugin to be installed and active during the imaging session.
-- *Target Scheduler data not appearing:* Night Summary reads the Target Scheduler database automatically — no additional setup is needed beyond having that plugin installed.")]
+- *Target Scheduler data not appearing:* Night Summary reads the Target Scheduler database automatically � no additional setup is needed beyond having that plugin installed.")]
 [assembly: ComVisible(false)]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyTrademark("")]
