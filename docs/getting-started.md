@@ -14,18 +14,23 @@ This guide walks you through installing Night Summary, configuring basic setting
 2. In the **Available** tab, search for **Night Summary**
 3. Click **Install** and restart NINA when prompted
 
-After installation, Night Summary appears under **Options > Night Summary Settings** (expand the section).
+After installation, Night Summary appears under **Options > Night Summary Settings** in the NINA sidebar.
 
 ## How It Works
 
-Night Summary runs automatically in the background:
+Night Summary uses two sequence instructions to mark the start and end of your session:
 
-1. **Session starts** when your NINA sequence begins imaging
+1. **Night Summary Start** — place this near the top of your sequence, before any imaging begins
+2. **Night Summary End** — place this at the very end of your sequence, after all imaging and any park/warm-up steps
+
+Once the sequence runs:
+
+1. **Session starts** when the Night Summary Start instruction executes
 2. **Data is recorded** for every exposure — HFR, guiding RMS, star count, filter, temperature, and more
-3. **Session ends** when the sequence completes (or you stop it manually)
+3. **Session ends** when the Night Summary End instruction executes (or you stop the sequence manually)
 4. **Report is generated** and delivered through your enabled channels
 
-No sequence instructions are needed — the plugin hooks into NINA's image save events directly.
+If you use **Target Scheduler**, place Night Summary Start before the Target Scheduler Container and Night Summary End after it.
 
 ## Basic Configuration
 
@@ -59,9 +64,10 @@ This lets you tweak settings like detail level, chart metrics, and toggles to ge
 
 ## Your First Real Report
 
-1. Run an imaging sequence as you normally would
-2. When the sequence completes, Night Summary automatically generates and delivers your report
-3. Check your configured delivery channel (email, Discord, etc.) for the report
+1. Make sure **Night Summary Start** and **Night Summary End** are in your sequence (see [How It Works](#how-it-works) above)
+2. Run the sequence as you normally would
+3. When the sequence completes, Night Summary automatically generates and delivers your report
+4. Check your configured delivery channel (email, Discord, etc.) for the report
 
 If something doesn't look right, check the [FAQ]({% link faq.md %}) for common issues, or adjust settings and use **Preview Report** to iterate.
 

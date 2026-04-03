@@ -10,7 +10,7 @@ nav_order: 12
 
 ### How does Night Summary know when my session starts and ends?
 
-Night Summary hooks into NINA's sequence events. The session starts when your sequence begins capturing images and ends when the sequence completes or is stopped. No special sequence instructions are needed — it works automatically.
+Night Summary uses two sequence instructions: **Night Summary Start** and **Night Summary End**. Place Start near the beginning of your sequence (before imaging) and End at the very end (after all imaging and park/warm-up steps). The session begins when Start executes and ends when End executes or the sequence is stopped.
 
 ### Can I use Night Summary without any delivery channels enabled?
 
@@ -34,11 +34,12 @@ Yes. Settings are stored outside the plugin folder in the NINA data directory, s
 
 ### My report didn't send / I didn't receive it
 
-1. Check NINA's notification area (bottom of the screen) for error messages
-2. Verify your delivery channel settings using the **Send Test** buttons
-3. For email: check your spam/junk folder
-4. For Discord: verify the webhook URL is still valid (webhooks can be deleted from the Discord server side)
-5. For Pushover: verify your app token and user key are correct
+1. Make sure both **Night Summary Start** and **Night Summary End** instructions are in your sequence — the End instruction is what triggers report generation
+2. Check NINA's notification area (bottom of the screen) for error messages
+3. Verify your delivery channel settings using the **Send Test** buttons
+4. For email: check your spam/junk folder
+5. For Discord: verify the webhook URL is still valid (webhooks can be deleted from the Discord server side)
+6. For Pushover: verify your app token and user key are correct
 
 ### Sky thumbnails are missing
 
@@ -68,7 +69,7 @@ Metrics require the corresponding equipment or plugin to be connected:
 
 If the equipment isn't connected, those data points are simply omitted from charts.
 
-### Overhead breakdown shows high "Unaccounted" time
+### Yield and overhead analysis shows high "Unaccounted" time
 
 Some unaccounted time is normal — it represents gaps between operations that the log parser can't attribute to a specific category (NINA internal processing, brief pauses between sequence items, etc.).
 

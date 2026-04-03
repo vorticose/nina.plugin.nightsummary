@@ -16,7 +16,7 @@ Go to **Options > Night Summary Settings > Report File Naming**:
 2. The **Pattern preview** field shows what the current pattern resolves to in real time
 3. Use the clickable variable buttons below the field to insert variables at the cursor position
 
-The default pattern is `$$DATEMINUS12$$`, which produces filenames like `NightSummary_2026-03-31`.
+The default pattern is `NightSummary_$$DATEMINUS12$$`, which produces filenames like `NightSummary_2026-03-31`.
 
 ## Available Variables
 

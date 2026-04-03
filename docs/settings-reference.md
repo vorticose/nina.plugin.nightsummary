@@ -20,7 +20,7 @@ Controls how much information appears in the report.
 |-------|------------|---------|
 | **Snapshot** | Header, stat boxes, and filter table only | |
 | **Standard** | Adds timeline, altitude charts, image quality, per-target IQ, and TS progress bars | Yes |
-| **Full** | Adds overhead breakdown, metric charts, session history, and tonight's preview | |
+| **Full** | Adds yield and overhead analysis, metric charts, session history, and tonight's preview | |
 
 ### Target Scheduler Options
 
@@ -45,6 +45,7 @@ These options are only available when Target Scheduler is installed.
 | Show Min Altitude | On | Standard+ | Target Scheduler minimum altitude line on altitude charts (requires TS) |
 | Show Star Count CV | On | Standard+ | Star count coefficient of variation with per-filter breakdown |
 | Show Per-Target Image Quality | On | Standard+ | Expandable per-frame HFR, stars, guiding, etc. for each target |
+| Show Yield and Overhead Analysis | On | Full | Yield and imaging overhead breakdown parsed from NINA logs |
 | Expand Sections by Default | Off | All | Open all collapsible report sections by default |
 | Light Mode Report | Off | All | Use light color scheme instead of dark |
 | Show Session History | On | Full | Cumulative integration time per target across all sessions |

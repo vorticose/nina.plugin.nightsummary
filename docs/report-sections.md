@@ -43,9 +43,9 @@ The Total Images and Total Exposure boxes are expandable — click to see the pe
 
 A visual timeline showing what happened during your session in chronological order. Events include sequence start/end, target changes, autofocus runs, meridian flips, and safety monitor events (roof open/close).
 
-## Overhead Breakdown
+## Yield and Imaging Overhead Analysis
 
-**Full detail level only.** See [Overhead Breakdown]({% link overhead-breakdown.md %}) for a deep dive.
+**Full detail level only.** See [Yield and Overhead Analysis]({% link overhead-breakdown.md %}) for a deep dive.
 
 Parses your NINA log file to show exactly where non-imaging time was spent. Includes:
 

@@ -1,12 +1,12 @@
 ---
 layout: default
-title: Overhead Breakdown
+title: Yield and Overhead Analysis
 nav_order: 7
 ---
 
-# Overhead Breakdown
+# Yield and Imaging Overhead Analysis
 
-The overhead breakdown section parses your NINA log file after the session ends to show exactly where your non-imaging time was spent. This helps you identify bottlenecks and optimize your imaging workflow.
+This section parses your NINA log file after the session ends to show exactly where your non-imaging time was spent. It helps you identify bottlenecks and optimize your imaging workflow.
 
 Available at **Full** detail level only.
 

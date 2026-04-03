@@ -12,13 +12,13 @@ Whether you run a remote observatory or image from your backyard, Night Summary 
 
 ## Key Features
 
-- **Automatic session recording** — captures every exposure, filter change, autofocus run, and equipment event as your sequence runs
+- **Session recording** — captures every exposure, filter change, autofocus run, and equipment event as your sequence runs
 - **Rich HTML reports** — event timelines, overhead breakdowns, altitude charts, sky thumbnails, image quality tables, and more
 - **Multiple delivery channels** — email, Discord webhook, Pushover push notifications, or local file save
 - **Live Stack integration** — includes live-stacked thumbnails from the Live Stack plugin in your report
 - **Target Scheduler integration** — shows acquisition progress bars, minimum altitude lines, and tonight's preview when Target Scheduler is installed
 - **Metric charts** — plot any combination of HFR, FWHM, guiding RMS, temperature, humidity, and 15+ other metrics
-- **Overhead breakdown** — parses NINA logs to show exactly where your non-imaging time went (downloads, filter changes, autofocus, dithering, etc.)
+- **Yield and imaging overhead analysis** — parses NINA logs to show exactly where your non-imaging time went (downloads, filter changes, autofocus, dithering, etc.)
 - **Equipment profile** — collapsible section showing all connected equipment with customizable display names
 - **Session history** — cumulative integration time per target across all sessions
 - **Customizable detail levels** — Snapshot, Standard, or Full reports to match your preference
@@ -36,7 +36,7 @@ Night Summary requires **NINA 3.2 or later**.
 
 ## Quick Start
 
-After installing, Night Summary works with zero configuration — it records your session and generates a report automatically when your sequence ends. To actually *receive* the report, set up at least one [delivery channel]({% link delivery-channels.md %}).
+Add the **Night Summary Start** and **Night Summary End** instructions to your sequence, and Night Summary records your session and generates a report automatically when the sequence ends. To actually *receive* the report, set up at least one [delivery channel]({% link delivery-channels.md %}).
 
 See [Getting Started]({% link getting-started.md %}) for a walkthrough.
 
@@ -48,8 +48,8 @@ Night Summary offers three detail levels that control how much information appea
 |-------|----------------|
 | **Snapshot** | Header, stat boxes, filter table |
 | **Standard** | + Event timeline, altitude charts, image quality, per-target IQ, Target Scheduler bars |
-| **Full** | + Overhead breakdown, metric charts, session history, tonight's preview |
+| **Full** | + Yield and overhead analysis, metric charts, session history, tonight's preview |
 
 ## Version
 
-This documentation covers **Night Summary v2.10.0** for NINA 3.2+.
+This documentation covers **Night Summary v2.10.0+** for NINA 3.2+.
