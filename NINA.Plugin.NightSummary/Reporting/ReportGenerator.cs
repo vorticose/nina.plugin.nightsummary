@@ -636,8 +636,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
                         sb.Append(BuildLiveStackRow(targetImages, filterIntegration));
                         sb.AppendLine("</details>");
                     }
-                } else if (data.LiveStackImages.Count == 0) {
-                    Logger.Info($"NightSummary: No live stack images available for report");
+                } else if (data.LiveStackImages == null || data.LiveStackImages.Count == 0) {
+                    Logger.Info($"NightSummary: No live stack images for target '{target.Key}' — " +
+                        $"ShowLiveStackImages={SettingsManager.Instance.Current.ShowLiveStackImages}, " +
+                        $"totalImages={data.LiveStackImages?.Count ?? 0}");
+                } else {
+                    Logger.Info($"NightSummary: No live stack images matched target '{target.Key}' — " +
+                        $"available targets: {string.Join(", ", data.LiveStackImages.Select(i => i.Target).Distinct())}");
                 }
 
                 // Session filter table
