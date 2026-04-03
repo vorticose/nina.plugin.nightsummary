@@ -348,12 +348,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 ? Math.Min(mergedOverheadSec / impliedOverheadSec * 100.0, 100.0) : 0;
             var unaccountedSec = Math.Max(0, impliedOverheadSec - mergedOverheadSec);
 
-            var mergedAllSec = MergeOverheadIntervals(timingEvents.Where(e => e.DurationSeconds > 0).ToList());
-            var mergedExpSec = MergeOverheadIntervals(timingEvents.Where(e => e.EventType == "Exposure").ToList());
             Logger.Info($"NightSummary: Overhead — window={windowSec:F0}s, integration={totalIntegrationSec:F0}s, " +
-                $"implied={impliedOverheadSec:F0}s, rawSum={totalOverheadSec:F0}s, merged={mergedOverheadSec:F0}s, " +
-                $"coverage={coveragePct:F1}%, unaccounted={unaccountedSec:F0}s, " +
-                $"mergedAll={mergedAllSec:F0}s, mergedExp={mergedExpSec:F0}s, gap={windowSec - mergedAllSec:F0}s");
+                $"implied={impliedOverheadSec:F0}s, merged={mergedOverheadSec:F0}s, " +
+                $"coverage={coveragePct:F1}%, unaccounted={unaccountedSec:F0}s");
 
             // Summary stat boxes
             sb.AppendLine("<div style='display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:10px 0;'>");
