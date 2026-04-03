@@ -14,6 +14,18 @@ $projectDir    = Join-Path $repoRoot "NINA.Plugin.NightSummary"
 $buildDir      = Join-Path $projectDir "bin\Release\net8.0-windows"
 $ninaPluginDir = Join-Path $env:LOCALAPPDATA "NINA\Plugins\3.0.0\Night Summary"
 
+# --- Check if NINA has the DLL locked ---
+$targetDll = Join-Path $ninaPluginDir "NINA.Plugin.NightSummary.dll"
+if (Test-Path $targetDll) {
+    try {
+        $stream = [System.IO.File]::Open($targetDll, 'Open', 'Read', 'None')
+        $stream.Close()
+    } catch {
+        Write-Host "NINA is running (DLL is locked). Close it before deploying." -ForegroundColor Red
+        exit 1
+    }
+}
+
 # --- Save current branch ---
 $prevBranch = git -C $repoRoot rev-parse --abbrev-ref HEAD
 if ($LASTEXITCODE -ne 0) { Write-Error "Failed to detect current branch."; exit 1 }
