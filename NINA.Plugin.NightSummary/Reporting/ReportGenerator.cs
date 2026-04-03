@@ -934,7 +934,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                         if (tokens.Length >= 2
                             && int.TryParse(tokens[0], out int p)
                             && int.TryParse(tokens[1], out int s)) {
-                            int ax = tokens.Length >= 3 && int.TryParse(tokens[2], out int a) ? a : xAxis;
+                            int ax = tokens.Length >= 3 && int.TryParse(tokens[2], out int a) ? a : 0;
                             sb.AppendLine($"<h2>{ChartGenerator.GetChartTitle(p, s, ax)}</h2>");
                             sb.AppendLine(ChartGenerator.GenerateMetricChart(data.Images, p, s, ax));
                         }
