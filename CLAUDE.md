@@ -18,6 +18,23 @@ generates HTML reports summarizing each night's work.
 - **Plugin location on target machine**: `%LOCALAPPDATA%\NINA\Plugins\3.0.0\Night Summary\`
 - **Database location**: `%LOCALAPPDATA%\NINA\NightSummary\nightsummary.sqlite`
 
+## Multi-Agent Rule
+
+**Always assume other agents are working on this repo in parallel.** Before doing
+any work, create a git worktree and work exclusively inside it. Never use the main
+checkout directly — another agent may be using it.
+
+```bash
+# At the start of every session:
+git worktree add .claude/worktrees/<name> -b <branch-name>
+cd .claude/worktrees/<name>
+```
+
+- Each agent gets its own worktree with its own branch
+- Two worktrees cannot share the same branch — create a feature branch if needed
+- Commit frequently so work is never lost to branch switches
+- When done, merge your branch back and clean up: `git worktree remove <path>`
+
 ## Development Setup
 
 - Code is edited on Mac using VS Code
