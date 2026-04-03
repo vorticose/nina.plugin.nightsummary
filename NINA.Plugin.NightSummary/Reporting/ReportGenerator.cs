@@ -313,7 +313,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             var sb = new StringBuilder();
             sb.AppendLine("<details class='iq-section' open>");
-            sb.AppendLine("<summary>Yield and Imaging Overhead</summary>");
+            sb.AppendLine("<summary>Yield and Imaging Overhead Analysis</summary>");
 
             // Group by event type, sum durations, filter out negligible categories (< 1s total)
             var groups = overheadEvents
