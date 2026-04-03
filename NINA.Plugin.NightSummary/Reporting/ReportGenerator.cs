@@ -346,8 +346,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var roofClosedSec = windowSec - (totalExposureSec / (yield.YieldPct / 100.0));
                 impliedOverheadSec = windowSec - totalExposureSec - Math.Max(0, roofClosedSec);
             }
-            var coveragePct = impliedOverheadSec > 0 ? Math.Min(mergedOverheadSec / impliedOverheadSec * 100.0, 100.0) : 0;
+            var rawCoveragePct = impliedOverheadSec > 0 ? mergedOverheadSec / impliedOverheadSec * 100.0 : 0;
+            var coveragePct = Math.Min(rawCoveragePct, 100.0);
             var unaccountedSec = Math.Max(0, impliedOverheadSec - mergedOverheadSec);
+
+            Logger.Info($"NightSummary: Overhead — window={windowSec:F0}s, exposure={totalExposureSec:F0}s, " +
+                $"implied={impliedOverheadSec:F0}s, rawSum={totalOverheadSec:F0}s, merged={mergedOverheadSec:F0}s, " +
+                $"rawCoverage={rawCoveragePct:F1}%, capped={coveragePct:F1}%");
 
             // Summary stat boxes
             sb.AppendLine("<div style='display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:10px 0;'>");
