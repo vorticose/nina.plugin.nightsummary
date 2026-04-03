@@ -165,14 +165,16 @@ namespace NINA.Plugin.NightSummary.Reporting {
             const string warningsPlaceholder = "<!--WARNINGS_PLACEHOLDER-->";
             sb.AppendLine(warningsPlaceholder);
 
+            int detailLevel = SettingsManager.Instance.Current.ReportDetailLevel;
+            string detailsOpen = SettingsManager.Instance.Current.ExpandSectionsDefault ? " open" : "";
+
             if (!data.Images.Any()) {
                 sb.AppendLine("<p><em>No images were recorded during this session.</em></p>");
+                if (detailLevel >= 2) sb.Append(BuildNextNightPreviewSection(data));
+                sb.Append(BuildFooter());
                 sb.AppendLine("</body></html>");
                 return sb.ToString();
             }
-
-            int detailLevel = SettingsManager.Instance.Current.ReportDetailLevel;
-            string detailsOpen = SettingsManager.Instance.Current.ExpandSectionsDefault ? " open" : "";
 
             if (detailLevel >= 1) sb.Append(BuildEventTimelineSection(data));
             if (detailLevel >= 2) sb.Append(BuildOverheadBreakdownSection(data, detailsOpen));
@@ -214,8 +216,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine("<h1>Night Summary Report</h1>");
             }
             sb.AppendLine($"<p><strong>Session Date:</strong> {data.Session.SessionStart:yyyy-MM-dd}</p>");
-            sb.AppendLine($"<p><strong>Session Start:</strong> {data.Session.SessionStart:HH:mm:ss} &nbsp;&nbsp; <strong>Session End:</strong> {data.Session.SessionEnd:HH:mm:ss}</p>");
-            sb.AppendLine($"<p><strong>Duration:</strong> {(data.Session.SessionEnd - data.Session.SessionStart).TotalHours:F1} hours</p>");
+            var sessionEnd = data.Session.SessionEnd > data.Session.SessionStart ? data.Session.SessionEnd : DateTime.Now;
+            var isActive = data.Session.SessionEnd <= data.Session.SessionStart;
+            sb.AppendLine($"<p><strong>Session Start:</strong> {data.Session.SessionStart:HH:mm:ss} &nbsp;&nbsp; <strong>Session End:</strong> {(isActive ? "In Progress" : sessionEnd.ToString("HH:mm:ss"))}</p>");
+            sb.AppendLine($"<p><strong>Duration:</strong> {(sessionEnd - data.Session.SessionStart).TotalHours:F1} hours{(isActive ? " (so far)" : "")}</p>");
             sb.AppendLine($"<p><strong>Profile:</strong> {data.Session.ProfileName}</p>");
 
             // Equipment profile section (collapsed by default)
@@ -930,7 +934,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                         if (tokens.Length >= 2
                             && int.TryParse(tokens[0], out int p)
                             && int.TryParse(tokens[1], out int s)) {
-                            int ax = tokens.Length >= 3 && int.TryParse(tokens[2], out int a) ? a : 0;
+                            int ax = tokens.Length >= 3 && int.TryParse(tokens[2], out int a) ? a : xAxis;
                             sb.AppendLine($"<h2>{ChartGenerator.GetChartTitle(p, s, ax)}</h2>");
                             sb.AppendLine(ChartGenerator.GenerateMetricChart(data.Images, p, s, ax));
                         }
