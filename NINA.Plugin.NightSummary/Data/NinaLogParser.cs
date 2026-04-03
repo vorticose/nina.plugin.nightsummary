@@ -113,7 +113,12 @@ namespace NINA.Plugin.NightSummary.Data {
         /// </summary>
         internal static List<TimingEvent> ParseFile(string logPath, DateTime sessionStart, DateTime sessionEnd, int expectedImageCount = -1) {
             var events = new List<TimingEvent>();
-            var lines = File.ReadAllLines(logPath);
+            // Open with FileShare.ReadWrite since NINA holds a write lock on the active log file
+            string[] lines;
+            using (var fs = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var reader = new StreamReader(fs)) {
+                lines = reader.ReadToEnd().Split('\n').Select(l => l.TrimEnd('\r')).ToArray();
+            }
 
             if (lines.Length < 5) {
                 Logger.Warning("NightSummary: LogParser — log file too short to be valid");
