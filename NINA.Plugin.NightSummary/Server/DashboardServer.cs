@@ -24,6 +24,15 @@ namespace NINA.Plugin.NightSummary.Server {
         private readonly SessionService sessionService;
         private string cachedDashboardHtml;
 
+        // Regenerate-all progress tracking
+        private volatile bool regenAllRunning;
+        private volatile int regenAllCurrent;
+        private volatile int regenAllTotal;
+        private volatile int regenAllGenerated;
+        private volatile int regenAllFailed;
+        private volatile string regenAllStatus; // "running", "done", "error"
+        private volatile string regenAllError;
+
         private static readonly JsonSerializerOptions JsonOpts = new JsonSerializerOptions {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -141,6 +150,8 @@ namespace NINA.Plugin.NightSummary.Server {
                         await HandleGetTargetStats(res);
                     } else if (path == "/api/stats/summary") {
                         await HandleGetStatsSummary(res);
+                    } else if (path == "/api/regenerate-all/status") {
+                        await HandleRegenAllStatus(res);
                     } else if (path == "/api/settings") {
                         await HandleGetSettings(res);
                     } else if (path == "/") {
@@ -479,6 +490,11 @@ namespace NINA.Plugin.NightSummary.Server {
                 return;
             }
 
+            if (regenAllRunning) {
+                await WriteJson(res, 409, new { error = "Regeneration already in progress" });
+                return;
+            }
+
             try {
                 string body = "";
                 using (var reader = new StreamReader(req.InputStream, req.ContentEncoding))
@@ -495,38 +511,71 @@ namespace NINA.Plugin.NightSummary.Server {
                 var db = new SessionDatabase(dbPath);
                 var sessions = db.GetAllSessions();
 
-                var s = SettingsManager.Instance.Current;
-                var saved = SnapshotSettings(s);
-                int generated = 0, failed = 0;
+                // Initialize progress
+                regenAllRunning = true;
+                regenAllCurrent = 0;
+                regenAllTotal = sessions.Count;
+                regenAllGenerated = 0;
+                regenAllFailed = 0;
+                regenAllStatus = "running";
+                regenAllError = null;
 
-                try {
-                    ApplyOverrides(s, overrides);
-                    s.ShowNextNightPreview = false;
+                // Return immediately, run in background
+                await WriteJson(res, 202, new { status = "started", total = sessions.Count });
 
-                    foreach (var session in sessions) {
-                        try {
-                            var reportData = await sessionService.BuildReportDataAsync(dbPath, session.SessionId);
-                            if (reportData == null) { failed++; continue; }
+                // Fire and forget the actual work
+                _ = Task.Run(async () => {
+                    var s = SettingsManager.Instance.Current;
+                    var saved = SnapshotSettings(s);
+                    try {
+                        ApplyOverrides(s, overrides);
+                        s.ShowNextNightPreview = false;
 
-                            var html = await sessionService.GenerateHtmlAsync(reportData);
-                            var reportPath = Path.Combine(reportsDir, $"{session.SessionId}.html");
-                            await File.WriteAllTextAsync(reportPath, html);
-                            generated++;
-                        } catch (Exception ex) {
-                            Logger.Warning($"NightSummary: Failed to regenerate report for {session.SessionId}. {ex.Message}");
-                            failed++;
+                        for (int i = 0; i < sessions.Count; i++) {
+                            regenAllCurrent = i + 1;
+                            try {
+                                var reportData = await sessionService.BuildReportDataAsync(dbPath, sessions[i].SessionId);
+                                if (reportData == null) { regenAllFailed++; continue; }
+
+                                var html = await sessionService.GenerateHtmlAsync(reportData);
+                                var reportPath = Path.Combine(reportsDir, $"{sessions[i].SessionId}.html");
+                                await File.WriteAllTextAsync(reportPath, html);
+                                regenAllGenerated++;
+                            } catch (Exception ex) {
+                                Logger.Warning($"NightSummary: Failed to regenerate report for {sessions[i].SessionId}. {ex.Message}");
+                                regenAllFailed++;
+                            }
                         }
-                    }
-                } finally {
-                    RestoreSettings(s, saved);
-                }
 
-                Logger.Info($"NightSummary: Dashboard bulk regeneration complete — {generated} generated, {failed} failed");
-                await WriteJson(res, 200, new { status = "ok", generated, failed, total = sessions.Count });
+                        regenAllStatus = "done";
+                        Logger.Info($"NightSummary: Dashboard bulk regeneration complete — {regenAllGenerated} generated, {regenAllFailed} failed");
+                    } catch (Exception ex) {
+                        regenAllStatus = "error";
+                        regenAllError = ex.Message;
+                        Logger.Error($"NightSummary: Dashboard bulk regeneration failed. {ex.Message}");
+                    } finally {
+                        RestoreSettings(s, saved);
+                        regenAllRunning = false;
+                    }
+                });
             } catch (Exception ex) {
+                regenAllRunning = false;
+                regenAllStatus = "error";
+                regenAllError = ex.Message;
                 Logger.Error($"NightSummary: Dashboard bulk regeneration failed. {ex.Message}");
                 await WriteJson(res, 500, new { error = ex.Message });
             }
+        }
+
+        private async Task HandleRegenAllStatus(HttpListenerResponse res) {
+            await WriteJson(res, 200, new {
+                status = regenAllStatus ?? "idle",
+                current = regenAllCurrent,
+                total = regenAllTotal,
+                generated = regenAllGenerated,
+                failed = regenAllFailed,
+                error = regenAllError
+            });
         }
 
         private static Dictionary<string, object> SnapshotSettings(NightSummarySettings s) {

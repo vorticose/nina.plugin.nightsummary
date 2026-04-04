@@ -592,26 +592,50 @@ function bindDetailEvents(sessionId) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settings)
       }).then(function(r) { return r.json(); }).then(function(data) {
-        if (data.status === 'ok') {
-          status.textContent = 'Done \u2014 ' + data.generated + ' generated' + (data.failed > 0 ? ', ' + data.failed + ' failed' : '');
-          status.className = 'regen-status regen-ok';
-          // Reload current report iframe
-          var iframe = document.getElementById('report-iframe');
-          if (iframe) iframe.src = iframe.src.split('?')[0] + '?t=' + Date.now();
-          sessionsCache = []; // Clear cache so list refreshes
+        if (data.status === 'started') {
+          pollRegenAllProgress(sessionId, regenBtn, regenAllBtn, status);
         } else {
-          status.textContent = data.error || 'Failed';
+          status.textContent = data.error || 'Failed to start';
           status.className = 'regen-status regen-err';
+          regenAllBtn.disabled = false;
+          if (regenBtn) regenBtn.disabled = false;
         }
       }).catch(function(err) {
         status.textContent = err.message;
         status.className = 'regen-status regen-err';
-      }).finally(function() {
         regenAllBtn.disabled = false;
         if (regenBtn) regenBtn.disabled = false;
       });
     });
   }
+}
+
+function pollRegenAllProgress(sessionId, regenBtn, regenAllBtn, statusEl) {
+  var poll = setInterval(function() {
+    fetch('/api/regenerate-all/status').then(function(r) { return r.json(); }).then(function(data) {
+      if (data.status === 'running') {
+        statusEl.textContent = 'Regenerating ' + data.current + '/' + data.total + '...';
+        statusEl.className = 'regen-status';
+      } else if (data.status === 'done') {
+        clearInterval(poll);
+        statusEl.textContent = 'Done \u2014 ' + data.generated + ' generated' + (data.failed > 0 ? ', ' + data.failed + ' failed' : '');
+        statusEl.className = 'regen-status regen-ok';
+        regenAllBtn.disabled = false;
+        if (regenBtn) regenBtn.disabled = false;
+        sessionsCache = [];
+        var iframe = document.getElementById('report-iframe');
+        if (iframe) iframe.src = iframe.src.split('?')[0] + '?t=' + Date.now();
+      } else if (data.status === 'error') {
+        clearInterval(poll);
+        statusEl.textContent = data.error || 'Failed';
+        statusEl.className = 'regen-status regen-err';
+        regenAllBtn.disabled = false;
+        if (regenBtn) regenBtn.disabled = false;
+      }
+    }).catch(function() {
+      // Network error during poll — keep trying
+    });
+  }, 1000);
 }
 
 // ── Stats Page ─────────────────────────────────────────────────────────────
