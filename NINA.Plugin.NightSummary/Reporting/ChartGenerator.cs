@@ -163,13 +163,18 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             // X range — nice scaling for all axis types
             var allX    = leftPts.Select(p => p.x).Concat(rightPts.Select(p => p.x)).ToList();
-            double xMinSpan = xAxisMetric switch {
-                XAxisTime       => 600.0,   // 10 minutes in seconds
-                XAxisFrameIndex => 1.0,
-                _               => GetPrimaryMinSpan(xAxisMetric - XAxisMetricOffset)
-            };
-            var (minX, maxX, xStep) = ComputeNiceScale(allX, xMinSpan);
-            double xRange = maxX - minX;
+            double minX, maxX, xStep, xRange;
+            if (xAxisMetric == XAxisTime) {
+                (minX, maxX, xStep) = ComputeNiceTimeScale(allX);
+            } else if (xAxisMetric == XAxisFrameIndex) {
+                (minX, maxX, xStep) = ComputeNiceScale(allX, 1.0);
+                // Keep frame index tight: start at 1, don't pad beyond last frame
+                minX = Math.Max(1, minX);
+                maxX = Math.Min(maxX, Math.Ceiling(allX.Max() / xStep) * xStep);
+            } else {
+                (minX, maxX, xStep) = ComputeNiceScale(allX, GetPrimaryMinSpan(xAxisMetric - XAxisMetricOffset));
+            }
+            xRange = maxX - minX;
 
             // Y scales
             double leftMinSpan = swapped ? GetSecondaryMinSpan(secondaryMetric) : GetPrimaryMinSpan(primaryMetric);
@@ -393,6 +398,34 @@ namespace NINA.Plugin.NightSummary.Reporting {
         }
 
         // ── Scale helpers ────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Picks a time-aware nice scale so x-axis labels land on round clock times
+        /// (e.g. 21:00, 21:30, 22:00). Steps are chosen from human-friendly intervals.
+        /// Values are in seconds offset from the first image timestamp.
+        /// </summary>
+        private static (double min, double max, double step) ComputeNiceTimeScale(List<double> vals) {
+            double rawMin = vals.Min();
+            double rawMax = vals.Max();
+            double range  = Math.Max(rawMax - rawMin, 60);
+
+            // Human-friendly time steps (in seconds)
+            double[] steps = { 60, 120, 300, 600, 900, 1800, 3600, 7200, 14400 };
+            //                 1m   2m   5m  10m  15m   30m    1h    2h    4h
+
+            // Target ~5-6 labels
+            double idealStep = range / 5.0;
+            double step = steps[steps.Length - 1];
+            foreach (var s in steps) {
+                if (s >= idealStep) { step = s; break; }
+            }
+
+            // Snap bounds to step multiples — tight to data
+            double niceMin = Math.Floor(rawMin / step) * step;
+            double niceMax = Math.Ceiling(rawMax / step) * step;
+
+            return (niceMin, niceMax, step);
+        }
 
         private static (double min, double max, double step) ComputeNiceScale(IEnumerable<double> vals, double minSpan) {
             var list   = vals.ToList();
