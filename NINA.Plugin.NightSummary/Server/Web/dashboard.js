@@ -431,9 +431,10 @@ function buildSettingsPanel(settings) {
       '<input type="text" id="s-eqOverrides" class="settings-input" value="' + esc(s.equipmentOverrides || '') + '" placeholder="e.g. Camera:ASI2600,Telescope:Esprit 100"></div>' +
   '</div>';
 
-  // Regenerate button
+  // Regenerate buttons
   html += '<div class="settings-actions">' +
     '<button id="btn-regenerate" class="report-btn regen-btn">Regenerate Report</button>' +
+    '<button id="btn-regenerate-all" class="report-btn regen-all-btn">Regenerate All Reports</button>' +
     '<span id="regen-status" class="regen-status"></span>' +
   '</div>';
 
@@ -528,6 +529,7 @@ function bindDetailEvents(sessionId) {
   var settingsBtn = document.getElementById('btn-settings');
   var panel = document.getElementById('settings-panel');
   var regenBtn = document.getElementById('btn-regenerate');
+  var regenAllBtn = document.getElementById('btn-regenerate-all');
   var status = document.getElementById('regen-status');
 
   if (settingsBtn && panel) {
@@ -570,6 +572,43 @@ function bindDetailEvents(sessionId) {
         status.className = 'regen-status regen-err';
       }).finally(function() {
         regenBtn.disabled = false;
+      });
+    });
+  }
+
+  if (regenAllBtn) {
+    regenAllBtn.addEventListener('click', function() {
+      if (!confirm('This will regenerate ALL session reports with the current settings, overwriting any existing reports.\n\nThis may take a while for many sessions. Continue?')) {
+        return;
+      }
+      var settings = collectSettings();
+      status.textContent = 'Regenerating all...';
+      status.className = 'regen-status';
+      regenAllBtn.disabled = true;
+      if (regenBtn) regenBtn.disabled = true;
+
+      fetch('/api/regenerate-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings)
+      }).then(function(r) { return r.json(); }).then(function(data) {
+        if (data.status === 'ok') {
+          status.textContent = 'Done \u2014 ' + data.generated + ' generated' + (data.failed > 0 ? ', ' + data.failed + ' failed' : '');
+          status.className = 'regen-status regen-ok';
+          // Reload current report iframe
+          var iframe = document.getElementById('report-iframe');
+          if (iframe) iframe.src = iframe.src.split('?')[0] + '?t=' + Date.now();
+          sessionsCache = []; // Clear cache so list refreshes
+        } else {
+          status.textContent = data.error || 'Failed';
+          status.className = 'regen-status regen-err';
+        }
+      }).catch(function(err) {
+        status.textContent = err.message;
+        status.className = 'regen-status regen-err';
+      }).finally(function() {
+        regenAllBtn.disabled = false;
+        if (regenBtn) regenBtn.disabled = false;
       });
     });
   }

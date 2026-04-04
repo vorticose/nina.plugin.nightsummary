@@ -512,6 +512,14 @@ body.report-view .shell { padding-bottom: 0; }
 .regen-btn:hover { opacity: 0.9; }
 .regen-btn:disabled { opacity: 0.5; cursor: wait; }
 
+.regen-all-btn {
+  border-color: var(--yellow) !important;
+  color: var(--yellow) !important;
+}
+
+.regen-all-btn:hover { background: rgba(210,153,34,0.1) !important; }
+.regen-all-btn:disabled { opacity: 0.5; cursor: wait; }
+
 .regen-status { font-size: 12px; color: var(--muted); }
 .regen-ok { color: var(--green); }
 .regen-err { color: var(--red); }

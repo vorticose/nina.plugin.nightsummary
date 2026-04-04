@@ -149,7 +149,9 @@ namespace NINA.Plugin.NightSummary.Server {
                         await WriteJson(res, 404, new { error = "Not found" });
                     }
                 } else if (req.HttpMethod == "POST") {
-                    if (path.StartsWith("/api/sessions/") && path.EndsWith("/regenerate")) {
+                    if (path == "/api/regenerate-all") {
+                        await HandleRegenerateAll(req, res);
+                    } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/regenerate")) {
                         var sessionId = ExtractSessionId(path, "/regenerate");
                         await HandleRegenerateReport(req, res, sessionId);
                     } else {
@@ -467,6 +469,62 @@ namespace NINA.Plugin.NightSummary.Server {
                 }
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Dashboard report regeneration failed. {ex.Message}");
+                await WriteJson(res, 500, new { error = ex.Message });
+            }
+        }
+
+        private async Task HandleRegenerateAll(HttpListenerRequest req, HttpListenerResponse res) {
+            if (sessionService == null) {
+                await WriteJson(res, 500, new { error = "Report generation not available" });
+                return;
+            }
+
+            try {
+                string body = "";
+                using (var reader = new StreamReader(req.InputStream, req.ContentEncoding))
+                    body = await reader.ReadToEndAsync();
+
+                var overrides = string.IsNullOrEmpty(body) ? null :
+                    JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(body);
+
+                if (!File.Exists(dbPath)) {
+                    await WriteJson(res, 404, new { error = "Database not found" });
+                    return;
+                }
+
+                var db = new SessionDatabase(dbPath);
+                var sessions = db.GetAllSessions();
+
+                var s = SettingsManager.Instance.Current;
+                var saved = SnapshotSettings(s);
+                int generated = 0, failed = 0;
+
+                try {
+                    ApplyOverrides(s, overrides);
+                    s.ShowNextNightPreview = false;
+
+                    foreach (var session in sessions) {
+                        try {
+                            var reportData = await sessionService.BuildReportDataAsync(dbPath, session.SessionId);
+                            if (reportData == null) { failed++; continue; }
+
+                            var html = await sessionService.GenerateHtmlAsync(reportData);
+                            var reportPath = Path.Combine(reportsDir, $"{session.SessionId}.html");
+                            await File.WriteAllTextAsync(reportPath, html);
+                            generated++;
+                        } catch (Exception ex) {
+                            Logger.Warning($"NightSummary: Failed to regenerate report for {session.SessionId}. {ex.Message}");
+                            failed++;
+                        }
+                    }
+                } finally {
+                    RestoreSettings(s, saved);
+                }
+
+                Logger.Info($"NightSummary: Dashboard bulk regeneration complete — {generated} generated, {failed} failed");
+                await WriteJson(res, 200, new { status = "ok", generated, failed, total = sessions.Count });
+            } catch (Exception ex) {
+                Logger.Error($"NightSummary: Dashboard bulk regeneration failed. {ex.Message}");
                 await WriteJson(res, 500, new { error = ex.Message });
             }
         }

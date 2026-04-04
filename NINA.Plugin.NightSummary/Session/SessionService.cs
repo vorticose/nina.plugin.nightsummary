@@ -745,34 +745,10 @@ namespace NINA.Plugin.NightSummary.Session {
                 }
 
                 try {
-                    var images     = db.GetImagesForSession(session.SessionId);
-                    var events     = db.GetEventsForSession(session.SessionId);
-                    var profileId  = profileService?.ActiveProfile?.Id.ToString();
-                    var tsData     = FetchTsData(images, profileId);
-                    var cumulative = db.GetCumulativeIntegrationByTarget(session.SessionId);
-                    var history    = BuildSessionHistory(db, images, session.SessionId);
-                    var (fovW, fovH) = ComputeCameraFov(session);
-                    var (lat, lon)   = GetObserverCoords();
-                    var timingEvents = db.GetTimingEventsForSession(session.SessionId);
-                    var reportData = new ReportData {
-                        Session                      = session,
-                        Images                       = images,
-                        Events                       = events,
-                        TsData                       = tsData,
-                        CumulativeIntegrationSeconds = cumulative,
-                        SessionHistory               = history,
-                        CameraFovWidthDeg            = fovW,
-                        CameraFovHeightDeg           = fovH,
-                        ObserverLatitude             = lat,
-                        ObserverLongitude            = lon,
-                        ActiveProfileId              = profileId,
-                        TimingEvents                 = timingEvents
-                    };
-
-                    // Try to load persisted live stack masters for this session
-                    var (resolvedDir, resolvedFilename) = ResolveReportSavePath(reportData, scanForExisting: true);
-                    if (resolvedDir != null) {
-                        reportData.LiveStackImages = LoadLiveStackMasters(resolvedDir, resolvedFilename);
+                    var reportData = await BuildReportDataAsync(dbPath, session.SessionId);
+                    if (reportData == null) {
+                        failed++;
+                        continue;
                     }
 
                     var htmlReport = await GenerateReportForDashboard(reportData);
