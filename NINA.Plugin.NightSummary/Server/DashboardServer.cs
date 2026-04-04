@@ -856,6 +856,8 @@ namespace NINA.Plugin.NightSummary.Server {
         private static async Task WriteHtml(HttpListenerResponse res, int status, string html) {
             res.StatusCode = status;
             res.ContentType = "text/html; charset=utf-8";
+            res.Headers.Add("Cache-Control", "no-cache, no-store, must-revalidate");
+            res.Headers.Add("Pragma", "no-cache");
             var bytes = Encoding.UTF8.GetBytes(html);
             res.ContentLength64 = bytes.Length;
             await res.OutputStream.WriteAsync(bytes, 0, bytes.Length);
