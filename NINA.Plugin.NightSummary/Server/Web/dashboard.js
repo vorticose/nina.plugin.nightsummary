@@ -133,6 +133,7 @@ function statBox(value, label) {
 
 var sessionsCache = [];
 var selectedTargets = {}; // target name -> boolean (true = selected)
+var showEmptySessions = false; // hide 0-image sessions by default
 
 function getAllTargets() {
   var targets = {};
@@ -212,6 +213,7 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
         '<option value="images"' + (sortBy === 'images' ? ' selected' : '') + '>Most images</option>' +
       '</select>' +
     '</div>' +
+    '<label class="target-check" title="Include sessions with 0 captured images"><input type="checkbox" id="filter-empty"' + (showEmptySessions ? ' checked' : '') + '><span>Show empty</span></label>' +
     '<button id="filter-clear" class="filter-link">Clear filters</button>' +
     '</div>';
 
@@ -223,6 +225,7 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
   var allSelected = Object.keys(activeTargets).length === allTargets.length;
 
   var filtered = sessionsCache.filter(function(s) {
+    if (!showEmptySessions && s.imageCount === 0) return false;
     if (!allSelected) {
       var match = s.targets.some(function(t) { return activeTargets[t]; });
       if (!match) return false;
@@ -384,9 +387,19 @@ function bindListEvents() {
     });
   });
 
+  // Show empty sessions checkbox
+  var emptyEl = document.getElementById('filter-empty');
+  if (emptyEl) {
+    emptyEl.addEventListener('change', function() {
+      showEmptySessions = this.checked;
+      refresh();
+    });
+  }
+
   if (clearEl) {
     clearEl.addEventListener('click', function() {
       getAllTargets().forEach(function(t) { selectedTargets[t] = true; });
+      showEmptySessions = false;
       var el = document.getElementById('content');
       var sub = document.getElementById('page-subtitle');
       doRenderList(el, sub, '', '', 'date-desc');
@@ -394,7 +407,7 @@ function bindListEvents() {
   }
 
   // Target checkboxes
-  document.querySelectorAll('.target-check input').forEach(function(cb) {
+  document.querySelectorAll('.target-check input[data-target]').forEach(function(cb) {
     cb.addEventListener('change', function() {
       selectedTargets[this.dataset.target] = this.checked;
       refresh();
