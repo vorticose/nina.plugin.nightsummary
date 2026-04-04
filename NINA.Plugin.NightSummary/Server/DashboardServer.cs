@@ -432,6 +432,9 @@ namespace NINA.Plugin.NightSummary.Server {
                 return;
             }
             var html = File.ReadAllText(reportPath);
+            // Inject viewport meta tag for mobile iframe rendering if missing
+            if (!html.Contains("name='viewport'") && !html.Contains("name=\"viewport\""))
+                html = html.Replace("<head>", "<head><meta name='viewport' content='width=device-width, initial-scale=1'>");
             await WriteHtml(res, 200, html);
             done?.Invoke(200, $"{sessionId} ({html.Length / 1024}KB)");
         }
