@@ -75,7 +75,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             sb.AppendLine("<!DOCTYPE html>");
-            sb.AppendLine("<html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1'><style>");
+            sb.AppendLine("<html><head><meta charset='UTF-8'><style>");
 
             // Theme colors via CSS custom properties
             if (lightMode) {

@@ -621,28 +621,27 @@ function loadReportIntoShadow(sessionId) {
   fetch('/api/sessions/' + sessionId + '/report')
     .then(function(r) { return r.text(); })
     .then(function(html) {
-      // Extract content between <body> and </body>, or use full HTML
-      var bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
-      var styleMatch = html.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
+      // Render report at its designed width (800px) and CSS-scale to fit the
+      // viewport — identical to how Safari renders it in a new tab (980px
+      // default width scaled down). This preserves the report's layout exactly.
+      var hostWidth = host.offsetWidth;
+      var designWidth = 800;
+      var scale = Math.min(hostWidth / designWidth, 1);
 
       var shadow = host.shadowRoot || host.attachShadow({ mode: 'open' });
       shadow.innerHTML = '';
 
-      if (styleMatch) {
-        var styleEl = document.createElement('style');
-        // Original report styles + responsive overrides for shadow DOM context
-        styleEl.textContent = styleMatch[1] +
-          'svg{max-width:100%;height:auto;}' +
-          'img{max-width:100%;height:auto;}' +
-          'table{max-width:100%;overflow-x:auto;display:block;}';
-        shadow.appendChild(styleEl);
-      }
+      var wrapper = document.createElement('div');
+      wrapper.style.cssText = 'width:' + designWidth + 'px;transform:scale(' + scale + ');transform-origin:top left;';
+      wrapper.innerHTML = html;
+      shadow.appendChild(wrapper);
 
-      var container = document.createElement('div');
-      container.innerHTML = bodyMatch ? bodyMatch[1] : html;
-      shadow.appendChild(container);
+      // Set host height to match scaled content
+      requestAnimationFrame(function() {
+        host.style.height = (wrapper.offsetHeight * scale) + 'px';
+      });
 
-      logInfo('Report loaded into shadow DOM:', sessionId);
+      logInfo('Report loaded into shadow DOM (scale=' + scale.toFixed(3) + '):', sessionId);
     })
     .catch(function(err) {
       logError('Failed to load report into shadow DOM:', err.message);
