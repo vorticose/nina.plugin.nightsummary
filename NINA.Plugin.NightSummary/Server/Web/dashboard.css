@@ -52,9 +52,9 @@ a:hover { text-decoration: underline; }
 header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   border-bottom: 2px solid var(--accent);
-  padding-bottom: 12px;
+  padding: 8px 0 10px;
   margin-bottom: 20px;
   flex-wrap: wrap;
   gap: 12px;
@@ -69,12 +69,15 @@ header h1 {
   display: flex;
   align-items: center;
   gap: 8px;
+  line-height: 1;
 }
 
 .header-icon {
   width: 28px;
   height: 28px;
   border-radius: 4px;
+  vertical-align: middle;
+  flex-shrink: 0;
 }
 
 .subtitle {
