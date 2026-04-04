@@ -298,13 +298,41 @@ nav {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 14px 16px;
+  padding: 12px 14px;
   margin-bottom: 8px;
   cursor: pointer;
   transition: border-color 0.2s;
 }
 
 .session-card:hover { border-color: var(--accent); }
+
+.card-layout {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.card-thumbs {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  max-width: 120px;
+}
+
+.card-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  object-fit: cover;
+  display: block;
+}
+
+.card-info {
+  flex: 1;
+  min-width: 0;
+}
 
 .session-header {
   display: flex;
@@ -327,56 +355,28 @@ nav {
 .badge-green { background: rgba(63,185,80,0.15); color: var(--green); }
 .badge-red { background: rgba(248,81,73,0.15); color: var(--red); }
 
-.session-targets {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-top: 8px;
-}
-
-.target-pill {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 1px 10px;
-  font-size: 12px;
+.card-targets-line {
+  font-size: 13px;
   color: var(--accent-light);
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.target-pill-none {
+.card-targets-none {
   color: var(--muted);
-  border-color: transparent;
-  background: transparent;
 }
 
-/* ── Card stat blocks (matching report stat-box style) ── */
-.card-stats {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.card-stat {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 8px 12px;
-  text-align: center;
-  flex: 1;
-}
-
-.card-stat-value {
-  font-size: 18px;
-  color: var(--accent);
-  font-weight: bold;
-}
-
-.card-stat-label {
-  font-size: 10px;
+.card-stats-line {
+  font-size: 12px;
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
   margin-top: 2px;
+}
+
+.card-stats-line .stat-val {
+  color: var(--accent);
+  font-weight: 600;
 }
 
 /* ── Back button ── */
@@ -751,8 +751,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   .shell { padding: 12px; }
   header { flex-direction: column; align-items: center; text-align: center; gap: 8px; }
   header h1 { font-size: 18px; }
-  .card-stats { flex-wrap: wrap; }
-  .card-stat { min-width: 70px; }
+  .card-thumbs { display: none; }
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
   .filter-bar { flex-direction: column; align-items: flex-start; }
   .filter-dates { width: 100%; }

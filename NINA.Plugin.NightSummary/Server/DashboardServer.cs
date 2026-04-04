@@ -10,6 +10,7 @@ using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -34,6 +35,14 @@ namespace NINA.Plugin.NightSummary.Server {
         private volatile int regenAllFailed;
         private volatile string regenAllStatus; // "running", "done", "error"
         private volatile string regenAllError;
+
+        // Thumbnail cache: sessionId -> list of (target, dataUri)
+        private readonly Dictionary<string, List<ThumbnailEntry>> thumbnailCache = new Dictionary<string, List<ThumbnailEntry>>();
+
+        private class ThumbnailEntry {
+            public string target { get; set; }
+            public string dataUri { get; set; }
+        }
 
         private static readonly JsonSerializerOptions JsonOpts = new JsonSerializerOptions {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -159,6 +168,9 @@ namespace NINA.Plugin.NightSummary.Server {
                     } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/report")) {
                         var sessionId = ExtractSessionId(path, "/report");
                         await HandleGetSessionReport(res, sessionId, done);
+                    } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/thumbnails")) {
+                        var sessionId = ExtractSessionId(path, "/thumbnails");
+                        await HandleGetSessionThumbnails(res, sessionId, done);
                     } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/settings")) {
                         var sessionId = ExtractSessionId(path, "/settings");
                         await HandleGetSessionSettings(res, sessionId, done);
@@ -436,6 +448,47 @@ namespace NINA.Plugin.NightSummary.Server {
             done?.Invoke(200, $"{sessionId} ({html.Length / 1024}KB)");
         }
 
+        private async Task HandleGetSessionThumbnails(HttpListenerResponse res, string sessionId, Action<int, string> done) {
+            if (thumbnailCache.TryGetValue(sessionId, out var cached)) {
+                await WriteJson(res, 200, cached);
+                done?.Invoke(200, $"{sessionId} — {cached.Count} thumbs (cached)");
+                return;
+            }
+
+            var reportPath = Path.Combine(reportsDir, $"{sessionId}.html");
+            if (!File.Exists(reportPath)) {
+                var empty = new List<ThumbnailEntry>();
+                thumbnailCache[sessionId] = empty;
+                await WriteJson(res, 200, empty);
+                done?.Invoke(200, $"{sessionId} — no report");
+                return;
+            }
+
+            var html = File.ReadAllText(reportPath);
+            var entries = new List<ThumbnailEntry>();
+
+            // Split HTML on target-section boundaries and extract h3 + thumbnail from each
+            var sections = html.Split(new[] { "<div class='target-section'>" }, StringSplitOptions.None);
+            var h3Pattern = new Regex(@"<h3>([^<]+)");
+            var imgPattern = new Regex(@"<div\s+class='ts-thumb-wrap'>\s*<img\s+src='(data:image/[^']+)'");
+
+            for (int i = 1; i < sections.Length; i++) { // skip first (before any target-section)
+                var block = sections[i];
+                var h3Match = h3Pattern.Match(block);
+                var imgMatch = imgPattern.Match(block);
+                if (h3Match.Success && imgMatch.Success) {
+                    entries.Add(new ThumbnailEntry {
+                        target = h3Match.Groups[1].Value.Trim(),
+                        dataUri = imgMatch.Groups[1].Value
+                    });
+                }
+            }
+
+            thumbnailCache[sessionId] = entries;
+            await WriteJson(res, 200, entries);
+            done?.Invoke(200, $"{sessionId} — {entries.Count} thumbs");
+        }
+
         private async Task HandleGetTargetStats(HttpListenerResponse res, Action<int, string> done) {
             if (!File.Exists(dbPath)) {
                 await WriteJson(res, 200, new { targets = Array.Empty<object>() });
@@ -547,6 +600,7 @@ namespace NINA.Plugin.NightSummary.Server {
                     await File.WriteAllTextAsync(reportPath, html);
                     await SaveSessionSettings(sessionId, s);
 
+                    thumbnailCache.Remove(sessionId); // invalidate cached thumbs
                     log?.Info($"Regenerated report for {sessionId} ({html.Length / 1024}KB)");
                     Logger.Info($"NightSummary: Dashboard regenerated report for {sessionId}");
                     await WriteJson(res, 200, new { status = "ok", sessionId });
@@ -625,6 +679,7 @@ namespace NINA.Plugin.NightSummary.Server {
                                 var reportPath = Path.Combine(reportsDir, $"{sessions[i].SessionId}.html");
                                 await File.WriteAllTextAsync(reportPath, html);
                                 await SaveSessionSettings(sessions[i].SessionId, s);
+                                thumbnailCache.Remove(sessions[i].SessionId);
                                 regenAllGenerated++;
                                 log?.Debug($"Bulk regen {regenAllCurrent}/{sessions.Count}: {sessions[i].SessionId} OK");
                             } catch (Exception ex) {

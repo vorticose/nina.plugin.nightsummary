@@ -255,31 +255,56 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
   }
 
   var cards = filtered.map(function(s) {
-    var targetPills = s.targets.length > 0
-      ? s.targets.map(function(t) { return '<span class="target-pill">' + esc(t) + '</span>'; }).join('')
-      : '<span class="target-pill target-pill-none">No targets</span>';
+    var targetsText = s.targets.length > 0
+      ? '<span class="card-targets-line">' + s.targets.map(function(t) { return esc(t); }).join(' &middot; ') + '</span>'
+      : '<span class="card-targets-line card-targets-none">No targets</span>';
 
     var badge = s.hasReport
       ? '<span class="badge badge-green">Report</span>'
       : '<span class="badge badge-red">No report</span>';
 
+    var statsLine = '<span class="stat-val">' + s.imageCount + '</span> imgs' +
+      ' &middot; <span class="stat-val">' + fmt(s.totalIntegrationSeconds) + '</span>' +
+      ' &middot; HFR <span class="stat-val">' + fmtNum(s.avgHfr) + '</span>' +
+      ' &middot; <span class="stat-val">' + fmtNum(s.avgGuiding) + '&Prime;</span> guiding';
+
     return '<div class="session-card" onclick="navigate(\'#/sessions/' + s.sessionId + '\')">' +
-      '<div class="session-header">' +
-        '<span class="session-date">' + fmtDate(s.sessionStart) + '</span>' +
-        badge +
-      '</div>' +
-      '<div class="session-targets">' + targetPills + '</div>' +
-      '<div class="card-stats">' +
-        '<div class="card-stat"><div class="card-stat-value">' + s.imageCount + '</div><div class="card-stat-label">Images</div></div>' +
-        '<div class="card-stat"><div class="card-stat-value">' + fmt(s.totalIntegrationSeconds) + '</div><div class="card-stat-label">Integration</div></div>' +
-        '<div class="card-stat"><div class="card-stat-value">' + fmtNum(s.avgHfr) + '</div><div class="card-stat-label">HFR</div></div>' +
-        '<div class="card-stat"><div class="card-stat-value">' + fmtNum(s.avgGuiding) + '"</div><div class="card-stat-label">Guiding</div></div>' +
+      '<div class="card-layout">' +
+        '<div class="card-thumbs" id="thumbs-' + s.sessionId + '"></div>' +
+        '<div class="card-info">' +
+          '<div class="session-header">' +
+            '<span class="session-date">' + fmtDate(s.sessionStart) + '</span>' +
+            badge +
+          '</div>' +
+          targetsText +
+          '<div class="card-stats-line">' + statsLine + '</div>' +
+        '</div>' +
       '</div>' +
     '</div>';
   }).join('');
 
   el.innerHTML = filterHtml + cards;
   bindListEvents();
+  loadThumbnails(filtered);
+}
+
+function loadThumbnails(sessions) {
+  sessions.forEach(function(s) {
+    if (!s.hasReport) return;
+    var container = document.getElementById('thumbs-' + s.sessionId);
+    if (!container) return;
+
+    api('/api/sessions/' + s.sessionId + '/thumbnails').then(function(thumbs) {
+      if (!thumbs || thumbs.length === 0) return;
+      var el = document.getElementById('thumbs-' + s.sessionId);
+      if (!el) return;
+      el.innerHTML = thumbs.map(function(t) {
+        return '<img class="card-thumb" src="' + t.dataUri + '" alt="' + esc(t.target) + '" title="' + esc(t.target) + '" loading="lazy" onerror="this.style.display=\'none\'">';
+      }).join('');
+    }).catch(function(err) {
+      logDebug('Thumb load failed for', s.sessionId, err.message);
+    });
+  });
 }
 
 function bindListEvents() {
