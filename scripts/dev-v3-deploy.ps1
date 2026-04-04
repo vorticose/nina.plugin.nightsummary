@@ -51,20 +51,20 @@ if (Test-Path $targetDll) {
         $stream = [System.IO.File]::Open($targetDll, 'Open', 'Read', 'None')
         $stream.Close()
     } catch {
-        $ninaProc = Get-Process -Name "N.I.N.A" -ErrorAction SilentlyContinue
+        $ninaProc = Get-Process -Name "NINA" -ErrorAction SilentlyContinue
         if ($ninaProc) {
             Write-Host "NINA is running (DLL locked). Closing NINA..." -ForegroundColor Yellow
             $ninaWasRunning = $true
             $ninaProc | ForEach-Object { $_.CloseMainWindow() | Out-Null }
             $timeout = 15
             $waited = 0
-            while ((Get-Process -Name "N.I.N.A" -ErrorAction SilentlyContinue) -and $waited -lt $timeout) {
+            while ((Get-Process -Name "NINA" -ErrorAction SilentlyContinue) -and $waited -lt $timeout) {
                 Start-Sleep -Seconds 1
                 $waited++
             }
-            if (Get-Process -Name "N.I.N.A" -ErrorAction SilentlyContinue) {
+            if (Get-Process -Name "NINA" -ErrorAction SilentlyContinue) {
                 Write-Host "NINA did not close gracefully after ${timeout}s. Force killing..." -ForegroundColor Red
-                Stop-Process -Name "N.I.N.A" -Force
+                Stop-Process -Name "NINA" -Force
                 Start-Sleep -Seconds 2
             }
             Write-Host "NINA closed." -ForegroundColor Green
@@ -119,10 +119,7 @@ if ($prevBranch -ne $Branch) {
 
 # --- Relaunch NINA if it was running ---
 if ($ninaWasRunning) {
-    $ninaExe = Join-Path $env:LOCALAPPDATA "NINA\N.I.N.A.exe"
-    if (-not (Test-Path $ninaExe)) {
-        $ninaExe = Join-Path ${env:ProgramFiles} "N.I.N.A\N.I.N.A.exe"
-    }
+    $ninaExe = Join-Path ${env:ProgramFiles} "N.I.N.A. - Nighttime Imaging 'N' Astronomy\NINA.exe"
     if (Test-Path $ninaExe) {
         Write-Host "Relaunching NINA..." -ForegroundColor Cyan
         Start-Process $ninaExe
