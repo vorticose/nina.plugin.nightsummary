@@ -264,7 +264,7 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
 
   var cards = filtered.map(function(s) {
     var targetsText = s.targets.length > 0
-      ? '<span class="card-targets-line">' + s.targets.map(function(t) { return esc(t); }).join(' &middot; ') + '</span>'
+      ? '<span class="card-targets-line" id="targets-' + s.sessionId + '">' + s.targets.map(function(t) { return esc(t); }).join(' \u00b7 ') + '</span>'
       : '<span class="card-targets-line card-targets-none">No targets</span>';
 
     var badge = s.hasReport
@@ -314,6 +314,14 @@ function loadThumbnails(sessions) {
       el.innerHTML = thumbs.map(function(t) {
         return '<img class="card-thumb" src="' + t.dataUri + '" alt="' + esc(t.target) + '" title="' + esc(t.target) + '" loading="lazy" onerror="this.style.display=\'none\'">';
       }).join('');
+      // Reorder target names to match thumbnail order
+      var targetsEl = document.getElementById('targets-' + s.sessionId);
+      if (targetsEl && thumbs.length > 0) {
+        var thumbOrder = thumbs.map(function(t) { return t.target; });
+        // Include any targets not in the report (no thumbnail)
+        var remaining = s.targets.filter(function(t) { return thumbOrder.indexOf(t) === -1; });
+        targetsEl.textContent = thumbOrder.concat(remaining).join(' \u00b7 ');
+      }
     }).catch(function(err) {
       logDebug('Thumb load failed for', s.sessionId, err.message);
     });
