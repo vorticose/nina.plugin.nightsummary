@@ -480,20 +480,21 @@ function buildSettingsPanel(settings, filters) {
       settingsCheckbox('s-expand', 'Expand Sections', s.expandSectionsDefault) +
     '</div></div></div>';
 
-  // Row 3: Primary metric chart
-  html += '<div class="settings-row">' +
-    '<div class="settings-group"><label class="settings-label">Chart X-Axis</label>' +
-      xAxisSelect('s-xAxis', s.chartXAxisMetric) + '</div>' +
-    '<div class="settings-group"><label class="settings-label">Primary Metric</label>' +
-      primarySelect('s-primary', s.chartPrimaryMetric) + '</div>' +
-    '<div class="settings-group"><label class="settings-label">Secondary Metric</label>' +
-      secondarySelect('s-secondary', s.chartSecondaryMetric) + '</div>' +
-  '</div>';
-
-  // Row 4: Additional metric charts
+  // Row 3: Charts (main + additional in aligned grid)
   html += '<div class="settings-row"><div class="settings-group" style="width:100%">' +
-    '<label class="settings-label">Additional Charts</label>' +
-    '<div id="additional-charts">';
+    '<label class="settings-label">Charts</label>' +
+    '<div class="chart-grid">' +
+      '<div class="chart-grid-headers">' +
+        '<span></span><span>X-Axis</span><span>Primary</span><span>Secondary</span><span></span>' +
+      '</div>' +
+      '<div class="chart-row">' +
+        '<span class="chart-row-label">Chart 1</span>' +
+        xAxisSelect('s-xAxis', s.chartXAxisMetric) +
+        primarySelect('s-primary', s.chartPrimaryMetric) +
+        secondarySelect('s-secondary', s.chartSecondaryMetric) +
+        '<span></span>' +
+      '</div>';
+  html += '<div id="additional-charts">';
   additionalCharts.forEach(function(c, i) {
     html += '<div class="chart-row" data-idx="' + i + '">' +
       '<span class="chart-row-label">Chart ' + (i + 2) + '</span>' +
@@ -505,7 +506,7 @@ function buildSettingsPanel(settings, filters) {
   });
   html += '</div>' +
     '<button id="btn-add-chart" class="filter-link" style="margin-top:6px">+ Add Chart</button>' +
-  '</div></div>';
+    '</div></div></div>';
 
   // Row 5: Filter classifications
   if (filters && filters.length > 0) {
@@ -696,7 +697,7 @@ function bindDetailEvents(sessionId) {
         xAxisSelectClass('ac-xAxis', 0) +
         primarySelectClass('ac-primary', 0) +
         secondarySelectClass('ac-secondary', 0) +
-        '<button class="remove-chart-btn">\u2715</button>';
+        '<button class="remove-chart-btn" style="justify-self:center">\u2715</button>';
       container.appendChild(row);
       row.querySelector('.remove-chart-btn').addEventListener('click', function() {
         row.remove();
