@@ -721,13 +721,20 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   .filter-bar input[type="date"] { min-width: unset; flex: 1; }
   .report-nav { flex-direction: column; align-items: flex-start; gap: 8px; }
 
-  /* Report view: shadow DOM on mobile — allow page scroll, full-bleed */
+  /* Report view: compact header and controls on mobile */
   body.report-view { overflow: auto; }
-  body.report-view .shell { padding: 8px 0 0 0; max-width: 100%; height: auto; }
+  body.report-view .shell { padding: 4px 0 0 0; max-width: 100%; height: auto; }
   body.report-view #content { overflow: visible; }
-  body.report-view header { padding-left: 12px; padding-right: 12px; margin-bottom: 8px; }
-  body.report-view .report-nav { padding: 0 12px; margin-bottom: 6px; }
-  body.report-view .settings-panel { margin: 0 12px 8px; }
+  body.report-view header { padding: 0 12px 6px; margin-bottom: 4px; gap: 6px; }
+  body.report-view header h1 { font-size: 16px; }
+  body.report-view .subtitle { font-size: 11px; }
+  body.report-view .report-nav { padding: 0 12px; margin-bottom: 4px; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px; }
+  body.report-view .report-nav-info { gap: 8px; }
+  body.report-view .report-nav-date { font-size: 13px; }
+  body.report-view .report-nav-targets { font-size: 11px; }
+  body.report-view .report-nav-actions { gap: 6px; }
+  body.report-view .report-btn, body.report-view .back-btn { min-height: 36px; padding: 4px 10px; font-size: 12px; }
+  body.report-view .settings-panel { margin: 0 12px 6px; }
   .report-viewer { border-radius: 0; border-left: none; border-right: none; border: none; overflow: visible; }
   .report-shadow-host { width: 100%; }
 
