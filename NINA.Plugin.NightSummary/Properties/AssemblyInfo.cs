@@ -23,7 +23,9 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyMetadata("FeaturedImageURL", "https://i.imgur.com/uvcC1dC.png")]
 [assembly: AssemblyMetadata("ScreenshotURL", "")]
 [assembly: AssemblyMetadata("AltScreenshotURL", "")]
-[assembly: AssemblyMetadata("LongDescription", @"Night Summary automatically records your astrophotography session as it runs and delivers a rich HTML report the moment your sequence completes — so you wake up to a full breakdown of the night.
+[assembly: AssemblyMetadata("LongDescription", @"**[Full documentation and setup guide](https://vorticose.github.io/nina.plugin.nightsummary/)**
+
+Night Summary automatically records your astrophotography session as it runs and delivers a rich HTML report the moment your sequence completes — so you wake up to a full breakdown of the night.
 
 **How to use**
 
@@ -31,29 +33,35 @@ Add the ""Night Summary Start"" instruction near the beginning of your sequence 
 
 **What's in the report**
 - Session overview with at-a-glance stats: total images, total exposure time, target count, average HFR, average FWHM, average guiding RMS, and imaging yield
+- Equipment profile showing your connected gear (camera, telescope, mount, filter wheel, focuser, rotator, guider, dome, flat panel, safety monitor, weather station, and switch) with customizable display names and per-field visibility
 - Session event timeline showing AutoFocus runs, meridian flips, and safety monitor events
-- Per-target imaging summary with filter breakdown, exposure counts, and total integration time — including a DSS sky survey thumbnail with FOV overlay and an altitude chart
-- Per-target image quality stats: HFR, FWHM, Eccentricity, and guiding RMS with per-filter breakdowns
+- Yield and Imaging Overhead Analysis — a per-category timing breakdown showing exactly where your night went (camera download, filter changes, dithering, autofocus, plate solves, centering, slew, and more) with a stacked bar chart and detailed table
+- Per-target imaging summaries with filter breakdown, exposure counts, total integration time, sky position angle, a DSS sky survey thumbnail with FOV overlay, and an altitude chart with optional minimum altitude line from Target Scheduler
+- Live Stack thumbnails — when the Live Stack plugin is running, captures and displays the latest stacked image per target and filter
+- Per-target image quality stats: HFR, FWHM and Eccentricity (with Hocus Focus plugin), and guiding RMS with per-filter breakdowns
 - Star count consistency — CV (Coefficient of Variation) measures how stable your star counts were across exposures. A low CV means consistent transparency and focus; a high CV suggests passing clouds, dew, or focus drift. Reported separately for broadband and narrowband filters.
 - Target Scheduler integration — shows desired, acquired, and accepted frame counts per filter with a visual progress bar
-- Session history table summarizing all past sessions for each target, including cumulative integration time
-- Configurable Metric Chart showing any two metrics over time — choose from HFR, FWHM, Eccentricity, Guiding RMS, Focuser Temperature, or Ambient Temperature
+- Session history table summarizing all past sessions for each target, including total integration and image quality stats
+- Configurable Metric Charts — add multiple charts, each showing any two metrics with a customizable x-axis. Choose from HFR, FWHM, Eccentricity, Guiding RMS, Focuser Temperature, Ambient Temperature, Altitude, Airmass, Humidity, Focuser Position and more
 - Tonight's Preview — a visual timeline of what Target Scheduler plans to image tonight, with per-target filter breakdowns
 
 **Report detail levels**
-Three levels let you control how much is included: Snapshot (header and filter table only), Standard (adds timeline, charts, and image quality), and Full (adds metric chart and session history). Each section can also be toggled individually.
+Three levels let you control how much is included: Snapshot (header and filter table only), Standard (adds timeline, altitude charts, and image quality), and Full (adds overhead analysis, metric charts, session history, and tonight's preview). Each section can also be toggled individually, and all sections can be expanded by default instead of collapsed.
 
 **Optional plugin integrations**
 - **Target Scheduler** — when installed, Night Summary reads your imaging targets and frame counts directly from the Target Scheduler database, adding per-filter progress bars and cumulative integration tracking to the report. With the Target Scheduler API enabled (Target Management → select your active profile → gear icon → API Preferences → enable API), the report also includes a Tonight's Preview showing the planned schedule for tonight. Without Target Scheduler, targets and coordinates are still captured from NINA's sequence data.
 - **Hocus Focus** — when installed, Night Summary reads FWHM and Eccentricity measurements from each saved image. Without it, only HFR (provided natively by NINA) is included in image quality stats.
+- **Live Stack** — when installed and running, Night Summary captures the latest stacked image for each target and filter and embeds it in the report. Supports broadband, narrowband, and color composite stacks.
 
 **Delivery options**
 - Email via SMTP — Gmail is the default and easiest to set up, but any SMTP provider is supported (Outlook, Yahoo, iCloud, and others)
 - Discord webhook (embed summary + HTML file attachment)
 - Pushover push notification (short text summary)
-- Save report locally to Documents\N.I.N.A.\Night Summary\Saved Reports
+- Save report locally — supports NINA filename pattern variables in the save path for automatic organization by date, target, etc.
 
 All channels can be enabled independently and tested directly from the plugin options page. Previous session reports can also be resent at any time without re-running a sequence. NINA shows toast notifications when reports are generated and delivered, including warnings if any section couldn't be included.
+
+Settings are saved to a stable JSON file that persists across plugin updates. A built-in Report Preview lets you view reports with real session data or test data directly from the plugin options page.
 
 **Troubleshooting**
 
