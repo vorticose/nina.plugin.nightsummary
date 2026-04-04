@@ -57,7 +57,7 @@ Per-filter grayscale images are shown side by side, plus a color composite if on
 - Each image is labeled with the filter name, frame count, and total integration time
 - The color composite is always shown below the per-filter images when available
 
-<!-- TODO: Screenshot — Live Stack section in a report showing per-filter monochrome stacks in a row with a color composite below, including labels with frame counts and integration times. -->
+![Live Stack Images in Report](assets/livestack-report.png)
 
 ## Image Sizing
 

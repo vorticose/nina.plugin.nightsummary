@@ -18,7 +18,7 @@ Available at **Full** detail level only.
 - **Overhead Accounted** — percentage of "implied overhead" that the log parser was able to categorize. Implied overhead = imaging window minus total exposure time.
 - **Unaccounted** — time the parser couldn't attribute to any category. Small amounts are normal (inter-step gaps, NINA internal processing). If this is large, it may indicate operations not yet tracked by the parser.
 
-<!-- TODO: Screenshot — Yield and overhead section from a real session showing stat boxes, stacked bar chart, and detailed table with multiple overhead categories populated. -->
+![Yield and Overhead Analysis Detail](assets/overhead-detail.png)
 
 ### Stacked Bar Chart
 

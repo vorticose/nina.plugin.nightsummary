@@ -4,13 +4,15 @@ title: Home
 nav_order: 1
 ---
 
-# Night Summary
+<h1><img class="no-lightbox" src="assets/plugin-icon.png" alt="" style="height: 64px; vertical-align: middle; margin-right: 12px;" />Night Summary</h1>
 
 **Night Summary** is a plugin for [N.I.N.A.](https://nighttime-imaging.eu/) that automatically records your imaging sessions and generates detailed HTML reports when your sequence ends.
 
 Whether you run a remote observatory or image from your backyard, Night Summary gives you a comprehensive look at what happened overnight — saved locally or delivered to your email, Discord, or Pushover.
 
-<!-- TODO: Screenshot — Full report at Full detail level, dark mode, showing header through first target section. Hero image for the docs site. -->
+<div style="max-height: 700px; overflow-y: auto; border: 1px solid #333; border-radius: 8px; margin: 16px 0;">
+  <img class="no-lightbox" src="assets/hero-report.png" alt="Night Summary Report" style="width: 100%; display: block;" />
+</div>
 
 ## Key Features
 

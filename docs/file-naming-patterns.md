@@ -18,7 +18,7 @@ Go to **Options > Night Summary Settings > Report File Naming**:
 
 The default pattern is `NightSummary_$$DATEMINUS12$$`, which produces filenames like `NightSummary_2026-03-31`.
 
-<!-- TODO: Screenshot — File Naming section in NINA settings showing the pattern field, live preview, and clickable variable insertion buttons. -->
+![File Naming Settings](assets/file-naming-settings.png)
 
 ## Available Variables
 

@@ -37,7 +37,7 @@ A row of summary stat boxes showing key metrics at a glance:
 
 The Total Images and Total Exposure boxes are expandable — click to see the per-filter breakdown.
 
-<!-- TODO: Screenshot — Report header and stat boxes row, showing the session date/time, equipment profile collapsed, and all 8 stat boxes at Full detail level. -->
+![Session Overview Stat Boxes](assets/stat-boxes.png)
 
 ## Event Timeline
 
@@ -45,7 +45,7 @@ The Total Images and Total Exposure boxes are expandable — click to see the pe
 
 A visual timeline showing what happened during your session in chronological order. Events include sequence start/end, target changes, autofocus runs, meridian flips, and safety monitor events (roof open/close).
 
-<!-- TODO: Screenshot — Event timeline SVG showing a multi-target session with autofocus, meridian flip, and target change events. -->
+![Event Timeline](assets/event-timeline.png)
 
 ## Yield and Imaging Overhead Analysis
 
@@ -59,7 +59,7 @@ Parses your NINA log file to show exactly where non-imaging time was spent. Incl
 
 Categories include camera download, filter changes, dithering, autofocus, plate solves, centering, image saves, temperature compensation focus, meridian flips, and more.
 
-<!-- TODO: Screenshot — Yield and overhead section showing the three stat boxes, color-coded stacked bar chart, and detailed category table. -->
+![Yield and Overhead Analysis](assets/overhead-section.png)
 
 ## Target Details
 
@@ -74,7 +74,7 @@ For each target imaged during the session:
 - Session time window (first to last image)
 - Moon separation angle
 
-<!-- TODO: Screenshot — Target header area showing target name, coordinates, rotation angle, time window, moon separation, sky thumbnail with FOV overlay, and altitude chart side by side. -->
+![Target Details](assets/target-area.png)
 
 ### Sky Thumbnail
 A sky survey image showing where the target is located, with an FOV (field of view) rectangle overlay showing your camera's framing and rotation. The thumbnail is fetched from the CDS HiPS2FITS color survey. If CDS is unavailable, Night Summary falls back to NASA SkyView DSS2 Red (monochrome). If both services are down, a remote CDS URL is embedded so the browser can fetch it directly when you view the report. Controlled by the **Show Sky Thumbnails** setting.
@@ -93,12 +93,12 @@ A table showing per-filter statistics: filter name, image count, individual expo
 ### Target Scheduler Progress Bars (Standard+)
 Per-filter acquisition progress when Target Scheduler is installed. Shows accepted vs. acquired frames against the plan's desired total. See [Target Scheduler Integration]({% link target-scheduler-integration.md %}).
 
-<!-- TODO: Screenshot — Target Scheduler progress bars showing multiple filters with accepted/acquired/desired counts and a cumulative integration total. -->
+![Target Scheduler Progress Bars](assets/ts-progress-bars.png)
 
 ### Per-Target Image Quality (Standard+)
 Expandable table showing HFR, FWHM, Eccentricity, and Guiding RMS with min/max/mean/CV for the target. Click to expand individual rows for per-filter breakdowns.
 
-<!-- TODO: Screenshot — Per-target image quality table with one metric row expanded to show the per-filter breakdown. -->
+![Per-Target Image Quality](assets/per-target-iq.png)
 
 ### Session History (Full)
 Cumulative integration time for the target across all recorded sessions — not just tonight.
@@ -112,13 +112,15 @@ A session-wide image quality summary with:
 - **Star Count CV** — coefficient of variation of star counts across the session, with a per-filter breakdown table. Useful for detecting cloud passages or other consistency issues. You can configure [filter classifications]({% link settings-reference.md %}#filter-classifications) to group broadband and narrowband separately.
 - **Metric Chart** (Full) — customizable chart with up to three metrics: a primary and secondary Y-axis metric, plus the X-axis can be set to any metric (not just time). See [Metric Charts]({% link metric-charts.md %}).
 
-<!-- TODO: Screenshot — Metric chart showing HFR (primary, solid) and Focuser Temp (secondary, dashed) over time, with hover tooltip visible on one data point. -->
+![Metric Chart](assets/metric-chart.png)
 
 ## Tonight's Preview
 
 **Full detail level only.** Requires Target Scheduler with its API enabled.
 
 Shows what Target Scheduler plans to image tonight — target names, planned exposure times, and filter sequences. Useful for reviewing the upcoming session. See [Target Scheduler Integration]({% link target-scheduler-integration.md %}).
+
+![Tonight's Preview](assets/tonights-preview.png)
 
 ## Footer
 

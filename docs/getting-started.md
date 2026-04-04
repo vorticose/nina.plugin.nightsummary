@@ -22,7 +22,7 @@ Night Summary requires **NINA 3.2 or later**.
 
 After installation, Night Summary appears under **Options > Night Summary Settings** in the NINA sidebar.
 
-<!-- TODO: Screenshot — NINA Options sidebar showing Night Summary Settings section expanded, with the Report Content area visible. -->
+![Night Summary Settings](assets/settings-page.png)
 
 ## How It Works
 
@@ -42,7 +42,7 @@ Once the sequence runs:
 
 If you use **Target Scheduler**, place Night Summary Start before the Target Scheduler Container and Night Summary End after it.
 
-<!-- TODO: Screenshot — NINA Advanced Sequencer showing a typical sequence with Night Summary Start and Night Summary End instructions placed correctly (Start after equipment connection, End after park/warm). -->
+![Sequence Instructions](assets/sequence-instructions.png)
 
 {: .important }
 > NOTE: If you stop the sequence manually before Night Summary End executes, no report is sent and some session data (overhead timing, live stack images, Target Scheduler grading) won't be finalized. The basic exposure data is still saved — you can generate a partial report later using **Resend Previous Session** in the plugin settings.
@@ -77,7 +77,7 @@ Before waiting for a real imaging session, you can preview how your report will 
 
 This lets you tweak settings like detail level, chart metrics, and toggles to get the report looking the way you want.
 
-<!-- TODO: Screenshot — Preview Report window showing a rendered report with test data. -->
+![Preview Report Window](assets/preview-window.png)
 
 
 

@@ -8,7 +8,9 @@ nav_order: 5
 
 All Night Summary settings are found under **Options > Night Summary Settings** in NINA. Settings persist to a JSON file in the plugin data directory, so they survive NINA updates and plugin reinstalls.
 
-<!-- TODO: Screenshot — Full Night Summary settings page in NINA, showing the Report Content section with Detail Level, display toggles, and metric chart configuration visible. -->
+<div style="max-height: 700px; overflow-y: auto; border: 1px solid #333; border-radius: 8px; margin: 16px 0;">
+  <img class="no-lightbox" src="assets/settings-full.png" alt="Night Summary Settings Page" style="width: 100%; display: block;" />
+</div>
 
 ---
 

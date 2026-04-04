@@ -4,7 +4,7 @@ remote_theme: just-the-docs/just-the-docs
 url: https://vorticose.github.io
 baseurl: /nina.plugin.nightsummary
 
-color_scheme: dark
+color_scheme: nightsummary
 
 aux_links:
   "GitHub":
@@ -18,3 +18,4 @@ footer_content: "Night Summary is an open-source plugin for <a href=\"https://ni
 
 exclude:
   - LIVESTACK_INTEGRATION.md
+  - assets/SCREENSHOT-LIST.md

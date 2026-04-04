@@ -20,7 +20,7 @@ For each target, Night Summary shows per-filter progress bars comparing your act
 
 Each bar is labeled with counts like "12 / 15 accepted, 14 acquired" so you can see at a glance how close you are to completing each filter's plan.
 
-<!-- TODO: Screenshot — Target Scheduler progress bars from a real report showing multiple filters with varying completion levels, accepted/acquired segments, and cumulative integration total. -->
+![Target Scheduler Progress Bars](assets/ts-bars-detail.png)
 
 Below the per-filter bars, a **cumulative integration time** summary shows the total accepted exposure time for the target.
 

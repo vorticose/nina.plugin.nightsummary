@@ -27,7 +27,7 @@ For example:
 
 To set an override, type a name in the text box next to the equipment type in the Equipment Profile section of settings. Leave it blank to use the auto-detected name.
 
-<!-- TODO: Screenshot — Equipment Profile settings section in NINA showing the per-field toggles, override text boxes, and master toggle. -->
+![Equipment Profile Settings](assets/equipment-settings.png)
 
 ## Per-Field Toggles
 
@@ -66,4 +66,4 @@ In the report, the equipment section appears as a collapsible block labeled **Eq
 
 Equipment that is not connected (and has no override set) is automatically excluded — you won't see empty rows.
 
-<!-- TODO: Screenshot — Equipment profile section in a report, expanded to show the two-column grid of equipment labels and values. -->
+![Equipment Profile in Report](assets/equipment-report.png)

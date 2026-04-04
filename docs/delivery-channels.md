@@ -48,7 +48,7 @@ Select **Other provider** to configure any SMTP-capable email service:
 
 Posts a summary message with key stats to a Discord channel via webhook. The message includes an embedded summary plus the full HTML report attached as a file.
 
-<!-- TODO: Screenshot — Discord channel showing a Night Summary embed message with stats and the attached HTML report file. -->
+![Discord Embed](assets/discord-embed.png)
 
 ### Setup
 
