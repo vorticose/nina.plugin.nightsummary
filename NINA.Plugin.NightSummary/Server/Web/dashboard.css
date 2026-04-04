@@ -145,14 +145,11 @@ nav {
   align-items: center;
 }
 
-/* Show placeholder on empty date inputs (iOS Safari shows blank) */
-.filter-bar input[type="date"]:not(:valid)::-webkit-datetime-edit { color: transparent; }
-.filter-bar input[type="date"]:not(:valid)::before { content: attr(placeholder); color: var(--muted); }
-
-.filter-bar input[type="date"] {
+.filter-bar input[type="date"],
+.filter-bar input[type="text"]#filter-from,
+.filter-bar input[type="text"]#filter-to {
   background: var(--surface);
   border: 1px solid var(--border);
-  position: relative;
   color: var(--text);
   padding: 6px 10px;
   border-radius: 6px;

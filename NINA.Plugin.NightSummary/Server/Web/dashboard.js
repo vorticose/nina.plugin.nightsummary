@@ -195,8 +195,8 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
   var filterHtml = '<div class="filter-bar">' +
     targetDropHtml +
     '<div class="filter-dates">' +
-      '<input type="date" id="filter-from" value="' + esc(fromFilter) + '" title="From date" placeholder="From">' +
-      '<input type="date" id="filter-to" value="' + esc(toFilter) + '" title="To date" placeholder="To">' +
+      '<input type="' + (fromFilter ? 'date' : 'text') + '" id="filter-from" value="' + esc(fromFilter) + '" placeholder="From" readonly onfocus="this.type=\'date\';this.removeAttribute(\'readonly\');this.showPicker?this.showPicker():0">' +
+      '<input type="' + (toFilter ? 'date' : 'text') + '" id="filter-to" value="' + esc(toFilter) + '" placeholder="To" readonly onfocus="this.type=\'date\';this.removeAttribute(\'readonly\');this.showPicker?this.showPicker():0">' +
     '</div>' +
     '<div class="filter-sort">' +
       '<select id="filter-sort">' +
