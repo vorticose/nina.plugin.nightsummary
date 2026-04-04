@@ -161,15 +161,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
             int plotW    = Width  - PadLeft - padRight;
             int plotH    = Height - PadTop  - PadBottom;
 
-            // X range — nice scaling for all axis types
+            // X range — union of all points
             var allX    = leftPts.Select(p => p.x).Concat(rightPts.Select(p => p.x)).ToList();
-            double xMinSpan = xAxisMetric switch {
-                XAxisTime       => 600.0,   // 10 minutes in seconds
-                XAxisFrameIndex => 1.0,
-                _               => GetPrimaryMinSpan(xAxisMetric - XAxisMetricOffset)
-            };
-            var (minX, maxX, xStep) = ComputeNiceScale(allX, xMinSpan);
-            double xRange = maxX - minX;
+            double minX = allX.Min();
+            double maxX = allX.Max();
+            double xRange = Math.Max(maxX - minX, xAxisMetric == XAxisFrameIndex ? 1 : 0.001);
 
             // Y scales
             double leftMinSpan = swapped ? GetSecondaryMinSpan(secondaryMetric) : GetPrimaryMinSpan(primaryMetric);
@@ -212,12 +208,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine($"<text x=\"{rightTitleX}\" y=\"{Height / 2}\" fill=\"{ColorSecondary}\" font-size=\"11\" text-anchor=\"middle\" transform=\"rotate(90,{rightTitleX},{Height / 2})\">{GetSecondaryAxisLabel(secondaryMetric)}</text>");
             }
 
-            // X axis labels — nice step intervals for all axis types
-            var baseTime = leftPts.Count > 0 ? leftPts[0].t : DateTime.MinValue;
-            for (double v = minX; v <= maxX + xStep * 0.001; v += xStep) {
-                double xPx = ToXPx(v);
+            // X axis labels
+            int pointCount = Math.Max(leftPts.Count, hasDual ? rightPts.Count : 0);
+            int xSteps = Math.Max(1, Math.Min(6, pointCount - 1));
+            for (int i = 0; i <= xSteps; i++) {
+                double xVal = minX + (xRange / xSteps * i);
+                double xPx  = ToXPx(xVal);
                 sb.AppendLine($"<line x1=\"{xPx:F1}\" y1=\"{PadTop}\" x2=\"{xPx:F1}\" y2=\"{PadTop + plotH}\" stroke=\"{ColorGrid}\" stroke-width=\"1\"/>");
-                string xLabel = FormatXAxisValue(v, xAxisMetric, baseTime, minX);
+                string xLabel = FormatXAxisValue(xVal, xAxisMetric, leftPts.Count > 0 ? leftPts[0].t : DateTime.MinValue, minX);
                 sb.AppendLine($"<text x=\"{xPx:F1}\" y=\"{Height - 10}\" fill=\"{ColorLabel}\" font-size=\"11\" text-anchor=\"middle\">{xLabel}</text>");
             }
 
