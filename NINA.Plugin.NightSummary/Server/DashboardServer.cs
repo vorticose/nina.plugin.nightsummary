@@ -565,6 +565,17 @@ namespace NINA.Plugin.NightSummary.Server {
                 return;
             }
 
+            // Normalize light-mode colors to dark-mode for consistent dashboard rendering
+            scaffoldSvg = scaffoldSvg
+                .Replace("#e8eef5", "#0d1117")  // chart background
+                .Replace("#c0c8d4", "#2d2d5e")  // border/grid
+                .Replace("fill='#666'", "fill='#888'")  // muted text
+                .Replace("stroke='#2563b8'", "stroke='#7eb8f7'")  // accent (for moon/other)
+                .Replace("fill='#2563b8'", "fill='#7eb8f7'")      // accent fills
+                .Replace("#7a8a9e", "#c0c0c0")  // moon stroke
+                .Replace("#c07a00", "#f59e0b")  // sunrise
+                .Replace("opacity='0.75'", "opacity='0.45'");  // moon opacity
+
             // Extract shared structural elements from the first chart
             var viewBoxMatch = Regex.Match(scaffoldSvg, @"viewBox='([^']+)'");
             var viewBox = viewBoxMatch.Success ? viewBoxMatch.Groups[1].Value : "0 0 500 248";
@@ -576,7 +587,7 @@ namespace NINA.Plugin.NightSummary.Server {
 
             // Build combined SVG
             var sb = new StringBuilder();
-            sb.AppendLine($"<svg viewBox='{viewBox}' xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='none'>");
+            sb.AppendLine($"<svg viewBox='{viewBox}' xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='xMidYMid slice'>");
 
             // Background + border (first two rects from scaffold)
             var bgRects = Regex.Matches(scaffoldSvg, @"<rect x='38'[^/]*/>");

@@ -135,6 +135,8 @@ var sessionsCache = [];
 var selectedTargets = {}; // target name -> boolean (true = selected)
 var showEmptySessions = false; // hide 0-image sessions by default
 var cardViewMode = localStorage.getItem('ns-card-view') || 'expanded'; // 'expanded' or 'compact'
+var hiddenSessions = JSON.parse(localStorage.getItem('ns-hidden-sessions') || '{}'); // sessionId -> true
+var showHidden = false;
 
 function getAllTargets() {
   var targets = {};
@@ -220,7 +222,16 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
       '<button class="view-toggle-btn' + (cardViewMode === 'compact' ? ' active' : '') + '" data-view="compact">Compact</button>' +
       '<button class="view-toggle-btn' + (cardViewMode === 'expanded' ? ' active' : '') + '" data-view="expanded">Expanded</button>' +
     '</div>' +
+    '</div>'
+
+  // Compute hidden count for the toggle (before filtering)
+  var tempHiddenCount = sessionsCache.filter(function(s) { return hiddenSessions[s.sessionId]; }).length;
+  if (tempHiddenCount > 0) {
+    filterHtml += '<div class="hidden-bar">' +
+      '<label class="target-check"><input type="checkbox" id="filter-hidden"' + (showHidden ? ' checked' : '') + '><span>Show hidden (' + tempHiddenCount + ')</span></label>' +
+      '<button id="unhide-all" class="filter-link">Unhide all</button>' +
     '</div>';
+  }
 
   // Filter sessions
   var activeTargets = {};
@@ -229,7 +240,10 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
   });
   var allSelected = Object.keys(activeTargets).length === allTargets.length;
 
+  var hiddenCount = sessionsCache.filter(function(s) { return hiddenSessions[s.sessionId]; }).length;
+
   var filtered = sessionsCache.filter(function(s) {
+    if (!showHidden && hiddenSessions[s.sessionId]) return false;
     if (!showEmptySessions && s.imageCount === 0) return false;
     if (!allSelected) {
       var match = s.targets.some(function(t) { return activeTargets[t]; });
@@ -287,7 +301,9 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
           '<div class="card-thumbs" id="thumbs-' + s.sessionId + '"></div>' +
           '<div class="session-header">' +
             '<span class="session-date">' + fmtDate(s.sessionStart) + '</span>' +
-            badge +
+            '<span>' + badge +
+              '<button class="hide-btn" data-session="' + s.sessionId + '" onclick="event.stopPropagation();hideSession(this.dataset.session)" title="Hide this session">\u2715</button>' +
+            '</span>' +
           '</div>' +
           targetsText +
           '<div class="card-stats-line">' + statsLine + '</div>' +
@@ -334,6 +350,14 @@ function loadThumbnails(sessions) {
   });
 }
 
+function hideSession(sessionId) {
+  hiddenSessions[sessionId] = true;
+  localStorage.setItem('ns-hidden-sessions', JSON.stringify(hiddenSessions));
+  var el = document.getElementById('content');
+  var sub = document.getElementById('page-subtitle');
+  doRenderList(el, sub, '', '', 'date-desc');
+}
+
 function loadAltitudeCharts(sessions) {
   sessions.forEach(function(s) {
     if (!s.hasReport) return;
@@ -345,6 +369,9 @@ function loadAltitudeCharts(sessions) {
       var el = document.getElementById('altitude-' + s.sessionId);
       if (!el) return;
       el.innerHTML = data.svg;
+      // Add has-chart class to card-body so CSS can reserve space
+      var body = el.parentElement;
+      if (body) body.classList.add('has-chart');
     }).catch(function(err) {
       logDebug('Altitude chart load failed for', s.sessionId, err.message);
     });
@@ -437,10 +464,29 @@ function bindListEvents() {
     });
   }
 
+  // Show hidden / unhide all
+  var hiddenEl = document.getElementById('filter-hidden');
+  var unhideEl = document.getElementById('unhide-all');
+  if (hiddenEl) {
+    hiddenEl.addEventListener('change', function() {
+      showHidden = this.checked;
+      refresh();
+    });
+  }
+  if (unhideEl) {
+    unhideEl.addEventListener('click', function() {
+      hiddenSessions = {};
+      showHidden = false;
+      localStorage.setItem('ns-hidden-sessions', '{}');
+      refresh();
+    });
+  }
+
   if (clearEl) {
     clearEl.addEventListener('click', function() {
       getAllTargets().forEach(function(t) { selectedTargets[t] = true; });
       showEmptySessions = false;
+      showHidden = false;
       var el = document.getElementById('content');
       var sub = document.getElementById('page-subtitle');
       doRenderList(el, sub, '', '', 'date-desc');
