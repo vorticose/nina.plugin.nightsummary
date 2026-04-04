@@ -932,9 +932,18 @@ namespace NINA.Plugin.NightSummary.Server {
                 var html = ReadResource(asm, "dashboard.html");
                 var css = ReadResource(asm, "dashboard.css");
                 var js = ReadResource(asm, "dashboard.js");
+                var iconBase64 = "";
+                using (var iconStream = asm.GetManifestResourceStream("plugin-icon.png")) {
+                    if (iconStream != null) {
+                        var iconBytes = new byte[iconStream.Length];
+                        iconStream.Read(iconBytes, 0, iconBytes.Length);
+                        iconBase64 = "data:image/png;base64," + Convert.ToBase64String(iconBytes);
+                    }
+                }
                 cachedDashboardHtml = html
                     .Replace("{{STYLES}}", css)
-                    .Replace("{{SCRIPTS}}", js);
+                    .Replace("{{SCRIPTS}}", js)
+                    .Replace("{{ICON}}", iconBase64);
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to load dashboard resources. {ex.Message}");
                 cachedDashboardHtml = "<!DOCTYPE html><html><body><h1>Dashboard failed to load</h1><p>" +
