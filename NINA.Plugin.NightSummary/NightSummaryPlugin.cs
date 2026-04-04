@@ -322,7 +322,7 @@ namespace NINA.Plugin.NightSummary {
 
         private async Task StartLocalServerAsync() {
             if (dashboardServer?.IsRunning == true) return;
-            dashboardServer = new DashboardServer(liveDbPath);
+            dashboardServer = new DashboardServer(liveDbPath, this.sessionService);
             await dashboardServer.StartAsync(S.LocalServerPort);
         }
 

@@ -1,5 +1,6 @@
 using NINA.Core.Utility;
 using NINA.Plugin.NightSummary.Data;
+using NINA.Plugin.NightSummary.Session;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -20,6 +21,7 @@ namespace NINA.Plugin.NightSummary.Server {
         private CancellationTokenSource cts;
         private readonly string dbPath;
         private readonly string reportsDir;
+        private readonly SessionService sessionService;
         private string cachedDashboardHtml;
 
         private static readonly JsonSerializerOptions JsonOpts = new JsonSerializerOptions {
@@ -32,8 +34,9 @@ namespace NINA.Plugin.NightSummary.Server {
         public string Url { get; private set; }
         public string TailscaleUrl { get; private set; }
 
-        public DashboardServer(string dbPath) {
+        public DashboardServer(string dbPath, SessionService sessionService) {
             this.dbPath = dbPath;
+            this.sessionService = sessionService;
             this.reportsDir = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "NINA", "NightSummary", "reports");
@@ -138,8 +141,17 @@ namespace NINA.Plugin.NightSummary.Server {
                         await HandleGetTargetStats(res);
                     } else if (path == "/api/stats/summary") {
                         await HandleGetStatsSummary(res);
+                    } else if (path == "/api/settings") {
+                        await HandleGetSettings(res);
                     } else if (path == "/") {
                         await WriteHtml(res, 200, GetDashboardHtml());
+                    } else {
+                        await WriteJson(res, 404, new { error = "Not found" });
+                    }
+                } else if (req.HttpMethod == "POST") {
+                    if (path.StartsWith("/api/sessions/") && path.EndsWith("/regenerate")) {
+                        var sessionId = ExtractSessionId(path, "/regenerate");
+                        await HandleRegenerateReport(req, res, sessionId);
                     } else {
                         await WriteJson(res, 404, new { error = "Not found" });
                     }
@@ -384,6 +396,160 @@ namespace NINA.Plugin.NightSummary.Server {
             }).OrderByDescending(t => t.totalIntegrationSeconds).ToList();
 
             await WriteJson(res, 200, new { targets = result });
+        }
+
+        // ── Settings & Regeneration ──────────────────────────────────────────
+
+        private async Task HandleGetSettings(HttpListenerResponse res) {
+            var s = SettingsManager.Instance.Current;
+            await WriteJson(res, 200, new {
+                reportDetailLevel      = s.ReportDetailLevel,
+                reportLightMode        = s.ReportLightMode,
+                expandSectionsDefault  = s.ExpandSectionsDefault,
+                showMoonCurve          = s.ShowMoonCurve,
+                showOverheadBreakdown  = s.ShowOverheadBreakdown,
+                showSkyThumbnails      = s.ShowSkyThumbnails,
+                showLiveStackImages    = s.ShowLiveStackImages,
+                showSessionHistory     = s.ShowSessionHistory,
+                showAltitudeChart      = s.ShowAltitudeChart,
+                showMinAltitude        = s.ShowMinAltitude,
+                showTSProgressBars     = s.ShowTSProgressBars,
+                showStarCountCV        = s.ShowStarCountCV,
+                showHFRGraph           = s.ShowHFRGraph,
+                showPerTargetIQ        = s.ShowPerTargetIQ,
+                showEquipmentProfile   = s.ShowEquipmentProfile,
+                chartXAxisMetric       = s.ChartXAxisMetric,
+                chartPrimaryMetric     = s.ChartPrimaryMetric,
+                chartSecondaryMetric   = s.ChartSecondaryMetric,
+                equipmentVisibleFields = s.EquipmentVisibleFields,
+                filterClassifications  = s.FilterClassifications,
+                equipmentOverrides     = s.EquipmentOverrides
+            });
+        }
+
+        private async Task HandleRegenerateReport(HttpListenerRequest req, HttpListenerResponse res, string sessionId) {
+            if (sessionService == null) {
+                await WriteJson(res, 500, new { error = "Report generation not available" });
+                return;
+            }
+
+            try {
+                // Read settings overrides from POST body
+                string body = "";
+                using (var reader = new StreamReader(req.InputStream, req.ContentEncoding))
+                    body = await reader.ReadToEndAsync();
+
+                var overrides = string.IsNullOrEmpty(body) ? null :
+                    JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(body);
+
+                // Save current settings, apply overrides, generate, restore
+                var s = SettingsManager.Instance.Current;
+                var saved = SnapshotSettings(s);
+
+                try {
+                    ApplyOverrides(s, overrides);
+                    s.ShowNextNightPreview = false; // Always off for dashboard
+
+                    var reportData = await sessionService.BuildReportDataAsync(dbPath, sessionId);
+                    if (reportData == null) {
+                        await WriteJson(res, 404, new { error = "Session not found" });
+                        return;
+                    }
+
+                    var html = await sessionService.GenerateHtmlAsync(reportData);
+                    var reportPath = Path.Combine(reportsDir, $"{sessionId}.html");
+                    await File.WriteAllTextAsync(reportPath, html);
+
+                    Logger.Info($"NightSummary: Dashboard regenerated report for {sessionId}");
+                    await WriteJson(res, 200, new { status = "ok", sessionId });
+                } finally {
+                    RestoreSettings(s, saved);
+                }
+            } catch (Exception ex) {
+                Logger.Error($"NightSummary: Dashboard report regeneration failed. {ex.Message}");
+                await WriteJson(res, 500, new { error = ex.Message });
+            }
+        }
+
+        private static Dictionary<string, object> SnapshotSettings(NightSummarySettings s) {
+            return new Dictionary<string, object> {
+                ["ReportDetailLevel"]     = s.ReportDetailLevel,
+                ["ReportLightMode"]       = s.ReportLightMode,
+                ["ExpandSectionsDefault"] = s.ExpandSectionsDefault,
+                ["ShowMoonCurve"]         = s.ShowMoonCurve,
+                ["ShowOverheadBreakdown"] = s.ShowOverheadBreakdown,
+                ["ShowSkyThumbnails"]     = s.ShowSkyThumbnails,
+                ["ShowLiveStackImages"]   = s.ShowLiveStackImages,
+                ["ShowSessionHistory"]    = s.ShowSessionHistory,
+                ["ShowAltitudeChart"]     = s.ShowAltitudeChart,
+                ["ShowMinAltitude"]       = s.ShowMinAltitude,
+                ["ShowTSProgressBars"]    = s.ShowTSProgressBars,
+                ["ShowStarCountCV"]       = s.ShowStarCountCV,
+                ["ShowHFRGraph"]          = s.ShowHFRGraph,
+                ["ShowPerTargetIQ"]       = s.ShowPerTargetIQ,
+                ["ShowNextNightPreview"]  = s.ShowNextNightPreview,
+                ["ShowEquipmentProfile"]  = s.ShowEquipmentProfile,
+                ["ChartXAxisMetric"]      = s.ChartXAxisMetric,
+                ["ChartPrimaryMetric"]    = s.ChartPrimaryMetric,
+                ["ChartSecondaryMetric"]  = s.ChartSecondaryMetric,
+                ["EquipmentVisibleFields"]= s.EquipmentVisibleFields,
+                ["FilterClassifications"] = s.FilterClassifications,
+                ["EquipmentOverrides"]    = s.EquipmentOverrides
+            };
+        }
+
+        private static void RestoreSettings(NightSummarySettings s, Dictionary<string, object> saved) {
+            s.ReportDetailLevel     = (int)saved["ReportDetailLevel"];
+            s.ReportLightMode       = (bool)saved["ReportLightMode"];
+            s.ExpandSectionsDefault = (bool)saved["ExpandSectionsDefault"];
+            s.ShowMoonCurve         = (bool)saved["ShowMoonCurve"];
+            s.ShowOverheadBreakdown = (bool)saved["ShowOverheadBreakdown"];
+            s.ShowSkyThumbnails     = (bool)saved["ShowSkyThumbnails"];
+            s.ShowLiveStackImages   = (bool)saved["ShowLiveStackImages"];
+            s.ShowSessionHistory    = (bool)saved["ShowSessionHistory"];
+            s.ShowAltitudeChart     = (bool)saved["ShowAltitudeChart"];
+            s.ShowMinAltitude       = (bool)saved["ShowMinAltitude"];
+            s.ShowTSProgressBars    = (bool)saved["ShowTSProgressBars"];
+            s.ShowStarCountCV       = (bool)saved["ShowStarCountCV"];
+            s.ShowHFRGraph          = (bool)saved["ShowHFRGraph"];
+            s.ShowPerTargetIQ       = (bool)saved["ShowPerTargetIQ"];
+            s.ShowNextNightPreview  = (bool)saved["ShowNextNightPreview"];
+            s.ShowEquipmentProfile  = (bool)saved["ShowEquipmentProfile"];
+            s.ChartXAxisMetric      = (int)saved["ChartXAxisMetric"];
+            s.ChartPrimaryMetric    = (int)saved["ChartPrimaryMetric"];
+            s.ChartSecondaryMetric  = (int)saved["ChartSecondaryMetric"];
+            s.EquipmentVisibleFields= (string)saved["EquipmentVisibleFields"];
+            s.FilterClassifications = (string)saved["FilterClassifications"];
+            s.EquipmentOverrides    = (string)saved["EquipmentOverrides"];
+        }
+
+        private static void ApplyOverrides(NightSummarySettings s, Dictionary<string, JsonElement> overrides) {
+            if (overrides == null) return;
+            foreach (var kv in overrides) {
+                switch (kv.Key) {
+                    case "reportDetailLevel":     s.ReportDetailLevel     = kv.Value.GetInt32(); break;
+                    case "reportLightMode":        s.ReportLightMode       = kv.Value.GetBoolean(); break;
+                    case "expandSectionsDefault":  s.ExpandSectionsDefault = kv.Value.GetBoolean(); break;
+                    case "showMoonCurve":          s.ShowMoonCurve         = kv.Value.GetBoolean(); break;
+                    case "showOverheadBreakdown":  s.ShowOverheadBreakdown = kv.Value.GetBoolean(); break;
+                    case "showSkyThumbnails":      s.ShowSkyThumbnails     = kv.Value.GetBoolean(); break;
+                    case "showLiveStackImages":    s.ShowLiveStackImages   = kv.Value.GetBoolean(); break;
+                    case "showSessionHistory":     s.ShowSessionHistory    = kv.Value.GetBoolean(); break;
+                    case "showAltitudeChart":      s.ShowAltitudeChart     = kv.Value.GetBoolean(); break;
+                    case "showMinAltitude":        s.ShowMinAltitude       = kv.Value.GetBoolean(); break;
+                    case "showTSProgressBars":     s.ShowTSProgressBars    = kv.Value.GetBoolean(); break;
+                    case "showStarCountCV":        s.ShowStarCountCV       = kv.Value.GetBoolean(); break;
+                    case "showHFRGraph":           s.ShowHFRGraph          = kv.Value.GetBoolean(); break;
+                    case "showPerTargetIQ":        s.ShowPerTargetIQ       = kv.Value.GetBoolean(); break;
+                    case "showEquipmentProfile":   s.ShowEquipmentProfile  = kv.Value.GetBoolean(); break;
+                    case "chartXAxisMetric":       s.ChartXAxisMetric      = kv.Value.GetInt32(); break;
+                    case "chartPrimaryMetric":     s.ChartPrimaryMetric    = kv.Value.GetInt32(); break;
+                    case "chartSecondaryMetric":   s.ChartSecondaryMetric  = kv.Value.GetInt32(); break;
+                    case "equipmentVisibleFields": s.EquipmentVisibleFields= kv.Value.GetString(); break;
+                    case "filterClassifications":  s.FilterClassifications = kv.Value.GetString(); break;
+                    case "equipmentOverrides":     s.EquipmentOverrides    = kv.Value.GetString(); break;
+                }
+            }
         }
 
         // ── Response Helpers ──────────────────────────────────────────────────

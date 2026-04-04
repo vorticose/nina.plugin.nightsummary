@@ -145,27 +145,32 @@ function renderSessionList(params) {
 }
 
 function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
-  // Build target filter checkboxes
+  // Build target dropdown filter
   var allTargets = getAllTargets();
-  var targetFilterHtml = '';
+  var activeCount = allTargets.filter(function(t) { return selectedTargets[t] !== false; }).length;
+  var targetLabel = activeCount === allTargets.length ? 'All targets' :
+    activeCount === 0 ? 'No targets' : activeCount + ' target' + (activeCount > 1 ? 's' : '');
+
+  var targetDropHtml = '';
   if (allTargets.length > 0) {
-    targetFilterHtml = '<div class="target-filter">' +
-      '<div class="target-filter-label">Targets</div>' +
-      '<div class="target-filter-list">';
+    targetDropHtml = '<div class="target-dropdown" id="target-dropdown">' +
+      '<button class="target-dropdown-btn" id="target-dropdown-btn">' + esc(targetLabel) + ' \u25BC</button>' +
+      '<div class="target-dropdown-menu" id="target-dropdown-menu">' +
+        '<div class="target-dropdown-actions">' +
+          '<button id="targets-all" class="filter-link">All</button>' +
+          '<button id="targets-none" class="filter-link">None</button>' +
+        '</div>';
     allTargets.forEach(function(t) {
       var checked = selectedTargets[t] !== false ? 'checked' : '';
-      targetFilterHtml += '<label class="target-check">' +
+      targetDropHtml += '<label class="target-check">' +
         '<input type="checkbox" data-target="' + esc(t) + '" ' + checked + '>' +
         '<span>' + esc(t) + '</span></label>';
     });
-    targetFilterHtml += '</div>' +
-      '<div class="target-filter-actions">' +
-        '<button id="targets-all" class="filter-link">All</button>' +
-        '<button id="targets-none" class="filter-link">None</button>' +
-      '</div></div>';
+    targetDropHtml += '</div></div>';
   }
 
   var filterHtml = '<div class="filter-bar">' +
+    targetDropHtml +
     '<div class="filter-dates">' +
       '<input type="date" id="filter-from" value="' + esc(fromFilter) + '" title="From date">' +
       '<input type="date" id="filter-to" value="' + esc(toFilter) + '" title="To date">' +
@@ -215,7 +220,7 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
   }
 
   if (filtered.length === 0) {
-    el.innerHTML = targetFilterHtml + filterHtml + '<div class="empty">No sessions match the current filters.</div>';
+    el.innerHTML = filterHtml + '<div class="empty">No sessions match the current filters.</div>';
     bindListEvents();
     return;
   }
@@ -271,6 +276,25 @@ function bindListEvents() {
     doRenderList(el, sub, f.from, f.to, f.sort);
   }
 
+  // Target dropdown toggle
+  var dropBtn = document.getElementById('target-dropdown-btn');
+  var dropMenu = document.getElementById('target-dropdown-menu');
+  if (dropBtn && dropMenu) {
+    dropBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      dropMenu.classList.toggle('open');
+    });
+    // Close on click outside
+    document.addEventListener('click', function closeDropdown(e) {
+      var dropdown = document.getElementById('target-dropdown');
+      if (dropdown && !dropdown.contains(e.target)) {
+        dropMenu.classList.remove('open');
+      }
+    });
+    // Prevent menu clicks from closing
+    dropMenu.addEventListener('click', function(e) { e.stopPropagation(); });
+  }
+
   if (fromEl) fromEl.addEventListener('change', refresh);
   if (toEl) toEl.addEventListener('change', refresh);
   if (sortEl) sortEl.addEventListener('change', refresh);
@@ -309,13 +333,159 @@ function bindListEvents() {
 
 // ── Session Detail Page (Report-First) ────────────────────────────────────
 
+var currentSettings = null;
+
+var METRIC_OPTIONS = [
+  'Time', 'Frame Index', 'HFR', 'FWHM', 'Guiding RMS', 'Focuser Temp',
+  'Ambient Temp', 'Eccentricity', 'Altitude', 'Airmass', 'Humidity',
+  'Focuser Position', 'Sky Quality', 'Cloud Cover', 'Camera Temp',
+  'Dew Point', 'Wind Speed', 'Pressure', 'Star Count', 'Azimuth', 'Seeing FWHM'
+];
+
+var EQUIPMENT_FIELDS = [
+  'Camera', 'Telescope', 'Mount', 'Filter Wheel', 'Focuser', 'Rotator',
+  'Guider', 'Dome', 'Flat Device', 'Safety Monitor', 'Weather', 'Switch'
+];
+
+function metricSelect(id, value, includeNone) {
+  var html = '<select id="' + id + '" class="settings-select">';
+  if (includeNone) html += '<option value="0"' + (value === 0 ? ' selected' : '') + '>None</option>';
+  var offset = includeNone ? 1 : 0;
+  var startIdx = includeNone ? 0 : 0;
+  METRIC_OPTIONS.forEach(function(m, i) {
+    var val = includeNone ? i + 1 : i;
+    html += '<option value="' + val + '"' + (value === val ? ' selected' : '') + '>' + esc(m) + '</option>';
+  });
+  html += '</select>';
+  return html;
+}
+
+function settingsCheckbox(id, label, checked) {
+  return '<label class="settings-check"><input type="checkbox" id="' + id + '"' +
+    (checked ? ' checked' : '') + '><span>' + esc(label) + '</span></label>';
+}
+
+function buildSettingsPanel(settings) {
+  var s = settings;
+  var visibleFields = (s.equipmentVisibleFields || '').split(',').map(function(f) { return f.trim(); });
+
+  var html = '<div id="settings-panel" class="settings-panel" style="display:none">';
+
+  // Row 1: Detail level + theme
+  html += '<div class="settings-row">' +
+    '<div class="settings-group"><label class="settings-label">Detail Level</label>' +
+      '<select id="s-detailLevel" class="settings-select">' +
+        '<option value="0"' + (s.reportDetailLevel === 0 ? ' selected' : '') + '>Snapshot</option>' +
+        '<option value="1"' + (s.reportDetailLevel === 1 ? ' selected' : '') + '>Standard</option>' +
+        '<option value="2"' + (s.reportDetailLevel === 2 ? ' selected' : '') + '>Full</option>' +
+      '</select></div>' +
+    '<div class="settings-group"><label class="settings-label">Theme</label>' +
+      '<select id="s-lightMode" class="settings-select">' +
+        '<option value="false"' + (!s.reportLightMode ? ' selected' : '') + '>Dark</option>' +
+        '<option value="true"' + (s.reportLightMode ? ' selected' : '') + '>Light</option>' +
+      '</select></div>' +
+  '</div>';
+
+  // Row 2: Section toggles
+  html += '<div class="settings-row"><div class="settings-group"><label class="settings-label">Sections</label>' +
+    '<div class="settings-checks">' +
+      settingsCheckbox('s-overhead', 'Overhead Breakdown', s.showOverheadBreakdown) +
+      settingsCheckbox('s-skyThumb', 'Sky Thumbnails', s.showSkyThumbnails) +
+      settingsCheckbox('s-altitude', 'Altitude Chart', s.showAltitudeChart) +
+      settingsCheckbox('s-moon', 'Moon Curve', s.showMoonCurve) +
+      settingsCheckbox('s-minAlt', 'Min Altitude', s.showMinAltitude) +
+      settingsCheckbox('s-livestack', 'Live Stack Images', s.showLiveStackImages) +
+      settingsCheckbox('s-history', 'Session History', s.showSessionHistory) +
+      settingsCheckbox('s-tsProgress', 'TS Progress Bars', s.showTSProgressBars) +
+      settingsCheckbox('s-starCV', 'Star Count CV', s.showStarCountCV) +
+      settingsCheckbox('s-hfr', 'Metric Chart', s.showHFRGraph) +
+      settingsCheckbox('s-perTargetIQ', 'Per-Target IQ', s.showPerTargetIQ) +
+      settingsCheckbox('s-equipment', 'Equipment Profile', s.showEquipmentProfile) +
+      settingsCheckbox('s-expand', 'Expand Sections', s.expandSectionsDefault) +
+    '</div></div></div>';
+
+  // Row 3: Metric chart config
+  html += '<div class="settings-row">' +
+    '<div class="settings-group"><label class="settings-label">X-Axis</label>' +
+      metricSelect('s-xAxis', s.chartXAxisMetric, false) + '</div>' +
+    '<div class="settings-group"><label class="settings-label">Primary Metric</label>' +
+      metricSelect('s-primary', s.chartPrimaryMetric, false) + '</div>' +
+    '<div class="settings-group"><label class="settings-label">Secondary Metric</label>' +
+      metricSelect('s-secondary', s.chartSecondaryMetric, true) + '</div>' +
+  '</div>';
+
+  // Row 4: Equipment visible fields
+  html += '<div class="settings-row"><div class="settings-group"><label class="settings-label">Equipment Fields</label>' +
+    '<div class="settings-checks">';
+  EQUIPMENT_FIELDS.forEach(function(f) {
+    var checked = visibleFields.indexOf(f) >= 0;
+    html += settingsCheckbox('s-eq-' + f.replace(/\s/g, ''), f, checked);
+  });
+  html += '</div></div></div>';
+
+  // Row 5: Advanced text inputs
+  html += '<div class="settings-row">' +
+    '<div class="settings-group"><label class="settings-label">Filter Classifications</label>' +
+      '<input type="text" id="s-filterClass" class="settings-input" value="' + esc(s.filterClassifications || '') + '" placeholder="e.g. Ha:NB,OIII:NB,Lum:BB"></div>' +
+    '<div class="settings-group"><label class="settings-label">Equipment Overrides</label>' +
+      '<input type="text" id="s-eqOverrides" class="settings-input" value="' + esc(s.equipmentOverrides || '') + '" placeholder="e.g. Camera:ASI2600,Telescope:Esprit 100"></div>' +
+  '</div>';
+
+  // Regenerate button
+  html += '<div class="settings-actions">' +
+    '<button id="btn-regenerate" class="report-btn regen-btn">Regenerate Report</button>' +
+    '<span id="regen-status" class="regen-status"></span>' +
+  '</div>';
+
+  html += '</div>';
+  return html;
+}
+
+function collectSettings() {
+  var visibleFields = [];
+  EQUIPMENT_FIELDS.forEach(function(f) {
+    var cb = document.getElementById('s-eq-' + f.replace(/\s/g, ''));
+    if (cb && cb.checked) visibleFields.push(f);
+  });
+
+  return {
+    reportDetailLevel:     parseInt(document.getElementById('s-detailLevel').value),
+    reportLightMode:       document.getElementById('s-lightMode').value === 'true',
+    expandSectionsDefault: document.getElementById('s-expand').checked,
+    showOverheadBreakdown: document.getElementById('s-overhead').checked,
+    showSkyThumbnails:     document.getElementById('s-skyThumb').checked,
+    showAltitudeChart:     document.getElementById('s-altitude').checked,
+    showMoonCurve:         document.getElementById('s-moon').checked,
+    showMinAltitude:       document.getElementById('s-minAlt').checked,
+    showLiveStackImages:   document.getElementById('s-livestack').checked,
+    showSessionHistory:    document.getElementById('s-history').checked,
+    showTSProgressBars:    document.getElementById('s-tsProgress').checked,
+    showStarCountCV:       document.getElementById('s-starCV').checked,
+    showHFRGraph:          document.getElementById('s-hfr').checked,
+    showPerTargetIQ:       document.getElementById('s-perTargetIQ').checked,
+    showEquipmentProfile:  document.getElementById('s-equipment').checked,
+    chartXAxisMetric:      parseInt(document.getElementById('s-xAxis').value),
+    chartPrimaryMetric:    parseInt(document.getElementById('s-primary').value),
+    chartSecondaryMetric:  parseInt(document.getElementById('s-secondary').value),
+    equipmentVisibleFields: visibleFields.join(','),
+    filterClassifications: document.getElementById('s-filterClass').value,
+    equipmentOverrides:    document.getElementById('s-eqOverrides').value
+  };
+}
+
 function renderSessionDetail(sessionId) {
   var el = document.getElementById('content');
   var sub = document.getElementById('page-subtitle');
 
   el.innerHTML = '<div class="loading">Loading report...</div>';
 
-  api('/api/sessions/' + sessionId).then(function(detail) {
+  Promise.all([
+    api('/api/sessions/' + sessionId),
+    currentSettings ? Promise.resolve(currentSettings) : api('/api/settings')
+  ]).then(function(results) {
+    var detail = results[0];
+    currentSettings = results[1];
+
     var targets = detail.targets.map(function(t) { return t.target; }).join(', ') || 'Unknown';
     sub.textContent = fmtDate(detail.sessionStart) + ' \u2014 ' + targets;
 
@@ -325,7 +495,8 @@ function renderSessionDetail(sessionId) {
         '<span class="report-nav-date">' + fmtDate(detail.sessionStart) + '</span>' +
         '<span class="report-nav-targets">' + esc(targets) + '</span>' +
       '</div>' +
-      '<div class="report-nav-actions">';
+      '<div class="report-nav-actions">' +
+        '<button class="report-btn" id="btn-settings">\u2699 Settings</button>';
 
     if (detail.hasReport) {
       html += '<a href="/api/sessions/' + sessionId + '/report" target="_blank" class="report-btn">Open in New Tab \u2192</a>';
@@ -333,19 +504,75 @@ function renderSessionDetail(sessionId) {
 
     html += '</div></div>';
 
+    html += buildSettingsPanel(currentSettings);
+
     if (detail.hasReport) {
       html += '<div class="report-viewer">' +
-        '<iframe class="report-iframe" src="/api/sessions/' + sessionId + '/report" sandbox="allow-same-origin"></iframe>' +
+        '<iframe id="report-iframe" class="report-iframe" src="/api/sessions/' + sessionId + '/report" sandbox="allow-same-origin"></iframe>' +
       '</div>';
     } else {
-      html += '<div class="empty">No report generated for this session.</div>';
+      html += '<div class="report-viewer">' +
+        '<div class="empty">No report generated for this session. Click "Regenerate Report" to generate one.</div>' +
+      '</div>';
     }
 
     el.innerHTML = html;
+    bindDetailEvents(sessionId);
   }).catch(function(err) {
     el.innerHTML = '<a class="back-btn" href="#/sessions">\u2190 Sessions</a>' +
       '<div class="error">Failed to load session: ' + esc(err.message) + '</div>';
   });
+}
+
+function bindDetailEvents(sessionId) {
+  var settingsBtn = document.getElementById('btn-settings');
+  var panel = document.getElementById('settings-panel');
+  var regenBtn = document.getElementById('btn-regenerate');
+  var status = document.getElementById('regen-status');
+
+  if (settingsBtn && panel) {
+    settingsBtn.addEventListener('click', function() {
+      var visible = panel.style.display !== 'none';
+      panel.style.display = visible ? 'none' : 'block';
+    });
+  }
+
+  if (regenBtn) {
+    regenBtn.addEventListener('click', function() {
+      var settings = collectSettings();
+      status.textContent = 'Generating...';
+      status.className = 'regen-status';
+      regenBtn.disabled = true;
+
+      fetch('/api/sessions/' + sessionId + '/regenerate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings)
+      }).then(function(r) { return r.json(); }).then(function(data) {
+        if (data.status === 'ok') {
+          status.textContent = 'Done';
+          status.className = 'regen-status regen-ok';
+          // Reload iframe
+          var iframe = document.getElementById('report-iframe');
+          if (iframe) {
+            iframe.src = '/api/sessions/' + sessionId + '/report?t=' + Date.now();
+          } else {
+            // Report didn't exist before — re-render the whole page
+            sessionsCache = []; // Clear cache to refresh hasReport
+            renderSessionDetail(sessionId);
+          }
+        } else {
+          status.textContent = data.error || 'Failed';
+          status.className = 'regen-status regen-err';
+        }
+      }).catch(function(err) {
+        status.textContent = err.message;
+        status.className = 'regen-status regen-err';
+      }).finally(function() {
+        regenBtn.disabled = false;
+      });
+    });
+  }
 }
 
 // ── Stats Page ─────────────────────────────────────────────────────────────
