@@ -619,7 +619,8 @@ function renderSessionDetail(sessionId) {
     var detail = results[0];
     currentSettings = results[1];
     cachedFilters = results[2].filters || [];
-    logInfo('Session detail loaded:', sessionId, '— settings keys:', Object.keys(currentSettings).length);
+    logInfo('Session detail loaded:', sessionId);
+    logDebug('Settings received:', JSON.stringify(currentSettings, null, 2));
 
     var targets = detail.targets.map(function(t) { return t.target; }).join(', ') || 'Unknown';
     sub.textContent = fmtDate(detail.sessionStart) + ' \u2014 ' + targets;
@@ -707,7 +708,7 @@ function bindDetailEvents(sessionId) {
     regenBtn.addEventListener('click', function() {
       var settings = collectSettings();
       logInfo('Regenerate report:', sessionId);
-      logDebug('Regenerate settings:', JSON.stringify(settings));
+      logDebug('Settings sent for regeneration:', JSON.stringify(settings, null, 2));
       status.textContent = 'Generating...';
       status.className = 'regen-status';
       regenBtn.disabled = true;

@@ -533,6 +533,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 try {
                     ApplyOverrides(s, overrides);
                     s.ShowNextNightPreview = false; // Always off for dashboard
+                    log?.Debug($"Regenerate {sessionId} effective settings: {FormatSettingsForLog(s)}");
 
                     var reportData = await sessionService.BuildReportDataAsync(dbPath, sessionId);
                     if (reportData == null) {
@@ -672,6 +673,7 @@ namespace NINA.Plugin.NightSummary.Server {
             var settingsPath = Path.Combine(reportsDir, $"{sessionId}.settings.json");
             if (File.Exists(settingsPath)) {
                 var json = await File.ReadAllTextAsync(settingsPath);
+                log?.Debug($"Settings for {sessionId} (sidecar): {json}");
                 res.StatusCode = 200;
                 res.ContentType = "application/json; charset=utf-8";
                 var bytes = Encoding.UTF8.GetBytes(json);
@@ -681,6 +683,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 done?.Invoke(200, $"{sessionId} (sidecar)");
             } else {
                 // No saved settings — return current plugin settings as fallback
+                log?.Debug($"Settings for {sessionId} (no sidecar, using plugin defaults): {FormatSettingsForLog(SettingsManager.Instance.Current)}");
                 await HandleGetSettings(res);
                 done?.Invoke(200, $"{sessionId} (plugin defaults — no sidecar)");
             }
@@ -725,6 +728,32 @@ namespace NINA.Plugin.NightSummary.Server {
                 log?.Warn($"Failed to save settings sidecar for {sessionId}: {ex.Message}");
                 Logger.Warning($"NightSummary: Failed to save settings for {sessionId}. {ex.Message}");
             }
+        }
+
+        private static string FormatSettingsForLog(NightSummarySettings s) {
+            var bools = new List<string>();
+            if (s.ShowMoonCurve) bools.Add("Moon");
+            if (s.ShowOverheadBreakdown) bools.Add("Overhead");
+            if (s.ShowSkyThumbnails) bools.Add("Sky");
+            if (s.ShowLiveStackImages) bools.Add("LiveStack");
+            if (s.ShowSessionHistory) bools.Add("History");
+            if (s.ShowAltitudeChart) bools.Add("Altitude");
+            if (s.ShowMinAltitude) bools.Add("MinAlt");
+            if (s.ShowTSProgressBars) bools.Add("TSProgress");
+            if (s.ShowStarCountCV) bools.Add("StarCV");
+            if (s.ShowHFRGraph) bools.Add("Metric");
+            if (s.ShowPerTargetIQ) bools.Add("PerTargetIQ");
+            if (s.ShowEquipmentProfile) bools.Add("Equipment");
+            if (s.ExpandSectionsDefault) bools.Add("Expand");
+            if (s.ReportLightMode) bools.Add("Light");
+
+            return $"detail={s.ReportDetailLevel}, " +
+                $"sections=[{string.Join(",", bools)}], " +
+                $"chart={s.ChartXAxisMetric}/{s.ChartPrimaryMetric}/{s.ChartSecondaryMetric}, " +
+                $"additional=\"{s.AdditionalChartConfigs}\", " +
+                $"filters=\"{s.FilterClassifications}\", " +
+                $"eqVisible=\"{s.EquipmentVisibleFields}\", " +
+                $"eqOverrides=\"{s.EquipmentOverrides}\"";
         }
 
         private static Dictionary<string, object> SnapshotSettings(NightSummarySettings s) {
