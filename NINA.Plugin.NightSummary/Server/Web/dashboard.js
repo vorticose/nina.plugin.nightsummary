@@ -347,11 +347,25 @@ var EQUIPMENT_FIELDS = [
   'Guider', 'Dome', 'Flat Device', 'Safety Monitor', 'Weather', 'Switch'
 ];
 
+var CLASSIFICATION_OPTIONS = ['Auto', 'Broadband', 'Narrowband', 'Exclude'];
+var CLASSIFICATION_CODES = ['A', 'B', 'N', 'X'];
+
+var cachedFilters = null;
+
 function metricSelect(id, value, includeNone) {
   var html = '<select id="' + id + '" class="settings-select">';
   if (includeNone) html += '<option value="0"' + (value === 0 ? ' selected' : '') + '>None</option>';
-  var offset = includeNone ? 1 : 0;
-  var startIdx = includeNone ? 0 : 0;
+  METRIC_OPTIONS.forEach(function(m, i) {
+    var val = includeNone ? i + 1 : i;
+    html += '<option value="' + val + '"' + (value === val ? ' selected' : '') + '>' + esc(m) + '</option>';
+  });
+  html += '</select>';
+  return html;
+}
+
+function metricSelectClass(cls, value, includeNone) {
+  var html = '<select class="' + cls + ' settings-select">';
+  if (includeNone) html += '<option value="0"' + (value === 0 ? ' selected' : '') + '>None</option>';
   METRIC_OPTIONS.forEach(function(m, i) {
     var val = includeNone ? i + 1 : i;
     html += '<option value="' + val + '"' + (value === val ? ' selected' : '') + '>' + esc(m) + '</option>';
@@ -365,9 +379,40 @@ function settingsCheckbox(id, label, checked) {
     (checked ? ' checked' : '') + '><span>' + esc(label) + '</span></label>';
 }
 
-function buildSettingsPanel(settings) {
+function parseChartConfigs(raw) {
+  if (!raw) return [];
+  return raw.split('|').map(function(part) {
+    var t = part.split(':');
+    return { primary: parseInt(t[0]) || 0, secondary: parseInt(t[1]) || 0, xAxis: parseInt(t[2]) || 0 };
+  }).filter(function(c) { return !isNaN(c.primary); });
+}
+
+function parseFilterClassifications(raw) {
+  var result = {};
+  if (!raw) return result;
+  raw.split(',').forEach(function(pair) {
+    var parts = pair.split('=');
+    if (parts.length === 2) result[parts[0].trim()] = parts[1].trim();
+  });
+  return result;
+}
+
+function parseEquipmentOverrides(raw) {
+  var result = {};
+  if (!raw) return result;
+  raw.split(',').forEach(function(pair) {
+    var parts = pair.split(':');
+    if (parts.length >= 2) result[parts[0].trim()] = parts.slice(1).join(':').trim();
+  });
+  return result;
+}
+
+function buildSettingsPanel(settings, filters) {
   var s = settings;
   var visibleFields = (s.equipmentVisibleFields || '').split(',').map(function(f) { return f.trim(); });
+  var additionalCharts = parseChartConfigs(s.additionalChartConfigs);
+  var filterClass = parseFilterClassifications(s.filterClassifications);
+  var eqOverrides = parseEquipmentOverrides(s.equipmentOverrides);
 
   var html = '<div id="settings-panel" class="settings-panel" style="display:none">';
 
@@ -404,9 +449,9 @@ function buildSettingsPanel(settings) {
       settingsCheckbox('s-expand', 'Expand Sections', s.expandSectionsDefault) +
     '</div></div></div>';
 
-  // Row 3: Metric chart config
+  // Row 3: Primary metric chart
   html += '<div class="settings-row">' +
-    '<div class="settings-group"><label class="settings-label">X-Axis</label>' +
+    '<div class="settings-group"><label class="settings-label">Chart X-Axis</label>' +
       metricSelect('s-xAxis', s.chartXAxisMetric, false) + '</div>' +
     '<div class="settings-group"><label class="settings-label">Primary Metric</label>' +
       metricSelect('s-primary', s.chartPrimaryMetric, false) + '</div>' +
@@ -414,22 +459,58 @@ function buildSettingsPanel(settings) {
       metricSelect('s-secondary', s.chartSecondaryMetric, true) + '</div>' +
   '</div>';
 
-  // Row 4: Equipment visible fields
-  html += '<div class="settings-row"><div class="settings-group"><label class="settings-label">Equipment Fields</label>' +
-    '<div class="settings-checks">';
+  // Row 4: Additional metric charts
+  html += '<div class="settings-row"><div class="settings-group" style="width:100%">' +
+    '<label class="settings-label">Additional Charts</label>' +
+    '<div id="additional-charts">';
+  additionalCharts.forEach(function(c, i) {
+    html += '<div class="chart-row" data-idx="' + i + '">' +
+      '<span class="chart-row-label">Chart ' + (i + 2) + '</span>' +
+      metricSelectClass('ac-xAxis', c.xAxis, false) +
+      metricSelectClass('ac-primary', c.primary, false) +
+      metricSelectClass('ac-secondary', c.secondary, true) +
+      '<button class="remove-chart-btn" data-idx="' + i + '">\u2715</button>' +
+    '</div>';
+  });
+  html += '</div>' +
+    '<button id="btn-add-chart" class="filter-link" style="margin-top:6px">+ Add Chart</button>' +
+  '</div></div>';
+
+  // Row 5: Filter classifications
+  if (filters && filters.length > 0) {
+    html += '<div class="settings-row"><div class="settings-group">' +
+      '<label class="settings-label">Filter Classifications</label>' +
+      '<div class="filter-class-grid">';
+    filters.forEach(function(f) {
+      var code = filterClass[f] || 'A';
+      var idx = CLASSIFICATION_CODES.indexOf(code);
+      if (idx < 0) idx = 0;
+      html += '<div class="filter-class-row">' +
+        '<span class="filter-class-name">' + esc(f) + '</span>' +
+        '<select class="fc-select settings-select" data-filter="' + esc(f) + '">';
+      CLASSIFICATION_OPTIONS.forEach(function(opt, oi) {
+        html += '<option value="' + CLASSIFICATION_CODES[oi] + '"' + (oi === idx ? ' selected' : '') + '>' + esc(opt) + '</option>';
+      });
+      html += '</select></div>';
+    });
+    html += '</div></div></div>';
+  }
+
+  // Row 6: Equipment (checkbox + override per field)
+  html += '<div class="settings-row"><div class="settings-group" style="width:100%">' +
+    '<label class="settings-label">Equipment</label>' +
+    '<div class="equipment-grid">';
   EQUIPMENT_FIELDS.forEach(function(f) {
-    var checked = visibleFields.indexOf(f) >= 0;
-    html += settingsCheckbox('s-eq-' + f.replace(/\s/g, ''), f, checked);
+    var visible = visibleFields.indexOf(f) >= 0;
+    var override = eqOverrides[f] || '';
+    var fid = f.replace(/\s/g, '');
+    html += '<div class="equipment-row">' +
+      '<label class="settings-check"><input type="checkbox" id="s-eq-' + fid + '"' + (visible ? ' checked' : '') + '>' +
+        '<span>' + esc(f) + '</span></label>' +
+      '<input type="text" class="eq-override settings-input-sm" data-field="' + esc(f) + '" value="' + esc(override) + '" placeholder="Override name">' +
+    '</div>';
   });
   html += '</div></div></div>';
-
-  // Row 5: Advanced text inputs
-  html += '<div class="settings-row">' +
-    '<div class="settings-group"><label class="settings-label">Filter Classifications</label>' +
-      '<input type="text" id="s-filterClass" class="settings-input" value="' + esc(s.filterClassifications || '') + '" placeholder="e.g. Ha:NB,OIII:NB,Lum:BB"></div>' +
-    '<div class="settings-group"><label class="settings-label">Equipment Overrides</label>' +
-      '<input type="text" id="s-eqOverrides" class="settings-input" value="' + esc(s.equipmentOverrides || '') + '" placeholder="e.g. Camera:ASI2600,Telescope:Esprit 100"></div>' +
-  '</div>';
 
   // Regenerate buttons
   html += '<div class="settings-actions">' +
@@ -447,6 +528,32 @@ function collectSettings() {
   EQUIPMENT_FIELDS.forEach(function(f) {
     var cb = document.getElementById('s-eq-' + f.replace(/\s/g, ''));
     if (cb && cb.checked) visibleFields.push(f);
+  });
+
+  // Collect additional charts
+  var chartRows = document.querySelectorAll('.chart-row');
+  var additionalParts = [];
+  chartRows.forEach(function(row) {
+    var selects = row.querySelectorAll('select');
+    if (selects.length >= 3) {
+      additionalParts.push(selects[1].value + ':' + selects[2].value + ':' + selects[0].value);
+    }
+  });
+
+  // Collect filter classifications (only non-Auto)
+  var fcParts = [];
+  document.querySelectorAll('.fc-select').forEach(function(sel) {
+    if (sel.value !== 'A') {
+      fcParts.push(sel.dataset.filter + '=' + sel.value);
+    }
+  });
+
+  // Collect equipment overrides (only non-empty)
+  var eqParts = [];
+  document.querySelectorAll('.eq-override').forEach(function(inp) {
+    if (inp.value.trim()) {
+      eqParts.push(inp.dataset.field + ':' + inp.value.trim());
+    }
   });
 
   return {
@@ -468,9 +575,10 @@ function collectSettings() {
     chartXAxisMetric:      parseInt(document.getElementById('s-xAxis').value),
     chartPrimaryMetric:    parseInt(document.getElementById('s-primary').value),
     chartSecondaryMetric:  parseInt(document.getElementById('s-secondary').value),
+    additionalChartConfigs: additionalParts.join('|'),
     equipmentVisibleFields: visibleFields.join(','),
-    filterClassifications: document.getElementById('s-filterClass').value,
-    equipmentOverrides:    document.getElementById('s-eqOverrides').value
+    filterClassifications: fcParts.join(','),
+    equipmentOverrides:    eqParts.join(',')
   };
 }
 
@@ -482,10 +590,12 @@ function renderSessionDetail(sessionId) {
 
   Promise.all([
     api('/api/sessions/' + sessionId),
-    currentSettings ? Promise.resolve(currentSettings) : api('/api/settings')
+    currentSettings ? Promise.resolve(currentSettings) : api('/api/settings'),
+    cachedFilters ? Promise.resolve({ filters: cachedFilters }) : api('/api/filters')
   ]).then(function(results) {
     var detail = results[0];
     currentSettings = results[1];
+    cachedFilters = results[2].filters || [];
 
     var targets = detail.targets.map(function(t) { return t.target; }).join(', ') || 'Unknown';
     sub.textContent = fmtDate(detail.sessionStart) + ' \u2014 ' + targets;
@@ -505,7 +615,7 @@ function renderSessionDetail(sessionId) {
 
     html += '</div></div>';
 
-    html += buildSettingsPanel(currentSettings);
+    html += buildSettingsPanel(currentSettings, cachedFilters);
 
     if (detail.hasReport) {
       html += '<div class="report-viewer">' +
@@ -538,6 +648,35 @@ function bindDetailEvents(sessionId) {
       panel.style.display = visible ? 'none' : 'block';
     });
   }
+
+  // Additional chart add/remove
+  var addChartBtn = document.getElementById('btn-add-chart');
+  if (addChartBtn) {
+    addChartBtn.addEventListener('click', function() {
+      var container = document.getElementById('additional-charts');
+      var idx = container.querySelectorAll('.chart-row').length;
+      var row = document.createElement('div');
+      row.className = 'chart-row';
+      row.dataset.idx = idx;
+      row.innerHTML = '<span class="chart-row-label">Chart ' + (idx + 2) + '</span>' +
+        metricSelectClass('ac-xAxis', 0, false) +
+        metricSelectClass('ac-primary', 0, false) +
+        metricSelectClass('ac-secondary', 0, true) +
+        '<button class="remove-chart-btn">\u2715</button>';
+      container.appendChild(row);
+      row.querySelector('.remove-chart-btn').addEventListener('click', function() {
+        row.remove();
+        renumberChartRows();
+      });
+    });
+  }
+
+  document.querySelectorAll('.remove-chart-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      this.closest('.chart-row').remove();
+      renumberChartRows();
+    });
+  });
 
   if (regenBtn) {
     regenBtn.addEventListener('click', function() {
@@ -608,6 +747,13 @@ function bindDetailEvents(sessionId) {
       });
     });
   }
+}
+
+function renumberChartRows() {
+  document.querySelectorAll('.chart-row').forEach(function(row, i) {
+    var label = row.querySelector('.chart-row-label');
+    if (label) label.textContent = 'Chart ' + (i + 2);
+  });
 }
 
 function pollRegenAllProgress(sessionId, regenBtn, regenAllBtn, statusEl) {

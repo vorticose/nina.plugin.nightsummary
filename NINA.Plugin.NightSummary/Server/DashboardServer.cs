@@ -150,6 +150,8 @@ namespace NINA.Plugin.NightSummary.Server {
                         await HandleGetTargetStats(res);
                     } else if (path == "/api/stats/summary") {
                         await HandleGetStatsSummary(res);
+                    } else if (path == "/api/filters") {
+                        await HandleGetFilters(res);
                     } else if (path == "/api/regenerate-all/status") {
                         await HandleRegenAllStatus(res);
                     } else if (path == "/api/settings") {
@@ -413,6 +415,23 @@ namespace NINA.Plugin.NightSummary.Server {
 
         // ── Settings & Regeneration ──────────────────────────────────────────
 
+        private async Task HandleGetFilters(HttpListenerResponse res) {
+            if (!File.Exists(dbPath)) {
+                await WriteJson(res, 200, new { filters = Array.Empty<string>() });
+                return;
+            }
+            var db = new SessionDatabase(dbPath);
+            var sessions = db.GetAllSessions();
+            var filters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var s in sessions) {
+                var images = db.GetImagesForSession(s.SessionId);
+                foreach (var img in images) {
+                    if (!string.IsNullOrEmpty(img.Filter)) filters.Add(img.Filter);
+                }
+            }
+            await WriteJson(res, 200, new { filters = filters.OrderBy(f => f).ToList() });
+        }
+
         private async Task HandleGetSettings(HttpListenerResponse res) {
             var s = SettingsManager.Instance.Current;
             await WriteJson(res, 200, new {
@@ -434,6 +453,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 chartXAxisMetric       = s.ChartXAxisMetric,
                 chartPrimaryMetric     = s.ChartPrimaryMetric,
                 chartSecondaryMetric   = s.ChartSecondaryMetric,
+                additionalChartConfigs = s.AdditionalChartConfigs,
                 equipmentVisibleFields = s.EquipmentVisibleFields,
                 filterClassifications  = s.FilterClassifications,
                 equipmentOverrides     = s.EquipmentOverrides
@@ -599,6 +619,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 ["ChartXAxisMetric"]      = s.ChartXAxisMetric,
                 ["ChartPrimaryMetric"]    = s.ChartPrimaryMetric,
                 ["ChartSecondaryMetric"]  = s.ChartSecondaryMetric,
+                ["AdditionalChartConfigs"]= s.AdditionalChartConfigs,
                 ["EquipmentVisibleFields"]= s.EquipmentVisibleFields,
                 ["FilterClassifications"] = s.FilterClassifications,
                 ["EquipmentOverrides"]    = s.EquipmentOverrides
@@ -625,6 +646,7 @@ namespace NINA.Plugin.NightSummary.Server {
             s.ChartXAxisMetric      = (int)saved["ChartXAxisMetric"];
             s.ChartPrimaryMetric    = (int)saved["ChartPrimaryMetric"];
             s.ChartSecondaryMetric  = (int)saved["ChartSecondaryMetric"];
+            s.AdditionalChartConfigs= (string)saved["AdditionalChartConfigs"];
             s.EquipmentVisibleFields= (string)saved["EquipmentVisibleFields"];
             s.FilterClassifications = (string)saved["FilterClassifications"];
             s.EquipmentOverrides    = (string)saved["EquipmentOverrides"];
@@ -652,6 +674,7 @@ namespace NINA.Plugin.NightSummary.Server {
                     case "chartXAxisMetric":       s.ChartXAxisMetric      = kv.Value.GetInt32(); break;
                     case "chartPrimaryMetric":     s.ChartPrimaryMetric    = kv.Value.GetInt32(); break;
                     case "chartSecondaryMetric":   s.ChartSecondaryMetric  = kv.Value.GetInt32(); break;
+                    case "additionalChartConfigs": s.AdditionalChartConfigs= kv.Value.GetString(); break;
                     case "equipmentVisibleFields": s.EquipmentVisibleFields= kv.Value.GetString(); break;
                     case "filterClassifications":  s.FilterClassifications = kv.Value.GetString(); break;
                     case "equipmentOverrides":     s.EquipmentOverrides    = kv.Value.GetString(); break;
