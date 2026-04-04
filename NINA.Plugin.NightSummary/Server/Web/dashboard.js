@@ -195,8 +195,8 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
   var filterHtml = '<div class="filter-bar">' +
     targetDropHtml +
     '<div class="filter-dates">' +
-      '<input type="date" id="filter-from" value="' + esc(fromFilter) + '" title="From date">' +
-      '<input type="date" id="filter-to" value="' + esc(toFilter) + '" title="To date">' +
+      '<input type="date" id="filter-from" value="' + esc(fromFilter) + '" title="From date" placeholder="From">' +
+      '<input type="date" id="filter-to" value="' + esc(toFilter) + '" title="To date" placeholder="To">' +
     '</div>' +
     '<div class="filter-sort">' +
       '<select id="filter-sort">' +
@@ -318,8 +318,11 @@ function bindListEvents() {
     dropMenu.addEventListener('click', function(e) { e.stopPropagation(); });
   }
 
-  if (fromEl) fromEl.addEventListener('change', refresh);
-  if (toEl) toEl.addEventListener('change', refresh);
+  // Use 'change' on desktop, 'blur' on mobile — iOS fires 'change' when
+  // the date picker opens (before user selects), causing premature filtering
+  var dateEvent = window.innerWidth <= 700 ? 'blur' : 'change';
+  if (fromEl) fromEl.addEventListener(dateEvent, refresh);
+  if (toEl) toEl.addEventListener(dateEvent, refresh);
   if (sortEl) sortEl.addEventListener('change', refresh);
 
   if (clearEl) {
