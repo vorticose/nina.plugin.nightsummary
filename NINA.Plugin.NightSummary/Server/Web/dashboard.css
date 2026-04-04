@@ -145,9 +145,14 @@ nav {
   align-items: center;
 }
 
+/* Show placeholder on empty date inputs (iOS Safari shows blank) */
+.filter-bar input[type="date"]:not(:valid)::-webkit-datetime-edit { color: transparent; }
+.filter-bar input[type="date"]:not(:valid)::before { content: attr(placeholder); color: var(--muted); }
+
 .filter-bar input[type="date"] {
   background: var(--surface);
   border: 1px solid var(--border);
+  position: relative;
   color: var(--text);
   padding: 6px 10px;
   border-radius: 6px;
@@ -724,6 +729,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 /* ── Responsive ── */
 @media (max-width: 700px) {
   .shell { padding: 12px; }
+  header { flex-direction: column; align-items: center; text-align: center; gap: 8px; }
   header h1 { font-size: 18px; }
   .card-stats { flex-wrap: wrap; }
   .card-stat { min-width: 70px; }
