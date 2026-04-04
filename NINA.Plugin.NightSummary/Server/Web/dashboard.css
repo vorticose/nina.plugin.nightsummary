@@ -46,7 +46,7 @@ a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
 /* ── Shell ── */
-.shell { max-width: 1200px; margin: 0 auto; padding: 20px; }
+.shell { max-width: 1200px; margin: 0 auto; padding: 20px; padding-left: max(20px, env(safe-area-inset-left)); padding-right: max(20px, env(safe-area-inset-right)); }
 
 /* ── Header ── */
 header {
@@ -365,7 +365,7 @@ nav {
 /* When viewing a report, hide the footer and kill outer scroll */
 body.report-view { overflow: hidden; }
 body.report-view .footnote { display: none; }
-body.report-view .shell { padding-bottom: 0; display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; }
+body.report-view .shell { padding-bottom: 0; display: flex; flex-direction: column; height: 100dvh; box-sizing: border-box; }
 body.report-view #content { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 
 .report-nav {
@@ -719,6 +719,29 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   .filter-bar { flex-direction: column; align-items: flex-start; }
   .filter-dates { width: 100%; }
   .filter-bar input[type="date"] { min-width: unset; flex: 1; }
-  .report-nav { flex-direction: column; align-items: flex-start; }
-  .report-iframe { height: 100%; }
+  .report-nav { flex-direction: column; align-items: flex-start; gap: 8px; }
+
+  /* Report view: full-bleed iframe on mobile */
+  body.report-view .shell { padding: 8px 0 0 0; max-width: 100%; }
+  body.report-view header { padding-left: 12px; padding-right: 12px; margin-bottom: 8px; }
+  body.report-view .report-nav { padding: 0 12px; margin-bottom: 6px; }
+  body.report-view .settings-panel { margin: 0 12px 8px; }
+  .report-viewer { border-radius: 0; border-left: none; border-right: none; }
+
+  /* Touch-friendly tap targets (44px minimum) */
+  .report-btn, .back-btn { min-height: 44px; display: inline-flex; align-items: center; }
+  .nav-link { min-height: 44px; display: inline-flex; align-items: center; }
+  .theme-toggle { width: 44px; height: 44px; }
+  .target-dropdown-btn { min-height: 44px; }
+  .filter-bar input[type="date"] { min-height: 44px; }
+  .filter-sort select { min-height: 44px; }
+
+  /* Chart settings grid: stack on mobile */
+  .chart-grid-headers { display: none; }
+  .chart-row { grid-template-columns: 1fr 1fr; gap: 4px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .chart-row-label { grid-column: 1 / -1; }
+  .remove-chart-btn { justify-self: end; }
+
+  /* Equipment grid single column */
+  .equipment-grid { grid-template-columns: 1fr; }
 }
