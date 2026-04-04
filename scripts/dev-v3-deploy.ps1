@@ -96,18 +96,7 @@ function Close-NINA {
     return $true
 }
 
-if (Test-Path $targetDll) {
-    try {
-        $stream = [System.IO.File]::Open($targetDll, 'Open', 'Read', 'None')
-        $stream.Close()
-    } catch {
-        $ninaWasRunning = Close-NINA
-        if (-not $ninaWasRunning) {
-            Write-Host "DLL is locked but NINA process not found. Close whatever has it locked." -ForegroundColor Red
-            exit 1
-        }
-    }
-}
+$ninaWasRunning = Close-NINA
 
 # --- Deploy ---
 $dll = Join-Path $buildDir "NINA.Plugin.NightSummary.dll"
