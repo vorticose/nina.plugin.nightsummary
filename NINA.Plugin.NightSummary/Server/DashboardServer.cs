@@ -21,8 +21,10 @@ namespace NINA.Plugin.NightSummary.Server {
         private CancellationTokenSource cts;
         private readonly string dbPath;
         private readonly string reportsDir;
+        private readonly string dataDir;
         private readonly SessionService sessionService;
         private string cachedDashboardHtml;
+        private DashboardLog log;
 
         // Regenerate-all progress tracking
         private volatile bool regenAllRunning;
@@ -46,9 +48,10 @@ namespace NINA.Plugin.NightSummary.Server {
         public DashboardServer(string dbPath, SessionService sessionService) {
             this.dbPath = dbPath;
             this.sessionService = sessionService;
-            this.reportsDir = Path.Combine(
+            this.dataDir = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "NINA", "NightSummary", "reports");
+                "NINA", "NightSummary");
+            this.reportsDir = Path.Combine(dataDir, "reports");
             Directory.CreateDirectory(reportsDir);
         }
 
@@ -56,6 +59,8 @@ namespace NINA.Plugin.NightSummary.Server {
             if (IsRunning) return Task.CompletedTask;
 
             try {
+                log = DashboardLog.Init(Path.Combine(dataDir, "dashboard.log"));
+
                 cts = new CancellationTokenSource();
                 listener = new HttpListener();
                 listener.Prefixes.Add($"http://+:{port}/");
@@ -69,11 +74,17 @@ namespace NINA.Plugin.NightSummary.Server {
                 // Fire-and-forget the request loop
                 _ = AcceptLoop(cts.Token);
 
+                log.Info($"Server started on port {port} — local: {Url}" +
+                    (TailscaleUrl != null ? $", tailnet: {TailscaleUrl}" : ""));
+                log.Info($"DB: {dbPath}");
+                log.Info($"Reports: {reportsDir}");
+
                 Logger.Info($"NightSummary: Local dashboard started at {Url}");
                 if (TailscaleUrl != null)
                     Logger.Info($"NightSummary: Tailnet URL: {TailscaleUrl}");
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to start local dashboard. {ex.Message}");
+                log?.Error("Server failed to start", ex);
                 IsRunning = false;
                 throw;
             }
@@ -92,7 +103,10 @@ namespace NINA.Plugin.NightSummary.Server {
                 IsRunning = false;
                 Url = null;
                 TailscaleUrl = null;
+                log?.Info("Server stopped");
                 Logger.Info("NightSummary: Local dashboard stopped");
+                DashboardLog.Shutdown();
+                log = null;
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Error stopping local dashboard. {ex.Message}");
             }
@@ -113,6 +127,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 } catch (HttpListenerException) when (ct.IsCancellationRequested) {
                     break;
                 } catch (Exception ex) {
+                    log?.Error("Accept loop error", ex);
                     Logger.Error($"NightSummary: Dashboard accept error. {ex.Message}");
                 }
             }
@@ -121,64 +136,73 @@ namespace NINA.Plugin.NightSummary.Server {
         private async Task HandleRequest(HttpListenerContext context) {
             var req = context.Request;
             var res = context.Response;
+            var path = req.Url.AbsolutePath.TrimEnd('/');
+            if (string.IsNullOrEmpty(path)) path = "/";
+            var done = log?.BeginRequest(req.HttpMethod, path);
 
             try {
-                var path = req.Url.AbsolutePath.TrimEnd('/');
-                if (string.IsNullOrEmpty(path)) path = "/";
-
                 if (req.HttpMethod == "GET") {
                     if (path == "/api/health") {
                         await WriteJson(res, 200, new { status = "ok" });
+                        done?.Invoke(200, null);
                     } else if (path == "/api/sessions") {
-                        await HandleGetSessions(res);
+                        await HandleGetSessions(res, done);
                     } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/images")) {
                         var sessionId = ExtractSessionId(path, "/images");
-                        await HandleGetSessionImages(res, sessionId);
+                        await HandleGetSessionImages(res, sessionId, done);
                     } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/events")) {
                         var sessionId = ExtractSessionId(path, "/events");
-                        await HandleGetSessionEvents(res, sessionId);
+                        await HandleGetSessionEvents(res, sessionId, done);
                     } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/timing")) {
                         var sessionId = ExtractSessionId(path, "/timing");
-                        await HandleGetSessionTiming(res, sessionId);
+                        await HandleGetSessionTiming(res, sessionId, done);
                     } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/report")) {
                         var sessionId = ExtractSessionId(path, "/report");
-                        await HandleGetSessionReport(res, sessionId);
+                        await HandleGetSessionReport(res, sessionId, done);
                     } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/settings")) {
                         var sessionId = ExtractSessionId(path, "/settings");
-                        await HandleGetSessionSettings(res, sessionId);
+                        await HandleGetSessionSettings(res, sessionId, done);
                     } else if (path.StartsWith("/api/sessions/") && !path.Substring("/api/sessions/".Length).Contains("/")) {
                         var sessionId = path.Substring("/api/sessions/".Length);
-                        await HandleGetSession(res, sessionId);
+                        await HandleGetSession(res, sessionId, done);
                     } else if (path == "/api/stats/targets") {
-                        await HandleGetTargetStats(res);
+                        await HandleGetTargetStats(res, done);
                     } else if (path == "/api/stats/summary") {
-                        await HandleGetStatsSummary(res);
+                        await HandleGetStatsSummary(res, done);
                     } else if (path == "/api/filters") {
-                        await HandleGetFilters(res);
+                        await HandleGetFilters(res, done);
                     } else if (path == "/api/regenerate-all/status") {
                         await HandleRegenAllStatus(res);
+                        done?.Invoke(200, null);
                     } else if (path == "/api/settings") {
                         await HandleGetSettings(res);
+                        done?.Invoke(200, null);
                     } else if (path == "/") {
                         await WriteHtml(res, 200, GetDashboardHtml());
+                        done?.Invoke(200, "dashboard html");
                     } else {
                         await WriteJson(res, 404, new { error = "Not found" });
+                        done?.Invoke(404, null);
                     }
                 } else if (req.HttpMethod == "POST") {
                     if (path == "/api/regenerate-all") {
-                        await HandleRegenerateAll(req, res);
+                        await HandleRegenerateAll(req, res, done);
                     } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/regenerate")) {
                         var sessionId = ExtractSessionId(path, "/regenerate");
-                        await HandleRegenerateReport(req, res, sessionId);
+                        await HandleRegenerateReport(req, res, sessionId, done);
                     } else {
                         await WriteJson(res, 404, new { error = "Not found" });
+                        done?.Invoke(404, null);
                     }
                 } else {
                     res.StatusCode = 405;
                     res.Close();
+                    done?.Invoke(405, null);
                 }
             } catch (Exception ex) {
+                log?.Error($"Request error: {req.HttpMethod} {path}", ex);
                 Logger.Error($"NightSummary: Dashboard request error for {req.Url}. {ex.Message}");
+                done?.Invoke(500, ex.Message);
                 try { await WriteJson(res, 500, new { error = ex.Message }); } catch { res.Close(); }
             }
         }
@@ -191,9 +215,10 @@ namespace NINA.Plugin.NightSummary.Server {
 
         // ── API Handlers ──────────────────────────────────────────────────────
 
-        private async Task HandleGetSessions(HttpListenerResponse res) {
+        private async Task HandleGetSessions(HttpListenerResponse res, Action<int, string> done) {
             if (!File.Exists(dbPath)) {
                 await WriteJson(res, 200, Array.Empty<object>());
+                done?.Invoke(200, "0 sessions (no db)");
                 return;
             }
 
@@ -219,11 +244,13 @@ namespace NINA.Plugin.NightSummary.Server {
             }).ToList();
 
             await WriteJson(res, 200, result);
+            done?.Invoke(200, $"{result.Count} sessions");
         }
 
-        private async Task HandleGetSession(HttpListenerResponse res, string sessionId) {
+        private async Task HandleGetSession(HttpListenerResponse res, string sessionId, Action<int, string> done) {
             if (!File.Exists(dbPath)) {
                 await WriteJson(res, 404, new { error = "Database not found" });
+                done?.Invoke(404, "no db");
                 return;
             }
 
@@ -231,6 +258,7 @@ namespace NINA.Plugin.NightSummary.Server {
             var session = db.GetSession(sessionId);
             if (session == null) {
                 await WriteJson(res, 404, new { error = "Session not found" });
+                done?.Invoke(404, sessionId);
                 return;
             }
 
@@ -303,11 +331,13 @@ namespace NINA.Plugin.NightSummary.Server {
             };
 
             await WriteJson(res, 200, result);
+            done?.Invoke(200, $"{sessionId} — {targetBreakdown.Count} targets, {lightImages.Count} images");
         }
 
-        private async Task HandleGetSessionImages(HttpListenerResponse res, string sessionId) {
+        private async Task HandleGetSessionImages(HttpListenerResponse res, string sessionId, Action<int, string> done) {
             if (!File.Exists(dbPath)) {
                 await WriteJson(res, 200, Array.Empty<object>());
+                done?.Invoke(200, "0 images (no db)");
                 return;
             }
 
@@ -348,11 +378,13 @@ namespace NINA.Plugin.NightSummary.Server {
             }).ToList();
 
             await WriteJson(res, 200, result);
+            done?.Invoke(200, $"{result.Count} images for {sessionId}");
         }
 
-        private async Task HandleGetSessionEvents(HttpListenerResponse res, string sessionId) {
+        private async Task HandleGetSessionEvents(HttpListenerResponse res, string sessionId, Action<int, string> done) {
             if (!File.Exists(dbPath)) {
                 await WriteJson(res, 200, Array.Empty<object>());
+                done?.Invoke(200, "0 events (no db)");
                 return;
             }
 
@@ -368,11 +400,13 @@ namespace NINA.Plugin.NightSummary.Server {
             }).ToList();
 
             await WriteJson(res, 200, result);
+            done?.Invoke(200, $"{result.Count} events for {sessionId}");
         }
 
-        private async Task HandleGetSessionTiming(HttpListenerResponse res, string sessionId) {
+        private async Task HandleGetSessionTiming(HttpListenerResponse res, string sessionId, Action<int, string> done) {
             if (!File.Exists(dbPath)) {
                 await WriteJson(res, 200, Array.Empty<object>());
+                done?.Invoke(200, "0 timing events (no db)");
                 return;
             }
 
@@ -387,21 +421,25 @@ namespace NINA.Plugin.NightSummary.Server {
             }).ToList();
 
             await WriteJson(res, 200, result);
+            done?.Invoke(200, $"{result.Count} timing events for {sessionId}");
         }
 
-        private async Task HandleGetSessionReport(HttpListenerResponse res, string sessionId) {
+        private async Task HandleGetSessionReport(HttpListenerResponse res, string sessionId, Action<int, string> done) {
             var reportPath = Path.Combine(reportsDir, $"{sessionId}.html");
             if (!File.Exists(reportPath)) {
                 await WriteJson(res, 404, new { error = "Report not found" });
+                done?.Invoke(404, sessionId);
                 return;
             }
             var html = File.ReadAllText(reportPath);
             await WriteHtml(res, 200, html);
+            done?.Invoke(200, $"{sessionId} ({html.Length / 1024}KB)");
         }
 
-        private async Task HandleGetTargetStats(HttpListenerResponse res) {
+        private async Task HandleGetTargetStats(HttpListenerResponse res, Action<int, string> done) {
             if (!File.Exists(dbPath)) {
                 await WriteJson(res, 200, new { targets = Array.Empty<object>() });
+                done?.Invoke(200, "0 targets (no db)");
                 return;
             }
 
@@ -414,13 +452,15 @@ namespace NINA.Plugin.NightSummary.Server {
             }).OrderByDescending(t => t.totalIntegrationSeconds).ToList();
 
             await WriteJson(res, 200, new { targets = result });
+            done?.Invoke(200, $"{result.Count} targets");
         }
 
         // ── Settings & Regeneration ──────────────────────────────────────────
 
-        private async Task HandleGetFilters(HttpListenerResponse res) {
+        private async Task HandleGetFilters(HttpListenerResponse res, Action<int, string> done) {
             if (!File.Exists(dbPath)) {
                 await WriteJson(res, 200, new { filters = Array.Empty<string>() });
+                done?.Invoke(200, "0 filters (no db)");
                 return;
             }
             var db = new SessionDatabase(dbPath);
@@ -432,7 +472,9 @@ namespace NINA.Plugin.NightSummary.Server {
                     if (!string.IsNullOrEmpty(img.Filter)) filters.Add(img.Filter);
                 }
             }
-            await WriteJson(res, 200, new { filters = filters.OrderBy(f => f).ToList() });
+            var sorted = filters.OrderBy(f => f).ToList();
+            await WriteJson(res, 200, new { filters = sorted });
+            done?.Invoke(200, $"{sorted.Count} filters");
         }
 
         private async Task HandleGetSettings(HttpListenerResponse res) {
@@ -463,13 +505,16 @@ namespace NINA.Plugin.NightSummary.Server {
             });
         }
 
-        private async Task HandleRegenerateReport(HttpListenerRequest req, HttpListenerResponse res, string sessionId) {
+        private async Task HandleRegenerateReport(HttpListenerRequest req, HttpListenerResponse res, string sessionId, Action<int, string> done) {
             if (sessionService == null) {
                 await WriteJson(res, 500, new { error = "Report generation not available" });
+                done?.Invoke(500, "no session service");
                 return;
             }
 
             try {
+                log?.Info($"Regenerating report for {sessionId}");
+
                 // Read settings overrides from POST body
                 string body = "";
                 using (var reader = new StreamReader(req.InputStream, req.ContentEncoding))
@@ -477,6 +522,9 @@ namespace NINA.Plugin.NightSummary.Server {
 
                 var overrides = string.IsNullOrEmpty(body) ? null :
                     JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(body);
+
+                if (overrides != null)
+                    log?.Debug($"Regenerate {sessionId}: {overrides.Count} setting overrides");
 
                 // Save current settings, apply overrides, generate, restore
                 var s = SettingsManager.Instance.Current;
@@ -489,6 +537,7 @@ namespace NINA.Plugin.NightSummary.Server {
                     var reportData = await sessionService.BuildReportDataAsync(dbPath, sessionId);
                     if (reportData == null) {
                         await WriteJson(res, 404, new { error = "Session not found" });
+                        done?.Invoke(404, sessionId);
                         return;
                     }
 
@@ -497,25 +546,31 @@ namespace NINA.Plugin.NightSummary.Server {
                     await File.WriteAllTextAsync(reportPath, html);
                     await SaveSessionSettings(sessionId, s);
 
+                    log?.Info($"Regenerated report for {sessionId} ({html.Length / 1024}KB)");
                     Logger.Info($"NightSummary: Dashboard regenerated report for {sessionId}");
                     await WriteJson(res, 200, new { status = "ok", sessionId });
+                    done?.Invoke(200, sessionId);
                 } finally {
                     RestoreSettings(s, saved);
                 }
             } catch (Exception ex) {
+                log?.Error($"Regeneration failed for {sessionId}", ex);
                 Logger.Error($"NightSummary: Dashboard report regeneration failed. {ex.Message}");
                 await WriteJson(res, 500, new { error = ex.Message });
+                done?.Invoke(500, ex.Message);
             }
         }
 
-        private async Task HandleRegenerateAll(HttpListenerRequest req, HttpListenerResponse res) {
+        private async Task HandleRegenerateAll(HttpListenerRequest req, HttpListenerResponse res, Action<int, string> done) {
             if (sessionService == null) {
                 await WriteJson(res, 500, new { error = "Report generation not available" });
+                done?.Invoke(500, "no session service");
                 return;
             }
 
             if (regenAllRunning) {
                 await WriteJson(res, 409, new { error = "Regeneration already in progress" });
+                done?.Invoke(409, "already running");
                 return;
             }
 
@@ -529,6 +584,7 @@ namespace NINA.Plugin.NightSummary.Server {
 
                 if (!File.Exists(dbPath)) {
                     await WriteJson(res, 404, new { error = "Database not found" });
+                    done?.Invoke(404, "no db");
                     return;
                 }
 
@@ -544,8 +600,11 @@ namespace NINA.Plugin.NightSummary.Server {
                 regenAllStatus = "running";
                 regenAllError = null;
 
+                log?.Info($"Bulk regeneration started — {sessions.Count} sessions");
+
                 // Return immediately, run in background
                 await WriteJson(res, 202, new { status = "started", total = sessions.Count });
+                done?.Invoke(202, $"{sessions.Count} sessions queued");
 
                 // Fire and forget the actual work
                 _ = Task.Run(async () => {
@@ -566,17 +625,21 @@ namespace NINA.Plugin.NightSummary.Server {
                                 await File.WriteAllTextAsync(reportPath, html);
                                 await SaveSessionSettings(sessions[i].SessionId, s);
                                 regenAllGenerated++;
+                                log?.Debug($"Bulk regen {regenAllCurrent}/{sessions.Count}: {sessions[i].SessionId} OK");
                             } catch (Exception ex) {
+                                log?.Warn($"Bulk regen {regenAllCurrent}/{sessions.Count}: {sessions[i].SessionId} FAILED — {ex.Message}");
                                 Logger.Warning($"NightSummary: Failed to regenerate report for {sessions[i].SessionId}. {ex.Message}");
                                 regenAllFailed++;
                             }
                         }
 
                         regenAllStatus = "done";
+                        log?.Info($"Bulk regeneration complete — {regenAllGenerated} generated, {regenAllFailed} failed");
                         Logger.Info($"NightSummary: Dashboard bulk regeneration complete — {regenAllGenerated} generated, {regenAllFailed} failed");
                     } catch (Exception ex) {
                         regenAllStatus = "error";
                         regenAllError = ex.Message;
+                        log?.Error("Bulk regeneration failed", ex);
                         Logger.Error($"NightSummary: Dashboard bulk regeneration failed. {ex.Message}");
                     } finally {
                         RestoreSettings(s, saved);
@@ -587,8 +650,10 @@ namespace NINA.Plugin.NightSummary.Server {
                 regenAllRunning = false;
                 regenAllStatus = "error";
                 regenAllError = ex.Message;
+                log?.Error("Bulk regeneration failed to start", ex);
                 Logger.Error($"NightSummary: Dashboard bulk regeneration failed. {ex.Message}");
                 await WriteJson(res, 500, new { error = ex.Message });
+                done?.Invoke(500, ex.Message);
             }
         }
 
@@ -603,7 +668,7 @@ namespace NINA.Plugin.NightSummary.Server {
             });
         }
 
-        private async Task HandleGetSessionSettings(HttpListenerResponse res, string sessionId) {
+        private async Task HandleGetSessionSettings(HttpListenerResponse res, string sessionId, Action<int, string> done) {
             var settingsPath = Path.Combine(reportsDir, $"{sessionId}.settings.json");
             if (File.Exists(settingsPath)) {
                 var json = await File.ReadAllTextAsync(settingsPath);
@@ -613,9 +678,11 @@ namespace NINA.Plugin.NightSummary.Server {
                 res.ContentLength64 = bytes.Length;
                 await res.OutputStream.WriteAsync(bytes, 0, bytes.Length);
                 res.Close();
+                done?.Invoke(200, $"{sessionId} (sidecar)");
             } else {
                 // No saved settings — return current plugin settings as fallback
                 await HandleGetSettings(res);
+                done?.Invoke(200, $"{sessionId} (plugin defaults — no sidecar)");
             }
         }
 
@@ -653,7 +720,9 @@ namespace NINA.Plugin.NightSummary.Server {
                 var json = JsonSerializer.Serialize(settings, JsonOpts);
                 var settingsPath = Path.Combine(reportsDir, $"{sessionId}.settings.json");
                 await File.WriteAllTextAsync(settingsPath, json);
+                log?.Debug($"Saved settings sidecar for {sessionId}");
             } catch (Exception ex) {
+                log?.Warn($"Failed to save settings sidecar for {sessionId}: {ex.Message}");
                 Logger.Warning($"NightSummary: Failed to save settings for {sessionId}. {ex.Message}");
             }
         }
@@ -766,12 +835,13 @@ namespace NINA.Plugin.NightSummary.Server {
 
         // ── Stats Summary ──────────────────────────────────────────────────────
 
-        private async Task HandleGetStatsSummary(HttpListenerResponse res) {
+        private async Task HandleGetStatsSummary(HttpListenerResponse res, Action<int, string> done) {
             if (!File.Exists(dbPath)) {
                 await WriteJson(res, 200, new {
                     totalSessions = 0, totalIntegrationHours = 0.0,
                     targetCount = 0, firstSession = (string)null, lastSession = (string)null
                 });
+                done?.Invoke(200, "empty (no db)");
                 return;
             }
 
@@ -795,6 +865,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 firstSession = sessions.Count > 0 ? sessions.Last().SessionStart.ToString("o") : null,
                 lastSession = sessions.Count > 0 ? sessions.First().SessionStart.ToString("o") : null
             });
+            done?.Invoke(200, $"{sessions.Count} sessions, {allTargets.Count} targets");
         }
 
         // ── Tailscale Detection ──────────────────────────────────────────────────

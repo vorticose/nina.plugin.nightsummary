@@ -1,5 +1,14 @@
 // ── Night Summary Dashboard ──
 
+// ── Logging ───────────────────────────────────────────────────────────────
+
+var LOG_PREFIX = '[NightSummary]';
+
+function logDebug() { console.log.apply(console, [LOG_PREFIX].concat(Array.prototype.slice.call(arguments))); }
+function logInfo()  { console.info.apply(console, [LOG_PREFIX].concat(Array.prototype.slice.call(arguments))); }
+function logWarn()  { console.warn.apply(console, [LOG_PREFIX].concat(Array.prototype.slice.call(arguments))); }
+function logError() { console.error.apply(console, [LOG_PREFIX].concat(Array.prototype.slice.call(arguments))); }
+
 // ── Utilities ──────────────────────────────────────────────────────────────
 
 function fmt(seconds) {
@@ -39,9 +48,20 @@ function esc(str) {
 // ── API ────────────────────────────────────────────────────────────────────
 
 function api(path) {
+  var start = performance.now();
+  logDebug('API', path);
   return fetch(path).then(function(r) {
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    return r.json();
+    if (!r.ok) {
+      logError('API', path, '->', r.status, '(' + Math.round(performance.now() - start) + 'ms)');
+      throw new Error('HTTP ' + r.status);
+    }
+    return r.json().then(function(data) {
+      var detail = Array.isArray(data) ? data.length + ' items' :
+        data && data.targets ? data.targets.length + ' targets' :
+        data && data.filters ? data.filters.length + ' filters' : 'ok';
+      logDebug('API', path, '->', r.status, detail, '(' + Math.round(performance.now() - start) + 'ms)');
+      return data;
+    });
   });
 }
 
@@ -71,6 +91,7 @@ function updateThemeButton() {
 
 function route() {
   var hash = location.hash.slice(1) || '/sessions';
+  logInfo('Navigate:', hash);
   var parts = hash.split('?');
   var path = parts[0];
   var params = new URLSearchParams(parts[1] || '');
@@ -133,10 +154,12 @@ function renderSessionList(params) {
     el.innerHTML = '<div class="loading">Loading sessions...</div>';
     api('/api/sessions').then(function(data) {
       sessionsCache = data;
+      logInfo('Sessions loaded:', data.length);
       // Initialize: all targets selected
       getAllTargets().forEach(function(t) { selectedTargets[t] = true; });
       doRenderList(el, sub, fromVal, toVal, sortVal);
     }).catch(function(err) {
+      logError('Failed to load sessions:', err.message);
       el.innerHTML = '<div class="error">Failed to load sessions: ' + esc(err.message) + '</div>';
     });
   } else {
@@ -596,6 +619,7 @@ function renderSessionDetail(sessionId) {
     var detail = results[0];
     currentSettings = results[1];
     cachedFilters = results[2].filters || [];
+    logInfo('Session detail loaded:', sessionId, '— settings keys:', Object.keys(currentSettings).length);
 
     var targets = detail.targets.map(function(t) { return t.target; }).join(', ') || 'Unknown';
     sub.textContent = fmtDate(detail.sessionStart) + ' \u2014 ' + targets;
@@ -630,6 +654,7 @@ function renderSessionDetail(sessionId) {
     el.innerHTML = html;
     bindDetailEvents(sessionId);
   }).catch(function(err) {
+    logError('Failed to load session detail:', sessionId, err.message);
     el.innerHTML = '<a class="back-btn" href="#/sessions">\u2190 Sessions</a>' +
       '<div class="error">Failed to load session: ' + esc(err.message) + '</div>';
   });
@@ -681,9 +706,12 @@ function bindDetailEvents(sessionId) {
   if (regenBtn) {
     regenBtn.addEventListener('click', function() {
       var settings = collectSettings();
+      logInfo('Regenerate report:', sessionId);
+      logDebug('Regenerate settings:', JSON.stringify(settings));
       status.textContent = 'Generating...';
       status.className = 'regen-status';
       regenBtn.disabled = true;
+      var regenStart = performance.now();
 
       fetch('/api/sessions/' + sessionId + '/regenerate', {
         method: 'POST',
@@ -691,6 +719,7 @@ function bindDetailEvents(sessionId) {
         body: JSON.stringify(settings)
       }).then(function(r) { return r.json(); }).then(function(data) {
         if (data.status === 'ok') {
+          logInfo('Regenerate complete:', sessionId, '(' + Math.round(performance.now() - regenStart) + 'ms)');
           status.textContent = 'Done';
           status.className = 'regen-status regen-ok';
           // Reload iframe
@@ -703,10 +732,12 @@ function bindDetailEvents(sessionId) {
             renderSessionDetail(sessionId);
           }
         } else {
+          logError('Regenerate failed:', sessionId, data.error);
           status.textContent = data.error || 'Failed';
           status.className = 'regen-status regen-err';
         }
       }).catch(function(err) {
+        logError('Regenerate error:', sessionId, err.message);
         status.textContent = err.message;
         status.className = 'regen-status regen-err';
       }).finally(function() {
@@ -718,8 +749,10 @@ function bindDetailEvents(sessionId) {
   if (regenAllBtn) {
     regenAllBtn.addEventListener('click', function() {
       if (!confirm('This will regenerate ALL session reports with the current settings, overwriting any existing reports.\n\nThis may take a while for many sessions. Continue?')) {
+        logInfo('Regenerate-all cancelled by user');
         return;
       }
+      logInfo('Regenerate-all started');
       var settings = collectSettings();
       status.textContent = 'Regenerating all...';
       status.className = 'regen-status';
@@ -732,14 +765,17 @@ function bindDetailEvents(sessionId) {
         body: JSON.stringify(settings)
       }).then(function(r) { return r.json(); }).then(function(data) {
         if (data.status === 'started') {
+          logInfo('Regenerate-all accepted:', data.total, 'sessions');
           pollRegenAllProgress(sessionId, regenBtn, regenAllBtn, status);
         } else {
+          logError('Regenerate-all rejected:', data.error);
           status.textContent = data.error || 'Failed to start';
           status.className = 'regen-status regen-err';
           regenAllBtn.disabled = false;
           if (regenBtn) regenBtn.disabled = false;
         }
       }).catch(function(err) {
+        logError('Regenerate-all error:', err.message);
         status.textContent = err.message;
         status.className = 'regen-status regen-err';
         regenAllBtn.disabled = false;
@@ -764,6 +800,7 @@ function pollRegenAllProgress(sessionId, regenBtn, regenAllBtn, statusEl) {
         statusEl.className = 'regen-status';
       } else if (data.status === 'done') {
         clearInterval(poll);
+        logInfo('Regenerate-all complete:', data.generated, 'generated,', data.failed, 'failed');
         statusEl.textContent = 'Done \u2014 ' + data.generated + ' generated' + (data.failed > 0 ? ', ' + data.failed + ' failed' : '');
         statusEl.className = 'regen-status regen-ok';
         regenAllBtn.disabled = false;
@@ -773,6 +810,7 @@ function pollRegenAllProgress(sessionId, regenBtn, regenAllBtn, statusEl) {
         if (iframe) iframe.src = iframe.src.split('?')[0] + '?t=' + Date.now();
       } else if (data.status === 'error') {
         clearInterval(poll);
+        logError('Regenerate-all error:', data.error);
         statusEl.textContent = data.error || 'Failed';
         statusEl.className = 'regen-status regen-err';
         regenAllBtn.disabled = false;
@@ -801,6 +839,7 @@ function renderStats() {
     var summary = results[1];
     var targets = targetData.targets || [];
 
+    logInfo('Stats loaded:', summary.totalSessions, 'sessions,', targets.length, 'targets');
     var html = '';
 
     html += '<div class="detail-section"><h2>All-Time Summary</h2><div class="stat-grid">';
@@ -835,13 +874,16 @@ function renderStats() {
 
     el.innerHTML = html;
   }).catch(function(err) {
+    logError('Failed to load stats:', err.message);
     el.innerHTML = '<div class="error">Failed to load stats: ' + esc(err.message) + '</div>';
   });
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────
 
+logInfo('Dashboard initializing');
 initTheme();
 document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
 window.addEventListener('hashchange', route);
 route();
+logInfo('Dashboard ready');
