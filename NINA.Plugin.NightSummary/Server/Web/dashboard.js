@@ -276,18 +276,22 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
       ' &middot; HFR <span class="stat-val">' + fmtNum(s.avgHfr) + '</span>' +
       ' &middot; <span class="stat-val">' + fmtNum(s.avgGuiding) + '&Prime;</span> guiding';
 
+    var statBoxes = '<div class="card-stats">' +
+      '<div class="card-stat"><div class="card-stat-value">' + s.imageCount + '</div><div class="card-stat-label">Images</div></div>' +
+      '<div class="card-stat"><div class="card-stat-value">' + fmt(s.totalIntegrationSeconds) + '</div><div class="card-stat-label">Integration</div></div>' +
+      '<div class="card-stat"><div class="card-stat-value">' + fmtNum(s.avgHfr) + '</div><div class="card-stat-label">HFR</div></div>' +
+      '<div class="card-stat"><div class="card-stat-value">' + fmtNum(s.avgGuiding) + '&Prime;</div><div class="card-stat-label">Guiding</div></div>' +
+      '</div>';
+
     return '<div class="session-card" onclick="navigate(\'#/sessions/' + s.sessionId + '\')">' +
-      '<div class="card-layout">' +
         '<div class="card-thumbs" id="thumbs-' + s.sessionId + '"></div>' +
-        '<div class="card-info">' +
-          '<div class="session-header">' +
-            '<span class="session-date">' + fmtDate(s.sessionStart) + '</span>' +
-            badge +
-          '</div>' +
-          targetsText +
-          '<div class="card-stats-line">' + statsLine + '</div>' +
+        '<div class="session-header">' +
+          '<span class="session-date">' + fmtDate(s.sessionStart) + '</span>' +
+          badge +
         '</div>' +
-      '</div>' +
+        targetsText +
+        '<div class="card-stats-line">' + statsLine + '</div>' +
+        statBoxes +
     '</div>';
   }).join('');
 

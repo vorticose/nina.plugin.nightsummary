@@ -306,17 +306,11 @@ nav {
 
 .session-card:hover { border-color: var(--accent); }
 
-.card-layout {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-}
-
 .card-thumbs {
   display: flex;
   gap: 6px;
-  flex-shrink: 0;
   flex-wrap: wrap;
+  margin-bottom: 10px;
 }
 
 .card-thumb {
@@ -326,11 +320,6 @@ nav {
   border: 1px solid var(--border);
   object-fit: cover;
   display: block;
-}
-
-.card-info {
-  flex: 1;
-  min-width: 150px;
 }
 
 .session-header {
@@ -364,15 +353,47 @@ nav {
   color: var(--muted);
 }
 
+/* Inline stats line — hidden in expanded, shown in compact */
 .card-stats-line {
   font-size: 13px;
   color: var(--muted);
   margin-top: 4px;
+  display: none;
 }
 
 .card-stats-line .stat-val {
   color: var(--accent);
   font-weight: 600;
+}
+
+/* ── Card stat boxes (expanded mode) ── */
+.card-stats {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.card-stat {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  text-align: center;
+  flex: 1;
+}
+
+.card-stat-value {
+  font-size: 18px;
+  color: var(--accent);
+  font-weight: bold;
+}
+
+.card-stat-label {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-top: 2px;
 }
 
 /* ── View mode toggle ── */
@@ -408,10 +429,10 @@ nav {
 /* ── Compact mode ── */
 .cards-compact .session-card { padding: 8px 12px; margin-bottom: 6px; }
 .cards-compact .card-thumbs { display: none; }
-.cards-compact .card-layout { gap: 0; }
+.cards-compact .card-stats { display: none; }
+.cards-compact .card-stats-line { display: block; font-size: 11px; margin-top: 1px; }
 .cards-compact .session-date { font-size: 14px; }
 .cards-compact .card-targets-line { font-size: 12px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cards-compact .card-stats-line { font-size: 11px; margin-top: 1px; }
 
 /* ── Back button ── */
 .back-btn {
@@ -786,6 +807,8 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   header { flex-direction: column; align-items: center; text-align: center; gap: 8px; }
   header h1 { font-size: 18px; }
   .card-thumbs { display: none; }
+  .card-stats { display: none; }
+  .card-stats-line { display: block; }
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
   .filter-bar { flex-direction: column; align-items: flex-start; }
   .filter-dates { width: 100%; }
