@@ -44,6 +44,14 @@ namespace NINA.Plugin.NightSummary.Server {
             public string dataUri { get; set; }
         }
 
+        // Altitude chart cache: sessionId -> SVG string
+        private readonly Dictionary<string, string> altitudeChartCache = new Dictionary<string, string>();
+
+        // Target color palette (matches ReportGenerator.PreviewColors)
+        private static readonly string[] TargetColors = {
+            "#4e79a7", "#f28e2b", "#e15759", "#76b7b2", "#59a14f", "#edc948"
+        };
+
         private static readonly JsonSerializerOptions JsonOpts = new JsonSerializerOptions {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -171,6 +179,9 @@ namespace NINA.Plugin.NightSummary.Server {
                     } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/thumbnails")) {
                         var sessionId = ExtractSessionId(path, "/thumbnails");
                         await HandleGetSessionThumbnails(res, sessionId, done);
+                    } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/altitude-chart")) {
+                        var sessionId = ExtractSessionId(path, "/altitude-chart");
+                        await HandleGetAltitudeChart(res, sessionId, done);
                     } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/settings")) {
                         var sessionId = ExtractSessionId(path, "/settings");
                         await HandleGetSessionSettings(res, sessionId, done);
@@ -489,6 +500,146 @@ namespace NINA.Plugin.NightSummary.Server {
             done?.Invoke(200, $"{sessionId} — {entries.Count} thumbs");
         }
 
+        private async Task HandleGetAltitudeChart(HttpListenerResponse res, string sessionId, Action<int, string> done) {
+            if (altitudeChartCache.TryGetValue(sessionId, out var cached)) {
+                await WriteJson(res, 200, new { svg = cached });
+                done?.Invoke(200, $"{sessionId} — altitude chart (cached)");
+                return;
+            }
+
+            var reportPath = Path.Combine(reportsDir, $"{sessionId}.html");
+            if (!File.Exists(reportPath)) {
+                altitudeChartCache[sessionId] = "";
+                await WriteJson(res, 200, new { svg = "" });
+                done?.Invoke(200, $"{sessionId} — no report");
+                return;
+            }
+
+            var html = File.ReadAllText(reportPath);
+
+            // Find all altitude chart SVGs and their associated target names
+            var sections = html.Split(new[] { "<div class='target-section'>" }, StringSplitOptions.None);
+            var h3Pattern = new Regex(@"<h3>([^<]+)");
+            var svgPattern = new Regex(@"<svg class='altitude-chart'.*?</svg>", RegexOptions.Singleline);
+            var polylinePattern = new Regex(@"<polyline points='([^']+)' fill='none' stroke='#7eb8f7' stroke-width='2'/>"); // target curve (dark mode)
+            var polylinePatternLight = new Regex(@"<polyline points='([^']+)' fill='none' stroke='#2563b8' stroke-width='2'/>"); // light mode
+            var sessionRectPattern = new Regex(@"<rect x='([\d.]+)' y='\d+' width='([\d.]+)' height='\d+' fill='#7eb8f7' opacity='0\.07'/>");
+            var sessionRectPatternLight = new Regex(@"<rect x='([\d.]+)' y='\d+' width='([\d.]+)' height='\d+' fill='#2563b8' opacity='0\.07'/>");
+
+            // Extract per-target data
+            var targetData = new List<(string Name, string Points, double SessX, double SessW)>();
+            string scaffoldSvg = null; // first chart's full SVG for structural elements
+
+            for (int i = 1; i < sections.Length; i++) {
+                var block = sections[i];
+                var h3Match = h3Pattern.Match(block);
+                var svgMatch = svgPattern.Match(block);
+                if (!h3Match.Success || !svgMatch.Success) continue;
+
+                var targetName = h3Match.Groups[1].Value.Trim();
+                var svgContent = svgMatch.Value;
+
+                if (scaffoldSvg == null) scaffoldSvg = svgContent;
+
+                // Extract the target altitude polyline
+                var polyMatch = polylinePattern.Match(svgContent);
+                if (!polyMatch.Success) polyMatch = polylinePatternLight.Match(svgContent);
+                if (!polyMatch.Success) continue;
+
+                // Extract session window rect position
+                double sessX = 0, sessW = 0;
+                var rectMatch = sessionRectPattern.Match(svgContent);
+                if (!rectMatch.Success) rectMatch = sessionRectPatternLight.Match(svgContent);
+                if (rectMatch.Success) {
+                    sessX = double.Parse(rectMatch.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+                    sessW = double.Parse(rectMatch.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture);
+                }
+
+                targetData.Add((targetName, polyMatch.Groups[1].Value, sessX, sessW));
+            }
+
+            if (targetData.Count == 0 || scaffoldSvg == null) {
+                altitudeChartCache[sessionId] = "";
+                await WriteJson(res, 200, new { svg = "" });
+                done?.Invoke(200, $"{sessionId} — no altitude charts in report");
+                return;
+            }
+
+            // Extract shared structural elements from the first chart
+            var viewBoxMatch = Regex.Match(scaffoldSvg, @"viewBox='([^']+)'");
+            var viewBox = viewBoxMatch.Success ? viewBoxMatch.Groups[1].Value : "0 0 500 248";
+
+            // Extract background, grid lines, axis labels (everything before the target polyline)
+            var moonPattern = new Regex(@"<g><title>Moon Position</title>.*?</g>", RegexOptions.Singleline);
+            var sunsetPattern = new Regex(@"<text[^>]*fill='#f59e0b'[^>]*>.*?</text>", RegexOptions.Singleline);
+            var timeLabelPattern = new Regex(@"<text[^>]*fill='#888'[^>]*>\d{2}:\d{2}</text>");
+
+            // Build combined SVG
+            var sb = new StringBuilder();
+            sb.AppendLine($"<svg viewBox='{viewBox}' xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='xMidYMid meet'>");
+
+            // Background + border (first two rects from scaffold)
+            var bgRects = Regex.Matches(scaffoldSvg, @"<rect x='38'[^/]*/>");
+            foreach (Match r in bgRects) sb.AppendLine(r.Value);
+
+            // Per-target imaging window shading
+            for (int t = 0; t < targetData.Count; t++) {
+                var td = targetData[t];
+                if (td.SessW > 0) {
+                    var color = TargetColors[t % TargetColors.Length];
+                    sb.AppendLine($"<rect x='{td.SessX}' y='20' width='{td.SessW}' height='200' fill='{color}' opacity='0.12'/>");
+                }
+            }
+
+            // Grid lines at 30 and 60 degrees
+            var gridLines = Regex.Matches(scaffoldSvg, @"<line x1='38'[^/]*/>");
+            foreach (Match g in gridLines) sb.AppendLine(g.Value);
+
+            // Altitude axis labels (90, 60, 30, 0)
+            var axisLabels = Regex.Matches(scaffoldSvg, @"<text x='34'[^>]*>[^<]*</text>");
+            foreach (Match a in axisLabels) sb.AppendLine(a.Value);
+
+            // Per-target altitude curves with distinct colors
+            for (int t = 0; t < targetData.Count; t++) {
+                var td = targetData[t];
+                var color = TargetColors[t % TargetColors.Length];
+                sb.AppendLine($"<g><title>{td.Name}</title>");
+                sb.AppendLine($"<polyline points='{td.Points}' fill='none' stroke='transparent' stroke-width='10'/>");
+                sb.AppendLine($"<polyline points='{td.Points}' fill='none' stroke='{color}' stroke-width='2'/>");
+                sb.AppendLine("</g>");
+            }
+
+            // Moon curve (extract from first chart if present)
+            var moonMatch = moonPattern.Match(scaffoldSvg);
+            if (moonMatch.Success) sb.AppendLine(moonMatch.Value);
+
+            // Sunset/sunrise labels
+            foreach (Match s in sunsetPattern.Matches(scaffoldSvg)) sb.AppendLine(s.Value);
+
+            // Time axis labels
+            foreach (Match t in timeLabelPattern.Matches(scaffoldSvg)) sb.AppendLine(t.Value);
+
+            // Legend — small colored lines + target names at top right
+            int legendY = 12;
+            var vbParts = viewBox.Split(' ');
+            int svgW = int.Parse(vbParts[2]);
+            for (int t = 0; t < targetData.Count; t++) {
+                var color = TargetColors[t % TargetColors.Length];
+                var name = targetData[t].Name;
+                int lx = svgW - 10;
+                int ly = legendY + t * 14;
+                sb.AppendLine($"<line x1='{lx - 55}' y1='{ly}' x2='{lx - 42}' y2='{ly}' stroke='{color}' stroke-width='2'/>");
+                sb.AppendLine($"<text x='{lx - 38}' y='{ly + 3}' font-size='9' fill='{color}'>{name}</text>");
+            }
+
+            sb.AppendLine("</svg>");
+
+            var svgResult = sb.ToString();
+            altitudeChartCache[sessionId] = svgResult;
+            await WriteJson(res, 200, new { svg = svgResult });
+            done?.Invoke(200, $"{sessionId} — {targetData.Count} targets in altitude chart");
+        }
+
         private async Task HandleGetTargetStats(HttpListenerResponse res, Action<int, string> done) {
             if (!File.Exists(dbPath)) {
                 await WriteJson(res, 200, new { targets = Array.Empty<object>() });
@@ -600,7 +751,8 @@ namespace NINA.Plugin.NightSummary.Server {
                     await File.WriteAllTextAsync(reportPath, html);
                     await SaveSessionSettings(sessionId, s);
 
-                    thumbnailCache.Remove(sessionId); // invalidate cached thumbs
+                    thumbnailCache.Remove(sessionId);
+                    altitudeChartCache.Remove(sessionId);
                     log?.Info($"Regenerated report for {sessionId} ({html.Length / 1024}KB)");
                     Logger.Info($"NightSummary: Dashboard regenerated report for {sessionId}");
                     await WriteJson(res, 200, new { status = "ok", sessionId });
@@ -680,6 +832,7 @@ namespace NINA.Plugin.NightSummary.Server {
                                 await File.WriteAllTextAsync(reportPath, html);
                                 await SaveSessionSettings(sessions[i].SessionId, s);
                                 thumbnailCache.Remove(sessions[i].SessionId);
+                                altitudeChartCache.Remove(sessions[i].SessionId);
                                 regenAllGenerated++;
                                 log?.Debug($"Bulk regen {regenAllCurrent}/{sessions.Count}: {sessions[i].SessionId} OK");
                             } catch (Exception ex) {

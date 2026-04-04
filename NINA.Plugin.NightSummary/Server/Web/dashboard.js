@@ -284,21 +284,29 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
       '</div>';
 
     return '<div class="session-card" onclick="navigate(\'#/sessions/' + s.sessionId + '\')">' +
-        '<div class="card-thumbs" id="thumbs-' + s.sessionId + '"></div>' +
-        '<div class="session-header">' +
-          '<span class="session-date">' + fmtDate(s.sessionStart) + '</span>' +
-          badge +
+      '<div class="card-body">' +
+        '<div class="card-content">' +
+          '<div class="card-thumbs" id="thumbs-' + s.sessionId + '"></div>' +
+          '<div class="session-header">' +
+            '<span class="session-date">' + fmtDate(s.sessionStart) + '</span>' +
+            badge +
+          '</div>' +
+          targetsText +
+          '<div class="card-stats-line">' + statsLine + '</div>' +
+          statBoxes +
         '</div>' +
-        targetsText +
-        '<div class="card-stats-line">' + statsLine + '</div>' +
-        statBoxes +
+        '<div class="card-altitude" id="altitude-' + s.sessionId + '"></div>' +
+      '</div>' +
     '</div>';
   }).join('');
 
   var modeClass = cardViewMode === 'compact' ? ' cards-compact' : '';
   el.innerHTML = filterHtml + '<div class="cards-container' + modeClass + '">' + cards + '</div>';
   bindListEvents();
-  if (cardViewMode === 'expanded') loadThumbnails(filtered);
+  if (cardViewMode === 'expanded') {
+    loadThumbnails(filtered);
+    loadAltitudeCharts(filtered);
+  }
 }
 
 function loadThumbnails(sessions) {
@@ -324,6 +332,23 @@ function loadThumbnails(sessions) {
       }
     }).catch(function(err) {
       logDebug('Thumb load failed for', s.sessionId, err.message);
+    });
+  });
+}
+
+function loadAltitudeCharts(sessions) {
+  sessions.forEach(function(s) {
+    if (!s.hasReport) return;
+    var container = document.getElementById('altitude-' + s.sessionId);
+    if (!container) return;
+
+    api('/api/sessions/' + s.sessionId + '/altitude-chart').then(function(data) {
+      if (!data || !data.svg) return;
+      var el = document.getElementById('altitude-' + s.sessionId);
+      if (!el) return;
+      el.innerHTML = data.svg;
+    }).catch(function(err) {
+      logDebug('Altitude chart load failed for', s.sessionId, err.message);
     });
   });
 }

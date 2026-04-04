@@ -307,6 +307,29 @@ nav {
 
 .session-card:hover { border-color: var(--accent); }
 
+.card-body {
+  display: flex;
+  gap: 16px;
+  align-items: stretch;
+}
+
+.card-content {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.card-altitude {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  align-items: stretch;
+}
+
+.card-altitude svg {
+  width: 100%;
+  height: 100%;
+}
+
 .card-thumbs {
   display: flex;
   gap: 6px;
@@ -432,6 +455,7 @@ nav {
 /* ── Compact mode ── */
 .cards-compact .session-card { padding: 8px 12px; margin-bottom: 6px; }
 .cards-compact .card-thumbs { display: none; }
+.cards-compact .card-altitude { display: none; }
 .cards-compact .card-stats { display: none; }
 .cards-compact .card-stats-line { display: block; font-size: 11px; margin-top: 1px; }
 .cards-compact .session-date { font-size: 14px; }
@@ -810,6 +834,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   header { flex-direction: column; align-items: center; text-align: center; gap: 8px; }
   header h1 { font-size: 18px; }
   .card-thumbs { display: none; }
+  .card-altitude { display: none; }
   .card-stats { display: none; }
   .card-stats-line { display: block; }
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
