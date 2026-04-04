@@ -195,8 +195,14 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
   var filterHtml = '<div class="filter-bar">' +
     targetDropHtml +
     '<div class="filter-dates">' +
-      '<input type="' + (fromFilter ? 'date' : 'text') + '" id="filter-from" value="' + esc(fromFilter) + '" placeholder="From" readonly onfocus="this.type=\'date\';this.removeAttribute(\'readonly\');this.showPicker?this.showPicker():0">' +
-      '<input type="' + (toFilter ? 'date' : 'text') + '" id="filter-to" value="' + esc(toFilter) + '" placeholder="To" readonly onfocus="this.type=\'date\';this.removeAttribute(\'readonly\');this.showPicker?this.showPicker():0">' +
+      '<div class="date-input-wrap">' +
+        '<input type="' + (fromFilter ? 'date' : 'text') + '" id="filter-from" value="' + esc(fromFilter) + '" placeholder="From" readonly onfocus="this.type=\'date\';this.removeAttribute(\'readonly\');this.showPicker?this.showPicker():0">' +
+        (fromFilter ? '<button class="date-clear" data-target="filter-from" title="Clear">\u00d7</button>' : '') +
+      '</div>' +
+      '<div class="date-input-wrap">' +
+        '<input type="' + (toFilter ? 'date' : 'text') + '" id="filter-to" value="' + esc(toFilter) + '" placeholder="To" readonly onfocus="this.type=\'date\';this.removeAttribute(\'readonly\');this.showPicker?this.showPicker():0">' +
+        (toFilter ? '<button class="date-clear" data-target="filter-to" title="Clear">\u00d7</button>' : '') +
+      '</div>' +
     '</div>' +
     '<div class="filter-sort">' +
       '<select id="filter-sort">' +
@@ -318,20 +324,40 @@ function bindListEvents() {
     dropMenu.addEventListener('click', function(e) { e.stopPropagation(); });
   }
 
-  // Use 'change' on desktop, 'blur' on mobile — iOS fires 'change' when
-  // the date picker opens (before user selects), causing premature filtering
-  var dateEvent = window.innerWidth <= 700 ? 'blur' : 'change';
-  function handleDateEvent(el) {
+  function handleDateBlur(el) {
     if (!el.value) {
-      // Cleared — revert to text input so placeholder shows
       el.type = 'text';
       el.setAttribute('readonly', '');
     }
     refresh();
   }
-  if (fromEl) fromEl.addEventListener(dateEvent, function() { handleDateEvent(fromEl); });
-  if (toEl) toEl.addEventListener(dateEvent, function() { handleDateEvent(toEl); });
+  function handleDateChange(el) {
+    // On mobile, only act on change if value was cleared (reset button) —
+    // ignore change when picker opens with a new value (wait for blur)
+    if (!el.value) handleDateBlur(el);
+  }
+  if (fromEl) {
+    fromEl.addEventListener('blur', function() { handleDateBlur(fromEl); });
+    fromEl.addEventListener('change', function() { handleDateChange(fromEl); });
+  }
+  if (toEl) {
+    toEl.addEventListener('blur', function() { handleDateBlur(toEl); });
+    toEl.addEventListener('change', function() { handleDateChange(toEl); });
+  }
   if (sortEl) sortEl.addEventListener('change', refresh);
+
+  // Clear (×) buttons on date inputs
+  document.querySelectorAll('.date-clear').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var input = document.getElementById(btn.dataset.target);
+      if (input) {
+        input.value = '';
+        input.type = 'text';
+        input.setAttribute('readonly', '');
+      }
+      refresh();
+    });
+  });
 
   if (clearEl) {
     clearEl.addEventListener('click', function() {
