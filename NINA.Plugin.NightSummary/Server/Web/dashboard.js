@@ -321,8 +321,16 @@ function bindListEvents() {
   // Use 'change' on desktop, 'blur' on mobile — iOS fires 'change' when
   // the date picker opens (before user selects), causing premature filtering
   var dateEvent = window.innerWidth <= 700 ? 'blur' : 'change';
-  if (fromEl) fromEl.addEventListener(dateEvent, refresh);
-  if (toEl) toEl.addEventListener(dateEvent, refresh);
+  function handleDateEvent(el) {
+    if (!el.value) {
+      // Cleared — revert to text input so placeholder shows
+      el.type = 'text';
+      el.setAttribute('readonly', '');
+    }
+    refresh();
+  }
+  if (fromEl) fromEl.addEventListener(dateEvent, function() { handleDateEvent(fromEl); });
+  if (toEl) toEl.addEventListener(dateEvent, function() { handleDateEvent(toEl); });
   if (sortEl) sortEl.addEventListener('change', refresh);
 
   if (clearEl) {
