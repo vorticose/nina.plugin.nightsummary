@@ -254,6 +254,29 @@ nav {
   gap: 6px;
 }
 
+.date-input-wrap {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.date-clear {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 2px 0 4px;
+  line-height: 1;
+  min-width: 32px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.date-clear:hover { color: var(--red); }
+
 .filter-sort select {
   background: var(--surface);
   border: 1px solid var(--border);
