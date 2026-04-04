@@ -14,8 +14,8 @@ generates HTML reports summarizing each night's work.
 - **Language**: C# / .NET 8, targeting net8.0-windows
 - **UI**: WPF with WebView2 for HTML report rendering
 - **Database**: SQLite via System.Data.SQLite
-- **NINA version**: 3.0.0
-- **Plugin location on target machine**: `%LOCALAPPDATA%\NINA\Plugins\3.0.0\Night Summary\`
+- **Minimum NINA version**: 3.2.0.9001
+- **Plugin location on target machine**: `%LOCALAPPDATA%\NINA\Plugins\3.0.0\Night Summary\` (folder is named `3.0.0` regardless of NINA version)
 - **Database location**: `%LOCALAPPDATA%\NINA\NightSummary\nightsummary.sqlite`
 
 ## Multi-Agent Rule
@@ -37,10 +37,9 @@ cd .claude/worktrees/<name>
 
 ## Development Setup
 
-- Code is edited on Mac using VS Code
-- Built with `dotnet build NINA.Plugin.NightSummary.sln -c Release`
-- Deployed to a remote Windows machine running NINA
-- The built DLL is copied to the NINA plugins folder on the Windows machine
+- Primary: built and tested on Windows with `dotnet build NINA.Plugin.NightSummary.sln -c Release`
+- Secondary: code edited on Mac via VS Code, deployed to remote Windows machine
+- Deploy scripts in `scripts/` — `dev-v3-deploy.ps1` (local Windows), `deploy.ps1` / `deploy-remote.ps1` (remote)
 - Git is used for source control; GitHub CLI (`gh`) is authenticated for push
 
 ## Architecture Notes
@@ -52,6 +51,8 @@ cd .claude/worktrees/<name>
   use a temp file + `Navigate()` for large reports
 - SVG `fill` attributes do not resolve CSS variables like `var(--text)` -- use
   explicit color variables instead
+- `v3-dev` adds a local HTTP dashboard server (`Server/DashboardServer.cs`) with
+  embedded web assets (`Server/Web/`) -- this is a long-term feature not yet on `dev`
 
 ## Migration System (v2.8.1)
 
@@ -279,7 +280,8 @@ to a separate "coverage push" session — keep coverage growing continuously.
 - New ReportGenerator HTML string → grep production code first to confirm exact string before asserting
 
 ### Coverage baseline
-- Current: **67.5%** logic layer line coverage (316 tests, CI threshold 60%)
+- Current: ~370 tests across 21 test files (CI threshold 60% line coverage)
+- Includes replay integration tests using recorded real-world session data
 - Session/* integration classes excluded from scope (require live NINA)
 - Raise the CI threshold in `.github/workflows/ci.yml` as coverage grows
 
