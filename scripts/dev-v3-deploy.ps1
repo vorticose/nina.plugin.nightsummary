@@ -43,15 +43,35 @@ if (-not $Branch) {
 
 Write-Host "Target branch: $Branch" -ForegroundColor Cyan
 
-# --- Check if NINA has the DLL locked ---
+# --- Check if NINA has the DLL locked, auto-close if needed ---
+$ninaWasRunning = $false
 $targetDll = Join-Path $ninaPluginDir "NINA.Plugin.NightSummary.dll"
 if (Test-Path $targetDll) {
     try {
         $stream = [System.IO.File]::Open($targetDll, 'Open', 'Read', 'None')
         $stream.Close()
     } catch {
-        Write-Host "NINA is running (DLL is locked). Close it before deploying." -ForegroundColor Red
-        exit 1
+        $ninaProc = Get-Process -Name "N.I.N.A" -ErrorAction SilentlyContinue
+        if ($ninaProc) {
+            Write-Host "NINA is running (DLL locked). Closing NINA..." -ForegroundColor Yellow
+            $ninaWasRunning = $true
+            $ninaProc | ForEach-Object { $_.CloseMainWindow() | Out-Null }
+            $timeout = 15
+            $waited = 0
+            while ((Get-Process -Name "N.I.N.A" -ErrorAction SilentlyContinue) -and $waited -lt $timeout) {
+                Start-Sleep -Seconds 1
+                $waited++
+            }
+            if (Get-Process -Name "N.I.N.A" -ErrorAction SilentlyContinue) {
+                Write-Host "NINA did not close gracefully after ${timeout}s. Force killing..." -ForegroundColor Red
+                Stop-Process -Name "N.I.N.A" -Force
+                Start-Sleep -Seconds 2
+            }
+            Write-Host "NINA closed." -ForegroundColor Green
+        } else {
+            Write-Host "DLL is locked but NINA process not found. Close whatever has it locked." -ForegroundColor Red
+            exit 1
+        }
     }
 }
 
@@ -97,5 +117,20 @@ if ($prevBranch -ne $Branch) {
     git -C $repoRoot checkout $prevBranch
 }
 
+# --- Relaunch NINA if it was running ---
+if ($ninaWasRunning) {
+    $ninaExe = Join-Path $env:LOCALAPPDATA "NINA\N.I.N.A.exe"
+    if (-not (Test-Path $ninaExe)) {
+        $ninaExe = Join-Path ${env:ProgramFiles} "N.I.N.A\N.I.N.A.exe"
+    }
+    if (Test-Path $ninaExe) {
+        Write-Host "Relaunching NINA..." -ForegroundColor Cyan
+        Start-Process $ninaExe
+        Write-Host "NINA started." -ForegroundColor Green
+    } else {
+        Write-Host "Could not find NINA executable to relaunch. Start it manually." -ForegroundColor Yellow
+    }
+}
+
 Write-Host ""
-Write-Host "Done. Built from $Branch. Restart NINA to pick up changes." -ForegroundColor White
+Write-Host "Done. Built and deployed from $Branch." -ForegroundColor White
