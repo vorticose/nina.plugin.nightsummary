@@ -432,9 +432,12 @@ namespace NINA.Plugin.NightSummary.Server {
                 return;
             }
             var html = File.ReadAllText(reportPath);
-            // Inject viewport meta tag for mobile iframe rendering if missing
-            if (!html.Contains("name='viewport'") && !html.Contains("name=\"viewport\""))
-                html = html.Replace("<head>", "<head><meta name='viewport' content='width=device-width, initial-scale=1'>");
+            // Inject responsive overrides for iframe rendering — viewport meta tags
+            // don't constrain layout inside iframes, so force content to fit
+            html = html.Replace("</style>",
+                "html,body{max-width:100%!important;overflow-x:hidden!important}" +
+                "img,svg,canvas,video,table{max-width:100%!important;height:auto!important}" +
+                "</style>");
             await WriteHtml(res, 200, html);
             done?.Invoke(200, $"{sessionId} ({html.Length / 1024}KB)");
         }
