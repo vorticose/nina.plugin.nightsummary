@@ -625,14 +625,14 @@ namespace NINA.Plugin.NightSummary.Server {
             // Time axis labels
             foreach (Match t in timeLabelPattern.Matches(scaffoldSvg)) sb.AppendLine(t.Value);
 
-            // Legend — inside plot area, top-right corner
-            int legendStartY = 30;
+            // Legend — inside plot area, top-left corner
+            int legendStartY = 32;
             for (int t = 0; t < targetData.Count; t++) {
                 var color = TargetColors[t % TargetColors.Length];
                 var name = targetData[t].Name;
-                int ly = legendStartY + t * 14;
-                sb.AppendLine($"<line x1='440' y1='{ly}' x2='453' y2='{ly}' stroke='{color}' stroke-width='2'/>");
-                sb.AppendLine($"<text x='456' y='{ly + 3}' font-size='9' fill='{color}'>{name}</text>");
+                int ly = legendStartY + t * 13;
+                sb.AppendLine($"<line x1='42' y1='{ly}' x2='54' y2='{ly}' stroke='{color}' stroke-width='2'/>");
+                sb.AppendLine($"<text x='57' y='{ly + 3}' font-size='9' fill='{color}'>{name}</text>");
             }
 
             sb.AppendLine("</svg>");

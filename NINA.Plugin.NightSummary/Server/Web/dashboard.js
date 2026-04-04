@@ -267,9 +267,7 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
       ? '<span class="card-targets-line" id="targets-' + s.sessionId + '">' + s.targets.map(function(t) { return esc(t); }).join(' \u00b7 ') + '</span>'
       : '<span class="card-targets-line card-targets-none">No targets</span>';
 
-    var badge = s.hasReport
-      ? '<span class="badge badge-green">Report</span>'
-      : '<span class="badge badge-red">No report</span>';
+    var badge = s.hasReport ? '' : '<span class="badge badge-red">No report</span>';
 
     var statsLine = '<span class="stat-val">' + s.imageCount + '</span> imgs' +
       ' &middot; <span class="stat-val">' + fmt(s.totalIntegrationSeconds) + '</span>' +

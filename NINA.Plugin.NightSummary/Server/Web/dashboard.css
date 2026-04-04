@@ -310,6 +310,7 @@ nav {
 .card-body {
   display: flex;
   gap: 16px;
+  position: relative;
 }
 
 .card-content {
@@ -318,8 +319,11 @@ nav {
 }
 
 .card-altitude {
-  flex: 1;
-  min-width: 200px;
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  left: 50%;
 }
 
 .card-altitude svg {
