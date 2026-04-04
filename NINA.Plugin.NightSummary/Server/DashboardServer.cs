@@ -576,24 +576,30 @@ namespace NINA.Plugin.NightSummary.Server {
 
             // Build combined SVG
             var sb = new StringBuilder();
-            sb.AppendLine($"<svg viewBox='{viewBox}' xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='xMidYMid meet'>");
+            sb.AppendLine($"<svg viewBox='{viewBox}' xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='none'>");
 
             // Background + border (first two rects from scaffold)
             var bgRects = Regex.Matches(scaffoldSvg, @"<rect x='38'[^/]*/>");
             foreach (Match r in bgRects) sb.AppendLine(r.Value);
 
-            // Per-target imaging window shading
+            // Per-target imaging window shading with border lines
             for (int t = 0; t < targetData.Count; t++) {
                 var td = targetData[t];
                 if (td.SessW > 0) {
                     var color = TargetColors[t % TargetColors.Length];
-                    sb.AppendLine($"<rect x='{td.SessX}' y='20' width='{td.SessW}' height='200' fill='{color}' opacity='0.12'/>");
+                    sb.AppendLine($"<rect x='{td.SessX}' y='20' width='{td.SessW}' height='200' fill='{color}' opacity='0.15'/>");
+                    // Left and right border lines for the imaging window
+                    sb.AppendLine($"<line x1='{td.SessX}' y1='20' x2='{td.SessX}' y2='220' stroke='{color}' stroke-width='1' opacity='0.6'/>");
+                    var endX = td.SessX + td.SessW;
+                    sb.AppendLine($"<line x1='{endX}' y1='20' x2='{endX}' y2='220' stroke='{color}' stroke-width='1' opacity='0.6'/>");
                 }
             }
 
-            // Grid lines at 30 and 60 degrees
+            // Grid lines at 30 and 60 degrees (exclude min altitude lines which use #cc4444)
             var gridLines = Regex.Matches(scaffoldSvg, @"<line x1='38'[^/]*/>");
-            foreach (Match g in gridLines) sb.AppendLine(g.Value);
+            foreach (Match g in gridLines) {
+                if (!g.Value.Contains("#cc4444")) sb.AppendLine(g.Value);
+            }
 
             // Altitude axis labels (90, 60, 30, 0)
             var axisLabels = Regex.Matches(scaffoldSvg, @"<text x='34'[^>]*>[^<]*</text>");
@@ -619,17 +625,14 @@ namespace NINA.Plugin.NightSummary.Server {
             // Time axis labels
             foreach (Match t in timeLabelPattern.Matches(scaffoldSvg)) sb.AppendLine(t.Value);
 
-            // Legend — small colored lines + target names at top right
-            int legendY = 12;
-            var vbParts = viewBox.Split(' ');
-            int svgW = int.Parse(vbParts[2]);
+            // Legend — inside plot area, top-right corner
+            int legendStartY = 30;
             for (int t = 0; t < targetData.Count; t++) {
                 var color = TargetColors[t % TargetColors.Length];
                 var name = targetData[t].Name;
-                int lx = svgW - 10;
-                int ly = legendY + t * 14;
-                sb.AppendLine($"<line x1='{lx - 55}' y1='{ly}' x2='{lx - 42}' y2='{ly}' stroke='{color}' stroke-width='2'/>");
-                sb.AppendLine($"<text x='{lx - 38}' y='{ly + 3}' font-size='9' fill='{color}'>{name}</text>");
+                int ly = legendStartY + t * 14;
+                sb.AppendLine($"<line x1='440' y1='{ly}' x2='453' y2='{ly}' stroke='{color}' stroke-width='2'/>");
+                sb.AppendLine($"<text x='456' y='{ly + 3}' font-size='9' fill='{color}'>{name}</text>");
             }
 
             sb.AppendLine("</svg>");
