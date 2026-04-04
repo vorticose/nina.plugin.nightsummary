@@ -358,8 +358,18 @@ function bindListEvents() {
 
 var currentSettings = null;
 
-var METRIC_OPTIONS = [
+// X-axis options: Time, Frame Index, then all metrics (matches plugin's ChartXAxisMetric index)
+var XAXIS_OPTIONS = [
   'Time', 'Frame Index', 'HFR', 'FWHM', 'Guiding RMS', 'Focuser Temp',
+  'Ambient Temp', 'Eccentricity', 'Altitude', 'Airmass', 'Humidity',
+  'Focuser Position', 'Sky Quality', 'Cloud Cover', 'Camera Temp',
+  'Dew Point', 'Wind Speed', 'Pressure', 'Star Count', 'Azimuth', 'Seeing FWHM'
+];
+
+// Primary/secondary options: metrics only, no Time/Frame Index
+// (matches plugin's ChartPrimaryMetric / ChartSecondaryMetric index)
+var PRIMARY_OPTIONS = [
+  'HFR', 'FWHM', 'Guiding RMS', 'Focuser Temp',
   'Ambient Temp', 'Eccentricity', 'Altitude', 'Airmass', 'Humidity',
   'Focuser Position', 'Sky Quality', 'Cloud Cover', 'Camera Temp',
   'Dew Point', 'Wind Speed', 'Pressure', 'Star Count', 'Azimuth', 'Seeing FWHM'
@@ -375,10 +385,11 @@ var CLASSIFICATION_CODES = ['A', 'B', 'N', 'X'];
 
 var cachedFilters = null;
 
-function metricSelect(id, value, includeNone) {
-  var html = '<select id="' + id + '" class="settings-select">';
+function buildSelect(idOrClass, isClass, options, value, includeNone) {
+  var attr = isClass ? 'class="' + idOrClass + ' settings-select"' : 'id="' + idOrClass + '" class="settings-select"';
+  var html = '<select ' + attr + '>';
   if (includeNone) html += '<option value="0"' + (value === 0 ? ' selected' : '') + '>None</option>';
-  METRIC_OPTIONS.forEach(function(m, i) {
+  options.forEach(function(m, i) {
     var val = includeNone ? i + 1 : i;
     html += '<option value="' + val + '"' + (value === val ? ' selected' : '') + '>' + esc(m) + '</option>';
   });
@@ -386,16 +397,13 @@ function metricSelect(id, value, includeNone) {
   return html;
 }
 
-function metricSelectClass(cls, value, includeNone) {
-  var html = '<select class="' + cls + ' settings-select">';
-  if (includeNone) html += '<option value="0"' + (value === 0 ? ' selected' : '') + '>None</option>';
-  METRIC_OPTIONS.forEach(function(m, i) {
-    var val = includeNone ? i + 1 : i;
-    html += '<option value="' + val + '"' + (value === val ? ' selected' : '') + '>' + esc(m) + '</option>';
-  });
-  html += '</select>';
-  return html;
-}
+function xAxisSelect(id, value) { return buildSelect(id, false, XAXIS_OPTIONS, value, false); }
+function primarySelect(id, value) { return buildSelect(id, false, PRIMARY_OPTIONS, value, false); }
+function secondarySelect(id, value) { return buildSelect(id, false, PRIMARY_OPTIONS, value, true); }
+
+function xAxisSelectClass(cls, value) { return buildSelect(cls, true, XAXIS_OPTIONS, value, false); }
+function primarySelectClass(cls, value) { return buildSelect(cls, true, PRIMARY_OPTIONS, value, false); }
+function secondarySelectClass(cls, value) { return buildSelect(cls, true, PRIMARY_OPTIONS, value, true); }
 
 function settingsCheckbox(id, label, checked) {
   return '<label class="settings-check"><input type="checkbox" id="' + id + '"' +
@@ -475,11 +483,11 @@ function buildSettingsPanel(settings, filters) {
   // Row 3: Primary metric chart
   html += '<div class="settings-row">' +
     '<div class="settings-group"><label class="settings-label">Chart X-Axis</label>' +
-      metricSelect('s-xAxis', s.chartXAxisMetric, false) + '</div>' +
+      xAxisSelect('s-xAxis', s.chartXAxisMetric) + '</div>' +
     '<div class="settings-group"><label class="settings-label">Primary Metric</label>' +
-      metricSelect('s-primary', s.chartPrimaryMetric, false) + '</div>' +
+      primarySelect('s-primary', s.chartPrimaryMetric) + '</div>' +
     '<div class="settings-group"><label class="settings-label">Secondary Metric</label>' +
-      metricSelect('s-secondary', s.chartSecondaryMetric, true) + '</div>' +
+      secondarySelect('s-secondary', s.chartSecondaryMetric) + '</div>' +
   '</div>';
 
   // Row 4: Additional metric charts
@@ -489,9 +497,9 @@ function buildSettingsPanel(settings, filters) {
   additionalCharts.forEach(function(c, i) {
     html += '<div class="chart-row" data-idx="' + i + '">' +
       '<span class="chart-row-label">Chart ' + (i + 2) + '</span>' +
-      metricSelectClass('ac-xAxis', c.xAxis, false) +
-      metricSelectClass('ac-primary', c.primary, false) +
-      metricSelectClass('ac-secondary', c.secondary, true) +
+      xAxisSelectClass('ac-xAxis', c.xAxis) +
+      primarySelectClass('ac-primary', c.primary) +
+      secondarySelectClass('ac-secondary', c.secondary) +
       '<button class="remove-chart-btn" data-idx="' + i + '">\u2715</button>' +
     '</div>';
   });
@@ -685,9 +693,9 @@ function bindDetailEvents(sessionId) {
       row.className = 'chart-row';
       row.dataset.idx = idx;
       row.innerHTML = '<span class="chart-row-label">Chart ' + (idx + 2) + '</span>' +
-        metricSelectClass('ac-xAxis', 0, false) +
-        metricSelectClass('ac-primary', 0, false) +
-        metricSelectClass('ac-secondary', 0, true) +
+        xAxisSelectClass('ac-xAxis', 0) +
+        primarySelectClass('ac-primary', 0) +
+        secondarySelectClass('ac-secondary', 0) +
         '<button class="remove-chart-btn">\u2715</button>';
       container.appendChild(row);
       row.querySelector('.remove-chart-btn').addEventListener('click', function() {
