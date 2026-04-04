@@ -133,7 +133,6 @@ nav {
   align-items: center;
 }
 
-.filter-bar input[type="text"],
 .filter-bar input[type="date"] {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -142,30 +141,97 @@ nav {
   border-radius: 6px;
   font-size: 13px;
   font-family: Arial, sans-serif;
+  min-width: 140px;
 }
-
-.filter-bar input[type="text"] { min-width: 180px; }
-.filter-bar input[type="date"] { min-width: 140px; }
 
 .filter-bar input:focus {
   outline: none;
   border-color: var(--accent);
 }
 
-.filter-bar button {
+/* ── Target filter ── */
+.target-filter {
   background: var(--surface);
   border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+}
+
+.target-filter-label {
+  font-size: 11px;
   color: var(--muted);
-  padding: 6px 12px;
-  border-radius: 6px;
-  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.target-filter-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.target-check {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.target-check input {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.target-filter-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.filter-link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
   font-family: Arial, sans-serif;
 }
 
-.filter-bar button:hover {
-  border-color: var(--accent);
+.filter-link:hover { text-decoration: underline; }
+
+/* ── Filter bar ── */
+.filter-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.filter-dates {
+  display: flex;
+  gap: 6px;
+}
+
+.filter-sort select {
+  background: var(--surface);
+  border: 1px solid var(--border);
   color: var(--text);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: Arial, sans-serif;
+  cursor: pointer;
+}
+
+.filter-sort select:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 
 /* ── Session cards ── */
@@ -224,12 +290,34 @@ nav {
   background: transparent;
 }
 
-.session-stats {
+/* ── Card stat blocks (matching report stat-box style) ── */
+.card-stats {
   display: flex;
-  gap: 16px;
-  margin-top: 6px;
-  font-size: 12px;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.card-stat {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  text-align: center;
+  flex: 1;
+}
+
+.card-stat-value {
+  font-size: 18px;
+  color: var(--accent);
+  font-weight: bold;
+}
+
+.card-stat-label {
+  font-size: 10px;
   color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-top: 2px;
 }
 
 /* ── Back button ── */
@@ -251,11 +339,17 @@ nav {
 }
 
 /* ── Report-first detail view ── */
+
+/* When viewing a report, hide the footer and kill outer scroll */
+body.report-view { overflow: hidden; }
+body.report-view .footnote { display: none; }
+body.report-view .shell { padding-bottom: 0; }
+
 .report-nav {
   display: flex;
   align-items: center;
   gap: 16px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   flex-wrap: wrap;
 }
 
@@ -308,9 +402,10 @@ nav {
 
 .report-iframe {
   width: 100%;
-  height: calc(100vh - 140px);
+  height: calc(100vh - 120px);
   border: none;
   background: #fff;
+  display: block;
 }
 
 /* ── Stats page ── */
@@ -406,11 +501,12 @@ nav {
 @media (max-width: 700px) {
   .shell { padding: 12px; }
   header h1 { font-size: 18px; }
-  .session-stats { gap: 10px; }
+  .card-stats { flex-wrap: wrap; }
+  .card-stat { min-width: 70px; }
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
-  .filter-bar { flex-direction: column; }
-  .filter-bar input[type="text"],
-  .filter-bar input[type="date"] { min-width: unset; width: 100%; }
+  .filter-bar { flex-direction: column; align-items: flex-start; }
+  .filter-dates { width: 100%; }
+  .filter-bar input[type="date"] { min-width: unset; flex: 1; }
   .report-nav { flex-direction: column; align-items: flex-start; }
   .report-iframe { height: calc(100vh - 180px); }
 }

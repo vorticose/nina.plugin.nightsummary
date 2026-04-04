@@ -4,7 +4,12 @@
 
 function fmt(seconds) {
   if (!seconds || seconds <= 0) return '--';
-  return (seconds / 3600).toFixed(1) + 'h';
+  var h = Math.floor(seconds / 3600);
+  var m = Math.floor((seconds % 3600) / 60);
+  var s = Math.floor(seconds % 60);
+  if (h > 0) return m > 0 ? h + 'h ' + m + 'm' : h + 'h';
+  if (m > 0) return s > 0 ? m + 'm ' + s + 's' : m + 'm';
+  return s + 's';
 }
 
 function fmtNum(n, decimals) {
@@ -75,9 +80,13 @@ function route() {
       path.startsWith('/' + el.dataset.page));
   });
 
+  // Toggle report-view mode on body to kill outer scroll
+  var isReport = path.match(/^\/sessions\/[^/]+$/);
+  document.body.classList.toggle('report-view', !!isReport);
+
   if (path === '/sessions') {
     renderSessionList(params);
-  } else if (path.match(/^\/sessions\/[^/]+$/)) {
+  } else if (isReport) {
     renderSessionDetail(path.split('/')[2]);
   } else if (path === '/stats') {
     renderStats();
@@ -102,64 +111,112 @@ function statBox(value, label) {
 // ── Sessions List Page ─────────────────────────────────────────────────────
 
 var sessionsCache = [];
+var selectedTargets = {}; // target name -> boolean (true = selected)
+
+function getAllTargets() {
+  var targets = {};
+  sessionsCache.forEach(function(s) {
+    s.targets.forEach(function(t) { targets[t] = true; });
+  });
+  return Object.keys(targets).sort();
+}
 
 function renderSessionList(params) {
   var el = document.getElementById('content');
   var sub = document.getElementById('page-subtitle');
 
-  var targetVal = params ? (params.get('target') || '') : '';
   var fromVal = params ? (params.get('from') || '') : '';
   var toVal = params ? (params.get('to') || '') : '';
-
-  var filterHtml = '<div class="filter-bar">' +
-    '<input type="text" id="filter-target" placeholder="Search targets..." value="' + esc(targetVal) + '">' +
-    '<input type="date" id="filter-from" value="' + esc(fromVal) + '">' +
-    '<input type="date" id="filter-to" value="' + esc(toVal) + '">' +
-    '<button id="filter-clear">Clear</button>' +
-    '</div>';
+  var sortVal = params ? (params.get('sort') || 'date-desc') : 'date-desc';
 
   if (sessionsCache.length === 0) {
-    el.innerHTML = filterHtml + '<div class="loading">Loading sessions...</div>';
+    el.innerHTML = '<div class="loading">Loading sessions...</div>';
     api('/api/sessions').then(function(data) {
       sessionsCache = data;
-      renderSessionCards(el, filterHtml, targetVal, fromVal, toVal);
-      sub.textContent = sessionsCache.length + ' sessions';
-      bindFilterEvents();
+      // Initialize: all targets selected
+      getAllTargets().forEach(function(t) { selectedTargets[t] = true; });
+      doRenderList(el, sub, fromVal, toVal, sortVal);
     }).catch(function(err) {
-      el.innerHTML = filterHtml + '<div class="error">Failed to load sessions: ' + esc(err.message) + '</div>';
+      el.innerHTML = '<div class="error">Failed to load sessions: ' + esc(err.message) + '</div>';
     });
   } else {
-    renderSessionCards(el, filterHtml, targetVal, fromVal, toVal);
-    sub.textContent = sessionsCache.length + ' sessions';
-    bindFilterEvents();
+    doRenderList(el, sub, fromVal, toVal, sortVal);
   }
 }
 
-function renderSessionCards(el, filterHtml, targetFilter, fromFilter, toFilter) {
+function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
+  // Build target filter checkboxes
+  var allTargets = getAllTargets();
+  var targetFilterHtml = '';
+  if (allTargets.length > 0) {
+    targetFilterHtml = '<div class="target-filter">' +
+      '<div class="target-filter-label">Targets</div>' +
+      '<div class="target-filter-list">';
+    allTargets.forEach(function(t) {
+      var checked = selectedTargets[t] !== false ? 'checked' : '';
+      targetFilterHtml += '<label class="target-check">' +
+        '<input type="checkbox" data-target="' + esc(t) + '" ' + checked + '>' +
+        '<span>' + esc(t) + '</span></label>';
+    });
+    targetFilterHtml += '</div>' +
+      '<div class="target-filter-actions">' +
+        '<button id="targets-all" class="filter-link">All</button>' +
+        '<button id="targets-none" class="filter-link">None</button>' +
+      '</div></div>';
+  }
+
+  var filterHtml = '<div class="filter-bar">' +
+    '<div class="filter-dates">' +
+      '<input type="date" id="filter-from" value="' + esc(fromFilter) + '" title="From date">' +
+      '<input type="date" id="filter-to" value="' + esc(toFilter) + '" title="To date">' +
+    '</div>' +
+    '<div class="filter-sort">' +
+      '<select id="filter-sort">' +
+        '<option value="date-desc"' + (sortBy === 'date-desc' ? ' selected' : '') + '>Newest first</option>' +
+        '<option value="date-asc"' + (sortBy === 'date-asc' ? ' selected' : '') + '>Oldest first</option>' +
+        '<option value="integration"' + (sortBy === 'integration' ? ' selected' : '') + '>Most integration</option>' +
+        '<option value="images"' + (sortBy === 'images' ? ' selected' : '') + '>Most images</option>' +
+      '</select>' +
+    '</div>' +
+    '<button id="filter-clear" class="filter-link">Clear filters</button>' +
+    '</div>';
+
+  // Filter sessions
+  var activeTargets = {};
+  allTargets.forEach(function(t) {
+    if (selectedTargets[t] !== false) activeTargets[t] = true;
+  });
+  var allSelected = Object.keys(activeTargets).length === allTargets.length;
+
   var filtered = sessionsCache.filter(function(s) {
-    if (targetFilter) {
-      var q = targetFilter.toLowerCase();
-      var match = s.targets.some(function(t) {
-        return t.toLowerCase().indexOf(q) >= 0;
-      });
+    if (!allSelected) {
+      var match = s.targets.some(function(t) { return activeTargets[t]; });
       if (!match) return false;
     }
-    if (fromFilter) {
-      if (s.sessionStart.substring(0, 10) < fromFilter) return false;
-    }
-    if (toFilter) {
-      if (s.sessionStart.substring(0, 10) > toFilter) return false;
-    }
+    if (fromFilter && s.sessionStart.substring(0, 10) < fromFilter) return false;
+    if (toFilter && s.sessionStart.substring(0, 10) > toFilter) return false;
     return true;
   });
 
-  if (filtered.length === 0 && sessionsCache.length === 0) {
+  // Sort
+  filtered.sort(function(a, b) {
+    if (sortBy === 'date-asc') return a.sessionStart.localeCompare(b.sessionStart);
+    if (sortBy === 'integration') return (b.totalIntegrationSeconds || 0) - (a.totalIntegrationSeconds || 0);
+    if (sortBy === 'images') return (b.imageCount || 0) - (a.imageCount || 0);
+    return b.sessionStart.localeCompare(a.sessionStart); // date-desc default
+  });
+
+  sub.textContent = filtered.length + ' of ' + sessionsCache.length + ' sessions';
+
+  if (sessionsCache.length === 0) {
     el.innerHTML = filterHtml + '<div class="empty">No sessions recorded yet.</div>';
+    bindListEvents();
     return;
   }
 
   if (filtered.length === 0) {
-    el.innerHTML = filterHtml + '<div class="empty">No sessions match the current filters.</div>';
+    el.innerHTML = targetFilterHtml + filterHtml + '<div class="empty">No sessions match the current filters.</div>';
+    bindListEvents();
     return;
   }
 
@@ -178,50 +235,76 @@ function renderSessionCards(el, filterHtml, targetFilter, fromFilter, toFilter) 
         badge +
       '</div>' +
       '<div class="session-targets">' + targetPills + '</div>' +
-      '<div class="session-stats">' +
-        '<span>' + fmt(s.totalIntegrationSeconds) + ' int</span>' +
-        '<span>HFR ' + fmtNum(s.avgHfr) + '</span>' +
-        '<span>Guiding ' + fmtNum(s.avgGuiding) + '"</span>' +
-        '<span>' + s.imageCount + ' images</span>' +
+      '<div class="card-stats">' +
+        '<div class="card-stat"><div class="card-stat-value">' + s.imageCount + '</div><div class="card-stat-label">Images</div></div>' +
+        '<div class="card-stat"><div class="card-stat-value">' + fmt(s.totalIntegrationSeconds) + '</div><div class="card-stat-label">Integration</div></div>' +
+        '<div class="card-stat"><div class="card-stat-value">' + fmtNum(s.avgHfr) + '</div><div class="card-stat-label">HFR</div></div>' +
+        '<div class="card-stat"><div class="card-stat-value">' + fmtNum(s.avgGuiding) + '"</div><div class="card-stat-label">Guiding</div></div>' +
       '</div>' +
     '</div>';
   }).join('');
 
-  el.innerHTML = filterHtml + cards;
+  el.innerHTML = targetFilterHtml + filterHtml + cards;
+  bindListEvents();
 }
 
-function bindFilterEvents() {
-  var targetEl = document.getElementById('filter-target');
+function bindListEvents() {
   var fromEl = document.getElementById('filter-from');
   var toEl = document.getElementById('filter-to');
+  var sortEl = document.getElementById('filter-sort');
   var clearEl = document.getElementById('filter-clear');
+  var allBtn = document.getElementById('targets-all');
+  var noneBtn = document.getElementById('targets-none');
 
-  if (!targetEl) return;
-
-  function applyFilters() {
-    var parts = [];
-    if (targetEl.value) parts.push('target=' + encodeURIComponent(targetEl.value));
-    if (fromEl.value) parts.push('from=' + fromEl.value);
-    if (toEl.value) parts.push('to=' + toEl.value);
-    var hash = '/sessions' + (parts.length > 0 ? '?' + parts.join('&') : '');
-    history.replaceState(null, '', '#' + hash);
-    var el = document.getElementById('content');
-    var filterHtml = el.querySelector('.filter-bar').outerHTML;
-    renderSessionCards(el, filterHtml, targetEl.value, fromEl.value, toEl.value);
-    bindFilterEvents();
+  function getFilters() {
+    return {
+      from: fromEl ? fromEl.value : '',
+      to: toEl ? toEl.value : '',
+      sort: sortEl ? sortEl.value : 'date-desc'
+    };
   }
 
-  targetEl.addEventListener('input', applyFilters);
-  fromEl.addEventListener('change', applyFilters);
-  toEl.addEventListener('change', applyFilters);
+  function refresh() {
+    var f = getFilters();
+    var el = document.getElementById('content');
+    var sub = document.getElementById('page-subtitle');
+    doRenderList(el, sub, f.from, f.to, f.sort);
+  }
 
-  clearEl.addEventListener('click', function() {
-    targetEl.value = '';
-    fromEl.value = '';
-    toEl.value = '';
-    history.replaceState(null, '', '#/sessions');
-    applyFilters();
+  if (fromEl) fromEl.addEventListener('change', refresh);
+  if (toEl) toEl.addEventListener('change', refresh);
+  if (sortEl) sortEl.addEventListener('change', refresh);
+
+  if (clearEl) {
+    clearEl.addEventListener('click', function() {
+      getAllTargets().forEach(function(t) { selectedTargets[t] = true; });
+      var el = document.getElementById('content');
+      var sub = document.getElementById('page-subtitle');
+      doRenderList(el, sub, '', '', 'date-desc');
+    });
+  }
+
+  // Target checkboxes
+  document.querySelectorAll('.target-check input').forEach(function(cb) {
+    cb.addEventListener('change', function() {
+      selectedTargets[this.dataset.target] = this.checked;
+      refresh();
+    });
   });
+
+  if (allBtn) {
+    allBtn.addEventListener('click', function() {
+      getAllTargets().forEach(function(t) { selectedTargets[t] = true; });
+      refresh();
+    });
+  }
+
+  if (noneBtn) {
+    noneBtn.addEventListener('click', function() {
+      getAllTargets().forEach(function(t) { selectedTargets[t] = false; });
+      refresh();
+    });
+  }
 }
 
 // ── Session Detail Page (Report-First) ────────────────────────────────────
