@@ -309,7 +309,7 @@ nav {
 .card-layout {
   display: flex;
   gap: 12px;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .card-thumbs {
@@ -317,12 +317,12 @@ nav {
   gap: 6px;
   flex-shrink: 0;
   flex-wrap: wrap;
-  max-width: 120px;
+  max-width: 220px;
 }
 
 .card-thumb {
-  width: 48px;
-  height: 48px;
+  width: 100px;
+  height: 100px;
   border-radius: 6px;
   border: 1px solid var(--border);
   object-fit: cover;
@@ -341,7 +341,7 @@ nav {
 }
 
 .session-date {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--text);
 }
@@ -356,12 +356,9 @@ nav {
 .badge-red { background: rgba(248,81,73,0.15); color: var(--red); }
 
 .card-targets-line {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--accent-light);
-  margin-top: 3px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  margin-top: 4px;
 }
 
 .card-targets-none {
@@ -369,15 +366,53 @@ nav {
 }
 
 .card-stats-line {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
-  margin-top: 2px;
+  margin-top: 4px;
 }
 
 .card-stats-line .stat-val {
   color: var(--accent);
   font-weight: 600;
 }
+
+/* ── View mode toggle ── */
+.view-toggle {
+  display: flex;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.view-toggle-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  padding: 5px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: Arial, sans-serif;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.view-toggle-btn:hover { color: var(--text); }
+
+.view-toggle-btn.active {
+  background: var(--bg);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ── Compact mode ── */
+.cards-compact .session-card { padding: 8px 12px; margin-bottom: 6px; }
+.cards-compact .card-thumbs { display: none; }
+.cards-compact .card-layout { gap: 0; }
+.cards-compact .session-date { font-size: 14px; }
+.cards-compact .card-targets-line { font-size: 12px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cards-compact .card-stats-line { font-size: 11px; margin-top: 1px; }
 
 /* ── Back button ── */
 .back-btn {

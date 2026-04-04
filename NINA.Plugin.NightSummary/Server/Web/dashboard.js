@@ -134,6 +134,7 @@ function statBox(value, label) {
 var sessionsCache = [];
 var selectedTargets = {}; // target name -> boolean (true = selected)
 var showEmptySessions = false; // hide 0-image sessions by default
+var cardViewMode = localStorage.getItem('ns-card-view') || 'expanded'; // 'expanded' or 'compact'
 
 function getAllTargets() {
   var targets = {};
@@ -215,6 +216,10 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
     '</div>' +
     '<label class="target-check" title="Include sessions with 0 captured images"><input type="checkbox" id="filter-empty"' + (showEmptySessions ? ' checked' : '') + '><span>Show empty</span></label>' +
     '<button id="filter-clear" class="filter-link">Clear filters</button>' +
+    '<div class="view-toggle">' +
+      '<button class="view-toggle-btn' + (cardViewMode === 'compact' ? ' active' : '') + '" data-view="compact">Compact</button>' +
+      '<button class="view-toggle-btn' + (cardViewMode === 'expanded' ? ' active' : '') + '" data-view="expanded">Expanded</button>' +
+    '</div>' +
     '</div>';
 
   // Filter sessions
@@ -286,9 +291,10 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
     '</div>';
   }).join('');
 
-  el.innerHTML = filterHtml + cards;
+  var modeClass = cardViewMode === 'compact' ? ' cards-compact' : '';
+  el.innerHTML = filterHtml + '<div class="cards-container' + modeClass + '">' + cards + '</div>';
   bindListEvents();
-  loadThumbnails(filtered);
+  if (cardViewMode === 'expanded') loadThumbnails(filtered);
 }
 
 function loadThumbnails(sessions) {
@@ -427,6 +433,15 @@ function bindListEvents() {
       refresh();
     });
   }
+
+  // View mode toggle
+  document.querySelectorAll('.view-toggle-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      cardViewMode = this.dataset.view;
+      localStorage.setItem('ns-card-view', cardViewMode);
+      refresh();
+    });
+  });
 }
 
 // ── Session Detail Page (Report-First) ────────────────────────────────────
