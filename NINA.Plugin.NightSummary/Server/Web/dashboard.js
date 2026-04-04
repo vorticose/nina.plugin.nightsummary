@@ -377,7 +377,7 @@ var PRIMARY_OPTIONS = [
 
 var EQUIPMENT_FIELDS = [
   'Camera', 'Telescope', 'Mount', 'Filter Wheel', 'Focuser', 'Rotator',
-  'Guider', 'Dome', 'Flat Device', 'Safety Monitor', 'Weather', 'Switch'
+  'Guider', 'Dome', 'Flat Panel', 'Safety Monitor', 'Weather', 'Switch'
 ];
 
 var CLASSIFICATION_OPTIONS = ['Auto', 'Broadband', 'Narrowband', 'Exclude'];
