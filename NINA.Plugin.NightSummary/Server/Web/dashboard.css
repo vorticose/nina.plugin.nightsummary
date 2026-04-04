@@ -46,7 +46,7 @@ a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
 /* ── Shell ── */
-.shell { max-width: 1200px; margin: 0 auto; padding: 20px; padding-left: max(20px, env(safe-area-inset-left)); padding-right: max(20px, env(safe-area-inset-right)); }
+.shell { max-width: 1800px; margin: 0 auto; padding: 20px; padding-left: max(20px, env(safe-area-inset-left)); padding-right: max(20px, env(safe-area-inset-right)); }
 
 /* ── Header ── */
 header {
