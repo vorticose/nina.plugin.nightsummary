@@ -36,7 +36,7 @@ Whether you run a remote observatory or image from your backyard, Night Summary 
 3. Click **Install**
 4. Restart NINA when prompted
 
-Can also be downloaded dirctly from the GitHub repo.  
+Can also be downloaded directly from the GitHub repo.  
 
 <https://github.com/vorticose/nina.plugin.nightsummary/releases>
 
