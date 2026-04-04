@@ -424,8 +424,6 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   border-radius: 8px;
   padding: 14px 16px;
   margin-bottom: 8px;
-  max-height: 50vh;
-  overflow-y: auto;
   flex-shrink: 0;
 }
 
