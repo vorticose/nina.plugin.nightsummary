@@ -249,7 +249,7 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
     '</div>';
   }).join('');
 
-  el.innerHTML = targetFilterHtml + filterHtml + cards;
+  el.innerHTML = filterHtml + cards;
   bindListEvents();
 }
 
