@@ -630,7 +630,11 @@ function loadReportIntoShadow(sessionId) {
 
       if (styleMatch) {
         var styleEl = document.createElement('style');
-        styleEl.textContent = styleMatch[1];
+        // Original report styles + responsive overrides for shadow DOM context
+        styleEl.textContent = styleMatch[1] +
+          'svg{max-width:100%;height:auto;}' +
+          'img{max-width:100%;height:auto;}' +
+          'table{max-width:100%;overflow-x:auto;display:block;}';
         shadow.appendChild(styleEl);
       }
 
