@@ -24,13 +24,6 @@ function fmtDateTime(iso) {
   return fmtDate(iso) + '  ' + fmtTime(iso);
 }
 
-function fmtDuration(startIso, endIso) {
-  var ms = new Date(endIso) - new Date(startIso);
-  var h = Math.floor(ms / 3600000);
-  var m = Math.floor((ms % 3600000) / 60000);
-  return h > 0 ? h + 'h ' + m + 'm' : m + 'm';
-}
-
 function esc(str) {
   if (!str) return '';
   var d = document.createElement('div');
@@ -77,7 +70,6 @@ function route() {
   var path = parts[0];
   var params = new URLSearchParams(parts[1] || '');
 
-  // Update nav active state
   document.querySelectorAll('.nav-link').forEach(function(el) {
     el.classList.toggle('active', hash.startsWith('#' + el.getAttribute('href').slice(1)) ||
       path.startsWith('/' + el.dataset.page));
@@ -107,18 +99,6 @@ function statBox(value, label) {
     '</div>';
 }
 
-function detailItem(label, value) {
-  return '<div class="detail-item">' +
-    '<div class="label">' + esc(label) + '</div>' +
-    '<div class="value">' + esc(String(value != null ? value : '--')) + '</div>' +
-    '</div>';
-}
-
-function metaSpan(label, value) {
-  return '<span><span class="meta-label">' + esc(label) + ' </span>' +
-    '<span class="meta-value">' + esc(String(value)) + '</span></span>';
-}
-
 // ── Sessions List Page ─────────────────────────────────────────────────────
 
 var sessionsCache = [];
@@ -127,7 +107,6 @@ function renderSessionList(params) {
   var el = document.getElementById('content');
   var sub = document.getElementById('page-subtitle');
 
-  // Build filter bar
   var targetVal = params ? (params.get('target') || '') : '';
   var fromVal = params ? (params.get('from') || '') : '';
   var toVal = params ? (params.get('to') || '') : '';
@@ -159,18 +138,17 @@ function renderSessionList(params) {
 function renderSessionCards(el, filterHtml, targetFilter, fromFilter, toFilter) {
   var filtered = sessionsCache.filter(function(s) {
     if (targetFilter) {
+      var q = targetFilter.toLowerCase();
       var match = s.targets.some(function(t) {
-        return t.toLowerCase().indexOf(targetFilter.toLowerCase()) >= 0;
+        return t.toLowerCase().indexOf(q) >= 0;
       });
       if (!match) return false;
     }
     if (fromFilter) {
-      var sessionDate = s.sessionStart.substring(0, 10);
-      if (sessionDate < fromFilter) return false;
+      if (s.sessionStart.substring(0, 10) < fromFilter) return false;
     }
     if (toFilter) {
-      var sessionDate2 = s.sessionStart.substring(0, 10);
-      if (sessionDate2 > toFilter) return false;
+      if (s.sessionStart.substring(0, 10) > toFilter) return false;
     }
     return true;
   });
@@ -186,26 +164,26 @@ function renderSessionCards(el, filterHtml, targetFilter, fromFilter, toFilter) 
   }
 
   var cards = filtered.map(function(s) {
-    var duration = fmtDuration(s.sessionStart, s.sessionEnd);
-    var targets = s.targets.length > 0 ? s.targets.join(', ') : 'No targets';
+    var targetPills = s.targets.length > 0
+      ? s.targets.map(function(t) { return '<span class="target-pill">' + esc(t) + '</span>'; }).join('')
+      : '<span class="target-pill target-pill-none">No targets</span>';
+
     var badge = s.hasReport
       ? '<span class="badge badge-green">Report</span>'
       : '<span class="badge badge-red">No report</span>';
 
     return '<div class="session-card" onclick="navigate(\'#/sessions/' + s.sessionId + '\')">' +
       '<div class="session-header">' +
-        '<span class="session-date">' + fmtDateTime(s.sessionStart) + '</span>' +
+        '<span class="session-date">' + fmtDate(s.sessionStart) + '</span>' +
         badge +
       '</div>' +
-      '<div class="session-meta">' +
-        metaSpan('Profile', s.profileName || 'Unknown') +
-        metaSpan('Images', s.imageCount) +
-        metaSpan('Duration', duration) +
-        metaSpan('Integration', fmt(s.totalIntegrationSeconds)) +
-        metaSpan('HFR', fmtNum(s.avgHfr)) +
-        metaSpan('Guiding', fmtNum(s.avgGuiding) + '"') +
+      '<div class="session-targets">' + targetPills + '</div>' +
+      '<div class="session-stats">' +
+        '<span>' + fmt(s.totalIntegrationSeconds) + ' int</span>' +
+        '<span>HFR ' + fmtNum(s.avgHfr) + '</span>' +
+        '<span>Guiding ' + fmtNum(s.avgGuiding) + '"</span>' +
+        '<span>' + s.imageCount + ' images</span>' +
       '</div>' +
-      '<div class="targets-row">Targets: ' + esc(targets) + '</div>' +
     '</div>';
   }).join('');
 
@@ -226,9 +204,7 @@ function bindFilterEvents() {
     if (fromEl.value) parts.push('from=' + fromEl.value);
     if (toEl.value) parts.push('to=' + toEl.value);
     var hash = '/sessions' + (parts.length > 0 ? '?' + parts.join('&') : '');
-    // Update without triggering full re-render
     history.replaceState(null, '', '#' + hash);
-    var params = new URLSearchParams(parts.join('&'));
     var el = document.getElementById('content');
     var filterHtml = el.querySelector('.filter-bar').outerHTML;
     renderSessionCards(el, filterHtml, targetEl.value, fromEl.value, toEl.value);
@@ -248,170 +224,44 @@ function bindFilterEvents() {
   });
 }
 
-// ── Session Detail Page ────────────────────────────────────────────────────
+// ── Session Detail Page (Report-First) ────────────────────────────────────
 
 function renderSessionDetail(sessionId) {
   var el = document.getElementById('content');
   var sub = document.getElementById('page-subtitle');
 
-  el.innerHTML = '<a class="back-btn" href="#/sessions">\u2190 All Sessions</a>' +
-    '<div class="loading">Loading session...</div>';
+  el.innerHTML = '<div class="loading">Loading report...</div>';
 
-  Promise.all([
-    api('/api/sessions/' + sessionId),
-    api('/api/sessions/' + sessionId + '/images'),
-    api('/api/sessions/' + sessionId + '/events')
-  ]).then(function(results) {
-    var detail = results[0];
-    var images = results[1];
-    var events = results[2];
+  api('/api/sessions/' + sessionId).then(function(detail) {
+    var targets = detail.targets.map(function(t) { return t.target; }).join(', ') || 'Unknown';
+    sub.textContent = fmtDate(detail.sessionStart) + ' \u2014 ' + targets;
 
-    sub.textContent = fmtDate(detail.sessionStart) + ' \u2014 ' + (detail.profileName || 'Unknown');
+    var html = '<div class="report-nav">' +
+      '<a class="back-btn" href="#/sessions">\u2190 Sessions</a>' +
+      '<div class="report-nav-info">' +
+        '<span class="report-nav-date">' + fmtDate(detail.sessionStart) + '</span>' +
+        '<span class="report-nav-targets">' + esc(targets) + '</span>' +
+      '</div>' +
+      '<div class="report-nav-actions">';
 
-    var html = '<a class="back-btn" href="#/sessions">\u2190 All Sessions</a>';
+    if (detail.hasReport) {
+      html += '<a href="/api/sessions/' + sessionId + '/report" target="_blank" class="report-btn">Open in New Tab \u2192</a>';
+    }
 
-    // Summary stat grid
-    html += '<div class="detail-section"><h2>Summary</h2><div class="stat-grid">';
-    html += statBox(fmtDuration(detail.sessionStart, detail.sessionEnd), 'Duration');
-    html += statBox(detail.summary.totalImages + ' (' + detail.summary.accepted + ' ok)', 'Images');
-    html += statBox(fmt(detail.summary.totalIntegrationSeconds), 'Integration');
-    html += statBox(fmtNum(detail.summary.avgHfr), 'Avg HFR');
-    html += statBox(fmtNum(detail.summary.avgFwhm), 'Avg FWHM');
-    html += statBox(fmtNum(detail.summary.avgGuiding) + '"', 'Avg Guiding');
-    html += statBox(fmtNum(detail.summary.avgStarCount, 0), 'Avg Stars');
-    html += statBox(detail.summary.autoFocusRuns, 'AF Runs');
-    if (detail.summary.meridianFlips > 0) html += statBox(detail.summary.meridianFlips, 'Flips');
-    if (detail.skippedExposures > 0) html += statBox(detail.skippedExposures, 'Skipped');
     html += '</div></div>';
 
-    // Equipment
-    var eq = detail.equipment;
-    var eqEntries = Object.entries(eq).filter(function(e) { return e[1]; });
-    if (eqEntries.length > 0) {
-      html += '<div class="detail-section"><details open><summary>Equipment</summary>' +
-        '<div class="detail-grid" style="margin-top:10px">';
-      eqEntries.forEach(function(e) {
-        var label = e[0].replace(/([A-Z])/g, ' $1').replace(/^./, function(c) { return c.toUpperCase(); }).trim();
-        html += detailItem(label, e[1]);
-      });
-      html += '</div></details></div>';
-    }
-
-    // Targets
-    if (detail.targets.length > 0) {
-      html += '<div class="detail-section"><h2>Targets</h2>';
-      detail.targets.forEach(function(t) {
-        html += '<div class="target-card"><h3>' + esc(t.target) + '</h3>';
-        html += '<div class="target-stats">' +
-          metaSpan('Images', t.imageCount) +
-          metaSpan('Accepted', t.accepted) +
-          metaSpan('Integration', fmt(t.integrationSeconds)) +
-          metaSpan('HFR', fmtNum(t.avgHfr)) +
-          metaSpan('FWHM', fmtNum(t.avgFwhm)) +
-          metaSpan('Guiding', fmtNum(t.avgGuiding) + '"') +
-          metaSpan('Stars', fmtNum(t.avgStarCount, 0)) +
-          '</div>';
-        if (t.filters && t.filters.length > 0) {
-          html += '<div class="filter-pills">';
-          t.filters.forEach(function(f) {
-            html += '<span class="filter-pill">' + esc(f.filter) + ': ' +
-              f.accepted + '/' + f.count + ' (' + fmt(f.integrationSeconds) + ')</span>';
-          });
-          html += '</div>';
-        }
-        html += '</div>';
-      });
-      html += '</div>';
-    }
-
-    // Events
-    if (events.length > 0) {
-      html += '<div class="detail-section"><details><summary>Events (' + events.length + ')</summary>';
-      html += '<div class="table-scroll" style="margin-top:10px"><table class="data-table">';
-      html += '<thead><tr><th>Time</th><th>Type</th><th>Details</th></tr></thead><tbody>';
-      events.forEach(function(e) {
-        var desc = e.description || '';
-        if (e.eventType === 'AutoFocus') {
-          desc = (e.afSucceeded ? 'Success' : 'Failed') +
-            (e.afHfr > 0 ? ' \u2014 HFR: ' + fmtNum(e.afHfr) : '');
-        }
-        html += '<tr><td>' + fmtTime(e.timestamp) + '</td>' +
-          '<td>' + esc(e.eventType) + '</td>' +
-          '<td>' + esc(desc) + '</td></tr>';
-      });
-      html += '</tbody></table></div></details></div>';
-    }
-
-    // Images table
-    if (images.length > 0) {
-      html += '<div class="detail-section"><details><summary>Images (' + images.length + ')</summary>';
-      html += '<div class="table-scroll" style="margin-top:10px"><table class="data-table">';
-      html += '<thead><tr><th>Time</th><th>Target</th><th>Filter</th><th>Exp</th>' +
-        '<th>HFR</th><th>FWHM</th><th>Stars</th><th>Guiding</th><th>Alt</th><th>Status</th></tr></thead><tbody>';
-      images.forEach(function(i) {
-        var status = i.accepted
-          ? '<span style="color:var(--green)">OK</span>'
-          : '<span style="color:var(--red)">Rejected</span>';
-        html += '<tr>' +
-          '<td>' + fmtTime(i.timestamp) + '</td>' +
-          '<td>' + esc(i.targetName || '--') + '</td>' +
-          '<td>' + esc(i.filter || '--') + '</td>' +
-          '<td>' + (i.exposureDuration || '--') + 's</td>' +
-          '<td>' + fmtNum(i.hfr) + '</td>' +
-          '<td>' + fmtNum(i.fwhm) + '</td>' +
-          '<td>' + (i.starCount > 0 ? i.starCount : '--') + '</td>' +
-          '<td>' + fmtNum(i.guidingRmsTotal) + '</td>' +
-          '<td>' + fmtNum(i.altitude, 1) + '\u00b0</td>' +
-          '<td>' + status + '</td>' +
-          '</tr>';
-      });
-      html += '</tbody></table></div></details></div>';
-    }
-
-    // Embedded report viewer
     if (detail.hasReport) {
-      html += '<div class="detail-section report-section">' +
-        '<div class="report-header">' +
-          '<h2>Full Report</h2>' +
-          '<div class="report-actions">' +
-            '<button class="report-btn" id="toggle-report">\u25BC Show Report</button>' +
-            '<a href="/api/sessions/' + sessionId + '/report" target="_blank" class="report-btn">Open in New Tab \u2192</a>' +
-          '</div>' +
-        '</div>' +
-        '<div id="report-container" class="report-container" style="display:none">' +
-          '<iframe id="report-iframe" class="report-iframe" sandbox="allow-same-origin"></iframe>' +
-        '</div>' +
+      html += '<div class="report-viewer">' +
+        '<iframe class="report-iframe" src="/api/sessions/' + sessionId + '/report" sandbox="allow-same-origin"></iframe>' +
       '</div>';
+    } else {
+      html += '<div class="empty">No report generated for this session.</div>';
     }
 
     el.innerHTML = html;
-    bindReportToggle(sessionId);
   }).catch(function(err) {
-    el.innerHTML = '<a class="back-btn" href="#/sessions">\u2190 All Sessions</a>' +
+    el.innerHTML = '<a class="back-btn" href="#/sessions">\u2190 Sessions</a>' +
       '<div class="error">Failed to load session: ' + esc(err.message) + '</div>';
-  });
-}
-
-function bindReportToggle(sessionId) {
-  var btn = document.getElementById('toggle-report');
-  var container = document.getElementById('report-container');
-  var iframe = document.getElementById('report-iframe');
-  if (!btn || !container || !iframe) return;
-
-  var loaded = false;
-  btn.addEventListener('click', function() {
-    var visible = container.style.display !== 'none';
-    if (visible) {
-      container.style.display = 'none';
-      btn.textContent = '\u25BC Show Report';
-    } else {
-      container.style.display = 'block';
-      if (!loaded) {
-        iframe.src = '/api/sessions/' + sessionId + '/report';
-        loaded = true;
-      }
-      btn.textContent = '\u25B2 Hide Report';
-    }
   });
 }
 
@@ -434,7 +284,6 @@ function renderStats() {
 
     var html = '';
 
-    // Summary stat boxes
     html += '<div class="detail-section"><h2>All-Time Summary</h2><div class="stat-grid">';
     html += statBox(summary.totalSessions, 'Sessions');
     html += statBox(summary.totalIntegrationHours.toFixed(1) + 'h', 'Integration');
@@ -447,9 +296,8 @@ function renderStats() {
     }
     html += '</div></div>';
 
-    // Target integration table
     if (targets.length > 0) {
-      var maxHours = targets.length > 0 ? targets[0].totalIntegrationHours : 1;
+      var maxHours = targets[0].totalIntegrationHours || 1;
 
       html += '<div class="detail-section"><h2>Integration by Target</h2>';
       html += '<table class="stats-table"><thead><tr>' +
