@@ -625,14 +625,15 @@ function loadReportIntoShadow(sessionId) {
       // viewport — identical to how Safari renders it in a new tab (980px
       // default width scaled down). This preserves the report's layout exactly.
       var hostWidth = host.offsetWidth;
+      var padding = 8;
       var designWidth = 800;
-      var scale = Math.min(hostWidth / designWidth, 1);
+      var scale = Math.min((hostWidth - padding * 2) / designWidth, 1);
 
       var shadow = host.shadowRoot || host.attachShadow({ mode: 'open' });
       shadow.innerHTML = '';
 
       var wrapper = document.createElement('div');
-      wrapper.style.cssText = 'width:' + designWidth + 'px;transform:scale(' + scale + ');transform-origin:top left;';
+      wrapper.style.cssText = 'width:' + designWidth + 'px;transform:scale(' + scale + ');transform-origin:top left;margin:0 ' + padding + 'px;';
       wrapper.innerHTML = html;
       shadow.appendChild(wrapper);
 
