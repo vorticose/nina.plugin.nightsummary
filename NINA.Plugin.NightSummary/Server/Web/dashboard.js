@@ -684,6 +684,17 @@ function bindDetailEvents(sessionId) {
     });
   }
 
+  // iOS Safari ignores CSS width:100% on iframes — set explicit pixel width on mobile
+  var iframe = document.getElementById('report-iframe');
+  if (iframe && window.innerWidth <= 700) {
+    var setIframeWidth = function() {
+      var viewer = iframe.parentElement;
+      if (viewer) iframe.style.width = viewer.offsetWidth + 'px';
+    };
+    setIframeWidth();
+    window.addEventListener('resize', setIframeWidth);
+  }
+
   // Additional chart add/remove
   var addChartBtn = document.getElementById('btn-add-chart');
   if (addChartBtn) {
