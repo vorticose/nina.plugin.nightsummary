@@ -212,6 +212,41 @@ the wrong direction will pull the net10.0 csproj changes into main and break the
 NINA 3.3 changed atmospheric pressure from MSL (sea level) to QFE (local,
 elevation-adjusted). No code change needed but worth mentioning in the 3.3 release notes.
 
+## Documentation Site
+
+The documentation site lives in the `docs/` folder on the `feature/docs-site` branch
+(cut from `dev`). It uses Jekyll with the just-the-docs theme and a custom Night Summary
+color scheme.
+
+**Standing rule: keep docs current with every change.** Whenever a feature is added,
+a setting is changed, a UI element is renamed, or behavior is modified, update the
+corresponding docs page in the same commit (or the next one). If the docs branch has
+diverged and a direct update isn't practical, add a `<!-- TODO: Update — [description] -->`
+comment in the relevant docs file, or note it in CHANGELOG_DRAFT.md so it's caught
+before release.
+
+**What triggers a docs update:**
+- New feature or setting → add to settings-reference.md and the relevant feature page
+- Renamed UI element or section → update all references across docs
+- Changed default value → update settings-reference.md
+- New delivery channel or integration → add a new page or update existing
+- New overhead category or metric → update overhead-breakdown.md or metric-charts.md
+
+**Don't deploy until v2.10.0 wide release.** The docs cover beta features not yet in
+the stable release. When v2.10.0 ships:
+1. Merge `feature/docs-site` → `dev` → `main`
+2. Enable GitHub Pages on the repo (source: `docs/` folder on `main`)
+3. Site will be live at `https://vorticose.github.io/nina.plugin.nightsummary/`
+
+**To preview locally:**
+```bash
+cd docs && bundle install && bundle exec jekyll serve
+# → http://localhost:4000/nina.plugin.nightsummary/
+```
+
+**Worktree:** There's a worktree at `.claude/worktrees/docs-preview` checked out to
+`feature/docs-site`. Use that worktree for docs work to avoid branch conflicts.
+
 ## UI Standards (Options.xaml)
 
 - **Inline utility buttons** (Browse, + Add Chart, ✕ Remove, etc.): use `MinWidth` to ensure horizontal breathing room — NINA's ControlTemplate ignores `Padding`. No fixed Width.
