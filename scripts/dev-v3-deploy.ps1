@@ -4,8 +4,10 @@
 # What this does:
 #   1. Checks out the target branch (default: v3-dev) and pulls latest
 #   2. Builds the plugin in Release
-#   3. Copies the DLL to the local NINA plugins folder
-#   4. Returns to the previous branch
+#   3. Closes NINA if running (so the DLL is unlocked)
+#   4. Copies the DLL to the local NINA plugins folder
+#   5. Relaunches NINA if it was closed
+#   6. Returns to the previous branch
 #
 # Examples:
 #   .\scripts\dev-v3-deploy.ps1                        # builds v3-dev
@@ -20,6 +22,7 @@ $repoRoot      = Split-Path -Parent $PSScriptRoot
 $projectDir    = Join-Path $repoRoot "NINA.Plugin.NightSummary"
 $buildDir      = Join-Path $projectDir "bin\Release\net8.0-windows"
 $ninaPluginDir = Join-Path $env:LOCALAPPDATA "NINA\Plugins\3.0.0\Night Summary"
+$ninaExe       = Join-Path ${env:ProgramFiles} "N.I.N.A. - Nighttime Imaging 'N' Astronomy\NINA.exe"
 
 # --- Pick branch ---
 if (-not $Branch) {
@@ -42,38 +45,6 @@ if (-not $Branch) {
 }
 
 Write-Host "Target branch: $Branch" -ForegroundColor Cyan
-
-# --- Check if NINA has the DLL locked, auto-close if needed ---
-$ninaWasRunning = $false
-$targetDll = Join-Path $ninaPluginDir "NINA.Plugin.NightSummary.dll"
-if (Test-Path $targetDll) {
-    try {
-        $stream = [System.IO.File]::Open($targetDll, 'Open', 'Read', 'None')
-        $stream.Close()
-    } catch {
-        $ninaProc = Get-Process -Name "NINA" -ErrorAction SilentlyContinue
-        if ($ninaProc) {
-            Write-Host "NINA is running (DLL locked). Closing NINA..." -ForegroundColor Yellow
-            $ninaWasRunning = $true
-            $ninaProc | ForEach-Object { $_.CloseMainWindow() | Out-Null }
-            $timeout = 15
-            $waited = 0
-            while ((Get-Process -Name "NINA" -ErrorAction SilentlyContinue) -and $waited -lt $timeout) {
-                Start-Sleep -Seconds 1
-                $waited++
-            }
-            if (Get-Process -Name "NINA" -ErrorAction SilentlyContinue) {
-                Write-Host "NINA did not close gracefully after ${timeout}s. Force killing..." -ForegroundColor Red
-                Stop-Process -Name "NINA" -Force
-                Start-Sleep -Seconds 2
-            }
-            Write-Host "NINA closed." -ForegroundColor Green
-        } else {
-            Write-Host "DLL is locked but NINA process not found. Close whatever has it locked." -ForegroundColor Red
-            exit 1
-        }
-    }
-}
 
 # --- Save current branch ---
 $prevBranch = git -C $repoRoot rev-parse --abbrev-ref HEAD
@@ -100,6 +71,44 @@ dotnet build "$projectDir\NINA.Plugin.NightSummary.csproj" -c Release --no-resto
 if ($LASTEXITCODE -ne 0) { Write-Error "Build failed."; exit 1 }
 Write-Host "Build succeeded." -ForegroundColor Green
 
+# --- Close NINA if it has the DLL locked ---
+$ninaWasRunning = $false
+$targetDll = Join-Path $ninaPluginDir "NINA.Plugin.NightSummary.dll"
+
+function Close-NINA {
+    $ninaProc = Get-Process -Name "NINA" -ErrorAction SilentlyContinue
+    if (-not $ninaProc) { return $false }
+
+    Write-Host "NINA is running. Closing NINA..." -ForegroundColor Yellow
+    $ninaProc | ForEach-Object { $_.CloseMainWindow() | Out-Null }
+    $timeout = 15
+    $waited = 0
+    while ((Get-Process -Name "NINA" -ErrorAction SilentlyContinue) -and $waited -lt $timeout) {
+        Start-Sleep -Seconds 1
+        $waited++
+    }
+    if (Get-Process -Name "NINA" -ErrorAction SilentlyContinue) {
+        Write-Host "NINA did not close gracefully after ${timeout}s. Force killing..." -ForegroundColor Red
+        Stop-Process -Name "NINA" -Force
+        Start-Sleep -Seconds 2
+    }
+    Write-Host "NINA closed." -ForegroundColor Green
+    return $true
+}
+
+if (Test-Path $targetDll) {
+    try {
+        $stream = [System.IO.File]::Open($targetDll, 'Open', 'Read', 'None')
+        $stream.Close()
+    } catch {
+        $ninaWasRunning = Close-NINA
+        if (-not $ninaWasRunning) {
+            Write-Host "DLL is locked but NINA process not found. Close whatever has it locked." -ForegroundColor Red
+            exit 1
+        }
+    }
+}
+
 # --- Deploy ---
 $dll = Join-Path $buildDir "NINA.Plugin.NightSummary.dll"
 if (Test-Path $ninaPluginDir) {
@@ -117,15 +126,15 @@ if ($prevBranch -ne $Branch) {
     git -C $repoRoot checkout $prevBranch
 }
 
-# --- Relaunch NINA if it was running ---
+# --- Relaunch NINA if it was closed ---
 if ($ninaWasRunning) {
-    $ninaExe = Join-Path ${env:ProgramFiles} "N.I.N.A. - Nighttime Imaging 'N' Astronomy\NINA.exe"
     if (Test-Path $ninaExe) {
         Write-Host "Relaunching NINA..." -ForegroundColor Cyan
         Start-Process $ninaExe
         Write-Host "NINA started." -ForegroundColor Green
     } else {
-        Write-Host "Could not find NINA executable to relaunch. Start it manually." -ForegroundColor Yellow
+        Write-Host "Could not find NINA at: $ninaExe" -ForegroundColor Yellow
+        Write-Host "Start NINA manually." -ForegroundColor Yellow
     }
 }
 
