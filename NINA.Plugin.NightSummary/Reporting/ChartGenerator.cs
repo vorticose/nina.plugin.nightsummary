@@ -161,20 +161,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
             int plotW    = Width  - PadLeft - padRight;
             int plotH    = Height - PadTop  - PadBottom;
 
-            // X range — nice scaling for all axis types
+            // X range — union of all points
             var allX    = leftPts.Select(p => p.x).Concat(rightPts.Select(p => p.x)).ToList();
-            double minX, maxX, xStep, xRange;
-            if (xAxisMetric == XAxisTime) {
-                (minX, maxX, xStep) = ComputeNiceTimeScale(allX);
-            } else if (xAxisMetric == XAxisFrameIndex) {
-                (minX, maxX, xStep) = ComputeNiceScale(allX, 1.0);
-                // Keep frame index tight: start at 1, don't pad beyond last frame
-                minX = Math.Max(1, minX);
-                maxX = Math.Min(maxX, Math.Ceiling(allX.Max() / xStep) * xStep);
-            } else {
-                (minX, maxX, xStep) = ComputeNiceScale(allX, GetPrimaryMinSpan(xAxisMetric - XAxisMetricOffset));
-            }
-            xRange = maxX - minX;
+            double minX = allX.Min();
+            double maxX = allX.Max();
+            double xRange = Math.Max(maxX - minX, xAxisMetric == XAxisFrameIndex ? 1 : 0.001);
 
             // Y scales
             double leftMinSpan = swapped ? GetSecondaryMinSpan(secondaryMetric) : GetPrimaryMinSpan(primaryMetric);
@@ -217,12 +208,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine($"<text x=\"{rightTitleX}\" y=\"{Height / 2}\" fill=\"{ColorSecondary}\" font-size=\"11\" text-anchor=\"middle\" transform=\"rotate(90,{rightTitleX},{Height / 2})\">{GetSecondaryAxisLabel(secondaryMetric)}</text>");
             }
 
-            // X axis labels — nice step intervals for all axis types
-            var baseTime = leftPts.Count > 0 ? leftPts[0].t : DateTime.MinValue;
-            for (double v = minX; v <= maxX + xStep * 0.001; v += xStep) {
-                double xPx = ToXPx(v);
+            // X axis labels
+            int pointCount = Math.Max(leftPts.Count, hasDual ? rightPts.Count : 0);
+            int xSteps = Math.Max(1, Math.Min(6, pointCount - 1));
+            for (int i = 0; i <= xSteps; i++) {
+                double xVal = minX + (xRange / xSteps * i);
+                double xPx  = ToXPx(xVal);
                 sb.AppendLine($"<line x1=\"{xPx:F1}\" y1=\"{PadTop}\" x2=\"{xPx:F1}\" y2=\"{PadTop + plotH}\" stroke=\"{ColorGrid}\" stroke-width=\"1\"/>");
-                string xLabel = FormatXAxisValue(v, xAxisMetric, baseTime, minX);
+                string xLabel = FormatXAxisValue(xVal, xAxisMetric, leftPts.Count > 0 ? leftPts[0].t : DateTime.MinValue, minX);
                 sb.AppendLine($"<text x=\"{xPx:F1}\" y=\"{Height - 10}\" fill=\"{ColorLabel}\" font-size=\"11\" text-anchor=\"middle\">{xLabel}</text>");
             }
 
@@ -398,34 +391,6 @@ namespace NINA.Plugin.NightSummary.Reporting {
         }
 
         // ── Scale helpers ────────────────────────────────────────────────────
-
-        /// <summary>
-        /// Picks a time-aware nice scale so x-axis labels land on round clock times
-        /// (e.g. 21:00, 21:30, 22:00). Steps are chosen from human-friendly intervals.
-        /// Values are in seconds offset from the first image timestamp.
-        /// </summary>
-        private static (double min, double max, double step) ComputeNiceTimeScale(List<double> vals) {
-            double rawMin = vals.Min();
-            double rawMax = vals.Max();
-            double range  = Math.Max(rawMax - rawMin, 60);
-
-            // Human-friendly time steps (in seconds)
-            double[] steps = { 60, 120, 300, 600, 900, 1800, 3600, 7200, 14400 };
-            //                 1m   2m   5m  10m  15m   30m    1h    2h    4h
-
-            // Target ~5-6 labels
-            double idealStep = range / 5.0;
-            double step = steps[steps.Length - 1];
-            foreach (var s in steps) {
-                if (s >= idealStep) { step = s; break; }
-            }
-
-            // Snap bounds to step multiples — tight to data
-            double niceMin = Math.Floor(rawMin / step) * step;
-            double niceMax = Math.Ceiling(rawMax / step) * step;
-
-            return (niceMin, niceMax, step);
-        }
 
         private static (double min, double max, double step) ComputeNiceScale(IEnumerable<double> vals, double minSpan) {
             var list   = vals.ToList();
