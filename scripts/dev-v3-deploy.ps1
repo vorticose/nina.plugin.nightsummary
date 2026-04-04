@@ -1,17 +1,47 @@
-# Night Summary - v3-dev Deploy Script (run directly on the Windows machine)
-# Usage: .\scripts\dev-v3-deploy.ps1
+# Night Summary - Dev Deploy Script (run directly on the Windows machine)
+# Usage: .\scripts\dev-v3-deploy.ps1 [branch]
 #
 # What this does:
-#   1. Checks out v3-dev and pulls latest
+#   1. Checks out the target branch (default: v3-dev) and pulls latest
 #   2. Builds the plugin in Release
 #   3. Copies the DLL to the local NINA plugins folder
 #   4. Returns to the previous branch
+#
+# Examples:
+#   .\scripts\dev-v3-deploy.ps1                        # builds v3-dev
+#   .\scripts\dev-v3-deploy.ps1 feature/dashboard-polish  # builds a feature branch
+
+param(
+    [string]$Branch
+)
 
 $ErrorActionPreference = "Stop"
 $repoRoot      = Split-Path -Parent $PSScriptRoot
 $projectDir    = Join-Path $repoRoot "NINA.Plugin.NightSummary"
 $buildDir      = Join-Path $projectDir "bin\Release\net8.0-windows"
 $ninaPluginDir = Join-Path $env:LOCALAPPDATA "NINA\Plugins\3.0.0\Night Summary"
+
+# --- Pick branch ---
+if (-not $Branch) {
+    # List local branches, let user pick
+    $branches = git -C $repoRoot branch --format='%(refname:short)' | Where-Object { $_ -match '\S' }
+    Write-Host "Available branches:" -ForegroundColor Cyan
+    for ($i = 0; $i -lt $branches.Count; $i++) {
+        $marker = if ($branches[$i] -eq "v3-dev") { " (default)" } else { "" }
+        Write-Host "  [$($i + 1)] $($branches[$i])$marker"
+    }
+    Write-Host ""
+    $choice = Read-Host "Branch number or name (Enter = v3-dev)"
+    if ([string]::IsNullOrWhiteSpace($choice)) {
+        $Branch = "v3-dev"
+    } elseif ($choice -match '^\d+$' -and [int]$choice -ge 1 -and [int]$choice -le $branches.Count) {
+        $Branch = $branches[[int]$choice - 1]
+    } else {
+        $Branch = $choice
+    }
+}
+
+Write-Host "Target branch: $Branch" -ForegroundColor Cyan
 
 # --- Check if NINA has the DLL locked ---
 $targetDll = Join-Path $ninaPluginDir "NINA.Plugin.NightSummary.dll"
@@ -29,10 +59,10 @@ if (Test-Path $targetDll) {
 $prevBranch = git -C $repoRoot rev-parse --abbrev-ref HEAD
 if ($LASTEXITCODE -ne 0) { Write-Error "Failed to detect current branch."; exit 1 }
 
-# --- Checkout v3-dev and pull ---
-Write-Host "Switching to v3-dev..." -ForegroundColor Cyan
-git -C $repoRoot checkout v3-dev
-if ($LASTEXITCODE -ne 0) { Write-Error "Failed to checkout v3-dev."; exit 1 }
+# --- Checkout target branch and pull ---
+Write-Host "Switching to $Branch..." -ForegroundColor Cyan
+git -C $repoRoot checkout $Branch
+if ($LASTEXITCODE -ne 0) { Write-Error "Failed to checkout $Branch."; exit 1 }
 
 Write-Host "Pulling latest from origin..." -ForegroundColor Cyan
 git -C $repoRoot pull
@@ -62,10 +92,10 @@ if (Test-Path $ninaPluginDir) {
 }
 
 # --- Return to previous branch ---
-if ($prevBranch -ne "v3-dev") {
+if ($prevBranch -ne $Branch) {
     Write-Host "Returning to $prevBranch..." -ForegroundColor Cyan
     git -C $repoRoot checkout $prevBranch
 }
 
 Write-Host ""
-Write-Host "Done. Restart NINA to pick up the v3-dev build." -ForegroundColor White
+Write-Host "Done. Built from $Branch. Restart NINA to pick up changes." -ForegroundColor White
