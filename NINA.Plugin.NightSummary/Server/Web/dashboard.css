@@ -721,12 +721,15 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   .filter-bar input[type="date"] { min-width: unset; flex: 1; }
   .report-nav { flex-direction: column; align-items: flex-start; gap: 8px; }
 
-  /* Report view: full-bleed iframe on mobile */
-  body.report-view .shell { padding: 8px 0 0 0; max-width: 100%; }
+  /* Report view: shadow DOM on mobile — allow page scroll, full-bleed */
+  body.report-view { overflow: auto; }
+  body.report-view .shell { padding: 8px 0 0 0; max-width: 100%; height: auto; }
+  body.report-view #content { overflow: visible; }
   body.report-view header { padding-left: 12px; padding-right: 12px; margin-bottom: 8px; }
   body.report-view .report-nav { padding: 0 12px; margin-bottom: 6px; }
   body.report-view .settings-panel { margin: 0 12px 8px; }
-  .report-viewer { border-radius: 0; border-left: none; border-right: none; }
+  .report-viewer { border-radius: 0; border-left: none; border-right: none; border: none; overflow: visible; }
+  .report-shadow-host { width: 100%; }
 
   /* Touch-friendly tap targets (44px minimum) */
   .report-btn, .back-btn { min-height: 44px; display: inline-flex; align-items: center; }

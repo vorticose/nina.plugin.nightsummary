@@ -614,6 +614,38 @@ function collectSettings() {
   };
 }
 
+function loadReportIntoShadow(sessionId) {
+  var host = document.getElementById('report-shadow-host');
+  if (!host) return;
+
+  fetch('/api/sessions/' + sessionId + '/report')
+    .then(function(r) { return r.text(); })
+    .then(function(html) {
+      // Extract content between <body> and </body>, or use full HTML
+      var bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+      var styleMatch = html.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
+
+      var shadow = host.shadowRoot || host.attachShadow({ mode: 'open' });
+      shadow.innerHTML = '';
+
+      if (styleMatch) {
+        var styleEl = document.createElement('style');
+        styleEl.textContent = styleMatch[1];
+        shadow.appendChild(styleEl);
+      }
+
+      var container = document.createElement('div');
+      container.innerHTML = bodyMatch ? bodyMatch[1] : html;
+      shadow.appendChild(container);
+
+      logInfo('Report loaded into shadow DOM:', sessionId);
+    })
+    .catch(function(err) {
+      logError('Failed to load report into shadow DOM:', err.message);
+      host.innerHTML = '<div style="color:#f85149;padding:20px;">Failed to load report: ' + err.message + '</div>';
+    });
+}
+
 function renderSessionDetail(sessionId) {
   var el = document.getElementById('content');
   var sub = document.getElementById('page-subtitle');
@@ -651,10 +683,18 @@ function renderSessionDetail(sessionId) {
 
     html += buildSettingsPanel(currentSettings, cachedFilters);
 
+    var isMobile = window.innerWidth <= 700;
+
     if (detail.hasReport) {
-      html += '<div class="report-viewer">' +
-        '<iframe id="report-iframe" class="report-iframe" src="/api/sessions/' + sessionId + '/report" sandbox="allow-same-origin"></iframe>' +
-      '</div>';
+      if (isMobile) {
+        // Mobile: use shadow DOM to render report inline — iframes don't
+        // respect viewport constraints on mobile, causing squished content
+        html += '<div class="report-viewer"><div id="report-shadow-host" class="report-shadow-host"></div></div>';
+      } else {
+        html += '<div class="report-viewer">' +
+          '<iframe id="report-iframe" class="report-iframe" src="/api/sessions/' + sessionId + '/report" sandbox="allow-same-origin"></iframe>' +
+        '</div>';
+      }
     } else {
       html += '<div class="report-viewer">' +
         '<div class="empty">No report generated for this session. Click "Regenerate Report" to generate one.</div>' +
@@ -662,6 +702,11 @@ function renderSessionDetail(sessionId) {
     }
 
     el.innerHTML = html;
+
+    if (detail.hasReport && isMobile) {
+      loadReportIntoShadow(sessionId);
+    }
+
     bindDetailEvents(sessionId);
   }).catch(function(err) {
     logError('Failed to load session detail:', sessionId, err.message);
@@ -682,17 +727,6 @@ function bindDetailEvents(sessionId) {
       var visible = panel.style.display !== 'none';
       panel.style.display = visible ? 'none' : 'block';
     });
-  }
-
-  // iOS Safari ignores CSS width:100% on iframes — set explicit pixel width on mobile
-  var iframe = document.getElementById('report-iframe');
-  if (iframe && window.innerWidth <= 700) {
-    var setIframeWidth = function() {
-      var viewer = iframe.parentElement;
-      if (viewer) iframe.style.width = viewer.offsetWidth + 'px';
-    };
-    setIframeWidth();
-    window.addEventListener('resize', setIframeWidth);
   }
 
   // Additional chart add/remove
@@ -743,10 +777,13 @@ function bindDetailEvents(sessionId) {
           logInfo('Regenerate complete:', sessionId, '(' + Math.round(performance.now() - regenStart) + 'ms)');
           status.textContent = 'Done';
           status.className = 'regen-status regen-ok';
-          // Reload iframe
+          // Reload report — iframe on desktop, shadow DOM on mobile
           var iframe = document.getElementById('report-iframe');
+          var shadowHost = document.getElementById('report-shadow-host');
           if (iframe) {
             iframe.src = '/api/sessions/' + sessionId + '/report?t=' + Date.now();
+          } else if (shadowHost) {
+            loadReportIntoShadow(sessionId);
           } else {
             // Report didn't exist before — re-render the whole page
             sessionsCache = []; // Clear cache to refresh hasReport
