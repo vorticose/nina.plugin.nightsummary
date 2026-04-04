@@ -468,6 +468,36 @@ namespace NINA.Plugin.NightSummary.Session {
                 Directory.CreateDirectory(reportsDir);
                 var filePath = Path.Combine(reportsDir, $"{sessionId}.html");
                 await File.WriteAllTextAsync(filePath, htmlReport);
+
+                // Save settings sidecar so dashboard knows what was used
+                var settings = new {
+                    reportDetailLevel      = S.ReportDetailLevel,
+                    reportLightMode        = S.ReportLightMode,
+                    expandSectionsDefault  = S.ExpandSectionsDefault,
+                    showMoonCurve          = S.ShowMoonCurve,
+                    showOverheadBreakdown  = S.ShowOverheadBreakdown,
+                    showSkyThumbnails      = S.ShowSkyThumbnails,
+                    showLiveStackImages    = S.ShowLiveStackImages,
+                    showSessionHistory     = S.ShowSessionHistory,
+                    showAltitudeChart      = S.ShowAltitudeChart,
+                    showMinAltitude        = S.ShowMinAltitude,
+                    showTSProgressBars     = S.ShowTSProgressBars,
+                    showStarCountCV        = S.ShowStarCountCV,
+                    showHFRGraph           = S.ShowHFRGraph,
+                    showPerTargetIQ        = S.ShowPerTargetIQ,
+                    showEquipmentProfile   = S.ShowEquipmentProfile,
+                    chartXAxisMetric       = S.ChartXAxisMetric,
+                    chartPrimaryMetric     = S.ChartPrimaryMetric,
+                    chartSecondaryMetric   = S.ChartSecondaryMetric,
+                    additionalChartConfigs = S.AdditionalChartConfigs,
+                    equipmentVisibleFields = S.EquipmentVisibleFields,
+                    filterClassifications  = S.FilterClassifications,
+                    equipmentOverrides     = S.EquipmentOverrides
+                };
+                var json = System.Text.Json.JsonSerializer.Serialize(settings,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });
+                await File.WriteAllTextAsync(Path.Combine(reportsDir, $"{sessionId}.settings.json"), json);
+
                 Logger.Debug($"NightSummary: Report saved to dashboard directory: {filePath}");
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to save report to dashboard directory. {ex.Message}");

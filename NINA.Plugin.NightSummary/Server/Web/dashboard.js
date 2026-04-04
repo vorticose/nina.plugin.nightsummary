@@ -590,7 +590,7 @@ function renderSessionDetail(sessionId) {
 
   Promise.all([
     api('/api/sessions/' + sessionId),
-    currentSettings ? Promise.resolve(currentSettings) : api('/api/settings'),
+    api('/api/sessions/' + sessionId + '/settings'),
     cachedFilters ? Promise.resolve({ filters: cachedFilters }) : api('/api/filters')
   ]).then(function(results) {
     var detail = results[0];

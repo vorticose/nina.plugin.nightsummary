@@ -143,6 +143,9 @@ namespace NINA.Plugin.NightSummary.Server {
                     } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/report")) {
                         var sessionId = ExtractSessionId(path, "/report");
                         await HandleGetSessionReport(res, sessionId);
+                    } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/settings")) {
+                        var sessionId = ExtractSessionId(path, "/settings");
+                        await HandleGetSessionSettings(res, sessionId);
                     } else if (path.StartsWith("/api/sessions/") && !path.Substring("/api/sessions/".Length).Contains("/")) {
                         var sessionId = path.Substring("/api/sessions/".Length);
                         await HandleGetSession(res, sessionId);
@@ -492,6 +495,7 @@ namespace NINA.Plugin.NightSummary.Server {
                     var html = await sessionService.GenerateHtmlAsync(reportData);
                     var reportPath = Path.Combine(reportsDir, $"{sessionId}.html");
                     await File.WriteAllTextAsync(reportPath, html);
+                    await SaveSessionSettings(sessionId, s);
 
                     Logger.Info($"NightSummary: Dashboard regenerated report for {sessionId}");
                     await WriteJson(res, 200, new { status = "ok", sessionId });
@@ -560,6 +564,7 @@ namespace NINA.Plugin.NightSummary.Server {
                                 var html = await sessionService.GenerateHtmlAsync(reportData);
                                 var reportPath = Path.Combine(reportsDir, $"{sessions[i].SessionId}.html");
                                 await File.WriteAllTextAsync(reportPath, html);
+                                await SaveSessionSettings(sessions[i].SessionId, s);
                                 regenAllGenerated++;
                             } catch (Exception ex) {
                                 Logger.Warning($"NightSummary: Failed to regenerate report for {sessions[i].SessionId}. {ex.Message}");
@@ -596,6 +601,61 @@ namespace NINA.Plugin.NightSummary.Server {
                 failed = regenAllFailed,
                 error = regenAllError
             });
+        }
+
+        private async Task HandleGetSessionSettings(HttpListenerResponse res, string sessionId) {
+            var settingsPath = Path.Combine(reportsDir, $"{sessionId}.settings.json");
+            if (File.Exists(settingsPath)) {
+                var json = await File.ReadAllTextAsync(settingsPath);
+                res.StatusCode = 200;
+                res.ContentType = "application/json; charset=utf-8";
+                var bytes = Encoding.UTF8.GetBytes(json);
+                res.ContentLength64 = bytes.Length;
+                await res.OutputStream.WriteAsync(bytes, 0, bytes.Length);
+                res.Close();
+            } else {
+                // No saved settings — return current plugin settings as fallback
+                await HandleGetSettings(res);
+            }
+        }
+
+        /// <summary>
+        /// Saves the current report display settings as a JSON sidecar file alongside
+        /// the report HTML. This captures exactly what settings were used to generate
+        /// the report, so the dashboard can accurately reflect them.
+        /// </summary>
+        private async Task SaveSessionSettings(string sessionId, NightSummarySettings s) {
+            try {
+                var settings = new {
+                    reportDetailLevel      = s.ReportDetailLevel,
+                    reportLightMode        = s.ReportLightMode,
+                    expandSectionsDefault  = s.ExpandSectionsDefault,
+                    showMoonCurve          = s.ShowMoonCurve,
+                    showOverheadBreakdown  = s.ShowOverheadBreakdown,
+                    showSkyThumbnails      = s.ShowSkyThumbnails,
+                    showLiveStackImages    = s.ShowLiveStackImages,
+                    showSessionHistory     = s.ShowSessionHistory,
+                    showAltitudeChart      = s.ShowAltitudeChart,
+                    showMinAltitude        = s.ShowMinAltitude,
+                    showTSProgressBars     = s.ShowTSProgressBars,
+                    showStarCountCV        = s.ShowStarCountCV,
+                    showHFRGraph           = s.ShowHFRGraph,
+                    showPerTargetIQ        = s.ShowPerTargetIQ,
+                    showEquipmentProfile   = s.ShowEquipmentProfile,
+                    chartXAxisMetric       = s.ChartXAxisMetric,
+                    chartPrimaryMetric     = s.ChartPrimaryMetric,
+                    chartSecondaryMetric   = s.ChartSecondaryMetric,
+                    additionalChartConfigs = s.AdditionalChartConfigs,
+                    equipmentVisibleFields = s.EquipmentVisibleFields,
+                    filterClassifications  = s.FilterClassifications,
+                    equipmentOverrides     = s.EquipmentOverrides
+                };
+                var json = JsonSerializer.Serialize(settings, JsonOpts);
+                var settingsPath = Path.Combine(reportsDir, $"{sessionId}.settings.json");
+                await File.WriteAllTextAsync(settingsPath, json);
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Failed to save settings for {sessionId}. {ex.Message}");
+            }
         }
 
         private static Dictionary<string, object> SnapshotSettings(NightSummarySettings s) {
