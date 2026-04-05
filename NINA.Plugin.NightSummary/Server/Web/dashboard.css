@@ -507,6 +507,10 @@ nav {
   transition: transform 0.2s ease;
 }
 
+.livestack-shelf-img {
+  transform-origin: top center;
+}
+
 .livestack-shelf-img:hover {
   transform: scale(2.5);
   z-index: 100;
