@@ -587,7 +587,7 @@ namespace NINA.Plugin.NightSummary.Server {
 
             // Build combined SVG
             var sb = new StringBuilder();
-            sb.AppendLine($"<svg viewBox='{viewBox}' xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='xMidYMid slice'>");
+            sb.AppendLine($"<svg viewBox='{viewBox}' xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='xMidYMid meet'>");
 
             // Background + border (first two rects from scaffold)
             var bgRects = Regex.Matches(scaffoldSvg, @"<rect x='38'[^/]*/>");
