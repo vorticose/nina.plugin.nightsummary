@@ -45,8 +45,8 @@ namespace NINA.Plugin.NightSummary.Server {
             public string fovSvg { get; set; }  // SVG overlay with FOV rectangle (from report)
         }
 
-        // Altitude chart cache: sessionId -> SVG string
-        private readonly Dictionary<string, string> altitudeChartCache = new Dictionary<string, string>();
+        // Altitude chart cache: sessionId -> { svg, legend }
+        private readonly Dictionary<string, object> altitudeChartCache = new Dictionary<string, object>();
 
         // Altitude chart coordinate scaling: widen from 500 to 825 for better aspect ratio
         private const double AltPadL = 38.0;          // left padding (y-axis labels)
@@ -561,15 +561,16 @@ namespace NINA.Plugin.NightSummary.Server {
 
         private async Task HandleGetAltitudeChart(HttpListenerResponse res, string sessionId, Action<int, string> done) {
             if (altitudeChartCache.TryGetValue(sessionId, out var cached)) {
-                await WriteJson(res, 200, new { svg = cached });
+                await WriteJson(res, 200, cached);
                 done?.Invoke(200, $"{sessionId} — altitude chart (cached)");
                 return;
             }
 
             var reportPath = Path.Combine(reportsDir, $"{sessionId}.html");
             if (!File.Exists(reportPath)) {
-                altitudeChartCache[sessionId] = "";
-                await WriteJson(res, 200, new { svg = "" });
+                var empty = new { svg = "", legend = Array.Empty<object>() };
+                altitudeChartCache[sessionId] = empty;
+                await WriteJson(res, 200, empty);
                 done?.Invoke(200, $"{sessionId} — no report");
                 return;
             }
@@ -618,8 +619,9 @@ namespace NINA.Plugin.NightSummary.Server {
             }
 
             if (targetData.Count == 0 || scaffoldSvg == null) {
-                altitudeChartCache[sessionId] = "";
-                await WriteJson(res, 200, new { svg = "" });
+                var noCharts = new { svg = "", legend = Array.Empty<object>() };
+                altitudeChartCache[sessionId] = noCharts;
+                await WriteJson(res, 200, noCharts);
                 done?.Invoke(200, $"{sessionId} — no altitude charts in report");
                 return;
             }
@@ -727,8 +729,9 @@ namespace NINA.Plugin.NightSummary.Server {
             }).ToList();
 
             var svgResult = sb.ToString();
-            altitudeChartCache[sessionId] = svgResult;
-            await WriteJson(res, 200, new { svg = svgResult, legend });
+            var result = new { svg = svgResult, legend };
+            altitudeChartCache[sessionId] = result;
+            await WriteJson(res, 200, result);
             done?.Invoke(200, $"{sessionId} — {targetData.Count} targets in altitude chart");
         }
 
