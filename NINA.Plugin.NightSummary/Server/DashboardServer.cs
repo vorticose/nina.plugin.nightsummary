@@ -51,8 +51,8 @@ namespace NINA.Plugin.NightSummary.Server {
         // Altitude chart coordinate scaling: widen from 500 to 825 for better aspect ratio
         private const double AltPadL = 38.0;          // left padding (y-axis labels)
         private const double AltOrigRight = 490.0;    // original right edge of plot (500 - 10)
-        private const double AltNewSvgW = 825.0;      // new viewBox width (plot area only)
-        private const double AltNewRight = 815.0;     // new right edge (825 - 10)
+        private const double AltNewSvgW = 950.0;      // new viewBox width (plot area only)
+        private const double AltNewRight = 940.0;     // new right edge (950 - 10)
         private const double AltLegendGap = 2.0;       // gap between legend panel and y-axis
         private static readonly double AltScaleX = (AltNewRight - AltPadL) / (AltOrigRight - AltPadL); // ~1.719
 
@@ -733,7 +733,7 @@ namespace NINA.Plugin.NightSummary.Server {
 
             // Legend — positioned relative to visible top edge (decoupled from chart)
             int lineHeight = fontSize + 6;
-            int legendTopY = vbTopTrim + 4;  // 4px below visible top edge
+            int legendTopY = vbTopTrim + 30; // leave room for header text to overlap above
             int legendPadTop = 6;
             int legendStartY = legendTopY + legendPadTop + fontSize;
             int legendH = targetData.Count * lineHeight + legendPadTop + 6;
