@@ -206,11 +206,11 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
     targetDropHtml +
     '<div class="filter-dates">' +
       '<div class="date-input-wrap">' +
-        '<input type="' + (fromFilter ? 'date' : 'text') + '" id="filter-from" value="' + esc(fromFilter) + '" placeholder="From"' + (fromFilter ? '' : ' readonly') + ' onfocus="this.type=\'date\';this.removeAttribute(\'readonly\');this.showPicker?this.showPicker():0">' +
+        '<input type="date" id="filter-from" value="' + esc(fromFilter) + '">' +
         (fromFilter ? '<button class="date-clear" data-target="filter-from" title="Clear">\u00d7</button>' : '') +
       '</div>' +
       '<div class="date-input-wrap">' +
-        '<input type="' + (toFilter ? 'date' : 'text') + '" id="filter-to" value="' + esc(toFilter) + '" placeholder="To"' + (toFilter ? '' : ' readonly') + ' onfocus="this.type=\'date\';this.removeAttribute(\'readonly\');this.showPicker?this.showPicker():0">' +
+        '<input type="date" id="filter-to" value="' + esc(toFilter) + '">' +
         (toFilter ? '<button class="date-clear" data-target="filter-to" title="Clear">\u00d7</button>' : '') +
       '</div>' +
     '</div>' +
@@ -750,24 +750,8 @@ function bindListEvents() {
     dropMenu.addEventListener('click', function(e) { e.stopPropagation(); });
   }
 
-  function handleDateBlur(el) {
-    // Only reset type if empty — don't refresh (wait for change event)
-    if (!el.value) {
-      el.type = 'text';
-      el.setAttribute('readonly', '');
-    }
-  }
-  function handleDateChange() {
-    refresh();
-  }
-  if (fromEl) {
-    fromEl.addEventListener('blur', function() { handleDateBlur(fromEl); });
-    fromEl.addEventListener('change', handleDateChange);
-  }
-  if (toEl) {
-    toEl.addEventListener('blur', function() { handleDateBlur(toEl); });
-    toEl.addEventListener('change', handleDateChange);
-  }
+  if (fromEl) fromEl.addEventListener('change', refresh);
+  if (toEl) toEl.addEventListener('change', refresh);
   if (sortEl) sortEl.addEventListener('change', refresh);
 
   // Clear (×) buttons on date inputs
@@ -776,8 +760,6 @@ function bindListEvents() {
       var input = document.getElementById(btn.dataset.target);
       if (input) {
         input.value = '';
-        input.type = 'text';
-        input.setAttribute('readonly', '');
       }
       refresh();
     });
