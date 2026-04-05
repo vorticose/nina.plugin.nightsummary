@@ -53,7 +53,7 @@ namespace NINA.Plugin.NightSummary.Server {
         private const double AltOrigRight = 490.0;    // original right edge of plot (500 - 10)
         private const double AltNewSvgW = 825.0;      // new viewBox width (plot area only)
         private const double AltNewRight = 815.0;     // new right edge (825 - 10)
-        private const double AltLegendW = 130.0;      // dedicated legend column width (negative x-space)
+        private const double AltLegendW = 150.0;      // dedicated legend column width (negative x-space)
         private static readonly double AltScaleX = (AltNewRight - AltPadL) / (AltOrigRight - AltPadL); // ~1.719
 
         /// <summary>Map an x-coordinate from the original 500-wide plot space to the wider 750-wide space.</summary>
@@ -705,17 +705,19 @@ namespace NINA.Plugin.NightSummary.Server {
 
             // Legend — dedicated column in negative x-space with background panel
             // Auto-size font based on longest target name (available width ~100px for text)
-            const int MaxLegendChars = 28; // truncate beyond this to prevent tiny font
+            const int MaxLegendChars = 24; // truncate beyond this to prevent overflow
             int maxNameLen = targetData.Max(td => Math.Min(td.Name.Length, MaxLegendChars));
-            int fontSize = maxNameLen > 24 ? 8 : maxNameLen > 16 ? 9 : 10;
-            int lineHeight = fontSize + 5;
-            int legendStartY = 26;
-            int legendH = targetData.Count * lineHeight + 12;
+            int fontSize = maxNameLen > 22 ? 9 : maxNameLen > 16 ? 10 : 11;
+            int lineHeight = fontSize + 6;
+            int legendTopY = 20; // flush with plot area top
+            int legendPadTop = 6;
+            int legendStartY = legendTopY + legendPadTop + fontSize;
+            int legendH = targetData.Count * lineHeight + legendPadTop + 6;
 
-            // Background panel
-            sb.AppendLine($"<rect x='-{AltLegendW.ToString("F0", inv)}' y='16' width='{(AltLegendW - 6).ToString("F0", inv)}' height='{legendH}' rx='4' fill='#0d1117' opacity='0.6'/>");
+            // Background panel — flush with chart top edge
+            sb.AppendLine($"<rect x='-{AltLegendW.ToString("F0", inv)}' y='{legendTopY}' width='{(AltLegendW - 4).ToString("F0", inv)}' height='{legendH}' rx='4' fill='#0d1117' opacity='0.6'/>");
             // Separator line between legend and chart
-            sb.AppendLine($"<line x1='-4' y1='16' x2='-4' y2='{16 + legendH}' stroke='#2d2d5e' stroke-width='1' opacity='0.5'/>");
+            sb.AppendLine($"<line x1='-4' y1='{legendTopY}' x2='-4' y2='{legendTopY + legendH}' stroke='#2d2d5e' stroke-width='1' opacity='0.5'/>");
 
             for (int t = 0; t < targetData.Count; t++) {
                 var color = TargetColors[t % TargetColors.Length];
