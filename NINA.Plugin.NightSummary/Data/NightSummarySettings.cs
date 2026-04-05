@@ -59,6 +59,9 @@ namespace NINA.Plugin.NightSummary.Data {
         public int    ChartSecondaryMetric   { get; set; } = 0;
         public string AdditionalChartConfigs { get; set; } = "";
         public int    ChartXAxisMetric     { get; set; } = 0;
+        public bool   ShowChartAfMarkers   { get; set; } = true;
+        public bool   ShowChartFlipMarkers { get; set; } = true;
+        public bool   ShowChartRoofMarkers { get; set; } = false;
 
         // ── Filter classification ─────────────────────────────────────────────
         public string FilterClassifications  { get; set; } = "";

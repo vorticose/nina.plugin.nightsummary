@@ -81,6 +81,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
         private static string ColorLabel        => IsLight ? "#555577" : "#aaaacc";
         private static string ColorWarning      => IsLight ? "#d47020" : "#f7a87e";
         private static string ColorWarningBg    => IsLight ? "#fff3cd" : "#3a1e00";
+        private static string ColorAfMarker     => IsLight ? "#7c3aed" : "#a78bfa";
+        private static string ColorFlipMarker   => IsLight ? "#db2777" : "#f472b6";
+        private static string ColorRoofMarker   => IsLight ? "#d97706" : "#fbbf24";
 
         /// <summary>
         /// Returns the chart section heading based on configured metrics.
@@ -108,7 +111,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// Generates an inline SVG chart. Always returns a non-empty SVG —
         /// shows a placeholder when no data is available.
         /// </summary>
-        public static string GenerateMetricChart(List<ImageRecord> images, int primaryMetric, int secondaryMetric, int xAxisMetric = XAxisTime) {
+        public static string GenerateMetricChart(List<ImageRecord> images, int primaryMetric, int secondaryMetric, int xAxisMetric = XAxisTime, List<(DateTime timestamp, string eventType, string description)>? eventMarkers = null) {
             // Extract y-axis data (still keyed by timestamp for joining)
             var primaryRaw   = ExtractPrimary(images, primaryMetric);
             var secondaryRaw = secondaryMetric > SecNone
@@ -117,6 +120,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             // Build x-axis values keyed by timestamp for joining
             var xByTime = BuildXAxisLookup(images, xAxisMetric);
+
+            // Compute session start time for event marker positioning (Time x-axis only)
+            DateTime minTime = DateTime.MinValue;
+            if (xAxisMetric == XAxisTime && images.Count > 0)
+                minTime = images.OrderBy(i => i.Timestamp).First().Timestamp;
 
             // Join: only include points that have valid x AND y values
             var primaryPts   = JoinWithXAxis(primaryRaw, xByTime);
@@ -229,6 +237,23 @@ namespace NINA.Plugin.NightSummary.Reporting {
             // X axis title (for non-time axes)
             if (xAxisMetric != XAxisTime) {
                 sb.AppendLine($"<text x=\"{PadLeft + plotW / 2}\" y=\"{Height - 2}\" fill=\"{ColorLabel}\" font-size=\"10\" text-anchor=\"middle\">{GetXAxisAxisLabel(xAxisMetric)}</text>");
+            }
+
+            // Event markers (Time x-axis only, drawn behind data lines)
+            if (xAxisMetric == XAxisTime && eventMarkers != null && minTime != DateTime.MinValue) {
+                foreach (var (ts, evtType, desc) in eventMarkers) {
+                    double evtSec = (ts - minTime).TotalSeconds;
+                    if (evtSec < minX || evtSec > maxX) continue;
+
+                    double xPx = ToXPx(evtSec);
+                    string color = evtType switch {
+                        "AutoFocus"   => ColorAfMarker,
+                        "MeridianFlip" => ColorFlipMarker,
+                        _ => ColorRoofMarker
+                    };
+                    string tip = EscapeXml(desc ?? evtType);
+                    sb.AppendLine($"<line x1=\"{xPx:F1}\" y1=\"{PadTop}\" x2=\"{xPx:F1}\" y2=\"{PadTop + plotH}\" stroke=\"{color}\" stroke-width=\"1\" stroke-dasharray=\"4,3\" opacity=\"0.7\"><title>{tip}</title></line>");
+                }
             }
 
             // Secondary line (drawn first so primary renders on top)

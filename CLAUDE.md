@@ -76,6 +76,17 @@ See `scripts/TEST-MIGRATION-NOTES.md` for hard-won lessons from testing this.
   a binary FITS file which passes the `> 500 bytes` check but browsers cannot
   render it as an image -- thumbnails silently disappear. Fixed after v2.8.1.
 
+## Open Investigations
+
+- **Live Stack frame count mismatch (reported 2026-03-30)**: User observed a live stack
+  subtitle showing "H - 10 frames - 50m" but the session table showed 5 frames (which
+  matches 5×600s = 50m). Investigated the 2026-03-30 log — Live Stack broadcasts showed
+  correct per-filter counts (H: 1→2→3→4→5 for Seagull Nebula). No `livestack.json` was
+  saved for that session (predates master-saving feature). Could not reproduce from logs.
+  **Action**: validate live stack frame counts against the table in future sessions now
+  that `livestack.json` is persisted. Compare `stackCount` in the JSON against the actual
+  image count per filter in the DB.
+
 ## Branching Strategy
 
 ```

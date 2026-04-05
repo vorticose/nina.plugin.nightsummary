@@ -551,6 +551,9 @@ namespace NINA.Plugin.NightSummary {
                 S.ShowSessionHistory    = true;
                 S.ShowStarCountCV       = true;
                 S.ShowHFRGraph          = true;
+                S.ShowChartAfMarkers    = true;
+                S.ShowChartFlipMarkers  = true;
+                S.ShowChartRoofMarkers  = false;
                 S.ShowPerTargetIQ       = true;
                 S.ShowNextNightPreview  = true;
                 SaveSettings();
@@ -565,6 +568,9 @@ namespace NINA.Plugin.NightSummary {
                 RaisePropertyChanged(nameof(ShowSessionHistory));
                 RaisePropertyChanged(nameof(ShowStarCountCV));
                 RaisePropertyChanged(nameof(ShowHFRGraph));
+                RaisePropertyChanged(nameof(ShowChartAfMarkers));
+                RaisePropertyChanged(nameof(ShowChartFlipMarkers));
+                RaisePropertyChanged(nameof(ShowChartRoofMarkers));
                 RaisePropertyChanged(nameof(ShowPerTargetIQ));
                 RaisePropertyChanged(nameof(ShowNextNightPreview));
             }
@@ -618,6 +624,21 @@ namespace NINA.Plugin.NightSummary {
         public bool ShowHFRGraph {
             get => S.ShowHFRGraph;
             set { S.ShowHFRGraph = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
+        public bool ShowChartAfMarkers {
+            get => S.ShowChartAfMarkers;
+            set { S.ShowChartAfMarkers = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
+        public bool ShowChartFlipMarkers {
+            get => S.ShowChartFlipMarkers;
+            set { S.ShowChartFlipMarkers = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
+        public bool ShowChartRoofMarkers {
+            get => S.ShowChartRoofMarkers;
+            set { S.ShowChartRoofMarkers = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public bool ShowPerTargetIQ {

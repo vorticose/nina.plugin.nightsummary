@@ -954,8 +954,25 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 int primary   = SettingsManager.Instance.Current.ChartPrimaryMetric;
                 int secondary = SettingsManager.Instance.Current.ChartSecondaryMetric;
                 int xAxis     = SettingsManager.Instance.Current.ChartXAxisMetric;
+
+                // Build event marker list from enabled event types
+                var eventMarkers = new List<(DateTime timestamp, string eventType, string description)>();
+                if (data.Events != null) {
+                    var settings = SettingsManager.Instance.Current;
+                    if (settings.ShowChartAfMarkers)
+                        eventMarkers.AddRange(data.Events.Where(e => e.EventType == "AutoFocus")
+                            .Select(e => (e.Timestamp, e.EventType, e.Description)));
+                    if (settings.ShowChartFlipMarkers)
+                        eventMarkers.AddRange(data.Events.Where(e => e.EventType == "MeridianFlip")
+                            .Select(e => (e.Timestamp, e.EventType, e.Description)));
+                    if (settings.ShowChartRoofMarkers)
+                        eventMarkers.AddRange(data.Events.Where(e => e.EventType is "RoofOpen" or "RoofClosed")
+                            .Select(e => (e.Timestamp, e.EventType, e.Description)));
+                }
+                var markers = eventMarkers.Count > 0 ? eventMarkers : null;
+
                 sb.AppendLine($"<h2>{ChartGenerator.GetChartTitle(primary, secondary, xAxis)}</h2>");
-                sb.AppendLine(ChartGenerator.GenerateMetricChart(data.Images, primary, secondary, xAxis));
+                sb.AppendLine(ChartGenerator.GenerateMetricChart(data.Images, primary, secondary, xAxis, markers));
 
                 var additionalRaw = SettingsManager.Instance.Current.AdditionalChartConfigs;
                 if (!string.IsNullOrWhiteSpace(additionalRaw)) {
@@ -966,7 +983,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                             && int.TryParse(tokens[1], out int s)) {
                             int ax = tokens.Length >= 3 && int.TryParse(tokens[2], out int a) ? a : 0;
                             sb.AppendLine($"<h2>{ChartGenerator.GetChartTitle(p, s, ax)}</h2>");
-                            sb.AppendLine(ChartGenerator.GenerateMetricChart(data.Images, p, s, ax));
+                            sb.AppendLine(ChartGenerator.GenerateMetricChart(data.Images, p, s, ax, markers));
                         }
                     }
                 }
