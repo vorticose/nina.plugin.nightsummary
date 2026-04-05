@@ -640,7 +640,7 @@ namespace NINA.Plugin.NightSummary.Server {
             // Extract shared structural elements from the first chart
             var inv = System.Globalization.CultureInfo.InvariantCulture;
             // Trim vertical padding: original is 0-248, content lives at ~10-242
-            const int vbTopTrim = 18;  // trim from top (tight to 90° label)
+            const int vbTopTrim = 14;  // trim from top (room for 90° label)
             const int vbBotTrim = 2;   // trim from bottom (tight to time labels)
             var viewBoxMatch = Regex.Match(scaffoldSvg, @"viewBox='[\d.]+ [\d.]+ [\d.]+ ([\d.]+)'");
             int origH = viewBoxMatch.Success ? (int)double.Parse(viewBoxMatch.Groups[1].Value, inv) : 248;
