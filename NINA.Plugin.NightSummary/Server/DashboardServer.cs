@@ -53,7 +53,7 @@ namespace NINA.Plugin.NightSummary.Server {
         private const double AltOrigRight = 490.0;    // original right edge of plot (500 - 10)
         private const double AltNewSvgW = 825.0;      // new viewBox width (plot area only)
         private const double AltNewRight = 815.0;     // new right edge (825 - 10)
-        private const double AltLegendW = 110.0;      // dedicated legend column width (negative x-space)
+        private const double AltLegendW = 130.0;      // dedicated legend column width (negative x-space)
         private static readonly double AltScaleX = (AltNewRight - AltPadL) / (AltOrigRight - AltPadL); // ~1.719
 
         /// <summary>Map an x-coordinate from the original 500-wide plot space to the wider 750-wide space.</summary>
@@ -703,14 +703,25 @@ namespace NINA.Plugin.NightSummary.Server {
             // Time axis labels (scale x positions)
             foreach (Match t in timeLabelPattern.Matches(scaffoldSvg)) sb.AppendLine(RemapSvgX(t.Value));
 
-            // Legend — dedicated column in negative x-space (left of plot area)
-            int legendStartY = 28;
+            // Legend — dedicated column in negative x-space with background panel
+            // Auto-size font based on longest target name (available width ~100px for text)
+            int maxNameLen = targetData.Max(td => td.Name.Length);
+            int fontSize = maxNameLen > 20 ? 7 : maxNameLen > 14 ? 8 : 9;
+            int lineHeight = fontSize + 5;
+            int legendStartY = 26;
+            int legendH = targetData.Count * lineHeight + 12;
+
+            // Background panel
+            sb.AppendLine($"<rect x='-{AltLegendW.ToString("F0", inv)}' y='16' width='{(AltLegendW - 6).ToString("F0", inv)}' height='{legendH}' rx='4' fill='#0d1117' opacity='0.6'/>");
+            // Separator line between legend and chart
+            sb.AppendLine($"<line x1='-4' y1='16' x2='-4' y2='{16 + legendH}' stroke='#2d2d5e' stroke-width='1' opacity='0.5'/>");
+
             for (int t = 0; t < targetData.Count; t++) {
                 var color = TargetColors[t % TargetColors.Length];
                 var name = targetData[t].Name;
-                int ly = legendStartY + t * 15;
-                sb.AppendLine($"<line x1='-105' y1='{ly}' x2='-93' y2='{ly}' stroke='{color}' stroke-width='2'/>");
-                sb.AppendLine($"<text x='-90' y='{ly + 3}' font-size='9' fill='{color}'>{name}</text>");
+                int ly = legendStartY + t * lineHeight;
+                sb.AppendLine($"<line x1='-{(AltLegendW - 8).ToString("F0", inv)}' y1='{ly}' x2='-{(AltLegendW - 20).ToString("F0", inv)}' y2='{ly}' stroke='{color}' stroke-width='2'/>");
+                sb.AppendLine($"<text x='-{(AltLegendW - 23).ToString("F0", inv)}' y='{ly + 3}' font-size='{fontSize}' fill='{color}'>{name}</text>");
             }
 
             sb.AppendLine("</svg>");
