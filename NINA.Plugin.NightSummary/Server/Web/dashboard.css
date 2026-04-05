@@ -307,7 +307,7 @@ nav {
   margin-bottom: 8px;
   cursor: pointer;
   transition: border-color 0.2s;
-  overflow: hidden;
+  overflow: visible;
   position: relative;
 }
 
