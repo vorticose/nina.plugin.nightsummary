@@ -158,19 +158,26 @@ nav {
   min-width: 140px;
   cursor: pointer;
   caret-color: transparent;
-  -webkit-user-select: none;
-  user-select: none;
-  color: transparent;
-  text-shadow: 0 0 0 var(--text);
+}
+
+.filter-bar input[type="date"]::selection,
+.filter-bar input[type="date"]::-webkit-datetime-edit-fields-wrapper::selection,
+.filter-bar input[type="date"]::-webkit-datetime-edit-month-field::selection,
+.filter-bar input[type="date"]::-webkit-datetime-edit-day-field::selection,
+.filter-bar input[type="date"]::-webkit-datetime-edit-year-field::selection {
+  background: transparent;
+  color: var(--text);
+}
+
+.filter-bar input[type="date"]::-webkit-datetime-edit-month-field:focus,
+.filter-bar input[type="date"]::-webkit-datetime-edit-day-field:focus,
+.filter-bar input[type="date"]::-webkit-datetime-edit-year-field:focus {
+  background: transparent;
+  color: var(--text);
 }
 
 .filter-bar input[type="date"]::-webkit-calendar-picker-indicator {
   cursor: pointer;
-}
-
-.filter-bar input[type="date"]::-webkit-datetime-edit {
-  -webkit-user-select: none;
-  user-select: none;
 }
 
 .filter-bar input:focus {
