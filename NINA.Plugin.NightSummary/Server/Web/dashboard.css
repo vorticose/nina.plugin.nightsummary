@@ -317,6 +317,7 @@ nav {
   display: flex;
   gap: 8px;
   align-items: stretch;
+  min-height: 180px;
 }
 
 .card-content {

@@ -48,12 +48,12 @@ namespace NINA.Plugin.NightSummary.Server {
         // Altitude chart cache: sessionId -> SVG string
         private readonly Dictionary<string, string> altitudeChartCache = new Dictionary<string, string>();
 
-        // Altitude chart coordinate scaling: widen from 500 to 750 for better aspect ratio
+        // Altitude chart coordinate scaling: widen from 500 to 825 for better aspect ratio
         private const double AltPadL = 38.0;          // left padding (y-axis labels)
         private const double AltOrigRight = 490.0;    // original right edge of plot (500 - 10)
-        private const double AltNewSvgW = 750.0;      // new viewBox width
-        private const double AltNewRight = 740.0;     // new right edge (750 - 10)
-        private static readonly double AltScaleX = (AltNewRight - AltPadL) / (AltOrigRight - AltPadL); // ~1.553
+        private const double AltNewSvgW = 825.0;      // new viewBox width
+        private const double AltNewRight = 815.0;     // new right edge (825 - 10)
+        private static readonly double AltScaleX = (AltNewRight - AltPadL) / (AltOrigRight - AltPadL); // ~1.719
 
         /// <summary>Map an x-coordinate from the original 500-wide plot space to the wider 750-wide space.</summary>
         private static double MapX(double x) => AltPadL + (x - AltPadL) * AltScaleX;
