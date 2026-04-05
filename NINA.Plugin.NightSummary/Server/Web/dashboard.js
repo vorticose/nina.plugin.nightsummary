@@ -27,10 +27,17 @@ function fmtNum(n, decimals) {
 }
 
 function fmtDate(iso) {
+  // Parse YYYY-MM-DD without timezone offset (new Date('2026-03-30') parses as UTC, shifts day in local time)
+  var parts = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (parts) {
+    return new Date(parseInt(parts[1]), parseInt(parts[2]) - 1, parseInt(parts[3]))
+      .toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  }
   return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 function fmtTime(iso) {
+  if (!iso) return '--';
   return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
 
@@ -133,6 +140,12 @@ function statBox(value, label) {
 
 var sessionsCache = [];
 var selectedTargets = {}; // target name -> boolean (true = selected)
+var showEmptySessions = false; // hide 0-image sessions by default
+var showFovOverlay = localStorage.getItem('ns-show-fov') !== 'false'; // on by default
+var cardViewMode = localStorage.getItem('ns-card-view') || 'expanded'; // 'expanded' or 'compact'
+var hiddenSessions = JSON.parse(localStorage.getItem('ns-hidden-sessions') || '{}'); // sessionId -> true
+var showHidden = false;
+var livestackMap = {}; // sessionId -> { targetName -> [{filter, url, label, isComposite}] }
 
 function getAllTargets() {
   var targets = {};
@@ -196,11 +209,13 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
     targetDropHtml +
     '<div class="filter-dates">' +
       '<div class="date-input-wrap">' +
-        '<input type="' + (fromFilter ? 'date' : 'text') + '" id="filter-from" value="' + esc(fromFilter) + '" placeholder="From" readonly onfocus="this.type=\'date\';this.removeAttribute(\'readonly\');this.showPicker?this.showPicker():0">' +
+        '<span class="date-label' + (fromFilter ? '' : ' empty') + '">' + (fromFilter ? fmtDate(fromFilter) : 'From') + '</span>' +
+        '<input type="date" id="filter-from" value="' + esc(fromFilter) + '" tabindex="-1">' +
         (fromFilter ? '<button class="date-clear" data-target="filter-from" title="Clear">\u00d7</button>' : '') +
       '</div>' +
       '<div class="date-input-wrap">' +
-        '<input type="' + (toFilter ? 'date' : 'text') + '" id="filter-to" value="' + esc(toFilter) + '" placeholder="To" readonly onfocus="this.type=\'date\';this.removeAttribute(\'readonly\');this.showPicker?this.showPicker():0">' +
+        '<span class="date-label' + (toFilter ? '' : ' empty') + '">' + (toFilter ? fmtDate(toFilter) : 'To') + '</span>' +
+        '<input type="date" id="filter-to" value="' + esc(toFilter) + '" tabindex="-1">' +
         (toFilter ? '<button class="date-clear" data-target="filter-to" title="Clear">\u00d7</button>' : '') +
       '</div>' +
     '</div>' +
@@ -213,7 +228,22 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
       '</select>' +
     '</div>' +
     '<button id="filter-clear" class="filter-link">Clear filters</button>' +
-    '</div>';
+    '<div class="view-toggle">' +
+      '<button class="view-toggle-btn' + (cardViewMode === 'compact' ? ' active' : '') + '" data-view="compact">Compact</button>' +
+      '<button class="view-toggle-btn' + (cardViewMode === 'expanded' ? ' active' : '') + '" data-view="expanded">Expanded</button>' +
+    '</div>' +
+    '<label class="target-check" title="Include sessions with 0 captured images"><input type="checkbox" id="filter-empty"' + (showEmptySessions ? ' checked' : '') + '><span>Show empty</span></label>' +
+    '<label class="target-check' + (cardViewMode === 'compact' ? ' disabled' : '') + '" title="Show camera FOV rectangle on thumbnails"><input type="checkbox" id="filter-fov"' + (showFovOverlay ? ' checked' : '') + (cardViewMode === 'compact' ? ' disabled' : '') + '><span>Show FOV</span></label>';
+
+  // Add hidden session controls inline if any are hidden
+  var tempHiddenCount = sessionsCache.filter(function(s) { return hiddenSessions[s.sessionId]; }).length;
+  if (tempHiddenCount > 0) {
+    filterHtml +=
+      '<label class="target-check"><input type="checkbox" id="filter-hidden"' + (showHidden ? ' checked' : '') + '><span>Show hidden (' + tempHiddenCount + ')</span></label>' +
+      '<button id="unhide-all" class="filter-link">Unhide all</button>';
+  }
+
+  filterHtml += '</div>';
 
   // Filter sessions
   var activeTargets = {};
@@ -222,7 +252,11 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
   });
   var allSelected = Object.keys(activeTargets).length === allTargets.length;
 
+  var hiddenCount = sessionsCache.filter(function(s) { return hiddenSessions[s.sessionId]; }).length;
+
   var filtered = sessionsCache.filter(function(s) {
+    if (!showHidden && hiddenSessions[s.sessionId]) return false;
+    if (!showEmptySessions && s.imageCount === 0) return false;
     if (!allSelected) {
       var match = s.targets.some(function(t) { return activeTargets[t]; });
       if (!match) return false;
@@ -255,31 +289,546 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
   }
 
   var cards = filtered.map(function(s) {
-    var targetPills = s.targets.length > 0
-      ? s.targets.map(function(t) { return '<span class="target-pill">' + esc(t) + '</span>'; }).join('')
-      : '<span class="target-pill target-pill-none">No targets</span>';
+    var targetsText = s.targets.length > 0
+      ? s.targets.map(function(t) { return esc(t); }).join(' \u00b7 ')
+      : 'No targets';
 
-    var badge = s.hasReport
-      ? '<span class="badge badge-green">Report</span>'
-      : '<span class="badge badge-red">No report</span>';
+    var badge = s.hasReport ? '' : '<span class="badge badge-red">No report</span>';
+
+    var sessionTimes = fmtTime(s.sessionStart) + ' \u2013 ' + fmtTime(s.sessionEnd);
+
+    var statsLine = '<span class="stat-val">' + s.imageCount + '</span> imgs' +
+      ' &middot; <span class="stat-val">' + fmt(s.totalIntegrationSeconds) + '</span>' +
+      ' &middot; HFR <span class="stat-val">' + fmtNum(s.avgHfr) + '</span>' +
+      ' &middot; <span class="stat-val">' + fmtNum(s.avgGuiding) + '&Prime;</span> guiding';
+
+    var moonBox = s.moonPhase
+      ? '<div class="card-stat"><div class="card-stat-value">' + esc(s.moonPhase) + '</div><div class="card-stat-label">Moon</div></div>'
+      : '';
+
+    var statBoxes = '<div class="card-stats">' +
+      '<div class="card-stat"><div class="card-stat-value">' + s.imageCount + '</div><div class="card-stat-label">Images</div></div>' +
+      '<div class="card-stat"><div class="card-stat-value">' + fmt(s.totalIntegrationSeconds) + '</div><div class="card-stat-label">Integration</div></div>' +
+      '<div class="card-stat"><div class="card-stat-value">' + fmtNum(s.avgHfr) + '</div><div class="card-stat-label">HFR</div></div>' +
+      '<div class="card-stat"><div class="card-stat-value">' + fmtNum(s.avgGuiding) + '&Prime;</div><div class="card-stat-label">Guiding</div></div>' +
+      moonBox +
+      '</div>';
 
     return '<div class="session-card" onclick="navigate(\'#/sessions/' + s.sessionId + '\')">' +
-      '<div class="session-header">' +
+      '<button class="hide-btn" data-session="' + s.sessionId + '" onclick="event.stopPropagation();hideSession(this.dataset.session)" title="Hide this session">\u2715</button>' +
+      '<div class="card-header">' +
         '<span class="session-date">' + fmtDate(s.sessionStart) + '</span>' +
+        '<span class="session-times">' + sessionTimes + '</span>' +
+        '<span class="card-targets-line" id="targets-' + s.sessionId + '">' + targetsText + '</span>' +
         badge +
       '</div>' +
-      '<div class="session-targets">' + targetPills + '</div>' +
-      '<div class="card-stats">' +
-        '<div class="card-stat"><div class="card-stat-value">' + s.imageCount + '</div><div class="card-stat-label">Images</div></div>' +
-        '<div class="card-stat"><div class="card-stat-value">' + fmt(s.totalIntegrationSeconds) + '</div><div class="card-stat-label">Integration</div></div>' +
-        '<div class="card-stat"><div class="card-stat-value">' + fmtNum(s.avgHfr) + '</div><div class="card-stat-label">HFR</div></div>' +
-        '<div class="card-stat"><div class="card-stat-value">' + fmtNum(s.avgGuiding) + '"</div><div class="card-stat-label">Guiding</div></div>' +
+      '<div class="card-body">' +
+        '<div class="card-content">' +
+          '<div class="card-thumbs" id="thumbs-' + s.sessionId + '"></div>' +
+          '<div class="card-stats-line">' + statsLine + '</div>' +
+          statBoxes +
+        '</div>' +
+        '<div class="card-altitude" id="altitude-' + s.sessionId + '"></div>' +
       '</div>' +
     '</div>';
   }).join('');
 
-  el.innerHTML = filterHtml + cards;
+  var modeClass = cardViewMode === 'compact' ? ' cards-compact' : '';
+  el.innerHTML = filterHtml + '<div class="cards-container' + modeClass + '">' + cards + '</div>';
   bindListEvents();
+  if (cardViewMode === 'expanded') {
+    loadThumbnails(filtered);
+    loadLiveStacks(filtered);
+    loadAltitudeCharts(filtered);
+  }
+}
+
+function loadThumbnails(sessions) {
+  sessions.forEach(function(s) {
+    if (!s.hasReport) return;
+    var container = document.getElementById('thumbs-' + s.sessionId);
+    if (!container) return;
+
+    api('/api/sessions/' + s.sessionId + '/thumbnails').then(function(thumbs) {
+      if (!thumbs || thumbs.length === 0) return;
+      var el = document.getElementById('thumbs-' + s.sessionId);
+      if (!el) return;
+      el.innerHTML = thumbs.map(function(t) {
+        var img = '<img class="card-thumb" src="' + t.dataUri + '" alt="' + esc(t.target) + '" title="' + esc(t.target) + '" loading="lazy" onerror="this.style.display=\'none\'">';
+        var svg = '';
+        if (t.fovSvg) {
+          svg = t.fovSvg
+            .replace(/width='\d+'/, "width='100%'")
+            .replace(/height='\d+'/, "height='100%'")
+            .replace("<svg ", "<svg viewBox='0 0 200 200' " + (showFovOverlay ? '' : "style='display:none' "));
+        }
+        return '<div class="card-thumb-wrap" data-target="' + esc(t.target) + '" data-session="' + esc(s.sessionId) + '">' + img + svg + '</div>';
+      }).join('');
+      // Reorder target names to match thumbnail order
+      var targetsEl = document.getElementById('targets-' + s.sessionId);
+      if (targetsEl && thumbs.length > 0) {
+        var thumbOrder = thumbs.map(function(t) { return t.target; });
+        // Include any targets not in the report (no thumbnail)
+        var remaining = s.targets.filter(function(t) { return thumbOrder.indexOf(t) === -1; });
+        targetsEl.textContent = thumbOrder.concat(remaining).join(' \u00b7 ');
+      }
+    }).catch(function(err) {
+      logDebug('Thumb load failed for', s.sessionId, err.message);
+    });
+  });
+}
+
+function loadLiveStacks(sessions) {
+  sessions.forEach(function(s) {
+    if (!s.hasReport) return;
+    api('/api/sessions/' + s.sessionId + '/livestack').then(function(data) {
+      // data is { targetName: [{target, filter, url, label, isComposite}] }
+      if (!data || Object.keys(data).length === 0) return;
+      livestackMap[s.sessionId] = data;
+
+      // Add badges to thumbnails that have live stack data
+      var thumbsEl = document.getElementById('thumbs-' + s.sessionId);
+      if (!thumbsEl) return;
+      var wraps = thumbsEl.querySelectorAll('.card-thumb-wrap');
+      for (var i = 0; i < wraps.length; i++) {
+        var target = wraps[i].getAttribute('data-target');
+        if (target && data[target]) {
+          var count = data[target].length;
+          var badge = document.createElement('span');
+          badge.className = 'livestack-badge';
+          badge.textContent = count;
+          badge.title = count + ' live stack image' + (count !== 1 ? 's' : '');
+          wraps[i].appendChild(badge);
+          setupLiveStackHover(wraps[i], s.sessionId, target);
+        }
+      }
+    }).catch(function(err) {
+      logDebug('LiveStack load failed for', s.sessionId, err.message);
+    });
+  });
+}
+
+function setupLiveStackHover(thumbWrap, sessionId, targetName) {
+  var hoverTimer = null;
+  var shelf = null;
+  var shelfLeaveTimer = null;
+
+  function showShelf() {
+    if (shelf) return;
+    var images = livestackMap[sessionId] && livestackMap[sessionId][targetName];
+    if (!images || images.length === 0) return;
+
+    shelf = document.createElement('div');
+    shelf.className = 'livestack-shelf';
+
+    var imagesDiv = document.createElement('div');
+    imagesDiv.className = 'livestack-shelf-images';
+
+    images.forEach(function(img, idx) {
+      var item = document.createElement('div');
+      item.className = 'livestack-shelf-item';
+      item.style.animationDelay = (idx * 40) + 'ms';
+
+      var imgEl = document.createElement('img');
+      imgEl.className = 'livestack-shelf-img';
+      imgEl.src = img.url;
+      imgEl.alt = img.label;
+      imgEl.loading = 'lazy';
+
+      var label = document.createElement('div');
+      label.className = 'livestack-shelf-label';
+      label.textContent = img.label;
+
+      item.appendChild(imgEl);
+      item.appendChild(label);
+      imagesDiv.appendChild(item);
+    });
+
+    shelf.appendChild(imagesDiv);
+
+    // Position relative to the thumb — append to .card-thumbs container
+    var thumbsContainer = thumbWrap.closest('.card-thumbs');
+    if (!thumbsContainer) { shelf = null; return; }
+    thumbsContainer.appendChild(shelf);
+
+    // Calculate position: center shelf below the hovered thumb
+    // Account for the transform:scale(1.67) on hover — the visual size is larger
+    var wrapRect = thumbWrap.getBoundingClientRect();
+    var containerRect = thumbsContainer.getBoundingClientRect();
+    var centerX = (wrapRect.left + wrapRect.width / 2) - containerRect.left;
+    var topY = wrapRect.bottom - containerRect.top + 8;
+
+    shelf.style.left = centerX + 'px';
+    shelf.style.top = topY + 'px';
+
+    // Shelf hover: keep alive when mouse enters shelf
+    shelf.addEventListener('mouseenter', function() {
+      clearTimeout(shelfLeaveTimer);
+    });
+    shelf.addEventListener('mouseleave', function(e) {
+      // Hide unless mouse went back to the thumb
+      if (thumbWrap.contains(e.relatedTarget)) return;
+      hideShelf();
+    });
+  }
+
+  function hideShelf() {
+    clearTimeout(shelfLeaveTimer);
+    if (shelf) {
+      shelf.classList.add('shelf-hiding');
+      var s = shelf;
+      setTimeout(function() { if (s.parentNode) s.parentNode.removeChild(s); }, 150);
+      shelf = null;
+    }
+  }
+
+  thumbWrap.addEventListener('mouseenter', function() {
+    clearTimeout(shelfLeaveTimer);
+    hoverTimer = setTimeout(showShelf, 200);
+  });
+
+  thumbWrap.addEventListener('mouseleave', function(e) {
+    clearTimeout(hoverTimer);
+    // Don't hide immediately if mouse moved into the shelf — give a grace period
+    if (shelf && shelf.contains(e.relatedTarget)) return;
+    shelfLeaveTimer = setTimeout(hideShelf, 100);
+  });
+}
+
+function hideSession(sessionId) {
+  hiddenSessions[sessionId] = true;
+  localStorage.setItem('ns-hidden-sessions', JSON.stringify(hiddenSessions));
+  var el = document.getElementById('content');
+  var sub = document.getElementById('page-subtitle');
+  doRenderList(el, sub, '', '', 'date-desc');
+}
+
+// ── Altitude chart crosshair ──────────────────────────────────────────────
+
+function setupChartCrosshair(container) {
+  var svg = container.querySelector('svg');
+  if (!svg) return;
+
+  var ns = 'http://www.w3.org/2000/svg';
+  var viewBox = svg.getAttribute('viewBox').split(' ').map(Number);
+  var vbMinX = viewBox[0], vbMinY = viewBox[1], vbW = viewBox[2];
+  // Plot area bounds in viewBox coordinates
+  var plotL = 38, plotR = vbMinX + vbW - 10, plotT = 20, plotB = 220;
+
+  // Extract time labels from the SVG
+  var timeLabels = [];
+  svg.querySelectorAll('text').forEach(function(t) {
+    if (t.getAttribute('fill') === '#888' && /^\d{2}:\d{2}$/.test(t.textContent.trim())) {
+      timeLabels.push({ x: parseFloat(t.getAttribute('x')), time: t.textContent.trim() });
+    }
+  });
+  timeLabels.sort(function(a, b) { return a.x - b.x; });
+
+  // Extract target polylines (colored ones inside <g> with <title>)
+  var targets = [];
+  svg.querySelectorAll('g').forEach(function(g) {
+    var title = g.querySelector('title');
+    if (!title || title.textContent === 'Moon Position') return;
+    var polys = g.querySelectorAll('polyline');
+    var poly = polys.length > 1 ? polys[1] : polys[0]; // second is colored
+    if (!poly || poly.getAttribute('stroke') === 'transparent') poly = polys.length > 1 ? polys[1] : null;
+    if (!poly) return;
+    var color = poly.getAttribute('stroke');
+    if (color === 'transparent') return;
+    var pts = poly.getAttribute('points').split(' ').map(function(p) {
+      var c = p.split(','); return { x: parseFloat(c[0]), y: parseFloat(c[1]) };
+    }).filter(function(p) { return !isNaN(p.x) && !isNaN(p.y); });
+    targets.push({ name: title.textContent, color: color, points: pts });
+  });
+
+  if (targets.length === 0) return;
+
+  // Extract imaging window rects (colored rects with opacity='0.15') and their border lines
+  var imagingWindows = [];
+  svg.querySelectorAll("rect[opacity='0.15']").forEach(function(r) {
+    var x = parseFloat(r.getAttribute('x'));
+    var w = parseFloat(r.getAttribute('width'));
+    var color = r.getAttribute('fill');
+    // Find which target this rect belongs to by matching color
+    var targetIdx = -1;
+    for (var i = 0; i < targets.length; i++) {
+      if (targets[i].color === color) { targetIdx = i; break; }
+    }
+    if (targetIdx >= 0) {
+      imagingWindows.push({ x: x, w: w, targetIdx: targetIdx, rect: r });
+    }
+  });
+
+  // Collect all imaging window border lines (colored lines with opacity='0.6')
+  var windowLines = [];
+  svg.querySelectorAll("line[opacity='0.6']").forEach(function(l) {
+    windowLines.push(l);
+  });
+
+  // Collect target groups for opacity control
+  var targetGroups = [];
+  svg.querySelectorAll('g').forEach(function(g) {
+    var title = g.querySelector('title');
+    if (title && title.textContent !== 'Moon Position') {
+      targetGroups.push(g);
+    }
+  });
+
+  // Create persistent SVG elements (update positions on mousemove, avoid DOM churn)
+  var crossLine = document.createElementNS(ns, 'line');
+  crossLine.setAttribute('stroke', '#ffffff');
+  crossLine.setAttribute('stroke-width', '0.5');
+  crossLine.setAttribute('stroke-dasharray', '3,3');
+  crossLine.setAttribute('opacity', '0.5');
+  crossLine.style.display = 'none';
+  crossLine.style.pointerEvents = 'none';
+  svg.appendChild(crossLine);
+
+  var tooltip = document.createElementNS(ns, 'g');
+  tooltip.style.display = 'none';
+  tooltip.style.pointerEvents = 'none';
+  svg.appendChild(tooltip);
+
+  // Time label element
+  var timeText = document.createElementNS(ns, 'text');
+  timeText.setAttribute('fill', '#fff');
+  timeText.setAttribute('font-size', '9');
+  timeText.setAttribute('text-anchor', 'middle');
+  timeText.setAttribute('font-weight', 'bold');
+  tooltip.appendChild(timeText);
+
+  // Pre-create dot + label for each target
+  var markers = targets.map(function(t) {
+    var dot = document.createElementNS(ns, 'circle');
+    dot.setAttribute('r', '3');
+    dot.setAttribute('fill', t.color);
+    dot.setAttribute('stroke', '#fff');
+    dot.setAttribute('stroke-width', '0.8');
+    tooltip.appendChild(dot);
+    var label = document.createElementNS(ns, 'text');
+    label.setAttribute('fill', t.color);
+    label.setAttribute('font-size', '8');
+    label.setAttribute('font-weight', 'bold');
+    tooltip.appendChild(label);
+    return { dot: dot, label: label };
+  });
+
+  function interpolateY(points, x) {
+    for (var i = 0; i < points.length - 1; i++) {
+      if (x >= points[i].x && x <= points[i + 1].x) {
+        var t = (x - points[i].x) / (points[i + 1].x - points[i].x);
+        return points[i].y + t * (points[i + 1].y - points[i].y);
+      }
+    }
+    return null;
+  }
+
+  function xToTime(x) {
+    for (var i = 0; i < timeLabels.length - 1; i++) {
+      if (x >= timeLabels[i].x && x <= timeLabels[i + 1].x) {
+        var t = (x - timeLabels[i].x) / (timeLabels[i + 1].x - timeLabels[i].x);
+        var p1 = timeLabels[i].time.split(':').map(Number);
+        var p2 = timeLabels[i + 1].time.split(':').map(Number);
+        var m1 = p1[0] * 60 + p1[1], m2 = p2[0] * 60 + p2[1];
+        if (m2 < m1) m2 += 1440;
+        var m = (m1 + t * (m2 - m1)) % 1440;
+        var hh = Math.floor(m / 60), mm = Math.floor(m % 60);
+        return (hh < 10 ? '0' : '') + hh + ':' + (mm < 10 ? '0' : '') + mm;
+      }
+    }
+    return '';
+  }
+
+  function yToAlt(y) { return Math.max(0, Math.min(90, 90 * (plotB - y) / (plotB - plotT))); }
+
+  svg.addEventListener('mousemove', function(e) {
+    // Map mouse to SVG viewBox coordinates using CTM (handles preserveAspectRatio=none)
+    var pt = svg.createSVGPoint();
+    pt.x = e.clientX; pt.y = e.clientY;
+    var ctm = svg.getScreenCTM();
+    var svgPt = pt.matrixTransform(ctm.inverse());
+    var sx = svgPt.x;
+
+    // Counter-transform for text: undo horizontal squash from preserveAspectRatio=none
+    var scaleRatio = ctm.d / ctm.a; // yScale / xScale
+    var textTransform = 'scale(' + scaleRatio.toFixed(3) + ', 1)';
+
+    if (sx < plotL || sx > plotR) {
+      crossLine.style.display = 'none';
+      tooltip.style.display = 'none';
+      return;
+    }
+
+    crossLine.setAttribute('x1', sx); crossLine.setAttribute('y1', plotT);
+    crossLine.setAttribute('x2', sx); crossLine.setAttribute('y2', plotB);
+    crossLine.style.display = '';
+    tooltip.style.display = '';
+
+    // Time at top — position just inside visible viewBox area
+    var time = xToTime(sx);
+    var timeY = vbMinY + 8;
+    timeText.setAttribute('x', sx);
+    timeText.setAttribute('y', timeY);
+    timeText.setAttribute('transform', 'translate(' + sx + ',' + timeY + ') ' + textTransform + ' translate(' + (-sx) + ',' + (-timeY) + ')');
+    timeText.textContent = time;
+
+    // Detect which imaging window the crosshair is inside
+    var activeTarget = -1;
+    for (var w = 0; w < imagingWindows.length; w++) {
+      var iw = imagingWindows[w];
+      if (sx >= iw.x && sx <= iw.x + iw.w) {
+        activeTarget = iw.targetIdx;
+        break;
+      }
+    }
+
+    // Highlight active target, dim others (curves, shading, border lines)
+    if (targets.length > 1) {
+      for (var g = 0; g < targetGroups.length; g++) {
+        targetGroups[g].style.opacity = (activeTarget === -1 || g === activeTarget) ? '1' : '0.15';
+      }
+      for (var r = 0; r < imagingWindows.length; r++) {
+        var isActive = activeTarget === -1 || imagingWindows[r].targetIdx === activeTarget;
+        imagingWindows[r].rect.style.opacity = isActive ? '0.15' : '0.04';
+      }
+      for (var l = 0; l < windowLines.length; l++) {
+        // Match border lines to targets by color
+        var lineColor = windowLines[l].getAttribute('stroke');
+        var lineActive = activeTarget === -1;
+        if (!lineActive) {
+          lineActive = targets[activeTarget] && targets[activeTarget].color === lineColor;
+        }
+        windowLines[l].style.opacity = lineActive ? '0.6' : '0.1';
+      }
+    }
+
+    // Per-target markers — only show for the active target's imaging window
+    for (var i = 0; i < targets.length; i++) {
+      if (activeTarget !== -1 && i !== activeTarget) {
+        markers[i].dot.style.display = 'none';
+        markers[i].label.style.display = 'none';
+        continue;
+      }
+      var y = (activeTarget === -1) ? null : interpolateY(targets[i].points, sx);
+      if (y === null || y < plotT || y > plotB) {
+        markers[i].dot.style.display = 'none';
+        markers[i].label.style.display = 'none';
+        continue;
+      }
+      markers[i].dot.setAttribute('cx', sx);
+      markers[i].dot.setAttribute('cy', y);
+      markers[i].dot.style.display = '';
+      var alt = yToAlt(y).toFixed(0) + '\u00b0';
+      markers[i].label.textContent = alt;
+      // Position label to the right, offset to avoid overlap; counter-transform text
+      var lx = sx + 5, ly2 = y - 4 - i * 10;
+      markers[i].label.setAttribute('x', lx);
+      markers[i].label.setAttribute('y', ly2);
+      markers[i].label.setAttribute('transform', 'translate(' + lx + ',' + ly2 + ') ' + textTransform + ' translate(' + (-lx) + ',' + (-ly2) + ')');
+      markers[i].label.style.display = '';
+    }
+  });
+
+  svg.addEventListener('mouseleave', function() {
+    crossLine.style.display = 'none';
+    tooltip.style.display = 'none';
+    // Restore all opacities
+    for (var g = 0; g < targetGroups.length; g++) targetGroups[g].style.opacity = '1';
+    for (var r = 0; r < imagingWindows.length; r++) imagingWindows[r].rect.style.opacity = '0.15';
+    for (var l = 0; l < windowLines.length; l++) windowLines[l].style.opacity = '0.6';
+  });
+}
+
+// ── Animated curve drawing on scroll ──────────────────────────────────────
+
+function setupCurveAnimation(container) {
+  var svg = container.querySelector('svg');
+  if (!svg) return;
+
+  // Find all visible target polylines (colored, not transparent)
+  var polylines = [];
+  svg.querySelectorAll('polyline').forEach(function(p) {
+    var stroke = p.getAttribute('stroke');
+    if (stroke && stroke !== 'transparent' && stroke !== '#c0c0c0') {
+      polylines.push(p);
+    }
+  });
+  if (polylines.length === 0) return;
+
+  // Cache lengths and set initial hidden state
+  var lengths = polylines.map(function(p) { return p.getTotalLength(); });
+  polylines.forEach(function(p, i) {
+    p.style.strokeDasharray = lengths[i];
+    p.style.strokeDashoffset = lengths[i];
+  });
+
+  // Use IntersectionObserver to trigger draw/reset as card enters/leaves view
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        // Draw: animate in
+        polylines.forEach(function(p) {
+          p.style.transition = 'stroke-dashoffset 0.5s ease-out';
+          p.style.strokeDashoffset = '0';
+        });
+      } else {
+        // Reset: instantly hide for next scroll-in
+        polylines.forEach(function(p, i) {
+          p.style.transition = 'none';
+          p.style.strokeDashoffset = lengths[i];
+        });
+      }
+    });
+  }, { threshold: 0.3 });
+
+  observer.observe(container);
+}
+
+function loadAltitudeCharts(sessions) {
+  sessions.forEach(function(s) {
+    if (!s.hasReport) return;
+    var container = document.getElementById('altitude-' + s.sessionId);
+    if (!container) return;
+
+    api('/api/sessions/' + s.sessionId + '/altitude-chart').then(function(data) {
+      if (!data || !data.svg) return;
+      var el = document.getElementById('altitude-' + s.sessionId);
+      if (!el) return;
+      // Render legend as HTML + SVG in a chart-svg-wrap
+      var legendHtml = '';
+      if (data.legend && data.legend.length > 0) {
+        legendHtml = '<div class="chart-legend">' + data.legend.map(function(l) {
+          return '<div class="chart-legend-item">' +
+            '<span class="chart-legend-swatch" style="background:' + l.color + '"></span>' +
+            '<span style="color:' + l.color + '">' + esc(l.name) + '</span></div>';
+        }).join('') + '</div>';
+      }
+      el.innerHTML = legendHtml + '<div class="chart-svg-wrap">' + data.svg + '</div>';
+      setupCurveAnimation(el);
+      setupChartCrosshair(el);
+      // Dynamically extend chart upward based on header height
+      var card = el.closest('.session-card');
+      var header = card ? card.querySelector('.card-header') : null;
+      if (header) {
+        var headerH = header.offsetHeight;
+        var headerMargin = 4;
+        var cardPadTop = 8;
+        // Only add clearance if header text reaches close to the chart SVG graphics
+        var lastChild = header.lastElementChild;
+        var textRight = lastChild ? lastChild.getBoundingClientRect().right : 0;
+        var svgWrap = el.querySelector('.chart-svg-wrap');
+        var chartLeft = svgWrap ? svgWrap.getBoundingClientRect().left : el.getBoundingClientRect().left;
+        var clearance = (textRight > chartLeft - 15) ? 18 : 0;
+        var pullUp = Math.max(0, headerH + headerMargin - cardPadTop - clearance);
+        el.style.marginTop = '-' + pullUp + 'px';
+      }
+      // Add has-chart class to card-body so CSS can reserve space
+      var body = el.parentElement;
+      if (body) body.classList.add('has-chart');
+    }).catch(function(err) {
+      logDebug('Altitude chart load failed for', s.sessionId, err.message);
+    });
+  });
 }
 
 function bindListEvents() {
@@ -324,25 +873,20 @@ function bindListEvents() {
     dropMenu.addEventListener('click', function(e) { e.stopPropagation(); });
   }
 
-  function handleDateBlur(el) {
-    if (!el.value) {
-      el.type = 'text';
-      el.setAttribute('readonly', '');
-    }
-    refresh();
-  }
-  function handleDateChange(el) {
-    // On mobile, only act on change if value was cleared (reset button) —
-    // ignore change when picker opens with a new value (wait for blur)
-    if (!el.value) handleDateBlur(el);
-  }
+  // Date picker — click anywhere on wrapper opens the picker
   if (fromEl) {
-    fromEl.addEventListener('blur', function() { handleDateBlur(fromEl); });
-    fromEl.addEventListener('change', function() { handleDateChange(fromEl); });
+    fromEl.addEventListener('change', refresh);
+    fromEl.parentElement.addEventListener('click', function(e) {
+      if (e.target.classList.contains('date-clear')) return;
+      fromEl.showPicker && fromEl.showPicker();
+    });
   }
   if (toEl) {
-    toEl.addEventListener('blur', function() { handleDateBlur(toEl); });
-    toEl.addEventListener('change', function() { handleDateChange(toEl); });
+    toEl.addEventListener('change', refresh);
+    toEl.parentElement.addEventListener('click', function(e) {
+      if (e.target.classList.contains('date-clear')) return;
+      toEl.showPicker && toEl.showPicker();
+    });
   }
   if (sortEl) sortEl.addEventListener('change', refresh);
 
@@ -352,16 +896,55 @@ function bindListEvents() {
       var input = document.getElementById(btn.dataset.target);
       if (input) {
         input.value = '';
-        input.type = 'text';
-        input.setAttribute('readonly', '');
       }
       refresh();
     });
   });
 
+  // Show empty sessions checkbox
+  var emptyEl = document.getElementById('filter-empty');
+  if (emptyEl) {
+    emptyEl.addEventListener('change', function() {
+      showEmptySessions = this.checked;
+      refresh();
+    });
+  }
+
+  // Show FOV overlay checkbox — toggle visibility without re-render
+  var fovEl = document.getElementById('filter-fov');
+  if (fovEl) {
+    fovEl.addEventListener('change', function() {
+      showFovOverlay = this.checked;
+      localStorage.setItem('ns-show-fov', showFovOverlay ? 'true' : 'false');
+      document.querySelectorAll('.card-thumb-wrap svg').forEach(function(svg) {
+        svg.style.display = showFovOverlay ? '' : 'none';
+      });
+    });
+  }
+
+  // Show hidden / unhide all
+  var hiddenEl = document.getElementById('filter-hidden');
+  var unhideEl = document.getElementById('unhide-all');
+  if (hiddenEl) {
+    hiddenEl.addEventListener('change', function() {
+      showHidden = this.checked;
+      refresh();
+    });
+  }
+  if (unhideEl) {
+    unhideEl.addEventListener('click', function() {
+      hiddenSessions = {};
+      showHidden = false;
+      localStorage.setItem('ns-hidden-sessions', '{}');
+      refresh();
+    });
+  }
+
   if (clearEl) {
     clearEl.addEventListener('click', function() {
       getAllTargets().forEach(function(t) { selectedTargets[t] = true; });
+      showEmptySessions = false;
+      showHidden = false;
       var el = document.getElementById('content');
       var sub = document.getElementById('page-subtitle');
       doRenderList(el, sub, '', '', 'date-desc');
@@ -369,7 +952,7 @@ function bindListEvents() {
   }
 
   // Target checkboxes
-  document.querySelectorAll('.target-check input').forEach(function(cb) {
+  document.querySelectorAll('.target-check input[data-target]').forEach(function(cb) {
     cb.addEventListener('change', function() {
       selectedTargets[this.dataset.target] = this.checked;
       refresh();
@@ -389,6 +972,15 @@ function bindListEvents() {
       refresh();
     });
   }
+
+  // View mode toggle
+  document.querySelectorAll('.view-toggle-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      cardViewMode = this.dataset.view;
+      localStorage.setItem('ns-card-view', cardViewMode);
+      refresh();
+    });
+  });
 }
 
 // ── Session Detail Page (Report-First) ────────────────────────────────────

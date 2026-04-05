@@ -10,6 +10,7 @@ using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -34,6 +35,75 @@ namespace NINA.Plugin.NightSummary.Server {
         private volatile int regenAllFailed;
         private volatile string regenAllStatus; // "running", "done", "error"
         private volatile string regenAllError;
+
+        // Thumbnail cache: sessionId -> list of (target, dataUri)
+        private readonly Dictionary<string, List<ThumbnailEntry>> thumbnailCache = new Dictionary<string, List<ThumbnailEntry>>();
+
+        private class ThumbnailEntry {
+            public string target { get; set; }
+            public string dataUri { get; set; }
+            public string fovSvg { get; set; }  // SVG overlay with FOV rectangle (from report)
+        }
+
+        // Altitude chart cache: sessionId -> { svg, legend }
+        private readonly Dictionary<string, object> altitudeChartCache = new Dictionary<string, object>();
+
+        // Live stack cache: sessionId -> { target -> list of entries }
+        private readonly Dictionary<string, Dictionary<string, List<LiveStackEntry>>> livestackCache = new Dictionary<string, Dictionary<string, List<LiveStackEntry>>>();
+
+        private class LiveStackEntry {
+            public string target { get; set; }
+            public string filter { get; set; }
+            public string url { get; set; }
+            public string label { get; set; }
+            public bool isComposite { get; set; }
+        }
+
+        // Altitude chart coordinate scaling: widen from 500 to 825 for better aspect ratio
+        private const double AltPadL = 38.0;          // left padding (y-axis labels)
+        private const double AltOrigRight = 490.0;    // original right edge of plot (500 - 10)
+        private const double AltNewSvgW = 950.0;      // new viewBox width (plot area only)
+        private const double AltNewRight = 940.0;     // new right edge (950 - 10)
+        // Legend is rendered as HTML overlay — no SVG legend constants needed
+        private static readonly double AltScaleX = (AltNewRight - AltPadL) / (AltOrigRight - AltPadL); // ~1.719
+
+        /// <summary>Map an x-coordinate from the original 500-wide plot space to the wider 750-wide space.</summary>
+        private static double MapX(double x) => AltPadL + (x - AltPadL) * AltScaleX;
+
+        /// <summary>Scale all x-coordinates in a polyline points string ("x1,y1 x2,y2 ...").</summary>
+        private static string ScalePolylineX(string points) {
+            var parts = points.Split(' ');
+            var sb = new StringBuilder(points.Length * 2);
+            foreach (var part in parts) {
+                if (sb.Length > 0) sb.Append(' ');
+                var comma = part.IndexOf(',');
+                if (comma < 0) { sb.Append(part); continue; }
+                if (double.TryParse(part.Substring(0, comma), System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out double x)) {
+                    sb.Append(MapX(x).ToString("F1", System.Globalization.CultureInfo.InvariantCulture));
+                    sb.Append(part.Substring(comma)); // ",y" unchanged
+                } else {
+                    sb.Append(part);
+                }
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>Remap the x='...' attribute in an SVG element string.</summary>
+        private static string RemapSvgX(string element) {
+            return Regex.Replace(element, @"x='([\d.]+)'", m => {
+                if (double.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out double x) && x >= AltPadL) {
+                    return $"x='{MapX(x).ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}'";
+                }
+                return m.Value; // keep axis labels (x < padL) unchanged
+            });
+        }
+
+        // Target color palette (matches ReportGenerator.PreviewColors)
+        private static readonly string[] TargetColors = {
+            "#4e79a7", "#f28e2b", "#e15759", "#76b7b2", "#59a14f", "#edc948"
+        };
 
         private static readonly JsonSerializerOptions JsonOpts = new JsonSerializerOptions {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -159,6 +229,22 @@ namespace NINA.Plugin.NightSummary.Server {
                     } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/report")) {
                         var sessionId = ExtractSessionId(path, "/report");
                         await HandleGetSessionReport(res, sessionId, done);
+                    } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/thumbnails")) {
+                        var sessionId = ExtractSessionId(path, "/thumbnails");
+                        await HandleGetSessionThumbnails(res, sessionId, done);
+                    } else if (path.StartsWith("/api/sessions/") && path.Contains("/livestack/")) {
+                        // Serve individual live stack image file: /api/sessions/{id}/livestack/{file}.jpg
+                        var afterSessions = path.Substring("/api/sessions/".Length);
+                        var slashIdx = afterSessions.IndexOf('/');
+                        var sessionId = afterSessions.Substring(0, slashIdx);
+                        var filename = afterSessions.Substring(slashIdx + "/livestack/".Length);
+                        await HandleGetLiveStackImage(res, sessionId, filename, done);
+                    } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/livestack")) {
+                        var sessionId = ExtractSessionId(path, "/livestack");
+                        await HandleGetSessionLiveStack(res, sessionId, done);
+                    } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/altitude-chart")) {
+                        var sessionId = ExtractSessionId(path, "/altitude-chart");
+                        await HandleGetAltitudeChart(res, sessionId, done);
                     } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/settings")) {
                         var sessionId = ExtractSessionId(path, "/settings");
                         await HandleGetSessionSettings(res, sessionId, done);
@@ -227,6 +313,18 @@ namespace NINA.Plugin.NightSummary.Server {
             var result = sessions.Select(s => {
                 var images = db.GetImagesForSession(s.SessionId);
                 var lightImages = images.Where(i => string.IsNullOrEmpty(i.ImageType) || i.ImageType == "LIGHT").ToList();
+                // Extract moon phase from report if available
+                string moonPhase = null;
+                var reportPath = Path.Combine(reportsDir, $"{s.SessionId}.html");
+                bool hasReport = File.Exists(reportPath);
+                if (hasReport) {
+                    try {
+                        var html = File.ReadAllText(reportPath);
+                        // Match: <div class='stat-value'>42% ↑</div><div class='stat-label'>Moon</div>
+                        var moonMatch = Regex.Match(html, @"<div class='stat-value'>(\d+%\s*[^\<]*)</div>\s*<div class='stat-label'>Moon</div>");
+                        if (moonMatch.Success) moonPhase = System.Net.WebUtility.HtmlDecode(moonMatch.Groups[1].Value.Trim());
+                    } catch { }
+                }
                 return new {
                     sessionId = s.SessionId,
                     sessionStart = s.SessionStart.ToString("o"),
@@ -239,7 +337,8 @@ namespace NINA.Plugin.NightSummary.Server {
                     totalIntegrationSeconds = lightImages.Where(i => i.Accepted).Sum(i => i.ExposureDuration),
                     avgHfr = lightImages.Where(i => i.HFR > 0).Select(i => i.HFR).DefaultIfEmpty(0).Average(),
                     avgGuiding = lightImages.Where(i => i.GuidingRMSTotal > 0).Select(i => i.GuidingRMSTotal).DefaultIfEmpty(0).Average(),
-                    hasReport = File.Exists(Path.Combine(reportsDir, $"{s.SessionId}.html"))
+                    hasReport,
+                    moonPhase
                 };
             }).ToList();
 
@@ -436,6 +535,325 @@ namespace NINA.Plugin.NightSummary.Server {
             done?.Invoke(200, $"{sessionId} ({html.Length / 1024}KB)");
         }
 
+        private async Task HandleGetSessionThumbnails(HttpListenerResponse res, string sessionId, Action<int, string> done) {
+            if (thumbnailCache.TryGetValue(sessionId, out var cached)) {
+                await WriteJson(res, 200, cached);
+                done?.Invoke(200, $"{sessionId} — {cached.Count} thumbs (cached)");
+                return;
+            }
+
+            var reportPath = Path.Combine(reportsDir, $"{sessionId}.html");
+            if (!File.Exists(reportPath)) {
+                var empty = new List<ThumbnailEntry>();
+                thumbnailCache[sessionId] = empty;
+                await WriteJson(res, 200, empty);
+                done?.Invoke(200, $"{sessionId} — no report");
+                return;
+            }
+
+            var html = File.ReadAllText(reportPath);
+            var entries = new List<ThumbnailEntry>();
+
+            // Split HTML on target-section boundaries and extract h3 + thumbnail + FOV overlay from each
+            var sections = html.Split(new[] { "<div class='target-section'>" }, StringSplitOptions.None);
+            var h3Pattern = new Regex(@"<h3>([^<]+)");
+            var imgPattern = new Regex(@"<div\s+class='ts-thumb-wrap'>\s*<img\s+src='(data:image/[^']+)'");
+            var svgPattern = new Regex(@"<div\s+class='ts-thumb-wrap'>[^<]*<img[^>]*/>\s*(<svg[^>]*>.*?</svg>)", RegexOptions.Singleline);
+
+            for (int i = 1; i < sections.Length; i++) { // skip first (before any target-section)
+                var block = sections[i];
+                var h3Match = h3Pattern.Match(block);
+                var imgMatch = imgPattern.Match(block);
+                if (h3Match.Success && imgMatch.Success) {
+                    var svgMatch = svgPattern.Match(block);
+                    entries.Add(new ThumbnailEntry {
+                        target = h3Match.Groups[1].Value.Trim(),
+                        dataUri = imgMatch.Groups[1].Value,
+                        fovSvg = svgMatch.Success ? svgMatch.Groups[1].Value : null
+                    });
+                }
+            }
+
+            thumbnailCache[sessionId] = entries;
+            await WriteJson(res, 200, entries);
+            done?.Invoke(200, $"{sessionId} — {entries.Count} thumbs");
+        }
+
+        private async Task HandleGetSessionLiveStack(HttpListenerResponse res, string sessionId, Action<int, string> done) {
+            if (livestackCache.TryGetValue(sessionId, out var cached)) {
+                await WriteJson(res, 200, cached);
+                var total = cached.Values.Sum(l => l.Count);
+                done?.Invoke(200, $"{sessionId} — {total} livestack images (cached)");
+                return;
+            }
+
+            var assetsDir = Path.Combine(reportsDir, "livestack", sessionId);
+            var manifestPath = Path.Combine(assetsDir, "livestack.json");
+
+            if (!File.Exists(manifestPath)) {
+                var empty = new Dictionary<string, List<LiveStackEntry>>();
+                livestackCache[sessionId] = empty;
+                await WriteJson(res, 200, empty);
+                done?.Invoke(200, $"{sessionId} — no livestack assets");
+                return;
+            }
+
+            var result = new Dictionary<string, List<LiveStackEntry>>();
+            try {
+                var json = File.ReadAllText(manifestPath);
+                var manifest = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(json);
+                foreach (var entry in manifest) {
+                    var target = entry["target"].GetString();
+                    var filter = entry["filter"].GetString();
+                    var file = entry["file"].GetString();
+                    var isMono = entry["isMonochrome"].GetBoolean();
+                    var stackCount = entry["stackCount"].GetInt32();
+                    var isComposite = !isMono || filter.Equals("RGB", StringComparison.OrdinalIgnoreCase);
+
+                    // Build label: "Ha · 47 frames" or "Composite · R:5 G:3 B:5"
+                    string label;
+                    if (isComposite && entry.ContainsKey("redStackCount") && entry["redStackCount"].ValueKind == JsonValueKind.Number) {
+                        var r = entry["redStackCount"].GetInt32();
+                        var g = entry["greenStackCount"].GetInt32();
+                        var b = entry["blueStackCount"].GetInt32();
+                        label = $"Composite \u00b7 R:{r} G:{g} B:{b}";
+                    } else {
+                        label = $"{filter} \u00b7 {stackCount} frames";
+                    }
+
+                    // Only include entries whose image file actually exists
+                    if (!File.Exists(Path.Combine(assetsDir, file))) continue;
+
+                    var url = $"/api/sessions/{sessionId}/livestack/{file}";
+
+                    if (!result.ContainsKey(target))
+                        result[target] = new List<LiveStackEntry>();
+
+                    result[target].Add(new LiveStackEntry {
+                        target = target,
+                        filter = filter,
+                        url = url,
+                        label = label,
+                        isComposite = isComposite
+                    });
+                }
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Failed to read livestack manifest for {sessionId}: {ex.Message}");
+            }
+
+            livestackCache[sessionId] = result;
+            var totalImages = result.Values.Sum(l => l.Count);
+            await WriteJson(res, 200, result);
+            done?.Invoke(200, $"{sessionId} — {totalImages} livestack images across {result.Count} targets");
+        }
+
+        private async Task HandleGetLiveStackImage(HttpListenerResponse res, string sessionId, string filename, Action<int, string> done) {
+            // Sanitize filename to prevent path traversal
+            if (filename.Contains("..") || filename.Contains("/") || filename.Contains("\\")) {
+                await WriteJson(res, 400, new { error = "Invalid filename" });
+                done?.Invoke(400, "invalid filename");
+                return;
+            }
+
+            var filePath = Path.Combine(reportsDir, "livestack", sessionId, filename);
+            if (!File.Exists(filePath)) {
+                await WriteJson(res, 404, new { error = "Image not found" });
+                done?.Invoke(404, filename);
+                return;
+            }
+
+            try {
+                var bytes = File.ReadAllBytes(filePath);
+                res.ContentType = "image/jpeg";
+                res.ContentLength64 = bytes.Length;
+                // Cache for 1 hour — images don't change unless report is regenerated
+                res.Headers["Cache-Control"] = "public, max-age=3600";
+                res.StatusCode = 200;
+                await res.OutputStream.WriteAsync(bytes, 0, bytes.Length);
+                done?.Invoke(200, $"{sessionId}/{filename} ({bytes.Length / 1024}KB)");
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Failed to serve livestack image {filePath}: {ex.Message}");
+                await WriteJson(res, 500, new { error = "Failed to read image" });
+                done?.Invoke(500, ex.Message);
+            }
+        }
+
+        private async Task HandleGetAltitudeChart(HttpListenerResponse res, string sessionId, Action<int, string> done) {
+            if (altitudeChartCache.TryGetValue(sessionId, out var cached)) {
+                await WriteJson(res, 200, cached);
+                done?.Invoke(200, $"{sessionId} — altitude chart (cached)");
+                return;
+            }
+
+            var reportPath = Path.Combine(reportsDir, $"{sessionId}.html");
+            if (!File.Exists(reportPath)) {
+                var empty = new { svg = "", legend = Array.Empty<object>() };
+                altitudeChartCache[sessionId] = empty;
+                await WriteJson(res, 200, empty);
+                done?.Invoke(200, $"{sessionId} — no report");
+                return;
+            }
+
+            var html = File.ReadAllText(reportPath);
+
+            // Find all altitude chart SVGs and their associated target names
+            var sections = html.Split(new[] { "<div class='target-section'>" }, StringSplitOptions.None);
+            var h3Pattern = new Regex(@"<h3>([^<]+)");
+            var svgPattern = new Regex(@"<svg class='altitude-chart'.*?</svg>", RegexOptions.Singleline);
+            var polylinePattern = new Regex(@"<polyline points='([^']+)' fill='none' stroke='#7eb8f7' stroke-width='2'/>"); // target curve (dark mode)
+            var polylinePatternLight = new Regex(@"<polyline points='([^']+)' fill='none' stroke='#2563b8' stroke-width='2'/>"); // light mode
+            var sessionRectPattern = new Regex(@"<rect x='([\d.]+)' y='\d+' width='([\d.]+)' height='\d+' fill='#7eb8f7' opacity='0\.07'/>");
+            var sessionRectPatternLight = new Regex(@"<rect x='([\d.]+)' y='\d+' width='([\d.]+)' height='\d+' fill='#2563b8' opacity='0\.07'/>");
+
+            // Extract per-target data
+            var targetData = new List<(string Name, string Points, double SessX, double SessW)>();
+            string scaffoldSvg = null; // first chart's full SVG for structural elements
+
+            for (int i = 1; i < sections.Length; i++) {
+                var block = sections[i];
+                var h3Match = h3Pattern.Match(block);
+                var svgMatch = svgPattern.Match(block);
+                if (!h3Match.Success || !svgMatch.Success) continue;
+
+                var targetName = h3Match.Groups[1].Value.Trim();
+                var svgContent = svgMatch.Value;
+
+                if (scaffoldSvg == null) scaffoldSvg = svgContent;
+
+                // Extract the target altitude polyline
+                var polyMatch = polylinePattern.Match(svgContent);
+                if (!polyMatch.Success) polyMatch = polylinePatternLight.Match(svgContent);
+                if (!polyMatch.Success) continue;
+
+                // Extract session window rect position
+                double sessX = 0, sessW = 0;
+                var rectMatch = sessionRectPattern.Match(svgContent);
+                if (!rectMatch.Success) rectMatch = sessionRectPatternLight.Match(svgContent);
+                if (rectMatch.Success) {
+                    sessX = double.Parse(rectMatch.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+                    sessW = double.Parse(rectMatch.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture);
+                }
+
+                targetData.Add((targetName, polyMatch.Groups[1].Value, sessX, sessW));
+            }
+
+            if (targetData.Count == 0 || scaffoldSvg == null) {
+                var noCharts = new { svg = "", legend = Array.Empty<object>() };
+                altitudeChartCache[sessionId] = noCharts;
+                await WriteJson(res, 200, noCharts);
+                done?.Invoke(200, $"{sessionId} — no altitude charts in report");
+                return;
+            }
+
+            // Normalize light-mode colors to dark-mode for consistent dashboard rendering
+            scaffoldSvg = scaffoldSvg
+                .Replace("#e8eef5", "#0d1117")  // chart background
+                .Replace("#c0c8d4", "#2d2d5e")  // border/grid
+                .Replace("fill='#666'", "fill='#888'")  // muted text
+                .Replace("stroke='#2563b8'", "stroke='#7eb8f7'")  // accent (for moon/other)
+                .Replace("fill='#2563b8'", "fill='#7eb8f7'")      // accent fills
+                .Replace("#7a8a9e", "#c0c0c0")  // moon stroke
+                .Replace("#c07a00", "#f59e0b")  // sunrise
+                .Replace("opacity='0.75'", "opacity='0.45'");  // moon opacity
+
+            // Extract shared structural elements from the first chart
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            // Trim vertical padding: original is 0-248, content lives at ~10-242
+            const int vbTopTrim = 14;  // trim from top (room for 90° label)
+            const int vbBotTrim = 2;   // trim from bottom (tight to time labels)
+            var viewBoxMatch = Regex.Match(scaffoldSvg, @"viewBox='[\d.]+ [\d.]+ [\d.]+ ([\d.]+)'");
+            int origH = viewBoxMatch.Success ? (int)double.Parse(viewBoxMatch.Groups[1].Value, inv) : 248;
+            var viewBoxY = vbTopTrim.ToString();
+            var viewBoxH = (origH - vbTopTrim - vbBotTrim).ToString();
+
+            var moonPattern = new Regex(@"<g><title>Moon Position</title>.*?</g>", RegexOptions.Singleline);
+            var timeLabelPattern = new Regex(@"<text[^>]*fill='#888'[^>]*>\d{2}:\d{2}</text>");
+
+            // Build SVG — no legend (rendered as HTML overlay), no sunset/sunrise text
+            var sb = new StringBuilder();
+            sb.AppendLine($"<svg viewBox='0 {viewBoxY} {AltNewSvgW.ToString("F0", inv)} {viewBoxH}' xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='none'>");
+
+            // Background + border rects (scale x and width to fill wider plot area)
+            var bgRects = Regex.Matches(scaffoldSvg, @"<rect x='38'[^/]*/>");
+            foreach (Match r in bgRects) {
+                var rect = Regex.Replace(r.Value, @"width='([\d.]+)'", m => {
+                    if (double.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.Float, inv, out double w))
+                        return $"width='{(w * AltScaleX).ToString("F1", inv)}'";
+                    return m.Value;
+                });
+                sb.AppendLine(rect);
+            }
+
+            // Per-target imaging window shading with border lines (scaled coordinates)
+            for (int t = 0; t < targetData.Count; t++) {
+                var td = targetData[t];
+                if (td.SessW > 0) {
+                    var color = TargetColors[t % TargetColors.Length];
+                    var sx = MapX(td.SessX).ToString("F1", inv);
+                    var sw = (td.SessW * AltScaleX).ToString("F1", inv);
+                    sb.AppendLine($"<rect x='{sx}' y='20' width='{sw}' height='200' fill='{color}' opacity='0.15'/>");
+                    var endX = MapX(td.SessX + td.SessW).ToString("F1", inv);
+                    sb.AppendLine($"<line x1='{sx}' y1='20' x2='{sx}' y2='220' stroke='{color}' stroke-width='1' opacity='0.6'/>");
+                    sb.AppendLine($"<line x1='{endX}' y1='20' x2='{endX}' y2='220' stroke='{color}' stroke-width='1' opacity='0.6'/>");
+                }
+            }
+
+            // Grid lines at 30 and 60 degrees (scale x2 endpoint, exclude min altitude lines)
+            var gridLines = Regex.Matches(scaffoldSvg, @"<line x1='38'[^/]*/>");
+            foreach (Match g in gridLines) {
+                if (g.Value.Contains("#cc4444")) continue;
+                var line = Regex.Replace(g.Value, @"x2='([\d.]+)'", m => {
+                    if (double.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.Float, inv, out double x))
+                        return $"x2='{MapX(x).ToString("F1", inv)}'";
+                    return m.Value;
+                });
+                sb.AppendLine(line);
+            }
+
+            // Altitude axis labels (90, 60, 30, 0) — keep at original x positions
+            var axisLabels = Regex.Matches(scaffoldSvg, @"<text x='34'[^>]*>[^<]*</text>");
+            foreach (Match a in axisLabels) sb.AppendLine(a.Value);
+
+            // Per-target altitude curves with distinct colors (scale polyline x-coordinates)
+            for (int t = 0; t < targetData.Count; t++) {
+                var td = targetData[t];
+                var color = TargetColors[t % TargetColors.Length];
+                var scaledPoints = ScalePolylineX(td.Points);
+                sb.AppendLine($"<g><title>{td.Name}</title>");
+                sb.AppendLine($"<polyline points='{scaledPoints}' fill='none' stroke='transparent' stroke-width='10'/>");
+                sb.AppendLine($"<polyline points='{scaledPoints}' fill='none' stroke='{color}' stroke-width='2'/>");
+                sb.AppendLine("</g>");
+            }
+
+            // Moon curve (scale polyline x-coordinates within the group)
+            var moonMatch = moonPattern.Match(scaffoldSvg);
+            if (moonMatch.Success) {
+                var moonSvg = Regex.Replace(moonMatch.Value, @"points='([^']+)'", m => {
+                    return $"points='{ScalePolylineX(m.Groups[1].Value)}'";
+                });
+                sb.AppendLine(moonSvg);
+            }
+
+            // Sunset/sunrise labels — omitted from dashboard chart (dropped to allow preserveAspectRatio=none)
+
+            // Time axis labels (scale x positions)
+            foreach (Match t in timeLabelPattern.Matches(scaffoldSvg)) sb.AppendLine(RemapSvgX(t.Value));
+
+            sb.AppendLine("</svg>");
+
+            // Legend data for HTML overlay (rendered client-side)
+            var legend = targetData.Select((td, i) => new {
+                name = td.Name,
+                color = TargetColors[i % TargetColors.Length]
+            }).ToList();
+
+            var svgResult = sb.ToString();
+            var result = new { svg = svgResult, legend };
+            altitudeChartCache[sessionId] = result;
+            await WriteJson(res, 200, result);
+            done?.Invoke(200, $"{sessionId} — {targetData.Count} targets in altitude chart");
+        }
+
         private async Task HandleGetTargetStats(HttpListenerResponse res, Action<int, string> done) {
             if (!File.Exists(dbPath)) {
                 await WriteJson(res, 200, new { targets = Array.Empty<object>() });
@@ -546,7 +964,11 @@ namespace NINA.Plugin.NightSummary.Server {
                     var reportPath = Path.Combine(reportsDir, $"{sessionId}.html");
                     await File.WriteAllTextAsync(reportPath, html);
                     await SaveSessionSettings(sessionId, s);
+                    SaveDashboardLiveStackMasters(sessionId, reportData);
 
+                    thumbnailCache.Remove(sessionId);
+                    altitudeChartCache.Remove(sessionId);
+                    livestackCache.Remove(sessionId);
                     log?.Info($"Regenerated report for {sessionId} ({html.Length / 1024}KB)");
                     Logger.Info($"NightSummary: Dashboard regenerated report for {sessionId}");
                     await WriteJson(res, 200, new { status = "ok", sessionId });
@@ -625,6 +1047,10 @@ namespace NINA.Plugin.NightSummary.Server {
                                 var reportPath = Path.Combine(reportsDir, $"{sessions[i].SessionId}.html");
                                 await File.WriteAllTextAsync(reportPath, html);
                                 await SaveSessionSettings(sessions[i].SessionId, s);
+                                SaveDashboardLiveStackMasters(sessions[i].SessionId, reportData);
+                                thumbnailCache.Remove(sessions[i].SessionId);
+                                altitudeChartCache.Remove(sessions[i].SessionId);
+                                livestackCache.Remove(sessions[i].SessionId);
                                 regenAllGenerated++;
                                 log?.Debug($"Bulk regen {regenAllCurrent}/{sessions.Count}: {sessions[i].SessionId} OK");
                             } catch (Exception ex) {
@@ -727,6 +1153,36 @@ namespace NINA.Plugin.NightSummary.Server {
             } catch (Exception ex) {
                 log?.Warn($"Failed to save settings sidecar for {sessionId}: {ex.Message}");
                 Logger.Warning($"NightSummary: Failed to save settings for {sessionId}. {ex.Message}");
+            }
+        }
+
+        private void SaveDashboardLiveStackMasters(string sessionId, Reporting.ReportData reportData) {
+            if (reportData.LiveStackImages == null || reportData.LiveStackImages.Count == 0) return;
+            try {
+                var lsDir = Path.Combine(reportsDir, "livestack", sessionId);
+                Directory.CreateDirectory(lsDir);
+                var manifest = new List<Dictionary<string, object>>();
+                foreach (var img in reportData.LiveStackImages) {
+                    var data = img.MasterJpegData ?? img.JpegData;
+                    var safeName = Regex.Replace($"{img.Target}_{img.Filter}", @"[^\w\-.]", "_");
+                    var jpgFile = safeName + ".jpg";
+                    File.WriteAllBytes(Path.Combine(lsDir, jpgFile), data);
+                    manifest.Add(new Dictionary<string, object> {
+                        ["file"] = jpgFile,
+                        ["target"] = img.Target,
+                        ["filter"] = img.Filter,
+                        ["isMonochrome"] = img.IsMonochrome,
+                        ["stackCount"] = img.StackCount,
+                        ["redStackCount"] = img.RedStackCount,
+                        ["greenStackCount"] = img.GreenStackCount,
+                        ["blueStackCount"] = img.BlueStackCount
+                    });
+                }
+                var json = JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(Path.Combine(lsDir, "livestack.json"), json);
+                log?.Debug($"Saved {reportData.LiveStackImages.Count} livestack master(s) for {sessionId}");
+            } catch (Exception ex) {
+                log?.Warn($"Failed to save livestack masters for {sessionId}: {ex.Message}");
             }
         }
 
