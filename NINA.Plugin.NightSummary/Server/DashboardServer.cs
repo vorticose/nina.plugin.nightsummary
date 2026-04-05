@@ -51,8 +51,9 @@ namespace NINA.Plugin.NightSummary.Server {
         // Altitude chart coordinate scaling: widen from 500 to 825 for better aspect ratio
         private const double AltPadL = 38.0;          // left padding (y-axis labels)
         private const double AltOrigRight = 490.0;    // original right edge of plot (500 - 10)
-        private const double AltNewSvgW = 825.0;      // new viewBox width
+        private const double AltNewSvgW = 825.0;      // new viewBox width (plot area only)
         private const double AltNewRight = 815.0;     // new right edge (825 - 10)
+        private const double AltLegendW = 110.0;      // dedicated legend column width (negative x-space)
         private static readonly double AltScaleX = (AltNewRight - AltPadL) / (AltOrigRight - AltPadL); // ~1.719
 
         /// <summary>Map an x-coordinate from the original 500-wide plot space to the wider 750-wide space.</summary>
@@ -630,9 +631,10 @@ namespace NINA.Plugin.NightSummary.Server {
             var sunsetPattern = new Regex(@"<text[^>]*fill='#f59e0b'[^>]*>.*?</text>", RegexOptions.Singleline);
             var timeLabelPattern = new Regex(@"<text[^>]*fill='#888'[^>]*>\d{2}:\d{2}</text>");
 
-            // Build combined SVG with wider viewBox
+            // Build combined SVG with wider viewBox — legend gets dedicated negative x-space
+            var totalW = (AltNewSvgW + AltLegendW).ToString("F0", inv);
             var sb = new StringBuilder();
-            sb.AppendLine($"<svg viewBox='0 0 {AltNewSvgW.ToString("F0", inv)} {viewBoxH}' xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='xMidYMid meet'>");
+            sb.AppendLine($"<svg viewBox='-{AltLegendW.ToString("F0", inv)} 0 {totalW} {viewBoxH}' xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='xMidYMid meet'>");
 
             // Background + border rects (scale x and width to fill wider plot area)
             var bgRects = Regex.Matches(scaffoldSvg, @"<rect x='38'[^/]*/>");
@@ -701,14 +703,14 @@ namespace NINA.Plugin.NightSummary.Server {
             // Time axis labels (scale x positions)
             foreach (Match t in timeLabelPattern.Matches(scaffoldSvg)) sb.AppendLine(RemapSvgX(t.Value));
 
-            // Legend — inside plot area, top-left corner (keep at original position)
-            int legendStartY = 32;
+            // Legend — dedicated column in negative x-space (left of plot area)
+            int legendStartY = 28;
             for (int t = 0; t < targetData.Count; t++) {
                 var color = TargetColors[t % TargetColors.Length];
                 var name = targetData[t].Name;
-                int ly = legendStartY + t * 13;
-                sb.AppendLine($"<line x1='42' y1='{ly}' x2='54' y2='{ly}' stroke='{color}' stroke-width='2'/>");
-                sb.AppendLine($"<text x='57' y='{ly + 3}' font-size='9' fill='{color}'>{name}</text>");
+                int ly = legendStartY + t * 15;
+                sb.AppendLine($"<line x1='-105' y1='{ly}' x2='-93' y2='{ly}' stroke='{color}' stroke-width='2'/>");
+                sb.AppendLine($"<text x='-90' y='{ly + 3}' font-size='9' fill='{color}'>{name}</text>");
             }
 
             sb.AppendLine("</svg>");

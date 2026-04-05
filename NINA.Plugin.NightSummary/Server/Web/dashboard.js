@@ -375,9 +375,9 @@ function setupChartCrosshair(container) {
 
   var ns = 'http://www.w3.org/2000/svg';
   var viewBox = svg.getAttribute('viewBox').split(' ').map(Number);
-  var vbW = viewBox[2];
-  // Plot area bounds in viewBox coordinates
-  var plotL = 38, plotR = vbW - 10, plotT = 20, plotB = 220;
+  var vbMinX = viewBox[0], vbW = viewBox[2];
+  // Plot area bounds in viewBox coordinates (account for legend column in negative x-space)
+  var plotL = 38, plotR = vbMinX + vbW - 10, plotT = 20, plotB = 220;
 
   // Extract time labels from the SVG
   var timeLabels = [];
