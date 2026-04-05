@@ -477,6 +477,7 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
     // Position relative to the thumb — append to .card-thumbs container
     var thumbsContainer = thumbWrap.closest('.card-thumbs');
     if (!thumbsContainer) { shelf = null; return; }
+    thumbWrap.classList.add('shelf-active');
     thumbsContainer.appendChild(shelf);
 
     // Calculate position: center shelf below the hovered thumb
@@ -512,6 +513,7 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
 
   function hideShelf() {
     clearTimeout(shelfLeaveTimer);
+    thumbWrap.classList.remove('shelf-active');
     if (shelf) {
       shelf.classList.add('shelf-hiding');
       var s = shelf;

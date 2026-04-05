@@ -468,7 +468,8 @@ nav {
   z-index: 3;
 }
 
-.card-thumb-wrap:hover {
+.card-thumb-wrap:hover,
+.card-thumb-wrap.shelf-active {
   transform: scale(1.67);
   z-index: 10;
 }
