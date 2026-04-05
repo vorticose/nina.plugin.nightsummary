@@ -459,10 +459,10 @@ namespace NINA.Plugin.NightSummary.Tests {
                 images, ChartGenerator.PrimaryHFR, ChartGenerator.SecNone,
                 ChartGenerator.XAxisTime, markers);
 
-            // Distinct colors (dark mode)
-            Assert.Contains("#a78bfa", svg);
-            Assert.Contains("#f472b6", svg);
-            Assert.Contains("#fbbf24", svg);
+            // Distinct colors matching event timeline (dark mode)
+            Assert.Contains("#a78bfa", svg);  // AF purple
+            Assert.Contains("#fbbf24", svg);  // Flip amber
+            Assert.Contains("#34d399", svg);  // Safe green
             // Distinct labels
             Assert.Contains(">AF</text>", svg);
             Assert.Contains(">MF</text>", svg);

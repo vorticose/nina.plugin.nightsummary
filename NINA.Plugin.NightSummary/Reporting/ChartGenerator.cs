@@ -81,9 +81,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
         private static string ColorLabel        => IsLight ? "#555577" : "#aaaacc";
         private static string ColorWarning      => IsLight ? "#d47020" : "#f7a87e";
         private static string ColorWarningBg    => IsLight ? "#fff3cd" : "#3a1e00";
-        private static string ColorAfMarker     => IsLight ? "#7c3aed" : "#a78bfa";
-        private static string ColorFlipMarker   => IsLight ? "#db2777" : "#f472b6";
-        private static string ColorRoofMarker   => IsLight ? "#d97706" : "#fbbf24";
+        private static string ColorAfMarker     => IsLight ? "#7c3aed" : "#a78bfa";  // purple — matches timeline
+        private static string ColorFlipMarker   => IsLight ? "#d97706" : "#fbbf24";  // amber — matches timeline
+        private static string ColorSafeMarker   => IsLight ? "#059669" : "#34d399";  // green — matches timeline
+        private static string ColorUnsafeMarker => IsLight ? "#dc2626" : "#f87171";  // red — matches timeline
 
         /// <summary>
         /// Returns the chart section heading based on configured metrics.
@@ -247,10 +248,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
                     double xPx = ToXPx(evtSec);
                     var (color, label) = evtType switch {
-                        "AutoFocus"    => (ColorAfMarker,   "AF"),
-                        "MeridianFlip" => (ColorFlipMarker, "MF"),
-                        "RoofOpen"     => (ColorRoofMarker,  "S"),
-                        _              => (ColorRoofMarker,  "US")
+                        "AutoFocus"    => (ColorAfMarker,     "AF"),
+                        "MeridianFlip" => (ColorFlipMarker,   "MF"),
+                        "RoofOpen"     => (ColorSafeMarker,   "S"),
+                        _              => (ColorUnsafeMarker,  "US")
                     };
                     string tip = $"{label}: {EscapeXml(desc ?? evtType)} @ {ts:HH:mm:ss}";
                     // Visible dashed line
