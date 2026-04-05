@@ -751,24 +751,22 @@ function bindListEvents() {
   }
 
   function handleDateBlur(el) {
+    // Only reset type if empty — don't refresh (wait for change event)
     if (!el.value) {
       el.type = 'text';
       el.setAttribute('readonly', '');
     }
-    refresh();
   }
-  function handleDateChange(el) {
-    // On mobile, only act on change if value was cleared (reset button) —
-    // ignore change when picker opens with a new value (wait for blur)
-    if (!el.value) handleDateBlur(el);
+  function handleDateChange() {
+    refresh();
   }
   if (fromEl) {
     fromEl.addEventListener('blur', function() { handleDateBlur(fromEl); });
-    fromEl.addEventListener('change', function() { handleDateChange(fromEl); });
+    fromEl.addEventListener('change', handleDateChange);
   }
   if (toEl) {
     toEl.addEventListener('blur', function() { handleDateBlur(toEl); });
-    toEl.addEventListener('change', function() { handleDateChange(toEl); });
+    toEl.addEventListener('change', handleDateChange);
   }
   if (sortEl) sortEl.addEventListener('change', refresh);
 
