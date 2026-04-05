@@ -453,6 +453,7 @@ nav {
   padding: 10px;
   box-shadow: 0 6px 20px rgba(0,0,0,0.4);
   animation: shelf-reveal 200ms ease-out forwards;
+  overflow: visible;
 }
 
 .livestack-shelf.shelf-hiding {
@@ -487,6 +488,7 @@ nav {
   gap: 8px;
   flex-wrap: wrap;
   justify-content: center;
+  overflow: visible;
 }
 
 .livestack-shelf-item {
@@ -506,8 +508,8 @@ nav {
 }
 
 .livestack-shelf-img:hover {
-  transform: scale(1.3);
-  z-index: 1;
+  transform: scale(2.5);
+  z-index: 100;
   position: relative;
 }
 
