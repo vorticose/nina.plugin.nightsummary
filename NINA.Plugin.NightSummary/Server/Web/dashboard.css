@@ -303,7 +303,7 @@ nav {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 12px 14px;
+  padding: 12px 28px 12px 14px;
   margin-bottom: 8px;
   cursor: pointer;
   transition: border-color 0.2s;
@@ -453,22 +453,22 @@ nav {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 6px 12px;
+  padding: 10px 14px;
   text-align: center;
 }
 
 .card-stat-value {
-  font-size: 18px;
+  font-size: 20px;
   color: var(--accent);
   font-weight: bold;
 }
 
 .card-stat-label {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.3px;
-  margin-top: 1px;
+  margin-top: 2px;
 }
 
 /* ── View mode toggle ── */
