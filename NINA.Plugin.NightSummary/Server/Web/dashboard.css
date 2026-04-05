@@ -136,15 +136,6 @@ nav {
 
 .theme-toggle:hover { border-color: var(--accent); }
 
-/* ── Filter bar ── */
-.filter-bar {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
 .date-input-wrap {
   position: relative;
   cursor: pointer;
@@ -177,10 +168,6 @@ nav {
 
 .date-input-wrap .date-label.empty {
   color: var(--muted);
-}
-
-.filter-bar input:focus {
-  outline: none;
 }
 
 /* ── Target dropdown filter ── */
@@ -957,7 +944,6 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
   .filter-bar { flex-direction: column; align-items: flex-start; }
   .filter-dates { width: 100%; }
-  .filter-bar input[type="date"] { min-width: unset; flex: 1; }
   .report-nav { flex-direction: column; align-items: flex-start; gap: 8px; }
 
   /* Report view: compact header and controls on mobile */
@@ -981,7 +967,6 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   .nav-link { min-height: 44px; display: inline-flex; align-items: center; }
   .theme-toggle { width: 44px; height: 44px; }
   .target-dropdown-btn { min-height: 44px; }
-  .filter-bar input[type="date"] { min-height: 44px; }
   .filter-sort select { min-height: 44px; }
 
   /* Chart settings grid: stack on mobile */

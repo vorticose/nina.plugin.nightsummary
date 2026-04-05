@@ -41,10 +41,6 @@ function fmtTime(iso) {
   return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
 
-function fmtTime(iso) {
-  return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-}
-
 function fmtDateTime(iso) {
   return fmtDate(iso) + '  ' + fmtTime(iso);
 }

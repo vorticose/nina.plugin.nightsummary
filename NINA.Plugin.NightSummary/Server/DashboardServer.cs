@@ -289,7 +289,6 @@ namespace NINA.Plugin.NightSummary.Server {
 
             var db = new SessionDatabase(dbPath);
             var sessions = db.GetAllSessions();
-            var moonPattern = new Regex(@"<div class='stat-label'>Moon</div>.*?<div class='stat-value'>([^<]+)</div>|<div class='stat-value'>([^<]+)</div>.*?<div class='stat-label'>Moon</div>", RegexOptions.Singleline);
             var result = sessions.Select(s => {
                 var images = db.GetImagesForSession(s.SessionId);
                 var lightImages = images.Where(i => string.IsNullOrEmpty(i.ImageType) || i.ImageType == "LIGHT").ToList();
