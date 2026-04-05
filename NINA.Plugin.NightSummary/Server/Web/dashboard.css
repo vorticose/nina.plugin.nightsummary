@@ -645,8 +645,29 @@ nav {
 .badge-red { background: rgba(248,81,73,0.15); color: var(--red); }
 
 .card-targets-line {
-  font-size: 13px;
-  color: var(--accent-light);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.card-target-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px 2px 5px;
+  border-radius: 100px;
+  border: 1px solid transparent;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
 .card-targets-none {
@@ -758,7 +779,8 @@ nav {
 .cards-compact .card-header { margin-bottom: 2px; }
 .cards-compact .session-date { font-size: 14px; }
 .cards-compact .session-times { display: none; }
-.cards-compact .card-targets-line { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cards-compact .card-targets-line { overflow: hidden; max-height: 20px; }
+.cards-compact .card-target-badge { font-size: 10px; padding: 1px 5px 1px 4px; }
 
 /* ── Back button ── */
 .back-btn {

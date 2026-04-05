@@ -52,6 +52,22 @@ function esc(str) {
   return d.innerHTML;
 }
 
+// Target color palette — must match DashboardServer.TargetColors order
+var TARGET_COLORS = ['#4e79a7', '#f28e2b', '#e15759', '#76b7b2', '#59a14f', '#edc948'];
+
+function hexToRgb(hex) {
+  return parseInt(hex.slice(1,3),16)+','+parseInt(hex.slice(3,5),16)+','+parseInt(hex.slice(5,7),16);
+}
+
+function makeTargetBadge(name, idx) {
+  var color = TARGET_COLORS[idx % TARGET_COLORS.length];
+  var rgb = hexToRgb(color);
+  return '<span class="card-target-badge" style="background:rgba('+rgb+',0.1);border-color:rgba('+rgb+',0.28);">' +
+    '<span class="badge-dot" style="background:'+color+'"></span>' +
+    '<span class="badge-name" style="color:'+color+'">'+esc(name)+'</span>' +
+    '</span>';
+}
+
 // ── API ────────────────────────────────────────────────────────────────────
 
 function api(path) {
@@ -290,8 +306,8 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
 
   var cards = filtered.map(function(s) {
     var targetsText = s.targets.length > 0
-      ? s.targets.map(function(t) { return esc(t); }).join(' \u00b7 ')
-      : 'No targets';
+      ? s.targets.map(function(t, i) { return makeTargetBadge(t, i); }).join('')
+      : '<span style="color:var(--text-quaternary);font-size:12px">No targets</span>';
 
     var badge = s.hasReport ? '' : '<span class="badge badge-red">No report</span>';
 
@@ -364,13 +380,14 @@ function loadThumbnails(sessions) {
         }
         return '<div class="card-thumb-wrap" data-target="' + esc(t.target) + '" data-session="' + esc(s.sessionId) + '">' + img + svg + '</div>';
       }).join('');
-      // Reorder target names to match thumbnail order
+      // Reorder target names to match thumbnail order, re-render as badges
       var targetsEl = document.getElementById('targets-' + s.sessionId);
       if (targetsEl && thumbs.length > 0) {
         var thumbOrder = thumbs.map(function(t) { return t.target; });
         // Include any targets not in the report (no thumbnail)
         var remaining = s.targets.filter(function(t) { return thumbOrder.indexOf(t) === -1; });
-        targetsEl.textContent = thumbOrder.concat(remaining).join(' \u00b7 ');
+        var ordered = thumbOrder.concat(remaining);
+        targetsEl.innerHTML = ordered.map(function(t, i) { return makeTargetBadge(t, i); }).join('');
       }
     }).catch(function(err) {
       logDebug('Thumb load failed for', s.sessionId, err.message);
