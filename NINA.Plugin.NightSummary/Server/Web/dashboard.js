@@ -216,6 +216,11 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
         '<option value="images"' + (sortBy === 'images' ? ' selected' : '') + '>Most images</option>' +
       '</select>' +
     '</div>' +
+    '<button id="filter-clear" class="filter-link">Clear filters</button>' +
+    '<div class="view-toggle">' +
+      '<button class="view-toggle-btn' + (cardViewMode === 'compact' ? ' active' : '') + '" data-view="compact">Compact</button>' +
+      '<button class="view-toggle-btn' + (cardViewMode === 'expanded' ? ' active' : '') + '" data-view="expanded">Expanded</button>' +
+    '</div>' +
     '<label class="target-check" title="Include sessions with 0 captured images"><input type="checkbox" id="filter-empty"' + (showEmptySessions ? ' checked' : '') + '><span>Show empty</span></label>';
 
   // Add hidden session controls inline if any are hidden
@@ -226,13 +231,7 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
       '<button id="unhide-all" class="filter-link">Unhide all</button>';
   }
 
-  filterHtml +=
-    '<button id="filter-clear" class="filter-link">Clear filters</button>' +
-    '<div class="view-toggle">' +
-      '<button class="view-toggle-btn' + (cardViewMode === 'compact' ? ' active' : '') + '" data-view="compact">Compact</button>' +
-      '<button class="view-toggle-btn' + (cardViewMode === 'expanded' ? ' active' : '') + '" data-view="expanded">Expanded</button>' +
-    '</div>' +
-    '</div>';
+  filterHtml += '</div>';
 
   // Filter sessions
   var activeTargets = {};
