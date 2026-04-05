@@ -48,6 +48,17 @@ namespace NINA.Plugin.NightSummary.Server {
         // Altitude chart cache: sessionId -> { svg, legend }
         private readonly Dictionary<string, object> altitudeChartCache = new Dictionary<string, object>();
 
+        // Live stack cache: sessionId -> { target -> list of entries }
+        private readonly Dictionary<string, Dictionary<string, List<LiveStackEntry>>> livestackCache = new Dictionary<string, Dictionary<string, List<LiveStackEntry>>>();
+
+        private class LiveStackEntry {
+            public string target { get; set; }
+            public string filter { get; set; }
+            public string url { get; set; }
+            public string label { get; set; }
+            public bool isComposite { get; set; }
+        }
+
         // Altitude chart coordinate scaling: widen from 500 to 825 for better aspect ratio
         private const double AltPadL = 38.0;          // left padding (y-axis labels)
         private const double AltOrigRight = 490.0;    // original right edge of plot (500 - 10)
@@ -221,6 +232,16 @@ namespace NINA.Plugin.NightSummary.Server {
                     } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/thumbnails")) {
                         var sessionId = ExtractSessionId(path, "/thumbnails");
                         await HandleGetSessionThumbnails(res, sessionId, done);
+                    } else if (path.StartsWith("/api/sessions/") && path.Contains("/livestack/")) {
+                        // Serve individual live stack image file: /api/sessions/{id}/livestack/{file}.jpg
+                        var afterSessions = path.Substring("/api/sessions/".Length);
+                        var slashIdx = afterSessions.IndexOf('/');
+                        var sessionId = afterSessions.Substring(0, slashIdx);
+                        var filename = afterSessions.Substring(slashIdx + "/livestack/".Length);
+                        await HandleGetLiveStackImage(res, sessionId, filename, done);
+                    } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/livestack")) {
+                        var sessionId = ExtractSessionId(path, "/livestack");
+                        await HandleGetSessionLiveStack(res, sessionId, done);
                     } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/altitude-chart")) {
                         var sessionId = ExtractSessionId(path, "/altitude-chart");
                         await HandleGetAltitudeChart(res, sessionId, done);
@@ -558,6 +579,105 @@ namespace NINA.Plugin.NightSummary.Server {
             done?.Invoke(200, $"{sessionId} — {entries.Count} thumbs");
         }
 
+        private async Task HandleGetSessionLiveStack(HttpListenerResponse res, string sessionId, Action<int, string> done) {
+            if (livestackCache.TryGetValue(sessionId, out var cached)) {
+                await WriteJson(res, 200, cached);
+                var total = cached.Values.Sum(l => l.Count);
+                done?.Invoke(200, $"{sessionId} — {total} livestack images (cached)");
+                return;
+            }
+
+            var assetsDir = Path.Combine(reportsDir, "livestack", sessionId);
+            var manifestPath = Path.Combine(assetsDir, "livestack.json");
+
+            if (!File.Exists(manifestPath)) {
+                var empty = new Dictionary<string, List<LiveStackEntry>>();
+                livestackCache[sessionId] = empty;
+                await WriteJson(res, 200, empty);
+                done?.Invoke(200, $"{sessionId} — no livestack assets");
+                return;
+            }
+
+            var result = new Dictionary<string, List<LiveStackEntry>>();
+            try {
+                var json = File.ReadAllText(manifestPath);
+                var manifest = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(json);
+                foreach (var entry in manifest) {
+                    var target = entry["target"].GetString();
+                    var filter = entry["filter"].GetString();
+                    var file = entry["file"].GetString();
+                    var isMono = entry["isMonochrome"].GetBoolean();
+                    var stackCount = entry["stackCount"].GetInt32();
+                    var isComposite = !isMono || filter.Equals("RGB", StringComparison.OrdinalIgnoreCase);
+
+                    // Build label: "Ha · 47 frames" or "Composite · R:5 G:3 B:5"
+                    string label;
+                    if (isComposite && entry.ContainsKey("redStackCount") && entry["redStackCount"].ValueKind == JsonValueKind.Number) {
+                        var r = entry["redStackCount"].GetInt32();
+                        var g = entry["greenStackCount"].GetInt32();
+                        var b = entry["blueStackCount"].GetInt32();
+                        label = $"Composite \u00b7 R:{r} G:{g} B:{b}";
+                    } else {
+                        label = $"{filter} \u00b7 {stackCount} frames";
+                    }
+
+                    // Only include entries whose image file actually exists
+                    if (!File.Exists(Path.Combine(assetsDir, file))) continue;
+
+                    var url = $"/api/sessions/{sessionId}/livestack/{file}";
+
+                    if (!result.ContainsKey(target))
+                        result[target] = new List<LiveStackEntry>();
+
+                    result[target].Add(new LiveStackEntry {
+                        target = target,
+                        filter = filter,
+                        url = url,
+                        label = label,
+                        isComposite = isComposite
+                    });
+                }
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Failed to read livestack manifest for {sessionId}: {ex.Message}");
+            }
+
+            livestackCache[sessionId] = result;
+            var totalImages = result.Values.Sum(l => l.Count);
+            await WriteJson(res, 200, result);
+            done?.Invoke(200, $"{sessionId} — {totalImages} livestack images across {result.Count} targets");
+        }
+
+        private async Task HandleGetLiveStackImage(HttpListenerResponse res, string sessionId, string filename, Action<int, string> done) {
+            // Sanitize filename to prevent path traversal
+            if (filename.Contains("..") || filename.Contains("/") || filename.Contains("\\")) {
+                await WriteJson(res, 400, new { error = "Invalid filename" });
+                done?.Invoke(400, "invalid filename");
+                return;
+            }
+
+            var filePath = Path.Combine(reportsDir, "livestack", sessionId, filename);
+            if (!File.Exists(filePath)) {
+                await WriteJson(res, 404, new { error = "Image not found" });
+                done?.Invoke(404, filename);
+                return;
+            }
+
+            try {
+                var bytes = File.ReadAllBytes(filePath);
+                res.ContentType = "image/jpeg";
+                res.ContentLength64 = bytes.Length;
+                // Cache for 1 hour — images don't change unless report is regenerated
+                res.Headers["Cache-Control"] = "public, max-age=3600";
+                res.StatusCode = 200;
+                await res.OutputStream.WriteAsync(bytes, 0, bytes.Length);
+                done?.Invoke(200, $"{sessionId}/{filename} ({bytes.Length / 1024}KB)");
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Failed to serve livestack image {filePath}: {ex.Message}");
+                await WriteJson(res, 500, new { error = "Failed to read image" });
+                done?.Invoke(500, ex.Message);
+            }
+        }
+
         private async Task HandleGetAltitudeChart(HttpListenerResponse res, string sessionId, Action<int, string> done) {
             if (altitudeChartCache.TryGetValue(sessionId, out var cached)) {
                 await WriteJson(res, 200, cached);
@@ -844,9 +964,11 @@ namespace NINA.Plugin.NightSummary.Server {
                     var reportPath = Path.Combine(reportsDir, $"{sessionId}.html");
                     await File.WriteAllTextAsync(reportPath, html);
                     await SaveSessionSettings(sessionId, s);
+                    SaveDashboardLiveStackMasters(sessionId, reportData);
 
                     thumbnailCache.Remove(sessionId);
                     altitudeChartCache.Remove(sessionId);
+                    livestackCache.Remove(sessionId);
                     log?.Info($"Regenerated report for {sessionId} ({html.Length / 1024}KB)");
                     Logger.Info($"NightSummary: Dashboard regenerated report for {sessionId}");
                     await WriteJson(res, 200, new { status = "ok", sessionId });
@@ -925,8 +1047,10 @@ namespace NINA.Plugin.NightSummary.Server {
                                 var reportPath = Path.Combine(reportsDir, $"{sessions[i].SessionId}.html");
                                 await File.WriteAllTextAsync(reportPath, html);
                                 await SaveSessionSettings(sessions[i].SessionId, s);
+                                SaveDashboardLiveStackMasters(sessions[i].SessionId, reportData);
                                 thumbnailCache.Remove(sessions[i].SessionId);
                                 altitudeChartCache.Remove(sessions[i].SessionId);
+                                livestackCache.Remove(sessions[i].SessionId);
                                 regenAllGenerated++;
                                 log?.Debug($"Bulk regen {regenAllCurrent}/{sessions.Count}: {sessions[i].SessionId} OK");
                             } catch (Exception ex) {
@@ -1029,6 +1153,36 @@ namespace NINA.Plugin.NightSummary.Server {
             } catch (Exception ex) {
                 log?.Warn($"Failed to save settings sidecar for {sessionId}: {ex.Message}");
                 Logger.Warning($"NightSummary: Failed to save settings for {sessionId}. {ex.Message}");
+            }
+        }
+
+        private void SaveDashboardLiveStackMasters(string sessionId, Reporting.ReportData reportData) {
+            if (reportData.LiveStackImages == null || reportData.LiveStackImages.Count == 0) return;
+            try {
+                var lsDir = Path.Combine(reportsDir, "livestack", sessionId);
+                Directory.CreateDirectory(lsDir);
+                var manifest = new List<Dictionary<string, object>>();
+                foreach (var img in reportData.LiveStackImages) {
+                    var data = img.MasterJpegData ?? img.JpegData;
+                    var safeName = Regex.Replace($"{img.Target}_{img.Filter}", @"[^\w\-.]", "_");
+                    var jpgFile = safeName + ".jpg";
+                    File.WriteAllBytes(Path.Combine(lsDir, jpgFile), data);
+                    manifest.Add(new Dictionary<string, object> {
+                        ["file"] = jpgFile,
+                        ["target"] = img.Target,
+                        ["filter"] = img.Filter,
+                        ["isMonochrome"] = img.IsMonochrome,
+                        ["stackCount"] = img.StackCount,
+                        ["redStackCount"] = img.RedStackCount,
+                        ["greenStackCount"] = img.GreenStackCount,
+                        ["blueStackCount"] = img.BlueStackCount
+                    });
+                }
+                var json = JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(Path.Combine(lsDir, "livestack.json"), json);
+                log?.Debug($"Saved {reportData.LiveStackImages.Count} livestack master(s) for {sessionId}");
+            } catch (Exception ex) {
+                log?.Warn($"Failed to save livestack masters for {sessionId}: {ex.Message}");
             }
         }
 

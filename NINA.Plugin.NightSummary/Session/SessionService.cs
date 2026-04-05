@@ -257,7 +257,7 @@ namespace NINA.Plugin.NightSummary.Session {
 
                 // Always save a copy to the local dashboard reports directory
                 // so the embedded dashboard server can serve it
-                tasks.Add(SaveReportForDashboardAsync(reportData.Session.SessionId, htmlReport));
+                tasks.Add(SaveReportForDashboardAsync(reportData.Session.SessionId, htmlReport, reportData.LiveStackImages));
 
                 await Task.WhenAll(tasks);
                 Notification.ShowSuccess("Night Summary: Report delivered successfully");
@@ -350,7 +350,7 @@ namespace NINA.Plugin.NightSummary.Session {
                 if (S.DashboardEnabled)
                     tasks.Add(SendDashboardWithDataAsync(reportData, htmlReport));
 
-                tasks.Add(SaveReportForDashboardAsync(reportData.Session.SessionId, htmlReport));
+                tasks.Add(SaveReportForDashboardAsync(reportData.Session.SessionId, htmlReport, reportData.LiveStackImages));
 
                 await Task.WhenAll(tasks);
                 Notification.ShowSuccess("Night Summary: Report delivered successfully");
@@ -460,7 +460,7 @@ namespace NINA.Plugin.NightSummary.Session {
         /// DashboardServer can serve it. This is always called on report generation,
         /// independent of the user's "Save Report Locally" setting.
         /// </summary>
-        private async Task SaveReportForDashboardAsync(string sessionId, string htmlReport) {
+        private async Task SaveReportForDashboardAsync(string sessionId, string htmlReport, List<LiveStackImage> liveStackImages = null) {
             try {
                 var reportsDir = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -468,6 +468,32 @@ namespace NINA.Plugin.NightSummary.Session {
                 Directory.CreateDirectory(reportsDir);
                 var filePath = Path.Combine(reportsDir, $"{sessionId}.html");
                 await File.WriteAllTextAsync(filePath, htmlReport);
+
+                // Save live stack masters per-session for the dashboard to serve
+                if (liveStackImages != null && liveStackImages.Count > 0) {
+                    var lsDir = Path.Combine(reportsDir, "livestack", sessionId);
+                    Directory.CreateDirectory(lsDir);
+                    var manifest = new List<Dictionary<string, object>>();
+                    foreach (var img in liveStackImages) {
+                        var data = img.MasterJpegData ?? img.JpegData;
+                        var safeName = SanitizeFileName($"{img.Target}_{img.Filter}");
+                        var jpgFile = safeName + ".jpg";
+                        File.WriteAllBytes(Path.Combine(lsDir, jpgFile), data);
+                        manifest.Add(new Dictionary<string, object> {
+                            ["file"] = jpgFile,
+                            ["target"] = img.Target,
+                            ["filter"] = img.Filter,
+                            ["isMonochrome"] = img.IsMonochrome,
+                            ["stackCount"] = img.StackCount,
+                            ["redStackCount"] = img.RedStackCount,
+                            ["greenStackCount"] = img.GreenStackCount,
+                            ["blueStackCount"] = img.BlueStackCount
+                        });
+                    }
+                    var lsJson = System.Text.Json.JsonSerializer.Serialize(manifest, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                    File.WriteAllText(Path.Combine(lsDir, "livestack.json"), lsJson);
+                    Logger.Debug($"NightSummary: Saved {liveStackImages.Count} livestack master(s) to dashboard: {lsDir}");
+                }
 
                 // Save settings sidecar so dashboard knows what was used
                 var settings = new {
