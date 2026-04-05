@@ -191,7 +191,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             var sb = new StringBuilder();
             sb.AppendLine($"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {Width} {Height}\" style=\"width:100%;max-width:{Width}px;display:block;margin:0 auto 16px;font-family:sans-serif\">");
-            sb.AppendLine("<style>circle { cursor: pointer; }</style>");
+            sb.AppendLine("<style>circle, .evt-hit { cursor: pointer; }</style>");
             sb.AppendLine($"<rect width=\"{Width}\" height=\"{Height}\" fill=\"{ColorBackground}\" rx=\"6\"/>");
 
             // Horizontal grid lines + left Y labels
@@ -256,7 +256,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     // Visible dashed line
                     sb.AppendLine($"<line x1=\"{xPx:F1}\" y1=\"{PadTop}\" x2=\"{xPx:F1}\" y2=\"{PadTop + plotH}\" stroke=\"{color}\" stroke-width=\"1\" stroke-dasharray=\"4,3\" opacity=\"0.7\"/>");
                     // Invisible wider hit area for hover tooltip
-                    sb.AppendLine($"<line x1=\"{xPx:F1}\" y1=\"{PadTop}\" x2=\"{xPx:F1}\" y2=\"{PadTop + plotH}\" stroke=\"transparent\" stroke-width=\"8\"><title>{tip}</title></line>");
+                    sb.AppendLine($"<line class=\"evt-hit\" x1=\"{xPx:F1}\" y1=\"{PadTop}\" x2=\"{xPx:F1}\" y2=\"{PadTop + plotH}\" stroke=\"transparent\" stroke-width=\"8\"><title>{tip}</title></line>");
                     sb.AppendLine($"<text x=\"{xPx:F1}\" y=\"{PadTop - 4}\" fill=\"{color}\" font-size=\"8\" text-anchor=\"middle\" opacity=\"0.85\">{label}</text>");
                 }
             }
