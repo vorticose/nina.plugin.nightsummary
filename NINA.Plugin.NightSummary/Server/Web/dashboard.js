@@ -145,6 +145,7 @@ var showFovOverlay = localStorage.getItem('ns-show-fov') !== 'false'; // on by d
 var cardViewMode = localStorage.getItem('ns-card-view') || 'expanded'; // 'expanded' or 'compact'
 var hiddenSessions = JSON.parse(localStorage.getItem('ns-hidden-sessions') || '{}'); // sessionId -> true
 var showHidden = false;
+var livestackMap = {}; // sessionId -> { targetName -> [{filter, url, label, isComposite}] }
 
 function getAllTargets() {
   var targets = {};
@@ -337,6 +338,7 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
   bindListEvents();
   if (cardViewMode === 'expanded') {
     loadThumbnails(filtered);
+    loadLiveStacks(filtered);
     loadAltitudeCharts(filtered);
   }
 }
@@ -360,7 +362,7 @@ function loadThumbnails(sessions) {
             .replace(/height='\d+'/, "height='100%'")
             .replace("<svg ", "<svg viewBox='0 0 200 200' " + (showFovOverlay ? '' : "style='display:none' "));
         }
-        return '<div class="card-thumb-wrap">' + img + svg + '</div>';
+        return '<div class="card-thumb-wrap" data-target="' + esc(t.target) + '" data-session="' + esc(s.sessionId) + '">' + img + svg + '</div>';
       }).join('');
       // Reorder target names to match thumbnail order
       var targetsEl = document.getElementById('targets-' + s.sessionId);
@@ -373,6 +375,123 @@ function loadThumbnails(sessions) {
     }).catch(function(err) {
       logDebug('Thumb load failed for', s.sessionId, err.message);
     });
+  });
+}
+
+function loadLiveStacks(sessions) {
+  sessions.forEach(function(s) {
+    if (!s.hasReport) return;
+    api('/api/sessions/' + s.sessionId + '/livestack').then(function(data) {
+      // data is { targetName: [{target, filter, url, label, isComposite}] }
+      if (!data || Object.keys(data).length === 0) return;
+      livestackMap[s.sessionId] = data;
+
+      // Add badges to thumbnails that have live stack data
+      var thumbsEl = document.getElementById('thumbs-' + s.sessionId);
+      if (!thumbsEl) return;
+      var wraps = thumbsEl.querySelectorAll('.card-thumb-wrap');
+      for (var i = 0; i < wraps.length; i++) {
+        var target = wraps[i].getAttribute('data-target');
+        if (target && data[target]) {
+          var count = data[target].length;
+          var badge = document.createElement('span');
+          badge.className = 'livestack-badge';
+          badge.textContent = count;
+          badge.title = count + ' live stack image' + (count !== 1 ? 's' : '');
+          wraps[i].appendChild(badge);
+          setupLiveStackHover(wraps[i], s.sessionId, target);
+        }
+      }
+    }).catch(function(err) {
+      logDebug('LiveStack load failed for', s.sessionId, err.message);
+    });
+  });
+}
+
+function setupLiveStackHover(thumbWrap, sessionId, targetName) {
+  var hoverTimer = null;
+  var shelf = null;
+  var shelfLeaveTimer = null;
+
+  function showShelf() {
+    if (shelf) return;
+    var images = livestackMap[sessionId] && livestackMap[sessionId][targetName];
+    if (!images || images.length === 0) return;
+
+    shelf = document.createElement('div');
+    shelf.className = 'livestack-shelf';
+
+    var imagesDiv = document.createElement('div');
+    imagesDiv.className = 'livestack-shelf-images';
+
+    images.forEach(function(img, idx) {
+      var item = document.createElement('div');
+      item.className = 'livestack-shelf-item';
+      item.style.animationDelay = (idx * 40) + 'ms';
+
+      var imgEl = document.createElement('img');
+      imgEl.className = 'livestack-shelf-img';
+      imgEl.src = img.url;
+      imgEl.alt = img.label;
+      imgEl.loading = 'lazy';
+
+      var label = document.createElement('div');
+      label.className = 'livestack-shelf-label';
+      label.textContent = img.label;
+
+      item.appendChild(imgEl);
+      item.appendChild(label);
+      imagesDiv.appendChild(item);
+    });
+
+    shelf.appendChild(imagesDiv);
+
+    // Position relative to the thumb — append to .card-thumbs container
+    var thumbsContainer = thumbWrap.closest('.card-thumbs');
+    if (!thumbsContainer) { shelf = null; return; }
+    thumbsContainer.appendChild(shelf);
+
+    // Calculate position: center shelf below the hovered thumb
+    // Account for the transform:scale(1.67) on hover — the visual size is larger
+    var wrapRect = thumbWrap.getBoundingClientRect();
+    var containerRect = thumbsContainer.getBoundingClientRect();
+    var centerX = (wrapRect.left + wrapRect.width / 2) - containerRect.left;
+    var topY = wrapRect.bottom - containerRect.top + 8;
+
+    shelf.style.left = centerX + 'px';
+    shelf.style.top = topY + 'px';
+
+    // Shelf hover: keep alive when mouse enters shelf
+    shelf.addEventListener('mouseenter', function() {
+      clearTimeout(shelfLeaveTimer);
+    });
+    shelf.addEventListener('mouseleave', function(e) {
+      // Hide unless mouse went back to the thumb
+      if (thumbWrap.contains(e.relatedTarget)) return;
+      hideShelf();
+    });
+  }
+
+  function hideShelf() {
+    clearTimeout(shelfLeaveTimer);
+    if (shelf) {
+      shelf.classList.add('shelf-hiding');
+      var s = shelf;
+      setTimeout(function() { if (s.parentNode) s.parentNode.removeChild(s); }, 150);
+      shelf = null;
+    }
+  }
+
+  thumbWrap.addEventListener('mouseenter', function() {
+    clearTimeout(shelfLeaveTimer);
+    hoverTimer = setTimeout(showShelf, 200);
+  });
+
+  thumbWrap.addEventListener('mouseleave', function(e) {
+    clearTimeout(hoverTimer);
+    // Don't hide immediately if mouse moved into the shelf — give a grace period
+    if (shelf && shelf.contains(e.relatedTarget)) return;
+    shelfLeaveTimer = setTimeout(hideShelf, 100);
   });
 }
 
