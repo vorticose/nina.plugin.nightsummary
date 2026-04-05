@@ -524,6 +524,60 @@ function setupChartCrosshair(container) {
   });
 }
 
+// ── Legend hover highlighting ─────────────────────────────────────────────
+
+function setupLegendHighlight(container) {
+  var svg = container.querySelector('svg');
+  if (!svg) return;
+
+  // Find all target <g> groups (with <title>) and legend elements
+  var targetGroups = [];
+  svg.querySelectorAll('g').forEach(function(g) {
+    var title = g.querySelector('title');
+    if (title && title.textContent !== 'Moon Position') {
+      targetGroups.push({ name: title.textContent, group: g });
+    }
+  });
+  if (targetGroups.length < 2) return; // no point highlighting with only one target
+
+  // Find legend text elements (font-size='9' inside the plot area)
+  var legendTexts = svg.querySelectorAll("text[font-size='9']");
+  var legendLines = svg.querySelectorAll("line[stroke-width='2']");
+
+  // Match legend items to target groups by color
+  legendTexts.forEach(function(textEl, idx) {
+    var name = textEl.textContent;
+    // Find the corresponding legend line (same index)
+    var lineEl = idx < legendLines.length ? legendLines[idx] : null;
+
+    textEl.style.cursor = 'pointer';
+    if (lineEl) lineEl.style.cursor = 'pointer';
+
+    function highlight() {
+      targetGroups.forEach(function(tg) {
+        if (tg.name === name) {
+          tg.group.style.opacity = '1';
+        } else {
+          tg.group.style.opacity = '0.15';
+        }
+      });
+    }
+
+    function restore() {
+      targetGroups.forEach(function(tg) {
+        tg.group.style.opacity = '1';
+      });
+    }
+
+    textEl.addEventListener('mouseenter', highlight);
+    textEl.addEventListener('mouseleave', restore);
+    if (lineEl) {
+      lineEl.addEventListener('mouseenter', highlight);
+      lineEl.addEventListener('mouseleave', restore);
+    }
+  });
+}
+
 function loadAltitudeCharts(sessions) {
   sessions.forEach(function(s) {
     if (!s.hasReport) return;
@@ -536,6 +590,7 @@ function loadAltitudeCharts(sessions) {
       if (!el) return;
       el.innerHTML = data.svg;
       setupChartCrosshair(el);
+      setupLegendHighlight(el);
       // Add has-chart class to card-body so CSS can reserve space
       var body = el.parentElement;
       if (body) body.classList.add('has-chart');
