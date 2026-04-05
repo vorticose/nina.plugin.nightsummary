@@ -148,6 +148,8 @@ nav {
 .date-input-wrap {
   position: relative;
   cursor: pointer;
+  display: flex;
+  align-items: center;
 }
 
 .date-input-wrap input[type="date"] {

@@ -27,6 +27,12 @@ function fmtNum(n, decimals) {
 }
 
 function fmtDate(iso) {
+  // Parse YYYY-MM-DD without timezone offset (new Date('2026-03-30') parses as UTC, shifts day in local time)
+  var parts = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (parts) {
+    return new Date(parseInt(parts[1]), parseInt(parts[2]) - 1, parseInt(parts[3]))
+      .toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  }
   return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
