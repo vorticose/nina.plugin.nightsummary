@@ -343,15 +343,16 @@ nav {
   position: relative;
   margin-top: -28px;
   margin-bottom: 0;
+  overflow: hidden;
   border: 1px dashed rgba(126, 184, 247, 0.4); /* DEBUG: remove after layout tuning */
 }
 
 .card-altitude svg {
   position: absolute;
   top: 0;
-  left: 0;
-  width: 100%;
+  right: 0;
   height: 100%;
+  width: auto;
   display: block;
 }
 
