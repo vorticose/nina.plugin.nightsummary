@@ -216,22 +216,23 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
         '<option value="images"' + (sortBy === 'images' ? ' selected' : '') + '>Most images</option>' +
       '</select>' +
     '</div>' +
-    '<label class="target-check" title="Include sessions with 0 captured images"><input type="checkbox" id="filter-empty"' + (showEmptySessions ? ' checked' : '') + '><span>Show empty</span></label>' +
+    '<label class="target-check" title="Include sessions with 0 captured images"><input type="checkbox" id="filter-empty"' + (showEmptySessions ? ' checked' : '') + '><span>Show empty</span></label>';
+
+  // Add hidden session controls inline if any are hidden
+  var tempHiddenCount = sessionsCache.filter(function(s) { return hiddenSessions[s.sessionId]; }).length;
+  if (tempHiddenCount > 0) {
+    filterHtml +=
+      '<label class="target-check"><input type="checkbox" id="filter-hidden"' + (showHidden ? ' checked' : '') + '><span>Show hidden (' + tempHiddenCount + ')</span></label>' +
+      '<button id="unhide-all" class="filter-link">Unhide all</button>';
+  }
+
+  filterHtml +=
     '<button id="filter-clear" class="filter-link">Clear filters</button>' +
     '<div class="view-toggle">' +
       '<button class="view-toggle-btn' + (cardViewMode === 'compact' ? ' active' : '') + '" data-view="compact">Compact</button>' +
       '<button class="view-toggle-btn' + (cardViewMode === 'expanded' ? ' active' : '') + '" data-view="expanded">Expanded</button>' +
     '</div>' +
-    '</div>'
-
-  // Compute hidden count for the toggle (before filtering)
-  var tempHiddenCount = sessionsCache.filter(function(s) { return hiddenSessions[s.sessionId]; }).length;
-  if (tempHiddenCount > 0) {
-    filterHtml += '<div class="hidden-bar">' +
-      '<label class="target-check"><input type="checkbox" id="filter-hidden"' + (showHidden ? ' checked' : '') + '><span>Show hidden (' + tempHiddenCount + ')</span></label>' +
-      '<button id="unhide-all" class="filter-link">Unhide all</button>' +
     '</div>';
-  }
 
   // Filter sessions
   var activeTargets = {};
@@ -296,14 +297,13 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
       '</div>';
 
     return '<div class="session-card" onclick="navigate(\'#/sessions/' + s.sessionId + '\')">' +
+      '<button class="hide-btn" data-session="' + s.sessionId + '" onclick="event.stopPropagation();hideSession(this.dataset.session)" title="Hide this session">\u2715</button>' +
       '<div class="card-body">' +
         '<div class="card-content">' +
           '<div class="card-thumbs" id="thumbs-' + s.sessionId + '"></div>' +
           '<div class="session-header">' +
             '<span class="session-date">' + fmtDate(s.sessionStart) + '</span>' +
-            '<span>' + badge +
-              '<button class="hide-btn" data-session="' + s.sessionId + '" onclick="event.stopPropagation();hideSession(this.dataset.session)" title="Hide this session">\u2715</button>' +
-            '</span>' +
+            badge +
           '</div>' +
           targetsText +
           '<div class="card-stats-line">' + statsLine + '</div>' +
