@@ -705,7 +705,8 @@ namespace NINA.Plugin.NightSummary.Server {
 
             // Legend — dedicated column in negative x-space with background panel
             // Auto-size font based on longest target name (available width ~100px for text)
-            int maxNameLen = targetData.Max(td => td.Name.Length);
+            const int MaxLegendChars = 28; // truncate beyond this to prevent tiny font
+            int maxNameLen = targetData.Max(td => Math.Min(td.Name.Length, MaxLegendChars));
             int fontSize = maxNameLen > 24 ? 8 : maxNameLen > 16 ? 9 : 10;
             int lineHeight = fontSize + 5;
             int legendStartY = 26;
@@ -719,9 +720,10 @@ namespace NINA.Plugin.NightSummary.Server {
             for (int t = 0; t < targetData.Count; t++) {
                 var color = TargetColors[t % TargetColors.Length];
                 var name = targetData[t].Name;
+                var displayName = name.Length > MaxLegendChars ? name.Substring(0, MaxLegendChars - 1) + "\u2026" : name;
                 int ly = legendStartY + t * lineHeight;
                 sb.AppendLine($"<line x1='-{(AltLegendW - 8).ToString("F0", inv)}' y1='{ly}' x2='-{(AltLegendW - 20).ToString("F0", inv)}' y2='{ly}' stroke='{color}' stroke-width='2'/>");
-                sb.AppendLine($"<text x='-{(AltLegendW - 23).ToString("F0", inv)}' y='{ly + 3}' font-size='{fontSize}' fill='{color}'>{name}</text>");
+                sb.AppendLine($"<text x='-{(AltLegendW - 23).ToString("F0", inv)}' y='{ly + 3}' font-size='{fontSize}' fill='{color}'>{displayName}</text>");
             }
 
             sb.AppendLine("</svg>");
