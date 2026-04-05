@@ -470,7 +470,7 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
     var wrapRect = thumbWrap.getBoundingClientRect();
     var containerRect = thumbsContainer.getBoundingClientRect();
     var centerX = (wrapRect.left + wrapRect.width / 2) - containerRect.left;
-    var topY = wrapRect.bottom - containerRect.top + 30;
+    var topY = wrapRect.bottom - containerRect.top + 45;
 
     shelf.style.left = centerX + 'px';
     shelf.style.top = topY + 'px';
