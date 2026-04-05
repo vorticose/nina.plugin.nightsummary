@@ -344,8 +344,8 @@ nav {
 .card-thumbs:empty { display: none; }
 
 .card-thumb {
-  width: 100px;
-  height: 100px;
+  width: 150px;
+  height: 150px;
   border-radius: 6px;
   border: 1px solid var(--border);
   object-fit: cover;
