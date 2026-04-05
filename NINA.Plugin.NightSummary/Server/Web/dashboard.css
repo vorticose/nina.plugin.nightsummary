@@ -47,6 +47,21 @@
   --text-quaternary: #9a9da8;
 }
 
+/* Light mode altitude chart — reverse dark-mode color normalization baked into SVG */
+:root.light .chart-svg-wrap {
+  background: rgba(0,0,0,0.04);
+  box-shadow:
+    inset 0px 2px 6px rgba(0,0,0,0.08),
+    inset 0px 0px 0px 1px rgba(0,0,0,0.06);
+}
+:root.light .chart-svg-wrap svg rect[fill='#0d1117'] { fill: #e8eef5; }
+:root.light .chart-svg-wrap svg [stroke='#2d2d5e'] { stroke: #c0c8d4; }
+:root.light .chart-svg-wrap svg [fill='#2d2d5e'] { fill: #c0c8d4; }
+:root.light .chart-svg-wrap svg text { fill: #555; }
+:root.light .chart-svg-wrap svg [stroke='#c0c0c0'] { stroke: #7a8a9e; }
+:root.light .chart-svg-wrap svg [stroke='#7eb8f7'] { stroke: #2563b8; }
+:root.light .chart-legend { background: rgba(238, 240, 245, 0.9); }
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
