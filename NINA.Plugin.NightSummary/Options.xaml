@@ -356,7 +356,7 @@
                             <TextBlock Text="Show Roof Event Markers" Width="180" VerticalAlignment="Center" />
                             <CheckBox IsChecked="{Binding ShowChartRoofMarkers}" VerticalAlignment="Center" />
                         </StackPanel>
-                        <TextBlock Text="Shown when x-axis is Time" FontSize="10" Foreground="Gray" Margin="0,2,0,0" />
+                        <TextBlock Text="Markers only shown when x-axis is set to Time." FontSize="10" Foreground="Gray" Margin="0,2,0,0" />
                     </StackPanel>
 
                     <!-- Chart metric selectors: disabled at Snapshot/Standard or when Metric Chart is off -->
