@@ -522,9 +522,68 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
 function hideSession(sessionId) {
   hiddenSessions[sessionId] = true;
   localStorage.setItem('ns-hidden-sessions', JSON.stringify(hiddenSessions));
-  var el = document.getElementById('content');
-  var sub = document.getElementById('page-subtitle');
-  doRenderList(el, sub, '', '', 'date-desc');
+
+  var btn = document.querySelector('.hide-btn[data-session="' + sessionId + '"]');
+  var card = btn ? btn.closest('.session-card') : null;
+
+  function afterRemove() {
+    // Update subtitle
+    var sub = document.getElementById('page-subtitle');
+    if (sub) {
+      var visible = document.querySelectorAll('.session-card').length;
+      sub.textContent = visible + ' of ' + sessionsCache.length + ' sessions';
+    }
+
+    // Update or create hidden-session controls in the filter bar
+    var hiddenCount = sessionsCache.filter(function(s) { return hiddenSessions[s.sessionId]; }).length;
+    var hiddenEl = document.getElementById('filter-hidden');
+    if (hiddenEl) {
+      var span = hiddenEl.parentNode.querySelector('span');
+      if (span) span.textContent = 'Show hidden (' + hiddenCount + ')';
+    } else {
+      var filterBar = document.querySelector('.filter-bar');
+      if (!filterBar) return;
+      var hiddenLabel = document.createElement('label');
+      hiddenLabel.className = 'target-check';
+      hiddenLabel.innerHTML = '<input type="checkbox" id="filter-hidden"><span>Show hidden (' + hiddenCount + ')</span>';
+      filterBar.appendChild(hiddenLabel);
+      var unhideBtn = document.createElement('button');
+      unhideBtn.id = 'unhide-all';
+      unhideBtn.className = 'filter-link';
+      unhideBtn.textContent = 'Unhide all';
+      filterBar.appendChild(unhideBtn);
+      document.getElementById('filter-hidden').addEventListener('change', function() {
+        showHidden = this.checked;
+        var from = document.getElementById('filter-from');
+        var to = document.getElementById('filter-to');
+        var sort = document.getElementById('filter-sort');
+        doRenderList(document.getElementById('content'), document.getElementById('page-subtitle'),
+          from ? from.value : '', to ? to.value : '', sort ? sort.value : 'date-desc');
+      });
+      unhideBtn.addEventListener('click', function() {
+        hiddenSessions = {};
+        showHidden = false;
+        localStorage.setItem('ns-hidden-sessions', '{}');
+        var from = document.getElementById('filter-from');
+        var to = document.getElementById('filter-to');
+        var sort = document.getElementById('filter-sort');
+        doRenderList(document.getElementById('content'), document.getElementById('page-subtitle'),
+          from ? from.value : '', to ? to.value : '', sort ? sort.value : 'date-desc');
+      });
+    }
+  }
+
+  if (card) {
+    card.style.transition = 'opacity 0.2s, transform 0.2s';
+    card.style.opacity = '0';
+    card.style.transform = 'scale(0.97)';
+    setTimeout(function() {
+      if (card.parentNode) card.parentNode.removeChild(card);
+      afterRemove();
+    }, 200);
+  } else {
+    afterRemove();
+  }
 }
 
 // ── Altitude chart crosshair ──────────────────────────────────────────────
