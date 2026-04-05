@@ -206,11 +206,13 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
     targetDropHtml +
     '<div class="filter-dates">' +
       '<div class="date-input-wrap">' +
-        '<input type="date" id="filter-from" value="' + esc(fromFilter) + '" onclick="this.showPicker&&this.showPicker()">' +
+        '<span class="date-label' + (fromFilter ? '' : ' empty') + '">' + (fromFilter ? fmtDate(fromFilter) : 'From') + '</span>' +
+        '<input type="date" id="filter-from" value="' + esc(fromFilter) + '">' +
         (fromFilter ? '<button class="date-clear" data-target="filter-from" title="Clear">\u00d7</button>' : '') +
       '</div>' +
       '<div class="date-input-wrap">' +
-        '<input type="date" id="filter-to" value="' + esc(toFilter) + '" onclick="this.showPicker&&this.showPicker()">' +
+        '<span class="date-label' + (toFilter ? '' : ' empty') + '">' + (toFilter ? fmtDate(toFilter) : 'To') + '</span>' +
+        '<input type="date" id="filter-to" value="' + esc(toFilter) + '">' +
         (toFilter ? '<button class="date-clear" data-target="filter-to" title="Clear">\u00d7</button>' : '') +
       '</div>' +
     '</div>' +
