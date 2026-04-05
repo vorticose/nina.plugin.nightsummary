@@ -441,9 +441,8 @@ nav {
 
 /* ── Card stat boxes (expanded mode) ── */
 .card-stats {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(90px, 180px));
-  gap: 8px;
+  display: flex;
+  gap: 6px;
   margin-top: 8px;
 }
 
@@ -451,8 +450,10 @@ nav {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 6px 10px;
+  padding: 6px 8px;
   text-align: center;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .card-stat-value {
