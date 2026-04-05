@@ -332,6 +332,18 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
   el.innerHTML = filterHtml + '<div class="cards-container' + modeClass + '">' + cards + '</div>';
   bindListEvents();
   if (cardViewMode === 'expanded') {
+    // Dynamically extend chart upward based on header height
+    // Short headers → chart extends almost to card top. Long headers → chart stays lower.
+    document.querySelectorAll('.card-header').forEach(function(header) {
+      var altEl = header.nextElementSibling && header.nextElementSibling.querySelector('.card-altitude');
+      if (!altEl) return;
+      var headerH = header.offsetHeight;
+      var headerMargin = 4; // .card-header margin-bottom
+      var cardPadTop = 8;   // .session-card padding-top
+      // Pull chart up by (header height + margin - small gap from card edge)
+      var pullUp = Math.max(0, headerH + headerMargin - cardPadTop);
+      altEl.style.marginTop = '-' + pullUp + 'px';
+    });
     loadThumbnails(filtered);
     loadAltitudeCharts(filtered);
   }
