@@ -636,9 +636,13 @@ namespace NINA.Plugin.NightSummary.Server {
                 .Replace("opacity='0.75'", "opacity='0.45'");  // moon opacity
 
             // Extract shared structural elements from the first chart
-            // Use the original viewBox height but widen to AltNewSvgW for better card aspect ratio
+            // Trim vertical padding: original is 0-248, content lives at ~10-242
+            const int vbTopTrim = 6;   // trim from top (above 90° label)
+            const int vbBotTrim = 6;   // trim from bottom (below time labels)
             var viewBoxMatch = Regex.Match(scaffoldSvg, @"viewBox='[\d.]+ [\d.]+ [\d.]+ ([\d.]+)'");
-            var viewBoxH = viewBoxMatch.Success ? viewBoxMatch.Groups[1].Value : "248";
+            int origH = viewBoxMatch.Success ? (int)double.Parse(viewBoxMatch.Groups[1].Value, inv) : 248;
+            var viewBoxY = vbTopTrim.ToString();
+            var viewBoxH = (origH - vbTopTrim - vbBotTrim).ToString();
             var inv = System.Globalization.CultureInfo.InvariantCulture;
 
             var moonPattern = new Regex(@"<g><title>Moon Position</title>.*?</g>", RegexOptions.Singleline);
@@ -658,7 +662,7 @@ namespace NINA.Plugin.NightSummary.Server {
             var totalW = (AltNewSvgW + legendW).ToString("F0", inv);
             var lwS = legendW.ToString("F0", inv);
             var sb = new StringBuilder();
-            sb.AppendLine($"<svg viewBox='-{lwS} 0 {totalW} {viewBoxH}' xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='xMaxYMid meet'>");
+            sb.AppendLine($"<svg viewBox='-{lwS} {viewBoxY} {totalW} {viewBoxH}' xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='xMaxYMid meet'>");
 
             // Background + border rects (scale x and width to fill wider plot area)
             var bgRects = Regex.Matches(scaffoldSvg, @"<rect x='38'[^/]*/>");

@@ -341,6 +341,7 @@ nav {
   flex: 1;
   min-width: 0;
   position: relative;
+  border: 1px dashed rgba(126, 184, 247, 0.4); /* DEBUG: remove after layout tuning */
 }
 
 .card-altitude svg {
