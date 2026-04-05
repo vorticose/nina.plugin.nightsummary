@@ -336,12 +336,12 @@ function loadThumbnails(sessions) {
       if (!el) return;
       el.innerHTML = thumbs.map(function(t) {
         var img = '<img class="card-thumb" src="' + t.dataUri + '" alt="' + esc(t.target) + '" title="' + esc(t.target) + '" loading="lazy" onerror="this.style.display=\'none\'">';
-        if (t.fovSvg && showFovOverlay) {
+        if (t.fovSvg) {
           // Scale the 200px report SVG to 150px by adding a viewBox and overriding width/height
           var svg = t.fovSvg
             .replace(/width='\d+'/, "width='150'")
             .replace(/height='\d+'/, "height='150'")
-            .replace("<svg ", "<svg viewBox='0 0 200 200' ");
+            .replace("<svg ", "<svg viewBox='0 0 200 200' " + (showFovOverlay ? '' : "style='display:none' "));
           return '<div class="card-thumb-wrap">' + img + svg + '</div>';
         }
         return img;
@@ -474,13 +474,15 @@ function bindListEvents() {
     });
   }
 
-  // Show FOV overlay checkbox
+  // Show FOV overlay checkbox — toggle visibility without re-render
   var fovEl = document.getElementById('filter-fov');
   if (fovEl) {
     fovEl.addEventListener('change', function() {
       showFovOverlay = this.checked;
       localStorage.setItem('ns-show-fov', showFovOverlay ? 'true' : 'false');
-      refresh();
+      document.querySelectorAll('.card-thumb-wrap svg').forEach(function(svg) {
+        svg.style.display = showFovOverlay ? '' : 'none';
+      });
     });
   }
 

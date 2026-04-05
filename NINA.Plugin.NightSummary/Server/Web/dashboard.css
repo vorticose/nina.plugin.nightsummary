@@ -315,7 +315,7 @@ nav {
 
 .card-body {
   display: flex;
-  gap: 16px;
+  gap: 8px;
   align-items: stretch;
 }
 
