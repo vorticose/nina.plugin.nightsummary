@@ -341,7 +341,10 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
       var headerMargin = 4; // .card-header margin-bottom
       var cardPadTop = 8;   // .session-card padding-top
       // Pull chart up by (header height + margin - small gap from card edge)
-      var clearance = 6; // px gap between header bottom and chart top
+      // Only add clearance if header text extends into the chart area
+      var headerRight = header.getBoundingClientRect().right;
+      var altLeft = altEl.getBoundingClientRect().left;
+      var clearance = (headerRight > altLeft - 8) ? 6 : 0;
       var pullUp = Math.max(0, headerH + headerMargin - cardPadTop - clearance);
       altEl.style.marginTop = '-' + pullUp + 'px';
     });
