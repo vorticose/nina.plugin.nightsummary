@@ -344,7 +344,7 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
       // Only add clearance if header text extends into the chart area
       var headerRight = header.getBoundingClientRect().right;
       var altLeft = altEl.getBoundingClientRect().left;
-      var clearance = (headerRight > altLeft - 8) ? 6 : 0;
+      var clearance = (headerRight > altLeft - 8) ? 12 : 0;
       var pullUp = Math.max(0, headerH + headerMargin - cardPadTop - clearance);
       altEl.style.marginTop = '-' + pullUp + 'px';
     });
