@@ -53,7 +53,7 @@ namespace NINA.Plugin.NightSummary.Server {
         private const double AltOrigRight = 490.0;    // original right edge of plot (500 - 10)
         private const double AltNewSvgW = 825.0;      // new viewBox width (plot area only)
         private const double AltNewRight = 815.0;     // new right edge (825 - 10)
-        private const double AltLegendW = 180.0;      // dedicated legend column width (negative x-space)
+        private const double AltLegendGap = 2.0;       // gap between legend panel and y-axis
         private static readonly double AltScaleX = (AltNewRight - AltPadL) / (AltOrigRight - AltPadL); // ~1.719
 
         /// <summary>Map an x-coordinate from the original 500-wide plot space to the wider 750-wide space.</summary>
@@ -631,10 +631,20 @@ namespace NINA.Plugin.NightSummary.Server {
             var sunsetPattern = new Regex(@"<text[^>]*fill='#f59e0b'[^>]*>.*?</text>", RegexOptions.Singleline);
             var timeLabelPattern = new Regex(@"<text[^>]*fill='#888'[^>]*>\d{2}:\d{2}</text>");
 
-            // Build combined SVG with wider viewBox — legend gets dedicated negative x-space
-            var totalW = (AltNewSvgW + AltLegendW).ToString("F0", inv);
+            // Calculate legend column width based on longest target name
+            const int MaxLegendChars = 30;
+            int maxNameLen = targetData.Max(td => Math.Min(td.Name.Length, MaxLegendChars));
+            int fontSize = maxNameLen > 22 ? 9 : maxNameLen > 16 ? 10 : 11;
+            double charW = fontSize <= 9 ? 5.0 : fontSize <= 10 ? 5.5 : 6.0;
+            double legendW = maxNameLen * charW + 30;
+            legendW = Math.Max(legendW, 90);
+            legendW = Math.Min(legendW, 220);
+
+            // Build combined SVG with dynamic legend column
+            var totalW = (AltNewSvgW + legendW).ToString("F0", inv);
+            var lwS = legendW.ToString("F0", inv);
             var sb = new StringBuilder();
-            sb.AppendLine($"<svg viewBox='-{AltLegendW.ToString("F0", inv)} 0 {totalW} {viewBoxH}' xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='xMidYMid meet'>");
+            sb.AppendLine($"<svg viewBox='-{lwS} 0 {totalW} {viewBoxH}' xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='xMidYMid meet'>");
 
             // Background + border rects (scale x and width to fill wider plot area)
             var bgRects = Regex.Matches(scaffoldSvg, @"<rect x='38'[^/]*/>");
@@ -703,29 +713,25 @@ namespace NINA.Plugin.NightSummary.Server {
             // Time axis labels (scale x positions)
             foreach (Match t in timeLabelPattern.Matches(scaffoldSvg)) sb.AppendLine(RemapSvgX(t.Value));
 
-            // Legend — dedicated column in negative x-space with background panel
-            // Auto-size font based on longest target name (available width ~100px for text)
-            const int MaxLegendChars = 30; // truncate beyond this to prevent overflow
-            int maxNameLen = targetData.Max(td => Math.Min(td.Name.Length, MaxLegendChars));
-            int fontSize = maxNameLen > 22 ? 9 : maxNameLen > 16 ? 10 : 11;
+            // Legend — dedicated column in negative x-space with scaled background panel
             int lineHeight = fontSize + 6;
-            int legendTopY = 20; // flush with plot area top
+            int legendTopY = 20;
             int legendPadTop = 6;
             int legendStartY = legendTopY + legendPadTop + fontSize;
             int legendH = targetData.Count * lineHeight + legendPadTop + 6;
 
-            // Background panel — flush with chart top edge
-            sb.AppendLine($"<rect x='-{AltLegendW.ToString("F0", inv)}' y='{legendTopY}' width='{(AltLegendW - 4).ToString("F0", inv)}' height='{legendH}' rx='4' fill='#0d1117' opacity='0.6'/>");
-            // Separator line between legend and chart
-            sb.AppendLine($"<line x1='-4' y1='{legendTopY}' x2='-4' y2='{legendTopY + legendH}' stroke='#2d2d5e' stroke-width='1' opacity='0.5'/>");
+            // Background panel — flush with chart top edge, tight gap to y-axis
+            var gapS = AltLegendGap.ToString("F0", inv);
+            sb.AppendLine($"<rect x='-{lwS}' y='{legendTopY}' width='{(legendW - AltLegendGap).ToString("F0", inv)}' height='{legendH}' rx='4' fill='#0d1117' opacity='0.6'/>");
+            sb.AppendLine($"<line x1='-{gapS}' y1='{legendTopY}' x2='-{gapS}' y2='{legendTopY + legendH}' stroke='#2d2d5e' stroke-width='1' opacity='0.5'/>");
 
             for (int t = 0; t < targetData.Count; t++) {
                 var color = TargetColors[t % TargetColors.Length];
                 var name = targetData[t].Name;
                 var displayName = name.Length > MaxLegendChars ? name.Substring(0, MaxLegendChars - 1) + "\u2026" : name;
                 int ly = legendStartY + t * lineHeight;
-                sb.AppendLine($"<line x1='-{(AltLegendW - 8).ToString("F0", inv)}' y1='{ly}' x2='-{(AltLegendW - 20).ToString("F0", inv)}' y2='{ly}' stroke='{color}' stroke-width='2'/>");
-                sb.AppendLine($"<text x='-{(AltLegendW - 23).ToString("F0", inv)}' y='{ly + 3}' font-size='{fontSize}' fill='{color}'>{displayName}</text>");
+                sb.AppendLine($"<line x1='-{(legendW - 8).ToString("F0", inv)}' y1='{ly}' x2='-{(legendW - 20).ToString("F0", inv)}' y2='{ly}' stroke='{color}' stroke-width='2'/>");
+                sb.AppendLine($"<text x='-{(legendW - 23).ToString("F0", inv)}' y='{ly + 3}' font-size='{fontSize}' fill='{color}'>{displayName}</text>");
             }
 
             sb.AppendLine("</svg>");
