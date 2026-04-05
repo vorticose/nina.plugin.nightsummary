@@ -62,10 +62,7 @@ function hexToRgb(hex) {
 function makeTargetBadge(name, idx) {
   var color = TARGET_COLORS[idx % TARGET_COLORS.length];
   var rgb = hexToRgb(color);
-  return '<span class="card-target-badge" style="background:rgba('+rgb+',0.1);border-color:rgba('+rgb+',0.28);">' +
-    '<span class="badge-dot" style="background:'+color+'"></span>' +
-    '<span class="badge-name" style="color:'+color+'">'+esc(name)+'</span>' +
-    '</span>';
+  return '<span class="card-target-badge" style="background:rgba('+rgb+',0.1);border-color:rgba('+rgb+',0.28);color:'+color+'">'+esc(name)+'</span>';
 }
 
 // ── API ────────────────────────────────────────────────────────────────────
