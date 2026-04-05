@@ -498,10 +498,9 @@ nav {
 
 .livestack-shelf-img {
   width: 150px;
-  height: 150px;
+  height: auto;
   border-radius: 6px;
   border: 1px solid var(--border);
-  object-fit: cover;
   display: block;
   transition: transform 0.2s ease;
 }
