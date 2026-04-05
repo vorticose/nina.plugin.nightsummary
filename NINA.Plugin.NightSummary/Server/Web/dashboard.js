@@ -524,6 +524,45 @@ function setupChartCrosshair(container) {
   });
 }
 
+// ── Animated curve drawing on scroll ──────────────────────────────────────
+
+function setupCurveAnimation(container) {
+  var svg = container.querySelector('svg');
+  if (!svg) return;
+
+  // Find all visible target polylines (colored, not transparent)
+  var polylines = [];
+  svg.querySelectorAll('polyline').forEach(function(p) {
+    var stroke = p.getAttribute('stroke');
+    if (stroke && stroke !== 'transparent' && stroke !== '#c0c0c0') {
+      polylines.push(p);
+    }
+  });
+  if (polylines.length === 0) return;
+
+  // Set up dash animation: start fully hidden, animate to fully drawn
+  polylines.forEach(function(p) {
+    var len = p.getTotalLength();
+    p.style.strokeDasharray = len;
+    p.style.strokeDashoffset = len;
+    p.style.transition = 'stroke-dashoffset 1.2s ease-out';
+  });
+
+  // Use IntersectionObserver to trigger when card scrolls into view
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        polylines.forEach(function(p) {
+          p.style.strokeDashoffset = '0';
+        });
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.3 });
+
+  observer.observe(container);
+}
+
 // ── Legend hover highlighting ─────────────────────────────────────────────
 
 function setupLegendHighlight(container) {
@@ -589,6 +628,7 @@ function loadAltitudeCharts(sessions) {
       var el = document.getElementById('altitude-' + s.sessionId);
       if (!el) return;
       el.innerHTML = data.svg;
+      setupCurveAnimation(el);
       setupChartCrosshair(el);
       setupLegendHighlight(el);
       // Add has-chart class to card-body so CSS can reserve space
