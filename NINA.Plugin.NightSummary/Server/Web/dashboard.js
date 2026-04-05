@@ -207,12 +207,12 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
     '<div class="filter-dates">' +
       '<div class="date-input-wrap">' +
         '<span class="date-label' + (fromFilter ? '' : ' empty') + '">' + (fromFilter ? fmtDate(fromFilter) : 'From') + '</span>' +
-        '<input type="date" id="filter-from" value="' + esc(fromFilter) + '">' +
+        '<input type="date" id="filter-from" value="' + esc(fromFilter) + '" tabindex="-1">' +
         (fromFilter ? '<button class="date-clear" data-target="filter-from" title="Clear">\u00d7</button>' : '') +
       '</div>' +
       '<div class="date-input-wrap">' +
         '<span class="date-label' + (toFilter ? '' : ' empty') + '">' + (toFilter ? fmtDate(toFilter) : 'To') + '</span>' +
-        '<input type="date" id="filter-to" value="' + esc(toFilter) + '">' +
+        '<input type="date" id="filter-to" value="' + esc(toFilter) + '" tabindex="-1">' +
         (toFilter ? '<button class="date-clear" data-target="filter-to" title="Clear">\u00d7</button>' : '') +
       '</div>' +
     '</div>' +
@@ -752,8 +752,21 @@ function bindListEvents() {
     dropMenu.addEventListener('click', function(e) { e.stopPropagation(); });
   }
 
-  if (fromEl) fromEl.addEventListener('change', refresh);
-  if (toEl) toEl.addEventListener('change', refresh);
+  // Date picker — click anywhere on wrapper opens the picker
+  if (fromEl) {
+    fromEl.addEventListener('change', refresh);
+    fromEl.parentElement.addEventListener('click', function(e) {
+      if (e.target.classList.contains('date-clear')) return;
+      fromEl.showPicker && fromEl.showPicker();
+    });
+  }
+  if (toEl) {
+    toEl.addEventListener('change', refresh);
+    toEl.parentElement.addEventListener('click', function(e) {
+      if (e.target.classList.contains('date-clear')) return;
+      toEl.showPicker && toEl.showPicker();
+    });
+  }
   if (sortEl) sortEl.addEventListener('change', refresh);
 
   // Clear (×) buttons on date inputs

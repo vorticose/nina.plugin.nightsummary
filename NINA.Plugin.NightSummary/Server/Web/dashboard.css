@@ -154,10 +154,10 @@ nav {
   position: absolute;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
+  width: 0;
+  height: 0;
   opacity: 0;
-  cursor: pointer;
+  pointer-events: none;
 }
 
 .date-input-wrap .date-label {
@@ -171,7 +171,6 @@ nav {
   min-width: 100px;
   display: inline-block;
   cursor: pointer;
-  pointer-events: none;
 }
 
 .date-input-wrap .date-label.empty {
