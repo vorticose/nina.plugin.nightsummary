@@ -407,6 +407,37 @@ function setupChartCrosshair(container) {
 
   if (targets.length === 0) return;
 
+  // Extract imaging window rects (colored rects with opacity='0.15') and their border lines
+  var imagingWindows = [];
+  svg.querySelectorAll("rect[opacity='0.15']").forEach(function(r) {
+    var x = parseFloat(r.getAttribute('x'));
+    var w = parseFloat(r.getAttribute('width'));
+    var color = r.getAttribute('fill');
+    // Find which target this rect belongs to by matching color
+    var targetIdx = -1;
+    for (var i = 0; i < targets.length; i++) {
+      if (targets[i].color === color) { targetIdx = i; break; }
+    }
+    if (targetIdx >= 0) {
+      imagingWindows.push({ x: x, w: w, targetIdx: targetIdx, rect: r });
+    }
+  });
+
+  // Collect all imaging window border lines (colored lines with opacity='0.6')
+  var windowLines = [];
+  svg.querySelectorAll("line[opacity='0.6']").forEach(function(l) {
+    windowLines.push(l);
+  });
+
+  // Collect target groups for opacity control
+  var targetGroups = [];
+  svg.querySelectorAll('g').forEach(function(g) {
+    var title = g.querySelector('title');
+    if (title && title.textContent !== 'Moon Position') {
+      targetGroups.push(g);
+    }
+  });
+
   // Create persistent SVG elements (update positions on mousemove, avoid DOM churn)
   var crossLine = document.createElementNS(ns, 'line');
   crossLine.setAttribute('stroke', '#ffffff');
@@ -498,6 +529,36 @@ function setupChartCrosshair(container) {
     timeText.setAttribute('y', plotT - 4);
     timeText.textContent = time;
 
+    // Detect which imaging window the crosshair is inside
+    var activeTarget = -1;
+    for (var w = 0; w < imagingWindows.length; w++) {
+      var iw = imagingWindows[w];
+      if (sx >= iw.x && sx <= iw.x + iw.w) {
+        activeTarget = iw.targetIdx;
+        break;
+      }
+    }
+
+    // Highlight active target, dim others (curves, shading, border lines)
+    if (targets.length > 1) {
+      for (var g = 0; g < targetGroups.length; g++) {
+        targetGroups[g].style.opacity = (activeTarget === -1 || g === activeTarget) ? '1' : '0.15';
+      }
+      for (var r = 0; r < imagingWindows.length; r++) {
+        var isActive = activeTarget === -1 || imagingWindows[r].targetIdx === activeTarget;
+        imagingWindows[r].rect.style.opacity = isActive ? '0.15' : '0.04';
+      }
+      for (var l = 0; l < windowLines.length; l++) {
+        // Match border lines to targets by color
+        var lineColor = windowLines[l].getAttribute('stroke');
+        var lineActive = activeTarget === -1;
+        if (!lineActive) {
+          lineActive = targets[activeTarget] && targets[activeTarget].color === lineColor;
+        }
+        windowLines[l].style.opacity = lineActive ? '0.6' : '0.1';
+      }
+    }
+
     // Per-target markers
     for (var i = 0; i < targets.length; i++) {
       var y = interpolateY(targets[i].points, sx);
@@ -521,6 +582,10 @@ function setupChartCrosshair(container) {
   svg.addEventListener('mouseleave', function() {
     crossLine.style.display = 'none';
     tooltip.style.display = 'none';
+    // Restore all opacities
+    for (var g = 0; g < targetGroups.length; g++) targetGroups[g].style.opacity = '1';
+    for (var r = 0; r < imagingWindows.length; r++) imagingWindows[r].rect.style.opacity = '0.15';
+    for (var l = 0; l < windowLines.length; l++) windowLines[l].style.opacity = '0.6';
   });
 }
 
@@ -563,60 +628,6 @@ function setupCurveAnimation(container) {
   observer.observe(container);
 }
 
-// ── Legend hover highlighting ─────────────────────────────────────────────
-
-function setupLegendHighlight(container) {
-  var svg = container.querySelector('svg');
-  if (!svg) return;
-
-  // Find all target <g> groups (with <title>) and legend elements
-  var targetGroups = [];
-  svg.querySelectorAll('g').forEach(function(g) {
-    var title = g.querySelector('title');
-    if (title && title.textContent !== 'Moon Position') {
-      targetGroups.push({ name: title.textContent, group: g });
-    }
-  });
-  if (targetGroups.length < 2) return; // no point highlighting with only one target
-
-  // Find legend text elements (font-size='9' inside the plot area)
-  var legendTexts = svg.querySelectorAll("text[font-size='9']");
-  var legendLines = svg.querySelectorAll("line[stroke-width='2']");
-
-  // Match legend items to target groups by color
-  legendTexts.forEach(function(textEl, idx) {
-    var name = textEl.textContent;
-    // Find the corresponding legend line (same index)
-    var lineEl = idx < legendLines.length ? legendLines[idx] : null;
-
-    textEl.style.cursor = 'pointer';
-    if (lineEl) lineEl.style.cursor = 'pointer';
-
-    function highlight() {
-      targetGroups.forEach(function(tg) {
-        if (tg.name === name) {
-          tg.group.style.opacity = '1';
-        } else {
-          tg.group.style.opacity = '0.15';
-        }
-      });
-    }
-
-    function restore() {
-      targetGroups.forEach(function(tg) {
-        tg.group.style.opacity = '1';
-      });
-    }
-
-    textEl.addEventListener('mouseenter', highlight);
-    textEl.addEventListener('mouseleave', restore);
-    if (lineEl) {
-      lineEl.addEventListener('mouseenter', highlight);
-      lineEl.addEventListener('mouseleave', restore);
-    }
-  });
-}
-
 function loadAltitudeCharts(sessions) {
   sessions.forEach(function(s) {
     if (!s.hasReport) return;
@@ -630,7 +641,6 @@ function loadAltitudeCharts(sessions) {
       el.innerHTML = data.svg;
       setupCurveAnimation(el);
       setupChartCrosshair(el);
-      setupLegendHighlight(el);
       // Add has-chart class to card-body so CSS can reserve space
       var body = el.parentElement;
       if (body) body.classList.add('has-chart');
