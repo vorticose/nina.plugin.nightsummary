@@ -53,7 +53,7 @@ namespace NINA.Plugin.NightSummary.Server {
         private const double AltOrigRight = 490.0;    // original right edge of plot (500 - 10)
         private const double AltNewSvgW = 950.0;      // new viewBox width (plot area only)
         private const double AltNewRight = 940.0;     // new right edge (950 - 10)
-        private const double AltLegendGap = 2.0;       // gap between legend panel and y-axis
+        // Legend is rendered as HTML overlay — no SVG legend constants needed
         private static readonly double AltScaleX = (AltNewRight - AltPadL) / (AltOrigRight - AltPadL); // ~1.719
 
         /// <summary>Map an x-coordinate from the original 500-wide plot space to the wider 750-wide space.</summary>
@@ -646,23 +646,11 @@ namespace NINA.Plugin.NightSummary.Server {
             var viewBoxH = (origH - vbTopTrim - vbBotTrim).ToString();
 
             var moonPattern = new Regex(@"<g><title>Moon Position</title>.*?</g>", RegexOptions.Singleline);
-            var sunsetPattern = new Regex(@"<text[^>]*fill='#f59e0b'[^>]*>.*?</text>", RegexOptions.Singleline);
             var timeLabelPattern = new Regex(@"<text[^>]*fill='#888'[^>]*>\d{2}:\d{2}</text>");
 
-            // Calculate legend column width based on longest target name
-            const int MaxLegendChars = 30;
-            int maxNameLen = targetData.Max(td => Math.Min(td.Name.Length, MaxLegendChars));
-            int fontSize = maxNameLen > 22 ? 9 : maxNameLen > 16 ? 10 : 11;
-            double charW = fontSize <= 9 ? 5.0 : fontSize <= 10 ? 5.5 : 6.0;
-            double legendW = maxNameLen * charW + 30;
-            legendW = Math.Max(legendW, 90);
-            legendW = Math.Min(legendW, 220);
-
-            // Build combined SVG with dynamic legend column
-            var totalW = (AltNewSvgW + legendW).ToString("F0", inv);
-            var lwS = legendW.ToString("F0", inv);
+            // Build SVG — no legend (rendered as HTML overlay), no sunset/sunrise text
             var sb = new StringBuilder();
-            sb.AppendLine($"<svg viewBox='-{lwS} {viewBoxY} {totalW} {viewBoxH}' xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='xMaxYMid meet'>");
+            sb.AppendLine($"<svg viewBox='0 {viewBoxY} {AltNewSvgW.ToString("F0", inv)} {viewBoxH}' xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='none'>");
 
             // Background + border rects (scale x and width to fill wider plot area)
             var bgRects = Regex.Matches(scaffoldSvg, @"<rect x='38'[^/]*/>");
@@ -725,38 +713,22 @@ namespace NINA.Plugin.NightSummary.Server {
                 sb.AppendLine(moonSvg);
             }
 
-            // Sunset/sunrise labels (scale x positions)
-            foreach (Match s in sunsetPattern.Matches(scaffoldSvg)) sb.AppendLine(RemapSvgX(s.Value));
+            // Sunset/sunrise labels — omitted from dashboard chart (dropped to allow preserveAspectRatio=none)
 
             // Time axis labels (scale x positions)
             foreach (Match t in timeLabelPattern.Matches(scaffoldSvg)) sb.AppendLine(RemapSvgX(t.Value));
 
-            // Legend — positioned relative to visible top edge (decoupled from chart)
-            int lineHeight = fontSize + 6;
-            int legendTopY = vbTopTrim + 30; // leave room for header text to overlap above
-            int legendPadTop = 6;
-            int legendStartY = legendTopY + legendPadTop + fontSize;
-            int legendH = targetData.Count * lineHeight + legendPadTop + 6;
-
-            // Background panel — flush with chart top edge, tight gap to y-axis
-            var gapS = AltLegendGap.ToString("F0", inv);
-            sb.AppendLine($"<rect x='-{lwS}' y='{legendTopY}' width='{(legendW - AltLegendGap).ToString("F0", inv)}' height='{legendH}' rx='4' fill='#0d1117' opacity='0.6'/>");
-            sb.AppendLine($"<line x1='-{gapS}' y1='{legendTopY}' x2='-{gapS}' y2='{legendTopY + legendH}' stroke='#2d2d5e' stroke-width='1' opacity='0.5'/>");
-
-            for (int t = 0; t < targetData.Count; t++) {
-                var color = TargetColors[t % TargetColors.Length];
-                var name = targetData[t].Name;
-                var displayName = name.Length > MaxLegendChars ? name.Substring(0, MaxLegendChars - 1) + "\u2026" : name;
-                int ly = legendStartY + t * lineHeight;
-                sb.AppendLine($"<line x1='-{(legendW - 8).ToString("F0", inv)}' y1='{ly}' x2='-{(legendW - 20).ToString("F0", inv)}' y2='{ly}' stroke='{color}' stroke-width='2'/>");
-                sb.AppendLine($"<text x='-{(legendW - 23).ToString("F0", inv)}' y='{ly + 3}' font-size='{fontSize}' fill='{color}'>{displayName}</text>");
-            }
-
             sb.AppendLine("</svg>");
+
+            // Legend data for HTML overlay (rendered client-side)
+            var legend = targetData.Select((td, i) => new {
+                name = td.Name,
+                color = TargetColors[i % TargetColors.Length]
+            }).ToList();
 
             var svgResult = sb.ToString();
             altitudeChartCache[sessionId] = svgResult;
-            await WriteJson(res, 200, new { svg = svgResult });
+            await WriteJson(res, 200, new { svg = svgResult, legend });
             done?.Invoke(200, $"{sessionId} — {targetData.Count} targets in altitude chart");
         }
 

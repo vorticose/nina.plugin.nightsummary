@@ -519,11 +519,16 @@ function setupChartCrosshair(container) {
   function yToAlt(y) { return Math.max(0, Math.min(90, 90 * (plotB - y) / (plotB - plotT))); }
 
   svg.addEventListener('mousemove', function(e) {
-    // Map mouse to SVG viewBox coordinates using CTM (handles preserveAspectRatio)
+    // Map mouse to SVG viewBox coordinates using CTM (handles preserveAspectRatio=none)
     var pt = svg.createSVGPoint();
     pt.x = e.clientX; pt.y = e.clientY;
-    var svgPt = pt.matrixTransform(svg.getScreenCTM().inverse());
+    var ctm = svg.getScreenCTM();
+    var svgPt = pt.matrixTransform(ctm.inverse());
     var sx = svgPt.x;
+
+    // Counter-transform for text: undo horizontal squash from preserveAspectRatio=none
+    var scaleRatio = ctm.d / ctm.a; // yScale / xScale
+    var textTransform = 'scale(' + scaleRatio.toFixed(3) + ', 1)';
 
     if (sx < plotL || sx > plotR) {
       crossLine.style.display = 'none';
@@ -540,6 +545,7 @@ function setupChartCrosshair(container) {
     var time = xToTime(sx);
     timeText.setAttribute('x', sx);
     timeText.setAttribute('y', plotT - 4);
+    timeText.setAttribute('transform', 'translate(' + sx + ',' + (plotT - 4) + ') ' + textTransform + ' translate(' + (-sx) + ',' + (-(plotT - 4)) + ')');
     timeText.textContent = time;
 
     // Detect which imaging window the crosshair is inside
@@ -585,9 +591,11 @@ function setupChartCrosshair(container) {
       markers[i].dot.style.display = '';
       var alt = yToAlt(y).toFixed(0) + '\u00b0';
       markers[i].label.textContent = alt;
-      // Position label to the right, offset to avoid overlap
-      markers[i].label.setAttribute('x', sx + 5);
-      markers[i].label.setAttribute('y', y - 4 - i * 10);
+      // Position label to the right, offset to avoid overlap; counter-transform text
+      var lx = sx + 5, ly2 = y - 4 - i * 10;
+      markers[i].label.setAttribute('x', lx);
+      markers[i].label.setAttribute('y', ly2);
+      markers[i].label.setAttribute('transform', 'translate(' + lx + ',' + ly2 + ') ' + textTransform + ' translate(' + (-lx) + ',' + (-ly2) + ')');
       markers[i].label.style.display = '';
     }
   });
@@ -658,6 +666,15 @@ function loadAltitudeCharts(sessions) {
       var el = document.getElementById('altitude-' + s.sessionId);
       if (!el) return;
       el.innerHTML = data.svg;
+      // Render legend as HTML overlay
+      if (data.legend && data.legend.length > 0) {
+        var legendHtml = '<div class="chart-legend">' + data.legend.map(function(l) {
+          return '<div class="chart-legend-item">' +
+            '<span class="chart-legend-swatch" style="background:' + l.color + '"></span>' +
+            '<span style="color:' + l.color + '">' + esc(l.name) + '</span></div>';
+        }).join('') + '</div>';
+        el.insertAdjacentHTML('beforeend', legendHtml);
+      }
       setupCurveAnimation(el);
       setupChartCrosshair(el);
       // Add has-chart class to card-body so CSS can reserve space
