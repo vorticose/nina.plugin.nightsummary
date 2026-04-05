@@ -587,58 +587,10 @@ namespace NINA.Plugin.NightSummary.Server {
                 return;
             }
 
-            var assetsDir = Path.Combine(reportsDir, "livestack", sessionId);
-            var manifestPath = Path.Combine(assetsDir, "livestack.json");
-
-            if (!File.Exists(manifestPath)) {
-                var empty = new Dictionary<string, List<LiveStackEntry>>();
-                livestackCache[sessionId] = empty;
-                await WriteJson(res, 200, empty);
-                done?.Invoke(200, $"{sessionId} — no livestack assets");
-                return;
-            }
-
-            var result = new Dictionary<string, List<LiveStackEntry>>();
-            try {
-                var json = File.ReadAllText(manifestPath);
-                var manifest = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(json);
-                foreach (var entry in manifest) {
-                    var target = entry["target"].GetString();
-                    var filter = entry["filter"].GetString();
-                    var file = entry["file"].GetString();
-                    var isMono = entry["isMonochrome"].GetBoolean();
-                    var stackCount = entry["stackCount"].GetInt32();
-                    var isComposite = !isMono || filter.Equals("RGB", StringComparison.OrdinalIgnoreCase);
-
-                    // Build label: "Ha · 47 frames" or "Composite · R:5 G:3 B:5"
-                    string label;
-                    if (isComposite && entry.ContainsKey("redStackCount") && entry["redStackCount"].ValueKind == JsonValueKind.Number) {
-                        var r = entry["redStackCount"].GetInt32();
-                        var g = entry["greenStackCount"].GetInt32();
-                        var b = entry["blueStackCount"].GetInt32();
-                        label = $"Composite \u00b7 R:{r} G:{g} B:{b}";
-                    } else {
-                        label = $"{filter} \u00b7 {stackCount} frames";
-                    }
-
-                    // Only include entries whose image file actually exists
-                    if (!File.Exists(Path.Combine(assetsDir, file))) continue;
-
-                    var url = $"/api/sessions/{sessionId}/livestack/{file}";
-
-                    if (!result.ContainsKey(target))
-                        result[target] = new List<LiveStackEntry>();
-
-                    result[target].Add(new LiveStackEntry {
-                        target = target,
-                        filter = filter,
-                        url = url,
-                        label = label,
-                        isComposite = isComposite
-                    });
-                }
-            } catch (Exception ex) {
-                Logger.Warning($"NightSummary: Failed to read livestack manifest for {sessionId}: {ex.Message}");
+            // Try master files first, fall back to extracting from report HTML
+            var result = ExtractLiveStackFromMasters(sessionId);
+            if (result.Count == 0) {
+                result = ExtractLiveStackFromReport(sessionId);
             }
 
             livestackCache[sessionId] = result;
@@ -676,6 +628,110 @@ namespace NINA.Plugin.NightSummary.Server {
                 await WriteJson(res, 500, new { error = "Failed to read image" });
                 done?.Invoke(500, ex.Message);
             }
+        }
+
+        private Dictionary<string, List<LiveStackEntry>> ExtractLiveStackFromMasters(string sessionId) {
+            var result = new Dictionary<string, List<LiveStackEntry>>();
+            var assetsDir = Path.Combine(reportsDir, "livestack", sessionId);
+            var manifestPath = Path.Combine(assetsDir, "livestack.json");
+            if (!File.Exists(manifestPath)) return result;
+
+            try {
+                var json = File.ReadAllText(manifestPath);
+                var manifest = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(json);
+                foreach (var entry in manifest) {
+                    var target = entry["target"].GetString();
+                    var filter = entry["filter"].GetString();
+                    var file = entry["file"].GetString();
+                    var isMono = entry["isMonochrome"].GetBoolean();
+                    var stackCount = entry["stackCount"].GetInt32();
+                    var isComposite = !isMono || filter.Equals("RGB", StringComparison.OrdinalIgnoreCase);
+
+                    string label;
+                    if (isComposite && entry.ContainsKey("redStackCount") && entry["redStackCount"].ValueKind == JsonValueKind.Number) {
+                        label = $"Composite \u00b7 R:{entry["redStackCount"].GetInt32()} G:{entry["greenStackCount"].GetInt32()} B:{entry["blueStackCount"].GetInt32()}";
+                    } else {
+                        label = $"{filter} \u00b7 {stackCount} frames";
+                    }
+
+                    if (!File.Exists(Path.Combine(assetsDir, file))) continue;
+
+                    if (!result.ContainsKey(target))
+                        result[target] = new List<LiveStackEntry>();
+
+                    result[target].Add(new LiveStackEntry {
+                        target = target, filter = filter,
+                        url = $"/api/sessions/{sessionId}/livestack/{file}",
+                        label = label, isComposite = isComposite
+                    });
+                }
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Failed to read livestack manifest for {sessionId}: {ex.Message}");
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Fallback: extract live stack images from the report HTML as base64 data URIs.
+        /// Used when master JPEG files haven't been saved to the dashboard directory yet.
+        /// </summary>
+        private Dictionary<string, List<LiveStackEntry>> ExtractLiveStackFromReport(string sessionId) {
+            var result = new Dictionary<string, List<LiveStackEntry>>();
+            var reportPath = Path.Combine(reportsDir, $"{sessionId}.html");
+            if (!File.Exists(reportPath)) return result;
+
+            try {
+                var html = File.ReadAllText(reportPath);
+                var sections = html.Split(new[] { "<div class='target-section'>" }, StringSplitOptions.None);
+                var h3Pattern = new Regex(@"<h3>([^<]+)");
+                // Mono images: <img class='ts-livestack-img' src='data:...' alt='Ha stack' />
+                var monoImgPattern = new Regex(@"<img\s+class='ts-livestack-img'\s+src='(data:image/[^']+)'\s+alt='([^']*)'", RegexOptions.Singleline);
+                var monoLabelPattern = new Regex(@"<div class='ts-livestack-label'>([^<]+)</div>");
+                // Composite images: <div class='ts-livestack-composite'><img src='data:...' ...
+                var compImgPattern = new Regex(@"<div class='ts-livestack-composite'>\s*<img\s+src='(data:image/[^']+)'", RegexOptions.Singleline);
+                var compLabelPattern = new Regex(@"<div class='ts-livestack-composite'>.*?<div class='ts-livestack-label'>([^<]+)</div>", RegexOptions.Singleline);
+
+                for (int i = 1; i < sections.Length; i++) {
+                    var block = sections[i];
+                    var h3Match = h3Pattern.Match(block);
+                    if (!h3Match.Success || !block.Contains("livestack-section")) continue;
+
+                    var targetName = h3Match.Groups[1].Value.Trim();
+                    var entries = new List<LiveStackEntry>();
+
+                    // Mono images
+                    var monoMatches = monoImgPattern.Matches(block);
+                    var monoLabels = monoLabelPattern.Matches(block);
+                    for (int j = 0; j < monoMatches.Count; j++) {
+                        var filter = monoMatches[j].Groups[2].Value.Replace(" stack", "");
+                        entries.Add(new LiveStackEntry {
+                            target = targetName, filter = filter,
+                            url = monoMatches[j].Groups[1].Value, // data URI as url
+                            label = j < monoLabels.Count ? System.Net.WebUtility.HtmlDecode(monoLabels[j].Groups[1].Value.Trim()) : filter,
+                            isComposite = false
+                        });
+                    }
+
+                    // Composites
+                    var compMatches = compImgPattern.Matches(block);
+                    var compLabels = compLabelPattern.Matches(block);
+                    for (int j = 0; j < compMatches.Count; j++) {
+                        entries.Add(new LiveStackEntry {
+                            target = targetName, filter = "RGB",
+                            url = compMatches[j].Groups[1].Value, // data URI as url
+                            label = j < compLabels.Count ? System.Net.WebUtility.HtmlDecode(compLabels[j].Groups[1].Value.Trim()) : "Composite",
+                            isComposite = true
+                        });
+                    }
+
+                    if (entries.Count > 0) result[targetName] = entries;
+                }
+                if (result.Count > 0)
+                    log?.Debug($"Extracted {result.Values.Sum(l => l.Count)} livestack images from report HTML for {sessionId}");
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Failed to extract livestack from report for {sessionId}: {ex.Message}");
+            }
+            return result;
         }
 
         private async Task HandleGetAltitudeChart(HttpListenerResponse res, string sessionId, Action<int, string> done) {
