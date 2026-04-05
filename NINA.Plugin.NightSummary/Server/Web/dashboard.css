@@ -322,9 +322,13 @@ nav {
 .card-altitude {
   flex: 1;
   min-width: 0;
+  position: relative;
 }
 
 .card-altitude svg {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   display: block;
