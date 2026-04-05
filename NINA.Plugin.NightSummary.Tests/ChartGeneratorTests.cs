@@ -436,9 +436,9 @@ namespace NINA.Plugin.NightSummary.Tests {
                 images, ChartGenerator.PrimaryHFR, ChartGenerator.SecNone,
                 ChartGenerator.XAxisTime, markers);
 
-            // Count labels: 2 AF + 1 F
+            // Count labels: 2 AF + 1 MF
             int afLabels = svg.Split(">AF</text>").Length - 1;
-            int flipLabels = svg.Split(">F</text>").Length - 1;
+            int flipLabels = svg.Split(">MF</text>").Length - 1;
             Assert.Equal(2, afLabels);
             Assert.Equal(1, flipLabels);
             Assert.Contains("AF run 1", svg);
@@ -452,7 +452,7 @@ namespace NINA.Plugin.NightSummary.Tests {
             var markers = new List<(DateTime, string, string)> {
                 (images[1].Timestamp, "AutoFocus", "AF event"),
                 (images[2].Timestamp, "MeridianFlip", "Flip event"),
-                (images[3].Timestamp, "RoofOpen", "Roof event")
+                (images[3].Timestamp, "RoofOpen", "Safe event")
             };
 
             var svg = ChartGenerator.GenerateMetricChart(
@@ -463,14 +463,12 @@ namespace NINA.Plugin.NightSummary.Tests {
             Assert.Contains("#a78bfa", svg);
             Assert.Contains("#f472b6", svg);
             Assert.Contains("#fbbf24", svg);
-            // Distinct dash patterns
-            Assert.Contains("stroke-dasharray=\"4,3\"", svg);   // AF
-            Assert.Contains("stroke-dasharray=\"8,4\"", svg);   // Flip
-            Assert.Contains("stroke-dasharray=\"2,3\"", svg);   // Roof
             // Distinct labels
             Assert.Contains(">AF</text>", svg);
-            Assert.Contains(">F</text>", svg);
-            Assert.Contains(">R</text>", svg);
+            Assert.Contains(">MF</text>", svg);
+            Assert.Contains(">S</text>", svg);
+            // Transparent hit area for tooltips
+            Assert.Contains("stroke=\"transparent\" stroke-width=\"8\"", svg);
         }
     }
 }
