@@ -450,10 +450,8 @@ nav {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 6px 8px;
+  padding: 6px 12px;
   text-align: center;
-  flex: 1 1 0;
-  min-width: 0;
 }
 
 .card-stat-value {
