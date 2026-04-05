@@ -53,7 +53,7 @@ namespace NINA.Plugin.NightSummary.Server {
         private const double AltOrigRight = 490.0;    // original right edge of plot (500 - 10)
         private const double AltNewSvgW = 825.0;      // new viewBox width (plot area only)
         private const double AltNewRight = 815.0;     // new right edge (825 - 10)
-        private const double AltLegendW = 150.0;      // dedicated legend column width (negative x-space)
+        private const double AltLegendW = 180.0;      // dedicated legend column width (negative x-space)
         private static readonly double AltScaleX = (AltNewRight - AltPadL) / (AltOrigRight - AltPadL); // ~1.719
 
         /// <summary>Map an x-coordinate from the original 500-wide plot space to the wider 750-wide space.</summary>
@@ -705,7 +705,7 @@ namespace NINA.Plugin.NightSummary.Server {
 
             // Legend — dedicated column in negative x-space with background panel
             // Auto-size font based on longest target name (available width ~100px for text)
-            const int MaxLegendChars = 24; // truncate beyond this to prevent overflow
+            const int MaxLegendChars = 30; // truncate beyond this to prevent overflow
             int maxNameLen = targetData.Max(td => Math.Min(td.Name.Length, MaxLegendChars));
             int fontSize = maxNameLen > 22 ? 9 : maxNameLen > 16 ? 10 : 11;
             int lineHeight = fontSize + 6;
