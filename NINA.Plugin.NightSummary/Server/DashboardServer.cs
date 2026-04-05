@@ -704,10 +704,13 @@ namespace NINA.Plugin.NightSummary.Server {
                     var monoLabels = monoLabelPattern.Matches(block);
                     for (int j = 0; j < monoMatches.Count; j++) {
                         var filter = monoMatches[j].Groups[2].Value.Replace(" stack", "");
+                        var rawLabel = j < monoLabels.Count ? System.Net.WebUtility.HtmlDecode(monoLabels[j].Groups[1].Value.Trim()) : filter;
+                        // Strip "Live Stack · " prefix for shelf context
+                        rawLabel = Regex.Replace(rawLabel, @"^Live Stack\s*\S\s*", "");
                         entries.Add(new LiveStackEntry {
                             target = targetName, filter = filter,
                             url = monoMatches[j].Groups[1].Value, // data URI as url
-                            label = j < monoLabels.Count ? System.Net.WebUtility.HtmlDecode(monoLabels[j].Groups[1].Value.Trim()) : filter,
+                            label = rawLabel,
                             isComposite = false
                         });
                     }
@@ -716,10 +719,14 @@ namespace NINA.Plugin.NightSummary.Server {
                     var compMatches = compImgPattern.Matches(block);
                     var compLabels = compLabelPattern.Matches(block);
                     for (int j = 0; j < compMatches.Count; j++) {
+                        var rawLabel = j < compLabels.Count ? System.Net.WebUtility.HtmlDecode(compLabels[j].Groups[1].Value.Trim()) : "Composite";
+                        // Shorten "Live Stack Composite · R:5 G:3 B:5 · 1h 40m" → "RGB · R:5 G:3 B:5 · 1h 40m"
+                        rawLabel = Regex.Replace(rawLabel, @"^Live Stack Composite\s*\S\s*", "RGB \u00b7 ");
+                        rawLabel = Regex.Replace(rawLabel, @"^Live Stack\s*\S\s*", "");
                         entries.Add(new LiveStackEntry {
                             target = targetName, filter = "RGB",
                             url = compMatches[j].Groups[1].Value, // data URI as url
-                            label = j < compLabels.Count ? System.Net.WebUtility.HtmlDecode(compLabels[j].Groups[1].Value.Trim()) : "Composite",
+                            label = rawLabel,
                             isComposite = true
                         });
                     }
