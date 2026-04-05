@@ -160,6 +160,17 @@ nav {
   caret-color: transparent;
   -webkit-user-select: none;
   user-select: none;
+  color: transparent;
+  text-shadow: 0 0 0 var(--text);
+}
+
+.filter-bar input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+}
+
+.filter-bar input[type="date"]::-webkit-datetime-edit {
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .filter-bar input:focus {
