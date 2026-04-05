@@ -434,6 +434,20 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
       imgEl.src = img.url;
       imgEl.alt = img.label;
       imgEl.loading = 'lazy';
+      imgEl.style.cursor = 'pointer';
+      imgEl.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var overlay = document.createElement('div');
+        overlay.className = 'livestack-zoom-overlay';
+        var zoomImg = document.createElement('img');
+        zoomImg.src = img.url;
+        zoomImg.alt = img.label;
+        overlay.appendChild(zoomImg);
+        overlay.addEventListener('click', function() {
+          overlay.remove();
+        });
+        document.body.appendChild(overlay);
+      });
 
       var label = document.createElement('div');
       label.className = 'livestack-shelf-label';

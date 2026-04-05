@@ -507,11 +507,28 @@ nav {
   transition: transform 0.2s ease;
 }
 
-.livestack-shelf-img:hover {
-  transform: scale(2.5) translateY(30%);
-  transform-origin: top center;
-  z-index: 100;
-  position: relative;
+/* Zoomed live stack image — fixed overlay centered in viewport */
+.livestack-zoom-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0,0,0,0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  cursor: pointer;
+  animation: shelf-item-in 150ms ease-out;
+}
+
+.livestack-zoom-overlay img {
+  max-width: 85vw;
+  max-height: 85vh;
+  border-radius: 8px;
+  border: 2px solid var(--border);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
 }
 
 .livestack-shelf-label {
