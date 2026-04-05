@@ -665,16 +665,16 @@ function loadAltitudeCharts(sessions) {
       if (!data || !data.svg) return;
       var el = document.getElementById('altitude-' + s.sessionId);
       if (!el) return;
-      el.innerHTML = data.svg;
-      // Render legend as HTML overlay
+      // Render legend as HTML + SVG in a chart-svg-wrap
+      var legendHtml = '';
       if (data.legend && data.legend.length > 0) {
-        var legendHtml = '<div class="chart-legend">' + data.legend.map(function(l) {
+        legendHtml = '<div class="chart-legend">' + data.legend.map(function(l) {
           return '<div class="chart-legend-item">' +
             '<span class="chart-legend-swatch" style="background:' + l.color + '"></span>' +
             '<span style="color:' + l.color + '">' + esc(l.name) + '</span></div>';
         }).join('') + '</div>';
-        el.insertAdjacentHTML('beforeend', legendHtml);
       }
+      el.innerHTML = legendHtml + '<div class="chart-svg-wrap">' + data.svg + '</div>';
       setupCurveAnimation(el);
       setupChartCrosshair(el);
       // Add has-chart class to card-body so CSS can reserve space
