@@ -490,14 +490,14 @@ nav {
 }
 
 .livestack-shelf-item {
-  width: 150px;
+  width: 300px;
   text-align: center;
   opacity: 0;
   animation: shelf-item-in 200ms ease-out forwards;
 }
 
 .livestack-shelf-img {
-  width: 150px;
+  width: 300px;
   height: auto;
   border-radius: 6px;
   border: 1px solid var(--border);
