@@ -330,8 +330,11 @@ nav {
 
 .card-content {
   flex: 0 0 auto;
-  min-width: 0;
+  min-width: 500px;
   max-width: 750px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 
 .card-altitude {
