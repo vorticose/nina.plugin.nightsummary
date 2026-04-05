@@ -1128,6 +1128,9 @@ function buildSettingsPanel(settings, filters) {
       settingsCheckbox('s-tsProgress', 'TS Progress Bars', s.showTSProgressBars) +
       settingsCheckbox('s-starCV', 'Star Count CV', s.showStarCountCV) +
       settingsCheckbox('s-hfr', 'Metric Chart', s.showHFRGraph) +
+      settingsCheckbox('s-afMarkers', 'AF Markers', s.showChartAfMarkers) +
+      settingsCheckbox('s-flipMarkers', 'Flip Markers', s.showChartFlipMarkers) +
+      settingsCheckbox('s-roofMarkers', 'Roof Markers', s.showChartRoofMarkers) +
       settingsCheckbox('s-perTargetIQ', 'Per-Target IQ', s.showPerTargetIQ) +
       settingsCheckbox('s-equipment', 'Equipment Profile', s.showEquipmentProfile) +
       settingsCheckbox('s-expand', 'Expand Sections', s.expandSectionsDefault) +
@@ -1255,6 +1258,9 @@ function collectSettings() {
     showTSProgressBars:    document.getElementById('s-tsProgress').checked,
     showStarCountCV:       document.getElementById('s-starCV').checked,
     showHFRGraph:          document.getElementById('s-hfr').checked,
+    showChartAfMarkers:    document.getElementById('s-afMarkers').checked,
+    showChartFlipMarkers:  document.getElementById('s-flipMarkers').checked,
+    showChartRoofMarkers:  document.getElementById('s-roofMarkers').checked,
     showPerTargetIQ:       document.getElementById('s-perTargetIQ').checked,
     showEquipmentProfile:  document.getElementById('s-equipment').checked,
     chartXAxisMetric:      parseInt(document.getElementById('s-xAxis').value),

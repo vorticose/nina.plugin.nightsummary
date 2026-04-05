@@ -974,6 +974,9 @@ namespace NINA.Plugin.NightSummary.Server {
                 showTSProgressBars     = s.ShowTSProgressBars,
                 showStarCountCV        = s.ShowStarCountCV,
                 showHFRGraph           = s.ShowHFRGraph,
+                showChartAfMarkers     = s.ShowChartAfMarkers,
+                showChartFlipMarkers   = s.ShowChartFlipMarkers,
+                showChartRoofMarkers   = s.ShowChartRoofMarkers,
                 showPerTargetIQ        = s.ShowPerTargetIQ,
                 showEquipmentProfile   = s.ShowEquipmentProfile,
                 chartXAxisMetric       = s.ChartXAxisMetric,
@@ -1199,6 +1202,9 @@ namespace NINA.Plugin.NightSummary.Server {
                     showTSProgressBars     = s.ShowTSProgressBars,
                     showStarCountCV        = s.ShowStarCountCV,
                     showHFRGraph           = s.ShowHFRGraph,
+                    showChartAfMarkers     = s.ShowChartAfMarkers,
+                    showChartFlipMarkers   = s.ShowChartFlipMarkers,
+                    showChartRoofMarkers   = s.ShowChartRoofMarkers,
                     showPerTargetIQ        = s.ShowPerTargetIQ,
                     showEquipmentProfile   = s.ShowEquipmentProfile,
                     chartXAxisMetric       = s.ChartXAxisMetric,
@@ -1261,6 +1267,9 @@ namespace NINA.Plugin.NightSummary.Server {
             if (s.ShowTSProgressBars) bools.Add("TSProgress");
             if (s.ShowStarCountCV) bools.Add("StarCV");
             if (s.ShowHFRGraph) bools.Add("Metric");
+            if (s.ShowChartAfMarkers) bools.Add("AFMarkers");
+            if (s.ShowChartFlipMarkers) bools.Add("FlipMarkers");
+            if (s.ShowChartRoofMarkers) bools.Add("RoofMarkers");
             if (s.ShowPerTargetIQ) bools.Add("PerTargetIQ");
             if (s.ShowEquipmentProfile) bools.Add("Equipment");
             if (s.ExpandSectionsDefault) bools.Add("Expand");
@@ -1290,6 +1299,9 @@ namespace NINA.Plugin.NightSummary.Server {
                 ["ShowTSProgressBars"]    = s.ShowTSProgressBars,
                 ["ShowStarCountCV"]       = s.ShowStarCountCV,
                 ["ShowHFRGraph"]          = s.ShowHFRGraph,
+                ["ShowChartAfMarkers"]    = s.ShowChartAfMarkers,
+                ["ShowChartFlipMarkers"]  = s.ShowChartFlipMarkers,
+                ["ShowChartRoofMarkers"]  = s.ShowChartRoofMarkers,
                 ["ShowPerTargetIQ"]       = s.ShowPerTargetIQ,
                 ["ShowNextNightPreview"]  = s.ShowNextNightPreview,
                 ["ShowEquipmentProfile"]  = s.ShowEquipmentProfile,
@@ -1317,6 +1329,9 @@ namespace NINA.Plugin.NightSummary.Server {
             s.ShowTSProgressBars    = (bool)saved["ShowTSProgressBars"];
             s.ShowStarCountCV       = (bool)saved["ShowStarCountCV"];
             s.ShowHFRGraph          = (bool)saved["ShowHFRGraph"];
+            s.ShowChartAfMarkers    = (bool)(saved.ContainsKey("ShowChartAfMarkers") ? saved["ShowChartAfMarkers"] : true);
+            s.ShowChartFlipMarkers  = (bool)(saved.ContainsKey("ShowChartFlipMarkers") ? saved["ShowChartFlipMarkers"] : true);
+            s.ShowChartRoofMarkers  = (bool)(saved.ContainsKey("ShowChartRoofMarkers") ? saved["ShowChartRoofMarkers"] : false);
             s.ShowPerTargetIQ       = (bool)saved["ShowPerTargetIQ"];
             s.ShowNextNightPreview  = (bool)saved["ShowNextNightPreview"];
             s.ShowEquipmentProfile  = (bool)saved["ShowEquipmentProfile"];
@@ -1346,6 +1361,9 @@ namespace NINA.Plugin.NightSummary.Server {
                     case "showTSProgressBars":     s.ShowTSProgressBars    = kv.Value.GetBoolean(); break;
                     case "showStarCountCV":        s.ShowStarCountCV       = kv.Value.GetBoolean(); break;
                     case "showHFRGraph":           s.ShowHFRGraph          = kv.Value.GetBoolean(); break;
+                    case "showChartAfMarkers":     s.ShowChartAfMarkers    = kv.Value.GetBoolean(); break;
+                    case "showChartFlipMarkers":   s.ShowChartFlipMarkers  = kv.Value.GetBoolean(); break;
+                    case "showChartRoofMarkers":   s.ShowChartRoofMarkers  = kv.Value.GetBoolean(); break;
                     case "showPerTargetIQ":        s.ShowPerTargetIQ       = kv.Value.GetBoolean(); break;
                     case "showEquipmentProfile":   s.ShowEquipmentProfile  = kv.Value.GetBoolean(); break;
                     case "chartXAxisMetric":       s.ChartXAxisMetric      = kv.Value.GetInt32(); break;
