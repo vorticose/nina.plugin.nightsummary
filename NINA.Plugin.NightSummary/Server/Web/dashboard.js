@@ -367,6 +367,163 @@ function hideSession(sessionId) {
   doRenderList(el, sub, '', '', 'date-desc');
 }
 
+// ── Altitude chart crosshair ──────────────────────────────────────────────
+
+function setupChartCrosshair(container) {
+  var svg = container.querySelector('svg');
+  if (!svg) return;
+
+  var ns = 'http://www.w3.org/2000/svg';
+  var viewBox = svg.getAttribute('viewBox').split(' ').map(Number);
+  var vbW = viewBox[2];
+  // Plot area bounds in viewBox coordinates
+  var plotL = 38, plotR = vbW - 10, plotT = 20, plotB = 220;
+
+  // Extract time labels from the SVG
+  var timeLabels = [];
+  svg.querySelectorAll('text').forEach(function(t) {
+    if (t.getAttribute('fill') === '#888' && /^\d{2}:\d{2}$/.test(t.textContent.trim())) {
+      timeLabels.push({ x: parseFloat(t.getAttribute('x')), time: t.textContent.trim() });
+    }
+  });
+  timeLabels.sort(function(a, b) { return a.x - b.x; });
+
+  // Extract target polylines (colored ones inside <g> with <title>)
+  var targets = [];
+  svg.querySelectorAll('g').forEach(function(g) {
+    var title = g.querySelector('title');
+    if (!title || title.textContent === 'Moon Position') return;
+    var polys = g.querySelectorAll('polyline');
+    var poly = polys.length > 1 ? polys[1] : polys[0]; // second is colored
+    if (!poly || poly.getAttribute('stroke') === 'transparent') poly = polys.length > 1 ? polys[1] : null;
+    if (!poly) return;
+    var color = poly.getAttribute('stroke');
+    if (color === 'transparent') return;
+    var pts = poly.getAttribute('points').split(' ').map(function(p) {
+      var c = p.split(','); return { x: parseFloat(c[0]), y: parseFloat(c[1]) };
+    }).filter(function(p) { return !isNaN(p.x) && !isNaN(p.y); });
+    targets.push({ name: title.textContent, color: color, points: pts });
+  });
+
+  if (targets.length === 0) return;
+
+  // Create persistent SVG elements (update positions on mousemove, avoid DOM churn)
+  var crossLine = document.createElementNS(ns, 'line');
+  crossLine.setAttribute('stroke', '#ffffff');
+  crossLine.setAttribute('stroke-width', '0.5');
+  crossLine.setAttribute('stroke-dasharray', '3,3');
+  crossLine.setAttribute('opacity', '0.5');
+  crossLine.style.display = 'none';
+  crossLine.style.pointerEvents = 'none';
+  svg.appendChild(crossLine);
+
+  var tooltip = document.createElementNS(ns, 'g');
+  tooltip.style.display = 'none';
+  tooltip.style.pointerEvents = 'none';
+  svg.appendChild(tooltip);
+
+  // Time label element
+  var timeText = document.createElementNS(ns, 'text');
+  timeText.setAttribute('fill', '#fff');
+  timeText.setAttribute('font-size', '9');
+  timeText.setAttribute('text-anchor', 'middle');
+  timeText.setAttribute('font-weight', 'bold');
+  tooltip.appendChild(timeText);
+
+  // Pre-create dot + label for each target
+  var markers = targets.map(function(t) {
+    var dot = document.createElementNS(ns, 'circle');
+    dot.setAttribute('r', '3');
+    dot.setAttribute('fill', t.color);
+    dot.setAttribute('stroke', '#fff');
+    dot.setAttribute('stroke-width', '0.8');
+    tooltip.appendChild(dot);
+    var label = document.createElementNS(ns, 'text');
+    label.setAttribute('fill', t.color);
+    label.setAttribute('font-size', '8');
+    label.setAttribute('font-weight', 'bold');
+    tooltip.appendChild(label);
+    return { dot: dot, label: label };
+  });
+
+  function interpolateY(points, x) {
+    for (var i = 0; i < points.length - 1; i++) {
+      if (x >= points[i].x && x <= points[i + 1].x) {
+        var t = (x - points[i].x) / (points[i + 1].x - points[i].x);
+        return points[i].y + t * (points[i + 1].y - points[i].y);
+      }
+    }
+    return null;
+  }
+
+  function xToTime(x) {
+    for (var i = 0; i < timeLabels.length - 1; i++) {
+      if (x >= timeLabels[i].x && x <= timeLabels[i + 1].x) {
+        var t = (x - timeLabels[i].x) / (timeLabels[i + 1].x - timeLabels[i].x);
+        var p1 = timeLabels[i].time.split(':').map(Number);
+        var p2 = timeLabels[i + 1].time.split(':').map(Number);
+        var m1 = p1[0] * 60 + p1[1], m2 = p2[0] * 60 + p2[1];
+        if (m2 < m1) m2 += 1440;
+        var m = (m1 + t * (m2 - m1)) % 1440;
+        var hh = Math.floor(m / 60), mm = Math.floor(m % 60);
+        return (hh < 10 ? '0' : '') + hh + ':' + (mm < 10 ? '0' : '') + mm;
+      }
+    }
+    return '';
+  }
+
+  function yToAlt(y) { return Math.max(0, Math.min(90, 90 * (plotB - y) / (plotB - plotT))); }
+
+  svg.addEventListener('mousemove', function(e) {
+    // Map mouse to SVG viewBox coordinates using CTM (handles preserveAspectRatio)
+    var pt = svg.createSVGPoint();
+    pt.x = e.clientX; pt.y = e.clientY;
+    var svgPt = pt.matrixTransform(svg.getScreenCTM().inverse());
+    var sx = svgPt.x;
+
+    if (sx < plotL || sx > plotR) {
+      crossLine.style.display = 'none';
+      tooltip.style.display = 'none';
+      return;
+    }
+
+    crossLine.setAttribute('x1', sx); crossLine.setAttribute('y1', plotT);
+    crossLine.setAttribute('x2', sx); crossLine.setAttribute('y2', plotB);
+    crossLine.style.display = '';
+    tooltip.style.display = '';
+
+    // Time at top
+    var time = xToTime(sx);
+    timeText.setAttribute('x', sx);
+    timeText.setAttribute('y', plotT - 4);
+    timeText.textContent = time;
+
+    // Per-target markers
+    for (var i = 0; i < targets.length; i++) {
+      var y = interpolateY(targets[i].points, sx);
+      if (y === null || y < plotT || y > plotB) {
+        markers[i].dot.style.display = 'none';
+        markers[i].label.style.display = 'none';
+        continue;
+      }
+      markers[i].dot.setAttribute('cx', sx);
+      markers[i].dot.setAttribute('cy', y);
+      markers[i].dot.style.display = '';
+      var alt = yToAlt(y).toFixed(0) + '\u00b0';
+      markers[i].label.textContent = alt;
+      // Position label to the right, offset to avoid overlap
+      markers[i].label.setAttribute('x', sx + 5);
+      markers[i].label.setAttribute('y', y - 4 - i * 10);
+      markers[i].label.style.display = '';
+    }
+  });
+
+  svg.addEventListener('mouseleave', function() {
+    crossLine.style.display = 'none';
+    tooltip.style.display = 'none';
+  });
+}
+
 function loadAltitudeCharts(sessions) {
   sessions.forEach(function(s) {
     if (!s.hasReport) return;
@@ -378,6 +535,7 @@ function loadAltitudeCharts(sessions) {
       var el = document.getElementById('altitude-' + s.sessionId);
       if (!el) return;
       el.innerHTML = data.svg;
+      setupChartCrosshair(el);
       // Add has-chart class to card-body so CSS can reserve space
       var body = el.parentElement;
       if (body) body.classList.add('has-chart');
