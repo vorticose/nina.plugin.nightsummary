@@ -658,7 +658,7 @@ namespace NINA.Plugin.NightSummary.Server {
             var totalW = (AltNewSvgW + legendW).ToString("F0", inv);
             var lwS = legendW.ToString("F0", inv);
             var sb = new StringBuilder();
-            sb.AppendLine($"<svg viewBox='-{lwS} 0 {totalW} {viewBoxH}' xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='xMinYMid meet'>");
+            sb.AppendLine($"<svg viewBox='-{lwS} 0 {totalW} {viewBoxH}' xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='xMaxYMid meet'>");
 
             // Background + border rects (scale x and width to fill wider plot area)
             var bgRects = Regex.Matches(scaffoldSvg, @"<rect x='38'[^/]*/>");
