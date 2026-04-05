@@ -377,8 +377,10 @@ namespace NINA.Plugin.NightSummary.Tests {
                 images, ChartGenerator.PrimaryHFR, ChartGenerator.SecNone,
                 ChartGenerator.XAxisTime, markers);
 
-            Assert.Contains("stroke-dasharray=\"4,3\"", svg);
-            Assert.Contains("AF completed", svg);
+            Assert.Contains("stroke-dasharray=\"4,3\"", svg);   // AF dash pattern
+            Assert.Contains("AF completed", svg);               // description in tooltip
+            Assert.Contains(">AF</text>", svg);                 // label at top
+            Assert.Contains("@ 22:10:00", svg);                 // timestamp in tooltip
         }
 
         [Fact]
@@ -418,7 +420,7 @@ namespace NINA.Plugin.NightSummary.Tests {
                 ChartGenerator.XAxisTime, null);
 
             Assert.Contains("<svg", svg);
-            Assert.DoesNotContain("stroke-dasharray=\"4,3\"", svg);
+            Assert.DoesNotContain(">AF</text>", svg);
         }
 
         [Fact]
@@ -434,15 +436,18 @@ namespace NINA.Plugin.NightSummary.Tests {
                 images, ChartGenerator.PrimaryHFR, ChartGenerator.SecNone,
                 ChartGenerator.XAxisTime, markers);
 
-            int markerCount = svg.Split("stroke-dasharray=\"4,3\"").Length - 1;
-            Assert.Equal(3, markerCount);
+            // Count labels: 2 AF + 1 F
+            int afLabels = svg.Split(">AF</text>").Length - 1;
+            int flipLabels = svg.Split(">F</text>").Length - 1;
+            Assert.Equal(2, afLabels);
+            Assert.Equal(1, flipLabels);
             Assert.Contains("AF run 1", svg);
             Assert.Contains("AF run 2", svg);
             Assert.Contains("Meridian flip", svg);
         }
 
         [Fact]
-        public void EventMarkers_DifferentTypes_DifferentColors() {
+        public void EventMarkers_DifferentTypes_DifferentStyles() {
             var images = TestDataFactory.MakeImageSeries("test", 5);
             var markers = new List<(DateTime, string, string)> {
                 (images[1].Timestamp, "AutoFocus", "AF event"),
@@ -454,10 +459,18 @@ namespace NINA.Plugin.NightSummary.Tests {
                 images, ChartGenerator.PrimaryHFR, ChartGenerator.SecNone,
                 ChartGenerator.XAxisTime, markers);
 
-            // Purple for AF, pink for flip, amber for roof (dark mode colors)
+            // Distinct colors (dark mode)
             Assert.Contains("#a78bfa", svg);
             Assert.Contains("#f472b6", svg);
             Assert.Contains("#fbbf24", svg);
+            // Distinct dash patterns
+            Assert.Contains("stroke-dasharray=\"4,3\"", svg);   // AF
+            Assert.Contains("stroke-dasharray=\"8,4\"", svg);   // Flip
+            Assert.Contains("stroke-dasharray=\"2,3\"", svg);   // Roof
+            // Distinct labels
+            Assert.Contains(">AF</text>", svg);
+            Assert.Contains(">F</text>", svg);
+            Assert.Contains(">R</text>", svg);
         }
     }
 }
