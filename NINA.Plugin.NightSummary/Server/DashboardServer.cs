@@ -289,9 +289,22 @@ namespace NINA.Plugin.NightSummary.Server {
 
             var db = new SessionDatabase(dbPath);
             var sessions = db.GetAllSessions();
+            var moonPattern = new Regex(@"<div class='stat-label'>Moon</div>.*?<div class='stat-value'>([^<]+)</div>|<div class='stat-value'>([^<]+)</div>.*?<div class='stat-label'>Moon</div>", RegexOptions.Singleline);
             var result = sessions.Select(s => {
                 var images = db.GetImagesForSession(s.SessionId);
                 var lightImages = images.Where(i => string.IsNullOrEmpty(i.ImageType) || i.ImageType == "LIGHT").ToList();
+                // Extract moon phase from report if available
+                string moonPhase = null;
+                var reportPath = Path.Combine(reportsDir, $"{s.SessionId}.html");
+                bool hasReport = File.Exists(reportPath);
+                if (hasReport) {
+                    try {
+                        var html = File.ReadAllText(reportPath);
+                        // Match: <div class='stat-value'>42% ↑</div><div class='stat-label'>Moon</div>
+                        var moonMatch = Regex.Match(html, @"<div class='stat-value'>(\d+%\s*[^\<]*)</div>\s*<div class='stat-label'>Moon</div>");
+                        if (moonMatch.Success) moonPhase = System.Net.WebUtility.HtmlDecode(moonMatch.Groups[1].Value.Trim());
+                    } catch { }
+                }
                 return new {
                     sessionId = s.SessionId,
                     sessionStart = s.SessionStart.ToString("o"),
@@ -304,7 +317,8 @@ namespace NINA.Plugin.NightSummary.Server {
                     totalIntegrationSeconds = lightImages.Where(i => i.Accepted).Sum(i => i.ExposureDuration),
                     avgHfr = lightImages.Where(i => i.HFR > 0).Select(i => i.HFR).DefaultIfEmpty(0).Average(),
                     avgGuiding = lightImages.Where(i => i.GuidingRMSTotal > 0).Select(i => i.GuidingRMSTotal).DefaultIfEmpty(0).Average(),
-                    hasReport = File.Exists(Path.Combine(reportsDir, $"{s.SessionId}.html"))
+                    hasReport,
+                    moonPhase
                 };
             }).ToList();
 

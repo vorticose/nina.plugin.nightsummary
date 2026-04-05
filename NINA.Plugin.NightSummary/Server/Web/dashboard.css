@@ -313,6 +313,14 @@ nav {
 
 .session-card:hover { border-color: var(--accent); }
 
+.card-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
 .card-body {
   display: flex;
   gap: 8px;
@@ -395,6 +403,11 @@ nav {
   color: var(--text);
 }
 
+.session-times {
+  font-size: 13px;
+  color: var(--muted);
+}
+
 .badge {
   font-size: 11px;
   padding: 2px 8px;
@@ -405,9 +418,8 @@ nav {
 .badge-red { background: rgba(248,81,73,0.15); color: var(--red); }
 
 .card-targets-line {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--accent-light);
-  margin-top: 4px;
 }
 
 .card-targets-none {
@@ -514,8 +526,10 @@ nav {
 .cards-compact .card-altitude { display: none; }
 .cards-compact .card-stats { display: none; }
 .cards-compact .card-stats-line { display: block; font-size: 11px; margin-top: 1px; }
+.cards-compact .card-header { margin-bottom: 2px; }
 .cards-compact .session-date { font-size: 14px; }
-.cards-compact .card-targets-line { font-size: 12px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cards-compact .session-times { display: none; }
+.cards-compact .card-targets-line { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ── Back button ── */
 .back-btn {

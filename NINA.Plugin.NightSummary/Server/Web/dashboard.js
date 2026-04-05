@@ -31,6 +31,11 @@ function fmtDate(iso) {
 }
 
 function fmtTime(iso) {
+  if (!iso) return '--';
+  return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+}
+
+function fmtTime(iso) {
   return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
 
@@ -280,33 +285,41 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
 
   var cards = filtered.map(function(s) {
     var targetsText = s.targets.length > 0
-      ? '<span class="card-targets-line" id="targets-' + s.sessionId + '">' + s.targets.map(function(t) { return esc(t); }).join(' \u00b7 ') + '</span>'
-      : '<span class="card-targets-line card-targets-none">No targets</span>';
+      ? s.targets.map(function(t) { return esc(t); }).join(' \u00b7 ')
+      : 'No targets';
 
     var badge = s.hasReport ? '' : '<span class="badge badge-red">No report</span>';
+
+    var sessionTimes = fmtTime(s.sessionStart) + ' \u2013 ' + fmtTime(s.sessionEnd);
 
     var statsLine = '<span class="stat-val">' + s.imageCount + '</span> imgs' +
       ' &middot; <span class="stat-val">' + fmt(s.totalIntegrationSeconds) + '</span>' +
       ' &middot; HFR <span class="stat-val">' + fmtNum(s.avgHfr) + '</span>' +
       ' &middot; <span class="stat-val">' + fmtNum(s.avgGuiding) + '&Prime;</span> guiding';
 
+    var moonBox = s.moonPhase
+      ? '<div class="card-stat"><div class="card-stat-value">' + esc(s.moonPhase) + '</div><div class="card-stat-label">Moon</div></div>'
+      : '';
+
     var statBoxes = '<div class="card-stats">' +
       '<div class="card-stat"><div class="card-stat-value">' + s.imageCount + '</div><div class="card-stat-label">Images</div></div>' +
       '<div class="card-stat"><div class="card-stat-value">' + fmt(s.totalIntegrationSeconds) + '</div><div class="card-stat-label">Integration</div></div>' +
       '<div class="card-stat"><div class="card-stat-value">' + fmtNum(s.avgHfr) + '</div><div class="card-stat-label">HFR</div></div>' +
       '<div class="card-stat"><div class="card-stat-value">' + fmtNum(s.avgGuiding) + '&Prime;</div><div class="card-stat-label">Guiding</div></div>' +
+      moonBox +
       '</div>';
 
     return '<div class="session-card" onclick="navigate(\'#/sessions/' + s.sessionId + '\')">' +
       '<button class="hide-btn" data-session="' + s.sessionId + '" onclick="event.stopPropagation();hideSession(this.dataset.session)" title="Hide this session">\u2715</button>' +
+      '<div class="card-header">' +
+        '<span class="session-date">' + fmtDate(s.sessionStart) + '</span>' +
+        '<span class="session-times">' + sessionTimes + '</span>' +
+        '<span class="card-targets-line" id="targets-' + s.sessionId + '">' + targetsText + '</span>' +
+        badge +
+      '</div>' +
       '<div class="card-body">' +
         '<div class="card-content">' +
           '<div class="card-thumbs" id="thumbs-' + s.sessionId + '"></div>' +
-          '<div class="session-header">' +
-            '<span class="session-date">' + fmtDate(s.sessionStart) + '</span>' +
-            badge +
-          '</div>' +
-          targetsText +
           '<div class="card-stats-line">' + statsLine + '</div>' +
           statBoxes +
         '</div>' +
