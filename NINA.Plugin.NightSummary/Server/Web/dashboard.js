@@ -461,6 +461,16 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
     shelf.style.left = centerX + 'px';
     shelf.style.top = topY + 'px';
 
+    // Clamp so shelf doesn't overflow past left edge of viewport
+    requestAnimationFrame(function() {
+      if (!shelf) return;
+      var shelfRect = shelf.getBoundingClientRect();
+      if (shelfRect.left < 12) {
+        var shift = 12 - shelfRect.left;
+        shelf.style.left = (centerX + shift) + 'px';
+      }
+    });
+
     // Shelf hover: keep alive when mouse enters shelf
     shelf.addEventListener('mouseenter', function() {
       clearTimeout(shelfLeaveTimer);
