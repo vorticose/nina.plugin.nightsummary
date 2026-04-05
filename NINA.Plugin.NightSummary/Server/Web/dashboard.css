@@ -311,32 +311,24 @@ nav {
 .card-body {
   display: flex;
   gap: 16px;
-  position: relative;
+  align-items: stretch;
 }
 
 .card-content {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
 }
 
 .card-altitude {
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  left: 50%;
-  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
 }
 
 .card-altitude svg {
   width: 100%;
-  height: 100%;
   display: block;
-}
-
-/* Reserve right-side space so left content doesn't overlap the chart */
-.card-body.has-chart .card-content {
-  max-width: 50%;
 }
 
 .card-thumbs {
