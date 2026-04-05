@@ -158,6 +158,8 @@ nav {
   min-width: 140px;
   cursor: pointer;
   caret-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .filter-bar input:focus {
