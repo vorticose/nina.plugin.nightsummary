@@ -354,12 +354,13 @@ nav {
   width: 120px;
   height: 120px;
   flex-shrink: 0;
-  transition: width 0.2s ease, height 0.2s ease;
+  transition: transform 0.2s ease;
+  z-index: 1;
 }
 
 .card-thumb-wrap:hover {
-  width: 160px;
-  height: 160px;
+  transform: scale(1.67);
+  z-index: 10;
 }
 
 .card-thumb-wrap svg {
