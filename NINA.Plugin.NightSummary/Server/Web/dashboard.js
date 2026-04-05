@@ -332,24 +332,6 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
   el.innerHTML = filterHtml + '<div class="cards-container' + modeClass + '">' + cards + '</div>';
   bindListEvents();
   if (cardViewMode === 'expanded') {
-    // Dynamically extend chart upward based on header height
-    // Short headers → chart extends almost to card top. Long headers → chart stays lower.
-    document.querySelectorAll('.card-header').forEach(function(header) {
-      var altEl = header.nextElementSibling && header.nextElementSibling.querySelector('.card-altitude');
-      if (!altEl) return;
-      var headerH = header.offsetHeight;
-      var headerMargin = 4; // .card-header margin-bottom
-      var cardPadTop = 8;   // .session-card padding-top
-      // Only add clearance if header text extends close to the chart graphics
-      // Measure against the SVG wrapper (where actual chart content starts), not the container
-      var lastChild = header.lastElementChild;
-      var textRight = lastChild ? lastChild.getBoundingClientRect().right : header.getBoundingClientRect().right;
-      var svgWrap = altEl.querySelector('.chart-svg-wrap');
-      var chartLeft = svgWrap ? svgWrap.getBoundingClientRect().left : altEl.getBoundingClientRect().left;
-      var clearance = (textRight > chartLeft - 15) ? 18 : 0;
-      var pullUp = Math.max(0, headerH + headerMargin - cardPadTop - clearance);
-      altEl.style.marginTop = '-' + pullUp + 'px';
-    });
     loadThumbnails(filtered);
     loadAltitudeCharts(filtered);
   }
@@ -695,6 +677,22 @@ function loadAltitudeCharts(sessions) {
       el.innerHTML = legendHtml + '<div class="chart-svg-wrap">' + data.svg + '</div>';
       setupCurveAnimation(el);
       setupChartCrosshair(el);
+      // Dynamically extend chart upward based on header height
+      var card = el.closest('.session-card');
+      var header = card ? card.querySelector('.card-header') : null;
+      if (header) {
+        var headerH = header.offsetHeight;
+        var headerMargin = 4;
+        var cardPadTop = 8;
+        // Only add clearance if header text reaches close to the chart SVG graphics
+        var lastChild = header.lastElementChild;
+        var textRight = lastChild ? lastChild.getBoundingClientRect().right : 0;
+        var svgWrap = el.querySelector('.chart-svg-wrap');
+        var chartLeft = svgWrap ? svgWrap.getBoundingClientRect().left : el.getBoundingClientRect().left;
+        var clearance = (textRight > chartLeft - 15) ? 18 : 0;
+        var pullUp = Math.max(0, headerH + headerMargin - cardPadTop - clearance);
+        el.style.marginTop = '-' + pullUp + 'px';
+      }
       // Add has-chart class to card-body so CSS can reserve space
       var body = el.parentElement;
       if (body) body.classList.add('has-chart');
