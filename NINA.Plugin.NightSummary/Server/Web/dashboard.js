@@ -653,7 +653,7 @@ function setupCurveAnimation(container) {
       if (entry.isIntersecting) {
         // Draw: animate in
         polylines.forEach(function(p) {
-          p.style.transition = 'stroke-dashoffset 0.8s ease-out';
+          p.style.transition = 'stroke-dashoffset 0.5s ease-out';
           p.style.strokeDashoffset = '0';
         });
       } else {
