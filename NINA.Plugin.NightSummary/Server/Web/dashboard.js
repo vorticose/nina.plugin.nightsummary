@@ -336,15 +336,14 @@ function loadThumbnails(sessions) {
       if (!el) return;
       el.innerHTML = thumbs.map(function(t) {
         var img = '<img class="card-thumb" src="' + t.dataUri + '" alt="' + esc(t.target) + '" title="' + esc(t.target) + '" loading="lazy" onerror="this.style.display=\'none\'">';
+        var svg = '';
         if (t.fovSvg) {
-          // Scale the 200px report SVG to 150px by adding a viewBox and overriding width/height
-          var svg = t.fovSvg
-            .replace(/width='\d+'/, "width='150'")
-            .replace(/height='\d+'/, "height='150'")
+          svg = t.fovSvg
+            .replace(/width='\d+'/, "width='100%'")
+            .replace(/height='\d+'/, "height='100%'")
             .replace("<svg ", "<svg viewBox='0 0 200 200' " + (showFovOverlay ? '' : "style='display:none' "));
-          return '<div class="card-thumb-wrap">' + img + svg + '</div>';
         }
-        return img;
+        return '<div class="card-thumb-wrap">' + img + svg + '</div>';
       }).join('');
       // Reorder target names to match thumbnail order
       var targetsEl = document.getElementById('targets-' + s.sessionId);

@@ -351,22 +351,30 @@ nav {
 
 .card-thumb-wrap {
   position: relative;
-  width: 150px;
-  height: 150px;
+  width: 120px;
+  height: 120px;
   flex-shrink: 0;
+  transition: width 0.2s ease, height 0.2s ease;
+}
+
+.card-thumb-wrap:hover {
+  width: 160px;
+  height: 160px;
 }
 
 .card-thumb-wrap svg {
   position: absolute;
   top: 0;
   left: 0;
+  width: 100%;
+  height: 100%;
   border-radius: 6px;
   pointer-events: none;
 }
 
 .card-thumb {
-  width: 150px;
-  height: 150px;
+  width: 100%;
+  height: 100%;
   border-radius: 6px;
   border: 1px solid var(--border);
   object-fit: cover;
