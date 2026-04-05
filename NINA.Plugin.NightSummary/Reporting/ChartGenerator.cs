@@ -246,13 +246,17 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     if (evtSec < minX || evtSec > maxX) continue;
 
                     double xPx = ToXPx(evtSec);
-                    var (color, dash, label) = evtType switch {
-                        "AutoFocus"    => (ColorAfMarker,   "4,3", "AF"),
-                        "MeridianFlip" => (ColorFlipMarker, "8,4", "F"),
-                        _              => (ColorRoofMarker,  "2,3", "R")
+                    var (color, label) = evtType switch {
+                        "AutoFocus"    => (ColorAfMarker,   "AF"),
+                        "MeridianFlip" => (ColorFlipMarker, "MF"),
+                        "RoofOpen"     => (ColorRoofMarker,  "S"),
+                        _              => (ColorRoofMarker,  "US")
                     };
                     string tip = $"{label}: {EscapeXml(desc ?? evtType)} @ {ts:HH:mm:ss}";
-                    sb.AppendLine($"<line x1=\"{xPx:F1}\" y1=\"{PadTop}\" x2=\"{xPx:F1}\" y2=\"{PadTop + plotH}\" stroke=\"{color}\" stroke-width=\"1\" stroke-dasharray=\"{dash}\" opacity=\"0.7\"><title>{tip}</title></line>");
+                    // Visible dashed line
+                    sb.AppendLine($"<line x1=\"{xPx:F1}\" y1=\"{PadTop}\" x2=\"{xPx:F1}\" y2=\"{PadTop + plotH}\" stroke=\"{color}\" stroke-width=\"1\" stroke-dasharray=\"4,3\" opacity=\"0.7\"/>");
+                    // Invisible wider hit area for hover tooltip
+                    sb.AppendLine($"<line x1=\"{xPx:F1}\" y1=\"{PadTop}\" x2=\"{xPx:F1}\" y2=\"{PadTop + plotH}\" stroke=\"transparent\" stroke-width=\"8\"><title>{tip}</title></line>");
                     sb.AppendLine($"<text x=\"{xPx:F1}\" y=\"{PadTop - 4}\" fill=\"{color}\" font-size=\"8\" text-anchor=\"middle\" opacity=\"0.85\">{label}</text>");
                 }
             }
