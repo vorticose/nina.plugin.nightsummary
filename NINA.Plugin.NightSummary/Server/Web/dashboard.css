@@ -323,6 +323,7 @@ nav {
 .card-content {
   flex: 0 0 auto;
   min-width: 0;
+  max-width: 750px;
 }
 
 .card-altitude {
