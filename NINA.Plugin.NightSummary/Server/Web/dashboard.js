@@ -808,6 +808,23 @@ function setupCurveAnimation(container) {
   observer.observe(container);
 }
 
+function fixChartTextDistortion(container) {
+  var svg = container.querySelector('svg');
+  if (!svg) return;
+  requestAnimationFrame(function() {
+    var ctm = svg.getScreenCTM();
+    if (!ctm || ctm.a === 0) return;
+    var ratio = ctm.d / ctm.a; // yScale / xScale
+    if (Math.abs(ratio - 1) < 0.02) return; // Already uniform, skip
+    svg.querySelectorAll('text').forEach(function(t) {
+      var x = parseFloat(t.getAttribute('x') || '0');
+      var y = parseFloat(t.getAttribute('y') || '0');
+      t.setAttribute('transform',
+        'translate(' + x + ',' + y + ') scale(' + ratio.toFixed(4) + ',1) translate(' + (-x) + ',' + (-y) + ')');
+    });
+  });
+}
+
 function loadAltitudeCharts(sessions) {
   sessions.forEach(function(s) {
     if (!s.hasReport) return;
@@ -830,6 +847,7 @@ function loadAltitudeCharts(sessions) {
       el.innerHTML = legendHtml + '<div class="chart-svg-wrap">' + data.svg + '</div>';
       setupCurveAnimation(el);
       setupChartCrosshair(el);
+      fixChartTextDistortion(el);
       // Dynamically extend chart upward based on header height
       var card = el.closest('.session-card');
       var header = card ? card.querySelector('.card-header') : null;
