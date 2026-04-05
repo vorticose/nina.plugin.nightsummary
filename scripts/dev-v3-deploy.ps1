@@ -24,10 +24,14 @@ $buildDir      = Join-Path $projectDir "bin\Release\net8.0-windows"
 $ninaPluginDir = Join-Path $env:LOCALAPPDATA "NINA\Plugins\3.0.0\Night Summary"
 $ninaExe       = Join-Path ${env:ProgramFiles} "N.I.N.A. - Nighttime Imaging 'N' Astronomy\NINA.exe"
 
+# --- Fetch latest from remote ---
+Write-Host "Fetching from origin..." -ForegroundColor Cyan
+git -C $repoRoot fetch origin --prune 2>&1 | Out-Null
+
 # --- Pick branch ---
 if (-not $Branch) {
-    # List local branches, let user pick
-    $branches = git -C $repoRoot branch --format='%(refname:short)' | Where-Object { $_ -match '\S' }
+    # List all branches (local + remote-tracking)
+    $branches = git -C $repoRoot branch -a --format='%(refname:short)' | ForEach-Object { $_ -replace '^origin/', '' } | Where-Object { $_ -match '\S' -and $_ -ne 'HEAD' } | Sort-Object -Unique
     Write-Host "Available branches:" -ForegroundColor Cyan
     for ($i = 0; $i -lt $branches.Count; $i++) {
         $marker = if ($branches[$i] -eq "v3-dev") { " (default)" } else { "" }
