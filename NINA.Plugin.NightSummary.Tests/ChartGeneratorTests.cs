@@ -1,7 +1,9 @@
 using NINA.Plugin.NightSummary.Data;
 using NINA.Plugin.NightSummary.Reporting;
 using NINA.Plugin.NightSummary.Tests.Fixtures;
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using Xunit;
 
 namespace NINA.Plugin.NightSummary.Tests {
@@ -360,6 +362,102 @@ namespace NINA.Plugin.NightSummary.Tests {
 
             // Non-time x-axis renders an x-axis title label
             Assert.Contains("Altitude", svg);
+        }
+
+        // ── Event marker tests ──────────────────────────────────────────────
+
+        [Fact]
+        public void EventMarkers_TimeAxis_RendersMarkerLines() {
+            var images = TestDataFactory.MakeImageSeries("test", 5);
+            var markers = new List<(DateTime, string, string)> {
+                (images[2].Timestamp, "AutoFocus", "AF completed — Filter: Ha")
+            };
+
+            var svg = ChartGenerator.GenerateMetricChart(
+                images, ChartGenerator.PrimaryHFR, ChartGenerator.SecNone,
+                ChartGenerator.XAxisTime, markers);
+
+            Assert.Contains("stroke-dasharray=\"4,3\"", svg);
+            Assert.Contains("AF completed", svg);
+        }
+
+        [Fact]
+        public void EventMarkers_NonTimeAxis_NoMarkers() {
+            var images = TestDataFactory.MakeImageSeries("test", 5);
+            var markers = new List<(DateTime, string, string)> {
+                (images[2].Timestamp, "AutoFocus", "AF completed")
+            };
+
+            var svg = ChartGenerator.GenerateMetricChart(
+                images, ChartGenerator.PrimaryHFR, ChartGenerator.SecNone,
+                ChartGenerator.XAxisFrameIndex, markers);
+
+            Assert.DoesNotContain("AF completed", svg);
+        }
+
+        [Fact]
+        public void EventMarkers_OutsideRange_Skipped() {
+            var images = TestDataFactory.MakeImageSeries("test", 5);
+            var markers = new List<(DateTime, string, string)> {
+                (images[0].Timestamp.AddHours(-1), "AutoFocus", "AF before range")
+            };
+
+            var svg = ChartGenerator.GenerateMetricChart(
+                images, ChartGenerator.PrimaryHFR, ChartGenerator.SecNone,
+                ChartGenerator.XAxisTime, markers);
+
+            Assert.DoesNotContain("AF before range", svg);
+        }
+
+        [Fact]
+        public void EventMarkers_Null_NoError() {
+            var images = TestDataFactory.MakeImageSeries("test", 5);
+
+            var svg = ChartGenerator.GenerateMetricChart(
+                images, ChartGenerator.PrimaryHFR, ChartGenerator.SecNone,
+                ChartGenerator.XAxisTime, null);
+
+            Assert.Contains("<svg", svg);
+            Assert.DoesNotContain("stroke-dasharray=\"4,3\"", svg);
+        }
+
+        [Fact]
+        public void EventMarkers_MultipleEvents_AllRendered() {
+            var images = TestDataFactory.MakeImageSeries("test", 10);
+            var markers = new List<(DateTime, string, string)> {
+                (images[2].Timestamp, "AutoFocus", "AF run 1"),
+                (images[5].Timestamp, "AutoFocus", "AF run 2"),
+                (images[8].Timestamp, "MeridianFlip", "Meridian flip")
+            };
+
+            var svg = ChartGenerator.GenerateMetricChart(
+                images, ChartGenerator.PrimaryHFR, ChartGenerator.SecNone,
+                ChartGenerator.XAxisTime, markers);
+
+            int markerCount = svg.Split("stroke-dasharray=\"4,3\"").Length - 1;
+            Assert.Equal(3, markerCount);
+            Assert.Contains("AF run 1", svg);
+            Assert.Contains("AF run 2", svg);
+            Assert.Contains("Meridian flip", svg);
+        }
+
+        [Fact]
+        public void EventMarkers_DifferentTypes_DifferentColors() {
+            var images = TestDataFactory.MakeImageSeries("test", 5);
+            var markers = new List<(DateTime, string, string)> {
+                (images[1].Timestamp, "AutoFocus", "AF event"),
+                (images[2].Timestamp, "MeridianFlip", "Flip event"),
+                (images[3].Timestamp, "RoofOpen", "Roof event")
+            };
+
+            var svg = ChartGenerator.GenerateMetricChart(
+                images, ChartGenerator.PrimaryHFR, ChartGenerator.SecNone,
+                ChartGenerator.XAxisTime, markers);
+
+            // Purple for AF, pink for flip, amber for roof (dark mode colors)
+            Assert.Contains("#a78bfa", svg);
+            Assert.Contains("#f472b6", svg);
+            Assert.Contains("#fbbf24", svg);
         }
     }
 }
