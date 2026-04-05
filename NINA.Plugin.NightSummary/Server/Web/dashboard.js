@@ -159,6 +159,9 @@ var cardViewMode = localStorage.getItem('ns-card-view') || 'expanded'; // 'expan
 var hiddenSessions = JSON.parse(localStorage.getItem('ns-hidden-sessions') || '{}'); // sessionId -> true
 var showHidden = false;
 var livestackMap = {}; // sessionId -> { targetName -> [{filter, url, label, isComposite}] }
+var detailCache = {}; // sessionId -> detail JSON (for stat expand)
+var statExpandTimer = null;
+var statExpandActiveEl = null;
 
 function getAllTargets() {
   var targets = {};
@@ -320,8 +323,8 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
       : '';
 
     var statBoxes = '<div class="card-stats">' +
-      '<div class="card-stat"><div class="card-stat-value">' + s.imageCount + '</div><div class="card-stat-label">Images</div></div>' +
-      '<div class="card-stat"><div class="card-stat-value">' + fmt(s.totalIntegrationSeconds) + '</div><div class="card-stat-label">Integration</div></div>' +
+      '<div class="card-stat card-stat-expandable" data-stat-type="images" data-session-id="' + s.sessionId + '"><div class="card-stat-value">' + s.imageCount + '</div><div class="card-stat-label">Images</div></div>' +
+      '<div class="card-stat card-stat-expandable" data-stat-type="integration" data-session-id="' + s.sessionId + '"><div class="card-stat-value">' + fmt(s.totalIntegrationSeconds) + '</div><div class="card-stat-label">Integration</div></div>' +
       '<div class="card-stat"><div class="card-stat-value">' + fmtNum(s.avgHfr) + '</div><div class="card-stat-label">HFR</div></div>' +
       '<div class="card-stat"><div class="card-stat-value">' + fmtNum(s.avgGuiding) + '&Prime;</div><div class="card-stat-label">Guiding</div></div>' +
       moonBox +
@@ -367,7 +370,7 @@ function loadThumbnails(sessions) {
       var el = document.getElementById('thumbs-' + s.sessionId);
       if (!el) return;
       el.innerHTML = thumbs.map(function(t) {
-        var img = '<img class="card-thumb" src="' + t.dataUri + '" alt="' + esc(t.target) + '" title="' + esc(t.target) + '" loading="lazy" onerror="this.style.display=\'none\'">';
+        var img = '<img class="card-thumb" src="' + t.dataUri + '" alt="' + esc(t.target) + '" loading="lazy" onerror="this.style.display=\'none\'">';
         var svg = '';
         if (t.fovSvg) {
           svg = t.fovSvg
@@ -375,7 +378,12 @@ function loadThumbnails(sessions) {
             .replace(/height='\d+'/, "height='100%'")
             .replace("<svg ", "<svg viewBox='0 0 200 200' " + (showFovOverlay ? '' : "style='display:none' "));
         }
-        return '<div class="card-thumb-wrap" data-target="' + esc(t.target) + '" data-session="' + esc(s.sessionId) + '">' + img + svg + '</div>';
+        var labelName = t.target.length > 30 ? t.target.substring(0, 29) + '\u2026' : t.target;
+        var labelFontStyle = labelName.length <= 14 ? '' :
+          labelName.length <= 20 ? ' style="font-size:7px"' : ' style="font-size:6px"';
+        return '<div class="card-thumb-wrap" data-target="' + esc(t.target) + '" data-session="' + esc(s.sessionId) + '">' +
+          '<div class="thumb-label"' + labelFontStyle + '>' + esc(labelName) + '</div>' +
+          img + svg + '</div>';
       }).join('');
       // Reorder target names to match thumbnail order, re-render as badges
       var targetsEl = document.getElementById('targets-' + s.sessionId);
@@ -485,7 +493,7 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
     var wrapRect = thumbWrap.getBoundingClientRect();
     var containerRect = thumbsContainer.getBoundingClientRect();
     var centerX = (wrapRect.left + wrapRect.width / 2) - containerRect.left;
-    var topY = wrapRect.bottom - containerRect.top + 45;
+    var topY = wrapRect.bottom - containerRect.top + 75;
 
     shelf.style.left = centerX + 'px';
     shelf.style.top = topY + 'px';
@@ -601,6 +609,124 @@ function hideSession(sessionId) {
     afterRemove();
   }
 }
+
+// ── Stat box hover expansion ─────────────────────────────────────────────
+
+function hideStatExpand() {
+  clearTimeout(statExpandTimer);
+  statExpandTimer = null;
+  statExpandActiveEl = null;
+  var popup = document.getElementById('stat-expand-popup');
+  if (popup) {
+    popup.classList.add('stat-expand-hiding');
+    setTimeout(function() { if (popup.parentNode) popup.parentNode.removeChild(popup); }, 180);
+  }
+}
+
+function showStatExpand(el, sessionId, type) {
+  function render(detail) {
+    var targets = detail.targets || [];
+    if (targets.length === 0) return;
+
+    // Sort by the relevant metric descending
+    var sorted = targets.slice().sort(function(a, b) {
+      return type === 'images'
+        ? (b.imageCount || 0) - (a.imageCount || 0)
+        : (b.integrationSeconds || 0) - (a.integrationSeconds || 0);
+    });
+
+    var rows = sorted.map(function(t) {
+      var val = type === 'images'
+        ? (t.imageCount || 0)
+        : fmt(t.integrationSeconds);
+      return '<div class="stat-expand-row">' +
+        '<span class="stat-expand-filter">' + esc(t.target) + '</span>' +
+        '<span class="stat-expand-val">' + esc(String(val)) + '</span>' +
+        '</div>';
+    }).join('');
+
+    // Remove existing popup
+    var old = document.getElementById('stat-expand-popup');
+    if (old) old.parentNode.removeChild(old);
+
+    var popup = document.createElement('div');
+    popup.id = 'stat-expand-popup';
+    popup.className = 'stat-expand-popup';
+    popup.innerHTML =
+      '<div class="stat-expand-header">' + (type === 'images' ? 'images by target' : 'integration by target') + '</div>' +
+      rows;
+    document.body.appendChild(popup);
+
+    // Position below (or above if near bottom) the stat box
+    var rect = el.getBoundingClientRect();
+    var popupH = popup.offsetHeight;
+    var spaceBelow = window.innerHeight - rect.bottom;
+    var top, left;
+    if (spaceBelow >= popupH + 8 || spaceBelow >= 100) {
+      top = rect.bottom + window.scrollY + 6;
+    } else {
+      top = rect.top + window.scrollY - popupH - 6;
+    }
+    left = rect.left + window.scrollX + (rect.width / 2);
+    popup.style.top = top + 'px';
+    popup.style.left = left + 'px';
+
+    requestAnimationFrame(function() {
+      if (!document.getElementById('stat-expand-popup')) return;
+      var pr = popup.getBoundingClientRect();
+      var pad = 12;
+      if (pr.left < pad) {
+        popup.style.left = (left + (pad - pr.left)) + 'px';
+      } else if (pr.right > window.innerWidth - pad) {
+        popup.style.left = (left - (pr.right - (window.innerWidth - pad))) + 'px';
+      }
+      popup.classList.add('stat-expand-visible');
+    });
+  }
+
+  if (detailCache[sessionId]) {
+    render(detailCache[sessionId]);
+  } else {
+    fetch('/api/sessions/' + sessionId)
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        detailCache[sessionId] = d;
+        // Only render if this stat box is still hovered
+        if (statExpandActiveEl === el) render(d);
+      })
+      .catch(function() {});
+  }
+}
+
+// Event delegation for stat box hover expansion
+document.addEventListener('mouseenter', function(e) {
+  var el = e.target.closest('.card-stat-expandable');
+  if (!el) return;
+  var sessionId = el.dataset.sessionId;
+  var type = el.dataset.statType;
+  if (!sessionId || !type) return;
+  clearTimeout(statExpandTimer);
+  statExpandActiveEl = el;
+  statExpandTimer = setTimeout(function() {
+    showStatExpand(el, sessionId, type);
+  }, 350);
+}, true);
+
+document.addEventListener('mouseleave', function(e) {
+  var el = e.target.closest('.card-stat-expandable');
+  if (!el) return;
+  // Check if we moved into the popup itself
+  var popup = document.getElementById('stat-expand-popup');
+  if (popup && popup.contains(e.relatedTarget)) return;
+  hideStatExpand();
+}, true);
+
+// Hide popup when mouse leaves it (and not back into the stat box)
+document.addEventListener('mouseleave', function(e) {
+  if (!e.target || e.target.id !== 'stat-expand-popup') return;
+  if (statExpandActiveEl && statExpandActiveEl.contains(e.relatedTarget)) return;
+  hideStatExpand();
+}, true);
 
 // ── Altitude chart crosshair ──────────────────────────────────────────────
 

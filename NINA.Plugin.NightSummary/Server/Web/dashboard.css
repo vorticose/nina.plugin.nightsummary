@@ -350,7 +350,9 @@ nav {
   transform: translateY(-3px);
   z-index: 10;
   box-shadow:
-    0px 0px 0px 1px rgba(255,255,255,0.11),
+    0px 0px 0px 1px rgba(212,160,106,0.45),
+    0px 0px 14px rgba(212,160,106,0.22),
+    0px 0px 40px rgba(212,160,106,0.10),
     0px 4px 8px rgba(0,0,0,0.35),
     0px 12px 24px -4px rgba(0,0,14,0.35),
     inset 0px 1px 0px rgba(255,255,255,0.06);
@@ -483,6 +485,38 @@ nav {
 .card-thumb-wrap.shelf-active {
   transform: scale(1.67);
   z-index: 10;
+  transition-delay: 150ms;
+}
+
+.thumb-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 4;
+  padding: 3px 3px 8px;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.72) 0%, transparent 100%);
+  color: #fff;
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-align: center;
+  text-shadow:
+    0 -1px 0 rgba(255,255,255,0.15),
+    0 1px 0 rgba(0,0,0,0.7),
+    0 2px 6px rgba(0,0,0,0.9),
+    0 0 8px rgba(0,0,0,0.5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  transition: opacity 0.18s ease-out;
+  transition-delay: 150ms;
+  pointer-events: none;
+}
+
+.card-thumb-wrap:hover .thumb-label {
+  opacity: 1;
 }
 
 .card-thumb-wrap svg {
@@ -519,6 +553,12 @@ nav {
   border-radius: 8px;
   pointer-events: none;
   z-index: 2;
+  transition: opacity 0.15s;
+}
+
+.card-thumb-wrap:hover .livestack-badge,
+.card-thumb-wrap.shelf-active .livestack-badge {
+  opacity: 0;
 }
 
 .livestack-shelf {
@@ -740,6 +780,100 @@ nav {
   letter-spacing: 1px;
   font-weight: 600;
   margin-top: 2px;
+}
+
+.card-stat-expandable {
+  cursor: default;
+  position: relative;
+}
+
+.card-stat-expandable::after {
+  content: '';
+  position: absolute;
+  bottom: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 16px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  opacity: 0.35;
+  transition: opacity 0.2s, width 0.2s;
+}
+
+.card-stat-expandable:hover::after {
+  opacity: 0.7;
+  width: 22px;
+}
+
+/* ── Stat expand popup ── */
+.stat-expand-popup {
+  position: absolute;
+  z-index: 9999;
+  background: var(--surface);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  padding: 10px 14px;
+  min-width: 200px;
+  max-width: 280px;
+  box-shadow:
+    0 8px 24px rgba(0,0,0,0.55),
+    0 2px 6px rgba(0,0,0,0.35),
+    inset 0 1px 0 rgba(255,255,255,0.08);
+  transform: translateX(-50%) translateY(4px);
+  opacity: 0;
+  transition: opacity 0.18s ease-out, transform 0.18s ease-out;
+  pointer-events: none;
+}
+
+.stat-expand-popup.stat-expand-visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
+}
+
+.stat-expand-popup.stat-expand-hiding {
+  opacity: 0;
+  transform: translateX(-50%) translateY(4px);
+  pointer-events: none;
+}
+
+.stat-expand-header {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+
+.stat-expand-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  padding: 3px 0;
+}
+
+.stat-expand-filter {
+  font-size: 12px;
+  color: var(--accent);
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.stat-expand-val {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
 }
 
 /* ── View mode toggle ── */
