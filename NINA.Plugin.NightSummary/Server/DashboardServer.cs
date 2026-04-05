@@ -636,6 +636,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 .Replace("opacity='0.75'", "opacity='0.45'");  // moon opacity
 
             // Extract shared structural elements from the first chart
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
             // Trim vertical padding: original is 0-248, content lives at ~10-242
             const int vbTopTrim = 6;   // trim from top (above 90° label)
             const int vbBotTrim = 6;   // trim from bottom (below time labels)
@@ -643,7 +644,6 @@ namespace NINA.Plugin.NightSummary.Server {
             int origH = viewBoxMatch.Success ? (int)double.Parse(viewBoxMatch.Groups[1].Value, inv) : 248;
             var viewBoxY = vbTopTrim.ToString();
             var viewBoxH = (origH - vbTopTrim - vbBotTrim).ToString();
-            var inv = System.Globalization.CultureInfo.InvariantCulture;
 
             var moonPattern = new Regex(@"<g><title>Moon Position</title>.*?</g>", RegexOptions.Singleline);
             var sunsetPattern = new Regex(@"<text[^>]*fill='#f59e0b'[^>]*>.*?</text>", RegexOptions.Singleline);
