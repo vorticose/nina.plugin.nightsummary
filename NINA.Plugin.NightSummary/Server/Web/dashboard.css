@@ -156,11 +156,13 @@ nav {
   font-size: 13px;
   font-family: Arial, sans-serif;
   min-width: 140px;
+  cursor: pointer;
+  caret-color: transparent;
 }
 
 .filter-bar input:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--border);
 }
 
 /* ── Target dropdown filter ── */
