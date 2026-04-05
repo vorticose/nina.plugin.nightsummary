@@ -706,7 +706,7 @@ namespace NINA.Plugin.NightSummary.Server {
             // Legend — dedicated column in negative x-space with background panel
             // Auto-size font based on longest target name (available width ~100px for text)
             int maxNameLen = targetData.Max(td => td.Name.Length);
-            int fontSize = maxNameLen > 20 ? 7 : maxNameLen > 14 ? 8 : 9;
+            int fontSize = maxNameLen > 24 ? 8 : maxNameLen > 16 ? 9 : 10;
             int lineHeight = fontSize + 5;
             int legendStartY = 26;
             int legendH = targetData.Count * lineHeight + 12;
