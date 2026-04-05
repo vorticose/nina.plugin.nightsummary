@@ -42,6 +42,7 @@ namespace NINA.Plugin.NightSummary.Server {
         private class ThumbnailEntry {
             public string target { get; set; }
             public string dataUri { get; set; }
+            public string fovSvg { get; set; }  // SVG overlay with FOV rectangle (from report)
         }
 
         // Altitude chart cache: sessionId -> SVG string
@@ -518,19 +519,22 @@ namespace NINA.Plugin.NightSummary.Server {
             var html = File.ReadAllText(reportPath);
             var entries = new List<ThumbnailEntry>();
 
-            // Split HTML on target-section boundaries and extract h3 + thumbnail from each
+            // Split HTML on target-section boundaries and extract h3 + thumbnail + FOV overlay from each
             var sections = html.Split(new[] { "<div class='target-section'>" }, StringSplitOptions.None);
             var h3Pattern = new Regex(@"<h3>([^<]+)");
             var imgPattern = new Regex(@"<div\s+class='ts-thumb-wrap'>\s*<img\s+src='(data:image/[^']+)'");
+            var svgPattern = new Regex(@"<div\s+class='ts-thumb-wrap'>[^<]*<img[^>]*/>\s*(<svg[^>]*>.*?</svg>)", RegexOptions.Singleline);
 
             for (int i = 1; i < sections.Length; i++) { // skip first (before any target-section)
                 var block = sections[i];
                 var h3Match = h3Pattern.Match(block);
                 var imgMatch = imgPattern.Match(block);
                 if (h3Match.Success && imgMatch.Success) {
+                    var svgMatch = svgPattern.Match(block);
                     entries.Add(new ThumbnailEntry {
                         target = h3Match.Groups[1].Value.Trim(),
-                        dataUri = imgMatch.Groups[1].Value
+                        dataUri = imgMatch.Groups[1].Value,
+                        fovSvg = svgMatch.Success ? svgMatch.Groups[1].Value : null
                     });
                 }
             }

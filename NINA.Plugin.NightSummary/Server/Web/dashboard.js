@@ -134,6 +134,7 @@ function statBox(value, label) {
 var sessionsCache = [];
 var selectedTargets = {}; // target name -> boolean (true = selected)
 var showEmptySessions = false; // hide 0-image sessions by default
+var showFovOverlay = localStorage.getItem('ns-show-fov') !== 'false'; // on by default
 var cardViewMode = localStorage.getItem('ns-card-view') || 'expanded'; // 'expanded' or 'compact'
 var hiddenSessions = JSON.parse(localStorage.getItem('ns-hidden-sessions') || '{}'); // sessionId -> true
 var showHidden = false;
@@ -221,7 +222,8 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
       '<button class="view-toggle-btn' + (cardViewMode === 'compact' ? ' active' : '') + '" data-view="compact">Compact</button>' +
       '<button class="view-toggle-btn' + (cardViewMode === 'expanded' ? ' active' : '') + '" data-view="expanded">Expanded</button>' +
     '</div>' +
-    '<label class="target-check" title="Include sessions with 0 captured images"><input type="checkbox" id="filter-empty"' + (showEmptySessions ? ' checked' : '') + '><span>Show empty</span></label>';
+    '<label class="target-check" title="Include sessions with 0 captured images"><input type="checkbox" id="filter-empty"' + (showEmptySessions ? ' checked' : '') + '><span>Show empty</span></label>' +
+    '<label class="target-check' + (cardViewMode === 'compact' ? ' disabled' : '') + '" title="Show camera FOV rectangle on thumbnails"><input type="checkbox" id="filter-fov"' + (showFovOverlay ? ' checked' : '') + (cardViewMode === 'compact' ? ' disabled' : '') + '><span>Show FOV</span></label>';
 
   // Add hidden session controls inline if any are hidden
   var tempHiddenCount = sessionsCache.filter(function(s) { return hiddenSessions[s.sessionId]; }).length;
@@ -333,7 +335,16 @@ function loadThumbnails(sessions) {
       var el = document.getElementById('thumbs-' + s.sessionId);
       if (!el) return;
       el.innerHTML = thumbs.map(function(t) {
-        return '<img class="card-thumb" src="' + t.dataUri + '" alt="' + esc(t.target) + '" title="' + esc(t.target) + '" loading="lazy" onerror="this.style.display=\'none\'">';
+        var img = '<img class="card-thumb" src="' + t.dataUri + '" alt="' + esc(t.target) + '" title="' + esc(t.target) + '" loading="lazy" onerror="this.style.display=\'none\'">';
+        if (t.fovSvg && showFovOverlay) {
+          // Scale the 200px report SVG to 150px by adding a viewBox and overriding width/height
+          var svg = t.fovSvg
+            .replace(/width='\d+'/, "width='150'")
+            .replace(/height='\d+'/, "height='150'")
+            .replace("<svg ", "<svg viewBox='0 0 200 200' ");
+          return '<div class="card-thumb-wrap">' + img + svg + '</div>';
+        }
+        return img;
       }).join('');
       // Reorder target names to match thumbnail order
       var targetsEl = document.getElementById('targets-' + s.sessionId);
@@ -459,6 +470,16 @@ function bindListEvents() {
   if (emptyEl) {
     emptyEl.addEventListener('change', function() {
       showEmptySessions = this.checked;
+      refresh();
+    });
+  }
+
+  // Show FOV overlay checkbox
+  var fovEl = document.getElementById('filter-fov');
+  if (fovEl) {
+    fovEl.addEventListener('change', function() {
+      showFovOverlay = this.checked;
+      localStorage.setItem('ns-show-fov', showFovOverlay ? 'true' : 'false');
       refresh();
     });
   }

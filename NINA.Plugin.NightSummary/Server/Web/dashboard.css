@@ -228,6 +228,11 @@ nav {
   cursor: pointer;
 }
 
+.target-check.disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
 .filter-link {
   background: none;
   border: none;
@@ -342,6 +347,21 @@ nav {
 }
 
 .card-thumbs:empty { display: none; }
+
+.card-thumb-wrap {
+  position: relative;
+  width: 150px;
+  height: 150px;
+  flex-shrink: 0;
+}
+
+.card-thumb-wrap svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: 6px;
+  pointer-events: none;
+}
 
 .card-thumb {
   width: 150px;
