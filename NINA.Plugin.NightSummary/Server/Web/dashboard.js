@@ -340,12 +340,13 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
       var headerH = header.offsetHeight;
       var headerMargin = 4; // .card-header margin-bottom
       var cardPadTop = 8;   // .session-card padding-top
-      // Only add clearance if header text extends close to the chart area
-      // Measure the rightmost edge of actual text content (last child element)
+      // Only add clearance if header text extends close to the chart graphics
+      // Measure against the SVG wrapper (where actual chart content starts), not the container
       var lastChild = header.lastElementChild;
       var textRight = lastChild ? lastChild.getBoundingClientRect().right : header.getBoundingClientRect().right;
-      var altLeft = altEl.getBoundingClientRect().left;
-      var clearance = (textRight > altLeft - 15) ? 18 : 0;
+      var svgWrap = altEl.querySelector('.chart-svg-wrap');
+      var chartLeft = svgWrap ? svgWrap.getBoundingClientRect().left : altEl.getBoundingClientRect().left;
+      var clearance = (textRight > chartLeft - 15) ? 18 : 0;
       var pullUp = Math.max(0, headerH + headerMargin - cardPadTop - clearance);
       altEl.style.marginTop = '-' + pullUp + 'px';
     });
