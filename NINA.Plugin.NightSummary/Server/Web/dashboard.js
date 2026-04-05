@@ -206,11 +206,11 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
     targetDropHtml +
     '<div class="filter-dates">' +
       '<div class="date-input-wrap">' +
-        '<input type="' + (fromFilter ? 'date' : 'text') + '" id="filter-from" value="' + esc(fromFilter) + '" placeholder="From" readonly onfocus="this.type=\'date\';this.removeAttribute(\'readonly\');this.showPicker?this.showPicker():0">' +
+        '<input type="' + (fromFilter ? 'date' : 'text') + '" id="filter-from" value="' + esc(fromFilter) + '" placeholder="From"' + (fromFilter ? '' : ' readonly') + ' onfocus="this.type=\'date\';this.removeAttribute(\'readonly\');this.showPicker?this.showPicker():0">' +
         (fromFilter ? '<button class="date-clear" data-target="filter-from" title="Clear">\u00d7</button>' : '') +
       '</div>' +
       '<div class="date-input-wrap">' +
-        '<input type="' + (toFilter ? 'date' : 'text') + '" id="filter-to" value="' + esc(toFilter) + '" placeholder="To" readonly onfocus="this.type=\'date\';this.removeAttribute(\'readonly\');this.showPicker?this.showPicker():0">' +
+        '<input type="' + (toFilter ? 'date' : 'text') + '" id="filter-to" value="' + esc(toFilter) + '" placeholder="To"' + (toFilter ? '' : ' readonly') + ' onfocus="this.type=\'date\';this.removeAttribute(\'readonly\');this.showPicker?this.showPicker():0">' +
         (toFilter ? '<button class="date-clear" data-target="filter-to" title="Clear">\u00d7</button>' : '') +
       '</div>' +
     '</div>' +
