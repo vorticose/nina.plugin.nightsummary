@@ -342,7 +342,6 @@ nav {
   min-width: 0;
   display: flex;
   gap: 4px;
-  border: 1px dashed rgba(126, 184, 247, 0.4); /* DEBUG: remove after layout tuning */
 }
 
 .chart-legend {

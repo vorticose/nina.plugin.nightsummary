@@ -388,8 +388,8 @@ function setupChartCrosshair(container) {
 
   var ns = 'http://www.w3.org/2000/svg';
   var viewBox = svg.getAttribute('viewBox').split(' ').map(Number);
-  var vbMinX = viewBox[0], vbW = viewBox[2];
-  // Plot area bounds in viewBox coordinates (account for legend column in negative x-space)
+  var vbMinX = viewBox[0], vbMinY = viewBox[1], vbW = viewBox[2];
+  // Plot area bounds in viewBox coordinates
   var plotL = 38, plotR = vbMinX + vbW - 10, plotT = 20, plotB = 220;
 
   // Extract time labels from the SVG
@@ -541,11 +541,12 @@ function setupChartCrosshair(container) {
     crossLine.style.display = '';
     tooltip.style.display = '';
 
-    // Time at top
+    // Time at top — position just inside visible viewBox area
     var time = xToTime(sx);
+    var timeY = vbMinY + 8;
     timeText.setAttribute('x', sx);
-    timeText.setAttribute('y', plotT - 4);
-    timeText.setAttribute('transform', 'translate(' + sx + ',' + (plotT - 4) + ') ' + textTransform + ' translate(' + (-sx) + ',' + (-(plotT - 4)) + ')');
+    timeText.setAttribute('y', timeY);
+    timeText.setAttribute('transform', 'translate(' + sx + ',' + timeY + ') ' + textTransform + ' translate(' + (-sx) + ',' + (-timeY) + ')');
     timeText.textContent = time;
 
     // Detect which imaging window the crosshair is inside
@@ -578,9 +579,14 @@ function setupChartCrosshair(container) {
       }
     }
 
-    // Per-target markers
+    // Per-target markers — only show for the active target's imaging window
     for (var i = 0; i < targets.length; i++) {
-      var y = interpolateY(targets[i].points, sx);
+      if (activeTarget !== -1 && i !== activeTarget) {
+        markers[i].dot.style.display = 'none';
+        markers[i].label.style.display = 'none';
+        continue;
+      }
+      var y = (activeTarget === -1) ? null : interpolateY(targets[i].points, sx);
       if (y === null || y < plotT || y > plotB) {
         markers[i].dot.style.display = 'none';
         markers[i].label.style.display = 'none';
