@@ -638,8 +638,8 @@ namespace NINA.Plugin.NightSummary.Server {
             // Extract shared structural elements from the first chart
             var inv = System.Globalization.CultureInfo.InvariantCulture;
             // Trim vertical padding: original is 0-248, content lives at ~10-242
-            const int vbTopTrim = 12;  // trim from top (above 90° label)
-            const int vbBotTrim = 4;   // trim from bottom (below time labels)
+            const int vbTopTrim = 18;  // trim from top (tight to 90° label)
+            const int vbBotTrim = 2;   // trim from bottom (tight to time labels)
             var viewBoxMatch = Regex.Match(scaffoldSvg, @"viewBox='[\d.]+ [\d.]+ [\d.]+ ([\d.]+)'");
             int origH = viewBoxMatch.Success ? (int)double.Parse(viewBoxMatch.Groups[1].Value, inv) : 248;
             var viewBoxY = vbTopTrim.ToString();
@@ -731,9 +731,9 @@ namespace NINA.Plugin.NightSummary.Server {
             // Time axis labels (scale x positions)
             foreach (Match t in timeLabelPattern.Matches(scaffoldSvg)) sb.AppendLine(RemapSvgX(t.Value));
 
-            // Legend — dedicated column in negative x-space with scaled background panel
+            // Legend — positioned relative to visible top edge (decoupled from chart)
             int lineHeight = fontSize + 6;
-            int legendTopY = 20;
+            int legendTopY = vbTopTrim + 4;  // 4px below visible top edge
             int legendPadTop = 6;
             int legendStartY = legendTopY + legendPadTop + fontSize;
             int legendH = targetData.Count * lineHeight + legendPadTop + 6;
