@@ -516,9 +516,6 @@ nav {
   font-size: 10px;
   color: var(--muted);
   margin-top: 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 @keyframes shelf-reveal {
