@@ -26,8 +26,10 @@ $ninaExe       = Join-Path ${env:ProgramFiles} "N.I.N.A. - Nighttime Imaging 'N'
 
 # --- Fetch latest from remote ---
 Write-Host "Fetching from origin..." -ForegroundColor Cyan
-$fetchOutput = git -C $repoRoot fetch origin --prune 2>&1
-# git fetch writes progress to stderr which PowerShell treats as an error — ignore it
+$savedPref = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+git -C $repoRoot fetch origin --prune 2>&1 | Out-Null
+$ErrorActionPreference = $savedPref
 
 # --- Pick branch ---
 if (-not $Branch) {
