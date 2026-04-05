@@ -605,22 +605,28 @@ function setupCurveAnimation(container) {
   });
   if (polylines.length === 0) return;
 
-  // Set up dash animation: start fully hidden, animate to fully drawn
-  polylines.forEach(function(p) {
-    var len = p.getTotalLength();
-    p.style.strokeDasharray = len;
-    p.style.strokeDashoffset = len;
-    p.style.transition = 'stroke-dashoffset 1.2s ease-out';
+  // Cache lengths and set initial hidden state
+  var lengths = polylines.map(function(p) { return p.getTotalLength(); });
+  polylines.forEach(function(p, i) {
+    p.style.strokeDasharray = lengths[i];
+    p.style.strokeDashoffset = lengths[i];
   });
 
-  // Use IntersectionObserver to trigger when card scrolls into view
+  // Use IntersectionObserver to trigger draw/reset as card enters/leaves view
   var observer = new IntersectionObserver(function(entries) {
     entries.forEach(function(entry) {
       if (entry.isIntersecting) {
+        // Draw: animate in
         polylines.forEach(function(p) {
+          p.style.transition = 'stroke-dashoffset 0.8s ease-out';
           p.style.strokeDashoffset = '0';
         });
-        observer.unobserve(entry.target);
+      } else {
+        // Reset: instantly hide for next scroll-in
+        polylines.forEach(function(p, i) {
+          p.style.transition = 'none';
+          p.style.strokeDashoffset = lengths[i];
+        });
       }
     });
   }, { threshold: 0.3 });
