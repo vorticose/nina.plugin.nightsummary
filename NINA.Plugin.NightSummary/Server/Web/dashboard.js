@@ -327,10 +327,6 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
       moonBox +
       '</div>';
 
-    var profileSpan = s.profileName
-      ? '<span class="card-profile">' + esc(s.profileName) + '</span>'
-      : '';
-
     return '<div class="session-card" onclick="navigate(\'#/sessions/' + s.sessionId + '\')">' +
       '<button class="hide-btn" data-session="' + s.sessionId + '" onclick="event.stopPropagation();hideSession(this.dataset.session)" title="Hide this session">\u2715</button>' +
       '<div class="card-header">' +
@@ -338,7 +334,6 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
         '<span class="session-times">' + sessionTimes + '</span>' +
         '<span class="card-targets-line" id="targets-' + s.sessionId + '">' + targetsText + '</span>' +
         badge +
-        profileSpan +
       '</div>' +
       '<div class="card-body">' +
         '<div class="card-content">' +

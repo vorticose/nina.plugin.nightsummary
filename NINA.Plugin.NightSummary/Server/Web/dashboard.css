@@ -668,20 +668,6 @@ nav {
   color: var(--muted);
 }
 
-/* Profile name — hover-revealed secondary meta, right-aligned in header */
-.card-profile {
-  font-size: 11px;
-  color: var(--text-quaternary);
-  margin-left: auto;
-  opacity: 0;
-  transition: opacity 0.2s;
-  white-space: nowrap;
-  letter-spacing: 0.3px;
-}
-.session-card:hover .card-profile {
-  opacity: 1;
-}
-
 /* Inline stats line — hidden in expanded, shown in compact */
 .card-stats-line {
   font-size: 13px;
