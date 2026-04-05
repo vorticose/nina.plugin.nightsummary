@@ -1218,8 +1218,8 @@ function collectSettings() {
     if (cb && cb.checked) visibleFields.push(f);
   });
 
-  // Collect additional charts
-  var chartRows = document.querySelectorAll('.chart-row');
+  // Collect additional charts (only from the additional-charts container, not Chart 1)
+  var chartRows = document.querySelectorAll('#additional-charts .chart-row');
   var additionalParts = [];
   chartRows.forEach(function(row) {
     var selects = row.querySelectorAll('select');
@@ -1507,7 +1507,7 @@ function bindDetailEvents(sessionId) {
 }
 
 function renumberChartRows() {
-  document.querySelectorAll('.chart-row').forEach(function(row, i) {
+  document.querySelectorAll('#additional-charts .chart-row').forEach(function(row, i) {
     var label = row.querySelector('.chart-row-label');
     if (label) label.textContent = 'Chart ' + (i + 2);
   });
