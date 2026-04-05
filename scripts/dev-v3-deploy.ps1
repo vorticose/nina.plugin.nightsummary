@@ -65,9 +65,14 @@ git -C $repoRoot pull
 if ($LASTEXITCODE -ne 0) { Write-Error "git pull failed."; exit 1 }
 Write-Host "Pull complete." -ForegroundColor Green
 
-# --- Clean + Build ---
-Write-Host "Cleaning..." -ForegroundColor Cyan
-dotnet clean "$projectDir\NINA.Plugin.NightSummary.csproj" -c Release | Out-Null
+# --- Clean (ensures embedded resources like JS/CSS are re-embedded) ---
+Write-Host "Cleaning previous build..." -ForegroundColor Cyan
+dotnet clean "$projectDir\NINA.Plugin.NightSummary.csproj" -c Release 2>&1 | Out-Null
+
+# --- Restore (fast when packages are cached) ---
+Write-Host "Restoring packages..." -ForegroundColor Cyan
+dotnet restore "$projectDir\NINA.Plugin.NightSummary.csproj" | Out-Null
+if ($LASTEXITCODE -ne 0) { Write-Error "Restore failed."; exit 1 }
 
 Write-Host "Building..." -ForegroundColor Cyan
 dotnet build "$projectDir\NINA.Plugin.NightSummary.csproj" -c Release | Out-Null
