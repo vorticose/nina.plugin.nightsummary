@@ -47,6 +47,46 @@ namespace NINA.Plugin.NightSummary.Server {
         // Altitude chart cache: sessionId -> SVG string
         private readonly Dictionary<string, string> altitudeChartCache = new Dictionary<string, string>();
 
+        // Altitude chart coordinate scaling: widen from 500 to 750 for better aspect ratio
+        private const double AltPadL = 38.0;          // left padding (y-axis labels)
+        private const double AltOrigRight = 490.0;    // original right edge of plot (500 - 10)
+        private const double AltNewSvgW = 750.0;      // new viewBox width
+        private const double AltNewRight = 740.0;     // new right edge (750 - 10)
+        private static readonly double AltScaleX = (AltNewRight - AltPadL) / (AltOrigRight - AltPadL); // ~1.553
+
+        /// <summary>Map an x-coordinate from the original 500-wide plot space to the wider 750-wide space.</summary>
+        private static double MapX(double x) => AltPadL + (x - AltPadL) * AltScaleX;
+
+        /// <summary>Scale all x-coordinates in a polyline points string ("x1,y1 x2,y2 ...").</summary>
+        private static string ScalePolylineX(string points) {
+            var parts = points.Split(' ');
+            var sb = new StringBuilder(points.Length * 2);
+            foreach (var part in parts) {
+                if (sb.Length > 0) sb.Append(' ');
+                var comma = part.IndexOf(',');
+                if (comma < 0) { sb.Append(part); continue; }
+                if (double.TryParse(part.Substring(0, comma), System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out double x)) {
+                    sb.Append(MapX(x).ToString("F1", System.Globalization.CultureInfo.InvariantCulture));
+                    sb.Append(part.Substring(comma)); // ",y" unchanged
+                } else {
+                    sb.Append(part);
+                }
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>Remap the x='...' attribute in an SVG element string.</summary>
+        private static string RemapSvgX(string element) {
+            return Regex.Replace(element, @"x='([\d.]+)'", m => {
+                if (double.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out double x) && x >= AltPadL) {
+                    return $"x='{MapX(x).ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}'";
+                }
+                return m.Value; // keep axis labels (x < padL) unchanged
+            });
+        }
+
         // Target color palette (matches ReportGenerator.PreviewColors)
         private static readonly string[] TargetColors = {
             "#4e79a7", "#f28e2b", "#e15759", "#76b7b2", "#59a14f", "#edc948"
@@ -577,66 +617,87 @@ namespace NINA.Plugin.NightSummary.Server {
                 .Replace("opacity='0.75'", "opacity='0.45'");  // moon opacity
 
             // Extract shared structural elements from the first chart
-            var viewBoxMatch = Regex.Match(scaffoldSvg, @"viewBox='([^']+)'");
-            var viewBox = viewBoxMatch.Success ? viewBoxMatch.Groups[1].Value : "0 0 500 248";
+            // Use the original viewBox height but widen to AltNewSvgW for better card aspect ratio
+            var viewBoxMatch = Regex.Match(scaffoldSvg, @"viewBox='[\d.]+ [\d.]+ [\d.]+ ([\d.]+)'");
+            var viewBoxH = viewBoxMatch.Success ? viewBoxMatch.Groups[1].Value : "248";
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
 
-            // Extract background, grid lines, axis labels (everything before the target polyline)
             var moonPattern = new Regex(@"<g><title>Moon Position</title>.*?</g>", RegexOptions.Singleline);
             var sunsetPattern = new Regex(@"<text[^>]*fill='#f59e0b'[^>]*>.*?</text>", RegexOptions.Singleline);
             var timeLabelPattern = new Regex(@"<text[^>]*fill='#888'[^>]*>\d{2}:\d{2}</text>");
 
-            // Build combined SVG
+            // Build combined SVG with wider viewBox
             var sb = new StringBuilder();
-            sb.AppendLine($"<svg viewBox='{viewBox}' xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='xMidYMid meet'>");
+            sb.AppendLine($"<svg viewBox='0 0 {AltNewSvgW.ToString("F0", inv)} {viewBoxH}' xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='xMidYMid meet'>");
 
-            // Background + border (first two rects from scaffold)
+            // Background + border rects (scale x and width to fill wider plot area)
             var bgRects = Regex.Matches(scaffoldSvg, @"<rect x='38'[^/]*/>");
-            foreach (Match r in bgRects) sb.AppendLine(r.Value);
+            foreach (Match r in bgRects) {
+                var rect = Regex.Replace(r.Value, @"width='([\d.]+)'", m => {
+                    if (double.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.Float, inv, out double w))
+                        return $"width='{(w * AltScaleX).ToString("F1", inv)}'";
+                    return m.Value;
+                });
+                sb.AppendLine(rect);
+            }
 
-            // Per-target imaging window shading with border lines
+            // Per-target imaging window shading with border lines (scaled coordinates)
             for (int t = 0; t < targetData.Count; t++) {
                 var td = targetData[t];
                 if (td.SessW > 0) {
                     var color = TargetColors[t % TargetColors.Length];
-                    sb.AppendLine($"<rect x='{td.SessX}' y='20' width='{td.SessW}' height='200' fill='{color}' opacity='0.15'/>");
-                    // Left and right border lines for the imaging window
-                    sb.AppendLine($"<line x1='{td.SessX}' y1='20' x2='{td.SessX}' y2='220' stroke='{color}' stroke-width='1' opacity='0.6'/>");
-                    var endX = td.SessX + td.SessW;
+                    var sx = MapX(td.SessX).ToString("F1", inv);
+                    var sw = (td.SessW * AltScaleX).ToString("F1", inv);
+                    sb.AppendLine($"<rect x='{sx}' y='20' width='{sw}' height='200' fill='{color}' opacity='0.15'/>");
+                    var endX = MapX(td.SessX + td.SessW).ToString("F1", inv);
+                    sb.AppendLine($"<line x1='{sx}' y1='20' x2='{sx}' y2='220' stroke='{color}' stroke-width='1' opacity='0.6'/>");
                     sb.AppendLine($"<line x1='{endX}' y1='20' x2='{endX}' y2='220' stroke='{color}' stroke-width='1' opacity='0.6'/>");
                 }
             }
 
-            // Grid lines at 30 and 60 degrees (exclude min altitude lines which use #cc4444)
+            // Grid lines at 30 and 60 degrees (scale x2 endpoint, exclude min altitude lines)
             var gridLines = Regex.Matches(scaffoldSvg, @"<line x1='38'[^/]*/>");
             foreach (Match g in gridLines) {
-                if (!g.Value.Contains("#cc4444")) sb.AppendLine(g.Value);
+                if (g.Value.Contains("#cc4444")) continue;
+                var line = Regex.Replace(g.Value, @"x2='([\d.]+)'", m => {
+                    if (double.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.Float, inv, out double x))
+                        return $"x2='{MapX(x).ToString("F1", inv)}'";
+                    return m.Value;
+                });
+                sb.AppendLine(line);
             }
 
-            // Altitude axis labels (90, 60, 30, 0)
+            // Altitude axis labels (90, 60, 30, 0) — keep at original x positions
             var axisLabels = Regex.Matches(scaffoldSvg, @"<text x='34'[^>]*>[^<]*</text>");
             foreach (Match a in axisLabels) sb.AppendLine(a.Value);
 
-            // Per-target altitude curves with distinct colors
+            // Per-target altitude curves with distinct colors (scale polyline x-coordinates)
             for (int t = 0; t < targetData.Count; t++) {
                 var td = targetData[t];
                 var color = TargetColors[t % TargetColors.Length];
+                var scaledPoints = ScalePolylineX(td.Points);
                 sb.AppendLine($"<g><title>{td.Name}</title>");
-                sb.AppendLine($"<polyline points='{td.Points}' fill='none' stroke='transparent' stroke-width='10'/>");
-                sb.AppendLine($"<polyline points='{td.Points}' fill='none' stroke='{color}' stroke-width='2'/>");
+                sb.AppendLine($"<polyline points='{scaledPoints}' fill='none' stroke='transparent' stroke-width='10'/>");
+                sb.AppendLine($"<polyline points='{scaledPoints}' fill='none' stroke='{color}' stroke-width='2'/>");
                 sb.AppendLine("</g>");
             }
 
-            // Moon curve (extract from first chart if present)
+            // Moon curve (scale polyline x-coordinates within the group)
             var moonMatch = moonPattern.Match(scaffoldSvg);
-            if (moonMatch.Success) sb.AppendLine(moonMatch.Value);
+            if (moonMatch.Success) {
+                var moonSvg = Regex.Replace(moonMatch.Value, @"points='([^']+)'", m => {
+                    return $"points='{ScalePolylineX(m.Groups[1].Value)}'";
+                });
+                sb.AppendLine(moonSvg);
+            }
 
-            // Sunset/sunrise labels
-            foreach (Match s in sunsetPattern.Matches(scaffoldSvg)) sb.AppendLine(s.Value);
+            // Sunset/sunrise labels (scale x positions)
+            foreach (Match s in sunsetPattern.Matches(scaffoldSvg)) sb.AppendLine(RemapSvgX(s.Value));
 
-            // Time axis labels
-            foreach (Match t in timeLabelPattern.Matches(scaffoldSvg)) sb.AppendLine(t.Value);
+            // Time axis labels (scale x positions)
+            foreach (Match t in timeLabelPattern.Matches(scaffoldSvg)) sb.AppendLine(RemapSvgX(t.Value));
 
-            // Legend — inside plot area, top-left corner
+            // Legend — inside plot area, top-left corner (keep at original position)
             int legendStartY = 32;
             for (int t = 0; t < targetData.Count; t++) {
                 var color = TargetColors[t % TargetColors.Length];
