@@ -17,6 +17,7 @@ import os
 import re
 import sys
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from socketserver import ThreadingMixIn
 
 # Paths computed relative to this script's location
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -195,6 +196,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.route("GET")
 
+    def do_HEAD(self):
+        self.route("HEAD")
+
     def do_POST(self):
         # Read and discard body
         length = int(self.headers.get("Content-Length", 0))
@@ -242,7 +246,10 @@ def main():
     print(f"  Server:   http://localhost:{args.port}")
     print()
 
-    server = HTTPServer(("0.0.0.0", args.port), DashboardHandler)
+    class ThreadedServer(ThreadingMixIn, HTTPServer):
+        daemon_threads = True
+
+    server = ThreadedServer(("0.0.0.0", args.port), DashboardHandler)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
