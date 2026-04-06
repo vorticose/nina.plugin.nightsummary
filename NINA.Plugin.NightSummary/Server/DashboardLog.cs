@@ -66,6 +66,21 @@ namespace NINA.Plugin.NightSummary.Server {
             instance = null;
         }
 
+        /// <summary>
+        /// Deletes dashboard log files in <paramref name="logsDir"/> older than
+        /// <paramref name="keepDays"/> days, based on last-write time.
+        /// </summary>
+        public static void PurgeOldLogs(string logsDir, int keepDays = 14) {
+            if (!Directory.Exists(logsDir)) return;
+            var cutoff = DateTime.Now.AddDays(-keepDays);
+            foreach (var file in Directory.GetFiles(logsDir, "dashboard-*.log*")) {
+                try {
+                    if (File.GetLastWriteTime(file) < cutoff)
+                        File.Delete(file);
+                } catch { }
+            }
+        }
+
         // ── Logging methods ─────────────────────────────────────────────
 
         public void Debug(string message) => Write(LogLevel.DEBUG, message);
