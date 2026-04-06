@@ -161,6 +161,8 @@ var showHidden = false;
 var livestackMap = {}; // sessionId -> { targetName -> [{filter, url, label, isComposite}] }
 var thumbnailCache = {}; // sessionId -> thumbnails array
 var altitudeChartCache = {}; // sessionId -> {svg, legend}
+var altitudeChartFetching = {}; // sessionId -> true while request is in flight
+var thumbnailFetching = {}; // sessionId -> true while request is in flight
 var detailCache = {}; // sessionId -> detail JSON (for stat expand)
 var statExpandTimer = null;
 var statExpandActiveEl = null;
@@ -418,16 +420,21 @@ function renderThumbnails(s, thumbs) {
 function loadThumbnails(sessions) {
   sessions.forEach(function(s) {
     if (!s.hasReport) return;
-    if (!document.getElementById('thumbs-' + s.sessionId)) return;
     if (thumbnailCache[s.sessionId]) {
-      renderThumbnails(s, thumbnailCache[s.sessionId]);
+      var el = document.getElementById('thumbs-' + s.sessionId);
+      if (el) renderThumbnails(s, thumbnailCache[s.sessionId]);
       return;
     }
+    if (thumbnailFetching[s.sessionId]) return; // already in flight
+    if (!document.getElementById('thumbs-' + s.sessionId)) return;
+    thumbnailFetching[s.sessionId] = true;
     api('/api/sessions/' + s.sessionId + '/thumbnails').then(function(thumbs) {
+      delete thumbnailFetching[s.sessionId];
       if (!thumbs || thumbs.length === 0) return;
       thumbnailCache[s.sessionId] = thumbs;
       renderThumbnails(s, thumbs);
     }).catch(function(err) {
+      delete thumbnailFetching[s.sessionId];
       logDebug('Thumb load failed for', s.sessionId, err.message);
     });
   });
@@ -1106,11 +1113,15 @@ function fetchAltitudeChart(s) {
     renderAltitudeChart(s, altitudeChartCache[s.sessionId]);
     return;
   }
+  if (altitudeChartFetching[s.sessionId]) return; // already in flight
+  altitudeChartFetching[s.sessionId] = true;
   api('/api/sessions/' + s.sessionId + '/altitude-chart').then(function(data) {
+    delete altitudeChartFetching[s.sessionId];
     if (!data || !data.svg) return;
     altitudeChartCache[s.sessionId] = data;
     renderAltitudeChart(s, data);
   }).catch(function(err) {
+    delete altitudeChartFetching[s.sessionId];
     logDebug('Altitude chart load failed for', s.sessionId, err.message);
   });
 }
