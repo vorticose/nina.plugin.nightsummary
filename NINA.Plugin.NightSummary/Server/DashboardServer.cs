@@ -135,7 +135,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 var logsDir = Path.Combine(dataDir, "logs");
                 Directory.CreateDirectory(logsDir);
                 DashboardLog.PurgeOldLogs(logsDir);
-                log = DashboardLog.Init(Path.Combine(logsDir, $"dashboard-{DateTime.Now:yyyy-MM-dd}.log"));
+                log = DashboardLog.Init(Path.Combine(logsDir, $"dashboard-{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.log"));
 
                 cts = new CancellationTokenSource();
                 listener = new HttpListener();
