@@ -932,6 +932,8 @@ namespace NINA.Plugin.NightSummary.Server {
             if (targetData.Count == 0 || scaffoldSvg == null) {
                 var noCharts = new { svg = "", legend = Array.Empty<object>() };
                 altitudeChartCache[sessionId] = noCharts;
+                // Persist so we don't re-parse this report on every restart
+                try { SetCachedChartJson(sessionId, JsonSerializer.Serialize(noCharts, JsonOpts)); } catch { }
                 return noCharts;
             }
 
