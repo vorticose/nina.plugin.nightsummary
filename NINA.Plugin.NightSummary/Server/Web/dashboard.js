@@ -159,6 +159,8 @@ var cardViewMode = localStorage.getItem('ns-card-view') || 'expanded'; // 'expan
 var hiddenSessions = JSON.parse(localStorage.getItem('ns-hidden-sessions') || '{}'); // sessionId -> true
 var showHidden = false;
 var livestackMap = {}; // sessionId -> { targetName -> [{filter, url, label, isComposite}] }
+var thumbnailCache = {}; // sessionId -> thumbnails array
+var altitudeChartCache = {}; // sessionId -> {svg, legend}
 var detailCache = {}; // sessionId -> detail JSON (for stat expand)
 var statExpandTimer = null;
 var statExpandActiveEl = null;
@@ -350,80 +352,97 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
   }).join('');
 
   var modeClass = cardViewMode === 'compact' ? ' cards-compact' : '';
-  el.innerHTML = filterHtml + '<div class="cards-container' + modeClass + '">' + cards + '</div>';
+  el.innerHTML = filterHtml + '<div class="cards-container' + modeClass + '" style="opacity:0;transition:opacity 200ms ease-out">' + cards + '</div>';
   bindListEvents();
   if (cardViewMode === 'expanded') {
     loadThumbnails(filtered);
     loadLiveStacks(filtered);
     loadAltitudeCharts(filtered);
   }
+  requestAnimationFrame(function() {
+    var container = el.querySelector('.cards-container');
+    if (container) container.style.opacity = '1';
+  });
+}
+
+function renderThumbnails(s, thumbs) {
+  var el = document.getElementById('thumbs-' + s.sessionId);
+  if (!el) return;
+  el.innerHTML = thumbs.map(function(t) {
+    var img = '<img class="card-thumb" src="' + t.dataUri + '" alt="' + esc(t.target) + '" loading="lazy" onerror="this.style.display=\'none\'">';
+    var svg = '';
+    if (t.fovSvg) {
+      svg = t.fovSvg
+        .replace(/width='\d+'/, "width='100%'")
+        .replace(/height='\d+'/, "height='100%'")
+        .replace("<svg ", "<svg viewBox='0 0 200 200' " + (showFovOverlay ? '' : "style='display:none' "));
+    }
+    var labelName = t.target.length > 30 ? t.target.substring(0, 29) + '\u2026' : t.target;
+    var labelFontStyle = labelName.length <= 14 ? '' :
+      labelName.length <= 20 ? ' style="font-size:7px"' : ' style="font-size:6px"';
+    return '<div class="card-thumb-wrap" data-target="' + esc(t.target) + '" data-session="' + esc(s.sessionId) + '">' +
+      '<div class="thumb-label"' + labelFontStyle + '>' + esc(labelName) + '</div>' +
+      img + svg + '</div>';
+  }).join('');
+  var targetsEl = document.getElementById('targets-' + s.sessionId);
+  if (targetsEl && thumbs.length > 0) {
+    var thumbOrder = thumbs.map(function(t) { return t.target; });
+    var remaining = s.targets.filter(function(t) { return thumbOrder.indexOf(t) === -1; });
+    var ordered = thumbOrder.concat(remaining);
+    targetsEl.innerHTML = ordered.map(function(t, i) { return makeTargetBadge(t, i); }).join('');
+  }
 }
 
 function loadThumbnails(sessions) {
   sessions.forEach(function(s) {
     if (!s.hasReport) return;
-    var container = document.getElementById('thumbs-' + s.sessionId);
-    if (!container) return;
-
+    if (!document.getElementById('thumbs-' + s.sessionId)) return;
+    if (thumbnailCache[s.sessionId]) {
+      renderThumbnails(s, thumbnailCache[s.sessionId]);
+      return;
+    }
     api('/api/sessions/' + s.sessionId + '/thumbnails').then(function(thumbs) {
       if (!thumbs || thumbs.length === 0) return;
-      var el = document.getElementById('thumbs-' + s.sessionId);
-      if (!el) return;
-      el.innerHTML = thumbs.map(function(t) {
-        var img = '<img class="card-thumb" src="' + t.dataUri + '" alt="' + esc(t.target) + '" loading="lazy" onerror="this.style.display=\'none\'">';
-        var svg = '';
-        if (t.fovSvg) {
-          svg = t.fovSvg
-            .replace(/width='\d+'/, "width='100%'")
-            .replace(/height='\d+'/, "height='100%'")
-            .replace("<svg ", "<svg viewBox='0 0 200 200' " + (showFovOverlay ? '' : "style='display:none' "));
-        }
-        var labelName = t.target.length > 30 ? t.target.substring(0, 29) + '\u2026' : t.target;
-        var labelFontStyle = labelName.length <= 14 ? '' :
-          labelName.length <= 20 ? ' style="font-size:7px"' : ' style="font-size:6px"';
-        return '<div class="card-thumb-wrap" data-target="' + esc(t.target) + '" data-session="' + esc(s.sessionId) + '">' +
-          '<div class="thumb-label"' + labelFontStyle + '>' + esc(labelName) + '</div>' +
-          img + svg + '</div>';
-      }).join('');
-      // Reorder target names to match thumbnail order, re-render as badges
-      var targetsEl = document.getElementById('targets-' + s.sessionId);
-      if (targetsEl && thumbs.length > 0) {
-        var thumbOrder = thumbs.map(function(t) { return t.target; });
-        // Include any targets not in the report (no thumbnail)
-        var remaining = s.targets.filter(function(t) { return thumbOrder.indexOf(t) === -1; });
-        var ordered = thumbOrder.concat(remaining);
-        targetsEl.innerHTML = ordered.map(function(t, i) { return makeTargetBadge(t, i); }).join('');
-      }
+      thumbnailCache[s.sessionId] = thumbs;
+      renderThumbnails(s, thumbs);
     }).catch(function(err) {
       logDebug('Thumb load failed for', s.sessionId, err.message);
     });
   });
 }
 
+function wireLiveStackBadges(s, data) {
+  var thumbsEl = document.getElementById('thumbs-' + s.sessionId);
+  if (!thumbsEl) return;
+  var wraps = thumbsEl.querySelectorAll('.card-thumb-wrap');
+  for (var i = 0; i < wraps.length; i++) {
+    var target = wraps[i].getAttribute('data-target');
+    if (target && data[target]) {
+      // Don't add a second badge if already wired (e.g. cache hit on re-render)
+      if (wraps[i].querySelector('.livestack-badge')) continue;
+      var count = data[target].length;
+      var badge = document.createElement('span');
+      badge.className = 'livestack-badge';
+      badge.textContent = count;
+      badge.title = count + ' live stack image' + (count !== 1 ? 's' : '');
+      wraps[i].appendChild(badge);
+      setupLiveStackHover(wraps[i], s.sessionId, target);
+    }
+  }
+}
+
 function loadLiveStacks(sessions) {
   sessions.forEach(function(s) {
     if (!s.hasReport) return;
+    if (livestackMap[s.sessionId]) {
+      wireLiveStackBadges(s, livestackMap[s.sessionId]);
+      return;
+    }
     api('/api/sessions/' + s.sessionId + '/livestack').then(function(data) {
       // data is { targetName: [{target, filter, url, label, isComposite}] }
       if (!data || Object.keys(data).length === 0) return;
       livestackMap[s.sessionId] = data;
-
-      // Add badges to thumbnails that have live stack data
-      var thumbsEl = document.getElementById('thumbs-' + s.sessionId);
-      if (!thumbsEl) return;
-      var wraps = thumbsEl.querySelectorAll('.card-thumb-wrap');
-      for (var i = 0; i < wraps.length; i++) {
-        var target = wraps[i].getAttribute('data-target');
-        if (target && data[target]) {
-          var count = data[target].length;
-          var badge = document.createElement('span');
-          badge.className = 'livestack-badge';
-          badge.textContent = count;
-          badge.title = count + ' live stack image' + (count !== 1 ? 's' : '');
-          wraps[i].appendChild(badge);
-          setupLiveStackHover(wraps[i], s.sessionId, target);
-        }
-      }
+      wireLiveStackBadges(s, data);
     }).catch(function(err) {
       logDebug('LiveStack load failed for', s.sessionId, err.message);
     });
@@ -1026,48 +1045,52 @@ function fixChartTextDistortion(container) {
   });
 }
 
+function renderAltitudeChart(s, data) {
+  var el = document.getElementById('altitude-' + s.sessionId);
+  if (!el) return;
+  var legendHtml = '';
+  if (data.legend && data.legend.length > 0) {
+    legendHtml = '<div class="chart-legend">' + data.legend.map(function(l) {
+      return '<div class="chart-legend-item">' +
+        '<span class="chart-legend-swatch" style="background:' + l.color + '"></span>' +
+        '<span style="color:' + l.color + '">' + esc(l.name) + '</span></div>';
+    }).join('') + '</div>';
+  }
+  el.innerHTML = legendHtml + '<div class="chart-svg-wrap">' + data.svg + '</div>';
+  setupCurveAnimation(el);
+  setupChartCrosshair(el);
+  fixChartTextDistortion(el);
+  // Dynamically extend chart upward based on header height
+  var card = el.closest('.session-card');
+  var header = card ? card.querySelector('.card-header') : null;
+  if (header) {
+    var headerH = header.offsetHeight;
+    var headerMargin = 4;
+    var cardPadTop = 8;
+    var lastChild = header.lastElementChild;
+    var textRight = lastChild ? lastChild.getBoundingClientRect().right : 0;
+    var svgWrap = el.querySelector('.chart-svg-wrap');
+    var chartLeft = svgWrap ? svgWrap.getBoundingClientRect().left : el.getBoundingClientRect().left;
+    var clearance = (textRight > chartLeft - 15) ? 18 : 0;
+    var pullUp = Math.max(0, headerH + headerMargin - cardPadTop - clearance);
+    el.style.marginTop = '-' + pullUp + 'px';
+  }
+  var body = el.parentElement;
+  if (body) body.classList.add('has-chart');
+}
+
 function loadAltitudeCharts(sessions) {
   sessions.forEach(function(s) {
     if (!s.hasReport) return;
-    var container = document.getElementById('altitude-' + s.sessionId);
-    if (!container) return;
-
+    if (!document.getElementById('altitude-' + s.sessionId)) return;
+    if (altitudeChartCache[s.sessionId]) {
+      renderAltitudeChart(s, altitudeChartCache[s.sessionId]);
+      return;
+    }
     api('/api/sessions/' + s.sessionId + '/altitude-chart').then(function(data) {
       if (!data || !data.svg) return;
-      var el = document.getElementById('altitude-' + s.sessionId);
-      if (!el) return;
-      // Render legend as HTML + SVG in a chart-svg-wrap
-      var legendHtml = '';
-      if (data.legend && data.legend.length > 0) {
-        legendHtml = '<div class="chart-legend">' + data.legend.map(function(l) {
-          return '<div class="chart-legend-item">' +
-            '<span class="chart-legend-swatch" style="background:' + l.color + '"></span>' +
-            '<span style="color:' + l.color + '">' + esc(l.name) + '</span></div>';
-        }).join('') + '</div>';
-      }
-      el.innerHTML = legendHtml + '<div class="chart-svg-wrap">' + data.svg + '</div>';
-      setupCurveAnimation(el);
-      setupChartCrosshair(el);
-      fixChartTextDistortion(el);
-      // Dynamically extend chart upward based on header height
-      var card = el.closest('.session-card');
-      var header = card ? card.querySelector('.card-header') : null;
-      if (header) {
-        var headerH = header.offsetHeight;
-        var headerMargin = 4;
-        var cardPadTop = 8;
-        // Only add clearance if header text reaches close to the chart SVG graphics
-        var lastChild = header.lastElementChild;
-        var textRight = lastChild ? lastChild.getBoundingClientRect().right : 0;
-        var svgWrap = el.querySelector('.chart-svg-wrap');
-        var chartLeft = svgWrap ? svgWrap.getBoundingClientRect().left : el.getBoundingClientRect().left;
-        var clearance = (textRight > chartLeft - 15) ? 18 : 0;
-        var pullUp = Math.max(0, headerH + headerMargin - cardPadTop - clearance);
-        el.style.marginTop = '-' + pullUp + 'px';
-      }
-      // Add has-chart class to card-body so CSS can reserve space
-      var body = el.parentElement;
-      if (body) body.classList.add('has-chart');
+      altitudeChartCache[s.sessionId] = data;
+      renderAltitudeChart(s, data);
     }).catch(function(err) {
       logDebug('Altitude chart load failed for', s.sessionId, err.message);
     });

@@ -22,6 +22,12 @@
   --text-secondary: #b0b4bc; /* times, filter names, secondary data */
   --text-tertiary: #6e7380;  /* stat labels (FRAMES, HFR), timestamps */
   --text-quaternary: #484c56;/* metadata, hints, hover-only detail */
+
+  /* Animation timing system (Pattern 10) */
+  --t-fast:    180ms cubic-bezier(0.25, 0.1, 0.25, 1);   /* hover/focus micro-feedback */
+  --t-medium:  450ms cubic-bezier(0.22, 1, 0.36, 1);     /* content reveals, card lift */
+  --t-slow:    650ms cubic-bezier(0.22, 1, 0.36, 1);     /* layout shifts */
+  --t-dramatic:800ms cubic-bezier(0.22, 1, 0.36, 1);     /* altitude curve draw */
 }
 
 /* Light mode */
@@ -132,7 +138,7 @@ nav {
   border-radius: 6px;
   font-size: 13px;
   color: var(--muted);
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--t-fast), color var(--t-fast);
 }
 
 .nav-link:hover {
@@ -160,7 +166,7 @@ nav {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: border-color 0.15s;
+  transition: border-color var(--t-fast);
 }
 
 .theme-toggle:hover { border-color: var(--accent); }
@@ -183,9 +189,9 @@ nav {
 }
 
 .date-input-wrap .date-label {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text);
+  background: rgba(230,232,240,0.06);
+  border: 1px solid rgba(230,232,240,0.12);
+  color: var(--text-secondary);
   padding: 6px 10px;
   border-radius: 6px;
   font-size: 13px;
@@ -193,6 +199,11 @@ nav {
   min-width: 100px;
   display: inline-block;
   cursor: pointer;
+}
+
+.date-input-wrap:hover .date-label {
+  background: rgba(230,232,240,0.10);
+  border-color: rgba(230,232,240,0.22);
 }
 
 .date-input-wrap .date-label.empty {
@@ -313,14 +324,20 @@ nav {
 .date-clear:hover { color: var(--red); }
 
 .filter-sort select {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text);
+  background: rgba(230,232,240,0.06);
+  border: 1px solid rgba(230,232,240,0.12);
+  color: var(--text-secondary);
   padding: 6px 10px;
   border-radius: 6px;
   font-size: 13px;
   font-family: Arial, sans-serif;
   cursor: pointer;
+  transition: background var(--t-fast), border-color var(--t-fast);
+}
+
+.filter-sort select:hover {
+  background: rgba(230,232,240,0.10);
+  border-color: rgba(230,232,240,0.22);
 }
 
 .filter-sort select:focus {
@@ -339,7 +356,7 @@ nav {
     0px 2px 4px rgba(0,0,0,0.3),
     0px 8px 16px -4px rgba(0,0,0,0.25),
     inset 0px 1px 0px rgba(255,255,255,0.04);
-  transition: box-shadow 0.25s ease-out, transform 0.25s ease-out, border-color 0.2s;
+  transition: box-shadow var(--t-medium), transform var(--t-medium), border-color var(--t-fast), background var(--t-medium);
   margin-bottom: 8px;
   cursor: pointer;
   overflow: visible;
@@ -349,6 +366,7 @@ nav {
 .session-card:hover {
   transform: translateY(-3px);
   z-index: 10;
+  background: linear-gradient(rgba(255,255,255,0.03), rgba(255,255,255,0.03)), var(--surface);
   box-shadow:
     0px 0px 0px 1px rgba(212,160,106,0.45),
     0px 0px 14px rgba(212,160,106,0.22),
@@ -456,7 +474,7 @@ nav {
   width: 120px;
   height: 120px;
   flex-shrink: 0;
-  transition: transform 0.2s ease;
+  transition: transform var(--t-medium);
   z-index: 1;
   border-radius: 6px;
   overflow: hidden;
@@ -510,7 +528,7 @@ nav {
   overflow: hidden;
   text-overflow: ellipsis;
   opacity: 0;
-  transition: opacity 0.18s ease-out;
+  transition: opacity var(--t-medium);
   transition-delay: 150ms;
   pointer-events: none;
 }
@@ -553,7 +571,7 @@ nav {
   border-radius: 8px;
   pointer-events: none;
   z-index: 2;
-  transition: opacity 0.15s;
+  transition: opacity var(--t-fast);
 }
 
 .card-thumb-wrap:hover .livestack-badge,
@@ -622,7 +640,7 @@ nav {
   border-radius: 6px;
   border: 1px solid var(--border);
   display: block;
-  transition: transform 0.2s ease;
+  transition: transform var(--t-medium);
 }
 
 /* Zoomed live stack image — fixed overlay centered in viewport */
@@ -798,7 +816,7 @@ nav {
   border-radius: 1px;
   background: var(--accent);
   opacity: 0.35;
-  transition: opacity 0.2s, width 0.2s;
+  transition: opacity var(--t-medium), width var(--t-medium);
 }
 
 .card-stat-expandable:hover::after {
@@ -822,7 +840,7 @@ nav {
     inset 0 1px 0 rgba(255,255,255,0.08);
   transform: translateX(-50%) translateY(4px);
   opacity: 0;
-  transition: opacity 0.18s ease-out, transform 0.18s ease-out;
+  transition: opacity var(--t-medium), transform var(--t-medium);
   pointer-events: none;
 }
 
@@ -880,8 +898,8 @@ nav {
 .view-toggle {
   display: flex;
   gap: 2px;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: rgba(230,232,240,0.04);
+  border: 1px solid rgba(230,232,240,0.10);
   border-radius: 6px;
   padding: 2px;
 }
@@ -895,13 +913,13 @@ nav {
   font-size: 12px;
   font-family: Arial, sans-serif;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--t-fast), color var(--t-fast);
 }
 
-.view-toggle-btn:hover { color: var(--text); }
+.view-toggle-btn:hover { color: var(--text-secondary); }
 
 .view-toggle-btn.active {
-  background: var(--bg);
+  background: rgba(230,232,240,0.12);
   color: var(--accent);
   font-weight: 600;
 }
@@ -920,7 +938,7 @@ nav {
   border-radius: 4px;
   line-height: 1;
   opacity: 0;
-  transition: opacity 0.15s, background 0.15s;
+  transition: opacity var(--t-fast), background var(--t-fast);
   z-index: 1;
 }
 
@@ -1294,7 +1312,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   background: var(--accent);
   border-radius: 4px;
   margin-top: 4px;
-  transition: width 0.3s;
+  transition: width var(--t-slow);
 }
 
 /* ── States ── */
