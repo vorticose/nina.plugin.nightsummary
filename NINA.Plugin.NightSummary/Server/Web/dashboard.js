@@ -152,6 +152,7 @@ function statBox(value, label) {
 // ── Sessions List Page ─────────────────────────────────────────────────────
 
 var sessionsCache = [];
+var initialLoadDone = false; // true after first successful render; skip fade on subsequent renders
 var selectedTargets = {}; // target name -> boolean (true = selected)
 var showEmptySessions = false; // hide 0-image sessions by default
 var showFovOverlay = localStorage.getItem('ns-show-fov') !== 'false'; // on by default
@@ -354,38 +355,33 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
   }).join('');
 
   var modeClass = cardViewMode === 'compact' ? ' cards-compact' : '';
-  el.innerHTML = filterHtml + '<div class="cards-container' + modeClass + '" style="opacity:0;transition:opacity 400ms cubic-bezier(0.22,1,0.36,1)">' + cards + '</div>';
+  // Only animate fade-in on the very first page load — filter toggles reveal instantly
+  var fadeStyle = (!initialLoadDone && cardViewMode === 'expanded')
+    ? 'opacity:0;transition:opacity 400ms cubic-bezier(0.22,1,0.36,1)'
+    : 'opacity:1';
+  el.innerHTML = filterHtml + '<div class="cards-container' + modeClass + '" style="' + fadeStyle + '">' + cards + '</div>';
   bindListEvents();
 
-  function revealContainer() {
-    var container = el.querySelector('.cards-container');
-    if (container) container.style.opacity = '1';
-  }
+  loadThumbnails(filtered);
+  loadLiveStacks(filtered);
+  loadAltitudeCharts(filtered);
 
-  if (cardViewMode === 'expanded') {
-    // Only hold for coordinated reveal if everything is already cached —
-    // cache hits render synchronously so the wait is microseconds.
-    // If any session needs a network fetch, reveal immediately and let
-    // assets load in as they arrive (avoids blank page on initial load).
-    // Livstack is a lazy shelf — don't require it for the reveal gate.
-    // Thumbnails + altitude charts are the visually critical assets.
+  if (!initialLoadDone && cardViewMode === 'expanded') {
+    // First load only: coordinated reveal so all assets appear together
+    function revealContainer() {
+      var container = el.querySelector('.cards-container');
+      if (container) container.style.opacity = '1';
+    }
     var allCached = filtered.every(function(s) {
       if (!s.hasReport) return true;
       return thumbnailCache[s.sessionId] && altitudeChartCache[s.sessionId];
     });
-    loadThumbnails(filtered);
-    loadLiveStacks(filtered);
-    loadAltitudeCharts(filtered);
     if (allCached) {
-      // All assets already in cache — renders are synchronous, reveal next frame
       requestAnimationFrame(revealContainer);
     } else {
-      // Network fetches in flight — wait a short window for assets to arrive,
-      // then reveal whatever's ready (stragglers pop in after)
       setTimeout(revealContainer, 600);
     }
-  } else {
-    requestAnimationFrame(revealContainer);
+    initialLoadDone = true;
   }
 }
 
@@ -1747,7 +1743,7 @@ function bindDetailEvents(sessionId) {
             loadReportIntoShadow(sessionId);
           } else {
             // Report didn't exist before — re-render the whole page
-            sessionsCache = []; // Clear cache to refresh hasReport
+            sessionsCache = []; initialLoadDone = false; // Clear cache to refresh hasReport
             renderSessionDetail(sessionId);
           }
         } else {
@@ -1824,7 +1820,7 @@ function pollRegenAllProgress(sessionId, regenBtn, regenAllBtn, statusEl) {
         statusEl.className = 'regen-status regen-ok';
         regenAllBtn.disabled = false;
         if (regenBtn) regenBtn.disabled = false;
-        sessionsCache = [];
+        sessionsCache = []; initialLoadDone = false;
         var iframe = document.getElementById('report-iframe');
         if (iframe) iframe.src = iframe.src.split('?')[0] + '?t=' + Date.now();
       } else if (data.status === 'error') {
