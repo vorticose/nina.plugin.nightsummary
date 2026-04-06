@@ -248,12 +248,15 @@ nav {
   background: rgba(230,232,240,0.06);
   border: 1px solid rgba(230,232,240,0.12);
   color: var(--text-secondary);
-  padding: 6px 10px;
+  padding: 0 10px;
   border-radius: 6px;
   font-size: 13px;
   font-family: Arial, sans-serif;
   min-width: 100px;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  box-sizing: border-box;
   cursor: pointer;
 }
 
@@ -272,20 +275,24 @@ nav {
 }
 
 .target-dropdown-btn {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text);
-  padding: 6px 10px;
+  background: rgba(230,232,240,0.06);
+  border: 1px solid rgba(230,232,240,0.12);
+  color: var(--text-secondary);
+  padding: 0 10px;
   border-radius: 6px;
   font-size: 13px;
   font-family: Arial, sans-serif;
   cursor: pointer;
   white-space: nowrap;
+  height: 32px;
+  box-sizing: border-box;
+  transition: background var(--t-fast), border-color var(--t-fast);
 }
 
 .target-dropdown-btn:hover,
 .target-dropdown-btn:focus {
-  border-color: var(--accent);
+  background: rgba(230,232,240,0.10);
+  border-color: rgba(230,232,240,0.22);
   outline: none;
 }
 
@@ -326,6 +333,47 @@ nav {
   padding: 2px 0;
 }
 
+/* Filter bar checkbox toggle pills */
+.filter-bar .target-check {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 20px;
+  background: rgba(230,232,240,0.06);
+  border: 1px solid rgba(230,232,240,0.12);
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  box-sizing: border-box;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
+}
+.filter-bar .target-check input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.filter-bar .target-check:hover {
+  background: rgba(230,232,240,0.10);
+  border-color: rgba(230,232,240,0.22);
+  color: var(--text-secondary);
+}
+.filter-bar .target-check:has(input:checked) {
+  background: rgba(126,184,247,0.10);
+  border-color: rgba(126,184,247,0.28);
+  color: var(--accent);
+}
+.filter-bar .target-check:has(input:checked):hover {
+  background: rgba(126,184,247,0.16);
+  border-color: rgba(126,184,247,0.40);
+}
+.filter-bar .target-check.disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
 .target-check input {
   accent-color: var(--accent);
   cursor: pointer;
@@ -340,13 +388,34 @@ nav {
   background: none;
   border: none;
   color: var(--accent);
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
   padding: 0;
   font-family: Arial, sans-serif;
 }
 
 .filter-link:hover { text-decoration: underline; }
+
+/* Filter bar action pills (Clear filters, Unhide all) */
+.filter-bar > .filter-link {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 20px;
+  background: rgba(230,232,240,0.06);
+  border: 1px solid rgba(230,232,240,0.12);
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  color: var(--text-tertiary);
+  transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
+  text-decoration: none;
+}
+.filter-bar > .filter-link:hover {
+  background: rgba(248,81,73,0.08);
+  border-color: rgba(248,81,73,0.22);
+  color: var(--red);
+  text-decoration: none;
+}
 
 /* ── Filter bar ── */
 .filter-bar {
@@ -383,11 +452,13 @@ nav {
   background: rgba(230,232,240,0.06);
   border: 1px solid rgba(230,232,240,0.12);
   color: var(--text-secondary);
-  padding: 6px 10px;
+  padding: 0 10px;
   border-radius: 6px;
   font-size: 13px;
   font-family: Arial, sans-serif;
   cursor: pointer;
+  height: 32px;
+  box-sizing: border-box;
   transition: background var(--t-fast), border-color var(--t-fast);
 }
 

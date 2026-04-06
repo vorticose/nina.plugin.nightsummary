@@ -3,6 +3,7 @@ using NINA.Plugin.NightSummary.Data;
 using NINA.Plugin.NightSummary.Session;
 using System;
 using System.Collections.Generic;
+using System.Data.SQLite;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -21,6 +22,7 @@ namespace NINA.Plugin.NightSummary.Server {
         private HttpListener listener;
         private CancellationTokenSource cts;
         private readonly string dbPath;
+        private readonly string cachePath;
         private readonly string reportsDir;
         private readonly string dataDir;
         private readonly SessionService sessionService;
@@ -121,6 +123,7 @@ namespace NINA.Plugin.NightSummary.Server {
             this.dataDir = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "NINA", "NightSummary");
+            this.cachePath = Path.Combine(dataDir, "nightsummary-dashboard-cache.sqlite");
             this.reportsDir = Path.Combine(dataDir, "reports");
             Directory.CreateDirectory(reportsDir);
         }
@@ -143,6 +146,12 @@ namespace NINA.Plugin.NightSummary.Server {
 
                 // Fire-and-forget the request loop
                 _ = AcceptLoop(cts.Token);
+
+                // Initialize the persistent dashboard cache DB
+                InitCacheDb();
+
+                // Pre-warm altitude chart cache in background so first page load is instant
+                _ = Task.Run(() => WarmAltitudeChartCache(cts.Token));
 
                 log.Info($"Server started on port {port} — local: {Url}" +
                     (TailscaleUrl != null ? $", tailnet: {TailscaleUrl}" : ""));
@@ -741,6 +750,105 @@ namespace NINA.Plugin.NightSummary.Server {
             return result;
         }
 
+        private async Task WarmAltitudeChartCache(CancellationToken ct) {
+            try {
+                // Bulk-load all cached charts from DB into memory — fast path, no HTML parsing
+                int dbLoaded = 0;
+                try {
+                    using (var conn = new SQLiteConnection($"Data Source={cachePath};Version=3;")) {
+                        conn.Open();
+                        using (var cmd = new SQLiteCommand("SELECT SessionId, ChartJson FROM AltitudeCharts", conn))
+                        using (var reader = cmd.ExecuteReader()) {
+                            while (reader.Read()) {
+                                if (ct.IsCancellationRequested) break;
+                                var sid = reader.GetString(0);
+                                var json = reader.GetString(1);
+                                try {
+                                    altitudeChartCache[sid] = JsonSerializer.Deserialize<JsonElement>(json);
+                                    dbLoaded++;
+                                } catch { }
+                            }
+                        }
+                    }
+                } catch (Exception ex) {
+                    log?.Warn($"Could not load altitude charts from DB cache: {ex.Message}");
+                }
+                log?.Info($"Loaded {dbLoaded} altitude charts from persistent DB cache.");
+
+                // Parse HTML for any sessions not yet in cache (new or invalidated)
+                if (!File.Exists(dbPath)) return;
+                var db = new SessionDatabase(dbPath);
+                var sessions = db.GetAllSessions();
+                var toGenerate = sessions.Where(s => !altitudeChartCache.ContainsKey(s.SessionId)).ToList();
+                if (toGenerate.Count > 0) {
+                    log?.Info($"Generating altitude charts for {toGenerate.Count} uncached sessions...");
+                    foreach (var s in toGenerate) {
+                        if (ct.IsCancellationRequested) break;
+                        BuildAltitudeChartResult(s.SessionId);
+                    }
+                }
+                log?.Info("Altitude chart cache warm-up complete.");
+            } catch (Exception ex) {
+                log?.Error("Altitude chart cache warm-up failed", ex);
+            }
+        }
+
+        // ── Persistent altitude chart cache (nightsummary-dashboard-cache.sqlite) ──
+
+        private void InitCacheDb() {
+            try {
+                using (var conn = new SQLiteConnection($"Data Source={cachePath};Version=3;")) {
+                    conn.Open();
+                    using (var cmd = new SQLiteCommand(
+                        "CREATE TABLE IF NOT EXISTS AltitudeCharts (SessionId TEXT PRIMARY KEY, ChartJson TEXT NOT NULL, GeneratedAt TEXT NOT NULL)",
+                        conn))
+                        cmd.ExecuteNonQuery();
+                }
+            } catch (Exception ex) {
+                log?.Warn($"Could not initialize dashboard cache DB: {ex.Message}");
+            }
+        }
+
+        private string GetCachedChartJson(string sessionId) {
+            try {
+                using (var conn = new SQLiteConnection($"Data Source={cachePath};Version=3;")) {
+                    conn.Open();
+                    using (var cmd = new SQLiteCommand("SELECT ChartJson FROM AltitudeCharts WHERE SessionId = @id", conn)) {
+                        cmd.Parameters.AddWithValue("@id", sessionId);
+                        return cmd.ExecuteScalar() as string;
+                    }
+                }
+            } catch { return null; }
+        }
+
+        private void SetCachedChartJson(string sessionId, string json) {
+            try {
+                using (var conn = new SQLiteConnection($"Data Source={cachePath};Version=3;")) {
+                    conn.Open();
+                    using (var cmd = new SQLiteCommand(
+                        "INSERT OR REPLACE INTO AltitudeCharts (SessionId, ChartJson, GeneratedAt) VALUES (@id, @json, @ts)",
+                        conn)) {
+                        cmd.Parameters.AddWithValue("@id", sessionId);
+                        cmd.Parameters.AddWithValue("@json", json);
+                        cmd.Parameters.AddWithValue("@ts", DateTime.UtcNow.ToString("o"));
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+            } catch { }
+        }
+
+        private void DeleteCachedChartJson(string sessionId) {
+            try {
+                using (var conn = new SQLiteConnection($"Data Source={cachePath};Version=3;")) {
+                    conn.Open();
+                    using (var cmd = new SQLiteCommand("DELETE FROM AltitudeCharts WHERE SessionId = @id", conn)) {
+                        cmd.Parameters.AddWithValue("@id", sessionId);
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+            } catch { }
+        }
+
         private async Task HandleGetAltitudeChart(HttpListenerResponse res, string sessionId, Action<int, string> done) {
             if (altitudeChartCache.TryGetValue(sessionId, out var cached)) {
                 await WriteJson(res, 200, cached);
@@ -748,13 +856,28 @@ namespace NINA.Plugin.NightSummary.Server {
                 return;
             }
 
+            var result = BuildAltitudeChartResult(sessionId);
+            await WriteJson(res, 200, result);
+            done?.Invoke(200, $"{sessionId} — altitude chart built");
+        }
+
+        private object BuildAltitudeChartResult(string sessionId) {
+            // Check persistent DB cache before doing any HTML parsing
+            var cachedJson = GetCachedChartJson(sessionId);
+            if (cachedJson != null) {
+                try {
+                    var cached = JsonSerializer.Deserialize<JsonElement>(cachedJson);
+                    altitudeChartCache[sessionId] = cached;
+                    return cached;
+                } catch { }
+            }
+
             var reportPath = Path.Combine(reportsDir, $"{sessionId}.html");
             if (!File.Exists(reportPath)) {
                 var empty = new { svg = "", legend = Array.Empty<object>() };
                 altitudeChartCache[sessionId] = empty;
-                await WriteJson(res, 200, empty);
-                done?.Invoke(200, $"{sessionId} — no report");
-                return;
+                // Don't persist empty results — regenerate when report appears
+                return empty;
             }
 
             var html = File.ReadAllText(reportPath);
@@ -803,9 +926,7 @@ namespace NINA.Plugin.NightSummary.Server {
             if (targetData.Count == 0 || scaffoldSvg == null) {
                 var noCharts = new { svg = "", legend = Array.Empty<object>() };
                 altitudeChartCache[sessionId] = noCharts;
-                await WriteJson(res, 200, noCharts);
-                done?.Invoke(200, $"{sessionId} — no altitude charts in report");
-                return;
+                return noCharts;
             }
 
             // Normalize light-mode colors to dark-mode for consistent dashboard rendering
@@ -913,8 +1034,9 @@ namespace NINA.Plugin.NightSummary.Server {
             var svgResult = sb.ToString();
             var result = new { svg = svgResult, legend };
             altitudeChartCache[sessionId] = result;
-            await WriteJson(res, 200, result);
-            done?.Invoke(200, $"{sessionId} — {targetData.Count} targets in altitude chart");
+            // Persist to DB so subsequent server restarts skip HTML parsing
+            try { SetCachedChartJson(sessionId, JsonSerializer.Serialize(result, JsonOpts)); } catch { }
+            return result;
         }
 
         private async Task HandleGetTargetStats(HttpListenerResponse res, Action<int, string> done) {
@@ -1034,6 +1156,7 @@ namespace NINA.Plugin.NightSummary.Server {
 
                     thumbnailCache.Remove(sessionId);
                     altitudeChartCache.Remove(sessionId);
+                    DeleteCachedChartJson(sessionId);
                     livestackCache.Remove(sessionId);
                     log?.Info($"Regenerated report for {sessionId} ({html.Length / 1024}KB)");
                     Logger.Info($"NightSummary: Dashboard regenerated report for {sessionId}");
@@ -1116,6 +1239,7 @@ namespace NINA.Plugin.NightSummary.Server {
                                 SaveDashboardLiveStackMasters(sessions[i].SessionId, reportData);
                                 thumbnailCache.Remove(sessions[i].SessionId);
                                 altitudeChartCache.Remove(sessions[i].SessionId);
+                                DeleteCachedChartJson(sessions[i].SessionId);
                                 livestackCache.Remove(sessions[i].SessionId);
                                 regenAllGenerated++;
                                 log?.Debug($"Bulk regen {regenAllCurrent}/{sessions.Count}: {sessions[i].SessionId} OK");

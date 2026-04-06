@@ -361,15 +361,25 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
   }
 
   if (cardViewMode === 'expanded') {
-    var timeout = new Promise(function(resolve) { setTimeout(resolve, 3000); });
-    Promise.race([
-      Promise.allSettled([
-        loadThumbnails(filtered),
-        loadLiveStacks(filtered),
-        loadAltitudeCharts(filtered)
-      ]),
-      timeout
-    ]).then(revealContainer);
+    // Only hold for coordinated reveal if everything is already cached —
+    // cache hits render synchronously so the wait is microseconds.
+    // If any session needs a network fetch, reveal immediately and let
+    // assets load in as they arrive (avoids blank page on initial load).
+    var allCached = filtered.every(function(s) {
+      if (!s.hasReport) return true;
+      return thumbnailCache[s.sessionId] && altitudeChartCache[s.sessionId] && livestackMap[s.sessionId];
+    });
+    loadThumbnails(filtered);
+    loadLiveStacks(filtered);
+    loadAltitudeCharts(filtered);
+    if (allCached) {
+      // All assets already in cache — renders are synchronous, reveal next frame
+      requestAnimationFrame(revealContainer);
+    } else {
+      // Network fetches in flight — wait a short window for assets to arrive,
+      // then reveal whatever's ready (stragglers pop in after)
+      setTimeout(revealContainer, 800);
+    }
   } else {
     requestAnimationFrame(revealContainer);
   }
@@ -404,14 +414,14 @@ function renderThumbnails(s, thumbs) {
 }
 
 function loadThumbnails(sessions) {
-  var promises = sessions.map(function(s) {
-    if (!s.hasReport) return Promise.resolve();
-    if (!document.getElementById('thumbs-' + s.sessionId)) return Promise.resolve();
+  sessions.forEach(function(s) {
+    if (!s.hasReport) return;
+    if (!document.getElementById('thumbs-' + s.sessionId)) return;
     if (thumbnailCache[s.sessionId]) {
       renderThumbnails(s, thumbnailCache[s.sessionId]);
-      return Promise.resolve();
+      return;
     }
-    return api('/api/sessions/' + s.sessionId + '/thumbnails').then(function(thumbs) {
+    api('/api/sessions/' + s.sessionId + '/thumbnails').then(function(thumbs) {
       if (!thumbs || thumbs.length === 0) return;
       thumbnailCache[s.sessionId] = thumbs;
       renderThumbnails(s, thumbs);
@@ -419,7 +429,6 @@ function loadThumbnails(sessions) {
       logDebug('Thumb load failed for', s.sessionId, err.message);
     });
   });
-  return Promise.allSettled(promises);
 }
 
 function wireLiveStackBadges(s, data) {
@@ -443,13 +452,13 @@ function wireLiveStackBadges(s, data) {
 }
 
 function loadLiveStacks(sessions) {
-  var promises = sessions.map(function(s) {
-    if (!s.hasReport) return Promise.resolve();
+  sessions.forEach(function(s) {
+    if (!s.hasReport) return;
     if (livestackMap[s.sessionId]) {
       wireLiveStackBadges(s, livestackMap[s.sessionId]);
-      return Promise.resolve();
+      return;
     }
-    return api('/api/sessions/' + s.sessionId + '/livestack').then(function(data) {
+    api('/api/sessions/' + s.sessionId + '/livestack').then(function(data) {
       // data is { targetName: [{target, filter, url, label, isComposite}] }
       if (!data || Object.keys(data).length === 0) return;
       livestackMap[s.sessionId] = data;
@@ -458,7 +467,6 @@ function loadLiveStacks(sessions) {
       logDebug('LiveStack load failed for', s.sessionId, err.message);
     });
   });
-  return Promise.allSettled(promises);
 }
 
 function setupLiveStackHover(thumbWrap, sessionId, targetName) {
@@ -1091,23 +1099,40 @@ function renderAltitudeChart(s, data) {
   if (body) body.classList.add('has-chart');
 }
 
-function loadAltitudeCharts(sessions) {
-  var promises = sessions.map(function(s) {
-    if (!s.hasReport) return Promise.resolve();
-    if (!document.getElementById('altitude-' + s.sessionId)) return Promise.resolve();
-    if (altitudeChartCache[s.sessionId]) {
-      renderAltitudeChart(s, altitudeChartCache[s.sessionId]);
-      return Promise.resolve();
-    }
-    return api('/api/sessions/' + s.sessionId + '/altitude-chart').then(function(data) {
-      if (!data || !data.svg) return;
-      altitudeChartCache[s.sessionId] = data;
-      renderAltitudeChart(s, data);
-    }).catch(function(err) {
-      logDebug('Altitude chart load failed for', s.sessionId, err.message);
-    });
+function fetchAltitudeChart(s) {
+  if (altitudeChartCache[s.sessionId]) {
+    renderAltitudeChart(s, altitudeChartCache[s.sessionId]);
+    return;
+  }
+  api('/api/sessions/' + s.sessionId + '/altitude-chart').then(function(data) {
+    if (!data || !data.svg) return;
+    altitudeChartCache[s.sessionId] = data;
+    renderAltitudeChart(s, data);
+  }).catch(function(err) {
+    logDebug('Altitude chart load failed for', s.sessionId, err.message);
   });
-  return Promise.allSettled(promises);
+}
+
+function loadAltitudeCharts(sessions) {
+  var visible = [];
+  var offscreen = [];
+  sessions.forEach(function(s) {
+    if (!s.hasReport) return;
+    if (!document.getElementById('altitude-' + s.sessionId)) return;
+    var el = document.getElementById('altitude-' + s.sessionId);
+    var rect = el.getBoundingClientRect();
+    if (rect.top < window.innerHeight + 100) {
+      visible.push(s);
+    } else {
+      offscreen.push(s);
+    }
+  });
+  // Load visible charts immediately
+  visible.forEach(fetchAltitudeChart);
+  // Load offscreen after visible ones have had a head start
+  if (offscreen.length > 0) {
+    setTimeout(function() { offscreen.forEach(fetchAltitudeChart); }, 150);
+  }
 }
 
 function bindListEvents() {
