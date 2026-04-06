@@ -365,9 +365,11 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
     // cache hits render synchronously so the wait is microseconds.
     // If any session needs a network fetch, reveal immediately and let
     // assets load in as they arrive (avoids blank page on initial load).
+    // Livstack is a lazy shelf — don't require it for the reveal gate.
+    // Thumbnails + altitude charts are the visually critical assets.
     var allCached = filtered.every(function(s) {
       if (!s.hasReport) return true;
-      return thumbnailCache[s.sessionId] && altitudeChartCache[s.sessionId] && livestackMap[s.sessionId];
+      return thumbnailCache[s.sessionId] && altitudeChartCache[s.sessionId];
     });
     loadThumbnails(filtered);
     loadLiveStacks(filtered);
@@ -378,7 +380,7 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
     } else {
       // Network fetches in flight — wait a short window for assets to arrive,
       // then reveal whatever's ready (stragglers pop in after)
-      setTimeout(revealContainer, 800);
+      setTimeout(revealContainer, 600);
     }
   } else {
     requestAnimationFrame(revealContainer);
@@ -1118,8 +1120,13 @@ function loadAltitudeCharts(sessions) {
   var offscreen = [];
   sessions.forEach(function(s) {
     if (!s.hasReport) return;
-    if (!document.getElementById('altitude-' + s.sessionId)) return;
+    // Skip DOM lookup entirely if already cached — just re-render directly
+    if (altitudeChartCache[s.sessionId]) {
+      renderAltitudeChart(s, altitudeChartCache[s.sessionId]);
+      return;
+    }
     var el = document.getElementById('altitude-' + s.sessionId);
+    if (!el) return;
     var rect = el.getBoundingClientRect();
     if (rect.top < window.innerHeight + 100) {
       visible.push(s);
