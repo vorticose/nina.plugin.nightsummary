@@ -782,7 +782,10 @@ namespace NINA.Plugin.NightSummary.Server {
                 if (!File.Exists(dbPath)) return;
                 var db = new SessionDatabase(dbPath);
                 var sessions = db.GetAllSessions();
-                var toGenerate = sessions.Where(s => !altitudeChartCache.ContainsKey(s.SessionId)).ToList();
+                var toGenerate = sessions.Where(s =>
+                    !altitudeChartCache.ContainsKey(s.SessionId) &&
+                    File.Exists(Path.Combine(reportsDir, $"{s.SessionId}.html"))
+                ).ToList();
                 if (toGenerate.Count > 0) {
                     log?.Info($"Generating altitude charts for {toGenerate.Count} uncached sessions...");
                     foreach (var s in toGenerate) {
