@@ -362,26 +362,28 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
   el.innerHTML = filterHtml + '<div class="cards-container' + modeClass + '" style="' + fadeStyle + '">' + cards + '</div>';
   bindListEvents();
 
-  loadThumbnails(filtered);
   loadLiveStacks(filtered);
-  loadAltitudeCharts(filtered);
 
   if (!initialLoadDone && cardViewMode === 'expanded') {
-    // First load only: coordinated reveal so all assets appear together
+    // First load only: hold opacity:0 until all assets are fetched, then reveal together
     function revealContainer() {
       var container = el.querySelector('.cards-container');
       if (container) container.style.opacity = '1';
     }
-    var allCached = filtered.every(function(s) {
-      if (!s.hasReport) return true;
-      return thumbnailCache[s.sessionId] && altitudeChartCache[s.sessionId];
-    });
-    if (allCached) {
+    var pending = loadThumbnails(filtered).concat(loadAltitudeCharts(filtered));
+    if (pending.length === 0) {
       requestAnimationFrame(revealContainer);
     } else {
-      setTimeout(revealContainer, 600);
+      var safetyTimer = setTimeout(revealContainer, 5000);
+      Promise.all(pending).then(function() {
+        clearTimeout(safetyTimer);
+        revealContainer();
+      });
     }
     initialLoadDone = true;
+  } else {
+    loadThumbnails(filtered);
+    loadAltitudeCharts(filtered);
   }
 }
 
@@ -414,6 +416,7 @@ function renderThumbnails(s, thumbs) {
 }
 
 function loadThumbnails(sessions) {
+  var promises = [];
   sessions.forEach(function(s) {
     if (!s.hasReport) return;
     if (thumbnailCache[s.sessionId]) {
@@ -424,7 +427,7 @@ function loadThumbnails(sessions) {
     if (thumbnailFetching[s.sessionId]) return; // already in flight
     if (!document.getElementById('thumbs-' + s.sessionId)) return;
     thumbnailFetching[s.sessionId] = true;
-    api('/api/sessions/' + s.sessionId + '/thumbnails').then(function(thumbs) {
+    promises.push(api('/api/sessions/' + s.sessionId + '/thumbnails').then(function(thumbs) {
       delete thumbnailFetching[s.sessionId];
       if (!thumbs || thumbs.length === 0) return;
       thumbnailCache[s.sessionId] = thumbs;
@@ -432,8 +435,9 @@ function loadThumbnails(sessions) {
     }).catch(function(err) {
       delete thumbnailFetching[s.sessionId];
       logDebug('Thumb load failed for', s.sessionId, err.message);
-    });
+    }));
   });
+  return promises;
 }
 
 function wireLiveStackBadges(s, data) {
@@ -1107,11 +1111,11 @@ function renderAltitudeChart(s, data) {
 function fetchAltitudeChart(s) {
   if (altitudeChartCache[s.sessionId]) {
     renderAltitudeChart(s, altitudeChartCache[s.sessionId]);
-    return;
+    return Promise.resolve();
   }
-  if (altitudeChartFetching[s.sessionId]) return; // already in flight
+  if (altitudeChartFetching[s.sessionId]) return Promise.resolve(); // already in flight
   altitudeChartFetching[s.sessionId] = true;
-  api('/api/sessions/' + s.sessionId + '/altitude-chart').then(function(data) {
+  return api('/api/sessions/' + s.sessionId + '/altitude-chart').then(function(data) {
     delete altitudeChartFetching[s.sessionId];
     if (!data || !data.svg) return;
     altitudeChartCache[s.sessionId] = data;
@@ -1141,12 +1145,14 @@ function loadAltitudeCharts(sessions) {
       offscreen.push(s);
     }
   });
-  // Load visible charts immediately
-  visible.forEach(fetchAltitudeChart);
-  // Load offscreen after visible ones have had a head start
-  if (offscreen.length > 0) {
-    setTimeout(function() { offscreen.forEach(fetchAltitudeChart); }, 150);
-  }
+  // Load visible charts immediately; offscreen after a short head start
+  var promises = visible.map(fetchAltitudeChart);
+  offscreen.forEach(function(s) {
+    promises.push(new Promise(function(resolve) {
+      setTimeout(function() { fetchAltitudeChart(s).then(resolve, resolve); }, 150);
+    }));
+  });
+  return promises;
 }
 
 function bindListEvents() {
