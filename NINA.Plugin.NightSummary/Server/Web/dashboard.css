@@ -28,6 +28,8 @@
   --t-medium:  450ms cubic-bezier(0.22, 1, 0.36, 1);     /* content reveals, card lift */
   --t-slow:    650ms cubic-bezier(0.22, 1, 0.36, 1);     /* layout shifts */
   --t-dramatic:800ms cubic-bezier(0.22, 1, 0.36, 1);     /* altitude curve draw */
+
+  --header-bg: rgba(17, 18, 36, 0.82);
 }
 
 /* Light mode */
@@ -51,6 +53,8 @@
   --text-secondary: #3a3d4a;
   --text-tertiary: #6b6e7a;
   --text-quaternary: #9a9da8;
+
+  --header-bg: rgba(238, 240, 245, 0.88);
 }
 
 /* Light mode altitude chart — reverse dark-mode color normalization baked into SVG */
@@ -85,19 +89,38 @@ a:hover { text-decoration: underline; }
 
 /* ── Header ── */
 header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  background: var(--header-bg);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  transition: box-shadow var(--t-fast);
+}
+header.scrolled {
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05), 0 4px 24px rgba(0, 0, 0, 0.4);
+}
+:root.light header {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+:root.light header.scrolled {
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.10);
+}
+.header-inner {
+  max-width: 1800px;
+  margin: 0 auto;
+  padding: 5px max(20px, env(safe-area-inset-right)) 5px max(20px, env(safe-area-inset-left));
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 2px solid var(--accent);
-  padding: 8px 0 10px;
-  margin-bottom: 20px;
   flex-wrap: wrap;
   gap: 12px;
 }
 
 header h1 {
   color: var(--accent);
-  font-size: 22px;
+  font-size: 26px;
   margin: 0;
   border: none;
   padding: 0;
@@ -105,20 +128,40 @@ header h1 {
   align-items: center;
   gap: 8px;
   line-height: 1;
+  text-shadow:
+    0 0 6px rgba(126,184,247,0.35),
+    0 0 18px rgba(126,184,247,0.18),
+    0 0 40px rgba(126,184,247,0.08);
+}
+:root.light header h1 {
+  text-shadow:
+    0 0 8px rgba(37,99,184,0.25),
+    0 0 20px rgba(37,99,184,0.12);
 }
 
 .header-icon {
-  width: 28px;
-  height: 28px;
+  width: 48px;
+  height: 48px;
   border-radius: 4px;
   vertical-align: middle;
   flex-shrink: 0;
+  filter: drop-shadow(0 0 4px rgba(126,184,247,0.28)) drop-shadow(0 0 10px rgba(126,184,247,0.12));
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .subtitle {
-  color: var(--muted);
-  font-size: 13px;
-  margin-top: 2px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  background: rgba(230,232,240,0.07);
+  border: 1px solid rgba(230,232,240,0.14);
+  border-radius: 20px;
+  padding: 2px 9px;
+  white-space: nowrap;
 }
 
 .header-right {
@@ -137,20 +180,33 @@ nav {
   padding: 6px 14px;
   border-radius: 6px;
   font-size: 13px;
-  color: var(--muted);
+  color: var(--text-tertiary);
+  position: relative;
   transition: background var(--t-fast), color var(--t-fast);
 }
 
 .nav-link:hover {
-  background: var(--surface);
-  color: var(--text);
+  background: rgba(230,232,240,0.06);
+  color: var(--text-secondary);
   text-decoration: none;
 }
 
 .nav-link.active {
-  background: var(--surface);
   color: var(--accent);
   font-weight: 600;
+  background: rgba(126,184,247,0.08);
+}
+
+.nav-link.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 14px;
+  right: 14px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--accent);
+  box-shadow: 0 0 6px rgba(126,184,247,0.5);
 }
 
 /* ── Theme toggle ── */
@@ -699,18 +755,17 @@ nav {
   font-weight: 600;
   color: var(--text-primary);
   text-shadow:
-    0 -1px 0 rgba(255,255,255,0.12),
-    0 2px 6px rgba(0,0,0,0.8),
-    0 1px 0 rgba(0,0,0,0.6);
+    0 0 8px rgba(232,234,240,0.22),
+    0 0 20px rgba(232,234,240,0.08);
 }
+:root.light .session-date { text-shadow: none; }
 
 .session-times {
   font-size: 13px;
   color: var(--text-secondary);
-  text-shadow:
-    0 -1px 0 rgba(255,255,255,0.08),
-    0 2px 4px rgba(0,0,0,0.7);
+  text-shadow: 0 0 6px rgba(176,180,188,0.18);
 }
+:root.light .session-times { text-shadow: none; }
 
 .badge {
   font-size: 11px;
@@ -948,6 +1003,7 @@ nav {
 
 /* ── Compact mode ── */
 .cards-compact .session-card { padding: 8px 12px; margin-bottom: 6px; }
+.cards-compact .card-body { min-height: 0; }
 .cards-compact .card-thumbs { display: none; }
 .cards-compact .card-altitude { display: none; }
 .cards-compact .card-stats { display: none; }

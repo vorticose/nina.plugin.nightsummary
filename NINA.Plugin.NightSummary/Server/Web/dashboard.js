@@ -352,17 +352,27 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
   }).join('');
 
   var modeClass = cardViewMode === 'compact' ? ' cards-compact' : '';
-  el.innerHTML = filterHtml + '<div class="cards-container' + modeClass + '" style="opacity:0;transition:opacity 200ms ease-out">' + cards + '</div>';
+  el.innerHTML = filterHtml + '<div class="cards-container' + modeClass + '" style="opacity:0;transition:opacity 400ms cubic-bezier(0.22,1,0.36,1)">' + cards + '</div>';
   bindListEvents();
-  if (cardViewMode === 'expanded') {
-    loadThumbnails(filtered);
-    loadLiveStacks(filtered);
-    loadAltitudeCharts(filtered);
-  }
-  requestAnimationFrame(function() {
+
+  function revealContainer() {
     var container = el.querySelector('.cards-container');
     if (container) container.style.opacity = '1';
-  });
+  }
+
+  if (cardViewMode === 'expanded') {
+    var timeout = new Promise(function(resolve) { setTimeout(resolve, 3000); });
+    Promise.race([
+      Promise.allSettled([
+        loadThumbnails(filtered),
+        loadLiveStacks(filtered),
+        loadAltitudeCharts(filtered)
+      ]),
+      timeout
+    ]).then(revealContainer);
+  } else {
+    requestAnimationFrame(revealContainer);
+  }
 }
 
 function renderThumbnails(s, thumbs) {
@@ -394,14 +404,14 @@ function renderThumbnails(s, thumbs) {
 }
 
 function loadThumbnails(sessions) {
-  sessions.forEach(function(s) {
-    if (!s.hasReport) return;
-    if (!document.getElementById('thumbs-' + s.sessionId)) return;
+  var promises = sessions.map(function(s) {
+    if (!s.hasReport) return Promise.resolve();
+    if (!document.getElementById('thumbs-' + s.sessionId)) return Promise.resolve();
     if (thumbnailCache[s.sessionId]) {
       renderThumbnails(s, thumbnailCache[s.sessionId]);
-      return;
+      return Promise.resolve();
     }
-    api('/api/sessions/' + s.sessionId + '/thumbnails').then(function(thumbs) {
+    return api('/api/sessions/' + s.sessionId + '/thumbnails').then(function(thumbs) {
       if (!thumbs || thumbs.length === 0) return;
       thumbnailCache[s.sessionId] = thumbs;
       renderThumbnails(s, thumbs);
@@ -409,6 +419,7 @@ function loadThumbnails(sessions) {
       logDebug('Thumb load failed for', s.sessionId, err.message);
     });
   });
+  return Promise.allSettled(promises);
 }
 
 function wireLiveStackBadges(s, data) {
@@ -432,13 +443,13 @@ function wireLiveStackBadges(s, data) {
 }
 
 function loadLiveStacks(sessions) {
-  sessions.forEach(function(s) {
-    if (!s.hasReport) return;
+  var promises = sessions.map(function(s) {
+    if (!s.hasReport) return Promise.resolve();
     if (livestackMap[s.sessionId]) {
       wireLiveStackBadges(s, livestackMap[s.sessionId]);
-      return;
+      return Promise.resolve();
     }
-    api('/api/sessions/' + s.sessionId + '/livestack').then(function(data) {
+    return api('/api/sessions/' + s.sessionId + '/livestack').then(function(data) {
       // data is { targetName: [{target, filter, url, label, isComposite}] }
       if (!data || Object.keys(data).length === 0) return;
       livestackMap[s.sessionId] = data;
@@ -447,6 +458,7 @@ function loadLiveStacks(sessions) {
       logDebug('LiveStack load failed for', s.sessionId, err.message);
     });
   });
+  return Promise.allSettled(promises);
 }
 
 function setupLiveStackHover(thumbWrap, sessionId, targetName) {
@@ -1080,14 +1092,14 @@ function renderAltitudeChart(s, data) {
 }
 
 function loadAltitudeCharts(sessions) {
-  sessions.forEach(function(s) {
-    if (!s.hasReport) return;
-    if (!document.getElementById('altitude-' + s.sessionId)) return;
+  var promises = sessions.map(function(s) {
+    if (!s.hasReport) return Promise.resolve();
+    if (!document.getElementById('altitude-' + s.sessionId)) return Promise.resolve();
     if (altitudeChartCache[s.sessionId]) {
       renderAltitudeChart(s, altitudeChartCache[s.sessionId]);
-      return;
+      return Promise.resolve();
     }
-    api('/api/sessions/' + s.sessionId + '/altitude-chart').then(function(data) {
+    return api('/api/sessions/' + s.sessionId + '/altitude-chart').then(function(data) {
       if (!data || !data.svg) return;
       altitudeChartCache[s.sessionId] = data;
       renderAltitudeChart(s, data);
@@ -1095,6 +1107,7 @@ function loadAltitudeCharts(sessions) {
       logDebug('Altitude chart load failed for', s.sessionId, err.message);
     });
   });
+  return Promise.allSettled(promises);
 }
 
 function bindListEvents() {
@@ -1847,6 +1860,10 @@ function renderStats() {
 logInfo('Dashboard initializing');
 initTheme();
 document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+window.addEventListener('scroll', function() {
+  var h = document.querySelector('header');
+  if (h) h.classList.toggle('scrolled', window.scrollY > 4);
+}, { passive: true });
 window.addEventListener('hashchange', route);
 route();
 logInfo('Dashboard ready');
