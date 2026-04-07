@@ -253,6 +253,60 @@ box-shadow:
 
 The heavy outer shadow pushes the popup above the card surface.
 
+### Universal Rule — All Interactive Pills and Boxes
+
+**Every interactive pill or box element uses a 3D shadow by default.** Flat
+elements exist only as internal structural containers (e.g. `.filter-bar`,
+`nav`). Anything the user can click or read as a discrete interactive chip
+gets depth. Two base variants apply based on shape:
+
+#### Raised Pill — for pill-shaped elements (`border-radius ≥ 16px`)
+
+Used on: `.subtitle` (sessions count), `.filter-bar .target-check` (toggle
+pills), `.target-dropdown-menu .target-check` (filter popover pills),
+`.card-target-badge`.
+
+```css
+box-shadow:
+  inset 0 1px 0 rgba(255,255,255,0.18),  /* top inner highlight */
+  inset 0 -1px 0 rgba(0,0,0,0.18),       /* bottom inner shadow */
+  0 2px 4px rgba(0,0,0,0.35),            /* drop shadow */
+  0 1px 2px rgba(0,0,0,0.2);             /* tight shadow */
+```
+
+The `0.18` inset highlight is between stat boxes (`0.10`) and target badges
+(`0.28`) — appropriate for medium-prominence pills.
+
+#### Raised Tile — for box-shaped elements (`border-radius < 16px`)
+
+Used on: `.nav-link`, `.theme-toggle`, `.target-dropdown-btn`,
+`.view-toggle-btn.active`.
+
+```css
+box-shadow:
+  inset 0 1px 0 rgba(255,255,255,0.08),  /* subtle top highlight */
+  inset 0 -1px 0 rgba(0,0,0,0.15),       /* bottom inner shadow */
+  0 2px 6px rgba(0,0,0,0.3),             /* drop shadow */
+  0 1px 2px rgba(0,0,0,0.2);             /* tight shadow */
+```
+
+The weaker `0.08` highlight is appropriate for larger box elements where
+the inset lighting would otherwise look exaggerated.
+
+#### Recessed Well — for segmented control containers
+
+Used on: `.view-toggle` (Compact/Expanded container).
+
+```css
+box-shadow:
+  inset 0 2px 6px rgba(0,0,0,0.35),  /* deep inner shadow — sunken */
+  inset 0 0 0 1px rgba(0,0,0,0.2),   /* inner border rim */
+  0 1px 0 rgba(255,255,255,0.05);    /* outer lip */
+```
+
+The active button inside a recessed container gets the Raised Tile shadow,
+making it appear to pop out of the sunken container.
+
 ---
 
 ## 4. Text Shadow / Emboss
@@ -1349,3 +1403,99 @@ The dashboard server writes to its own log file, separate from NINA's main log:
 - **Age-off**: On each server start, log files with `LastWriteTime` older than 14 days are deleted (`PurgeOldLogs`, pattern `dashboard-*.log*`)
 - **Size cap**: Each file rotates at 5MB (`.log` → `.log.1`) as a safety net within a single session
 - **Request logging**: Each HTTP request logs method, path, status code, and elapsed ms via `BeginRequest` / `done(status, detail)` pattern
+
+---
+
+## 23. Target Filter Popover
+
+The target filter is a searchable 2-column popover, replacing a plain scrolling
+dropdown. Design rationale and spec:
+
+### Why a popover, not a dropdown list
+
+A single-column scrolling list breaks down at 20+ targets. A popover with a
+2-column pill grid shows ~16 targets at once before scrolling and scales to any
+count without feeling overwhelming. The searchable input handles large libraries
+(30–50+ targets across a season) without requiring the user to scroll at all.
+
+### Structure
+
+```
+.target-dropdown              ← anchor wrapper (position: relative)
+  .target-dropdown-btn        ← trigger button ("All targets ▾" or "17 targets ▾")
+  .target-dropdown-menu       ← popover panel (position: absolute, open class)
+    .target-search            ← text input, filters pills in-place
+    .target-dropdown-actions  ← "All" / "None" quick-action links
+    .target-pill-list         ← flex-wrap 2-column pill grid
+      .target-check (×N)      ← one per target, checkbox hidden
+```
+
+### Popover Panel
+
+```css
+.target-dropdown-menu {
+  width: 360px;
+  max-height: 420px;
+  border-radius: 10px;         /* rounder than 6px tiles — feels like a panel */
+  padding: 10px 12px 12px;
+  box-shadow:
+    0 8px 24px rgba(0,0,0,0.55),
+    0 2px 6px rgba(0,0,0,0.35),
+    inset 0 1px 0 rgba(255,255,255,0.08);
+}
+```
+
+Shadow matches `.stat-expand-popup` — heavy outer shadow lifts the panel
+above the page surface.
+
+### Search Input
+
+```css
+.target-search {
+  background: var(--surface-well);   /* one level deeper than panel */
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+}
+.target-search:focus { border-color: rgba(126,184,247,0.40); }
+```
+
+The search filters pills via DOM `display: none` only — no API call or
+re-render. `targetSearch` is a module-level string preserved across
+`refresh()` calls so the filter survives pill-click re-renders.
+
+### 2-Column Pill Grid
+
+```css
+.target-pill-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.target-dropdown-menu .target-check {
+  flex: 1 0 calc(50% - 3px);  /* prefer 2-per-row; long names span full width */
+  justify-content: center;
+}
+```
+
+`flex-basis: calc(50% - 3px)` is half the container minus half the 6px gap.
+`flex-grow: 1` means both items in a row expand equally. A pill whose natural
+width exceeds the basis (very long target names) wraps to its own full row.
+
+### Pill State
+
+Pills use neutral/accent — no per-target colors. Target colors carry meaning
+only on cards where they match the altitude chart line for that target; in
+the filter panel there is no chart, so color would be arbitrary noise.
+
+- **Checked** (target visible): `background: rgba(126,184,247,0.12)`, accent border and text
+- **Unchecked** (target hidden): neutral dark background, `--text-tertiary`
+- Shadow: Raised Pill variant (see §3)
+
+### Stay-Open Behavior
+
+`dropdownOpen` is a module-level boolean. `refresh()` rebuilds the entire
+filter bar HTML, which would normally reset the dropdown to closed. On each
+`bindListEvents()` call, if `dropdownOpen` is true the `open` class is
+immediately re-applied to the new menu element before the browser paints.
