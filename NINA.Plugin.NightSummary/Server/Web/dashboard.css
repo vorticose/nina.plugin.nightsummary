@@ -1182,7 +1182,6 @@ nav {
 
 .view-toggle-btn.active {
   color: var(--accent);
-  font-weight: 600;
 }
 
 /* ── Hide button ── */
