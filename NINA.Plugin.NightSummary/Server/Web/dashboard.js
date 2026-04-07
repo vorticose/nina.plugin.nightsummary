@@ -159,6 +159,8 @@ var showFovOverlay = localStorage.getItem('ns-show-fov') !== 'false'; // on by d
 var cardViewMode = localStorage.getItem('ns-card-view') || 'expanded'; // 'expanded' or 'compact'
 var hiddenSessions = JSON.parse(localStorage.getItem('ns-hidden-sessions') || '{}'); // sessionId -> true
 var showHidden = false;
+var dropdownOpen = false; // persists across re-renders so pill clicks don't close the menu
+var targetSearch = '';   // persists across re-renders so search text survives pill clicks
 var livestackMap = {}; // sessionId -> { targetName -> [{filter, url, label, isComposite}] }
 var thumbnailCache = {}; // sessionId -> thumbnails array
 var altitudeChartCache = {}; // sessionId -> {svg, legend}
@@ -213,17 +215,19 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
     targetDropHtml = '<div class="target-dropdown" id="target-dropdown">' +
       '<button class="target-dropdown-btn" id="target-dropdown-btn">' + esc(targetLabel) + ' \u25BC</button>' +
       '<div class="target-dropdown-menu" id="target-dropdown-menu">' +
+        '<input type="text" class="target-search" placeholder="Filter targets\u2026" value="' + esc(targetSearch) + '">' +
         '<div class="target-dropdown-actions">' +
           '<button id="targets-all" class="filter-link">All</button>' +
           '<button id="targets-none" class="filter-link">None</button>' +
-        '</div>';
+        '</div>' +
+        '<div class="target-pill-list">';
     allTargets.forEach(function(t) {
       var checked = selectedTargets[t] !== false ? 'checked' : '';
       targetDropHtml += '<label class="target-check">' +
         '<input type="checkbox" data-target="' + esc(t) + '" ' + checked + '>' +
         '<span>' + esc(t) + '</span></label>';
     });
-    targetDropHtml += '</div></div>';
+    targetDropHtml += '</div></div></div>';
   }
 
   var filterHtml = '<div class="filter-bar">' +
@@ -1155,6 +1159,14 @@ function loadAltitudeCharts(sessions) {
   return promises;
 }
 
+function applyTargetSearch(query) {
+  var q = query.toLowerCase();
+  document.querySelectorAll('.target-pill-list .target-check').forEach(function(label) {
+    var name = label.querySelector('span').textContent.toLowerCase();
+    label.style.display = (!q || name.indexOf(q) !== -1) ? '' : 'none';
+  });
+}
+
 function bindListEvents() {
   var fromEl = document.getElementById('filter-from');
   var toEl = document.getElementById('filter-to');
@@ -1182,19 +1194,36 @@ function bindListEvents() {
   var dropBtn = document.getElementById('target-dropdown-btn');
   var dropMenu = document.getElementById('target-dropdown-menu');
   if (dropBtn && dropMenu) {
+    // Restore open state and search after re-render
+    if (dropdownOpen) {
+      dropMenu.classList.add('open');
+      if (targetSearch) applyTargetSearch(targetSearch);
+    }
     dropBtn.addEventListener('click', function(e) {
       e.stopPropagation();
+      dropdownOpen = !dropdownOpen;
       dropMenu.classList.toggle('open');
     });
-    // Close on click outside
+    // Close on click outside — also clear search
     document.addEventListener('click', function closeDropdown(e) {
       var dropdown = document.getElementById('target-dropdown');
       if (dropdown && !dropdown.contains(e.target)) {
+        dropdownOpen = false;
+        targetSearch = '';
         dropMenu.classList.remove('open');
       }
     });
     // Prevent menu clicks from closing
     dropMenu.addEventListener('click', function(e) { e.stopPropagation(); });
+
+    // Search input — filter pills in-place, no API call
+    var searchEl = dropMenu.querySelector('.target-search');
+    if (searchEl) {
+      searchEl.addEventListener('input', function() {
+        targetSearch = this.value;
+        applyTargetSearch(targetSearch);
+      });
+    }
   }
 
   // Date picker — click anywhere on wrapper opens the picker
