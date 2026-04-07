@@ -161,6 +161,9 @@ var hiddenSessions = JSON.parse(localStorage.getItem('ns-hidden-sessions') || '{
 var showHidden = false;
 var dropdownOpen = false; // persists across re-renders so pill clicks don't close the menu
 var targetSearch = '';   // persists across re-renders so search text survives pill clicks
+var sortDropdownOpen = false;
+var currentSort = localStorage.getItem('ns-sort') || 'date-desc';
+var SORT_LABELS = { 'date-desc': 'Newest first', 'date-asc': 'Oldest first', 'integration': 'Most integration', 'images': 'Most images' };
 var livestackMap = {}; // sessionId -> { targetName -> [{filter, url, label, isComposite}] }
 var thumbnailCache = {}; // sessionId -> thumbnails array
 var altitudeChartCache = {}; // sessionId -> {svg, legend}
@@ -244,13 +247,13 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
         (toFilter ? '<button class="date-clear" data-target="filter-to" title="Clear">\u00d7</button>' : '') +
       '</div>' +
     '</div>' +
-    '<div class="filter-sort">' +
-      '<select id="filter-sort">' +
-        '<option value="date-desc"' + (sortBy === 'date-desc' ? ' selected' : '') + '>Newest first</option>' +
-        '<option value="date-asc"' + (sortBy === 'date-asc' ? ' selected' : '') + '>Oldest first</option>' +
-        '<option value="integration"' + (sortBy === 'integration' ? ' selected' : '') + '>Most integration</option>' +
-        '<option value="images"' + (sortBy === 'images' ? ' selected' : '') + '>Most images</option>' +
-      '</select>' +
+    '<div class="filter-sort" id="sort-dropdown">' +
+      '<button class="sort-dropdown-btn" id="sort-dropdown-btn">' + esc(SORT_LABELS[currentSort]) + ' \u25be</button>' +
+      '<div class="sort-dropdown-menu" id="sort-dropdown-menu">' +
+        Object.keys(SORT_LABELS).map(function(v) {
+          return '<button class="sort-option' + (currentSort === v ? ' active' : '') + '" data-sort="' + v + '">' + esc(SORT_LABELS[v]) + '</button>';
+        }).join('') +
+      '</div>' +
     '</div>' +
     '<button id="filter-clear" class="filter-link">Clear filters</button>' +
     '<div class="view-toggle ' + (cardViewMode === 'compact' ? 'is-compact' : 'is-expanded') + '">' +
@@ -1171,7 +1174,6 @@ function applyTargetSearch(query) {
 function bindListEvents() {
   var fromEl = document.getElementById('filter-from');
   var toEl = document.getElementById('filter-to');
-  var sortEl = document.getElementById('filter-sort');
   var clearEl = document.getElementById('filter-clear');
   var allBtn = document.getElementById('targets-all');
   var noneBtn = document.getElementById('targets-none');
@@ -1180,7 +1182,7 @@ function bindListEvents() {
     return {
       from: fromEl ? fromEl.value : '',
       to: toEl ? toEl.value : '',
-      sort: sortEl ? sortEl.value : 'date-desc'
+      sort: currentSort
     };
   }
 
@@ -1242,7 +1244,34 @@ function bindListEvents() {
       toEl.showPicker && toEl.showPicker();
     });
   }
-  if (sortEl) sortEl.addEventListener('change', refresh);
+  // Sort dropdown
+  var sortBtn = document.getElementById('sort-dropdown-btn');
+  var sortMenu = document.getElementById('sort-dropdown-menu');
+  if (sortBtn && sortMenu) {
+    if (sortDropdownOpen) sortMenu.classList.add('open');
+    sortBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      sortDropdownOpen = !sortDropdownOpen;
+      sortMenu.classList.toggle('open');
+    });
+    document.addEventListener('click', function closeSortDropdown(e) {
+      var dropdown = document.getElementById('sort-dropdown');
+      if (dropdown && !dropdown.contains(e.target)) {
+        sortDropdownOpen = false;
+        sortMenu.classList.remove('open');
+        document.removeEventListener('click', closeSortDropdown);
+      }
+    });
+    sortMenu.addEventListener('click', function(e) { e.stopPropagation(); });
+    sortMenu.querySelectorAll('.sort-option').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        currentSort = this.dataset.sort;
+        localStorage.setItem('ns-sort', currentSort);
+        sortDropdownOpen = false;
+        refresh();
+      });
+    });
+  }
 
   // Clear (×) buttons on date inputs
   document.querySelectorAll('.date-clear').forEach(function(btn) {

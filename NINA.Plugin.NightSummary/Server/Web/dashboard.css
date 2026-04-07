@@ -551,7 +551,12 @@ nav {
 
 .date-clear:hover { color: var(--red); }
 
-.filter-sort select {
+/* ── Sort custom dropdown ── */
+.filter-sort {
+  position: relative;
+}
+
+.sort-dropdown-btn {
   background: rgba(230,232,240,0.06);
   border: 1px solid rgba(230,232,240,0.12);
   color: var(--text-secondary);
@@ -561,8 +566,9 @@ nav {
   font-family: Arial, sans-serif;
   cursor: pointer;
   height: 32px;
+  white-space: nowrap;
   box-sizing: border-box;
-  transition: background var(--t-fast), border-color var(--t-fast);
+  transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.08),
     inset 0 -1px 0 rgba(0,0,0,0.15),
@@ -570,14 +576,56 @@ nav {
     0 1px 2px rgba(0,0,0,0.2);
 }
 
-.filter-sort select:hover {
+.sort-dropdown-btn:hover,
+.sort-dropdown-btn:focus {
   background: rgba(230,232,240,0.10);
   border-color: rgba(230,232,240,0.22);
+  outline: none;
 }
 
-.filter-sort select:focus {
-  outline: none;
-  border-color: var(--accent);
+.sort-dropdown-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 100%;
+  background: var(--card-bg);
+  border: 1px solid rgba(230,232,240,0.14);
+  border-radius: 10px;
+  padding: 6px;
+  z-index: 200;
+  box-shadow:
+    0 8px 24px rgba(0,0,0,0.5),
+    0 2px 6px rgba(0,0,0,0.3),
+    inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+.sort-dropdown-menu.open { display: block; }
+
+.sort-option {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-family: Arial, sans-serif;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+
+.sort-option:hover {
+  background: rgba(230,232,240,0.08);
+  color: var(--text);
+}
+
+.sort-option.active {
+  color: var(--accent);
+  background: rgba(126,184,247,0.08);
 }
 
 /* ── Session cards ── */
@@ -1624,7 +1672,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   .nav-link { min-height: 44px; display: inline-flex; align-items: center; }
   .theme-toggle { width: 44px; height: 44px; }
   .target-dropdown-btn { min-height: 44px; }
-  .filter-sort select { min-height: 44px; }
+  .sort-dropdown-btn { min-height: 44px; }
 
   /* Chart settings grid: stack on mobile */
   .chart-grid-headers { display: none; }
