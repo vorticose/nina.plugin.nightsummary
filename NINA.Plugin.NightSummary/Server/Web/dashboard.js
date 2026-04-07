@@ -369,6 +369,20 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
   var fadeStyle = (!initialLoadDone && cardViewMode === 'expanded')
     ? 'opacity:0;transition:opacity 400ms cubic-bezier(0.22,1,0.36,1)'
     : 'opacity:1';
+
+  // Detach rendered altitude divs before rebuild — the IO observer watches the element
+  // itself, so we must preserve the exact node (not just its children)
+  var savedAltNodes = {};
+  if (initialLoadDone) {
+    filtered.forEach(function(s) {
+      if (!altitudeChartCache[s.sessionId]) return;
+      var altEl = document.getElementById('altitude-' + s.sessionId);
+      if (!altEl || !altEl.hasChildNodes()) return;
+      altEl.parentNode.removeChild(altEl); // detach; reference keeps it alive
+      savedAltNodes[s.sessionId] = altEl;
+    });
+  }
+
   el.innerHTML = filterHtml + '<div class="cards-container' + modeClass + '" style="' + fadeStyle + '">' + cards + '</div>';
   bindListEvents();
 
@@ -393,13 +407,14 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
     initialLoadDone = true;
   } else {
     loadThumbnails(filtered);
-    // Restore cached altitude charts synchronously — no DOM flicker, no redraw
-    filtered.forEach(function(s) {
-      if (altitudeChartCache[s.sessionId]) {
-        renderAltitudeChart(s, altitudeChartCache[s.sessionId]);
+    // Slot saved altitude divs back in — same DOM node, IO observer intact, no replay
+    Object.keys(savedAltNodes).forEach(function(id) {
+      var freshEl = document.getElementById('altitude-' + id);
+      if (freshEl && freshEl.parentNode) {
+        freshEl.parentNode.replaceChild(savedAltNodes[id], freshEl);
       }
     });
-    // Lazy-load uncached charts via IntersectionObserver as they scroll into view
+    // Lazy-load any newly visible uncached charts via IntersectionObserver
     setupAltitudeObserver(filtered);
   }
 }
@@ -1052,22 +1067,15 @@ function setupCurveAnimation(container) {
     p.style.strokeDashoffset = lengths[i];
   });
 
-  // Use IntersectionObserver to trigger draw/reset as card enters/leaves view
+  // Animate in once when first scrolled into view — never reset, never replay
   var observer = new IntersectionObserver(function(entries) {
     entries.forEach(function(entry) {
-      if (entry.isIntersecting) {
-        // Draw: animate in
-        polylines.forEach(function(p) {
-          p.style.transition = 'stroke-dashoffset 0.5s ease-out';
-          p.style.strokeDashoffset = '0';
-        });
-      } else {
-        // Reset: instantly hide for next scroll-in
-        polylines.forEach(function(p, i) {
-          p.style.transition = 'none';
-          p.style.strokeDashoffset = lengths[i];
-        });
-      }
+      if (!entry.isIntersecting) return;
+      polylines.forEach(function(p) {
+        p.style.transition = 'stroke-dashoffset 0.5s ease-out';
+        p.style.strokeDashoffset = '0';
+      });
+      observer.disconnect();
     });
   }, { threshold: 0.3 });
 
