@@ -168,6 +168,7 @@ var livestackMap = {}; // sessionId -> { targetName -> [{filter, url, label, isC
 var thumbnailCache = {}; // sessionId -> thumbnails array
 var altitudeChartCache = {}; // sessionId -> {svg, legend}
 var altitudeChartFetching = {}; // sessionId -> true while request is in flight
+var altitudeObserver = null; // IntersectionObserver for lazy-loading uncached charts
 var thumbnailFetching = {}; // sessionId -> true while request is in flight
 var detailCache = {}; // sessionId -> detail JSON (for stat expand)
 var statExpandTimer = null;
@@ -392,7 +393,14 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
     initialLoadDone = true;
   } else {
     loadThumbnails(filtered);
-    loadAltitudeCharts(filtered);
+    // Restore cached altitude charts synchronously — no DOM flicker, no redraw
+    filtered.forEach(function(s) {
+      if (altitudeChartCache[s.sessionId]) {
+        renderAltitudeChart(s, altitudeChartCache[s.sessionId]);
+      }
+    });
+    // Lazy-load uncached charts via IntersectionObserver as they scroll into view
+    setupAltitudeObserver(filtered);
   }
 }
 
@@ -1162,6 +1170,37 @@ function loadAltitudeCharts(sessions) {
     }));
   });
   return promises;
+}
+
+function setupAltitudeObserver(sessions) {
+  if (altitudeObserver) {
+    altitudeObserver.disconnect();
+    altitudeObserver = null;
+  }
+  var unloaded = sessions.filter(function(s) {
+    return s.hasReport && !altitudeChartCache[s.sessionId];
+  });
+  if (unloaded.length === 0) return;
+
+  altitudeObserver = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (!entry.isIntersecting) return;
+      var id = entry.target.dataset.altId;
+      var s = unloaded.find(function(x) { return x.sessionId === id; });
+      if (s) {
+        fetchAltitudeChart(s);
+        altitudeObserver.unobserve(entry.target);
+      }
+    });
+  }, { rootMargin: '200px' });
+
+  unloaded.forEach(function(s) {
+    var el = document.getElementById('altitude-' + s.sessionId);
+    if (el) {
+      el.dataset.altId = s.sessionId;
+      altitudeObserver.observe(el);
+    }
+  });
 }
 
 function applyTargetSearch(query) {
