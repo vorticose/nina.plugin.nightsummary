@@ -1131,18 +1131,42 @@ nav {
 /* ── View mode toggle ── */
 .view-toggle {
   display: flex;
-  gap: 2px;
+  position: relative;
   background: rgba(230,232,240,0.04);
   border: 1px solid rgba(230,232,240,0.10);
   border-radius: 6px;
-  padding: 2px;
+  padding: 3px;
   box-shadow:
     inset 0 2px 6px rgba(0,0,0,0.35),
     inset 0 0 0 1px rgba(0,0,0,0.2),
     0 1px 0 rgba(255,255,255,0.05);
 }
 
+.view-toggle-thumb {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc(50% - 3px);
+  border-radius: 4px;
+  background: rgba(230,232,240,0.12);
+  pointer-events: none;
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.10),
+    inset 0 -1px 0 rgba(0,0,0,0.15),
+    0 2px 4px rgba(0,0,0,0.3),
+    0 1px 2px rgba(0,0,0,0.2);
+}
+
+.view-toggle.is-expanded .view-toggle-thumb {
+  transform: translateX(100%);
+}
+
 .view-toggle-btn {
+  position: relative;
+  z-index: 1;
+  flex: 1;
   background: none;
   border: none;
   color: var(--muted);
@@ -1151,20 +1175,14 @@ nav {
   font-size: 12px;
   font-family: Arial, sans-serif;
   cursor: pointer;
-  transition: background var(--t-fast), color var(--t-fast);
+  transition: color var(--t-fast);
 }
 
 .view-toggle-btn:hover { color: var(--text-secondary); }
 
 .view-toggle-btn.active {
-  background: rgba(230,232,240,0.12);
   color: var(--accent);
   font-weight: 600;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.10),
-    inset 0 -1px 0 rgba(0,0,0,0.15),
-    0 2px 4px rgba(0,0,0,0.3),
-    0 1px 2px rgba(0,0,0,0.2);
 }
 
 /* ── Hide button ── */

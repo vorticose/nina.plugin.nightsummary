@@ -253,7 +253,8 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
       '</select>' +
     '</div>' +
     '<button id="filter-clear" class="filter-link">Clear filters</button>' +
-    '<div class="view-toggle">' +
+    '<div class="view-toggle ' + (cardViewMode === 'compact' ? 'is-compact' : 'is-expanded') + '">' +
+      '<div class="view-toggle-thumb"></div>' +
       '<button class="view-toggle-btn' + (cardViewMode === 'compact' ? ' active' : '') + '" data-view="compact">Compact</button>' +
       '<button class="view-toggle-btn' + (cardViewMode === 'expanded' ? ' active' : '') + '" data-view="expanded">Expanded</button>' +
     '</div>' +
@@ -1329,9 +1330,13 @@ function bindListEvents() {
   // View mode toggle
   document.querySelectorAll('.view-toggle-btn').forEach(function(btn) {
     btn.addEventListener('click', function() {
+      if (cardViewMode === this.dataset.view) return;
       cardViewMode = this.dataset.view;
       localStorage.setItem('ns-card-view', cardViewMode);
-      refresh();
+      var toggle = this.closest('.view-toggle');
+      toggle.classList.toggle('is-compact', cardViewMode === 'compact');
+      toggle.classList.toggle('is-expanded', cardViewMode === 'expanded');
+      setTimeout(refresh, 230);
     });
   });
 }
