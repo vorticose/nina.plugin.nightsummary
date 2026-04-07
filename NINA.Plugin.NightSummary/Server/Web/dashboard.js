@@ -1336,6 +1336,9 @@ function bindListEvents() {
       var toggle = this.closest('.view-toggle');
       toggle.classList.toggle('is-compact', cardViewMode === 'compact');
       toggle.classList.toggle('is-expanded', cardViewMode === 'expanded');
+      toggle.querySelectorAll('.view-toggle-btn').forEach(function(b) {
+        b.classList.toggle('active', b.dataset.view === cardViewMode);
+      });
       setTimeout(refresh, 230);
     });
   });
