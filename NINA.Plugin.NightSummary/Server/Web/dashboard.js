@@ -163,7 +163,7 @@ var dropdownOpen = false; // persists across re-renders so pill clicks don't clo
 var targetSearch = '';   // persists across re-renders so search text survives pill clicks
 var sortDropdownOpen = false;
 var currentSort = localStorage.getItem('ns-sort') || 'date-desc';
-var SORT_LABELS = { 'date-desc': 'Newest first', 'date-asc': 'Oldest first', 'integration': 'Most integration', 'images': 'Most images' };
+var SORT_LABELS = { 'date-desc': 'Newest first', 'date-asc': 'Oldest first', 'integration': 'Most integration', 'images': 'Most images', 'targets': 'Most targets' };
 var livestackMap = {}; // sessionId -> { targetName -> [{filter, url, label, isComposite}] }
 var thumbnailCache = {}; // sessionId -> thumbnails array
 var altitudeChartCache = {}; // sessionId -> {svg, legend}
@@ -300,6 +300,7 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
     if (sortBy === 'date-asc') return a.sessionStart.localeCompare(b.sessionStart);
     if (sortBy === 'integration') return (b.totalIntegrationSeconds || 0) - (a.totalIntegrationSeconds || 0);
     if (sortBy === 'images') return (b.imageCount || 0) - (a.imageCount || 0);
+    if (sortBy === 'targets') return (b.targets.length || 0) - (a.targets.length || 0);
     return b.sessionStart.localeCompare(a.sessionStart); // date-desc default
   });
 
