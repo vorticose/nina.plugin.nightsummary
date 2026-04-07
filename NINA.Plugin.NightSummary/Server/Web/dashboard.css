@@ -589,8 +589,8 @@ nav {
   top: calc(100% + 6px);
   left: 0;
   min-width: 100%;
-  background: var(--card-bg);
-  border: 1px solid rgba(230,232,240,0.14);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 6px;
   z-index: 200;
