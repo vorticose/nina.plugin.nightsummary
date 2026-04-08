@@ -58,7 +58,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
         with open(filepath, "rb") as f:
             data = f.read()
         self.send_response(200)
-        self.send_header("Content-Type", content_type)
+        ct = content_type + "; charset=utf-8" if content_type == "application/json" else content_type
+        self.send_header("Content-Type", ct)
         self.send_header("Content-Length", str(len(data)))
         if content_type == "image/jpeg":
             self.send_header("Cache-Control", "public, max-age=3600")
