@@ -1648,9 +1648,31 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 @media (max-width: 700px) {
   /* ── Shell & header ── */
   .shell { padding: 12px; }
-  header { flex-direction: column; align-items: center; text-align: center; gap: 8px; }
-  header h1 { font-size: 18px; }
-  .header-right { justify-content: center; }
+  .header-inner {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px 8px;
+    padding: 4px 12px;
+  }
+  /* Row 1: icon + title, full width centered */
+  .header-left {
+    width: 100%;
+    justify-content: center;
+    gap: 8px;
+  }
+  header h1 { font-size: min(5.8vw, 22px); white-space: nowrap; }
+  .header-left { margin-bottom: 4px; }
+  /* Row 2: subtitle + nav + theme toggle — grid for true center alignment */
+  .header-right {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 6px;
+  }
+  .header-right .subtitle { justify-self: start; }
+  .header-right nav { justify-content: center; }
+  .header-right .theme-toggle { justify-self: end; }
 
   /* ── Card layout: vertical stack ── */
   .session-card { padding: 8px 12px 10px 12px; }
@@ -1781,9 +1803,13 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
     margin-top: 4px;
   }
 
-  /* ── Filter bar: wrapping row, centered ── */
-  .filter-bar { flex-wrap: wrap; justify-content: center; gap: 6px; }
+  /* ── Filter bar: wrapping row, centered, uniform height, compact pills ── */
+  .filter-bar { flex-wrap: wrap; justify-content: center; gap: 5px; }
+  .filter-bar > * { min-height: 36px; display: inline-flex; align-items: center; box-sizing: border-box; }
+  .filter-bar .target-check { padding: 0 7px; font-size: 11px; }
+  .filter-bar .filter-link { padding: 0 8px; font-size: 11px; }
   .filter-dates { flex: 0 0 auto; }
+  .filter-dates input { min-height: 36px; }
   .report-nav { flex-direction: column; align-items: flex-start; gap: 8px; }
 
   /* ── Report view: compact header and controls ── */
@@ -1806,8 +1832,8 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   .report-btn, .back-btn { min-height: 44px; display: inline-flex; align-items: center; }
   .nav-link { min-height: 44px; display: inline-flex; align-items: center; }
   .theme-toggle { width: 44px; height: 44px; }
-  .target-dropdown-btn { min-height: 44px; }
-  .sort-dropdown-btn { min-height: 44px; }
+  .target-dropdown-btn { min-height: 36px; }
+  .sort-dropdown-btn { min-height: 36px; }
 
   /* ── Chart settings grid: stack ── */
   .chart-grid-headers { display: none; }

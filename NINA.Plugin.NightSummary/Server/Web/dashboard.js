@@ -691,12 +691,12 @@ function hideSession(sessionId) {
       card.style.boxShadow = 'none';
       // Force layout so the browser registers the explicit height before animating
       card.offsetHeight; // eslint-disable-line no-unused-expressions
-      card.style.transition = 'height 0.3s ease, margin 0.3s ease';
+      card.style.transition = 'height 0.6s cubic-bezier(0.22, 1, 0.36, 1), margin 0.6s cubic-bezier(0.22, 1, 0.36, 1)';
       card.style.height = '0';
       setTimeout(function() {
         if (card.parentNode) card.parentNode.removeChild(card);
         afterRemove();
-      }, 300);
+      }, 600);
     }, 200);
   } else {
     afterRemove();
