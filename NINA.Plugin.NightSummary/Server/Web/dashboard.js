@@ -279,10 +279,15 @@ function renderTargetCard(t, index) {
   if (t.filters && t.filters.length > 0) {
     html += '<div class="target-filters">';
     t.filters.forEach(function(f) {
+      var secs = f.totalSeconds || 0;
+      if (secs < 1) return; // skip zero-integration filters (all frames rejected)
       var fc = getFilterColor(f.filter);
       var rgb = hexToRgb(fc);
+      var durStr = secs >= 3600 ? (secs / 3600).toFixed(1) + 'h' :
+                   secs >= 60   ? Math.round(secs / 60) + 'm' :
+                                  Math.round(secs) + 's';
       html += '<span class="target-filter-pill" style="background:rgba(' + rgb + ',0.10);border-color:rgba(' + rgb + ',0.28);color:' + fc + '">';
-      html += esc(f.filter) + ' ' + f.totalHours.toFixed(1) + 'h';
+      html += esc(f.filter) + ' ' + durStr;
       html += '</span>';
     });
     html += '</div>';
