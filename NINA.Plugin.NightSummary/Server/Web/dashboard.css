@@ -1639,19 +1639,62 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 
 /* ── Responsive ── */
 @media (max-width: 700px) {
+  /* ── Shell & header ── */
   .shell { padding: 12px; }
   header { flex-direction: column; align-items: center; text-align: center; gap: 8px; }
   header h1 { font-size: 18px; }
-  .card-thumbs { display: none; }
-  .card-altitude { display: none; }
-  .card-stats { display: none; }
-  .card-stats-line { display: block; }
+
+  /* ── Card layout: vertical stack ── */
+  .session-card { padding: 8px 12px 10px 12px; }
+  .card-body { flex-direction: column; min-height: 0; }
+  .card-content { min-width: 0; max-width: 100%; }
+
+  /* ── Thumbnails: smaller, horizontal scroll ── */
+  .card-thumbs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+    margin-bottom: 6px;
+  }
+  .card-thumb-wrap { width: 88px; height: 88px; flex-shrink: 0; }
+  .card-thumb-wrap:hover,
+  .card-thumb-wrap.shelf-active { transform: none; }
+
+  /* ── Stat boxes: 2-column grid ── */
+  .card-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .card-stat { padding: 8px 12px; }
+  .card-stat-value { font-size: 18px; }
+  .card-stat-label { font-size: 10px; }
+
+  /* ── Altitude chart: below content, fixed height ── */
+  .card-altitude { flex-direction: column; margin-top: 0 !important; }
+  .chart-svg-wrap { height: 160px; flex: none; }
+  .chart-legend {
+    align-self: flex-start;
+    max-width: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    padding: 4px 8px;
+    margin-bottom: 4px;
+  }
+  .chart-legend-item { font-size: 9px; }
+
+  /* ── Livestack shelf: hide on mobile ── */
+  .livestack-shelf { display: none; }
+
+  /* ── Dropdowns: constrain to viewport ── */
+  .target-dropdown-menu { width: min(360px, calc(100vw - 24px)); }
+  .sort-dropdown-menu { right: 0; left: auto; }
+
+  /* ── Filter & navigation ── */
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
   .filter-bar { flex-direction: column; align-items: flex-start; }
   .filter-dates { width: 100%; }
   .report-nav { flex-direction: column; align-items: flex-start; gap: 8px; }
 
-  /* Report view: compact header and controls on mobile */
+  /* ── Report view: compact header and controls ── */
   body.report-view { overflow: auto; }
   body.report-view .shell { padding: 4px 0 0 0; max-width: 100%; height: auto; }
   body.report-view #content { overflow: visible; }
@@ -1667,19 +1710,19 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   .report-viewer { border-radius: 0; border-left: none; border-right: none; border: none; overflow: visible; }
   .report-shadow-host { width: 100%; }
 
-  /* Touch-friendly tap targets (44px minimum) */
+  /* ── Touch-friendly tap targets (44px minimum) ── */
   .report-btn, .back-btn { min-height: 44px; display: inline-flex; align-items: center; }
   .nav-link { min-height: 44px; display: inline-flex; align-items: center; }
   .theme-toggle { width: 44px; height: 44px; }
   .target-dropdown-btn { min-height: 44px; }
   .sort-dropdown-btn { min-height: 44px; }
 
-  /* Chart settings grid: stack on mobile */
+  /* ── Chart settings grid: stack ── */
   .chart-grid-headers { display: none; }
   .chart-row { grid-template-columns: 1fr 1fr; gap: 4px; padding: 8px 0; border-bottom: 1px solid var(--border); }
   .chart-row-label { grid-column: 1 / -1; }
   .remove-chart-btn { justify-self: end; }
 
-  /* Equipment grid single column */
+  /* ── Equipment grid single column ── */
   .equipment-grid { grid-template-columns: 1fr; }
 }
