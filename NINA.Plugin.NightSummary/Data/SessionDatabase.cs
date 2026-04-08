@@ -457,7 +457,14 @@ namespace NINA.Plugin.NightSummary.Data {
                         ReadoutMode TEXT,
                         SkyQuality REAL,
                         CloudCover REAL,
-                        SeeingFWHM REAL
+                        SeeingFWHM REAL,
+                        StatMedian REAL,
+                        StatMean REAL,
+                        StatStDev REAL,
+                        StatMAD REAL,
+                        StatMin INTEGER,
+                        StatMax INTEGER,
+                        StatBitDepth INTEGER
                     )";
 
                 using (var cmd = new SQLiteCommand(createSessions, conn))
@@ -529,6 +536,13 @@ namespace NINA.Plugin.NightSummary.Data {
                 MigrateAddColumn(conn, "Sessions",      "SafetyMonitorName","TEXT");
                 MigrateAddColumn(conn, "Sessions",      "WeatherName",      "TEXT");
                 MigrateAddColumn(conn, "Sessions",      "SwitchName",       "TEXT");
+                MigrateAddColumn(conn, "Images",        "StatMedian",       "REAL");
+                MigrateAddColumn(conn, "Images",        "StatMean",         "REAL");
+                MigrateAddColumn(conn, "Images",        "StatStDev",        "REAL");
+                MigrateAddColumn(conn, "Images",        "StatMAD",          "REAL");
+                MigrateAddColumn(conn, "Images",        "StatMin",          "INTEGER");
+                MigrateAddColumn(conn, "Images",        "StatMax",          "INTEGER");
+                MigrateAddColumn(conn, "Images",        "StatBitDepth",     "INTEGER");
 
                 string createTimingEvents = @"
                     CREATE TABLE IF NOT EXISTS SessionTimingEvents (
@@ -693,7 +707,8 @@ namespace NINA.Plugin.NightSummary.Data {
                         FocuserPosition, RotatorPosition, PositionAngle,
                         Humidity, DewPoint, WindSpeed, Pressure,
                         GradingStatus, RejectReason,
-                        ImageType, Altitude, Azimuth, Airmass, SideOfPier, ReadoutMode, SkyQuality, CloudCover, SeeingFWHM)
+                        ImageType, Altitude, Azimuth, Airmass, SideOfPier, ReadoutMode, SkyQuality, CloudCover, SeeingFWHM,
+                        StatMedian, StatMean, StatStDev, StatMAD, StatMin, StatMax, StatBitDepth)
                     VALUES (
                         @SessionId, @Timestamp, @TargetName, @Filter, @ExposureDuration,
                         @HFR, @FWHM, @Eccentricity, @StarCount, @GuidingRMSTotal, @GuidingScale, @Accepted,
@@ -702,7 +717,8 @@ namespace NINA.Plugin.NightSummary.Data {
                         @FocuserPosition, @RotatorPosition, @PositionAngle,
                         @Humidity, @DewPoint, @WindSpeed, @Pressure,
                         @GradingStatus, @RejectReason,
-                        @ImageType, @Altitude, @Azimuth, @Airmass, @SideOfPier, @ReadoutMode, @SkyQuality, @CloudCover, @SeeingFWHM)";
+                        @ImageType, @Altitude, @Azimuth, @Airmass, @SideOfPier, @ReadoutMode, @SkyQuality, @CloudCover, @SeeingFWHM,
+                        @StatMedian, @StatMean, @StatStDev, @StatMAD, @StatMin, @StatMax, @StatBitDepth)";
 
                 using (var cmd = new SQLiteCommand(sql, conn)) {
                     cmd.Parameters.AddWithValue("@SessionId",       image.SessionId);
@@ -744,6 +760,13 @@ namespace NINA.Plugin.NightSummary.Data {
                     cmd.Parameters.AddWithValue("@SkyQuality",      image.SkyQuality.HasValue      ? (object)image.SkyQuality.Value      : DBNull.Value);
                     cmd.Parameters.AddWithValue("@CloudCover",      image.CloudCover.HasValue      ? (object)image.CloudCover.Value      : DBNull.Value);
                     cmd.Parameters.AddWithValue("@SeeingFWHM",      image.SeeingFWHM.HasValue      ? (object)image.SeeingFWHM.Value      : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@StatMedian",      image.StatMedian.HasValue      ? (object)image.StatMedian.Value      : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@StatMean",        image.StatMean.HasValue        ? (object)image.StatMean.Value        : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@StatStDev",       image.StatStDev.HasValue       ? (object)image.StatStDev.Value       : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@StatMAD",         image.StatMAD.HasValue         ? (object)image.StatMAD.Value         : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@StatMin",         image.StatMin.HasValue         ? (object)image.StatMin.Value         : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@StatMax",         image.StatMax.HasValue         ? (object)image.StatMax.Value         : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@StatBitDepth",    image.StatBitDepth.HasValue    ? (object)image.StatBitDepth.Value    : DBNull.Value);
                     cmd.ExecuteNonQuery();
                 }
             }
@@ -801,7 +824,14 @@ namespace NINA.Plugin.NightSummary.Data {
                                 ReadoutMode     = reader["ReadoutMode"]     == DBNull.Value ? null : reader["ReadoutMode"].ToString(),
                                 SkyQuality      = reader["SkyQuality"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["SkyQuality"]),
                                 CloudCover      = reader["CloudCover"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["CloudCover"]),
-                                SeeingFWHM      = reader["SeeingFWHM"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["SeeingFWHM"])
+                                SeeingFWHM      = reader["SeeingFWHM"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["SeeingFWHM"]),
+                                StatMedian      = reader["StatMedian"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["StatMedian"]),
+                                StatMean        = reader["StatMean"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["StatMean"]),
+                                StatStDev       = reader["StatStDev"]       == DBNull.Value ? (double?)null : Convert.ToDouble(reader["StatStDev"]),
+                                StatMAD         = reader["StatMAD"]         == DBNull.Value ? (double?)null : Convert.ToDouble(reader["StatMAD"]),
+                                StatMin         = reader["StatMin"]         == DBNull.Value ? (int?)null    : Convert.ToInt32(reader["StatMin"]),
+                                StatMax         = reader["StatMax"]         == DBNull.Value ? (int?)null    : Convert.ToInt32(reader["StatMax"]),
+                                StatBitDepth    = reader["StatBitDepth"]    == DBNull.Value ? (int?)null    : Convert.ToInt32(reader["StatBitDepth"])
                             });
                         }
                     }

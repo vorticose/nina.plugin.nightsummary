@@ -154,6 +154,7 @@ function route() {
   } else {
     renderSessionList(params);
   }
+  repositionViewToggle();
 }
 
 function navigate(hash) {
@@ -325,6 +326,7 @@ var initialLoadDone = false; // true after first successful render; skip fade on
 var selectedTargets = {}; // target name -> boolean (true = selected)
 var showEmptySessions = false; // hide 0-image sessions by default
 var showFovOverlay = localStorage.getItem('ns-show-fov') !== 'false'; // on by default
+var showAltitude = localStorage.getItem('ns-show-altitude') !== 'false'; // on by default
 var cardViewMode = localStorage.getItem('ns-card-view') || 'expanded'; // 'expanded' or 'compact'
 var hiddenSessions = JSON.parse(localStorage.getItem('ns-hidden-sessions') || '{}'); // sessionId -> true
 var showHidden = false;
@@ -432,14 +434,14 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
       '<button class="view-toggle-btn' + (cardViewMode === 'expanded' ? ' active' : '') + '" data-view="expanded">Expanded</button>' +
     '</div>' +
     '<label class="target-check" title="Include sessions with 0 captured images"><input type="checkbox" id="filter-empty"' + (showEmptySessions ? ' checked' : '') + '><span>Show empty</span></label>' +
-    '<label class="target-check' + (cardViewMode === 'compact' ? ' disabled' : '') + '" title="Show camera FOV rectangle on thumbnails"><input type="checkbox" id="filter-fov"' + (showFovOverlay ? ' checked' : '') + (cardViewMode === 'compact' ? ' disabled' : '') + '><span>Show FOV</span></label>';
+    '<label class="target-check' + (cardViewMode === 'compact' ? ' disabled' : '') + '" title="Show camera FOV rectangle on thumbnails"><input type="checkbox" id="filter-fov"' + (showFovOverlay ? ' checked' : '') + (cardViewMode === 'compact' ? ' disabled' : '') + '><span>Show FOV</span></label>' +
+    '<label class="target-check' + (cardViewMode === 'compact' ? ' disabled' : '') + '" title="Show altitude chart on each card"><input type="checkbox" id="filter-altitude"' + (showAltitude ? ' checked' : '') + (cardViewMode === 'compact' ? ' disabled' : '') + '><span>Altitude</span></label>';
 
-  // Add hidden session controls inline if any are hidden
+  // Add unhide-all button if any sessions are hidden
   var tempHiddenCount = sessionsCache.filter(function(s) { return hiddenSessions[s.sessionId]; }).length;
   if (tempHiddenCount > 0) {
     filterHtml +=
-      '<label class="target-check"><input type="checkbox" id="filter-hidden"' + (showHidden ? ' checked' : '') + '><span>Show hidden (' + tempHiddenCount + ')</span></label>' +
-      '<button id="unhide-all" class="filter-link">Unhide all</button>';
+      '<button id="unhide-all" class="filter-link">Unhide all (' + tempHiddenCount + ')</button>';
   }
 
   filterHtml += '</div>';
@@ -526,7 +528,7 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
           '<div class="card-stats-line">' + statsLine + '</div>' +
           statBoxes +
         '</div>' +
-        '<div class="card-altitude" id="altitude-' + s.sessionId + '"></div>' +
+        '<div class="card-altitude" id="altitude-' + s.sessionId + '"' + (showAltitude ? '' : ' style="display:none"') + '></div>' +
       '</div>' +
     '</div>';
   }).join('');
@@ -806,33 +808,20 @@ function hideSession(sessionId) {
       sub.textContent = visible + ' of ' + sessionsCache.length + ' sessions';
     }
 
-    // Update or create hidden-session controls in the filter bar
+    // Update or create unhide-all button in the filter bar
     var hiddenCount = sessionsCache.filter(function(s) { return hiddenSessions[s.sessionId]; }).length;
-    var hiddenEl = document.getElementById('filter-hidden');
-    if (hiddenEl) {
-      var span = hiddenEl.parentNode.querySelector('span');
-      if (span) span.textContent = 'Show hidden (' + hiddenCount + ')';
+    var unhideBtn = document.getElementById('unhide-all');
+    if (unhideBtn) {
+      unhideBtn.textContent = 'Unhide all (' + hiddenCount + ')';
     } else {
       var filterBar = document.querySelector('.filter-bar');
       if (!filterBar) return;
-      var hiddenLabel = document.createElement('label');
-      hiddenLabel.className = 'target-check';
-      hiddenLabel.innerHTML = '<input type="checkbox" id="filter-hidden"><span>Show hidden (' + hiddenCount + ')</span>';
-      filterBar.appendChild(hiddenLabel);
-      var unhideBtn = document.createElement('button');
-      unhideBtn.id = 'unhide-all';
-      unhideBtn.className = 'filter-link';
-      unhideBtn.textContent = 'Unhide all';
-      filterBar.appendChild(unhideBtn);
-      document.getElementById('filter-hidden').addEventListener('change', function() {
-        showHidden = this.checked;
-        var from = document.getElementById('filter-from');
-        var to = document.getElementById('filter-to');
-        var sort = document.getElementById('filter-sort');
-        doRenderList(document.getElementById('content'), document.getElementById('page-subtitle'),
-          from ? from.value : '', to ? to.value : '', sort ? sort.value : 'date-desc');
-      });
-      unhideBtn.addEventListener('click', function() {
+      var unhideBtn2 = document.createElement('button');
+      unhideBtn2.id = 'unhide-all';
+      unhideBtn2.className = 'filter-link';
+      unhideBtn2.textContent = 'Unhide all (' + hiddenCount + ')';
+      filterBar.appendChild(unhideBtn2);
+      unhideBtn2.addEventListener('click', function() {
         hiddenSessions = {};
         showHidden = false;
         localStorage.setItem('ns-hidden-sessions', '{}');
@@ -1747,6 +1736,18 @@ function bindListEvents() {
     });
   }
 
+  // Show altitude chart checkbox — toggle visibility without re-render
+  var altEl = document.getElementById('filter-altitude');
+  if (altEl) {
+    altEl.addEventListener('change', function() {
+      showAltitude = this.checked;
+      localStorage.setItem('ns-show-altitude', showAltitude ? 'true' : 'false');
+      document.querySelectorAll('.card-altitude').forEach(function(el) {
+        el.style.display = showAltitude ? '' : 'none';
+      });
+    });
+  }
+
   // Show hidden / unhide all
   var hiddenEl = document.getElementById('filter-hidden');
   var unhideEl = document.getElementById('unhide-all');
@@ -1813,6 +1814,42 @@ function bindListEvents() {
       setTimeout(refresh, 230);
     });
   });
+
+  // On mobile, move the view toggle into the header area
+  repositionViewToggle();
+}
+
+function repositionViewToggle() {
+  var toggles = document.querySelectorAll('.view-toggle');
+  if (toggles.length === 0) return;
+  var headerRight = document.querySelector('.header-right');
+  var filterBar = document.querySelector('.filter-bar');
+  // Pick the freshest toggle (last in DOM, just rendered in filter bar)
+  var keep = toggles[toggles.length - 1];
+  var onSessionsPage = !location.hash || location.hash === '#/sessions' || location.hash.slice(1) === '/sessions';
+  if (window.innerWidth <= 700) {
+    if (headerRight && onSessionsPage) {
+      headerRight.appendChild(keep);
+      keep.style.display = '';
+    } else if (headerRight) {
+      // On non-session pages, hide it from header
+      if (keep.parentNode === headerRight) keep.style.display = 'none';
+    }
+  } else {
+    if (filterBar && keep.parentNode !== filterBar) {
+      var clearBtn = document.getElementById('filter-clear');
+      if (clearBtn && clearBtn.nextSibling) {
+        filterBar.insertBefore(keep, clearBtn.nextSibling);
+      } else {
+        filterBar.appendChild(keep);
+      }
+    }
+    keep.style.display = '';
+  }
+  // Remove any duplicates
+  for (var i = 0; i < toggles.length; i++) {
+    if (toggles[i] !== keep) toggles[i].remove();
+  }
 }
 
 // ── Session Detail Page (Report-First) ────────────────────────────────────
@@ -2440,5 +2477,6 @@ window.addEventListener('scroll', function() {
   if (h) h.classList.toggle('scrolled', window.scrollY > 4);
 }, { passive: true });
 window.addEventListener('hashchange', route);
+window.addEventListener('resize', repositionViewToggle);
 route();
 logInfo('Dashboard ready');
