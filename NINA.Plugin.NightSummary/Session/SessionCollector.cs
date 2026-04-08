@@ -200,7 +200,15 @@ namespace NINA.Plugin.NightSummary.Session {
                     SkyQuality       = NullIfNaN(e.MetaData?.WeatherData?.SkyQuality),
                     CloudCover       = NullIfNaN(e.MetaData?.WeatherData?.CloudCover),
                     // ASCOM seeing monitor
-                    SeeingFWHM       = NullIfNaN(e.MetaData?.WeatherData?.StarFWHM)
+                    SeeingFWHM       = NullIfNaN(e.MetaData?.WeatherData?.StarFWHM),
+                    // Image statistics
+                    StatMedian       = NullIfNaN(e.Statistics?.Median),
+                    StatMean         = NullIfNaN(e.Statistics?.Mean),
+                    StatStDev        = NullIfNaN(e.Statistics?.StDev),
+                    StatMAD          = NullIfNaN(e.Statistics?.MedianAbsoluteDeviation),
+                    StatMin          = e.Statistics != null ? (int?)e.Statistics.Min : null,
+                    StatMax          = e.Statistics != null ? (int?)e.Statistics.Max : null,
+                    StatBitDepth     = e.Statistics != null ? (int?)e.Statistics.BitDepth : null
                 };
 
                 database.SaveImageRecord(record);
