@@ -924,10 +924,11 @@ function setupChartCrosshair(container) {
 
   // Create persistent SVG elements (update positions on mousemove, avoid DOM churn)
   var crossLine = document.createElementNS(ns, 'line');
-  crossLine.setAttribute('stroke', '#ffffff');
-  crossLine.setAttribute('stroke-width', '0.5');
-  crossLine.setAttribute('stroke-dasharray', '3,3');
-  crossLine.setAttribute('opacity', '0.5');
+  crossLine.setAttribute('stroke', isMobile ? '#d4a06a' : '#ffffff');
+  crossLine.setAttribute('stroke-width', isMobile ? '1.5' : '0.5');
+  crossLine.setAttribute('stroke-dasharray', isMobile ? '6,4' : '3,3');
+  crossLine.setAttribute('opacity', isMobile ? '1' : '0.5');
+  crossLine.setAttribute('vector-effect', 'non-scaling-stroke');
   crossLine.style.display = 'none';
   crossLine.style.pointerEvents = 'none';
   svg.appendChild(crossLine);
@@ -938,9 +939,14 @@ function setupChartCrosshair(container) {
   svg.appendChild(tooltip);
 
   // Time label element
+  var isMobile = window.innerWidth <= 700;
+  var timeFontSize = isMobile ? '18' : '9';
+  var altFontSize = isMobile ? '16' : '8';
+  var dotRadius = isMobile ? '5' : '3';
+
   var timeText = document.createElementNS(ns, 'text');
   timeText.setAttribute('fill', '#fff');
-  timeText.setAttribute('font-size', '9');
+  timeText.setAttribute('font-size', timeFontSize);
   timeText.setAttribute('text-anchor', 'middle');
   timeText.setAttribute('font-weight', 'bold');
   tooltip.appendChild(timeText);
@@ -948,14 +954,14 @@ function setupChartCrosshair(container) {
   // Pre-create dot + label for each target
   var markers = targets.map(function(t) {
     var dot = document.createElementNS(ns, 'circle');
-    dot.setAttribute('r', '3');
+    dot.setAttribute('r', dotRadius);
     dot.setAttribute('fill', t.color);
     dot.setAttribute('stroke', '#fff');
     dot.setAttribute('stroke-width', '0.8');
     tooltip.appendChild(dot);
     var label = document.createElementNS(ns, 'text');
     label.setAttribute('fill', t.color);
-    label.setAttribute('font-size', '8');
+    label.setAttribute('font-size', altFontSize);
     label.setAttribute('font-weight', 'bold');
     tooltip.appendChild(label);
     return { dot: dot, label: label };
@@ -1013,7 +1019,7 @@ function setupChartCrosshair(container) {
 
     // Time at top — position just inside visible viewBox area
     var time = xToTime(sx);
-    var timeY = vbMinY + 8;
+    var timeY = vbMinY + (isMobile ? 16 : 8);
     timeText.setAttribute('x', sx);
     timeText.setAttribute('y', timeY);
     timeText.setAttribute('transform', 'translate(' + sx + ',' + timeY + ') ' + textTransform + ' translate(' + (-sx) + ',' + (-timeY) + ')');
@@ -1064,11 +1070,15 @@ function setupChartCrosshair(container) {
       }
       markers[i].dot.setAttribute('cx', sx);
       markers[i].dot.setAttribute('cy', y);
+      // Counter-transform dot to stay circular despite preserveAspectRatio=none stretch
+      markers[i].dot.setAttribute('transform', 'translate(' + sx + ',' + y + ') ' + textTransform + ' translate(' + (-sx) + ',' + (-y) + ')');
       markers[i].dot.style.display = '';
       var alt = yToAlt(y).toFixed(0) + '\u00b0';
       markers[i].label.textContent = alt;
       // Position label to the right, offset to avoid overlap; counter-transform text
-      var lx = sx + 5, ly2 = y - 4 - i * 10;
+      var labelGap = isMobile ? 10 : 5;
+      var labelSpacing = isMobile ? 20 : 10;
+      var lx = sx + labelGap, ly2 = y - 4 - i * labelSpacing;
       markers[i].label.setAttribute('x', lx);
       markers[i].label.setAttribute('y', ly2);
       markers[i].label.setAttribute('transform', 'translate(' + lx + ',' + ly2 + ') ' + textTransform + ' translate(' + (-lx) + ',' + (-ly2) + ')');
@@ -1167,10 +1177,32 @@ function setupMobileThumbnailZoom(thumbsContainer) {
     var centerX = thumbRect.left + thumbRect.width / 2 - cardRect.left;
     var previewW = 200;
     centerX = Math.max(previewW / 2 + 4, Math.min(cardRect.width - previewW / 2 - 4, centerX));
-
     preview.style.left = centerX + 'px';
-    preview.style.bottom = (cardRect.bottom - thumbsRect.top + 6) + 'px';
+
+    // Position above or below thumbs depending on available space
+    // Show preview, measure it, then decide placement
+    preview.style.bottom = 'auto';
+    preview.style.top = 'auto';
     preview.style.display = '';
+    preview.style.visibility = 'hidden';
+    var previewH = preview.offsetHeight;
+    preview.style.visibility = '';
+
+    // Account for sticky header when measuring available space
+    var headerEl = document.querySelector('header');
+    var headerBottom = headerEl ? headerEl.getBoundingClientRect().bottom : 0;
+    var spaceAbove = thumbsRect.top - headerBottom;
+    var spaceBelow = window.innerHeight - thumbsRect.bottom;
+
+    if (spaceAbove >= previewH + 10) {
+      // Show above
+      preview.style.bottom = (cardRect.bottom - thumbsRect.top + 6) + 'px';
+      preview.style.top = 'auto';
+    } else {
+      // Show below
+      preview.style.top = (thumbsRect.bottom - cardRect.top + 6) + 'px';
+      preview.style.bottom = 'auto';
+    }
   }
 
   function hidePreview() {
