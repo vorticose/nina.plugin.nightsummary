@@ -330,7 +330,8 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
 
     var statsLine = '<span class="stat-val">' + s.imageCount + '</span> imgs' +
       ' &middot; <span class="stat-val">' + fmt(s.totalIntegrationSeconds) + '</span>' +
-      ' &middot; HFR <span class="stat-val">' + fmtNum(s.avgHfr) + '</span>' +
+      ' &middot; HFR <span class="stat-val">' + fmtNum(s.avgHfr) + '</span>px' +
+      ' &middot; FWHM <span class="stat-val">' + fmtNum(s.avgFwhm) + '</span>&Prime;' +
       ' &middot; <span class="stat-val">' + fmtNum(s.avgGuiding) + '&Prime;</span> guiding';
 
     var statBoxes = '<div class="card-stats">' +
@@ -676,27 +677,40 @@ function hideSession(sessionId) {
   }
 
   if (card) {
-    // Phase 1: fade out + slight scale
+    // Phase 1: fade out + slight scale (GPU-composited)
     card.style.transition = 'opacity 0.2s, transform 0.2s';
     card.style.opacity = '0';
     card.style.transform = 'scale(0.97)';
     setTimeout(function() {
-      // Phase 2: collapse height so siblings slide into the gap
-      var h = card.offsetHeight;
-      card.style.height = h + 'px';
-      card.style.overflow = 'hidden';
-      card.style.margin = '0';
-      card.style.padding = '0';
-      card.style.border = 'none';
-      card.style.boxShadow = 'none';
-      // Force layout so the browser registers the explicit height before animating
-      card.offsetHeight; // eslint-disable-line no-unused-expressions
-      card.style.transition = 'height 0.6s cubic-bezier(0.22, 1, 0.36, 1), margin 0.6s cubic-bezier(0.22, 1, 0.36, 1)';
-      card.style.height = '0';
+      // Phase 2: slide siblings up using translateY (GPU-composited, 60fps)
+      var gap = card.offsetHeight + parseFloat(getComputedStyle(card).marginBottom || 0);
+      card.style.visibility = 'hidden';
+      card.style.position = 'absolute';
+      card.style.width = '100%';
+      card.style.pointerEvents = 'none';
+
+      // Siblings jump up when card goes absolute — offset them back, then animate to 0
+      var siblings = [];
+      var next = card.nextElementSibling;
+      while (next) {
+        next.style.transition = 'none';
+        next.style.transform = 'translateY(' + gap + 'px)'; // counteract the instant jump
+        siblings.push(next);
+        next = next.nextElementSibling;
+      }
+      // Force layout, then animate to natural position
+      if (siblings.length) siblings[0].offsetHeight;
+      siblings.forEach(function(s) {
+        s.style.transition = 'transform 0.5s cubic-bezier(0.22, 1, 0.36, 1)';
+        s.style.transform = 'translateY(0)';
+      });
+
       setTimeout(function() {
+        // Clean up: remove card and clear transforms
+        siblings.forEach(function(s) { s.style.transition = ''; s.style.transform = ''; });
         if (card.parentNode) card.parentNode.removeChild(card);
         afterRemove();
-      }, 600);
+      }, 500);
     }, 200);
   } else {
     afterRemove();
