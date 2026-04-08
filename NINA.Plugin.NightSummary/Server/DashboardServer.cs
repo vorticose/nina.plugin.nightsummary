@@ -1539,7 +1539,7 @@ namespace NINA.Plugin.NightSummary.Server {
         private async Task HandleGetStatsSummary(HttpListenerResponse res, Action<int, string> done) {
             if (!File.Exists(dbPath)) {
                 await WriteJson(res, 200, new {
-                    totalSessions = 0, totalIntegrationHours = 0.0,
+                    totalSessions = 0, totalIntegrationHours = 0.0, totalImages = 0,
                     targetCount = 0, firstSession = (string)null, lastSession = (string)null
                 });
                 done?.Invoke(200, "empty (no db)");
@@ -1549,11 +1549,13 @@ namespace NINA.Plugin.NightSummary.Server {
             var db = new SessionDatabase(dbPath);
             var sessions = db.GetAllSessions();
             double totalIntegration = 0;
+            int totalImages = 0;
             var allTargets = new HashSet<string>();
 
             foreach (var s in sessions) {
                 var images = db.GetImagesForSession(s.SessionId);
                 var lights = images.Where(i => string.IsNullOrEmpty(i.ImageType) || i.ImageType == "LIGHT").ToList();
+                totalImages += lights.Count(i => i.Accepted);
                 totalIntegration += lights.Where(i => i.Accepted).Sum(i => i.ExposureDuration);
                 foreach (var t in lights.Where(i => !string.IsNullOrEmpty(i.TargetName)).Select(i => i.TargetName))
                     allTargets.Add(t);
@@ -1562,6 +1564,7 @@ namespace NINA.Plugin.NightSummary.Server {
             await WriteJson(res, 200, new {
                 totalSessions = sessions.Count,
                 totalIntegrationHours = Math.Round(totalIntegration / 3600.0, 1),
+                totalImages,
                 targetCount = allTargets.Count,
                 firstSession = sessions.Count > 0 ? sessions.Last().SessionStart.ToString("o") : null,
                 lastSession = sessions.Count > 0 ? sessions.First().SessionStart.ToString("o") : null

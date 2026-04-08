@@ -142,8 +142,8 @@ function navigate(hash) {
 
 // ── Components ─────────────────────────────────────────────────────────────
 
-function statBox(value, label) {
-  return '<div class="stat-box">' +
+function statBox(value, label, cls) {
+  return '<div class="stat-box' + (cls ? ' ' + cls : '') + '">' +
     '<div class="stat-value">' + esc(String(value != null ? value : '--')) + '</div>' +
     '<div class="stat-label">' + esc(label) + '</div>' +
     '</div>';
@@ -2200,17 +2200,22 @@ function renderStats() {
     var targets = targetData.targets || [];
 
     logInfo('Stats loaded:', summary.totalSessions, 'sessions,', targets.length, 'targets');
+
+    sub.textContent = targets.length + ' target' + (targets.length !== 1 ? 's' : '') +
+      ' \u00b7 ' + summary.totalSessions + ' session' + (summary.totalSessions !== 1 ? 's' : '');
+
     var html = '';
 
     html += '<div class="detail-section"><h2>All-Time Summary</h2><div class="stat-grid">';
     html += statBox(summary.totalSessions, 'Sessions');
-    html += statBox(summary.totalIntegrationHours.toFixed(1) + 'h', 'Integration');
     html += statBox(summary.targetCount, 'Targets');
+    html += statBox(summary.totalIntegrationHours.toFixed(1) + 'h', 'Integration');
+    html += statBox(summary.totalImages != null ? summary.totalImages : '--', 'Images');
     if (summary.firstSession) {
-      html += statBox(fmtDate(summary.firstSession), 'First Session');
+      html += statBox(fmtDate(summary.firstSession), 'First Session', 'stat-date');
     }
     if (summary.lastSession) {
-      html += statBox(fmtDate(summary.lastSession), 'Last Session');
+      html += statBox(fmtDate(summary.lastSession), 'Last Session', 'stat-date');
     }
     html += '</div></div>';
 
@@ -2219,12 +2224,13 @@ function renderStats() {
 
       html += '<div class="detail-section"><h2>Integration by Target</h2>';
       html += '<table class="stats-table"><thead><tr>' +
-        '<th>Target</th><th>Integration</th><th></th></tr></thead><tbody>';
+        '<th>Target</th><th>Hours</th><th>Integration</th></tr></thead><tbody>';
       targets.forEach(function(t) {
         var pct = maxHours > 0 ? (t.totalIntegrationHours / maxHours * 100) : 0;
-        html += '<tr><td>' + esc(t.target) + '</td>' +
+        html += '<tr>' +
+          '<td>' + esc(t.target) + '</td>' +
           '<td>' + t.totalIntegrationHours.toFixed(1) + 'h</td>' +
-          '<td style="width:50%"><div class="integration-bar" style="width:' + pct.toFixed(1) + '%"></div></td>' +
+          '<td style="width:50%"><div class="integration-bar-track"><div class="integration-bar" style="width:' + pct.toFixed(1) + '%"></div></div></td>' +
           '</tr>';
       });
       html += '</tbody></table></div>';
