@@ -65,6 +65,9 @@ namespace NINA.Plugin.NightSummary.Data {
 
         // ── Filter classification ─────────────────────────────────────────────
         public string FilterClassifications  { get; set; } = "";
+        // Comma-separated "Name=Type" pairs mapping filter names to canonical types
+        // (L/R/G/B/H/S/O). Used by the dashboard stats page for filter pill colors.
+        public string FilterTypeOverrides    { get; set; } = "";
 
         // ── Equipment overrides ──────────────────────────────────────────────
         // Comma-separated key:value pairs, e.g. "Camera:My ASI2600,Telescope:Esprit 100ED"

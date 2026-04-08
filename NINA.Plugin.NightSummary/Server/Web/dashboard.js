@@ -55,24 +55,72 @@ function esc(str) {
 // Target color palette — must match DashboardServer.TargetColors order
 var TARGET_COLORS = ['#4e79a7', '#f28e2b', '#e15759', '#76b7b2', '#59a14f', '#edc948'];
 
-// Filter color map — astrophotography conventions
-var FILTER_COLORS = {
-  'Ha': '#e15759', 'H': '#e15759', 'H-alpha': '#e15759',
-  'OIII': '#76b7b2', 'O': '#76b7b2', 'O3': '#76b7b2',
-  'SII': '#f28e2b', 'S': '#f28e2b', 'S2': '#f28e2b',
-  'NII': '#edc948', 'N2': '#edc948',
-  'L': '#b0b4bc', 'Luminance': '#b0b4bc', 'Lum': '#b0b4bc',
-  'R': '#e15759', 'Red': '#e15759',
-  'G': '#59a14f', 'Green': '#59a14f',
-  'B': '#4e79a7', 'Blue': '#4e79a7'
+// ── Filter type resolution system ────────────────────────────────────────────
+// Mirrors FilterHelper.cs classification logic, extended with spectral colors.
+//
+// Resolution order for getFilterColor(name):
+//   1. User type override (globalFilterTypeMap, from plugin settings)
+//   2. Well-known name lookup (FILTER_KNOWN_TYPES, case-insensitive)
+//   3. First-letter fallback (H/S/O/L/R/G/B only — mirrors FilterHelper.cs)
+//   4. Unresolved → returns null (pill hidden)
+//
+// Colors are spectrally motivated:
+//   Ha (656nm) vivid red < SII (672nm) deep crimson — longer λ = deeper red
+//   R broadband is warmer (orange-red) than the narrowband reds
+//   OIII (500nm) cyan-teal, NII (658nm) amber for visual separation from Ha
+
+var FILTER_TYPE_COLORS = {
+  'H': '#E53935', // H-alpha    — 656nm vivid red
+  'S': '#C62828', // SII        — 672nm deep crimson (longer λ → deeper)
+  'O': '#00ACC1', // OIII       — 500nm cyan-teal
+  'N': '#FB8C00', // NII        — 658nm amber (near Ha; amber for visual separation)
+  'L': '#90A4AE', // Luminance  — full spectrum blue-silver
+  'R': '#FF7043', // Red BB     — warm orange-red (broadband = less spectrally pure)
+  'G': '#66BB6A', // Green BB
+  'B': '#42A5F5', // Blue BB
 };
 
+// Well-known filter names → canonical type. Keys are lowercase for O(1) lookup.
+var FILTER_KNOWN_TYPES = {
+  // H-alpha / Hβ variants
+  'ha': 'H', 'h': 'H', 'h-alpha': 'H', 'halpha': 'H', 'h_alpha': 'H',
+  'h-a': 'H', 'hydrogen': 'H', 'hb': 'H', 'hbeta': 'H', 'h-beta': 'H',
+  // SII variants
+  'sii': 'S', 's': 'S', 's2': 'S', 's-ii': 'S', 's_ii': 'S',
+  'sulfur': 'S', 'sulphur': 'S', 'sulfur-ii': 'S', 'sulphur-ii': 'S',
+  // OIII variants
+  'oiii': 'O', 'o': 'O', 'o3': 'O', 'o-iii': 'O', 'o_iii': 'O',
+  'oxygen': 'O', 'oxygen-iii': 'O',
+  // NII variants
+  'nii': 'N', 'n2': 'N', 'n-ii': 'N', 'n_ii': 'N', 'nitrogen': 'N', 'nitrogen-ii': 'N',
+  // Luminance / filterless
+  'l': 'L', 'luminance': 'L', 'lum': 'L', 'none': 'L',
+  // Broadband
+  'r': 'R', 'red': 'R',
+  'g': 'G', 'green': 'G',
+  'b': 'B', 'blue': 'B',
+};
+
+// First-letter fallback — only letters FilterHelper.cs recognizes.
+// N intentionally absent: "ND" (neutral density) also starts with N.
+var FILTER_FIRST_LETTER_TYPE = { 'H': 'H', 'S': 'S', 'O': 'O', 'L': 'L', 'R': 'R', 'G': 'G', 'B': 'B' };
+
+// Populated from /api/settings filterTypeOverrides (set via Options.xaml)
+var globalFilterTypeMap = {};
+
+function resolveFilterType(name) {
+  if (!name) return null;
+  var lower = name.toLowerCase();
+  if (globalFilterTypeMap[lower]) return globalFilterTypeMap[lower];       // 1. user override
+  if (FILTER_KNOWN_TYPES[lower])  return FILTER_KNOWN_TYPES[lower];        // 2. known name
+  var fl = name.charAt(0).toUpperCase();
+  if (FILTER_FIRST_LETTER_TYPE[fl]) return FILTER_FIRST_LETTER_TYPE[fl];  // 3. first-letter
+  return null;                                                              // 4. unresolved
+}
+
 function getFilterColor(name) {
-  if (!name) return '#888';
-  if (FILTER_COLORS[name]) return FILTER_COLORS[name];
-  var upper = name.toUpperCase();
-  for (var k in FILTER_COLORS) { if (k.toUpperCase() === upper) return FILTER_COLORS[k]; }
-  return '#888';
+  var type = resolveFilterType(name);
+  return type ? FILTER_TYPE_COLORS[type] : null;
 }
 
 function hexToRgb(hex) {
@@ -282,6 +330,7 @@ function renderTargetCard(t, index) {
       var secs = f.totalSeconds || 0;
       if (secs < 1) return; // skip zero-integration filters (all frames rejected)
       var fc = getFilterColor(f.filter);
+      if (!fc) return; // unresolved filter name → hide pill
       var rgb = hexToRgb(fc);
       var durStr = secs >= 3600 ? (secs / 3600).toFixed(1) + 'h' :
                    secs >= 60   ? Math.round(secs / 60) + 'm' :
@@ -1946,6 +1995,7 @@ function buildSettingsPanel(settings, filters) {
   var visibleFields = (s.equipmentVisibleFields || '').split(',').map(function(f) { return f.trim(); });
   var additionalCharts = parseChartConfigs(s.additionalChartConfigs);
   var filterClass = parseFilterClassifications(s.filterClassifications);
+  var filterTypes = parseFilterClassifications(s.filterTypeOverrides || '');
   var eqOverrides = parseEquipmentOverrides(s.equipmentOverrides);
 
   var html = '<div id="settings-panel" class="settings-panel" style="display:none">';
@@ -2014,20 +2064,33 @@ function buildSettingsPanel(settings, filters) {
     '<button id="btn-add-chart" class="filter-link" style="margin-top:6px">+ Add Chart</button>' +
     '</div></div></div>';
 
-  // Row 5: Filter classifications
+  // Row 5: Filter classifications + types
   if (filters && filters.length > 0) {
+    var TYPE_OPTIONS = ['Auto', 'L', 'R', 'G', 'B', 'H', 'S', 'O'];
+    var TYPE_CODES   = ['A',    'L', 'R', 'G', 'B', 'H', 'S', 'O'];
     html += '<div class="settings-row"><div class="settings-group">' +
-      '<label class="settings-label">Filter Classifications</label>' +
+      '<label class="settings-label">Filter Classifications &amp; Types</label>' +
+      '<div class="filter-class-headers">' +
+        '<span class="filter-class-name"></span>' +
+        '<span class="filter-class-col-hdr">Classification</span>' +
+        '<span class="filter-class-col-hdr">Type</span>' +
+      '</div>' +
       '<div class="filter-class-grid">';
     filters.forEach(function(f) {
-      var code = filterClass[f] || 'A';
-      var idx = CLASSIFICATION_CODES.indexOf(code);
-      if (idx < 0) idx = 0;
+      var code    = filterClass[f] || 'A';
+      var clsIdx  = CLASSIFICATION_CODES.indexOf(code); if (clsIdx < 0) clsIdx = 0;
+      var typeCode = filterTypes[f] || 'A';
+      var typeIdx  = TYPE_CODES.indexOf(typeCode); if (typeIdx < 0) typeIdx = 0;
       html += '<div class="filter-class-row">' +
         '<span class="filter-class-name">' + esc(f) + '</span>' +
         '<select class="fc-select settings-select" data-filter="' + esc(f) + '">';
       CLASSIFICATION_OPTIONS.forEach(function(opt, oi) {
-        html += '<option value="' + CLASSIFICATION_CODES[oi] + '"' + (oi === idx ? ' selected' : '') + '>' + esc(opt) + '</option>';
+        html += '<option value="' + CLASSIFICATION_CODES[oi] + '"' + (oi === clsIdx ? ' selected' : '') + '>' + esc(opt) + '</option>';
+      });
+      html += '</select>' +
+        '<select class="ft-select settings-select" data-filter="' + esc(f) + '">';
+      TYPE_OPTIONS.forEach(function(opt, ti) {
+        html += '<option value="' + TYPE_CODES[ti] + '"' + (ti === typeIdx ? ' selected' : '') + '>' + esc(opt) + '</option>';
       });
       html += '</select></div>';
     });
@@ -2081,9 +2144,13 @@ function collectSettings() {
   // Collect filter classifications (only non-Auto)
   var fcParts = [];
   document.querySelectorAll('.fc-select').forEach(function(sel) {
-    if (sel.value !== 'A') {
-      fcParts.push(sel.dataset.filter + '=' + sel.value);
-    }
+    if (sel.value !== 'A') fcParts.push(sel.dataset.filter + '=' + sel.value);
+  });
+
+  // Collect filter type overrides (only non-Auto)
+  var ftParts = [];
+  document.querySelectorAll('.ft-select').forEach(function(sel) {
+    if (sel.value !== 'A') ftParts.push(sel.dataset.filter + '=' + sel.value);
   });
 
   // Collect equipment overrides (only non-empty)
@@ -2119,6 +2186,7 @@ function collectSettings() {
     additionalChartConfigs: additionalParts.join('|'),
     equipmentVisibleFields: visibleFields.join(','),
     filterClassifications: fcParts.join(','),
+    filterTypeOverrides:   ftParts.join(','),
     equipmentOverrides:    eqParts.join(',')
   };
 }
@@ -2426,12 +2494,23 @@ function renderStats() {
 
   Promise.all([
     api('/api/stats/targets'),
-    api('/api/stats/summary')
+    api('/api/stats/summary'),
+    api('/api/settings')
   ]).then(function(results) {
     var targetData = results[0];
-    var summary = results[1];
+    var summary    = results[1];
+    var settings   = results[2];
     var targets = targetData.targets || [];
     statsTargetData = targets;
+
+    // Populate globalFilterTypeMap from plugin settings (case-insensitive)
+    globalFilterTypeMap = {};
+    var rawTypes = (settings && settings.filterTypeOverrides) || '';
+    rawTypes.split(',').forEach(function(pair) {
+      var parts = pair.split('=');
+      if (parts.length === 2 && parts[0].trim() && parts[1].trim())
+        globalFilterTypeMap[parts[0].trim().toLowerCase()] = parts[1].trim();
+    });
 
     logInfo('Stats loaded:', summary.totalSessions, 'sessions,', targets.length, 'targets');
 

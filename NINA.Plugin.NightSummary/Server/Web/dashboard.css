@@ -1480,6 +1480,21 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 .remove-chart-btn:hover { border-color: var(--red); }
 
 /* ── Filter classification grid ── */
+.filter-class-headers {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.filter-class-col-hdr {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+  min-width: 110px;
+}
+
 .filter-class-grid {
   display: flex;
   flex-wrap: wrap;

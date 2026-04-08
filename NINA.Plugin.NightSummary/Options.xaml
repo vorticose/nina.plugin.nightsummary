@@ -226,13 +226,24 @@
                             </Style>
                         </StackPanel.Style>
 
-                        <Expander Header="Filter Classifications" IsExpanded="False">
+                        <Expander Header="Filter Classifications &amp; Types" IsExpanded="False">
                             <StackPanel Margin="0,6,0,0">
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                                     <Button Content="↻" Command="{Binding RefreshFiltersCommand}" Width="24" Height="22"
                                             ToolTip="Reload filters from NINA profile" FontSize="11" Padding="0" />
-                                    <TextBlock Text="Filters are read from your NINA profile. Auto uses first-letter matching (L,R,G,B = broadband; H,S,O = narrowband)."
-                                               TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="8,0,0,0" MaxWidth="380" VerticalAlignment="Center" />
+                                    <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="8,0,0,0" MaxWidth="420" VerticalAlignment="Center">
+                                        <Run Text="Classification"/>
+                                        <Run Text=" (Broadband/Narrowband/Exclude) is used for Star Count CV in reports. "/>
+                                        <Run Text="Type"/>
+                                        <Run Text=" (L/R/G/B/H/S/O) sets the filter pill color in the dashboard stats page. Both default to Auto (first-letter matching)."/>
+                                    </TextBlock>
+                                </StackPanel>
+
+                                <!-- Column headers -->
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                                    <TextBlock Text="Filter" Width="120" FontSize="11" Foreground="Gray" />
+                                    <TextBlock Text="Classification" MinWidth="120" FontSize="11" Foreground="Gray" />
+                                    <TextBlock Text="Type" MinWidth="80" FontSize="11" Foreground="Gray" Margin="6,0,0,0" />
                                 </StackPanel>
 
                                 <ItemsControl ItemsSource="{Binding FilterItems}">
@@ -245,6 +256,17 @@
                                                     <ComboBoxItem>Broadband</ComboBoxItem>
                                                     <ComboBoxItem>Narrowband</ComboBoxItem>
                                                     <ComboBoxItem>Exclude</ComboBoxItem>
+                                                </ComboBox>
+                                                <ComboBox SelectedIndex="{Binding FilterTypeIndex}" MinWidth="80" Margin="6,0,0,0"
+                                                          ToolTip="Canonical filter type for dashboard color pills. Auto uses first-letter matching.">
+                                                    <ComboBoxItem>Auto</ComboBoxItem>
+                                                    <ComboBoxItem>L</ComboBoxItem>
+                                                    <ComboBoxItem>R</ComboBoxItem>
+                                                    <ComboBoxItem>G</ComboBoxItem>
+                                                    <ComboBoxItem>B</ComboBoxItem>
+                                                    <ComboBoxItem>H</ComboBoxItem>
+                                                    <ComboBoxItem>S</ComboBoxItem>
+                                                    <ComboBoxItem>O</ComboBoxItem>
                                                 </ComboBox>
                                             </StackPanel>
                                         </DataTemplate>

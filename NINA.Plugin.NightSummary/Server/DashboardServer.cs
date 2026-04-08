@@ -1133,6 +1133,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 additionalChartConfigs = s.AdditionalChartConfigs,
                 equipmentVisibleFields = s.EquipmentVisibleFields,
                 filterClassifications  = s.FilterClassifications,
+                filterTypeOverrides    = s.FilterTypeOverrides,
                 equipmentOverrides     = s.EquipmentOverrides
             });
         }
@@ -1363,6 +1364,7 @@ namespace NINA.Plugin.NightSummary.Server {
                     additionalChartConfigs = s.AdditionalChartConfigs,
                     equipmentVisibleFields = s.EquipmentVisibleFields,
                     filterClassifications  = s.FilterClassifications,
+                    filterTypeOverrides    = s.FilterTypeOverrides,
                     equipmentOverrides     = s.EquipmentOverrides
                 };
                 var json = JsonSerializer.Serialize(settings, JsonOpts);
@@ -1461,6 +1463,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 ["AdditionalChartConfigs"]= s.AdditionalChartConfigs,
                 ["EquipmentVisibleFields"]= s.EquipmentVisibleFields,
                 ["FilterClassifications"] = s.FilterClassifications,
+                ["FilterTypeOverrides"]   = s.FilterTypeOverrides,
                 ["EquipmentOverrides"]    = s.EquipmentOverrides
             };
         }
@@ -1491,6 +1494,7 @@ namespace NINA.Plugin.NightSummary.Server {
             s.AdditionalChartConfigs= (string)saved["AdditionalChartConfigs"];
             s.EquipmentVisibleFields= (string)saved["EquipmentVisibleFields"];
             s.FilterClassifications = (string)saved["FilterClassifications"];
+            s.FilterTypeOverrides   = saved.ContainsKey("FilterTypeOverrides") ? (string)saved["FilterTypeOverrides"] : "";
             s.EquipmentOverrides    = (string)saved["EquipmentOverrides"];
         }
 
@@ -1522,6 +1526,7 @@ namespace NINA.Plugin.NightSummary.Server {
                     case "additionalChartConfigs": s.AdditionalChartConfigs= kv.Value.GetString(); break;
                     case "equipmentVisibleFields": s.EquipmentVisibleFields= kv.Value.GetString(); break;
                     case "filterClassifications":  s.FilterClassifications = kv.Value.GetString(); break;
+                    case "filterTypeOverrides":    s.FilterTypeOverrides   = kv.Value.GetString(); break;
                     case "equipmentOverrides":     s.EquipmentOverrides    = kv.Value.GetString(); break;
                 }
             }

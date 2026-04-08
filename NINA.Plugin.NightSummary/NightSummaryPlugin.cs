@@ -780,12 +780,15 @@ namespace NINA.Plugin.NightSummary {
                 var filters = profileService?.ActiveProfile?.FilterWheelSettings?.FilterWheelFilters;
                 if (filters == null || filters.Count == 0) return;
 
-                var saved = ParseFilterClassifications(S.FilterClassifications);
+                var saved      = ParseFilterClassifications(S.FilterClassifications);
+                var savedTypes = ParseFilterClassifications(S.FilterTypeOverrides);
 
-                // Also preserve any classifications already in the UI (for refresh)
+                // Also preserve any classifications/types already in the UI (for refresh)
                 foreach (var existing in FilterItems) {
                     if (existing.Classification != "A" && !saved.ContainsKey(existing.Name))
                         saved[existing.Name] = existing.Classification;
+                    if (existing.FilterType != "A" && !savedTypes.ContainsKey(existing.Name))
+                        savedTypes[existing.Name] = existing.FilterType;
                 }
 
                 _loadingFilters = true;
@@ -808,13 +811,17 @@ namespace NINA.Plugin.NightSummary {
                             var item = new FilterClassificationItem(f.Name, this);
                             if (saved.TryGetValue(f.Name, out var cls))
                                 item.Classification = cls;
+                            if (savedTypes.TryGetValue(f.Name, out var tp))
+                                item.FilterType = tp;
                             FilterItems.Add(item);
                         }
 
-                        // Restore classifications for existing items that may have been reset
+                        // Restore classifications/types for existing items that may have been reset
                         foreach (var item in FilterItems) {
                             if (saved.TryGetValue(item.Name, out var cls) && item.Classification != cls)
                                 item.Classification = cls;
+                            if (savedTypes.TryGetValue(item.Name, out var tp) && item.FilterType != tp)
+                                item.FilterType = tp;
                         }
                     });
                 } finally {
@@ -827,10 +834,16 @@ namespace NINA.Plugin.NightSummary {
 
         internal void SaveFilterClassifications() {
             if (_loadingFilters) return;
-            var parts = FilterItems
+            var classParts = FilterItems
                 .Where(f => f.Classification != "A")
                 .Select(f => $"{f.Name}={f.Classification}");
-            S.FilterClassifications = string.Join(",", parts);
+            S.FilterClassifications = string.Join(",", classParts);
+
+            var typeParts = FilterItems
+                .Where(f => f.FilterType != "A")
+                .Select(f => $"{f.Name}={f.FilterType}");
+            S.FilterTypeOverrides = string.Join(",", typeParts);
+
             SaveSettings();
         }
 
@@ -940,6 +953,9 @@ namespace NINA.Plugin.NightSummary {
     public class FilterClassificationItem : INotifyPropertyChanged {
         private readonly NightSummaryPlugin plugin;
         private string _classification = "A";
+        private string _filterType     = "A";
+
+        private static readonly string[] TypeCodes = { "A", "L", "R", "G", "B", "H", "S", "O" };
 
         public FilterClassificationItem(string name, NightSummaryPlugin plugin) {
             Name = name;
@@ -959,9 +975,7 @@ namespace NINA.Plugin.NightSummary {
             }
         }
 
-        /// <summary>
-        /// ComboBox binding: 0=Auto, 1=Broadband, 2=Narrowband, 3=Exclude
-        /// </summary>
+        /// <summary>ComboBox binding: 0=Auto, 1=Broadband, 2=Narrowband, 3=Exclude</summary>
         public int ClassificationIndex {
             get {
                 switch (_classification) {
@@ -978,6 +992,32 @@ namespace NINA.Plugin.NightSummary {
                     case 3:  Classification = "X"; break;
                     default: Classification = "A"; break;
                 }
+            }
+        }
+
+        /// <summary>
+        /// Canonical filter type for dashboard color pills (A=Auto, L, R, G, B, H, S, O).
+        /// Auto falls back to first-letter matching in the dashboard.
+        /// </summary>
+        public string FilterType {
+            get => _filterType;
+            set {
+                if (_filterType == value) return;
+                _filterType = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FilterType)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FilterTypeIndex)));
+                plugin?.SaveFilterClassifications();
+            }
+        }
+
+        /// <summary>ComboBox binding: 0=Auto, 1=L, 2=R, 3=G, 4=B, 5=H, 6=S, 7=O</summary>
+        public int FilterTypeIndex {
+            get {
+                var idx = Array.IndexOf(TypeCodes, _filterType);
+                return idx >= 0 ? idx : 0;
+            }
+            set {
+                FilterType = (value >= 0 && value < TypeCodes.Length) ? TypeCodes[value] : "A";
             }
         }
 
