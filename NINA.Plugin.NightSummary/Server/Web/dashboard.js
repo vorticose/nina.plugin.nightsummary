@@ -55,6 +55,26 @@ function esc(str) {
 // Target color palette — must match DashboardServer.TargetColors order
 var TARGET_COLORS = ['#4e79a7', '#f28e2b', '#e15759', '#76b7b2', '#59a14f', '#edc948'];
 
+// Filter color map — astrophotography conventions
+var FILTER_COLORS = {
+  'Ha': '#e15759', 'H': '#e15759', 'H-alpha': '#e15759',
+  'OIII': '#76b7b2', 'O': '#76b7b2', 'O3': '#76b7b2',
+  'SII': '#f28e2b', 'S': '#f28e2b', 'S2': '#f28e2b',
+  'NII': '#edc948', 'N2': '#edc948',
+  'L': '#b0b4bc', 'Luminance': '#b0b4bc', 'Lum': '#b0b4bc',
+  'R': '#e15759', 'Red': '#e15759',
+  'G': '#59a14f', 'Green': '#59a14f',
+  'B': '#4e79a7', 'Blue': '#4e79a7'
+};
+
+function getFilterColor(name) {
+  if (!name) return '#888';
+  if (FILTER_COLORS[name]) return FILTER_COLORS[name];
+  var upper = name.toUpperCase();
+  for (var k in FILTER_COLORS) { if (k.toUpperCase() === upper) return FILTER_COLORS[k]; }
+  return '#888';
+}
+
 function hexToRgb(hex) {
   return parseInt(hex.slice(1,3),16)+','+parseInt(hex.slice(3,5),16)+','+parseInt(hex.slice(5,7),16);
 }
@@ -147,6 +167,155 @@ function statBox(value, label, cls) {
     '<div class="stat-value">' + esc(String(value != null ? value : '--')) + '</div>' +
     '<div class="stat-label">' + esc(label) + '</div>' +
     '</div>';
+}
+
+// ── Stats Tab Bar ──────────────────────────────────────────────────────────
+
+function renderTabBar(tabs, activeTab) {
+  var html = '<div class="stats-tabs" id="stats-tabs">';
+  html += '<div class="stats-tab-thumb" id="stats-tab-thumb"></div>';
+  for (var i = 0; i < tabs.length; i++) {
+    var t = tabs[i];
+    var cls = t.id === activeTab ? ' active' : '';
+    html += '<button class="stats-tab-btn' + cls + '" data-tab="' + t.id + '">' + esc(t.label) + '</button>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function initTabBar(onSwitch) {
+  var container = document.getElementById('stats-tabs');
+  if (!container) return;
+  var thumb = document.getElementById('stats-tab-thumb');
+  var btns = container.querySelectorAll('.stats-tab-btn');
+
+  function positionThumb(btn, animate) {
+    if (!btn || !thumb) return;
+    if (!animate) thumb.style.transition = 'none';
+    thumb.style.left = btn.offsetLeft + 'px';
+    thumb.style.width = btn.offsetWidth + 'px';
+    if (!animate) {
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+          thumb.style.transition = '';
+        });
+      });
+    }
+  }
+
+  // Position on active button without animation
+  var active = container.querySelector('.stats-tab-btn.active');
+  positionThumb(active, false);
+
+  btns.forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      btns.forEach(function(b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      positionThumb(btn, true);
+      var tabId = btn.getAttribute('data-tab');
+      localStorage.setItem('ns-stats-tab', tabId);
+      if (onSwitch) onSwitch(tabId);
+    });
+  });
+}
+
+// ── Target Cards ──────────────────────────────────────────────────────────
+
+function targetStatBox(value, label, unit) {
+  return '<div class="target-card-stat">' +
+    '<div class="target-card-stat-value">' + esc(String(value != null ? value : '--')) +
+    (unit ? '<span class="target-card-stat-unit">' + esc(unit) + '</span>' : '') +
+    '</div>' +
+    '<div class="target-card-stat-label">' + esc(label) + '</div>' +
+    '</div>';
+}
+
+function fmtCoord(raH, decD) {
+  if (!raH && !decD) return '';
+  var rH = Math.floor(raH);
+  var rM = Math.floor((raH - rH) * 60);
+  var dSign = decD >= 0 ? '+' : '-';
+  var dAbs = Math.abs(decD);
+  var dD = Math.floor(dAbs);
+  var dM = Math.floor((dAbs - dD) * 60);
+  return 'RA ' + rH + 'h' + (rM < 10 ? '0' : '') + rM + 'm  Dec ' + dSign + dD + '\u00b0' + (dM < 10 ? '0' : '') + dM + "'";
+}
+
+function renderTargetCard(t, index) {
+  var color = TARGET_COLORS[index % TARGET_COLORS.length];
+  var initial = t.target ? t.target.charAt(0).toUpperCase() : '?';
+
+  var html = '<div class="target-card">';
+
+  // Thumbnail
+  html += '<div class="target-card-thumb" data-session-id="' + esc(t.latestSessionId || '') + '" data-target="' + esc(t.target) + '">';
+  html += '<span class="thumb-placeholder">' + esc(initial) + '</span>';
+  html += '</div>';
+
+  // Body
+  html += '<div class="target-card-body">';
+
+  // Name with accent border
+  html += '<div class="target-card-name" style="border-left:3px solid ' + color + '">' + esc(t.target) + '</div>';
+
+  // Meta line
+  var meta = [];
+  if (t.sessionCount) meta.push(t.sessionCount + ' session' + (t.sessionCount !== 1 ? 's' : ''));
+  if (t.lastImaged) meta.push('Last: ' + fmtDate(t.lastImaged));
+  if (t.raHours && t.decDegrees) meta.push(fmtCoord(t.raHours, t.decDegrees));
+  if (meta.length) html += '<div class="target-card-meta">' + esc(meta.join(' \u00b7 ')) + '</div>';
+
+  // Stat boxes
+  html += '<div class="target-card-stats">';
+  var hours = t.totalIntegrationHours != null ? t.totalIntegrationHours.toFixed(1) : '--';
+  html += targetStatBox(hours, 'Hours', 'h');
+  html += targetStatBox(t.acceptedFrames != null ? t.acceptedFrames : '--', 'Frames');
+  if (t.avgHFR) html += targetStatBox(t.avgHFR.toFixed(2), 'HFR', 'px');
+  if (t.avgGuidingRMS) html += targetStatBox(t.avgGuidingRMS.toFixed(2) + '"', 'Guide');
+  html += '</div>';
+
+  // Filter pills
+  if (t.filters && t.filters.length > 0) {
+    html += '<div class="target-filters">';
+    t.filters.forEach(function(f) {
+      var fc = getFilterColor(f.filter);
+      var rgb = hexToRgb(fc);
+      html += '<span class="target-filter-pill" style="background:rgba(' + rgb + ',0.10);border-color:rgba(' + rgb + ',0.28);color:' + fc + '">';
+      html += esc(f.filter) + ' ' + f.totalHours.toFixed(1) + 'h';
+      html += '</span>';
+    });
+    html += '</div>';
+  }
+
+  html += '</div></div>';
+  return html;
+}
+
+function loadTargetThumbnails() {
+  var thumbEls = document.querySelectorAll('.target-card-thumb[data-session-id]');
+  var sessionMap = {};
+  thumbEls.forEach(function(el) {
+    var sid = el.getAttribute('data-session-id');
+    if (!sid) return;
+    if (!sessionMap[sid]) sessionMap[sid] = [];
+    sessionMap[sid].push(el);
+  });
+
+  Object.keys(sessionMap).forEach(function(sid) {
+    api('/api/sessions/' + sid + '/thumbnails').then(function(thumbs) {
+      if (!Array.isArray(thumbs)) return;
+      sessionMap[sid].forEach(function(el) {
+        var target = el.getAttribute('data-target');
+        var match = null;
+        for (var i = 0; i < thumbs.length; i++) {
+          if (thumbs[i].target === target) { match = thumbs[i]; break; }
+        }
+        if (match && match.dataUri) {
+          el.innerHTML = '<img src="' + match.dataUri + '" alt="' + esc(target) + '">';
+        }
+      });
+    }).catch(function() { /* leave placeholder */ });
+  });
 }
 
 // ── Sessions List Page ─────────────────────────────────────────────────────
@@ -2184,6 +2353,28 @@ function pollRegenAllProgress(sessionId, regenBtn, regenAllBtn, statusEl) {
 
 // ── Stats Page ─────────────────────────────────────────────────────────────
 
+var statsTargetData = null;
+
+function renderStatsTabContent(tabId) {
+  var container = document.getElementById('stats-tab-content');
+  if (!container) return;
+
+  if (tabId === 'targets') {
+    var targets = statsTargetData || [];
+    if (targets.length === 0) {
+      container.innerHTML = '<div class="empty">No target data available yet.</div>';
+      return;
+    }
+    var html = '<div class="target-grid">';
+    targets.forEach(function(t, i) {
+      html += renderTargetCard(t, i);
+    });
+    html += '</div>';
+    container.innerHTML = html;
+    loadTargetThumbnails();
+  }
+}
+
 function renderStats() {
   var el = document.getElementById('content');
   var sub = document.getElementById('page-subtitle');
@@ -2198,6 +2389,7 @@ function renderStats() {
     var targetData = results[0];
     var summary = results[1];
     var targets = targetData.targets || [];
+    statsTargetData = targets;
 
     logInfo('Stats loaded:', summary.totalSessions, 'sessions,', targets.length, 'targets');
 
@@ -2206,6 +2398,7 @@ function renderStats() {
 
     var html = '';
 
+    // All-Time Summary
     html += '<div class="detail-section"><h2>All-Time Summary</h2><div class="stat-grid">';
     html += statBox(summary.totalSessions, 'Sessions');
     html += statBox(summary.targetCount, 'Targets');
@@ -2219,26 +2412,18 @@ function renderStats() {
     }
     html += '</div></div>';
 
-    if (targets.length > 0) {
-      var maxHours = targets[0].totalIntegrationHours || 1;
+    // Tab bar + content
+    var tabs = [{id: 'targets', label: 'Targets'}];
+    var activeTab = localStorage.getItem('ns-stats-tab') || 'targets';
+    if (!tabs.some(function(t) { return t.id === activeTab; })) activeTab = 'targets';
 
-      html += '<div class="detail-section"><h2>Integration by Target</h2>';
-      html += '<table class="stats-table"><thead><tr>' +
-        '<th>Target</th><th>Hours</th><th>Integration</th></tr></thead><tbody>';
-      targets.forEach(function(t) {
-        var pct = maxHours > 0 ? (t.totalIntegrationHours / maxHours * 100) : 0;
-        html += '<tr>' +
-          '<td>' + esc(t.target) + '</td>' +
-          '<td>' + t.totalIntegrationHours.toFixed(1) + 'h</td>' +
-          '<td style="width:50%"><div class="integration-bar-track"><div class="integration-bar" style="width:' + pct.toFixed(1) + '%"></div></div></td>' +
-          '</tr>';
-      });
-      html += '</tbody></table></div>';
-    } else {
-      html += '<div class="empty">No target data available yet.</div>';
-    }
+    html += renderTabBar(tabs, activeTab);
+    html += '<div id="stats-tab-content"></div>';
 
     el.innerHTML = html;
+
+    initTabBar(renderStatsTabContent);
+    renderStatsTabContent(activeTab);
   }).catch(function(err) {
     logError('Failed to load stats:', err.message);
     el.innerHTML = '<div class="error">Failed to load stats: ' + esc(err.message) + '</div>';

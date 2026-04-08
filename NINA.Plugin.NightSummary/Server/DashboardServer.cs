@@ -1056,12 +1056,29 @@ namespace NINA.Plugin.NightSummary.Server {
             }
 
             var db = new SessionDatabase(dbPath);
-            var cumulative = db.GetCumulativeIntegrationByTarget(null);
-            var result = cumulative.Select(kv => new {
-                target = kv.Key,
-                totalIntegrationSeconds = kv.Value,
-                totalIntegrationHours = Math.Round(kv.Value / 3600.0, 2)
-            }).OrderByDescending(t => t.totalIntegrationSeconds).ToList();
+            var details = db.GetTargetDetails();
+            var result = details.Select(t => new {
+                target = t.TargetName,
+                totalIntegrationSeconds = t.TotalIntegrationSeconds,
+                totalIntegrationHours = Math.Round(t.TotalIntegrationSeconds / 3600.0, 2),
+                sessionCount = t.SessionCount,
+                lastImaged = t.LastSessionStart > DateTime.MinValue ? t.LastSessionStart.ToString("o") : null,
+                latestSessionId = t.LatestSessionId,
+                totalFrames = t.TotalFrames,
+                acceptedFrames = t.AcceptedFrames,
+                avgHFR = t.AvgHFR > 0 ? (double?)t.AvgHFR : null,
+                avgFWHM = t.AvgFWHM > 0 ? (double?)t.AvgFWHM : null,
+                avgGuidingRMS = t.AvgGuidingRMS > 0 ? (double?)t.AvgGuidingRMS : null,
+                raHours = t.RaHours != 0 ? (double?)t.RaHours : null,
+                decDegrees = t.DecDegrees != 0 ? (double?)t.DecDegrees : null,
+                filters = t.Filters.Select(f => new {
+                    filter = f.Filter,
+                    totalSeconds = f.TotalSeconds,
+                    totalHours = Math.Round(f.TotalSeconds / 3600.0, 2),
+                    frameCount = f.FrameCount,
+                    acceptedCount = f.AcceptedCount
+                })
+            }).ToList();
 
             await WriteJson(res, 200, new { targets = result });
             done?.Invoke(200, $"{result.Count} targets");

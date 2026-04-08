@@ -972,6 +972,127 @@ namespace NINA.Plugin.NightSummary.Data {
         }
 
         /// <summary>
+        /// Returns enriched per-target statistics for the lifetime stats page.
+        /// Uses three queries: aggregates, filter breakdown, and coordinates/session IDs.
+        /// </summary>
+        public List<TargetDetail> GetTargetDetails() {
+            var targets = new Dictionary<string, TargetDetail>(StringComparer.OrdinalIgnoreCase);
+
+            using (var conn = new SQLiteConnection(connectionString)) {
+                conn.Open();
+
+                // Query 1: Per-target aggregates
+                string sqlAgg = @"
+                    SELECT
+                        i.TargetName,
+                        SUM(CASE WHEN i.Accepted = 1 THEN i.ExposureDuration ELSE 0 END) AS TotalSeconds,
+                        COUNT(DISTINCT i.SessionId) AS SessionCount,
+                        MAX(s.SessionStart) AS LastSessionStart,
+                        COUNT(*) AS TotalFrames,
+                        SUM(CASE WHEN i.Accepted = 1 THEN 1 ELSE 0 END) AS AcceptedFrames,
+                        AVG(CASE WHEN i.Accepted = 1 AND i.HFR > 0 THEN i.HFR END) AS AvgHFR,
+                        AVG(CASE WHEN i.Accepted = 1 AND i.FWHM > 0 THEN i.FWHM END) AS AvgFWHM,
+                        AVG(CASE WHEN i.Accepted = 1 AND i.GuidingRMSTotal > 0 THEN i.GuidingRMSTotal END) AS AvgGuidingRMS
+                    FROM Images i
+                    JOIN Sessions s ON s.SessionId = i.SessionId
+                    WHERE i.TargetName IS NOT NULL AND i.TargetName != ''
+                      AND (i.ImageType IS NULL OR i.ImageType = '' OR i.ImageType = 'LIGHT')
+                    GROUP BY i.TargetName
+                    ORDER BY TotalSeconds DESC";
+
+                using (var cmd = new SQLiteCommand(sqlAgg, conn))
+                using (var reader = cmd.ExecuteReader()) {
+                    while (reader.Read()) {
+                        var name = reader["TargetName"].ToString();
+                        if (string.IsNullOrEmpty(name)) continue;
+                        targets[name] = new TargetDetail {
+                            TargetName             = name,
+                            TotalIntegrationSeconds = reader["TotalSeconds"] == DBNull.Value ? 0 : Convert.ToDouble(reader["TotalSeconds"]),
+                            SessionCount           = reader["SessionCount"] == DBNull.Value ? 0 : Convert.ToInt32(reader["SessionCount"]),
+                            LastSessionStart       = reader["LastSessionStart"] == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["LastSessionStart"].ToString()),
+                            TotalFrames            = reader["TotalFrames"] == DBNull.Value ? 0 : Convert.ToInt32(reader["TotalFrames"]),
+                            AcceptedFrames         = reader["AcceptedFrames"] == DBNull.Value ? 0 : Convert.ToInt32(reader["AcceptedFrames"]),
+                            AvgHFR                 = reader["AvgHFR"] == DBNull.Value ? 0 : Math.Round(Convert.ToDouble(reader["AvgHFR"]), 2),
+                            AvgFWHM                = reader["AvgFWHM"] == DBNull.Value ? 0 : Math.Round(Convert.ToDouble(reader["AvgFWHM"]), 2),
+                            AvgGuidingRMS          = reader["AvgGuidingRMS"] == DBNull.Value ? 0 : Math.Round(Convert.ToDouble(reader["AvgGuidingRMS"]), 2),
+                        };
+                    }
+                }
+
+                // Query 2: Per-target filter breakdown
+                string sqlFilters = @"
+                    SELECT
+                        i.TargetName, i.Filter,
+                        SUM(CASE WHEN i.Accepted = 1 THEN i.ExposureDuration ELSE 0 END) AS TotalSeconds,
+                        COUNT(*) AS FrameCount,
+                        SUM(CASE WHEN i.Accepted = 1 THEN 1 ELSE 0 END) AS AcceptedCount
+                    FROM Images i
+                    WHERE i.TargetName IS NOT NULL AND i.TargetName != ''
+                      AND (i.ImageType IS NULL OR i.ImageType = '' OR i.ImageType = 'LIGHT')
+                    GROUP BY i.TargetName, i.Filter
+                    ORDER BY i.TargetName, TotalSeconds DESC";
+
+                using (var cmd = new SQLiteCommand(sqlFilters, conn))
+                using (var reader = cmd.ExecuteReader()) {
+                    while (reader.Read()) {
+                        var name = reader["TargetName"].ToString();
+                        var filter = reader["Filter"] == DBNull.Value ? "" : reader["Filter"].ToString();
+                        if (string.IsNullOrEmpty(name) || !targets.ContainsKey(name)) continue;
+                        targets[name].Filters.Add(new FilterBreakdown {
+                            Filter        = string.IsNullOrEmpty(filter) ? "Unknown" : filter,
+                            TotalSeconds  = reader["TotalSeconds"] == DBNull.Value ? 0 : Convert.ToDouble(reader["TotalSeconds"]),
+                            FrameCount    = reader["FrameCount"] == DBNull.Value ? 0 : Convert.ToInt32(reader["FrameCount"]),
+                            AcceptedCount = reader["AcceptedCount"] == DBNull.Value ? 0 : Convert.ToInt32(reader["AcceptedCount"]),
+                        });
+                    }
+                }
+
+                // Query 3: Coordinates + latest session ID per target
+                string sqlCoords = @"
+                    SELECT i.TargetName, i.SessionId, i.RaHours, i.DecDegrees, s.SessionStart
+                    FROM Images i
+                    JOIN Sessions s ON s.SessionId = i.SessionId
+                    WHERE i.TargetName IS NOT NULL AND i.TargetName != ''
+                      AND (i.ImageType IS NULL OR i.ImageType = '' OR i.ImageType = 'LIGHT')
+                    ORDER BY s.SessionStart DESC";
+
+                var coordsDone = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var sessionDone = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                using (var cmd = new SQLiteCommand(sqlCoords, conn))
+                using (var reader = cmd.ExecuteReader()) {
+                    while (reader.Read()) {
+                        var name = reader["TargetName"].ToString();
+                        if (string.IsNullOrEmpty(name) || !targets.ContainsKey(name)) continue;
+
+                        // Latest session ID (first row per target since ordered by SessionStart DESC)
+                        if (!sessionDone.Contains(name)) {
+                            targets[name].LatestSessionId = reader["SessionId"].ToString();
+                            sessionDone.Add(name);
+                        }
+
+                        // First non-zero coordinates
+                        if (!coordsDone.Contains(name)) {
+                            var ra = reader["RaHours"] == DBNull.Value ? 0 : Convert.ToDouble(reader["RaHours"]);
+                            var dec = reader["DecDegrees"] == DBNull.Value ? 0 : Convert.ToDouble(reader["DecDegrees"]);
+                            if (ra != 0 || dec != 0) {
+                                targets[name].RaHours = Math.Round(ra, 4);
+                                targets[name].DecDegrees = Math.Round(dec, 4);
+                                coordsDone.Add(name);
+                            }
+                        }
+
+                        if (coordsDone.Contains(name) && sessionDone.Contains(name) &&
+                            coordsDone.Count == targets.Count && sessionDone.Count == targets.Count)
+                            break;
+                    }
+                }
+            }
+
+            return targets.Values.OrderByDescending(t => t.TotalIntegrationSeconds).ToList();
+        }
+
+        /// <summary>
         /// Returns per-session aggregate stats for a target across all sessions except the current one.
         /// Ordered most-recent-first, limited to <paramref name="limit"/> rows.
         /// </summary>
