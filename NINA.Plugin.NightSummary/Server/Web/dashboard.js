@@ -333,16 +333,13 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
       ' &middot; HFR <span class="stat-val">' + fmtNum(s.avgHfr) + '</span>' +
       ' &middot; <span class="stat-val">' + fmtNum(s.avgGuiding) + '&Prime;</span> guiding';
 
-    var moonBox = s.moonPhase
-      ? '<div class="card-stat"><div class="card-stat-value">' + esc(s.moonPhase) + '</div><div class="card-stat-label">Moon</div></div>'
-      : '';
-
     var statBoxes = '<div class="card-stats">' +
-      '<div class="card-stat card-stat-expandable" data-stat-type="images" data-session-id="' + s.sessionId + '"><div class="card-stat-value">' + s.imageCount + '</div><div class="card-stat-label">Images</div></div>' +
-      '<div class="card-stat card-stat-expandable" data-stat-type="integration" data-session-id="' + s.sessionId + '"><div class="card-stat-value">' + fmt(s.totalIntegrationSeconds) + '</div><div class="card-stat-label">Integration</div></div>' +
-      '<div class="card-stat"><div class="card-stat-value">' + fmtNum(s.avgHfr) + '</div><div class="card-stat-label">HFR</div></div>' +
-      '<div class="card-stat"><div class="card-stat-value">' + fmtNum(s.avgGuiding) + '&Prime;</div><div class="card-stat-label">Guiding</div></div>' +
-      moonBox +
+      '<div class="card-stat card-stat-expandable stat-images" data-stat-type="images" data-session-id="' + s.sessionId + '"><div class="card-stat-value">' + s.imageCount + '</div><div class="card-stat-label">Images</div></div>' +
+      '<div class="card-stat card-stat-expandable stat-integration" data-stat-type="integration" data-session-id="' + s.sessionId + '"><div class="card-stat-value">' + fmt(s.totalIntegrationSeconds) + '</div><div class="card-stat-label">Integration</div></div>' +
+      '<div class="card-stat stat-hfr"><div class="card-stat-value">' + fmtNum(s.avgHfr) + '<span class="card-stat-unit">px</span></div><div class="card-stat-label">HFR</div></div>' +
+      '<div class="card-stat stat-fwhm"><div class="card-stat-value">' + fmtNum(s.avgFwhm) + '<span class="card-stat-unit">&Prime;</span></div><div class="card-stat-label">FWHM</div></div>' +
+      '<div class="card-stat stat-guiding"><div class="card-stat-value">' + fmtNum(s.avgGuiding) + '&Prime;</div><div class="card-stat-label">Guiding</div></div>' +
+      '<div class="card-stat stat-moon">' + (s.moonPhase ? '<div class="card-stat-value">' + esc(s.moonPhase) + '</div><div class="card-stat-label">Moon</div>' : '') + '</div>' +
       '</div>';
 
     return '<div class="session-card" onclick="navigate(\'#/sessions/' + s.sessionId + '\')">' +
@@ -445,6 +442,7 @@ function renderThumbnails(s, thumbs) {
     var ordered = thumbOrder.concat(remaining);
     targetsEl.innerHTML = ordered.map(function(t, i) { return makeTargetBadge(t, i); }).join('');
   }
+  setupMobileThumbnailZoom(el);
 }
 
 function loadThumbnails(sessions) {
@@ -678,12 +676,27 @@ function hideSession(sessionId) {
   }
 
   if (card) {
+    // Phase 1: fade out + slight scale
     card.style.transition = 'opacity 0.2s, transform 0.2s';
     card.style.opacity = '0';
     card.style.transform = 'scale(0.97)';
     setTimeout(function() {
-      if (card.parentNode) card.parentNode.removeChild(card);
-      afterRemove();
+      // Phase 2: collapse height so siblings slide into the gap
+      var h = card.offsetHeight;
+      card.style.height = h + 'px';
+      card.style.overflow = 'hidden';
+      card.style.margin = '0';
+      card.style.padding = '0';
+      card.style.border = 'none';
+      card.style.boxShadow = 'none';
+      // Force layout so the browser registers the explicit height before animating
+      card.offsetHeight; // eslint-disable-line no-unused-expressions
+      card.style.transition = 'height 0.3s ease, margin 0.3s ease';
+      card.style.height = '0';
+      setTimeout(function() {
+        if (card.parentNode) card.parentNode.removeChild(card);
+        afterRemove();
+      }, 300);
     }, 200);
   } else {
     afterRemove();
@@ -778,8 +791,12 @@ function showStatExpand(el, sessionId, type) {
   }
 }
 
-// Event delegation for stat box hover expansion
+// Detect touch device once
+var isTouchDevice = 'ontouchstart' in window;
+
+// Event delegation for stat box hover expansion (desktop only)
 document.addEventListener('mouseenter', function(e) {
+  if (isTouchDevice) return;
   var el = e.target.closest('.card-stat-expandable');
   if (!el) return;
   var sessionId = el.dataset.sessionId;
@@ -793,20 +810,46 @@ document.addEventListener('mouseenter', function(e) {
 }, true);
 
 document.addEventListener('mouseleave', function(e) {
+  if (isTouchDevice) return;
   var el = e.target.closest('.card-stat-expandable');
   if (!el) return;
-  // Check if we moved into the popup itself
   var popup = document.getElementById('stat-expand-popup');
   if (popup && popup.contains(e.relatedTarget)) return;
   hideStatExpand();
 }, true);
 
-// Hide popup when mouse leaves it (and not back into the stat box)
+// Hide popup when mouse leaves it (desktop only)
 document.addEventListener('mouseleave', function(e) {
+  if (isTouchDevice) return;
   if (!e.target || e.target.id !== 'stat-expand-popup') return;
   if (statExpandActiveEl && statExpandActiveEl.contains(e.relatedTarget)) return;
   hideStatExpand();
 }, true);
+
+// Mobile: tap stat boxes to toggle expand/collapse
+// Uses click (capture phase) + CSS touch-action:manipulation for instant first-tap
+// Capture phase fires BEFORE the card's inline onclick can navigate
+document.addEventListener('click', function(e) {
+  var el = e.target.closest('.card-stat-expandable');
+  if (el && 'ontouchstart' in window) {
+    e.stopPropagation(); // block card onclick navigation
+    e.preventDefault();
+    var sessionId = el.dataset.sessionId;
+    var type = el.dataset.statType;
+    if (statExpandActiveEl === el) {
+      hideStatExpand(); // tap same → collapse (sets statExpandActiveEl = null)
+    } else {
+      statExpandActiveEl = el; // track which box is expanded
+      showStatExpand(el, sessionId, type);
+    }
+    return;
+  }
+  // Tap outside — dismiss if open
+  var popup = document.getElementById('stat-expand-popup');
+  if (popup && !popup.contains(e.target) && !e.target.closest('.card-stat-expandable')) {
+    hideStatExpand();
+  }
+}, true); // capture phase
 
 // ── Altitude chart crosshair ──────────────────────────────────────────────
 
@@ -946,10 +989,10 @@ function setupChartCrosshair(container) {
 
   function yToAlt(y) { return Math.max(0, Math.min(90, 90 * (plotB - y) / (plotB - plotT))); }
 
-  svg.addEventListener('mousemove', function(e) {
-    // Map mouse to SVG viewBox coordinates using CTM (handles preserveAspectRatio=none)
+  function updateCrosshair(clientX, clientY) {
+    // Map client coords to SVG viewBox coordinates using CTM (handles preserveAspectRatio=none)
     var pt = svg.createSVGPoint();
-    pt.x = e.clientX; pt.y = e.clientY;
+    pt.x = clientX; pt.y = clientY;
     var ctm = svg.getScreenCTM();
     var svgPt = pt.matrixTransform(ctm.inverse());
     var sx = svgPt.x;
@@ -959,8 +1002,7 @@ function setupChartCrosshair(container) {
     var textTransform = 'scale(' + scaleRatio.toFixed(3) + ', 1)';
 
     if (sx < plotL || sx > plotR) {
-      crossLine.style.display = 'none';
-      tooltip.style.display = 'none';
+      hideCrosshair();
       return;
     }
 
@@ -1032,15 +1074,152 @@ function setupChartCrosshair(container) {
       markers[i].label.setAttribute('transform', 'translate(' + lx + ',' + ly2 + ') ' + textTransform + ' translate(' + (-lx) + ',' + (-ly2) + ')');
       markers[i].label.style.display = '';
     }
-  });
+  }
 
-  svg.addEventListener('mouseleave', function() {
+  function hideCrosshair() {
     crossLine.style.display = 'none';
     tooltip.style.display = 'none';
     // Restore all opacities
     for (var g = 0; g < targetGroups.length; g++) targetGroups[g].style.opacity = '1';
     for (var r = 0; r < imagingWindows.length; r++) imagingWindows[r].rect.style.opacity = '0.15';
     for (var l = 0; l < windowLines.length; l++) windowLines[l].style.opacity = '0.6';
+  }
+
+  // Mouse events (desktop)
+  svg.addEventListener('mousemove', function(e) {
+    updateCrosshair(e.clientX, e.clientY);
+  });
+  svg.addEventListener('mouseleave', hideCrosshair);
+
+  // Touch events (mobile) — horizontal drag scrubs crosshair, vertical scrolls page
+  var touchStartX = 0, touchStartY = 0, touchLocked = null; // 'crosshair' or 'scroll'
+  svg.addEventListener('touchstart', function(e) {
+    var t = e.touches[0];
+    touchStartX = t.clientX;
+    touchStartY = t.clientY;
+    touchLocked = null;
+    updateCrosshair(t.clientX, t.clientY);
+  }, { passive: true });
+  svg.addEventListener('touchmove', function(e) {
+    var t = e.touches[0];
+    // Lock direction on first significant movement
+    if (!touchLocked) {
+      var dx = Math.abs(t.clientX - touchStartX);
+      var dy = Math.abs(t.clientY - touchStartY);
+      if (dx > 6 || dy > 6) {
+        touchLocked = dx > dy ? 'crosshair' : 'scroll';
+        if (touchLocked === 'scroll') hideCrosshair();
+      }
+    }
+    if (touchLocked === 'crosshair') {
+      updateCrosshair(t.clientX, t.clientY);
+      e.preventDefault(); // only block scroll for horizontal drags
+    }
+  }, { passive: false });
+  svg.addEventListener('touchend', function() { touchLocked = null; hideCrosshair(); });
+  svg.addEventListener('touchcancel', function() { touchLocked = null; hideCrosshair(); });
+}
+
+// ── Mobile thumbnail zoom (scroll-to-center) ────────────────────────────
+
+function setupMobileThumbnailZoom(thumbsContainer) {
+  if (!thumbsContainer || window.innerWidth > 700) return;
+
+  var preview = null;
+  var activeThumb = null; // currently expanded thumbnail
+
+  function showPreview(thumbWrap) {
+    var img = thumbWrap.querySelector('.card-thumb');
+    if (!img) return;
+    activeThumb = thumbWrap;
+
+    if (!preview) {
+      preview = document.createElement('div');
+      preview.className = 'mobile-thumb-preview';
+      preview.innerHTML = '<div class="mobile-thumb-preview-img-wrap"><img></div><div class="mobile-thumb-preview-label"></div>';
+    }
+
+    var imgWrap = preview.querySelector('.mobile-thumb-preview-img-wrap');
+    imgWrap.querySelector('img').src = img.src;
+    imgWrap.querySelector('img').alt = img.alt;
+
+    // Copy FOV SVG overlay if present and enabled
+    var existingSvg = imgWrap.querySelector('svg');
+    if (existingSvg) existingSvg.remove();
+    var fovSvg = thumbWrap.querySelector('svg');
+    if (fovSvg && showFovOverlay) {
+      var clone = fovSvg.cloneNode(true);
+      clone.style.display = '';
+      imgWrap.appendChild(clone);
+    }
+
+    var label = thumbWrap.querySelector('.thumb-label');
+    preview.querySelector('.mobile-thumb-preview-label').textContent = label ? label.textContent : '';
+
+    var card = thumbsContainer.closest('.session-card');
+    if (!card) return;
+    if (!preview.parentNode) card.appendChild(preview);
+
+    var cardRect = card.getBoundingClientRect();
+    var thumbRect = thumbWrap.getBoundingClientRect();
+    var thumbsRect = thumbsContainer.getBoundingClientRect();
+
+    var centerX = thumbRect.left + thumbRect.width / 2 - cardRect.left;
+    var previewW = 200;
+    centerX = Math.max(previewW / 2 + 4, Math.min(cardRect.width - previewW / 2 - 4, centerX));
+
+    preview.style.left = centerX + 'px';
+    preview.style.bottom = (cardRect.bottom - thumbsRect.top + 6) + 'px';
+    preview.style.display = '';
+  }
+
+  function hidePreview() {
+    if (preview) preview.style.display = 'none';
+    activeThumb = null;
+  }
+
+  // Track touch movement to distinguish taps from scroll drags
+  var touchStartX = 0, touchStartY = 0, touchMoved = false;
+  thumbsContainer.addEventListener('touchstart', function(e) {
+    var t = e.touches[0];
+    touchStartX = t.clientX;
+    touchStartY = t.clientY;
+    touchMoved = false;
+  }, { passive: true });
+  thumbsContainer.addEventListener('touchmove', function(e) {
+    var t = e.touches[0];
+    if (Math.abs(t.clientX - touchStartX) > 8 || Math.abs(t.clientY - touchStartY) > 8) {
+      touchMoved = true;
+    }
+  }, { passive: true });
+
+  // Use touchend so zoom fires on the very first tap (bypasses iOS sticky hover)
+  thumbsContainer.addEventListener('touchend', function(e) {
+    if (touchMoved) return; // was a scroll, not a tap
+    var thumbWrap = e.target.closest('.card-thumb-wrap');
+    if (!thumbWrap) return;
+    e.preventDefault(); // prevent the delayed click from firing card navigation
+
+    if (activeThumb === thumbWrap) {
+      hidePreview();
+    } else {
+      showPreview(thumbWrap);
+    }
+  });
+
+  // Block click on thumbnails from navigating to report (covers any remaining click events)
+  thumbsContainer.addEventListener('click', function(e) {
+    if (e.target.closest('.card-thumb-wrap')) {
+      e.stopPropagation();
+    }
+  });
+
+  // Dismiss when tapping outside the thumbs row
+  document.addEventListener('touchend', function(e) {
+    if (!activeThumb) return;
+    if (!thumbsContainer.contains(e.target) && !(preview && preview.contains(e.target))) {
+      hidePreview();
+    }
   });
 }
 

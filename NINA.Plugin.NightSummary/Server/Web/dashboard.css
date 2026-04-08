@@ -1073,6 +1073,13 @@ nav {
   font-feature-settings: "tnum";
 }
 
+.card-stat-unit {
+  font-size: 0.55em;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  margin-left: 1px;
+}
+
 .card-stat-label {
   font-size: 11px;
   color: var(--text-tertiary);
@@ -1643,9 +1650,21 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   .shell { padding: 12px; }
   header { flex-direction: column; align-items: center; text-align: center; gap: 8px; }
   header h1 { font-size: 18px; }
+  .header-right { justify-content: center; }
 
   /* ── Card layout: vertical stack ── */
   .session-card { padding: 8px 12px 10px 12px; }
+  .hide-btn {
+    opacity: 0.6;
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+  }
+  .session-card:hover .hide-btn { background: none; }
   .card-body { flex-direction: column; min-height: 0; }
   .card-content { min-width: 0; max-width: 100%; }
 
@@ -1658,28 +1677,30 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
     margin-bottom: 6px;
   }
   .card-thumb-wrap { width: 88px; height: 88px; flex-shrink: 0; }
+  .card-thumb-wrap .thumb-label { display: none; }
   .card-thumb-wrap:hover,
   .card-thumb-wrap.shelf-active { transform: none; }
 
-  /* ── Stat boxes: 2-column grid ── */
-  .card-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
-  .card-stat { padding: 8px 12px; }
-  .card-stat-value { font-size: 18px; }
-  .card-stat-label { font-size: 10px; }
+  /* Make taps fire click instantly (no 300ms delay or double-tap-to-zoom) */
+  .card-stat-expandable { touch-action: manipulation; }
 
-  /* ── Altitude chart: below content, fixed height ── */
+  /* ── Stat boxes: 3-column grid, reordered for mobile ── */
+  .card-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
+  .card-stat { padding: 8px 6px; }
+  .card-stat-value { font-size: 16px; white-space: nowrap; }
+  .card-stat-label { font-size: 9px; }
+  /* Row 1: Images, Integration, Moon  |  Row 2: HFR, FWHM, Guiding */
+  .stat-images { order: 1; }
+  .stat-integration { order: 2; }
+  .stat-moon { order: 3; }
+  .stat-hfr { order: 4; }
+  .stat-fwhm { order: 5; }
+  .stat-guiding { order: 6; }
+
+  /* ── Altitude chart: below content, legend hidden (target pills are color-coded) ── */
   .card-altitude { flex-direction: column; margin-top: 0 !important; }
-  .chart-svg-wrap { height: 160px; flex: none; }
-  .chart-legend {
-    align-self: flex-start;
-    max-width: none;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px 12px;
-    padding: 4px 8px;
-    margin-bottom: 4px;
-  }
-  .chart-legend-item { font-size: 9px; }
+  .chart-svg-wrap { height: 140px; flex: none; }
+  .chart-legend { display: none; }
 
   /* ── Livestack shelf: hide on mobile ── */
   .livestack-shelf { display: none; }
@@ -1690,8 +1711,46 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 
   /* ── Filter & navigation ── */
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
-  .filter-bar { flex-direction: column; align-items: flex-start; }
-  .filter-dates { width: 100%; }
+  /* ── Mobile thumbnail zoom preview ── */
+  .mobile-thumb-preview {
+    position: absolute;
+    transform: translateX(-50%);
+    z-index: 30;
+    width: 200px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.08);
+    pointer-events: none;
+  }
+  .mobile-thumb-preview-img-wrap {
+    position: relative;
+  }
+  .mobile-thumb-preview-img-wrap img {
+    width: 100%;
+    height: auto;
+    border-radius: 4px;
+    display: block;
+  }
+  .mobile-thumb-preview-img-wrap svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+  .mobile-thumb-preview-label {
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+  }
+
+  /* ── Filter bar: wrapping row, centered ── */
+  .filter-bar { flex-wrap: wrap; justify-content: center; gap: 6px; }
+  .filter-dates { flex: 0 0 auto; }
   .report-nav { flex-direction: column; align-items: flex-start; gap: 8px; }
 
   /* ── Report view: compact header and controls ── */
