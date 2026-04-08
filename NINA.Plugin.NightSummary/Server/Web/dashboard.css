@@ -1187,6 +1187,8 @@ nav {
 .view-toggle {
   display: flex;
   position: relative;
+  order: 99;
+  margin-left: auto;
   background: rgba(230,232,240,0.04);
   border: 1px solid rgba(230,232,240,0.10);
   border-radius: 6px;
@@ -1809,13 +1811,28 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
     margin-top: 4px;
   }
 
-  /* ── Filter bar: wrapping row, centered, uniform height, compact pills ── */
+  /* ── Filter bar: 2 rows — selectors on row 1, actions on row 2 ── */
   .filter-bar { flex-wrap: wrap; justify-content: center; gap: 5px; }
   .filter-bar > * { min-height: 36px; display: inline-flex; align-items: center; box-sizing: border-box; }
-  .filter-bar .target-check { padding: 0 7px; font-size: 11px; }
-  .filter-bar .filter-link { padding: 0 8px; font-size: 11px; }
-  .filter-dates { flex: 0 0 auto; }
+  /* Row 1: target dropdown, dates, sort — flex-grow fills the row, forcing row 2 wrap */
+  .filter-bar .target-dropdown { order: 1; flex: 1 1 70px; }
+  .filter-bar .filter-dates { order: 2; flex: 0 0 auto; }
+  .filter-bar .filter-sort { order: 3; flex: 1 1 70px; }
+  /* Shrink date labels to fit row */
+  .date-input-wrap .date-label { min-width: 74px; padding: 0 6px; font-size: 12px; }
   .filter-dates input { min-height: 36px; }
+  /* Row 2: clear, show empty, show FOV, unhide all */
+  .filter-bar > #filter-clear { order: 10; }
+  .filter-bar > label.target-check { order: 11; padding: 0 7px; font-size: 11px; }
+  .filter-bar > #unhide-all { order: 12; }
+  .filter-bar .filter-link { padding: 0 8px; font-size: 11px; }
+  /* View toggle lives in header on mobile (moved by JS) */
+  .header-right .view-toggle {
+    grid-column: 1 / -1;
+    justify-self: center;
+    margin-left: 0;
+    margin-top: 2px;
+  }
   .report-nav { flex-direction: column; align-items: flex-start; gap: 8px; }
 
   /* ── Report view: compact header and controls ── */

@@ -5,9 +5,10 @@ Serves the dashboard HTML/CSS/JS from the source tree (re-read on every request
 for instant hot reload) backed by snapshotted API data from the live server.
 
 Usage:
-    python server.py                  # defaults: port 8182, data/ directory
-    python server.py -p 9000          # custom port
-    python server.py -d /path/to/data # custom data directory
+    python server.py                        # defaults: port 8182, data/ directory
+    python server.py -p 9000                # custom port
+    python server.py -d /path/to/data       # custom data directory
+    python server.py -w /path/to/Server/Web # serve web assets from another location
 """
 
 import argparse
@@ -214,7 +215,14 @@ def main():
                         help="Listen port (default: 8182)")
     parser.add_argument("-d", "--data", default=None,
                         help="Data directory (default: data/ next to this script)")
+    parser.add_argument("-w", "--webdir", default=None,
+                        help="Web assets directory containing dashboard.html/css/js "
+                             "(default: auto-detected from repo tree)")
     args = parser.parse_args()
+
+    global WEB_DIR
+    if args.webdir:
+        WEB_DIR = os.path.normpath(os.path.abspath(args.webdir))
 
     data_dir = args.data or os.path.join(SCRIPT_DIR, "data")
     data_dir = os.path.normpath(os.path.abspath(data_dir))
