@@ -313,13 +313,18 @@ function renderTargetCard(t, index) {
   if (t.lastImaged) meta.push('Last: ' + fmtDate(t.lastImaged));
   if (meta.length) html += '<div class="target-card-meta">' + esc(meta.join(' \u00b7 ')) + '</div>';
 
-  // Stat boxes
+  // Stat boxes — Hours and Frames are expandable (hover/tap shows per-filter breakdown)
   html += '<div class="target-card-stats">';
   var hours = t.totalIntegrationHours != null ? t.totalIntegrationHours.toFixed(1) : '--';
-  html += targetStatBox(hours, 'Hours', 'h');
-  html += targetStatBox(t.acceptedFrames != null ? t.acceptedFrames : '--', 'Frames');
-  if (t.avgHFR) html += targetStatBox(t.avgHFR.toFixed(2), 'HFR', 'px');
-  if (t.avgGuidingRMS) html += targetStatBox(t.avgGuidingRMS.toFixed(2) + '"', 'Guide');
+  var frames = t.acceptedFrames != null ? t.acceptedFrames : '--';
+  html += '<div class="target-card-stat target-stat-expandable" data-stat-type="integration" data-target-idx="' + index + '">' +
+    '<div class="target-card-stat-value">' + esc(String(hours)) + '<span class="target-card-stat-unit">h</span></div>' +
+    '<div class="target-card-stat-label">Hours</div></div>';
+  html += '<div class="target-card-stat target-stat-expandable" data-stat-type="frames" data-target-idx="' + index + '">' +
+    '<div class="target-card-stat-value">' + esc(String(frames)) + '</div>' +
+    '<div class="target-card-stat-label">Frames</div></div>';
+  html += targetStatBox(t.avgHFR ? t.avgHFR.toFixed(2) : '--', 'HFR', 'px');
+  html += targetStatBox(t.avgGuidingRMS ? t.avgGuidingRMS.toFixed(2) + '"' : '--', 'Guide');
   html += '</div>';
 
   // Filter pills — sorted by canonical order L, R, G, B, H, S, O
@@ -375,6 +380,22 @@ function loadTargetThumbnails() {
         }
         if (match && match.dataUri) {
           el.innerHTML = '<img src="' + match.dataUri + '" alt="' + esc(target) + '">';
+          el.classList.add('has-image');
+          (function(thumbEl) {
+            thumbEl.addEventListener('click', function(e) {
+              e.stopPropagation();
+              var img = thumbEl.querySelector('img');
+              if (!img) return;
+              var overlay = document.createElement('div');
+              overlay.className = 'livestack-zoom-overlay';
+              var zoomImg = document.createElement('img');
+              zoomImg.src = img.src;
+              zoomImg.alt = img.alt;
+              overlay.appendChild(zoomImg);
+              overlay.addEventListener('click', function() { overlay.remove(); });
+              document.body.appendChild(overlay);
+            });
+          })(el);
         }
       });
     }).catch(function() { /* leave placeholder */ });
@@ -1025,6 +1046,66 @@ function showStatExpand(el, sessionId, type) {
   }
 }
 
+function showTargetStatExpand(el, targetIdx, type) {
+  var t = statsTargetData && statsTargetData[targetIdx];
+  if (!t || !t.filters || t.filters.length === 0) return;
+
+  var SORT_ORDER = ['L', 'R', 'G', 'B', 'H', 'S', 'O', 'N'];
+  var sorted = t.filters.slice().filter(function(f) {
+    return type === 'integration' ? (f.totalSeconds || 0) >= 1 : (f.acceptedCount || 0) > 0;
+  }).sort(function(a, b) {
+    var ai = SORT_ORDER.indexOf(resolveFilterType(a.filter) || '');
+    var bi = SORT_ORDER.indexOf(resolveFilterType(b.filter) || '');
+    if (ai < 0) ai = SORT_ORDER.length;
+    if (bi < 0) bi = SORT_ORDER.length;
+    return ai - bi;
+  });
+  if (sorted.length === 0) return;
+
+  var rows = sorted.map(function(f) {
+    var val = type === 'integration' ? fmt(f.totalSeconds) : (f.acceptedCount || 0);
+    var fc = getFilterColor(f.filter);
+    var colorStyle = fc ? ' style="color:' + fc + '"' : '';
+    return '<div class="stat-expand-row">' +
+      '<span class="stat-expand-filter"' + colorStyle + '>' + esc(f.filter) + '</span>' +
+      '<span class="stat-expand-val">' + esc(String(val)) + '</span>' +
+      '</div>';
+  }).join('');
+
+  var old = document.getElementById('stat-expand-popup');
+  if (old) old.parentNode.removeChild(old);
+
+  var popup = document.createElement('div');
+  popup.id = 'stat-expand-popup';
+  popup.className = 'stat-expand-popup';
+  popup.innerHTML =
+    '<div class="stat-expand-header">' + (type === 'integration' ? 'integration by filter' : 'frames by filter') + '</div>' +
+    rows;
+  document.body.appendChild(popup);
+
+  var rect = el.getBoundingClientRect();
+  var popupH = popup.offsetHeight;
+  var spaceBelow = window.innerHeight - rect.bottom;
+  var top = (spaceBelow >= popupH + 8 || spaceBelow >= 100)
+    ? rect.bottom + window.scrollY + 6
+    : rect.top + window.scrollY - popupH - 6;
+  var left = rect.left + window.scrollX + (rect.width / 2);
+  popup.style.top = top + 'px';
+  popup.style.left = left + 'px';
+
+  requestAnimationFrame(function() {
+    if (!document.getElementById('stat-expand-popup')) return;
+    var pr = popup.getBoundingClientRect();
+    var pad = 12;
+    if (pr.left < pad) {
+      popup.style.left = (left + (pad - pr.left)) + 'px';
+    } else if (pr.right > window.innerWidth - pad) {
+      popup.style.left = (left - (pr.right - (window.innerWidth - pad))) + 'px';
+    }
+    popup.classList.add('stat-expand-visible');
+  });
+}
+
 // Detect touch device once
 var isTouchDevice = 'ontouchstart' in window;
 
@@ -1078,12 +1159,53 @@ document.addEventListener('click', function(e) {
     }
     return;
   }
+  // Target card stat box tap (mobile)
+  var tel = e.target.closest('.target-stat-expandable');
+  if (tel && 'ontouchstart' in window) {
+    e.stopPropagation();
+    e.preventDefault();
+    var targetIdx = parseInt(tel.dataset.targetIdx, 10);
+    var ttype = tel.dataset.statType;
+    if (statExpandActiveEl === tel) {
+      hideStatExpand();
+    } else {
+      statExpandActiveEl = tel;
+      showTargetStatExpand(tel, targetIdx, ttype);
+    }
+    return;
+  }
   // Tap outside — dismiss if open
   var popup = document.getElementById('stat-expand-popup');
-  if (popup && !popup.contains(e.target) && !e.target.closest('.card-stat-expandable')) {
+  if (popup && !popup.contains(e.target) &&
+      !e.target.closest('.card-stat-expandable') &&
+      !e.target.closest('.target-stat-expandable')) {
     hideStatExpand();
   }
 }, true); // capture phase
+
+// Event delegation for target card stat box hover expansion (desktop only)
+document.addEventListener('mouseenter', function(e) {
+  if (isTouchDevice) return;
+  var el = e.target.closest('.target-stat-expandable');
+  if (!el) return;
+  var targetIdx = parseInt(el.dataset.targetIdx, 10);
+  var type = el.dataset.statType;
+  if (isNaN(targetIdx) || !type) return;
+  clearTimeout(statExpandTimer);
+  statExpandActiveEl = el;
+  statExpandTimer = setTimeout(function() {
+    showTargetStatExpand(el, targetIdx, type);
+  }, 350);
+}, true);
+
+document.addEventListener('mouseleave', function(e) {
+  if (isTouchDevice) return;
+  var el = e.target.closest('.target-stat-expandable');
+  if (!el) return;
+  var popup = document.getElementById('stat-expand-popup');
+  if (popup && popup.contains(e.relatedTarget)) return;
+  hideStatExpand();
+}, true);
 
 // ── Altitude chart crosshair ──────────────────────────────────────────────
 
