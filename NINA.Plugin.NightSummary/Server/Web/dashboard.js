@@ -1038,9 +1038,13 @@ function showTargetStatExpand(el, targetIdx, type) {
     var val = type === 'integration' ? fmt(f.totalSeconds) : (f.acceptedCount || 0);
     var fc = getFilterColor(f.filter);
     var typeLetter = resolveFilterType(f.filter) || f.filter.charAt(0).toUpperCase();
-    var dot = '<span class="filter-type-dot" style="background:' + (fc || 'var(--dim)') + '">' + esc(typeLetter) + '</span>';
+    var rgb = fc ? hexToRgb(fc) : null;
+    var dotStyle = rgb
+      ? 'background:rgba(' + rgb + ',0.10);border-color:rgba(' + rgb + ',0.28);color:' + fc
+      : 'background:rgba(128,128,128,0.10);border-color:rgba(128,128,128,0.28);color:var(--muted)';
+    var dot = '<span class="filter-type-dot" style="' + dotStyle + '">' + esc(typeLetter) + '</span>';
     return '<div class="stat-expand-row">' +
-      '<span class="stat-expand-filter">' + dot + '<span style="color:var(--text-secondary)">' + esc(f.filter) + '</span></span>' +
+      '<span class="stat-expand-filter">' + dot + '</span>' +
       '<span class="stat-expand-val">' + esc(String(val)) + '</span>' +
       '</div>';
   }).join('');
