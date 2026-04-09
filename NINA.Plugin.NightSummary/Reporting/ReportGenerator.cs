@@ -311,9 +311,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var timingEvents = data.TimingEvents;
             if (timingEvents == null || !timingEvents.Any()) return "";
 
-            // Exclude Exposure events (useful imaging time) and zero-duration events
-            // (e.g. StarDetection which are instantaneous log entries, not timed operations)
-            var overheadEvents = timingEvents.Where(e => e.EventType != "Exposure" && e.DurationSeconds > 0).ToList();
+            // Exclude Exposure events (useful imaging time), AbortedExposure events
+            // (weather-lost time handled by roof-closed exclusion), and zero-duration events
+            var overheadEvents = timingEvents.Where(e => e.EventType != "Exposure" && e.EventType != "AbortedExposure" && e.DurationSeconds > 0).ToList();
             if (!overheadEvents.Any()) return "";
 
             var sb = new StringBuilder();
@@ -340,7 +340,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             // which includes pre-imaging setup (cool camera, slew, center, autofocus)
             // and post-imaging teardown (warm camera, park) — not just first-to-last image.
             var totalIntegrationSec = data.Images.Sum(i => i.ExposureDuration);
-            var allEvents = timingEvents.Where(e => e.DurationSeconds > 0).ToList();
+            var allEvents = timingEvents.Where(e => e.DurationSeconds > 0 && e.EventType != "AbortedExposure").ToList();
             var windowStart = allEvents.Min(e => e.StartTime);
             var windowEnd = allEvents.Max(e => e.EndTime);
             var windowSec = (windowEnd - windowStart).TotalSeconds;
