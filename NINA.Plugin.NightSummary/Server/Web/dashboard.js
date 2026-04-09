@@ -327,34 +327,6 @@ function renderTargetCard(t, index) {
   html += targetStatBox(t.avgGuidingRMS ? t.avgGuidingRMS.toFixed(2) + '"' : '--', 'Guide');
   html += '</div>';
 
-  // Filter pills — sorted by canonical order L, R, G, B, H, S, O
-  var PILL_SORT_ORDER = ['L', 'R', 'G', 'B', 'H', 'S', 'O', 'N'];
-  function pillSortKey(name) {
-    var type = resolveFilterType(name);
-    var idx = PILL_SORT_ORDER.indexOf(type);
-    return idx >= 0 ? idx : PILL_SORT_ORDER.length;
-  }
-  if (t.filters && t.filters.length > 0) {
-    var sortedFilters = t.filters.slice().sort(function(a, b) {
-      return pillSortKey(a.filter) - pillSortKey(b.filter);
-    });
-    html += '<div class="target-filters">';
-    sortedFilters.forEach(function(f) {
-      var secs = f.totalSeconds || 0;
-      if (secs < 1) return; // skip zero-integration filters (all frames rejected)
-      var fc = getFilterColor(f.filter);
-      if (!fc) return; // unresolved filter name → hide pill
-      var rgb = hexToRgb(fc);
-      var durStr = secs >= 3600 ? (secs / 3600).toFixed(1) + 'h' :
-                   secs >= 60   ? Math.round(secs / 60) + 'm' :
-                                  Math.round(secs) + 's';
-      html += '<span class="target-filter-pill" style="background:rgba(' + rgb + ',0.10);border-color:rgba(' + rgb + ',0.28);color:' + fc + '">';
-      html += esc(f.filter) + ' ' + durStr;
-      html += '</span>';
-    });
-    html += '</div>';
-  }
-
   html += '</div></div>';
   return html;
 }
@@ -1065,9 +1037,10 @@ function showTargetStatExpand(el, targetIdx, type) {
   var rows = sorted.map(function(f) {
     var val = type === 'integration' ? fmt(f.totalSeconds) : (f.acceptedCount || 0);
     var fc = getFilterColor(f.filter);
-    var colorStyle = fc ? ' style="color:' + fc + '"' : '';
+    var typeLetter = resolveFilterType(f.filter) || f.filter.charAt(0).toUpperCase();
+    var dot = '<span class="filter-type-dot" style="background:' + (fc || 'var(--dim)') + '">' + esc(typeLetter) + '</span>';
     return '<div class="stat-expand-row">' +
-      '<span class="stat-expand-filter"' + colorStyle + '>' + esc(f.filter) + '</span>' +
+      '<span class="stat-expand-filter">' + dot + '<span style="color:var(--text-secondary)">' + esc(f.filter) + '</span></span>' +
       '<span class="stat-expand-val">' + esc(String(val)) + '</span>' +
       '</div>';
   }).join('');
