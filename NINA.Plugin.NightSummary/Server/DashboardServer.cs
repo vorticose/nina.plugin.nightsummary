@@ -334,7 +334,7 @@ namespace NINA.Plugin.NightSummary.Server {
                         var html = File.ReadAllText(reportPath);
                         // Match: <div class='stat-value'>42% ↑</div><div class='stat-label'>Moon</div>
                         var moonMatch = Regex.Match(html, @"<div class='stat-value'>(\d+%\s*[^\<]*)</div>\s*<div class='stat-label'>Moon</div>");
-                        if (moonMatch.Success) moonPhase = System.Net.WebUtility.HtmlDecode(moonMatch.Groups[1].Value.Trim());
+                        if (moonMatch.Success) moonPhase = System.Text.RegularExpressions.Regex.Replace(System.Net.WebUtility.HtmlDecode(moonMatch.Groups[1].Value), @"\s+", " ").Trim();
                     } catch { }
                 }
                 return new {
