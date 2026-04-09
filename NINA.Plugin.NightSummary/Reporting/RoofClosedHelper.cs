@@ -48,6 +48,41 @@ namespace NINA.Plugin.NightSummary.Reporting {
         }
 
         /// <summary>
+        /// Extends roof-closed intervals backwards to cover any aborted exposures that
+        /// immediately precede them. When an exposure is aborted by an unsafe trigger,
+        /// the partial exposure time is weather-lost — not overhead, not integration.
+        /// </summary>
+        public static List<(DateTime start, DateTime end)> ExtendForAbortedExposures(
+            List<(DateTime start, DateTime end)> roofIntervals, List<TimingEvent> timingEvents) {
+
+            if (roofIntervals.Count == 0 || timingEvents == null)
+                return roofIntervals;
+
+            var aborted = timingEvents
+                .Where(e => e.EventType == "AbortedExposure")
+                .OrderBy(e => e.StartTime)
+                .ToList();
+
+            if (aborted.Count == 0)
+                return roofIntervals;
+
+            var extended = new List<(DateTime start, DateTime end)>();
+            foreach (var interval in roofIntervals) {
+                var newStart = interval.start;
+                // Look for an aborted exposure that ends near this interval's start
+                // (within 5 minutes — accounts for trigger processing, safety handler startup)
+                var match = aborted.FirstOrDefault(a =>
+                    a.StartTime < interval.start &&
+                    a.EndTime >= interval.start.AddMinutes(-5) &&
+                    a.EndTime <= interval.start);
+                if (match != null)
+                    newStart = match.StartTime < newStart ? match.StartTime : newStart;
+                extended.Add((newStart, interval.end));
+            }
+            return extended;
+        }
+
+        /// <summary>
         /// Total seconds of roof-closed time within the window.
         /// </summary>
         public static double TotalSeconds(List<(DateTime start, DateTime end)> intervals) {

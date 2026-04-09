@@ -347,7 +347,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             // Exclude roof-closed (unsafe) periods — imaging isn't possible while
             // the roof is closed, so this time is neither overhead nor integration.
+            // Extend roof-closed intervals backwards to cover any aborted exposures
+            // that were interrupted by the unsafe trigger (weather-lost time, not overhead).
             var roofIntervals = RoofClosedHelper.GetIntervals(data.Events, windowStart, windowEnd);
+            roofIntervals = RoofClosedHelper.ExtendForAbortedExposures(roofIntervals, timingEvents);
             var roofClosedSec = RoofClosedHelper.TotalSeconds(roofIntervals);
             var effectiveWindowSec = windowSec - roofClosedSec;
             var impliedOverheadSec = effectiveWindowSec - totalIntegrationSec;

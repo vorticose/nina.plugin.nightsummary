@@ -177,6 +177,17 @@ namespace NINA.Plugin.NightSummary.Data {
                     } else if (message.StartsWith("Starting ")) {
                         totalSequenceItemLines++;
                         if (itemName == "TakeExposure" || itemName == "TakeSubframeExposure") {
+                            // If a previous exposure start was never finished, emit it as aborted
+                            if (exposureStart.HasValue) {
+                                events.Add(new TimingEvent {
+                                    EventType = "AbortedExposure",
+                                    StartTime = exposureStart.Value,
+                                    EndTime = timestamp,
+                                    DurationSeconds = (timestamp - exposureStart.Value).TotalSeconds,
+                                    Details = exposureDetails
+                                });
+                                Logger.Warning($"NightSummary: LogParser — exposure started at {exposureStart.Value:o} was aborted (new exposure started)");
+                            }
                             exposureStart = timestamp;
                             exposureDetails = ExtractExposureDetails(message);
                             exposureRequestedSeconds = ExtractExposureTime(message);
@@ -264,9 +275,17 @@ namespace NINA.Plugin.NightSummary.Data {
                 }
             }
 
-            // Warn about unmatched starts
-            if (exposureStart.HasValue)
-                Logger.Warning($"NightSummary: LogParser — unmatched TakeExposure start at {exposureStart.Value:o}");
+            // Emit unmatched exposure as aborted (e.g. cancelled by unsafe trigger)
+            if (exposureStart.HasValue) {
+                events.Add(new TimingEvent {
+                    EventType = "AbortedExposure",
+                    StartTime = exposureStart.Value,
+                    EndTime = sessionEnd,
+                    DurationSeconds = (sessionEnd - exposureStart.Value).TotalSeconds,
+                    Details = exposureDetails
+                });
+                Logger.Warning($"NightSummary: LogParser — exposure started at {exposureStart.Value:o} was aborted (no matching finish)");
+            }
             foreach (var pending in pendingStarts)
                 Logger.Warning($"NightSummary: LogParser — unmatched {pending.Key} start at {pending.Value:o}");
 

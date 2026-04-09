@@ -127,5 +127,65 @@ namespace NINA.Plugin.NightSummary.Tests {
             Assert.False(RoofClosedHelper.IsEntirelyWithinClosed(
                 T0, T0.AddMinutes(5), closedIntervals));
         }
+
+        // ── ExtendForAbortedExposures ───────────────────────────────────────
+
+        [Fact]
+        public void AbortedExposure_ExtendsRoofClosedBackwards() {
+            var roofIntervals = new List<(DateTime start, DateTime end)> {
+                (T0.AddMinutes(10), T0.AddMinutes(30))  // RoofClosed at +10
+            };
+            var timingEvents = new List<TimingEvent> {
+                new TimingEvent {
+                    EventType = "AbortedExposure",
+                    StartTime = T0.AddMinutes(5),   // Exposure started at +5
+                    EndTime = T0.AddMinutes(10),     // Aborted when roof closed at +10
+                    DurationSeconds = 300
+                }
+            };
+
+            var extended = RoofClosedHelper.ExtendForAbortedExposures(roofIntervals, timingEvents);
+            Assert.Single(extended);
+            Assert.Equal(T0.AddMinutes(5), extended[0].start);  // Extended back to exposure start
+            Assert.Equal(T0.AddMinutes(30), extended[0].end);   // End unchanged
+        }
+
+        [Fact]
+        public void NoAbortedExposure_IntervalsUnchanged() {
+            var roofIntervals = new List<(DateTime start, DateTime end)> {
+                (T0.AddMinutes(10), T0.AddMinutes(30))
+            };
+            var timingEvents = new List<TimingEvent> {
+                new TimingEvent {
+                    EventType = "Exposure",
+                    StartTime = T0,
+                    EndTime = T0.AddMinutes(5),
+                    DurationSeconds = 300
+                }
+            };
+
+            var extended = RoofClosedHelper.ExtendForAbortedExposures(roofIntervals, timingEvents);
+            Assert.Single(extended);
+            Assert.Equal(T0.AddMinutes(10), extended[0].start);  // Unchanged
+        }
+
+        [Fact]
+        public void AbortedExposure_FarFromRoofClosed_NotExtended() {
+            var roofIntervals = new List<(DateTime start, DateTime end)> {
+                (T0.AddMinutes(30), T0.AddMinutes(50))
+            };
+            var timingEvents = new List<TimingEvent> {
+                new TimingEvent {
+                    EventType = "AbortedExposure",
+                    StartTime = T0,                  // Exposure 30 min before roof closed
+                    EndTime = T0.AddMinutes(10),
+                    DurationSeconds = 600
+                }
+            };
+
+            var extended = RoofClosedHelper.ExtendForAbortedExposures(roofIntervals, timingEvents);
+            Assert.Single(extended);
+            Assert.Equal(T0.AddMinutes(30), extended[0].start);  // Not extended — too far away
+        }
     }
 }

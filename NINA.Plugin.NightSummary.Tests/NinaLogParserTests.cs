@@ -205,7 +205,7 @@ namespace NINA.Plugin.NightSummary.Tests {
         }
 
         [Fact]
-        public void HandlesUnmatchedStartGracefully() {
+        public void UnmatchedExposure_EmitsAbortedExposureEvent() {
             // Create a log with a Starting but no Finishing for TakeExposure
             var unmatchedLog = @"----------------------------------------------------------------------
 --------------N.I.N.A. - Nighttime Imaging 'N' Astronomy--------------
@@ -218,8 +218,12 @@ namespace NINA.Plugin.NightSummary.Tests {
             File.WriteAllText(path, unmatchedLog);
             try {
                 var events = NinaLogParser.ParseFile(path, SessionStart, SessionEnd);
-                // Should not crash, and should not produce an Exposure event
+                // Should not produce a normal Exposure event
                 Assert.DoesNotContain(events, e => e.EventType == "Exposure");
+                // Should produce an AbortedExposure event
+                var aborted = events.Where(e => e.EventType == "AbortedExposure").ToList();
+                Assert.Single(aborted);
+                Assert.Equal(new DateTime(2026, 3, 30, 21, 39, 6, 854).AddTicks(5000), aborted[0].StartTime);
             } finally {
                 File.Delete(path);
             }
