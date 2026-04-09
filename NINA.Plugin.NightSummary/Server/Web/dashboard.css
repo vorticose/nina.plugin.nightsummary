@@ -1853,9 +1853,12 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 }
 
 .target-card-stats {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 4px;
-  flex-wrap: wrap;
+}
+.target-card-stats > :last-child:nth-child(odd) {
+  grid-column: 1 / -1;
 }
 
 .target-card-stat {

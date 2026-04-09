@@ -311,7 +311,6 @@ function renderTargetCard(t, index) {
   var meta = [];
   if (t.sessionCount) meta.push(t.sessionCount + ' session' + (t.sessionCount !== 1 ? 's' : ''));
   if (t.lastImaged) meta.push('Last: ' + fmtDate(t.lastImaged));
-  if (t.raHours && t.decDegrees) meta.push(fmtCoord(t.raHours, t.decDegrees));
   if (meta.length) html += '<div class="target-card-meta">' + esc(meta.join(' \u00b7 ')) + '</div>';
 
   // Stat boxes
@@ -323,10 +322,19 @@ function renderTargetCard(t, index) {
   if (t.avgGuidingRMS) html += targetStatBox(t.avgGuidingRMS.toFixed(2) + '"', 'Guide');
   html += '</div>';
 
-  // Filter pills
+  // Filter pills — sorted by canonical order L, R, G, B, H, S, O
+  var PILL_SORT_ORDER = ['L', 'R', 'G', 'B', 'H', 'S', 'O', 'N'];
+  function pillSortKey(name) {
+    var type = resolveFilterType(name);
+    var idx = PILL_SORT_ORDER.indexOf(type);
+    return idx >= 0 ? idx : PILL_SORT_ORDER.length;
+  }
   if (t.filters && t.filters.length > 0) {
+    var sortedFilters = t.filters.slice().sort(function(a, b) {
+      return pillSortKey(a.filter) - pillSortKey(b.filter);
+    });
     html += '<div class="target-filters">';
-    t.filters.forEach(function(f) {
+    sortedFilters.forEach(function(f) {
       var secs = f.totalSeconds || 0;
       if (secs < 1) return; // skip zero-integration filters (all frames rejected)
       var fc = getFilterColor(f.filter);
