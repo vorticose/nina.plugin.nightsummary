@@ -226,6 +226,26 @@ namespace NINA.Plugin.NightSummary.Tests {
         }
 
         [Fact]
+        public void RespectsExactSessionBoundaries() {
+            // Narrow the session window so the early MoveFocuserByTemperature (21:34) falls outside
+            var narrowStart = new DateTime(2026, 3, 30, 21, 38, 0);
+            var narrowEnd   = new DateTime(2026, 3, 30, 21, 50, 0);
+            var events = NinaLogParser.ParseFile(_logPath, narrowStart, narrowEnd);
+
+            // MoveFocuserByTemperature at 21:34 should be excluded (before narrowStart)
+            var tempComp = events.Where(e => e.EventType == "TempCompFocus").ToList();
+            Assert.Empty(tempComp);
+
+            // Autofocus starts at 21:36:26, before narrowStart — should also be excluded
+            var af = events.Where(e => e.EventType == "Autofocus").ToList();
+            Assert.Empty(af);
+
+            // Exposure at 21:39 and filter change at 21:38:45 should still be included
+            var exposures = events.Where(e => e.EventType == "Exposure").ToList();
+            Assert.Single(exposures); // Only the first exposure (21:39-21:49), second starts at 21:49
+        }
+
+        [Fact]
         public void ParsesAllEventTypesFromTestFixture() {
             var events = NinaLogParser.ParseFile(_logPath, SessionStart, SessionEnd);
 

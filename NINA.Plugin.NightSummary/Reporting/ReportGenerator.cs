@@ -344,16 +344,28 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var windowStart = allEvents.Min(e => e.StartTime);
             var windowEnd = allEvents.Max(e => e.EndTime);
             var windowSec = (windowEnd - windowStart).TotalSeconds;
-            var impliedOverheadSec = windowSec - totalIntegrationSec;
+
+            // Exclude roof-closed (unsafe) periods — imaging isn't possible while
+            // the roof is closed, so this time is neither overhead nor integration.
+            var roofIntervals = RoofClosedHelper.GetIntervals(data.Events, windowStart, windowEnd);
+            var roofClosedSec = RoofClosedHelper.TotalSeconds(roofIntervals);
+            var effectiveWindowSec = windowSec - roofClosedSec;
+            var impliedOverheadSec = effectiveWindowSec - totalIntegrationSec;
 
             // Merge all overhead intervals to compute wall-clock overhead, deduplicating
             // any events that overlap with each other in time.
-            var mergedOverheadSec = MergeOverheadIntervals(overheadEvents);
+            // Exclude overhead events that fall entirely within roof-closed periods
+            // (e.g. SafetyWait while roof is closed) to avoid inflating the accounted total.
+            var effectiveOverheadEvents = roofIntervals.Count > 0
+                ? overheadEvents.Where(e => !RoofClosedHelper.IsEntirelyWithinClosed(e.StartTime, e.EndTime, roofIntervals)).ToList()
+                : overheadEvents;
+            var mergedOverheadSec = MergeOverheadIntervals(effectiveOverheadEvents);
             var coveragePct = impliedOverheadSec > 0
                 ? Math.Min(mergedOverheadSec / impliedOverheadSec * 100.0, 100.0) : 0;
             var unaccountedSec = Math.Max(0, impliedOverheadSec - mergedOverheadSec);
 
             Logger.Info($"NightSummary: Overhead — window={windowSec:F0}s, integration={totalIntegrationSec:F0}s, " +
+                $"roofClosed={roofClosedSec:F0}s, effective={effectiveWindowSec:F0}s, " +
                 $"implied={impliedOverheadSec:F0}s, merged={mergedOverheadSec:F0}s, " +
                 $"coverage={coveragePct:F1}%, unaccounted={unaccountedSec:F0}s");
 

@@ -157,8 +157,8 @@ namespace NINA.Plugin.NightSummary.Data {
                 if (!DateTime.TryParse(parts[0], CultureInfo.InvariantCulture, DateTimeStyles.None, out var timestamp))
                     continue;
 
-                // Only process lines within the session window (with a small buffer for pre-session setup)
-                if (timestamp < sessionStart.AddMinutes(-5) || timestamp > sessionEnd.AddMinutes(5))
+                // Only process lines within the exact session window (defined by NS sequence instructions)
+                if (timestamp < sessionStart || timestamp > sessionEnd)
                     continue;
 
                 var level = parts[1];

@@ -48,6 +48,8 @@
 - Tonight's Preview toggle is now greyed out when the Target Scheduler API is not enabled, preventing misconfiguration
 - Target Scheduler progress bars are suppressed in the report when Target Scheduler is not installed, eliminating spurious warnings for users without TS
 - Discord webhook URL validation no longer rejects legacy discordapp.com webhook URLs — the actual API response is used to determine success or failure instead
+- Overhead analysis now excludes roof-closed (unsafe) periods from implied overhead, preventing safety events from inflating the unaccounted overhead figure
+- Log parser now uses exact session boundaries instead of a ±5 minute buffer, preventing events from cancelled/restarted sequences from bleeding into the current session's overhead calculation
 
 
 ## v2.8.1
