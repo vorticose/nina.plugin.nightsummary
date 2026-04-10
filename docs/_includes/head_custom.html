@@ -1,0 +1,107 @@
+<style>
+  /* Night Summary theme overrides */
+  *, *::before, *::after { border-color: #2d2d5e !important; }
+  body, .main, #top, .main-content-wrap, .main-header, #main-header { background-color: #1a1a2e !important; }
+  .side-bar, .site-header, .site-footer { background-color: #141425 !important; }
+  .d-md-none.fs-2 { display: none !important; }
+  .site-footer { background-color: #141425 !important; display: block !important; }
+  .site-footer > :not(.ns-feedback) { display: none !important; }
+  .ns-feedback {
+    padding: 16px 24px;
+    border-top: 1px solid #2d2d5e;
+    font-size: 13px;
+    color: #888;
+  }
+  .ns-feedback-title {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #666;
+    margin-bottom: 10px;
+  }
+  .ns-feedback a {
+    display: block;
+    padding: 6px 0;
+    color: #7eb8f7 !important;
+    text-decoration: none;
+    font-size: 13px;
+  }
+  .ns-feedback a:hover { text-decoration: underline; }
+  .main-content { color: #d0d0e0; }
+  .main-content h1, .main-content h2, .main-content h3, .main-content h4 { color: #e8e8f0; }
+  a { color: #7eb8f7; }
+  .nav-list-link.active { color: #7eb8f7 !important; background-color: transparent !important; font-weight: 600; }
+  .search-input { background-color: #16213e !important; }
+  code { background-color: #0f0f20; }
+  table, .table-wrapper { background-color: #16213e !important; }
+  th { background-color: #1e2a45 !important; color: #e8e8f0 !important; }
+  td { background-color: #16213e !important; color: #d0d0e0 !important; }
+  tr:nth-child(even) td { background-color: #1a2540 !important; }
+  .site-title {
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+  }
+  .site-title::before {
+    content: '';
+    display: inline-block;
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    background-image: url('assets/plugin-icon.png');
+    background-size: contain;
+    background-repeat: no-repeat;
+    margin-right: 10px;
+  }
+
+  .main-content img:not(.no-lightbox) {
+    cursor: zoom-in;
+    transition: opacity 0.2s;
+  }
+  .main-content img:not(.no-lightbox):hover {
+    opacity: 0.9;
+  }
+  #img-lightbox {
+    position: fixed;
+    top: 0; left: 0; width: 100vw; height: 100vh;
+    background: rgba(0,0,0,0.9);
+    z-index: 9999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    cursor: zoom-out;
+    padding: 20px;
+  }
+  #img-lightbox.active {
+    display: flex;
+  }
+  #img-lightbox img {
+    max-width: 95vw;
+    max-height: 95vh;
+    object-fit: contain;
+    min-width: 60vw;
+  }
+</style>
+
+<div id="img-lightbox" onclick="this.classList.remove('active')">
+  <img id="img-lightbox-img" src="" alt="" />
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    var lightbox = document.getElementById('img-lightbox');
+    var lightboxImg = document.getElementById('img-lightbox-img');
+
+    document.body.addEventListener('click', function(e) {
+      if (e.target.tagName === 'IMG' && !e.target.classList.contains('no-lightbox') && e.target.closest('.main-content')) {
+        lightboxImg.src = e.target.src;
+        lightboxImg.alt = e.target.alt;
+        lightbox.classList.add('active');
+      }
+    });
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') lightbox.classList.remove('active');
+    });
+  });
+</script>
