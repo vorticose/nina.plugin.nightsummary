@@ -124,8 +124,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
             // Build x-axis values keyed by timestamp for joining
             var xByTime = BuildXAxisLookup(images, xAxisMetric);
 
-            // Filter lookup for tooltips
-            var filterByTime = images.ToDictionary(i => i.Timestamp, i => i.Filter ?? "");
+            // Filter lookup for tooltips. Use GroupBy to tolerate duplicate timestamps
+            // (tests and rapid captures can produce identical timestamps).
+            var filterByTime = images
+                .GroupBy(i => i.Timestamp)
+                .ToDictionary(g => g.Key, g => g.First().Filter ?? "");
 
             // Compute session start time for event marker positioning (Time x-axis only)
             DateTime minTime = DateTime.MinValue;
