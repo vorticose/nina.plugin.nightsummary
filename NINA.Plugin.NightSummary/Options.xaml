@@ -118,9 +118,21 @@
                     <!-- ══════════════════════════════════════════════════════════ -->
 
                     <StackPanel Orientation="Horizontal" Margin="0,4">
+                        <TextBlock Text="Show Yield and Overhead Analysis" Width="200" VerticalAlignment="Center" />
+                        <CheckBox IsChecked="{Binding ShowOverheadBreakdown}" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,4">
                         <TextBlock Text="Show Sky Thumbnails" Width="200" VerticalAlignment="Center" />
                         <CheckBox IsChecked="{Binding ShowSkyThumbnails}" VerticalAlignment="Center" />
                     </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,4">
+                        <TextBlock Text="Show Live Stack Images" Width="200" VerticalAlignment="Center" />
+                        <CheckBox IsChecked="{Binding ShowLiveStackImages}" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <TextBlock Text="Requires the Live Stack plugin to be installed and running during imaging."
+                               FontStyle="Italic" Foreground="Gray" FontSize="11" Margin="24,0,0,0" />
 
                     <!-- Altitude Charts + Moon Curve on one row; whole row disabled at Snapshot -->
                     <StackPanel Orientation="Horizontal" Margin="0,4">
@@ -320,6 +332,33 @@
                         <CheckBox IsChecked="{Binding ShowHFRGraph}" VerticalAlignment="Center" />
                     </StackPanel>
 
+                    <!-- Chart event markers: disabled when Metric Chart is off -->
+                    <StackPanel Margin="20,2,0,0">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="IsEnabled" Value="True"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ShowHFRGraph}" Value="False">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                            <TextBlock Text="Show AutoFocus Markers" Width="180" VerticalAlignment="Center" />
+                            <CheckBox IsChecked="{Binding ShowChartAfMarkers}" VerticalAlignment="Center" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                            <TextBlock Text="Show Meridian Flip Markers" Width="180" VerticalAlignment="Center" />
+                            <CheckBox IsChecked="{Binding ShowChartFlipMarkers}" VerticalAlignment="Center" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                            <TextBlock Text="Show Roof Event Markers" Width="180" VerticalAlignment="Center" />
+                            <CheckBox IsChecked="{Binding ShowChartRoofMarkers}" VerticalAlignment="Center" />
+                        </StackPanel>
+                        <TextBlock Text="Markers only shown when x-axis is set to Time." FontSize="10" Foreground="Gray" Margin="0,2,0,0" />
+                    </StackPanel>
+
                     <!-- Chart metric selectors: disabled at Snapshot/Standard or when Metric Chart is off -->
                     <StackPanel Margin="200,2,0,2">
                         <StackPanel.Style>
@@ -338,6 +377,34 @@
                                 </Style.Triggers>
                             </Style>
                         </StackPanel.Style>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,3">
+                            <TextBlock Text="X-Axis" Width="130" VerticalAlignment="Center" />
+                            <ComboBox SelectedIndex="{Binding ChartXAxisMetric}" MinWidth="160">
+                                <ComboBoxItem>Time</ComboBoxItem>
+                                <ComboBoxItem>Frame Index</ComboBoxItem>
+                                <ComboBoxItem>HFR</ComboBoxItem>
+                                <ComboBoxItem>FWHM</ComboBoxItem>
+                                <ComboBoxItem>Guiding RMS</ComboBoxItem>
+                                <ComboBoxItem>Focuser Temp (°C)</ComboBoxItem>
+                                <ComboBoxItem>Ambient Temp (°C)</ComboBoxItem>
+                                <ComboBoxItem>Eccentricity</ComboBoxItem>
+                                <ComboBoxItem>Altitude (°)</ComboBoxItem>
+                                <ComboBoxItem>Airmass</ComboBoxItem>
+                                <ComboBoxItem>Humidity (%)</ComboBoxItem>
+                                <ComboBoxItem>Focuser Position (steps)</ComboBoxItem>
+                                <ComboBoxItem>Sky Quality (mag/arcsec²)</ComboBoxItem>
+                                <ComboBoxItem>Cloud Cover (%)</ComboBoxItem>
+                                <ComboBoxItem>Camera Temp (°C)</ComboBoxItem>
+                                <ComboBoxItem>Dew Point (°C)</ComboBoxItem>
+                                <ComboBoxItem>Wind Speed (m/s)</ComboBoxItem>
+                                <ComboBoxItem>Pressure (hPa)</ComboBoxItem>
+                                <ComboBoxItem>Star Count</ComboBoxItem>
+                                <ComboBoxItem>Azimuth (°)</ComboBoxItem>
+                                <ComboBoxItem>Seeing FWHM (arcsec)</ComboBoxItem>
+                                <ComboBoxItem>Median ADU</ComboBoxItem>
+                            </ComboBox>
+                        </StackPanel>
 
                         <StackPanel Orientation="Horizontal" Margin="0,3">
                             <TextBlock Text="Primary Metric" Width="130" VerticalAlignment="Center" />
@@ -361,6 +428,7 @@
                                 <ComboBoxItem>Star Count</ComboBoxItem>
                                 <ComboBoxItem>Azimuth (°)</ComboBoxItem>
                                 <ComboBoxItem>Seeing FWHM (arcsec)</ComboBoxItem>
+                                <ComboBoxItem>Median ADU</ComboBoxItem>
                             </ComboBox>
                         </StackPanel>
 
@@ -387,6 +455,7 @@
                                 <ComboBoxItem>Star Count</ComboBoxItem>
                                 <ComboBoxItem>Azimuth (°)</ComboBoxItem>
                                 <ComboBoxItem>Seeing FWHM (arcsec)</ComboBoxItem>
+                                <ComboBoxItem>Median ADU</ComboBoxItem>
                             </ComboBox>
                             <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,2,0,0" MaxWidth="320">
                                 FWHM and Eccentricity require the Hocus Focus plugin. Focuser Temp requires a focuser with a built-in temperature sensor.
@@ -434,6 +503,12 @@
                                                       ItemsSource="{Binding DataContext.SecondaryMetricNames, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                       MinWidth="160" />
                                         </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                                            <TextBlock Text="X-Axis" Width="130" VerticalAlignment="Center" />
+                                            <ComboBox SelectedIndex="{Binding XAxis, Mode=TwoWay}"
+                                                      ItemsSource="{Binding DataContext.XAxisMetricNames, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                      MinWidth="160" />
+                                        </StackPanel>
                                     </StackPanel>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
@@ -451,6 +526,119 @@
 
                     <Separator Margin="0,20,0,10" />
 
+                    <TextBlock Text="Equipment Profile" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
+                    <DockPanel Margin="0,0,0,8">
+                        <CheckBox IsChecked="{Binding ShowEquipmentProfile}" DockPanel.Dock="Left" />
+                        <TextBlock Text="Show equipment section in report" VerticalAlignment="Center" Margin="8,0,0,0" />
+                    </DockPanel>
+                    <TextBlock Text="Toggle which equipment types appear in the report. Override names are used instead of NINA's auto-detected names when set."
+                               FontStyle="Italic" Foreground="Gray" FontSize="11" Margin="0,0,0,8" TextWrapping="Wrap" />
+                    <Grid Margin="0,0,0,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="120" />
+                            <ColumnDefinition Width="*" MaxWidth="350" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <CheckBox  Grid.Row="0"  Grid.Column="0" IsChecked="{Binding ShowCamera}"        VerticalAlignment="Center" Margin="0,2" />
+                        <TextBlock Grid.Row="0"  Grid.Column="1" Text="Camera" VerticalAlignment="Center" Margin="8,2,0,2" />
+                        <TextBox   Grid.Row="0"  Grid.Column="2" Text="{Binding EquipmentCamera, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                        <CheckBox  Grid.Row="1"  Grid.Column="0" IsChecked="{Binding ShowTelescope}"     VerticalAlignment="Center" Margin="0,2" />
+                        <TextBlock Grid.Row="1"  Grid.Column="1" Text="Telescope" VerticalAlignment="Center" Margin="8,2,0,2" />
+                        <TextBox   Grid.Row="1"  Grid.Column="2" Text="{Binding EquipmentTelescope, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                        <CheckBox  Grid.Row="2"  Grid.Column="0" IsChecked="{Binding ShowMount}"         VerticalAlignment="Center" Margin="0,2" />
+                        <TextBlock Grid.Row="2"  Grid.Column="1" Text="Mount" VerticalAlignment="Center" Margin="8,2,0,2" />
+                        <TextBox   Grid.Row="2"  Grid.Column="2" Text="{Binding EquipmentMount, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                        <CheckBox  Grid.Row="3"  Grid.Column="0" IsChecked="{Binding ShowFilterWheel}"   VerticalAlignment="Center" Margin="0,2" />
+                        <TextBlock Grid.Row="3"  Grid.Column="1" Text="Filter Wheel" VerticalAlignment="Center" Margin="8,2,0,2" />
+                        <TextBox   Grid.Row="3"  Grid.Column="2" Text="{Binding EquipmentFilterWheel, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                        <CheckBox  Grid.Row="4"  Grid.Column="0" IsChecked="{Binding ShowFocuser}"       VerticalAlignment="Center" Margin="0,2" />
+                        <TextBlock Grid.Row="4"  Grid.Column="1" Text="Focuser" VerticalAlignment="Center" Margin="8,2,0,2" />
+                        <TextBox   Grid.Row="4"  Grid.Column="2" Text="{Binding EquipmentFocuser, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                        <CheckBox  Grid.Row="5"  Grid.Column="0" IsChecked="{Binding ShowRotator}"       VerticalAlignment="Center" Margin="0,2" />
+                        <TextBlock Grid.Row="5"  Grid.Column="1" Text="Rotator" VerticalAlignment="Center" Margin="8,2,0,2" />
+                        <TextBox   Grid.Row="5"  Grid.Column="2" Text="{Binding EquipmentRotator, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                        <CheckBox  Grid.Row="6"  Grid.Column="0" IsChecked="{Binding ShowGuider}"        VerticalAlignment="Center" Margin="0,2" />
+                        <TextBlock Grid.Row="6"  Grid.Column="1" Text="Guider" VerticalAlignment="Center" Margin="8,2,0,2" />
+                        <TextBox   Grid.Row="6"  Grid.Column="2" Text="{Binding EquipmentGuider, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                        <CheckBox  Grid.Row="7"  Grid.Column="0" IsChecked="{Binding ShowDome}"          VerticalAlignment="Center" Margin="0,2" />
+                        <TextBlock Grid.Row="7"  Grid.Column="1" Text="Dome" VerticalAlignment="Center" Margin="8,2,0,2" />
+                        <TextBox   Grid.Row="7"  Grid.Column="2" Text="{Binding EquipmentDome, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                        <CheckBox  Grid.Row="8"  Grid.Column="0" IsChecked="{Binding ShowFlatPanel}"     VerticalAlignment="Center" Margin="0,2" />
+                        <TextBlock Grid.Row="8"  Grid.Column="1" Text="Flat Panel" VerticalAlignment="Center" Margin="8,2,0,2" />
+                        <TextBox   Grid.Row="8"  Grid.Column="2" Text="{Binding EquipmentFlatPanel, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                        <CheckBox  Grid.Row="9"  Grid.Column="0" IsChecked="{Binding ShowSafetyMonitor}" VerticalAlignment="Center" Margin="0,2" />
+                        <TextBlock Grid.Row="9"  Grid.Column="1" Text="Safety Monitor" VerticalAlignment="Center" Margin="8,2,0,2" />
+                        <TextBox   Grid.Row="9"  Grid.Column="2" Text="{Binding EquipmentSafetyMonitor, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                        <CheckBox  Grid.Row="10" Grid.Column="0" IsChecked="{Binding ShowWeather}"       VerticalAlignment="Center" Margin="0,2" />
+                        <TextBlock Grid.Row="10" Grid.Column="1" Text="Weather" VerticalAlignment="Center" Margin="8,2,0,2" />
+                        <TextBox   Grid.Row="10" Grid.Column="2" Text="{Binding EquipmentWeather, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                        <CheckBox  Grid.Row="11" Grid.Column="0" IsChecked="{Binding ShowSwitch}"        VerticalAlignment="Center" Margin="0,2" />
+                        <TextBlock Grid.Row="11" Grid.Column="1" Text="Switch" VerticalAlignment="Center" Margin="8,2,0,2" />
+                        <TextBox   Grid.Row="11" Grid.Column="2" Text="{Binding EquipmentSwitch, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                    </Grid>
+
+                    <Separator Margin="0,20,0,10" />
+
+                    <TextBlock Text="Report File Naming" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
+
+                    <DockPanel Margin="0,5">
+                        <TextBlock Text="File name pattern" Width="200" VerticalAlignment="Center" DockPanel.Dock="Left" />
+                        <TextBox x:Name="FilePatternTextBox"
+                                 Text="{Binding SaveReportFilePattern, UpdateSourceTrigger=PropertyChanged}"
+                                 MinWidth="300" VerticalAlignment="Center"
+                                 LostFocus="PatternTextBox_LostFocus" />
+                    </DockPanel>
+                    <DockPanel Margin="0,4,0,4">
+                        <TextBlock Text="Pattern preview" Width="200" VerticalAlignment="Center" Foreground="Gray" DockPanel.Dock="Left" />
+                        <TextBox Text="{Binding SaveReportPatternPreview, Mode=OneWay}" IsReadOnly="True"
+                                 MinWidth="300" VerticalAlignment="Center" FontSize="12"
+                                 Background="Transparent" BorderBrush="Gray" BorderThickness="1" />
+                    </DockPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,2">
+                        <TextBlock Width="200" />
+                        <WrapPanel MaxWidth="400">
+                            <Button Content="$$DATEMINUS12$$" Tag="$$DATEMINUS12$$" Click="InsertPattern_Click"
+                                    Padding="6,2" Margin="0,0,4,4" FontSize="11" />
+                            <Button Content="$$DATE$$" Tag="$$DATE$$" Click="InsertPattern_Click"
+                                    Padding="6,2" Margin="0,0,4,4" FontSize="11" />
+                            <Button Content="$$DATETIME$$" Tag="$$DATETIME$$" Click="InsertPattern_Click"
+                                    Padding="6,2" Margin="0,0,4,4" FontSize="11" />
+                            <Button Content="$$TIME$$" Tag="$$TIME$$" Click="InsertPattern_Click"
+                                    Padding="6,2" Margin="0,0,4,4" FontSize="11" />
+                            <Button Content="$$DATEUTC$$" Tag="$$DATEUTC$$" Click="InsertPattern_Click"
+                                    Padding="6,2" Margin="0,0,4,4" FontSize="11" />
+                            <Button Content="$$TIMEUTC$$" Tag="$$TIMEUTC$$" Click="InsertPattern_Click"
+                                    Padding="6,2" Margin="0,0,4,4" FontSize="11" />
+                            <Button Content="$$CAMERA$$" Tag="$$CAMERA$$" Click="InsertPattern_Click"
+                                    Padding="6,2" Margin="0,0,4,4" FontSize="11" />
+                            <Button Content="$$TELESCOPE$$" Tag="$$TELESCOPE$$" Click="InsertPattern_Click"
+                                    Padding="6,2" Margin="0,0,4,4" FontSize="11" />
+                            <Button Content="$$SEQUENCETITLE$$" Tag="$$SEQUENCETITLE$$" Click="InsertPattern_Click"
+                                    Padding="6,2" Margin="0,0,4,4" FontSize="11" />
+                        </WrapPanel>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,2,0,4">
+                        <TextBlock Width="200" />
+                        <TextBlock Text="Applies to all delivery channels. Use \ to create subdirectories for local saves."
+                                   TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="350" />
+                    </StackPanel>
+
+                    <Separator Margin="0,20,0,10" />
+
                     <TextBlock Text="Resend Previous Session" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
 
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
@@ -463,8 +651,13 @@
                         <TextBlock Width="200" VerticalAlignment="Center" />
                         <ComboBox ItemsSource="{Binding AvailableSessions}"
                                   SelectedItem="{Binding SelectedSession}"
-                                  DisplayMemberPath="DisplayLabel"
-                                  MinWidth="300" />
+                                  MinWidth="440">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding DisplayLabel}" TextWrapping="NoWrap" TextTrimming="None" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
                         <Button Content="↻" Command="{Binding RefreshSessionsCommand}" Width="30" Margin="6,0,0,0"
                                 ToolTip="Reset to 30 most recent sessions" />
                     </StackPanel>
@@ -491,6 +684,10 @@
                     <StackPanel Orientation="Horizontal" Margin="0,8">
                         <TextBlock Width="200" />
                         <Button Content="Send Report" Command="{Binding ResendSessionCommand}" Width="180" />
+                        <Button Content="✕ Delete"
+                                Command="{Binding DeleteSessionCommand}"
+                                MinWidth="80" Margin="8,0,0,0"
+                                ToolTip="Delete the selected session and all its data" />
                         <TextBlock Text="{Binding ResendStatus.Text}"
                                    Foreground="{Binding ResendStatus.Foreground}"
                                    Visibility="{Binding ResendStatus.Visibility}"
@@ -513,11 +710,12 @@
                         <TextBox Text="{Binding SaveReportPath, UpdateSourceTrigger=LostFocus}" Width="300" VerticalAlignment="Center" />
                         <Button Content="Browse..." Click="BrowseSaveReportPath_Click" Margin="5,0,0,0" MinWidth="70" VerticalAlignment="Center" />
                     </StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,2,0,8">
+                    <StackPanel Orientation="Horizontal" Margin="0,2,0,4">
                         <TextBlock Width="200" />
                         <TextBlock Text="Leave blank to use the default: Documents\N.I.N.A.\Night Summary\Saved Reports\"
                                    TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="350" />
                     </StackPanel>
+
 
                     <Separator Margin="0,20,0,10" />
 

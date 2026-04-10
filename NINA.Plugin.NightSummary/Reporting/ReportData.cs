@@ -20,7 +20,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// </summary>
         public Dictionary<string, double> CumulativeIntegrationSeconds { get; init; }
         /// <summary>
-        /// Per-target session history for historical comparison (up to 5 previous sessions), keyed by target name.
+        /// Per-target session history for historical comparison (all previous sessions), keyed by target name.
         /// </summary>
         public Dictionary<string, List<TargetSessionHistory>> SessionHistory { get; init; }
         /// <summary>
@@ -47,5 +47,21 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// Number of exposures that were skipped/aborted during the session (e.g. by RMS triggers, safety events).
         /// </summary>
         public int SkippedExposures { get; init; }
+        /// <summary>
+        /// Per-event timing data parsed from NINA logs for overhead breakdown analysis.
+        /// Empty if log parsing was unavailable or produced no results.
+        /// </summary>
+        public List<TimingEvent> TimingEvents { get; init; }
+
+        /// <summary>
+        /// Equipment names for the session, keyed by role (Camera, Telescope, Mount, etc.).
+        /// Values are display names (user override if set, otherwise NINA-detected name).
+        /// Empty entries are omitted.
+        /// </summary>
+        public Dictionary<string, string> Equipment { get; init; } = new();
+        /// <summary>
+        /// Live Stack images captured during the session. Empty if Live Stack plugin is not running.
+        /// </summary>
+        public List<Session.LiveStackImage> LiveStackImages { get; set; } = new();
     }
 }

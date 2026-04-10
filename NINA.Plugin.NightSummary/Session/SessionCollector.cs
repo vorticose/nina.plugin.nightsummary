@@ -43,7 +43,7 @@ namespace NINA.Plugin.NightSummary.Session {
             }
             currentSession = new SessionRecord {
                 SessionId = Guid.NewGuid().ToString(),
-                SessionStart = DateTime.Now,
+                SessionStart = Clock.Now(),
                 ProfileName = profileName,
                 ReportSent = false
             };
@@ -53,7 +53,8 @@ namespace NINA.Plugin.NightSummary.Session {
             // Start monitoring for skipped exposures
             skippedExposures = 0;
             trackedItems.Clear();
-            skipPollTimer = new Timer(PollRunningItems, null, TimeSpan.Zero, TimeSpan.FromSeconds(1));
+            if (!Clock.DisableSkipPolling)
+                skipPollTimer = new Timer(PollRunningItems, null, TimeSpan.Zero, TimeSpan.FromSeconds(1));
 
             isCollecting = true;
             Logger.Info($"NightSummary: Session started. SessionId={currentSession.SessionId}");
@@ -71,7 +72,7 @@ namespace NINA.Plugin.NightSummary.Session {
                 Logger.Info($"NightSummary: {skippedExposures} exposure(s) were aborted during session");
 
             isCollecting = false;
-            database.FinalizeSession(currentSession.SessionId, DateTime.Now, false, skippedExposures);
+            database.FinalizeSession(currentSession.SessionId, Clock.Now(), false, skippedExposures);
             Logger.Info($"NightSummary: Session ended. SessionId={currentSession.SessionId}");
             currentSession = null;
         }
@@ -153,7 +154,7 @@ namespace NINA.Plugin.NightSummary.Session {
 
                 var record = new ImageRecord {
                     SessionId        = currentSession.SessionId,
-                    Timestamp        = DateTime.Now,
+                    Timestamp        = Clock.Now(),
                     TargetName       = e.MetaData?.Target?.Name ?? "Unknown",
                     Filter           = e.MetaData?.FilterWheel?.Filter ?? "None",
                     ExposureDuration = e.MetaData?.Image?.ExposureTime ?? 0,
@@ -178,6 +179,7 @@ namespace NINA.Plugin.NightSummary.Session {
                     // Equipment state
                     FocuserPosition  = e.MetaData?.Focuser?.Position,
                     RotatorPosition  = NullIfNaN(e.MetaData?.Rotator?.Position),
+                    PositionAngle    = NullIfNaN(e.MetaData?.Target?.PositionAngle),
                     // Extended weather
                     Humidity         = NullIfNaN(e.MetaData?.WeatherData?.Humidity),
                     DewPoint         = NullIfNaN(e.MetaData?.WeatherData?.DewPoint),
@@ -198,7 +200,15 @@ namespace NINA.Plugin.NightSummary.Session {
                     SkyQuality       = NullIfNaN(e.MetaData?.WeatherData?.SkyQuality),
                     CloudCover       = NullIfNaN(e.MetaData?.WeatherData?.CloudCover),
                     // ASCOM seeing monitor
-                    SeeingFWHM       = NullIfNaN(e.MetaData?.WeatherData?.StarFWHM)
+                    SeeingFWHM       = NullIfNaN(e.MetaData?.WeatherData?.StarFWHM),
+                    // Image statistics
+                    StatMedian       = NullIfNaN(e.Statistics?.Median),
+                    StatMean         = NullIfNaN(e.Statistics?.Mean),
+                    StatStDev        = NullIfNaN(e.Statistics?.StDev),
+                    StatMAD          = NullIfNaN(e.Statistics?.MedianAbsoluteDeviation),
+                    StatMin          = e.Statistics != null ? (int?)e.Statistics.Min : null,
+                    StatMax          = e.Statistics != null ? (int?)e.Statistics.Max : null,
+                    StatBitDepth     = e.Statistics != null ? (int?)e.Statistics.BitDepth : null
                 };
 
                 database.SaveImageRecord(record);

@@ -1,5 +1,7 @@
+using NINA.Plugin.NightSummary.Data;
 using NINA.Plugin.NightSummary.Reporting;
 using System;
+using System.Collections.Generic;
 using Xunit;
 
 namespace NINA.Plugin.NightSummary.Tests {
@@ -162,6 +164,73 @@ namespace NINA.Plugin.NightSummary.Tests {
             var illumUtc   = ReportGenerator.MoonIllumination(utcTime, out _);
             var illumLocal = ReportGenerator.MoonIllumination(localTime, out _);
             Assert.Equal(illumUtc, illumLocal, precision: 1);
+        }
+
+        // ── MergeOverheadIntervals ───────────────────────────────────────────
+
+        private static TimingEvent MakeEvent(int startMin, int endMin, string type = "Test") {
+            var baseTime = new DateTime(2026, 3, 31, 0, 0, 0);
+            return new TimingEvent {
+                EventType = type,
+                StartTime = baseTime.AddMinutes(startMin),
+                EndTime = baseTime.AddMinutes(endMin),
+                DurationSeconds = (endMin - startMin) * 60
+            };
+        }
+
+        [Fact]
+        public void MergeOverheadIntervals_EmptyList_ReturnsZero() {
+            Assert.Equal(0, ReportGenerator.MergeOverheadIntervals(new List<TimingEvent>()));
+        }
+
+        [Fact]
+        public void MergeOverheadIntervals_NoOverlap_ReturnsSumOfDurations() {
+            var events = new List<TimingEvent> {
+                MakeEvent(0, 5),   // 5 min
+                MakeEvent(10, 15)  // 5 min, no overlap
+            };
+            Assert.Equal(600, ReportGenerator.MergeOverheadIntervals(events)); // 10 min
+        }
+
+        [Fact]
+        public void MergeOverheadIntervals_FullOverlap_ReturnsSingleSpan() {
+            var events = new List<TimingEvent> {
+                MakeEvent(0, 10),  // 10 min
+                MakeEvent(2, 8)    // fully contained within first
+            };
+            Assert.Equal(600, ReportGenerator.MergeOverheadIntervals(events)); // 10 min, not 18
+        }
+
+        [Fact]
+        public void MergeOverheadIntervals_PartialOverlap_MergesCorrectly() {
+            var events = new List<TimingEvent> {
+                MakeEvent(0, 10),   // 10 min
+                MakeEvent(5, 15)    // overlaps by 5 min
+            };
+            Assert.Equal(900, ReportGenerator.MergeOverheadIntervals(events)); // 15 min, not 20
+        }
+
+        [Fact]
+        public void MergeOverheadIntervals_MultipleOverlappingGroups() {
+            var events = new List<TimingEvent> {
+                MakeEvent(0, 5),    // group 1: merged to 0-8
+                MakeEvent(3, 8),
+                MakeEvent(20, 25),  // group 2: standalone
+                MakeEvent(30, 40),  // group 3: merged to 30-42
+                MakeEvent(35, 42)
+            };
+            // group 1: 8 min, group 2: 5 min, group 3: 12 min = 25 min
+            Assert.Equal(1500, ReportGenerator.MergeOverheadIntervals(events));
+        }
+
+        [Fact]
+        public void MergeOverheadIntervals_ConcurrentEvents_CountOnce() {
+            // Simulates ImageSave running during CameraDownload — exact same time window
+            var events = new List<TimingEvent> {
+                MakeEvent(0, 3, "CameraDownload"),
+                MakeEvent(0, 3, "ImageSave")
+            };
+            Assert.Equal(180, ReportGenerator.MergeOverheadIntervals(events)); // 3 min, not 6
         }
     }
 }

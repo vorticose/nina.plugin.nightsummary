@@ -14,16 +14,32 @@ generates HTML reports summarizing each night's work.
 - **Language**: C# / .NET 8, targeting net8.0-windows
 - **UI**: WPF with WebView2 for HTML report rendering
 - **Database**: SQLite via System.Data.SQLite
-- **NINA version**: 3.0.0
-- **Plugin location on target machine**: `%LOCALAPPDATA%\NINA\Plugins\3.0.0\Night Summary\`
+- **Minimum NINA version**: 3.2.0.9001
+- **Plugin location on target machine**: `%LOCALAPPDATA%\NINA\Plugins\3.0.0\Night Summary\` (folder is named `3.0.0` regardless of NINA version)
 - **Database location**: `%LOCALAPPDATA%\NINA\NightSummary\nightsummary.sqlite`
+
+## Multi-Agent Rule
+
+**Always assume other agents are working on this repo in parallel.** Before doing
+any work, create a git worktree and work exclusively inside it. Never use the main
+checkout directly — another agent may be using it.
+
+```bash
+# At the start of every session:
+git worktree add .claude/worktrees/<name> -b <branch-name>
+cd .claude/worktrees/<name>
+```
+
+- Each agent gets its own worktree with its own branch
+- Two worktrees cannot share the same branch — create a feature branch if needed
+- Commit frequently so work is never lost to branch switches
+- When done, merge your branch back and clean up: `git worktree remove <path>`
 
 ## Development Setup
 
-- Code is edited on Mac using VS Code
-- Built with `dotnet build NINA.Plugin.NightSummary.sln -c Release`
-- Deployed to a remote Windows machine running NINA
-- The built DLL is copied to the NINA plugins folder on the Windows machine
+- Primary: built and tested on Windows with `dotnet build NINA.Plugin.NightSummary.sln -c Release`
+- Secondary: code edited on Mac via VS Code, deployed to remote Windows machine
+- Deploy scripts in `scripts/` — `dev-v3-deploy.ps1` (local Windows), `deploy.ps1` / `deploy-remote.ps1` (remote)
 - Git is used for source control; GitHub CLI (`gh`) is authenticated for push
 
 ## Architecture Notes
@@ -35,6 +51,8 @@ generates HTML reports summarizing each night's work.
   use a temp file + `Navigate()` for large reports
 - SVG `fill` attributes do not resolve CSS variables like `var(--text)` -- use
   explicit color variables instead
+- `v3-dev` adds a local HTTP dashboard server (`Server/DashboardServer.cs`) with
+  embedded web assets (`Server/Web/`) -- this is a long-term feature not yet on `dev`
 
 ## Migration System (v2.8.1)
 
@@ -57,6 +75,17 @@ See `scripts/TEST-MIGRATION-NOTES.md` for hard-won lessons from testing this.
   `&format=jpg` to get a browser-renderable image. Without it, the API returns
   a binary FITS file which passes the `> 500 bytes` check but browsers cannot
   render it as an image -- thumbnails silently disappear. Fixed after v2.8.1.
+
+## Open Investigations
+
+- **Live Stack frame count mismatch (reported 2026-03-30)**: User observed a live stack
+  subtitle showing "H - 10 frames - 50m" but the session table showed 5 frames (which
+  matches 5×600s = 50m). Investigated the 2026-03-30 log — Live Stack broadcasts showed
+  correct per-filter counts (H: 1→2→3→4→5 for Seagull Nebula). No `livestack.json` was
+  saved for that session (predates master-saving feature). Could not reproduce from logs.
+  **Action**: validate live stack frame counts against the table in future sessions now
+  that `livestack.json` is persisted. Compare `stackCount` in the JSON against the actual
+  image count per filter in the DB.
 
 ## Branching Strategy
 
@@ -109,13 +138,38 @@ work directly to `main`.
 
 ## Release Process
 
+### Changelog rule: stable-to-stable deltas only
+
+When writing the changelog section for a new stable release, only include changes visible
+to users upgrading from the previous stable version. Specifically:
+
+- **Do not list bug fixes that only existed in beta builds.** Users upgrading from the
+  previous stable never experienced them. Entries like "Fixed new settings defaulting to off
+  for upgraders" are confusing noise to stable users.
+- **Do not list iterative improvements to features that are brand-new in this release.**
+  If a feature ships for the first time in this release, fold its capabilities into the
+  feature bullet instead of listing them separately as improvements. Example: don't list
+  "Overhead analysis now excludes roof-closed periods" as an improvement when the overhead
+  analysis feature itself is new in this release.
+- **Do expand feature bullets to describe their full day-one capabilities,** even if parts
+  were added during the beta cycle.
+- **Beta-only release notes** can live in the GitHub release description for the beta tags
+  if you want to preserve them.
+
+The audience for CHANGELOG.md is users upgrading from the previous stable version. Write
+it as if you went directly from the previous stable release to this one without a beta cycle.
+
+### Release steps
+
 To publish a new version:
 
 1. **Run tests** (on Windows machine): `dotnet test NINA.Plugin.NightSummary.Tests` — must be 0 failures before release
 2. **Clean up dev markers** in `AssemblyInfo.cs`:
    - Remove `*** DEV BUILD ***` from `AssemblyDescription`
    - Remove `[assembly: AssemblyInformationalVersion("X.Y.Z-dev")]` line
-3. **Build**: `dotnet build NINA.Plugin.NightSummary.sln -c Release`
+3. **Finalize CHANGELOG_DRAFT.md** following the stable-to-stable rule above, then copy the
+   new version's section over the previous version's section in `CHANGELOG.md` on main.
+4. **Build**: `dotnet build NINA.Plugin.NightSummary.sln -c Release`
 2. **Package**: `cd NINA.Plugin.NightSummary/bin/Release/net8.0-windows && zip -r /tmp/NINA.Plugin.NightSummary.zip . --exclude "*.pdb" --exclude "*.xml"`
 3. **Checksum**: `shasum -a 256 /tmp/NINA.Plugin.NightSummary.zip | awk '{print toupper($1)}'`
 4. **GitHub Release**: Update existing or create new release tagged `vX.Y.Z`, upload ZIP
@@ -214,7 +268,8 @@ to a separate "coverage push" session — keep coverage growing continuously.
 - New ReportGenerator HTML string → grep production code first to confirm exact string before asserting
 
 ### Coverage baseline
-- Current: **67.5%** logic layer line coverage (316 tests, CI threshold 60%)
+- Current: ~370 tests across 21 test files (CI threshold 60% line coverage)
+- Includes replay integration tests using recorded real-world session data
 - Session/* integration classes excluded from scope (require live NINA)
 - Raise the CI threshold in `.github/workflows/ci.yml` as coverage grows
 

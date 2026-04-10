@@ -1,14 +1,16 @@
-using NINA.Plugin.NightSummary.MyPluginProperties;
+using NINA.Plugin.NightSummary.Data;
 using NINA.Plugin.NightSummary.Reporting;
 using NINA.Plugin.NightSummary.Tests.Fixtures;
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using Xunit;
 
 namespace NINA.Plugin.NightSummary.Tests {
     public class ChartGeneratorTests {
 
         public ChartGeneratorTests() {
-            Settings.Default.ReportLightMode = false;
+            SettingsManager.Instance.Current.ReportLightMode = false;
         }
 
         // ── Primary metric coverage ──────────────────────────────────────────
@@ -33,6 +35,7 @@ namespace NINA.Plugin.NightSummary.Tests {
         [InlineData(ChartGenerator.PrimaryStarCount)]
         [InlineData(ChartGenerator.PrimaryAzimuth)]
         [InlineData(ChartGenerator.PrimarySeeingFWHM)]
+        [InlineData(ChartGenerator.PrimaryMedian)]
         public void AllPrimaryMetrics_ProduceNonEmptySvg(int metric) {
             var sessionId = "test-session";
             var images    = TestDataFactory.MakeImageSeries(sessionId, 5);
@@ -53,6 +56,7 @@ namespace NINA.Plugin.NightSummary.Tests {
                 img.WindSpeed        = 3.5;
                 img.Pressure         = 1013.0;
                 img.SeeingFWHM       = 2.8;
+                img.StatMedian       = 1500.0;
             }
 
             var svg = ChartGenerator.GenerateMetricChart(images, metric, ChartGenerator.SecNone);
@@ -131,14 +135,14 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public void LightMode_GeneratesChart_WithLightColors() {
-            Settings.Default.ReportLightMode = true;
+            SettingsManager.Instance.Current.ReportLightMode = true;
             var sessionId = "test-session";
             var images    = TestDataFactory.MakeImageSeries(sessionId, 5);
             foreach (var img in images) img.FocuserTemp = 12.5;
 
             var svg = ChartGenerator.GenerateMetricChart(images, ChartGenerator.PrimaryHFR, ChartGenerator.SecFocuserTemp);
 
-            Settings.Default.ReportLightMode = false; // reset
+            SettingsManager.Instance.Current.ReportLightMode = false; // reset
             Assert.Contains("<svg", svg);
             // Light mode uses a light background color
             Assert.Contains("#f5f5f5", svg);
@@ -197,6 +201,276 @@ namespace NINA.Plugin.NightSummary.Tests {
             var title = ChartGenerator.GetChartTitle(primary, secondary);
             Assert.NotNull(title);
             Assert.NotEmpty(title);
+        }
+
+        // ── Custom X-Axis ───────────────────────────────────────────────────
+
+        [Fact]
+        public void GetChartTitle_TimeXAxis_SaysVsTime() {
+            var title = ChartGenerator.GetChartTitle(
+                ChartGenerator.PrimaryHFR, ChartGenerator.SecNone, ChartGenerator.XAxisTime);
+            Assert.Equal("HFR Vs. Time", title);
+        }
+
+        [Fact]
+        public void GetChartTitle_FrameIndexXAxis_SaysVsFrame() {
+            var title = ChartGenerator.GetChartTitle(
+                ChartGenerator.PrimaryHFR, ChartGenerator.SecNone, ChartGenerator.XAxisFrameIndex);
+            Assert.Equal("HFR Vs. Frame", title);
+        }
+
+        [Fact]
+        public void GetChartTitle_MetricXAxis_UsesMetricName() {
+            int xAxis = ChartGenerator.XAxisMetricOffset + ChartGenerator.PrimaryAltitude;
+            var title = ChartGenerator.GetChartTitle(
+                ChartGenerator.PrimaryHFR, ChartGenerator.SecNone, xAxis);
+            Assert.Contains("Altitude", title);
+            Assert.DoesNotContain("Time", title);
+        }
+
+        [Fact]
+        public void GetChartTitle_DualAxis_MetricXAxis_IncludesBothMetricsAndXLabel() {
+            int xAxis = ChartGenerator.XAxisMetricOffset + ChartGenerator.PrimaryAltitude;
+            var title = ChartGenerator.GetChartTitle(
+                ChartGenerator.PrimaryHFR, ChartGenerator.SecFocuserTemp, xAxis);
+            Assert.Contains("HFR", title);
+            Assert.Contains("Focuser", title);
+            Assert.Contains("Altitude", title);
+        }
+
+        [Theory]
+        [InlineData(ChartGenerator.XAxisTime)]
+        [InlineData(ChartGenerator.XAxisFrameIndex)]
+        public void GetXAxisLabel_BuiltInModes_ReturnExpectedLabels(int xMetric) {
+            var label = ChartGenerator.GetXAxisLabel(xMetric);
+            Assert.NotNull(label);
+            Assert.NotEmpty(label);
+        }
+
+        [Fact]
+        public void GetXAxisLabel_MetricOffset_ReturnsMetricName() {
+            int xMetric = ChartGenerator.XAxisMetricOffset + ChartGenerator.PrimaryHumidity;
+            var label = ChartGenerator.GetXAxisLabel(xMetric);
+            Assert.Contains("Humidity", label);
+        }
+
+        [Fact]
+        public void FrameIndexXAxis_ProducesValidSvg() {
+            var images = TestDataFactory.MakeImageSeries("test", 5);
+
+            var svg = ChartGenerator.GenerateMetricChart(
+                images, ChartGenerator.PrimaryHFR, ChartGenerator.SecNone,
+                ChartGenerator.XAxisFrameIndex);
+
+            Assert.Contains("<svg", svg);
+            Assert.Contains("<polyline", svg);
+        }
+
+        [Fact]
+        public void MetricXAxis_ProducesValidSvg() {
+            var images = TestDataFactory.MakeImageSeries("test", 5);
+            foreach (var img in images) {
+                img.Altitude    = 45.0 + images.IndexOf(img) * 5;
+                img.FocuserTemp = 12.5;
+            }
+
+            int xAxis = ChartGenerator.XAxisMetricOffset + ChartGenerator.PrimaryAltitude;
+            var svg = ChartGenerator.GenerateMetricChart(
+                images, ChartGenerator.PrimaryHFR, ChartGenerator.SecFocuserTemp, xAxis);
+
+            Assert.Contains("<svg", svg);
+            Assert.Contains("<polyline", svg);
+        }
+
+        [Fact]
+        public void MetricXAxis_MissingXValues_FiltersOutPoints() {
+            var images = TestDataFactory.MakeImageSeries("test", 5);
+            // Only some images have Altitude — others default to 0 which ExtractPrimary filters out
+            images[0].Altitude = 55.0;
+            images[1].Altitude = 60.0;
+
+            int xAxis = ChartGenerator.XAxisMetricOffset + ChartGenerator.PrimaryAltitude;
+            var svg = ChartGenerator.GenerateMetricChart(
+                images, ChartGenerator.PrimaryHFR, ChartGenerator.SecNone, xAxis);
+
+            // Should still produce valid SVG (2 points or placeholder)
+            Assert.Contains("<svg", svg);
+        }
+
+        [Fact]
+        public void EmptyImages_NonTimeXAxis_ReturnsPlaceholder() {
+            var svg = ChartGenerator.GenerateMetricChart(
+                new List<ImageRecord>(),
+                ChartGenerator.PrimaryHFR, ChartGenerator.SecNone,
+                ChartGenerator.XAxisFrameIndex);
+
+            Assert.Contains("<svg", svg);
+        }
+
+        [Fact]
+        public void FrameIndexXAxis_TooltipsContainFrameNumber() {
+            var images = TestDataFactory.MakeImageSeries("test", 3);
+
+            var svg = ChartGenerator.GenerateMetricChart(
+                images, ChartGenerator.PrimaryHFR, ChartGenerator.SecNone,
+                ChartGenerator.XAxisFrameIndex);
+
+            // Frame index tooltips should contain "#" prefix
+            Assert.Contains("#", svg);
+        }
+
+        [Theory]
+        [InlineData(ChartGenerator.PrimaryHFR)]
+        [InlineData(ChartGenerator.PrimaryAltitude)]
+        [InlineData(ChartGenerator.PrimaryFocuserTemp)]
+        [InlineData(ChartGenerator.PrimaryStarCount)]
+        public void AllPrimaryMetrics_AsXAxis_ProduceValidSvg(int metricAsX) {
+            var images = TestDataFactory.MakeImageSeries("test", 5);
+            foreach (var img in images) {
+                img.FocuserTemp     = 12.5;
+                img.AmbientTemp     = 8.0;
+                img.Altitude        = 55.0;
+                img.Azimuth         = 180.0;
+                img.Airmass         = 1.2;
+                img.Humidity        = 65.0;
+                img.FocuserPosition = 45200;
+                img.SkyQuality      = 21.5;
+                img.CloudCover      = 5.0;
+                img.CameraTemp      = -10.0;
+                img.DewPoint        = 2.0;
+                img.WindSpeed       = 3.5;
+                img.Pressure        = 1013.0;
+                img.SeeingFWHM      = 2.8;
+                img.StarCount       = 300;
+            }
+
+            int xAxis = ChartGenerator.XAxisMetricOffset + metricAsX;
+            // Use FWHM as primary so it doesn't collide with x-axis metric
+            var svg = ChartGenerator.GenerateMetricChart(
+                images, ChartGenerator.PrimaryFWHM, ChartGenerator.SecNone, xAxis);
+
+            Assert.Contains("<svg", svg);
+            Assert.Contains("<polyline", svg);
+        }
+
+        [Fact]
+        public void NonTimeXAxis_RendersAxisTitle() {
+            var images = TestDataFactory.MakeImageSeries("test", 5);
+            foreach (var img in images) img.Altitude = 55.0;
+
+            int xAxis = ChartGenerator.XAxisMetricOffset + ChartGenerator.PrimaryAltitude;
+            var svg = ChartGenerator.GenerateMetricChart(
+                images, ChartGenerator.PrimaryHFR, ChartGenerator.SecNone, xAxis);
+
+            // Non-time x-axis renders an x-axis title label
+            Assert.Contains("Altitude", svg);
+        }
+
+        // ── Event marker tests ──────────────────────────────────────────────
+
+        [Fact]
+        public void EventMarkers_TimeAxis_RendersMarkerLines() {
+            var images = TestDataFactory.MakeImageSeries("test", 5);
+            var markers = new List<(DateTime, string, string)> {
+                (images[2].Timestamp, "AutoFocus", "AF completed — Filter: Ha")
+            };
+
+            var svg = ChartGenerator.GenerateMetricChart(
+                images, ChartGenerator.PrimaryHFR, ChartGenerator.SecNone,
+                ChartGenerator.XAxisTime, markers);
+
+            Assert.Contains("stroke-dasharray=\"4,3\"", svg);   // AF dash pattern
+            Assert.Contains("AF completed", svg);               // description in tooltip
+            Assert.Contains(">AF</text>", svg);                 // label at top
+            Assert.Contains("@ 22:10:00", svg);                 // timestamp in tooltip
+        }
+
+        [Fact]
+        public void EventMarkers_NonTimeAxis_NoMarkers() {
+            var images = TestDataFactory.MakeImageSeries("test", 5);
+            var markers = new List<(DateTime, string, string)> {
+                (images[2].Timestamp, "AutoFocus", "AF completed")
+            };
+
+            var svg = ChartGenerator.GenerateMetricChart(
+                images, ChartGenerator.PrimaryHFR, ChartGenerator.SecNone,
+                ChartGenerator.XAxisFrameIndex, markers);
+
+            Assert.DoesNotContain("AF completed", svg);
+        }
+
+        [Fact]
+        public void EventMarkers_OutsideRange_Skipped() {
+            var images = TestDataFactory.MakeImageSeries("test", 5);
+            var markers = new List<(DateTime, string, string)> {
+                (images[0].Timestamp.AddHours(-1), "AutoFocus", "AF before range")
+            };
+
+            var svg = ChartGenerator.GenerateMetricChart(
+                images, ChartGenerator.PrimaryHFR, ChartGenerator.SecNone,
+                ChartGenerator.XAxisTime, markers);
+
+            Assert.DoesNotContain("AF before range", svg);
+        }
+
+        [Fact]
+        public void EventMarkers_Null_NoError() {
+            var images = TestDataFactory.MakeImageSeries("test", 5);
+
+            var svg = ChartGenerator.GenerateMetricChart(
+                images, ChartGenerator.PrimaryHFR, ChartGenerator.SecNone,
+                ChartGenerator.XAxisTime, null);
+
+            Assert.Contains("<svg", svg);
+            Assert.DoesNotContain(">AF</text>", svg);
+        }
+
+        [Fact]
+        public void EventMarkers_MultipleEvents_AllRendered() {
+            var images = TestDataFactory.MakeImageSeries("test", 10);
+            var markers = new List<(DateTime, string, string)> {
+                (images[2].Timestamp, "AutoFocus", "AF run 1"),
+                (images[5].Timestamp, "AutoFocus", "AF run 2"),
+                (images[8].Timestamp, "MeridianFlip", "Meridian flip")
+            };
+
+            var svg = ChartGenerator.GenerateMetricChart(
+                images, ChartGenerator.PrimaryHFR, ChartGenerator.SecNone,
+                ChartGenerator.XAxisTime, markers);
+
+            // Count labels: 2 AF + 1 MF
+            int afLabels = svg.Split(">AF</text>").Length - 1;
+            int flipLabels = svg.Split(">MF</text>").Length - 1;
+            Assert.Equal(2, afLabels);
+            Assert.Equal(1, flipLabels);
+            Assert.Contains("AF run 1", svg);
+            Assert.Contains("AF run 2", svg);
+            Assert.Contains("Meridian flip", svg);
+        }
+
+        [Fact]
+        public void EventMarkers_DifferentTypes_DifferentStyles() {
+            var images = TestDataFactory.MakeImageSeries("test", 5);
+            var markers = new List<(DateTime, string, string)> {
+                (images[1].Timestamp, "AutoFocus", "AF event"),
+                (images[2].Timestamp, "MeridianFlip", "Flip event"),
+                (images[3].Timestamp, "RoofOpen", "Safe event")
+            };
+
+            var svg = ChartGenerator.GenerateMetricChart(
+                images, ChartGenerator.PrimaryHFR, ChartGenerator.SecNone,
+                ChartGenerator.XAxisTime, markers);
+
+            // Distinct colors matching event timeline (dark mode)
+            Assert.Contains("#a78bfa", svg);  // AF purple
+            Assert.Contains("#fbbf24", svg);  // Flip amber
+            Assert.Contains("#34d399", svg);  // Safe green
+            // Distinct labels
+            Assert.Contains(">AF</text>", svg);
+            Assert.Contains(">MF</text>", svg);
+            Assert.Contains(">S</text>", svg);
+            // Transparent hit area for tooltips
+            Assert.Contains("stroke=\"transparent\" stroke-width=\"8\"", svg);
         }
     }
 }

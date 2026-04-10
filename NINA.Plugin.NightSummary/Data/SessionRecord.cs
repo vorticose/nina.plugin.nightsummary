@@ -37,7 +37,39 @@ namespace NINA.Plugin.NightSummary.Data {
         // Number of exposures skipped/aborted during the session
         public int SkippedExposures { get; set; }
 
-        // Display string for session picker dropdown
-        public string DisplayLabel => $"{SessionStart:yyyy-MM-dd  HH:mm}  —  {ProfileName}";
+        // Equipment names captured at session start/end
+        public string CameraName        { get; set; }
+        public string TelescopeName     { get; set; }
+        public string MountName         { get; set; }
+        public string FilterWheelName   { get; set; }
+        public string FocuserName       { get; set; }
+        public string RotatorName       { get; set; }
+        public string GuiderName        { get; set; }
+        public string DomeName          { get; set; }
+        public string FlatDeviceName    { get; set; }
+        public string SafetyMonitorName { get; set; }
+        public string WeatherName       { get; set; }
+        public string SwitchName        { get; set; }
+
+        // Populated only by GetRecentSessions / GetSessionsByDateRange for dropdown display.
+        // Zero everywhere else (reporting pipeline, GetAllSessions, GetLatestSession, etc.).
+        public int    ImageCount         { get; set; }
+        public int    TargetCount        { get; set; }
+        public double IntegrationSeconds { get; set; }
+
+        // Display string for session picker dropdown.
+        // Always includes counts so zero-image sessions render as "0 targets, 0 images, 0m"
+        // rather than a truncated label that breaks dropdown alignment.
+        public string DisplayLabel {
+            get {
+                var baseLabel = $"{SessionStart:yyyy-MM-dd  HH:mm}  —  {ProfileName}";
+                var hours   = (int)(IntegrationSeconds / 3600);
+                var minutes = (int)((IntegrationSeconds % 3600) / 60);
+                var duration = hours > 0 ? $"{hours}h{minutes:D2}m" : $"{minutes}m";
+                var targetWord = TargetCount == 1 ? "target" : "targets";
+                var imageWord  = ImageCount  == 1 ? "image"  : "images";
+                return $"{baseLabel}  —  {TargetCount} {targetWord}, {ImageCount} {imageWord}, {duration}";
+            }
+        }
     }
 }

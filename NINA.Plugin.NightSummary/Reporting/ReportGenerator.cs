@@ -1,6 +1,5 @@
 using NINA.Core.Utility;
 using NINA.Plugin.NightSummary.Data;
-using NINA.Plugin.NightSummary.MyPluginProperties;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -61,7 +60,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             FilterHelper.ReloadOverrides();
             var sb = new StringBuilder();
 
-            bool lightMode = Settings.Default.ReportLightMode;
+            bool lightMode = SettingsManager.Instance.Current.ReportLightMode;
 
             // Set SVG theme colors (SVG attributes can't use CSS variables)
             // Altitude chart keeps dark background in both modes for better line visibility
@@ -111,6 +110,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine(".ts-thumb-wrap { position: relative; width: 200px; height: 200px; flex-shrink: 0; }");
             sb.AppendLine(".ts-thumb-wrap img { width: 200px; height: 200px; border-radius: 6px; border: 1px solid var(--border); display: block; }");
             sb.AppendLine(".ts-thumb-wrap svg { position: absolute; top: 0; left: 0; border-radius: 6px; }");
+            sb.AppendLine(".ts-livestack-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }");
+            sb.AppendLine(".ts-livestack-item { text-align: center; }");
+            sb.AppendLine(".ts-livestack-img { border-radius: 6px; border: 1px solid var(--border); display: block; width: 100%; }");
+            sb.AppendLine(".ts-livestack-label { font-size: 11px; color: var(--muted); margin-top: 4px; }");
+            sb.AppendLine(".ts-livestack-composite { margin: 12px 0; text-align: center; }");
+            sb.AppendLine(".ts-livestack-composite img { border-radius: 6px; border: 1px solid var(--border); display: block; max-width: 520px; height: auto; margin: 0 auto; }");
             sb.AppendLine(".ts-target-info { flex: 1; }");
             sb.AppendLine(".ts-coords { font-size: 12px; color: var(--muted); margin: 4px 0 12px; }");
             sb.AppendLine(".ts-filter-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }");
@@ -125,11 +130,24 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("details.history-section > summary::-webkit-details-marker { display: none; }");
             sb.AppendLine("details.history-section > summary::before { content: '\\25B6\\00A0'; }");
             sb.AppendLine("details.history-section[open] > summary::before { content: '\\25BC\\00A0'; }");
+            sb.AppendLine("details.equipment-section { margin-top: 4px; margin-bottom: 8px; }");
+            sb.AppendLine("details.equipment-section > summary { cursor: pointer; color: var(--accent-light); font-size: 13px; font-weight: bold; list-style: none; }");
+            sb.AppendLine("details.equipment-section > summary::-webkit-details-marker { display: none; }");
+            sb.AppendLine("details.equipment-section > summary::before { content: '\\25B6\\00A0'; }");
+            sb.AppendLine("details.equipment-section[open] > summary::before { content: '\\25BC\\00A0'; }");
+            sb.AppendLine(".equipment-grid { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin-top: 6px; font-size: 13px; }");
+            sb.AppendLine(".equipment-label { color: var(--muted); }");
+            sb.AppendLine(".equipment-value { color: var(--text); }");
             sb.AppendLine("details.iq-section { margin-top: 12px; }");
             sb.AppendLine("details.iq-section > summary { cursor: pointer; color: var(--accent-light); font-size: 14px; font-weight: bold; list-style: none; }");
             sb.AppendLine("details.iq-section > summary::-webkit-details-marker { display: none; }");
             sb.AppendLine("details.iq-section > summary::before { content: '\\25B6\\00A0'; }");
             sb.AppendLine("details.iq-section[open] > summary::before { content: '\\25BC\\00A0'; }");
+            sb.AppendLine("details.livestack-section { margin-top: 12px; }");
+            sb.AppendLine("details.livestack-section > summary { cursor: pointer; color: var(--accent-light); font-size: 14px; font-weight: bold; list-style: none; }");
+            sb.AppendLine("details.livestack-section > summary::-webkit-details-marker { display: none; }");
+            sb.AppendLine("details.livestack-section > summary::before { content: '\\25B6\\00A0'; }");
+            sb.AppendLine("details.livestack-section[open] > summary::before { content: '\\25BC\\00A0'; }");
             sb.AppendLine(".iq-table { width: 100%; margin-top: 8px; }");
             sb.AppendLine(".iq-row-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr; }");
             sb.AppendLine(".iq-header { background-color: var(--border); color: var(--accent); padding: 8px; text-align: left; font-weight: bold; }");
@@ -147,17 +165,25 @@ namespace NINA.Plugin.NightSummary.Reporting {
             const string warningsPlaceholder = "<!--WARNINGS_PLACEHOLDER-->";
             sb.AppendLine(warningsPlaceholder);
 
+            int detailLevel = SettingsManager.Instance.Current.ReportDetailLevel;
+            string detailsOpen = SettingsManager.Instance.Current.ExpandSectionsDefault ? " open" : "";
+
             if (!data.Images.Any()) {
                 sb.AppendLine("<p><em>No images were recorded during this session.</em></p>");
+                if (detailLevel >= 2) sb.Append(BuildNextNightPreviewSection(data));
+                sb.Append(BuildFooter());
                 sb.AppendLine("</body></html>");
                 return sb.ToString();
             }
 
-            int detailLevel = Settings.Default.ReportDetailLevel;
-            string detailsOpen = Settings.Default.ExpandSectionsDefault ? " open" : "";
-
             if (detailLevel >= 1) sb.Append(BuildEventTimelineSection(data));
             sb.Append(BuildOverviewStatsSection(data, detailLevel));
+            if (detailLevel >= 2 && SettingsManager.Instance.Current.ShowOverheadBreakdown) {
+                Logger.Info($"NightSummary: Overhead section — TimingEvents={data.TimingEvents?.Count ?? -1}, detailLevel={detailLevel}, ShowOverheadBreakdown={SettingsManager.Instance.Current.ShowOverheadBreakdown}");
+                sb.Append(BuildOverheadBreakdownSection(data, detailsOpen));
+            } else {
+                Logger.Info($"NightSummary: Overhead section SKIPPED — TimingEvents={data.TimingEvents?.Count ?? -1}, detailLevel={detailLevel}, ShowOverheadBreakdown={SettingsManager.Instance.Current.ShowOverheadBreakdown}");
+            }
             sb.Append(await BuildTargetSection(data, detailLevel, detailsOpen));
             if (detailLevel >= 1) sb.Append(BuildImageQualitySection(data, detailLevel, detailsOpen));
             if (detailLevel >= 2) sb.Append(BuildNextNightPreviewSection(data));
@@ -195,9 +221,26 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine("<h1>Night Summary Report</h1>");
             }
             sb.AppendLine($"<p><strong>Session Date:</strong> {data.Session.SessionStart:yyyy-MM-dd}</p>");
-            sb.AppendLine($"<p><strong>Session Start:</strong> {data.Session.SessionStart:HH:mm:ss} &nbsp;&nbsp; <strong>Session End:</strong> {data.Session.SessionEnd:HH:mm:ss}</p>");
-            sb.AppendLine($"<p><strong>Duration:</strong> {(data.Session.SessionEnd - data.Session.SessionStart).TotalHours:F1} hours</p>");
+            var sessionEnd = data.Session.SessionEnd > data.Session.SessionStart ? data.Session.SessionEnd : DateTime.Now;
+            var isActive = data.Session.SessionEnd <= data.Session.SessionStart;
+            sb.AppendLine($"<p><strong>Session Start:</strong> {data.Session.SessionStart:HH:mm:ss} &nbsp;&nbsp; <strong>Session End:</strong> {(isActive ? "In Progress" : sessionEnd.ToString("HH:mm:ss"))}</p>");
+            sb.AppendLine($"<p><strong>Duration:</strong> {(sessionEnd - data.Session.SessionStart).TotalHours:F1} hours{(isActive ? " (so far)" : "")}</p>");
             sb.AppendLine($"<p><strong>Profile:</strong> {data.Session.ProfileName}</p>");
+
+            // Equipment profile section (collapsed by default)
+            if (SettingsManager.Instance.Current.ShowEquipmentProfile && data.Equipment != null && data.Equipment.Count > 0) {
+                sb.AppendLine("<details class='equipment-section' open>");
+                sb.AppendLine("<summary>Equipment</summary>");
+                sb.AppendLine("<div class='equipment-grid'>");
+                foreach (var kvp in data.Equipment) {
+                    var safeLabel = System.Web.HttpUtility.HtmlEncode(kvp.Key);
+                    var safeValue = System.Web.HttpUtility.HtmlEncode(kvp.Value);
+                    sb.AppendLine($"<span class='equipment-label'>{safeLabel}</span><span class='equipment-value'>{safeValue}</span>");
+                }
+                sb.AppendLine("</div>");
+                sb.AppendLine("</details>");
+            }
+
             return sb.ToString();
         }
 
@@ -217,7 +260,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             foreach (var (filter, count, expSec) in filterStats) {
                 var safeFilter = System.Web.HttpUtility.HtmlEncode(filter);
                 imageBreakdown.Append($"<div class='stat-breakdown-row'><span class='stat-breakdown-filter'>{safeFilter}</span><span>{count}</span></div>");
-                expBreakdown.Append($"<div class='stat-breakdown-row'><span class='stat-breakdown-filter'>{safeFilter}</span><span>{TimeSpan.FromSeconds(expSec).TotalHours:F1}h</span></div>");
+                expBreakdown.Append($"<div class='stat-breakdown-row'><span class='stat-breakdown-filter'>{safeFilter}</span><span>{FormatDuration(expSec)}</span></div>");
             }
             imageBreakdown.Append("</div>");
             expBreakdown.Append("</div>");
@@ -264,6 +307,212 @@ namespace NINA.Plugin.NightSummary.Reporting {
             return sb.ToString();
         }
 
+        private string BuildOverheadBreakdownSection(ReportData data, string detailsOpen = "") {
+            var timingEvents = data.TimingEvents;
+            if (timingEvents == null || !timingEvents.Any()) return "";
+
+            // Exclude Exposure events (useful imaging time) and zero-duration events.
+            var overheadEvents = timingEvents.Where(e => e.EventType != "Exposure" && e.DurationSeconds > 0).ToList();
+            if (!overheadEvents.Any()) return "";
+
+            // Compute the overhead window from all non-aborted events (AbortedExposure
+            // end times are unreliable — orphaned aborts default to sessionEnd).
+            var totalIntegrationSec = data.Images.Sum(i => i.ExposureDuration);
+            var allEvents = timingEvents.Where(e => e.DurationSeconds > 0 && e.EventType != "AbortedExposure").ToList();
+            var windowStart = allEvents.Min(e => e.StartTime);
+            var windowEnd = allEvents.Max(e => e.EndTime);
+            var windowSec = (windowEnd - windowStart).TotalSeconds;
+
+            // Exclude roof-closed (unsafe) periods — imaging isn't possible while
+            // the roof is closed, so this time is neither overhead nor integration.
+            // Extend roof-closed intervals backwards to cover any aborted exposures
+            // that were interrupted by the unsafe trigger (weather-lost time, not overhead).
+            var roofIntervals = RoofClosedHelper.GetIntervals(data.Events, windowStart, windowEnd);
+            roofIntervals = RoofClosedHelper.ExtendForAbortedExposures(roofIntervals, timingEvents);
+            var roofClosedSec = RoofClosedHelper.TotalSeconds(roofIntervals);
+            var effectiveWindowSec = windowSec - roofClosedSec;
+            var impliedOverheadSec = effectiveWindowSec - totalIntegrationSec;
+
+            // Filter out overhead events within roof-closed periods:
+            // - Regular events: excluded if entirely within a closed interval
+            // - AbortedExposure: excluded if start time is within a closed interval
+            //   (end time is unreliable for orphaned aborts that default to sessionEnd)
+            var effectiveOverheadEvents = roofIntervals.Count > 0
+                ? overheadEvents.Where(e => {
+                    if (e.EventType == "AbortedExposure")
+                        return !roofIntervals.Any(c => e.StartTime >= c.start && e.StartTime <= c.end);
+                    return !RoofClosedHelper.IsEntirelyWithinClosed(e.StartTime, e.EndTime, roofIntervals);
+                }).ToList()
+                : overheadEvents;
+
+            var sb = new StringBuilder();
+            sb.AppendLine("<details class='iq-section' open>");
+            sb.AppendLine("<summary>Yield and Imaging Overhead Analysis</summary>");
+
+            // Group by event type, sum durations, filter out negligible categories (< 1s total)
+            var groups = effectiveOverheadEvents
+                .GroupBy(e => e.EventType)
+                .Select(g => new {
+                    Type = g.Key,
+                    Count = g.Count(),
+                    TotalSeconds = g.Sum(e => e.DurationSeconds),
+                    AvgSeconds = g.Average(e => e.DurationSeconds)
+                })
+                .Where(g => g.TotalSeconds >= 1.0)
+                .OrderByDescending(g => g.TotalSeconds)
+                .ToList();
+
+            var totalOverheadSec = groups.Sum(g => g.TotalSeconds);
+
+            // Merge overhead intervals to compute wall-clock overhead, deduplicating
+            // any events that overlap with each other in time.
+            var mergedOverheadSec = MergeOverheadIntervals(effectiveOverheadEvents);
+            var coveragePct = impliedOverheadSec > 0
+                ? Math.Min(mergedOverheadSec / impliedOverheadSec * 100.0, 100.0) : 0;
+            var unaccountedSec = Math.Max(0, impliedOverheadSec - mergedOverheadSec);
+
+            Logger.Info($"NightSummary: Overhead — window={windowSec:F0}s, integration={totalIntegrationSec:F0}s, " +
+                $"roofClosed={roofClosedSec:F0}s, effective={effectiveWindowSec:F0}s, " +
+                $"implied={impliedOverheadSec:F0}s, merged={mergedOverheadSec:F0}s, " +
+                $"coverage={coveragePct:F1}%, unaccounted={unaccountedSec:F0}s");
+
+            // Summary stat boxes
+            sb.AppendLine("<div style='display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:10px 0;'>");
+            var infoIcon = "<span style='cursor:help; opacity:0.5; margin-left:4px; font-size:12px;'>&#9432;</span>";
+            sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{FormatDuration(mergedOverheadSec)}</div><div class='stat-label'>Total Overhead <span title='Wall-clock time spent on non-imaging tasks. Overlapping operations (e.g. image saves during the next exposure) are counted once.'>{infoIcon}</span></div></div>");
+            sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{coveragePct:F1}%</div><div class='stat-label'>Overhead Accounted <span title='Percentage of implied overhead (imaging window minus exposure time) accounted for by parsed log events.'>{infoIcon}</span></div></div>");
+            if (unaccountedSec > 10)
+                sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{FormatDuration(unaccountedSec)}</div><div class='stat-label'>Unaccounted <span title='Time not attributed to any parsed event. Includes NINA internal processing between sequence items (trigger evaluations, scheduler planning, plugin hooks).'>{infoIcon}</span></div></div>");
+            else
+                sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{groups.Count}</div><div class='stat-label'>Categories</div></div>");
+            sb.AppendLine("</div>");
+
+            // Horizontal stacked bar chart
+            if (totalOverheadSec > 0) {
+                var barColors = new Dictionary<string, string> {
+                    ["CameraDownload"] = "#4a9eff",
+                    ["FilterChange"]   = "#f59e0b",
+                    ["Dither"]         = "#10b981",
+                    ["TempCompFocus"]  = "#8b5cf6",
+                    ["Autofocus"]      = "#ef4444",
+                    ["PlateSolve"]     = "#06b6d4",
+                    ["ImageSave"]      = "#f97316",
+                    ["Centering"]      = "#6366f1",
+                    ["MeridianFlip"]   = "#14b8a6",
+                    ["Slew"]           = "#a855f7",
+                    ["DomeSync"]       = "#2dd4bf",
+                    ["DomeOps"]        = "#0d9488",
+                    ["FlatPanel"]      = "#fbbf24",
+                    ["CameraTemp"]     = "#60a5fa",
+                    ["MountOps"]       = "#c084fc",
+                    ["Guiding"]        = "#34d399",
+                    ["SafetyWait"]     = "#f472b6",
+                    ["FocuserMove"]    = "#a78bfa",
+                    ["Rotator"]        = "#818cf8",
+                    ["Switch"]         = "#94a3b8",
+                    ["AbortedExposure"]= "#fb7185"
+                };
+
+                sb.AppendLine("<div style='display:flex; height:24px; border-radius:6px; overflow:hidden; margin:8px 0;'>");
+                foreach (var g in groups) {
+                    var pct = g.TotalSeconds / totalOverheadSec * 100.0;
+                    if (pct < 0.5) continue;
+                    var color = barColors.TryGetValue(g.Type, out var c) ? c : "#888";
+                    var label = FormatEventTypeName(g.Type);
+                    // Only show text label if the block is wide enough (~7px per character at 11px font)
+                    var minPctForLabel = label.Length * 0.9;
+                    var showLabel = pct >= minPctForLabel;
+                    sb.AppendLine($"<div style='width:{pct:F1}%; background:{color}; display:flex; align-items:center; justify-content:center; font-size:11px; color:#fff; white-space:nowrap; overflow:hidden;' title='{label}: {FormatDuration(g.TotalSeconds)} ({pct:F1}%)'>{(showLabel ? label : "")}</div>");
+                }
+                sb.AppendLine("</div>");
+            }
+
+            // Detail table
+            sb.AppendLine("<p style='font-size:11px; color:var(--dim); margin:8px 0 0;'>Category totals may exceed the overall overhead because some operations run concurrently.</p>");
+            sb.AppendLine("<table style='width:100%; border-collapse:collapse; margin-top:8px; font-size:13px;'>");
+            sb.AppendLine("<tr style='border-bottom:2px solid var(--border);'>");
+            sb.AppendLine("<th style='text-align:left; padding:6px 8px; color:var(--accent);'>Category</th>");
+            sb.AppendLine("<th style='text-align:right; padding:6px 8px; color:var(--accent);'>Count</th>");
+            sb.AppendLine("<th style='text-align:right; padding:6px 8px; color:var(--accent);'>Total</th>");
+            sb.AppendLine("<th style='text-align:right; padding:6px 8px; color:var(--accent);'>Avg</th>");
+            sb.AppendLine("<th style='text-align:right; padding:6px 8px; color:var(--accent);'>% of Overhead</th>");
+            sb.AppendLine("</tr>");
+
+            bool even = false;
+            foreach (var g in groups) {
+                var pct = totalOverheadSec > 0 ? g.TotalSeconds / totalOverheadSec * 100.0 : 0;
+                var bgStyle = even ? " background-color:var(--surface);" : "";
+                sb.AppendLine($"<tr style='border-bottom:1px solid var(--border);{bgStyle}'>");
+                sb.AppendLine($"<td style='padding:6px 8px;'>{FormatEventTypeName(g.Type)}</td>");
+                sb.AppendLine($"<td style='text-align:right; padding:6px 8px;'>{g.Count}</td>");
+                sb.AppendLine($"<td style='text-align:right; padding:6px 8px;'>{FormatDuration(g.TotalSeconds)}</td>");
+                sb.AppendLine($"<td style='text-align:right; padding:6px 8px;'>{g.AvgSeconds:F1}s</td>");
+                sb.AppendLine($"<td style='text-align:right; padding:6px 8px;'>{pct:F1}%</td>");
+                sb.AppendLine("</tr>");
+                even = !even;
+            }
+            sb.AppendLine("</table>");
+            sb.AppendLine("</details>");
+
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Merges overlapping time intervals to compute actual wall-clock overhead seconds.
+        /// Many overhead events run concurrently (e.g. ImageSave during next exposure,
+        /// CameraDownload overlapping with other operations), so naively summing durations
+        /// double-counts shared time. This returns the true elapsed overhead time.
+        /// </summary>
+        internal static double MergeOverheadIntervals(List<TimingEvent> events) {
+            if (events == null || events.Count == 0) return 0;
+
+            var intervals = events
+                .Where(e => e.StartTime != DateTime.MinValue && e.EndTime != DateTime.MinValue && e.EndTime > e.StartTime)
+                .OrderBy(e => e.StartTime)
+                .ToList();
+
+            if (intervals.Count == 0) return 0;
+
+            double totalSeconds = 0;
+            var currentStart = intervals[0].StartTime;
+            var currentEnd = intervals[0].EndTime;
+
+            for (int i = 1; i < intervals.Count; i++) {
+                if (intervals[i].StartTime <= currentEnd) {
+                    // Overlapping — extend the current interval
+                    if (intervals[i].EndTime > currentEnd)
+                        currentEnd = intervals[i].EndTime;
+                } else {
+                    // Gap — flush the current interval and start a new one
+                    totalSeconds += (currentEnd - currentStart).TotalSeconds;
+                    currentStart = intervals[i].StartTime;
+                    currentEnd = intervals[i].EndTime;
+                }
+            }
+            // Flush the last interval
+            totalSeconds += (currentEnd - currentStart).TotalSeconds;
+
+            return totalSeconds;
+        }
+
+        private static string FormatEventTypeName(string eventType) => eventType switch {
+            "CameraDownload" => "Camera Download",
+            "FilterChange"   => "Filter Change",
+            "TempCompFocus"  => "Temp Comp Focus",
+            "PlateSolve"     => "Plate Solve",
+            "ImageSave"      => "Image Save",
+            "MeridianFlip"   => "Meridian Flip",
+            "DomeSync"       => "Dome Sync",
+            "DomeOps"        => "Dome",
+            "FlatPanel"      => "Flat Panel",
+            "CameraTemp"     => "Camera Temp",
+            "MountOps"       => "Mount",
+            "SafetyWait"     => "Safety Wait",
+            "FocuserMove"    => "Focuser Move",
+            "AbortedExposure"=> "Skipped Exposure",
+            _                => eventType
+        };
+
         private async Task<string> BuildTargetSection(ReportData data, int detailLevel, string detailsOpen = "") {
             var sb = new StringBuilder();
             var targets     = data.Images.GroupBy(i => i.TargetName).OrderBy(g => g.Min(i => i.Timestamp));
@@ -285,7 +534,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             // ── Pre-fetch all sky thumbnails in parallel ──────────────────────
             var thumbResults = new Dictionary<string, (string imgSrc, bool usedFallback)>();
-            if (Settings.Default.ShowSkyThumbnails) {
+            if (SettingsManager.Instance.Current.ShowSkyThumbnails) {
                 var thumbTasks = new List<(string targetName, double raDeg, double decD, Task<(string imgSrc, bool usedFallback)> task)>();
 
                 foreach (var target in targets) {
@@ -335,13 +584,19 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
                 // Build subtitle for the h3 heading: start/end times, coords, moon separation
                 var timePart   = $"Start: {targetImgStart:HH:mm} &nbsp;&#8594;&nbsp; End: {targetImgEnd:HH:mm}";
+                // Sky position angle: prefer TS data, fall back to plate solve PA from images
+                double rotation = (tsTarget != null && tsTarget.Rotation != 0) ? tsTarget.Rotation
+                    : target.Where(i => i.PositionAngle.HasValue && i.PositionAngle.Value != 0)
+                            .Select(i => i.PositionAngle.Value).DefaultIfEmpty(0).Average();
+
                 string h3Subtitle;
                 if (raH != 0 || decD != 0) {
                     var sessMid    = targetImgStart.AddMinutes((targetImgEnd - targetImgStart).TotalMinutes / 2);
                     var (moonRa, moonDec) = AltitudeCalculator.GetMoonPosition(sessMid.ToUniversalTime());
                     double moonSep = AltitudeCalculator.AngularSeparation(raH, decD, moonRa, moonDec);
+                    var rotPart = rotation != 0 ? $" &nbsp;·&nbsp; &#x21BB; {rotation:F0}&#176;" : "";
                     h3Subtitle = $" <span style='font-weight:normal; font-size:12px; color:var(--muted);'>" +
-                                 $"— {timePart} &nbsp;·&nbsp; R.A. {FormatRA(raH)} &nbsp;·&nbsp; Dec. {FormatDec(decD)} &nbsp;·&nbsp; &#127769; &#8596; {moonSep:F0}&#176;" +
+                                 $"— {timePart} &nbsp;·&nbsp; R.A. {FormatRA(raH)} &nbsp;·&nbsp; Dec. {FormatDec(decD)}{rotPart} &nbsp;·&nbsp; &#127769; &#8596; {moonSep:F0}&#176;" +
                                  $"</span>";
                 } else {
                     h3Subtitle = $" <span style='font-weight:normal; font-size:12px; color:var(--muted);'>— {timePart}</span>";
@@ -350,14 +605,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine("<div class='target-section'>");
                 sb.AppendLine($"<h3>{target.Key}{h3Subtitle}</h3>");
 
-                bool showThumb         = (raH != 0 || decD != 0) && Settings.Default.ShowSkyThumbnails;
-                bool showSideBySideChart = (raH != 0 || decD != 0) && detailLevel >= 1 && Settings.Default.ShowAltitudeChart;
+                bool showThumb         = (raH != 0 || decD != 0) && SettingsManager.Instance.Current.ShowSkyThumbnails;
+                bool showSideBySideChart = (raH != 0 || decD != 0) && detailLevel >= 1 && SettingsManager.Instance.Current.ShowAltitudeChart;
 
                 // Build thumbnail HTML from pre-fetched results
                 string thumbHtml = "";
                 if (showThumb && thumbResults.TryGetValue(target.Key, out var thumbResult)) {
                     var tSb = new StringBuilder();
-                    var svgAngle = tsTarget != null ? -tsTarget.Rotation : 0.0;
+                    var svgAngle = -rotation;
                     tSb.AppendLine($"<div class='ts-thumb-wrap'>");
                     tSb.AppendLine($"  <img src='{thumbResult.imgSrc}' alt='{target.Key}' />");
                     tSb.AppendLine($"  <svg width='{thumbPx}' height='{thumbPx}' xmlns='http://www.w3.org/2000/svg'>");
@@ -382,7 +637,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     sb.AppendLine("<div class='ts-target-header'>");
                     sb.Append(thumbHtml);
                     if (showSideBySideChart) {
-                        double minAlt = Settings.Default.ShowMinAltitude ? (tsTarget?.MinimumAltitude ?? 0) : 0;
+                        double minAlt = SettingsManager.Instance.Current.ShowMinAltitude ? (tsTarget?.MinimumAltitude ?? 0) : 0;
                         var altChart = BuildAltitudeChart(raH, decD, data.ObserverLatitude, data.ObserverLongitude,
                                                           targetImgStart, targetImgEnd, width: 500,
                                                           minimumAltitude: minAlt);
@@ -390,6 +645,31 @@ namespace NINA.Plugin.NightSummary.Reporting {
                             sb.Append($"<div style='flex:1; min-width:0; margin-top:-20px;'>{altChart}</div>");
                     }
                     sb.AppendLine("</div>"); // ts-target-header
+                }
+
+                // Live Stack images
+                if (SettingsManager.Instance.Current.ShowLiveStackImages && data.LiveStackImages.Count > 0) {
+                    var targetImages = data.LiveStackImages
+                        .Where(i => i.Target.Equals(target.Key, StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+                    if (targetImages.Count > 0) {
+                        Logger.Info($"NightSummary: Rendering {targetImages.Count} live stack image(s) for target '{target.Key}'");
+                        // Build filter → total integration lookup from session image records
+                        var filterIntegration = target
+                            .GroupBy(i => i.Filter, StringComparer.OrdinalIgnoreCase)
+                            .ToDictionary(g => g.Key, g => g.Sum(i => i.ExposureDuration), StringComparer.OrdinalIgnoreCase);
+                        sb.AppendLine("<details class='livestack-section' open>");
+                        sb.AppendLine($"<summary>Live Stack ({targetImages.Count} {(targetImages.Count == 1 ? "image" : "images")})</summary>");
+                        sb.Append(BuildLiveStackRow(targetImages, filterIntegration));
+                        sb.AppendLine("</details>");
+                    }
+                } else if (data.LiveStackImages == null || data.LiveStackImages.Count == 0) {
+                    Logger.Info($"NightSummary: No live stack images for target '{target.Key}' — " +
+                        $"ShowLiveStackImages={SettingsManager.Instance.Current.ShowLiveStackImages}, " +
+                        $"totalImages={data.LiveStackImages?.Count ?? 0}");
+                } else {
+                    Logger.Info($"NightSummary: No live stack images matched target '{target.Key}' — " +
+                        $"available targets: {string.Join(", ", data.LiveStackImages.Select(i => i.Target).Distinct())}");
                 }
 
                 // Session filter table
@@ -406,7 +686,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine($"<tr><td><strong>Total</strong></td><td><strong>{target.Count()}</strong></td><td></td><td><strong>{FormatDuration(targetTotal.TotalSeconds)}</strong></td></tr>");
                 sb.AppendLine("</table>");
 
-                if (detailLevel >= 1 && Settings.Default.ShowStarCountCV) {
+                if (detailLevel >= 1 && SettingsManager.Instance.Current.ShowStarCountCV) {
                     // Star count CV
                     var broadbandImages  = target.Where(i => IsBroadband(i.Filter)  && i.StarCount > 0).ToList();
                     var narrowbandImages = target.Where(i => IsNarrowband(i.Filter) && i.StarCount > 0).ToList();
@@ -437,7 +717,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 }
 
                 // Per-target image quality (collapsible) — only for multi-target sessions
-                if (detailLevel >= 1 && multiTarget && Settings.Default.ShowPerTargetIQ) {
+                if (detailLevel >= 1 && multiTarget && SettingsManager.Instance.Current.ShowPerTargetIQ) {
                     var targetList = target.ToList();
                     bool hasData = targetList.Any(i => i.HFR > 0 || i.FWHM > 0 || i.Eccentricity > 0 || i.GuidingRMSTotal > 0);
                     if (hasData) {
@@ -452,7 +732,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 }
 
                 // Session history (collapsible)
-                if (detailLevel >= 2 && Settings.Default.ShowSessionHistory) {
+                if (detailLevel >= 2 && SettingsManager.Instance.Current.ShowSessionHistory) {
                     List<TargetSessionHistory> history = null;
                     data.SessionHistory?.TryGetValue(target.Key, out history);
                     if (history != null && history.Any()) {
@@ -472,14 +752,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     }
                 }
 
-                if (tsTarget == null && detailLevel >= 1 && Settings.Default.ShowTSProgressBars && TargetSchedulerDatabase.IsPluginInstalled) {
+                if (tsTarget == null && detailLevel >= 1 && SettingsManager.Instance.Current.ShowTSProgressBars && TargetSchedulerDatabase.IsPluginInstalled) {
                     if (data.TsData != null && data.TsData.Count > 0) {
                         // TS is installed but this specific target wasn't found in it
                         Warnings.Add($"Target Scheduler progress bars unavailable for {target.Key} — target not found in Target Scheduler");
                     }
                     // If TS isn't installed at all, silently skip — the Options UI already shows it's unavailable
                 }
-                if (tsTarget != null && detailLevel >= 1 && Settings.Default.ShowTSProgressBars && TargetSchedulerDatabase.IsPluginInstalled) {
+                if (tsTarget != null && detailLevel >= 1 && SettingsManager.Instance.Current.ShowTSProgressBars && TargetSchedulerDatabase.IsPluginInstalled) {
                     // TS progress bars — one per exposure plan row (template + filter)
                     sb.AppendLine("<p style='margin: 12px 0 4px; font-size: 13px; color: var(--accent-light);'><strong>Target Scheduler Progress</strong></p>");
                     double totalIntegrationSec = 0;
@@ -540,6 +820,79 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             return sb.ToString();
+        }
+
+        private static string BuildLiveStackRow(List<Session.LiveStackImage> images, Dictionary<string, double> filterIntegration = null) {
+            var sb = new StringBuilder();
+            var monoImages = images.Where(i => i.IsMonochrome && !i.Filter.Equals("RGB", StringComparison.OrdinalIgnoreCase)).ToList();
+            var composites = images.Where(i => !i.IsMonochrome || i.Filter.Equals("RGB", StringComparison.OrdinalIgnoreCase)).ToList();
+
+            // Group mono images by filter type: broadband first, then narrowband
+            if (monoImages.Count > 0) {
+                var broadband  = monoImages.Where(i => IsBroadband(i.Filter)).ToList();
+                var narrowband = monoImages.Where(i => IsNarrowband(i.Filter)).ToList();
+                var other      = monoImages.Where(i => !IsBroadband(i.Filter) && !IsNarrowband(i.Filter)).ToList();
+
+                // Group by classification when we have a clean split and >4 images.
+                // Otherwise fall back to simple row wrapping (max 4 per row).
+                var rows = new List<List<Session.LiveStackImage>>();
+                bool cleanSplit = other.Count == 0 && broadband.Count > 0 && narrowband.Count > 0;
+
+                if (monoImages.Count > 4 && cleanSplit) {
+                    rows.Add(broadband);
+                    rows.Add(narrowband);
+                } else {
+                    // Simple chunking: max 4 per row, centered
+                    for (int i = 0; i < monoImages.Count; i += 4) {
+                        rows.Add(monoImages.GetRange(i, Math.Min(4, monoImages.Count - i)));
+                    }
+                }
+
+                foreach (var row in rows) {
+                    AppendMonoRow(sb, row, filterIntegration);
+                }
+            }
+
+            // Color composite row (full width)
+            foreach (var img in composites) {
+                sb.AppendLine("<div class='ts-livestack-composite'>");
+                sb.AppendLine($"<img src='data:image/jpeg;base64,{Convert.ToBase64String(img.JpegData)}' alt='Live Stack composite' />");
+                string label;
+                if (img.RedStackCount.HasValue) {
+                    label = $"Live Stack Composite &middot; R:{img.RedStackCount} G:{img.GreenStackCount} B:{img.BlueStackCount}";
+                    // Add total integration across all RGB channels
+                    if (filterIntegration != null) {
+                        double totalSec = filterIntegration.Values.Sum();
+                        if (totalSec > 0) label += $" &middot; {FormatDuration(totalSec)}";
+                    }
+                } else {
+                    label = $"Live Stack &middot; {img.StackCount} frames";
+                    if (filterIntegration != null && filterIntegration.TryGetValue(img.Filter, out var totalSec) && totalSec > 0) {
+                        label += $" &middot; {FormatDuration(totalSec)}";
+                    }
+                }
+                sb.AppendLine($"<div class='ts-livestack-label'>{label}</div>");
+                sb.AppendLine("</div>");
+            }
+
+            return sb.ToString();
+        }
+
+        private static void AppendMonoRow(StringBuilder sb, List<Session.LiveStackImage> row, Dictionary<string, double> filterIntegration = null) {
+            int perRow = Math.Min(row.Count, 4);
+            int itemWidth = row.Count == 1 ? 400 : (760 - (perRow - 1) * 8) / perRow;
+            sb.AppendLine("<div class='ts-livestack-row' style='justify-content:center;'>");
+            foreach (var img in row) {
+                var label = $"{img.Filter} &middot; {img.StackCount} frames";
+                if (filterIntegration != null && filterIntegration.TryGetValue(img.Filter, out var totalSec) && totalSec > 0) {
+                    label += $" &middot; {FormatDuration(totalSec)}";
+                }
+                sb.AppendLine($"<div class='ts-livestack-item' style='width:{itemWidth}px;'>");
+                sb.AppendLine($"<img class='ts-livestack-img' src='data:image/jpeg;base64,{Convert.ToBase64String(img.JpegData)}' alt='{img.Filter} stack' />");
+                sb.AppendLine($"<div class='ts-livestack-label'>{label}</div>");
+                sb.AppendLine("</div>");
+            }
+            sb.AppendLine("</div>");
         }
 
         private void AppendIqRows(StringBuilder sb, List<ImageRecord> images, string detailsOpen = "") {
@@ -618,21 +971,40 @@ namespace NINA.Plugin.NightSummary.Reporting {
             AppendIqRows(sb, data.Images, detailsOpen);
             sb.AppendLine("</div>"); // iq-table
 
-            if (detailLevel >= 2 && Settings.Default.ShowHFRGraph) {
-                int primary   = Settings.Default.ChartPrimaryMetric;
-                int secondary = Settings.Default.ChartSecondaryMetric;
-                sb.AppendLine($"<h2>{ChartGenerator.GetChartTitle(primary, secondary)}</h2>");
-                sb.AppendLine(ChartGenerator.GenerateMetricChart(data.Images, primary, secondary));
+            if (detailLevel >= 2 && SettingsManager.Instance.Current.ShowHFRGraph) {
+                int primary   = SettingsManager.Instance.Current.ChartPrimaryMetric;
+                int secondary = SettingsManager.Instance.Current.ChartSecondaryMetric;
+                int xAxis     = SettingsManager.Instance.Current.ChartXAxisMetric;
 
-                var additionalRaw = Settings.Default.AdditionalChartConfigs;
+                // Build event marker list from enabled event types
+                var eventMarkers = new List<(DateTime timestamp, string eventType, string description)>();
+                if (data.Events != null) {
+                    var settings = SettingsManager.Instance.Current;
+                    if (settings.ShowChartAfMarkers)
+                        eventMarkers.AddRange(data.Events.Where(e => e.EventType == "AutoFocus")
+                            .Select(e => (e.Timestamp, e.EventType, e.Description)));
+                    if (settings.ShowChartFlipMarkers)
+                        eventMarkers.AddRange(data.Events.Where(e => e.EventType == "MeridianFlip")
+                            .Select(e => (e.Timestamp, e.EventType, e.Description)));
+                    if (settings.ShowChartRoofMarkers)
+                        eventMarkers.AddRange(data.Events.Where(e => e.EventType is "RoofOpen" or "RoofClosed")
+                            .Select(e => (e.Timestamp, e.EventType, e.Description)));
+                }
+                var markers = eventMarkers.Count > 0 ? eventMarkers : null;
+
+                sb.AppendLine($"<h2>{ChartGenerator.GetChartTitle(primary, secondary, xAxis)}</h2>");
+                sb.AppendLine(ChartGenerator.GenerateMetricChart(data.Images, primary, secondary, xAxis, markers));
+
+                var additionalRaw = SettingsManager.Instance.Current.AdditionalChartConfigs;
                 if (!string.IsNullOrWhiteSpace(additionalRaw)) {
                     foreach (var part in additionalRaw.Split('|')) {
                         var tokens = part.Split(':');
-                        if (tokens.Length == 2
+                        if (tokens.Length >= 2
                             && int.TryParse(tokens[0], out int p)
                             && int.TryParse(tokens[1], out int s)) {
-                            sb.AppendLine($"<h2>{ChartGenerator.GetChartTitle(p, s)}</h2>");
-                            sb.AppendLine(ChartGenerator.GenerateMetricChart(data.Images, p, s));
+                            int ax = tokens.Length >= 3 && int.TryParse(tokens[2], out int a) ? a : 0;
+                            sb.AppendLine($"<h2>{ChartGenerator.GetChartTitle(p, s, ax)}</h2>");
+                            sb.AppendLine(ChartGenerator.GenerateMetricChart(data.Images, p, s, ax, markers));
                         }
                     }
                 }
@@ -755,7 +1127,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             // ── Moon altitude curve ──────────────────────────────────────────────
-            if (!Settings.Default.ShowMoonCurve) goto skipMoon;
+            if (!SettingsManager.Instance.Current.ShowMoonCurve) goto skipMoon;
             var moonPoints = AltitudeCalculator.GetMoonAltitudeCurve(latDeg, lonDeg, dayStart, dayEnd, stepMinutes: 5);
             var moonSegments = new List<List<(DateTime t, double alt)>>();
             List<(DateTime t, double alt)> moonSeg = null;
@@ -823,7 +1195,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
         }
 
         private string BuildNextNightPreviewSection(ReportData data) {
-            if (!Settings.Default.ShowNextNightPreview) return "";
+            if (!SettingsManager.Instance.Current.ShowNextNightPreview) return "";
 
             var tsDb = new TargetSchedulerDatabase();
             if (!tsDb.IsAvailable)
@@ -996,7 +1368,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     var filterGroups = allExposures
                         .GroupBy(e => (e.FilterName, e.Exposure))
                         .OrderBy(g => FilterSortKey(g.Key.FilterName)).ThenBy(g => g.Key.FilterName).ThenBy(g => g.Key.Exposure);
-                    string detailsOpen = Settings.Default.ExpandSectionsDefault ? " open" : "";
+                    string detailsOpen = SettingsManager.Instance.Current.ExpandSectionsDefault ? " open" : "";
                     sb.AppendLine($"<details class='history-section'{detailsOpen}>");
                     sb.AppendLine($"<summary>{targetGroup.Key} - Filter Breakdown</summary>");
                     sb.AppendLine("<table style='margin-top:8px;width:auto;'>");
@@ -1029,7 +1401,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
         private string BuildFooter() {
             var sb = new StringBuilder();
             sb.AppendLine("<p class='footnote'>CV (Coefficient of Variation) measures consistency as a percentage of the mean. Lower values indicate more stable conditions. Star count CV is calculated per target and filter type.</p>");
-            sb.AppendLine("<p class='footnote'>Generated by Night Summary plugin for N.I.N.A.</p>");
+            var pluginVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "?";
+            var ninaVersion = CoreUtil.Version ?? "?";
+            sb.AppendLine($"<p class='footnote'>Generated by Night Summary v{pluginVersion} · N.I.N.A. {ninaVersion} · Created by Evan Pegors (@sleepypuppy15)</p>");
             return sb.ToString();
         }
 
