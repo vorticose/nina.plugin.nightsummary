@@ -13,6 +13,7 @@ Usage:
 
 import argparse
 import base64
+import datetime
 import json
 import os
 import re
@@ -86,6 +87,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             html = html.replace("{{STYLES}}", css)
             html = html.replace("{{SCRIPTS}}", js)
             html = html.replace("{{ICON}}", ICON_DATA_URI)
+            # Unique timestamp per response — defeats bfcache and any proxy caching
+            html = html.replace("</head>", f'<!-- built: {datetime.datetime.utcnow().isoformat()} -->\n</head>', 1)
 
             body = html.encode("utf-8")
             self.send_response(200)
@@ -93,6 +96,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
             self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
             self.end_headers()
             self.wfile.write(body)
         except FileNotFoundError as e:

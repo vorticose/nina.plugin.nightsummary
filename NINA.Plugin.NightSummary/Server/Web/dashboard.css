@@ -1071,6 +1071,7 @@ nav {
   font-weight: bold;
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
+  white-space: nowrap;
 }
 
 .card-stat-unit {
