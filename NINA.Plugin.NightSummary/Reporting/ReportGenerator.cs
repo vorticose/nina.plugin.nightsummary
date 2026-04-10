@@ -312,34 +312,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
             if (timingEvents == null || !timingEvents.Any()) return "";
 
             // Exclude Exposure events (useful imaging time) and zero-duration events.
-            // AbortedExposure events are included — weather-aborted ones will be filtered
-            // out later by the roof-closed exclusion; quality-aborted ones are real overhead.
             var overheadEvents = timingEvents.Where(e => e.EventType != "Exposure" && e.DurationSeconds > 0).ToList();
             if (!overheadEvents.Any()) return "";
 
-            var sb = new StringBuilder();
-            sb.AppendLine("<details class='iq-section' open>");
-            sb.AppendLine("<summary>Yield and Imaging Overhead Analysis</summary>");
-
-            // Group by event type, sum durations, filter out negligible categories (< 1s total)
-            var groups = overheadEvents
-                .GroupBy(e => e.EventType)
-                .Select(g => new {
-                    Type = g.Key,
-                    Count = g.Count(),
-                    TotalSeconds = g.Sum(e => e.DurationSeconds),
-                    AvgSeconds = g.Average(e => e.DurationSeconds)
-                })
-                .Where(g => g.TotalSeconds >= 1.0)
-                .OrderByDescending(g => g.TotalSeconds)
-                .ToList();
-
-            var totalOverheadSec = groups.Sum(g => g.TotalSeconds);
-
-            // Total integration = shutter-open time only (the ground truth for yield).
-            // The session window spans from the earliest parsed event to the latest,
-            // which includes pre-imaging setup (cool camera, slew, center, autofocus)
-            // and post-imaging teardown (warm camera, park) — not just first-to-last image.
+            // Compute the overhead window from all non-aborted events (AbortedExposure
+            // end times are unreliable — orphaned aborts default to sessionEnd).
             var totalIntegrationSec = data.Images.Sum(i => i.ExposureDuration);
             var allEvents = timingEvents.Where(e => e.DurationSeconds > 0 && e.EventType != "AbortedExposure").ToList();
             var windowStart = allEvents.Min(e => e.StartTime);
@@ -356,9 +333,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var effectiveWindowSec = windowSec - roofClosedSec;
             var impliedOverheadSec = effectiveWindowSec - totalIntegrationSec;
 
-            // Merge all overhead intervals to compute wall-clock overhead, deduplicating
-            // any events that overlap with each other in time.
-            // Exclude overhead events that fall within roof-closed periods:
+            // Filter out overhead events within roof-closed periods:
             // - Regular events: excluded if entirely within a closed interval
             // - AbortedExposure: excluded if start time is within a closed interval
             //   (end time is unreliable for orphaned aborts that default to sessionEnd)
@@ -369,6 +344,28 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     return !RoofClosedHelper.IsEntirelyWithinClosed(e.StartTime, e.EndTime, roofIntervals);
                 }).ToList()
                 : overheadEvents;
+
+            var sb = new StringBuilder();
+            sb.AppendLine("<details class='iq-section' open>");
+            sb.AppendLine("<summary>Yield and Imaging Overhead Analysis</summary>");
+
+            // Group by event type, sum durations, filter out negligible categories (< 1s total)
+            var groups = effectiveOverheadEvents
+                .GroupBy(e => e.EventType)
+                .Select(g => new {
+                    Type = g.Key,
+                    Count = g.Count(),
+                    TotalSeconds = g.Sum(e => e.DurationSeconds),
+                    AvgSeconds = g.Average(e => e.DurationSeconds)
+                })
+                .Where(g => g.TotalSeconds >= 1.0)
+                .OrderByDescending(g => g.TotalSeconds)
+                .ToList();
+
+            var totalOverheadSec = groups.Sum(g => g.TotalSeconds);
+
+            // Merge overhead intervals to compute wall-clock overhead, deduplicating
+            // any events that overlap with each other in time.
             var mergedOverheadSec = MergeOverheadIntervals(effectiveOverheadEvents);
             var coveragePct = impliedOverheadSec > 0
                 ? Math.Min(mergedOverheadSec / impliedOverheadSec * 100.0, 100.0) : 0;
