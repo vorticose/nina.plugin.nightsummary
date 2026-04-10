@@ -69,14 +69,15 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var extended = new List<(DateTime start, DateTime end)>();
             foreach (var interval in roofIntervals) {
                 var newStart = interval.start;
-                // Look for an aborted exposure that ends near this interval's start
-                // (within 5 minutes — accounts for trigger processing, safety handler startup)
+                // Look for an aborted exposure that started before this roof-closed interval
+                // and was still running (or recently aborted) when the interval began.
+                // The exposure start must be within 10 minutes before the roof closure
+                // to establish a causal link (unsafe trigger aborted the exposure).
                 var match = aborted.FirstOrDefault(a =>
                     a.StartTime < interval.start &&
-                    a.EndTime >= interval.start.AddMinutes(-5) &&
-                    a.EndTime <= interval.start);
+                    a.StartTime >= interval.start.AddMinutes(-10));
                 if (match != null)
-                    newStart = match.StartTime < newStart ? match.StartTime : newStart;
+                    newStart = match.StartTime;
                 extended.Add((newStart, interval.end));
             }
             return extended;
