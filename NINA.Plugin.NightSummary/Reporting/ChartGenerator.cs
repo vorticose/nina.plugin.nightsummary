@@ -120,6 +120,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
             // Build x-axis values keyed by timestamp for joining
             var xByTime = BuildXAxisLookup(images, xAxisMetric);
 
+            // Filter lookup for tooltips
+            var filterByTime = images.ToDictionary(i => i.Timestamp, i => i.Filter ?? "");
+
             // Join: only include points that have valid x AND y values
             var primaryPts   = JoinWithXAxis(primaryRaw, xByTime);
             var secondaryPts = JoinWithXAxis(secondaryRaw, xByTime);
@@ -240,7 +243,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 string secUnit = GetTooltipUnit(secondaryMetric, false);
                 string secFmt  = GetValueFormat(secondaryMetric, false);
                 foreach (var p in rightPts) {
-                    string tip = FormatTooltipX(p, xAxisMetric, minX) + $" — {p.y.ToString(secFmt)}{secUnit}";
+                    var filter = filterByTime.TryGetValue(p.t, out var f) && !string.IsNullOrEmpty(f) ? $" [{f}]" : "";
+                    string tip = FormatTooltipX(p, xAxisMetric, minX) + $" — {p.y.ToString(secFmt)}{secUnit}{filter}";
                     sb.AppendLine($"<circle cx=\"{ToXPx(p.x):F1}\" cy=\"{ToYR(p.y):F1}\" r=\"3\" fill=\"{ColorSecondaryDot}\"><title>{tip}</title></circle>");
                 }
             }
@@ -252,7 +256,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
             string leftUnit    = GetTooltipUnit(leftMetricIdx, !swapped);
             string leftTipFmt  = GetValueFormat(leftMetricIdx, !swapped);
             foreach (var p in leftPts) {
-                string tip = FormatTooltipX(p, xAxisMetric, minX) + $" — {p.y.ToString(leftTipFmt)}{leftUnit}";
+                var filter = filterByTime.TryGetValue(p.t, out var f) && !string.IsNullOrEmpty(f) ? $" [{f}]" : "";
+                string tip = FormatTooltipX(p, xAxisMetric, minX) + $" — {p.y.ToString(leftTipFmt)}{leftUnit}{filter}";
                 sb.AppendLine($"<circle cx=\"{ToXPx(p.x):F1}\" cy=\"{ToYL(p.y):F1}\" r=\"3\" fill=\"{leftDotColor}\"><title>{tip}</title></circle>");
             }
 
