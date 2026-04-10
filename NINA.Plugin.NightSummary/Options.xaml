@@ -758,7 +758,7 @@
                             <TextBlock Width="200" />
                             <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="420">
                                 Requires a Gmail App Password — not your regular password.
-                                Generate one at myaccount.google.com → Security → App Passwords.
+                                Enable 2FA on your Google account, then generate one at myaccount.google.com/apppasswords.
                             </TextBlock>
                         </StackPanel>
                     </StackPanel>
