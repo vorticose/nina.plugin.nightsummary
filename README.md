@@ -18,14 +18,14 @@ A [N.I.N.A.](https://nighttime-imaging.eu/) plugin that records your astrophotog
 - Equipment profile showing your connected gear with customizable display names and per-field visibility
 - Session event timeline showing AutoFocus runs, meridian flips, and safety monitor events
 - Session overview with at-a-glance stats: total images, total exposure time, target count, average HFR, average FWHM, average guiding RMS, and imaging yield
-- Yield and Imaging Overhead Analysis — a per-category timing breakdown with stacked bar chart and detailed table showing all non-imaging time spent
+- Yield and Imaging Overhead Analysis — a per-category timing breakdown with stacked bar chart and detailed table showing all non-imaging time spent, with roof-closed (unsafe) periods automatically excluded
 - Per-target imaging summaries with filter breakdown, exposure counts, total integration time, sky position angle, a DSS sky survey thumbnail with FOV overlay, and an altitude chart with optional minimum altitude line from Target Scheduler
 - Live Stack thumbnails — latest stacked image per target and filter (requires Live Stack plugin)
 - Per-target image quality stats: HFR, FWHM and Eccentricity (with Hocus Focus plugin), and guiding RMS with per-filter breakdowns
 - Star count consistency (CV) reported separately for broadband and narrowband filters
 - Target Scheduler integration — per-filter progress bars showing desired, acquired, and accepted frame counts (requires Target Scheduler plugin)
 - Session history table with total integration and image quality stats for all previous sessions
-- Configurable Metric Charts — multiple charts with customizable x-axis and 10+ metrics to choose from
+- Configurable Metric Charts — up to 5 charts with customizable x-axis, 20+ metrics to choose from, and optional event markers
 - Tonight's Preview — a visual timeline of what Target Scheduler plans to image tonight (requires Target Scheduler API)
 - Delivery via email, Discord, Pushover, or local save with NINA filename pattern variables
 
@@ -36,7 +36,7 @@ A [N.I.N.A.](https://nighttime-imaging.eu/) plugin that records your astrophotog
 Shows all 12 NINA equipment types (camera, telescope, mount, filter wheel, focuser, rotator, guider, dome, flat panel, safety monitor, weather station, switch). Each field can be toggled on or off, and display names can be overridden for cleaner presentation.
 
 ### Yield and Imaging Overhead Analysis
-Parses NINA logs to show exactly where your non-imaging time went — camera download, filter changes, dithering, autofocus, plate solves, centering, slew, and more. Displayed as a stacked bar chart and a detailed timing table with per-category breakdowns.
+Parses NINA logs to show exactly where your non-imaging time went — camera download, filter changes, dithering, autofocus, plate solves, centering, slew, meridian flips, and more. Displayed as a stacked bar chart and a detailed timing table with per-category breakdowns. Roof-closed (unsafe) periods are automatically excluded from the calculation, and exposures aborted by quality triggers (e.g. guiding RMS threshold) appear as a Skipped Exposure category so you can see how much time is being lost to poor conditions.
 
 ### Per-target imaging
 Each target gets its own section with filter breakdown, exposure counts, total integration time, and sky position angle. Includes a DSS sky survey thumbnail with your camera's FOV overlay and an altitude chart showing the full rise/set arc with your imaging window highlighted. When Target Scheduler is installed, an optional minimum altitude line is shown on the altitude chart.
@@ -51,7 +51,7 @@ HFR is provided natively by NINA. With the Hocus Focus plugin installed, FWHM an
 A per-target table showing date, total integration, and image quality stats for all previous sessions. Cumulative integration time is tracked per target across all sessions.
 
 ### Metric Charts
-Add multiple charts, each plotting any two metrics with a customizable x-axis. Choose from HFR, FWHM, Eccentricity, Guiding RMS, Focuser Temperature, Ambient Temperature, Altitude, Airmass, Humidity, Focuser Position, and more.
+Add up to 5 charts, each plotting any two metrics with a customizable x-axis. Choose from 20+ metrics including HFR, FWHM, Eccentricity, Guiding RMS, Seeing FWHM, Median ADU, Focuser Temperature, Ambient Temperature, Altitude, Airmass, Humidity, Focuser Position, and more. Optional event markers overlay AutoFocus runs, meridian flips, and safety events on the chart when Time is used as the x-axis. Hover tooltips on data points show the timestamp, value, and filter used for each exposure.
 
 ### Tonight's Preview
 A visual timeline of what Target Scheduler plans to image tonight, with per-target filter breakdowns. Requires the Target Scheduler API to be enabled.

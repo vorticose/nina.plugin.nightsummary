@@ -1,64 +1,27 @@
 # Night Summary — Changelog
 
 
-## v2.10.0-beta2
+## v2.10.0
 
 **New features**
-- Configurable event markers on metric charts — vertical dashed lines at AutoFocus, Meridian Flip, and Safe/Unsafe events with per-type toggle settings and hover tooltips (shown when x-axis is Time)
-
-<!-- TODO: Update docs — add event markers to settings-reference.md and metric-charts.md -->
-
-**Bug fixes**
-- Fixed Yield and Imaging Overhead section not appearing in live session reports
-- Fixed new reports overwriting previous session's saved report folder
-- Fixed new settings defaulting to off for users upgrading from a previous version
-
-
-## v2.10.0-beta1
-
-**Beta release** — please report any issues at https://github.com/vorticose/nina.plugin.nightsummary/issues
-
-**New features**
-- Live Stack integration — captures live-stacked thumbnails from the Live Stack plugin and displays them in the report per target/filter, with broadband/narrowband grouping and composite support
-- Yield and Imaging Overhead Analysis — parses NINA logs to show a per-category timing breakdown with stacked bar chart and detailed table. Tracks all major NINA sequence items (camera download, filter changes, dithering, autofocus, plate solves, image saves, centering, slew, guiding, dome operations, flat panel, camera temp, mount operations, and more). Uses interval merging to accurately handle overlapping concurrent events.
-- Equipment profile section in report header — shows all 12 NINA equipment types (Camera, Telescope, Mount, Filter Wheel, Focuser, Rotator, Guider, Dome, Flat Panel, Safety Monitor, Weather, Switch) with per-field visibility toggles and user-overridable display names
-- NINA filename pattern variables in report save path — use the same path variables as NINA's file save patterns, with clickable insertion buttons
-- Customizable x-axis on metric charts — choose Time, Frame Index, or any metric (Altitude, Temperature, etc.) as the x-axis, independently configurable per chart
+- Live Stack integration -- captures live-stacked thumbnails from the Live Stack plugin and displays them in the report per target/filter, with broadband/narrowband grouping and composite support
+- Yield and Imaging Overhead Analysis -- parses NINA logs to show a per-category timing breakdown with stacked bar chart and detailed table. Tracks all major NINA sequence items (camera download, filter changes, dithering, autofocus, plate solves, image saves, centering, slew, guiding, dome operations, flat panel, camera temp, mount operations, and more) plus trigger-based meridian flips detected from NINA internal logs. Uses interval merging to accurately handle overlapping concurrent events. Automatically excludes roof-closed (unsafe) periods so safety events don't inflate overhead numbers. Exposures aborted by quality triggers (e.g. guiding RMS threshold) appear as a "Skipped Exposure" category so you can see time lost to poor conditions.
+- Equipment profile section in report header -- shows all 12 NINA equipment types (Camera, Telescope, Mount, Filter Wheel, Focuser, Rotator, Guider, Dome, Flat Panel, Safety Monitor, Weather, Switch) with per-field visibility toggles and user-overridable display names
+- NINA filename pattern variables in report save path -- use the same path variables as NINA's file save patterns, with clickable insertion buttons
+- Customizable x-axis on metric charts -- choose Time, Frame Index, or any metric (Altitude, Temperature, etc.) as the x-axis, independently configurable per chart
+- Configurable event markers on metric charts -- vertical dashed lines at AutoFocus, Meridian Flip, and Safe/Unsafe events with per-type toggle settings and hover tooltips (shown when x-axis is Time)
+- Median ADU metric -- image median ADU value is now recorded per image and available as a primary, secondary, or x-axis metric in the metric chart. Useful for tracking sky background brightness changes throughout a session.
 - Sky position angle displayed in target headers and FOV overlay on sky thumbnails
 
 **Improvements**
+- Filter name now shown in metric chart data point hover tooltips
 - Tonight's Preview now shown even when session has zero images (weather-interrupted sessions)
 - Session history now returns all previous sessions instead of a capped limit
-- Plugin version, and NINA version shown in report footer
+- Plugin version and NINA version shown in report footer
 - Settings now persist to a stable JSON file that survives NINA updates
 - Per-filter exposure breakdown in overview now uses FormatDuration for consistent time formatting
 - Active sessions show "In Progress" with duration so far within the preview window instead of negative numbers
-
-**Bug fixes**
-- Fixed filter classification progressive reset on settings load/refresh
-
-
-
-## v2.9.0
-
-**New features**
-- Seeing FWHM metric — ASCOM seeing monitor star FWHM (arcseconds) is now recorded per image and available as a primary or secondary metric in the metric chart. Requires an ASCOM-compatible seeing monitor connected as a NINA weather data source.
-- Median ADU metric — image median ADU value is now recorded per image and available as a primary, secondary, or x-axis metric in the metric chart. Useful for tracking sky background brightness changes throughout a session.
-- Image statistics capture — all NINA image statistics (median, mean, standard deviation, median absolute deviation, min, max, bit depth) are now stored per image for future use.
-- Expandable filter breakdown in the session overview stat boxes — click Total Images or Total Exposure to see a per-filter breakdown
-- Support for up to 4 additional metric charts per report — configure extra charts from the Options page, each with independent primary and secondary metric selection
-
-**Improvements**
-- Improved metric chart axis scaling — axis labels now use sensible round-number steps (e.g. 5° for altitude, 0.5px for HFR) instead of arbitrary intervals
-- Aborted exposure count now includes image download and save failures in addition to skipped exposures
-- Target Scheduler settings grouped into a dedicated subsection in Options for clarity
-- Tonight's Preview toggle is now greyed out when the Target Scheduler API is not enabled, preventing misconfiguration
-- Target Scheduler progress bars are suppressed in the report when Target Scheduler is not installed, eliminating spurious warnings for users without TS
-- Discord webhook URL validation no longer rejects legacy discordapp.com webhook URLs — the actual API response is used to determine success or failure instead
-- Overhead analysis now excludes roof-closed (unsafe) periods from implied overhead, preventing safety events from inflating the unaccounted overhead figure
-- Log parser now uses exact session boundaries instead of a ±5 minute buffer, preventing events from cancelled/restarted sequences from bleeding into the current session's overhead calculation
-- Exposures aborted by quality triggers (e.g. guiding RMS threshold) now appear as "Skipped Exposure" in the overhead breakdown, giving visibility into time lost to poor conditions
-
+- Updated Gmail app password setup instructions with direct link to Google app passwords page
 
 ## v2.8.1
 

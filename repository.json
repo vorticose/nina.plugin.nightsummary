@@ -5,10 +5,10 @@
                     "Major":  2,
                     "Minor":  10,
                     "Patch":  0,
-                    "Build":  2
+                    "Build":  0
                 },
     "Author":  "Evan Pegors @sleepypuppy15",
-    "Homepage":  "https://github.com/vorticose/nina.plugin.nightsummary",
+    "Homepage":  "https://vorticose.github.io/nina.plugin.nightsummary/",
     "Repository":  "https://github.com/vorticose/nina.plugin.nightsummary",
     "License":  "MPL-2.0",
     "LicenseURL":  "https://www.mozilla.org/en-US/MPL/2.0/",
@@ -21,7 +21,7 @@
                  "discord",
                  "pushover"
              ],
-    "Channel":  "Beta",
+    "Channel":  "Stable",
     "MinimumApplicationVersion":  {
                                       "Major":  3,
                                       "Minor":  2,
@@ -29,16 +29,16 @@
                                       "Build":  9001
                                   },
     "Descriptions":  {
-                         "ShortDescription":  "Logs imaging session data and sends summary reports via email, Discord, and Pushover.",
-                         "LongDescription":  "Night Summary captures imaging session data during sequence execution and delivers detailed reports when your session ends. Reports include per-target and per-filter breakdowns, HFR/FWHM quality metrics, star counts, guiding RMS, and an HFR-over-time chart. Supports email (Gmail), Discord webhooks, and Pushover push notifications.",
+                         "ShortDescription":  "Records imaging sessions and delivers detailed HTML reports with yield analysis, live stack thumbnails, metric charts, and more via email, Discord, or Pushover.",
+                         "LongDescription":  "Night Summary automatically records your astrophotography session as it runs and delivers a rich HTML report the moment your sequence completes. Reports include session overview stats, equipment profile, event timeline, yield and imaging overhead analysis with per-category breakdown, per-target summaries with altitude charts and sky thumbnails, Live Stack integration, image quality metrics (HFR, FWHM, Eccentricity, guiding RMS, Median ADU), Target Scheduler integration with progress bars and Tonight's Preview, configurable metric charts with event markers, and session history. Supports email (any SMTP provider), Discord webhooks, Pushover, and local save with NINA filename pattern variables.",
                          "FeaturedImageURL":  "",
                          "ScreenshotURL":  "",
                          "AltScreenshotURL":  ""
                      },
     "Installer":  {
-                      "URL":  "https://github.com/vorticose/nina.plugin.nightsummary/releases/download/v2.10.0-beta2/NINA.Plugin.NightSummary.zip",
+                      "URL":  "https://github.com/vorticose/nina.plugin.nightsummary/releases/download/v2.10.0/NINA.Plugin.NightSummary.zip",
                       "Type":  "ARCHIVE",
-                      "Checksum":  "CB113E40233535938D204EF3027C4BAD9784F73CC9DE816EE432000221C9360F",
+                      "Checksum":  "",
                       "ChecksumType":  "SHA256"
                   }
 }

@@ -138,13 +138,38 @@ work directly to `main`.
 
 ## Release Process
 
+### Changelog rule: stable-to-stable deltas only
+
+When writing the changelog section for a new stable release, only include changes visible
+to users upgrading from the previous stable version. Specifically:
+
+- **Do not list bug fixes that only existed in beta builds.** Users upgrading from the
+  previous stable never experienced them. Entries like "Fixed new settings defaulting to off
+  for upgraders" are confusing noise to stable users.
+- **Do not list iterative improvements to features that are brand-new in this release.**
+  If a feature ships for the first time in this release, fold its capabilities into the
+  feature bullet instead of listing them separately as improvements. Example: don't list
+  "Overhead analysis now excludes roof-closed periods" as an improvement when the overhead
+  analysis feature itself is new in this release.
+- **Do expand feature bullets to describe their full day-one capabilities,** even if parts
+  were added during the beta cycle.
+- **Beta-only release notes** can live in the GitHub release description for the beta tags
+  if you want to preserve them.
+
+The audience for CHANGELOG.md is users upgrading from the previous stable version. Write
+it as if you went directly from the previous stable release to this one without a beta cycle.
+
+### Release steps
+
 To publish a new version:
 
 1. **Run tests** (on Windows machine): `dotnet test NINA.Plugin.NightSummary.Tests` — must be 0 failures before release
 2. **Clean up dev markers** in `AssemblyInfo.cs`:
    - Remove `*** DEV BUILD ***` from `AssemblyDescription`
    - Remove `[assembly: AssemblyInformationalVersion("X.Y.Z-dev")]` line
-3. **Build**: `dotnet build NINA.Plugin.NightSummary.sln -c Release`
+3. **Finalize CHANGELOG_DRAFT.md** following the stable-to-stable rule above, then copy the
+   new version's section over the previous version's section in `CHANGELOG.md` on main.
+4. **Build**: `dotnet build NINA.Plugin.NightSummary.sln -c Release`
 2. **Package**: `cd NINA.Plugin.NightSummary/bin/Release/net8.0-windows && zip -r /tmp/NINA.Plugin.NightSummary.zip . --exclude "*.pdb" --exclude "*.xml"`
 3. **Checksum**: `shasum -a 256 /tmp/NINA.Plugin.NightSummary.zip | awk '{print toupper($1)}'`
 4. **GitHub Release**: Update existing or create new release tagged `vX.Y.Z`, upload ZIP
