@@ -78,7 +78,10 @@ Available at **Full** detail level when the metric chart is enabled. See [Metric
 | X-Axis | Time | What the horizontal axis represents |
 | Primary Metric | HFR | The main metric plotted |
 | Secondary Metric | None | Optional second metric on a separate Y-axis |
-| Additional Charts | (none) | Add extra charts with independent metric selections |
+| Additional Charts | (none) | Add up to 4 extra charts with independent metric selections |
+| Show AutoFocus Markers | On | Overlay purple AF markers on the chart at each AutoFocus run (Time x-axis only) |
+| Show Meridian Flip Markers | On | Overlay amber MF markers at meridian flip events (Time x-axis only) |
+| Show Roof Markers | Off | Overlay green/red S/US markers at safety monitor state changes (Time x-axis only) |
 
 ---
 

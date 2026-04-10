@@ -56,13 +56,29 @@ All of these can be used as primary metric, secondary metric, or X-axis:
 | **Star Count** | | Number of stars detected in each frame |
 | **Azimuth** | degrees | Target azimuth |
 | **Seeing FWHM** | arcsec | Atmospheric seeing measurement. Requires an ASCOM-compatible seeing monitor connected as a NINA weather data source. |
+| **Median ADU** | ADU | Image median pixel value. Useful for tracking sky background brightness changes throughout a session (e.g. moonrise, twilight). |
 
 {: .note }
 > Metrics that require external hardware or plugins will show no data if the equipment isn't connected. The chart simply omits data points where the metric value is zero or missing.
 
+## Event Markers
+
+When the X-axis is set to **Time**, you can overlay vertical dashed lines on the chart marking specific events that occurred during the session:
+
+| Marker | Label | Color | Triggered by |
+|--------|-------|-------|--------------|
+| **AutoFocus** | AF | Purple | Each AutoFocus run |
+| **Meridian Flip** | MF | Amber | Meridian flip events |
+| **Safe** | S | Green | Safety monitor transitions to Safe |
+| **Unsafe** | US | Red | Safety monitor transitions to Unsafe |
+
+Each marker type can be toggled independently in **Options → Metric Chart Settings** (see the Settings Reference for exact toggle names). The colors match the markers shown on the session event timeline at the top of the report.
+
+Hover over any marker to see a tooltip with the event description and timestamp. Markers are only displayed when the chart's X-axis is set to Time — they don't appear for Frame Index or metric x-axes.
+
 ## Additional Charts
 
-You can add more charts beyond the primary one:
+You can add up to 4 additional charts beyond the primary one:
 
 1. Click **+ Add Chart** in the settings
 2. Configure the primary metric, secondary metric, and X-axis for the new chart
@@ -72,7 +88,7 @@ Each additional chart has its own independent metric selections. This lets you c
 
 ## Chart Interaction
 
-In the HTML report, chart data points show **hover tooltips** with the exact timestamp and value. This makes it easy to identify specific frames with unusual values.
+In the HTML report, chart data points show **hover tooltips** with the exact timestamp, metric value, and the filter used for that exposure (e.g. `22:15 — 1.67 px [Ha]`). This makes it easy to identify specific frames with unusual values or spot filter-specific patterns.
 
 ## Common Chart Configurations
 
@@ -86,3 +102,4 @@ Here are some useful metric combinations to try:
 | **Star count consistency** | Star Count | Humidity | Time |
 | **Altitude effects** | HFR | Airmass | Altitude |
 | **Seeing conditions** | FWHM | Wind Speed | Time |
+| **Sky background** | Median ADU | — | Time |

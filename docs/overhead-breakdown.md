@@ -45,7 +45,7 @@ Each overhead category with:
 | **Centering** | Center and CenterAndRotate operations |
 | **Image Save** | Async image save operations (measured from NINA's ImageSaveController). These typically overlap with the next exposure. |
 | **Slew** | Telescope slew operations (SlewScopeToRaDec, SlewScopeToAltAz) |
-| **Meridian Flip** | Meridian flip operations |
+| **Meridian Flip** | Meridian flip operations, including trigger-based flips that NINA handles internally (detected from AscomTelescope meridian flip log lines) |
 | **Guiding** | StartGuiding and StopGuiding operations |
 | **Mount Ops** | Park, unpark, find home, set tracking |
 | **Dome Sync** | Dome synchronization |
@@ -55,9 +55,10 @@ Each overhead category with:
 | **Rotator** | Mechanical rotator moves |
 | **Switch** | USB switch value changes |
 | **Safety Wait** | WaitUntilSafe operations (waiting for conditions to be safe) |
+| **Skipped Exposure** | Exposures aborted mid-capture by quality triggers (e.g. guiding RMS threshold). Weather-aborted exposures are excluded from this category. |
 
 {: .note }
-> Safety Wait time appears as an overhead category here so you can see how much time was lost to unsafe conditions. However, the **Yield** percentage (in the session overview) excludes roof-closed time from the effective imaging window — so unsafe weather doesn't penalize your yield score.
+> Both the **Yield** percentage and the **Overhead Accounted** calculation exclude roof-closed (unsafe) time from their windows — so cloudy nights and safety events don't penalize your yield or inflate your unaccounted overhead. If an exposure was in progress when the roof closed, that partial exposure time is treated as weather-lost (not overhead and not integration).
 
 ## How Coverage Is Calculated
 
@@ -68,10 +69,13 @@ The parser uses **merged intervals** to calculate total overhead, not simple sum
 
 To calculate coverage percentage:
 
-1. **Imaging window** = time from first parsed event to last parsed event
-2. **Implied overhead** = imaging window minus total exposure time
-3. **Merged overhead** = all overhead intervals merged to remove overlaps
-4. **Coverage** = merged overhead / implied overhead (capped at 100%)
+1. **Imaging window** = time from first parsed event to last parsed event, bounded by the Night Summary session start and end instructions
+2. **Effective window** = imaging window minus any roof-closed (unsafe) periods
+3. **Implied overhead** = effective window minus total exposure time
+4. **Merged overhead** = all overhead intervals merged to remove overlaps, with events inside roof-closed periods excluded
+5. **Coverage** = merged overhead / implied overhead (capped at 100%)
+
+The log parser only looks at log lines between the Night Summary Start and Night Summary End sequence instructions, so events from other sequences or sessions don't leak into the calculation.
 
 ## Yield Cross-Validation
 
