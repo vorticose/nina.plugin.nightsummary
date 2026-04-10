@@ -205,6 +205,35 @@ namespace NINA.Plugin.NightSummary {
                 ResendStatus.Text = "✓ Sent";
             });
 
+            DeleteSessionCommand = new RelayCommand(async () => {
+                ResendStatus.Text = "";
+                if (!File.Exists(liveDbPath)) {
+                    ResendStatus.Text = "✗ No session database found";
+                    return;
+                }
+                if (SelectedSession == null) {
+                    ResendStatus.Text = "✗ No session selected";
+                    return;
+                }
+
+                var result = System.Windows.MessageBox.Show(
+                    "Are you sure you want to delete this session? This action cannot be undone.",
+                    "Delete Session",
+                    System.Windows.MessageBoxButton.YesNo,
+                    System.Windows.MessageBoxImage.Warning);
+                if (result != System.Windows.MessageBoxResult.Yes) return;
+
+                var sessionIdToDelete = SelectedSession.SessionId;
+                try {
+                    await Task.Run(() => new SessionDatabase(liveDbPath).DeleteSession(sessionIdToDelete));
+                    LoadSessions();
+                    ResendStatus.Text = "✓ Deleted";
+                } catch (Exception ex) {
+                    Logger.Error($"NightSummary: Failed to delete session. {ex.Message}");
+                    ResendStatus.Text = "✗ Delete failed — check NINA log";
+                }
+            });
+
             // Keep old name pointing to the same command for backwards compat
             ResendLastSessionCommand = ResendSessionCommand;
 
@@ -701,10 +730,13 @@ namespace NINA.Plugin.NightSummary {
                 var db       = new SessionDatabase(liveDbPath);
                 var sessions = db.GetRecentSessions(30);
                 System.Windows.Application.Current.Dispatcher.Invoke(() => {
+                    // Reset selection before repopulating so delete/refresh always lands
+                    // on the newest session rather than holding a dangling reference.
+                    SelectedSession = null;
                     AvailableSessions.Clear();
                     foreach (var s in sessions)
                         AvailableSessions.Add(s);
-                    if (SelectedSession == null && AvailableSessions.Count > 0)
+                    if (AvailableSessions.Count > 0)
                         SelectedSession = AvailableSessions[0];
                 });
             } catch (Exception ex) {
@@ -718,6 +750,7 @@ namespace NINA.Plugin.NightSummary {
         public ICommand SendTestReportCommand { get; }
         public ICommand ResendLastSessionCommand { get; }
         public ICommand ResendSessionCommand { get; }
+        public ICommand DeleteSessionCommand { get; }
         public ICommand RefreshSessionsCommand { get; }
         public ICommand SearchSessionsCommand { get; }
         public ICommand ClearSearchCommand { get; }

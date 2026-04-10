@@ -544,6 +544,12 @@ namespace NINA.Plugin.NightSummary.Data {
                 MigrateAddColumn(conn, "Images",        "StatMax",          "INTEGER");
                 MigrateAddColumn(conn, "Images",        "StatBitDepth",     "INTEGER");
 
+                // Index to keep session-list enrichment queries fast even on DBs with
+                // hundreds of sessions and 100k+ images (subqueries per-session).
+                using (var cmd = new SQLiteCommand("CREATE INDEX IF NOT EXISTS idx_images_sessionid ON Images(SessionId)", conn)) {
+                    cmd.ExecuteNonQuery();
+                }
+
                 string createTimingEvents = @"
                     CREATE TABLE IF NOT EXISTS SessionTimingEvents (
                         Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -949,6 +955,48 @@ namespace NINA.Plugin.NightSummary.Data {
             }
         }
 
+        /// <summary>
+        /// Atomically deletes a session and all of its related rows (images, events, timing events).
+        /// Returns the number of rows deleted from the Sessions table (0 if the session was not found, 1 on success).
+        /// </summary>
+        public int DeleteSession(string sessionId) {
+            if (string.IsNullOrWhiteSpace(sessionId)) return 0;
+
+            using (var conn = new SQLiteConnection(connectionString)) {
+                conn.Open();
+                using (var tx = conn.BeginTransaction()) {
+                    try {
+                        int affectedParent;
+
+                        using (var cmd = new SQLiteCommand("DELETE FROM Images WHERE SessionId = @sid", conn, tx)) {
+                            cmd.Parameters.AddWithValue("@sid", sessionId);
+                            cmd.ExecuteNonQuery();
+                        }
+                        using (var cmd = new SQLiteCommand("DELETE FROM SessionEvents WHERE SessionId = @sid", conn, tx)) {
+                            cmd.Parameters.AddWithValue("@sid", sessionId);
+                            cmd.ExecuteNonQuery();
+                        }
+                        using (var cmd = new SQLiteCommand("DELETE FROM SessionTimingEvents WHERE SessionId = @sid", conn, tx)) {
+                            cmd.Parameters.AddWithValue("@sid", sessionId);
+                            cmd.ExecuteNonQuery();
+                        }
+                        using (var cmd = new SQLiteCommand("DELETE FROM Sessions WHERE SessionId = @sid", conn, tx)) {
+                            cmd.Parameters.AddWithValue("@sid", sessionId);
+                            affectedParent = cmd.ExecuteNonQuery();
+                        }
+
+                        tx.Commit();
+                        Logger.Info($"NightSummary: Deleted session {sessionId} ({affectedParent} session row)");
+                        return affectedParent;
+                    } catch (Exception ex) {
+                        try { tx.Rollback(); } catch { }
+                        Logger.Error($"NightSummary: Failed to delete session {sessionId}: {ex.Message}");
+                        throw;
+                    }
+                }
+            }
+        }
+
         public List<TimingEvent> GetTimingEventsForSession(string sessionId) {
             var events = new List<TimingEvent>();
             using (var conn = new SQLiteConnection(connectionString)) {
@@ -1049,12 +1097,12 @@ namespace NINA.Plugin.NightSummary.Data {
             var result = new List<SessionRecord>();
             using (var conn = new SQLiteConnection(connectionString)) {
                 conn.Open();
-                string sql = "SELECT * FROM Sessions ORDER BY SessionStart DESC LIMIT @Limit";
+                string sql = SessionListWithCountsSql + " ORDER BY s.SessionStart DESC LIMIT @Limit";
                 using (var cmd = new SQLiteCommand(sql, conn)) {
                     cmd.Parameters.AddWithValue("@Limit", limit);
                     using (var reader = cmd.ExecuteReader()) {
                         while (reader.Read()) {
-                            try { result.Add(ReadSessionRecord(reader)); }
+                            try { result.Add(ReadEnrichedSessionRecord(reader)); }
                             catch (Exception ex) { Logger.Error($"NightSummary: Error reading session record: {ex.Message}"); }
                         }
                     }
@@ -1070,21 +1118,39 @@ namespace NINA.Plugin.NightSummary.Data {
             var result = new List<SessionRecord>();
             using (var conn = new SQLiteConnection(connectionString)) {
                 conn.Open();
-                string sql = @"SELECT * FROM Sessions
-                               WHERE SessionStart >= @From AND SessionStart <= @To
-                               ORDER BY SessionStart DESC";
+                string sql = SessionListWithCountsSql +
+                    " WHERE s.SessionStart >= @From AND s.SessionStart <= @To ORDER BY s.SessionStart DESC";
                 using (var cmd = new SQLiteCommand(sql, conn)) {
                     cmd.Parameters.AddWithValue("@From", from.ToString("o"));
                     cmd.Parameters.AddWithValue("@To",   to.Date.AddDays(1).AddSeconds(-1).ToString("o"));
                     using (var reader = cmd.ExecuteReader()) {
                         while (reader.Read()) {
-                            try { result.Add(ReadSessionRecord(reader)); }
+                            try { result.Add(ReadEnrichedSessionRecord(reader)); }
                             catch (Exception ex) { Logger.Error($"NightSummary: Error reading session record: {ex.Message}"); }
                         }
                     }
                 }
             }
             return result;
+        }
+
+        // Shared SELECT for session-list methods that need image/target/integration counts
+        // for display in the dropdown. Counts use Accepted = 1 to match what the report shows
+        // as the "X images" number. Uses correlated subqueries (no GROUP BY ambiguity with s.*)
+        // and the idx_images_sessionid index to keep this fast on large DBs.
+        private const string SessionListWithCountsSql = @"
+            SELECT s.*,
+                (SELECT COUNT(*) FROM Images WHERE SessionId = s.SessionId AND Accepted = 1) AS ImageCount,
+                (SELECT COUNT(DISTINCT TargetName) FROM Images WHERE SessionId = s.SessionId AND Accepted = 1 AND TargetName IS NOT NULL AND TargetName <> '') AS TargetCount,
+                (SELECT COALESCE(SUM(ExposureDuration), 0) FROM Images WHERE SessionId = s.SessionId AND Accepted = 1) AS IntegrationSeconds
+            FROM Sessions s";
+
+        private SessionRecord ReadEnrichedSessionRecord(SQLiteDataReader reader) {
+            var record = ReadSessionRecord(reader);
+            record.ImageCount         = reader["ImageCount"]         == DBNull.Value ? 0 : Convert.ToInt32(reader["ImageCount"]);
+            record.TargetCount        = reader["TargetCount"]        == DBNull.Value ? 0 : Convert.ToInt32(reader["TargetCount"]);
+            record.IntegrationSeconds = reader["IntegrationSeconds"] == DBNull.Value ? 0 : Convert.ToDouble(reader["IntegrationSeconds"]);
+            return record;
         }
 
         /// <summary>

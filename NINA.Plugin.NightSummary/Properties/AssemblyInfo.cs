@@ -5,8 +5,8 @@ using System.Runtime.InteropServices;
 [assembly: InternalsVisibleTo("NINA.Plugin.NightSummary.Tests")]
 
 [assembly: Guid("682531D1-5A23-4627-B961-0794282ECB4E")]
-[assembly: AssemblyVersion("2.10.0.0")]
-[assembly: AssemblyFileVersion("2.10.0.0")]
+[assembly: AssemblyVersion("2.10.0.3")]
+[assembly: AssemblyFileVersion("2.10.0.3")]
 [assembly: AssemblyTitle("Night Summary")]
 [assembly: AssemblyDescription("Records your imaging session and delivers a detailed HTML report via email, Discord, or Pushover when your sequence ends.\n\nTo update: download the latest release from the link above and extract the zip to your existing NightSummary plugin folder, overwriting existing files.")]
 [assembly: AssemblyCompany("Evan Pegors")]
@@ -22,7 +22,7 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyMetadata("FeaturedImageURL", "https://i.imgur.com/uvcC1dC.png")]
 [assembly: AssemblyMetadata("ScreenshotURL", "")]
 [assembly: AssemblyMetadata("AltScreenshotURL", "")]
-[assembly: AssemblyMetadata("LongDescription", @"**[Full documentation and setup guide](https://vorticose.github.io/nina.plugin.nightsummary/)**
+[assembly: AssemblyMetadata("LongDescription", @"### [Full documentation and setup guide](https://vorticose.github.io/nina.plugin.nightsummary/)
 
 Night Summary automatically records your astrophotography session as it runs and delivers a rich HTML report the moment your sequence completes — so you wake up to a full breakdown of the night.
 

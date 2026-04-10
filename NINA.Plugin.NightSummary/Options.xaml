@@ -651,8 +651,13 @@
                         <TextBlock Width="200" VerticalAlignment="Center" />
                         <ComboBox ItemsSource="{Binding AvailableSessions}"
                                   SelectedItem="{Binding SelectedSession}"
-                                  DisplayMemberPath="DisplayLabel"
-                                  MinWidth="300" />
+                                  MinWidth="440">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding DisplayLabel}" TextWrapping="NoWrap" TextTrimming="None" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
                         <Button Content="↻" Command="{Binding RefreshSessionsCommand}" Width="30" Margin="6,0,0,0"
                                 ToolTip="Reset to 30 most recent sessions" />
                     </StackPanel>
@@ -679,6 +684,10 @@
                     <StackPanel Orientation="Horizontal" Margin="0,8">
                         <TextBlock Width="200" />
                         <Button Content="Send Report" Command="{Binding ResendSessionCommand}" Width="180" />
+                        <Button Content="✕ Delete"
+                                Command="{Binding DeleteSessionCommand}"
+                                MinWidth="80" Margin="8,0,0,0"
+                                ToolTip="Delete the selected session and all its data" />
                         <TextBlock Text="{Binding ResendStatus.Text}"
                                    Foreground="{Binding ResendStatus.Foreground}"
                                    Visibility="{Binding ResendStatus.Visibility}"

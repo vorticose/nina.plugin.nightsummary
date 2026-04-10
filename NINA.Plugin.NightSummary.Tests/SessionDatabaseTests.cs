@@ -234,6 +234,119 @@ namespace NINA.Plugin.NightSummary.Tests {
             Assert.Null(r.StatBitDepth);
         }
 
+        // ── DeleteSession ─────────────────────────────────────────────────────
+
+        [Fact]
+        public void DeleteSession_RemovesAllRelatedData() {
+            var sessionId = Guid.NewGuid().ToString();
+            CreateTestSession(sessionId);
+
+            // Populate all 4 tables that reference SessionId
+            for (int i = 0; i < 3; i++)
+                _db.SaveImageRecord(TestDataFactory.MakeImage(sessionId, target: "M31"));
+            _db.SaveEvent(TestDataFactory.MakeEvent(sessionId, "AutoFocus"));
+
+            var timingEvents = new System.Collections.Generic.List<TimingEvent> {
+                new TimingEvent {
+                    EventType       = "Exposure",
+                    StartTime       = new DateTime(2025, 1, 15, 22, 0, 0),
+                    EndTime         = new DateTime(2025, 1, 15, 22, 10, 0),
+                    DurationSeconds = 600,
+                    Details         = "Exposure 600s"
+                }
+            };
+            _db.SaveTimingEvents(sessionId, timingEvents);
+
+            // Sanity check: all four tables have data before delete
+            Assert.NotNull(_db.GetSession(sessionId));
+            Assert.Equal(3, _db.GetImagesForSession(sessionId).Count);
+            Assert.Single(_db.GetEventsForSession(sessionId));
+            Assert.Single(_db.GetTimingEventsForSession(sessionId));
+
+            // Delete and verify all four tables are empty for this session
+            var affected = _db.DeleteSession(sessionId);
+            Assert.Equal(1, affected);
+
+            Assert.Null(_db.GetSession(sessionId));
+            Assert.Empty(_db.GetImagesForSession(sessionId));
+            Assert.Empty(_db.GetEventsForSession(sessionId));
+            Assert.Empty(_db.GetTimingEventsForSession(sessionId));
+        }
+
+        [Fact]
+        public void DeleteSession_LeavesOtherSessionsIntact() {
+            var sessionA = Guid.NewGuid().ToString();
+            var sessionB = Guid.NewGuid().ToString();
+
+            CreateTestSession(sessionA);
+            CreateTestSession(sessionB);
+
+            _db.SaveImageRecord(TestDataFactory.MakeImage(sessionA, target: "M31"));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(sessionA, target: "M31"));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(sessionB, target: "M42"));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(sessionB, target: "M42"));
+            _db.SaveEvent(TestDataFactory.MakeEvent(sessionB, "MeridianFlip"));
+
+            _db.DeleteSession(sessionA);
+
+            // Session A is gone
+            Assert.Null(_db.GetSession(sessionA));
+            Assert.Empty(_db.GetImagesForSession(sessionA));
+
+            // Session B is untouched
+            Assert.NotNull(_db.GetSession(sessionB));
+            Assert.Equal(2, _db.GetImagesForSession(sessionB).Count);
+            Assert.Single(_db.GetEventsForSession(sessionB));
+        }
+
+        [Fact]
+        public void DeleteSession_NonexistentId_ReturnsZero_DoesNotThrow() {
+            var affected = _db.DeleteSession("does-not-exist");
+            Assert.Equal(0, affected);
+        }
+
+        // ── GetRecentSessions enriched counts ─────────────────────────────────
+
+        [Fact]
+        public void GetRecentSessions_IncludesImageAndTargetCounts() {
+            var sessionId = Guid.NewGuid().ToString();
+            CreateTestSession(sessionId, new DateTime(2025, 1, 15, 22, 0, 0));
+
+            // 5 x M31 + 3 x M42, all accepted, 300s each
+            for (int i = 0; i < 5; i++)
+                _db.SaveImageRecord(TestDataFactory.MakeImage(sessionId, target: "M31"));
+            for (int i = 0; i < 3; i++)
+                _db.SaveImageRecord(TestDataFactory.MakeImage(sessionId, target: "M42"));
+
+            var sessions = _db.GetRecentSessions(10);
+            var session  = sessions.Find(s => s.SessionId == sessionId);
+
+            Assert.NotNull(session);
+            Assert.Equal(8,      session.ImageCount);
+            Assert.Equal(2,      session.TargetCount);
+            Assert.Equal(2400.0, session.IntegrationSeconds, precision: 0);
+        }
+
+        [Fact]
+        public void GetRecentSessions_ExcludesRejectedImagesFromCounts() {
+            var sessionId = Guid.NewGuid().ToString();
+            CreateTestSession(sessionId, new DateTime(2025, 1, 15, 22, 0, 0));
+
+            // 5 accepted + 2 rejected
+            for (int i = 0; i < 5; i++)
+                _db.SaveImageRecord(TestDataFactory.MakeImage(sessionId, target: "M31", accepted: true));
+            for (int i = 0; i < 2; i++)
+                _db.SaveImageRecord(TestDataFactory.MakeImage(sessionId, target: "M31", accepted: false));
+
+            var sessions = _db.GetRecentSessions(10);
+            var session  = sessions.Find(s => s.SessionId == sessionId);
+
+            Assert.NotNull(session);
+            Assert.Equal(5,      session.ImageCount);
+            Assert.Equal(1,      session.TargetCount);
+            Assert.Equal(1500.0, session.IntegrationSeconds, precision: 0);
+        }
+
         // ── Cumulative integration ────────────────────────────────────────────
 
         [Fact]
