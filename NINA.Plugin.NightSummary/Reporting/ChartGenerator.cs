@@ -83,6 +83,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
         private static string ColorLabel        => IsLight ? "#555577" : "#aaaacc";
         private static string ColorWarning      => IsLight ? "#d47020" : "#f7a87e";
         private static string ColorWarningBg    => IsLight ? "#fff3cd" : "#3a1e00";
+        private static string ColorAfMarker     => IsLight ? "#7c3aed" : "#a78bfa";  // purple — matches timeline
+        private static string ColorFlipMarker   => IsLight ? "#d97706" : "#fbbf24";  // amber — matches timeline
+        private static string ColorSafeMarker   => IsLight ? "#059669" : "#34d399";  // green — matches timeline
+        private static string ColorUnsafeMarker => IsLight ? "#dc2626" : "#f87171";  // red — matches timeline
 
         /// <summary>
         /// Returns the chart section heading based on configured metrics.
@@ -110,7 +114,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// Generates an inline SVG chart. Always returns a non-empty SVG —
         /// shows a placeholder when no data is available.
         /// </summary>
-        public static string GenerateMetricChart(List<ImageRecord> images, int primaryMetric, int secondaryMetric, int xAxisMetric = XAxisTime) {
+        public static string GenerateMetricChart(List<ImageRecord> images, int primaryMetric, int secondaryMetric, int xAxisMetric = XAxisTime, List<(DateTime timestamp, string eventType, string description)>? eventMarkers = null) {
             // Extract y-axis data (still keyed by timestamp for joining)
             var primaryRaw   = ExtractPrimary(images, primaryMetric);
             var secondaryRaw = secondaryMetric > SecNone
@@ -122,6 +126,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             // Filter lookup for tooltips
             var filterByTime = images.ToDictionary(i => i.Timestamp, i => i.Filter ?? "");
+
+            // Compute session start time for event marker positioning (Time x-axis only)
+            DateTime minTime = DateTime.MinValue;
+            if (xAxisMetric == XAxisTime && images.Count > 0)
+                minTime = images.OrderBy(i => i.Timestamp).First().Timestamp;
 
             // Join: only include points that have valid x AND y values
             var primaryPts   = JoinWithXAxis(primaryRaw, xByTime);
@@ -188,7 +197,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             var sb = new StringBuilder();
             sb.AppendLine($"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {Width} {Height}\" style=\"width:100%;max-width:{Width}px;display:block;margin:0 auto 16px;font-family:sans-serif\">");
-            sb.AppendLine("<style>circle { cursor: pointer; }</style>");
+            sb.AppendLine("<style>circle, .evt-hit { cursor: pointer; }</style>");
             sb.AppendLine($"<rect width=\"{Width}\" height=\"{Height}\" fill=\"{ColorBackground}\" rx=\"6\"/>");
 
             // Horizontal grid lines + left Y labels
@@ -234,6 +243,28 @@ namespace NINA.Plugin.NightSummary.Reporting {
             // X axis title (for non-time axes)
             if (xAxisMetric != XAxisTime) {
                 sb.AppendLine($"<text x=\"{PadLeft + plotW / 2}\" y=\"{Height - 2}\" fill=\"{ColorLabel}\" font-size=\"10\" text-anchor=\"middle\">{GetXAxisAxisLabel(xAxisMetric)}</text>");
+            }
+
+            // Event markers (Time x-axis only, drawn behind data lines)
+            if (xAxisMetric == XAxisTime && eventMarkers != null && minTime != DateTime.MinValue) {
+                foreach (var (ts, evtType, desc) in eventMarkers) {
+                    double evtSec = (ts - minTime).TotalSeconds;
+                    if (evtSec < minX || evtSec > maxX) continue;
+
+                    double xPx = ToXPx(evtSec);
+                    var (color, label) = evtType switch {
+                        "AutoFocus"    => (ColorAfMarker,     "AF"),
+                        "MeridianFlip" => (ColorFlipMarker,   "MF"),
+                        "RoofOpen"     => (ColorSafeMarker,   "S"),
+                        _              => (ColorUnsafeMarker,  "US")
+                    };
+                    string tip = $"{label}: {EscapeXml(desc ?? evtType)} @ {ts:HH:mm:ss}";
+                    // Visible dashed line
+                    sb.AppendLine($"<line x1=\"{xPx:F1}\" y1=\"{PadTop}\" x2=\"{xPx:F1}\" y2=\"{PadTop + plotH}\" stroke=\"{color}\" stroke-width=\"1\" stroke-dasharray=\"4,3\" opacity=\"0.7\"/>");
+                    // Invisible wider hit area for hover tooltip
+                    sb.AppendLine($"<line class=\"evt-hit\" x1=\"{xPx:F1}\" y1=\"{PadTop}\" x2=\"{xPx:F1}\" y2=\"{PadTop + plotH}\" stroke=\"transparent\" stroke-width=\"8\"><title>{tip}</title></line>");
+                    sb.AppendLine($"<text x=\"{xPx:F1}\" y=\"{PadTop - 4}\" fill=\"{color}\" font-size=\"8\" text-anchor=\"middle\" opacity=\"0.85\">{label}</text>");
+                }
             }
 
             // Secondary line (drawn first so primary renders on top)

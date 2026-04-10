@@ -3,6 +3,11 @@
 
 ## v2.10.0-beta2
 
+**New features**
+- Configurable event markers on metric charts — vertical dashed lines at AutoFocus, Meridian Flip, and Safe/Unsafe events with per-type toggle settings and hover tooltips (shown when x-axis is Time)
+
+<!-- TODO: Update docs — add event markers to settings-reference.md and metric-charts.md -->
+
 **Bug fixes**
 - Fixed Yield and Imaging Overhead section not appearing in live session reports
 - Fixed new reports overwriting previous session's saved report folder
