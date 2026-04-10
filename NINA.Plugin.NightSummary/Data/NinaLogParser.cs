@@ -141,6 +141,7 @@ namespace NINA.Plugin.NightSummary.Data {
             // Generic tracker for all non-exposure SequenceItem Starting/Finishing pairs
             var pendingStarts = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
             DateTime? plateSolveStart = null;
+            DateTime? meridianFlipSlewStart = null;
 
             int parsedExposureCount = 0;
             int parsedImageSaveCount = 0;
@@ -271,6 +272,24 @@ namespace NINA.Plugin.NightSummary.Data {
                             Details = ExtractImageSaveSubTimings(message)
                         });
                         parsedImageSaveCount++;
+                    }
+                }
+
+                // === AscomTelescope.cs|MeridianFlip — internal trigger-based flip ===
+                // When MeridianFlipTrigger fires, the slew + pier flip is handled internally
+                // by NINA, not as a SequenceItem. Track the slew start/end as MeridianFlip overhead.
+                else if (source == "AscomTelescope.cs" && member == "MeridianFlip") {
+                    if (message.StartsWith("Slewing to coordinates")) {
+                        meridianFlipSlewStart = timestamp;
+                    } else if (message.StartsWith("Finished slewing") && meridianFlipSlewStart.HasValue) {
+                        events.Add(new TimingEvent {
+                            EventType = "MeridianFlip",
+                            StartTime = meridianFlipSlewStart.Value,
+                            EndTime = timestamp,
+                            DurationSeconds = (timestamp - meridianFlipSlewStart.Value).TotalSeconds,
+                            Details = "Trigger-based flip (internal)"
+                        });
+                        meridianFlipSlewStart = null;
                     }
                 }
             }
