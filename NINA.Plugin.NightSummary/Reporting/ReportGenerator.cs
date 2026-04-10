@@ -311,9 +311,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var timingEvents = data.TimingEvents;
             if (timingEvents == null || !timingEvents.Any()) return "";
 
-            // Exclude Exposure events (useful imaging time), AbortedExposure events
-            // (weather-lost time handled by roof-closed exclusion), and zero-duration events
-            var overheadEvents = timingEvents.Where(e => e.EventType != "Exposure" && e.EventType != "AbortedExposure" && e.DurationSeconds > 0).ToList();
+            // Exclude Exposure events (useful imaging time) and zero-duration events.
+            // AbortedExposure events are included — weather-aborted ones will be filtered
+            // out later by the roof-closed exclusion; quality-aborted ones are real overhead.
+            var overheadEvents = timingEvents.Where(e => e.EventType != "Exposure" && e.DurationSeconds > 0).ToList();
             if (!overheadEvents.Any()) return "";
 
             var sb = new StringBuilder();
@@ -357,10 +358,16 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             // Merge all overhead intervals to compute wall-clock overhead, deduplicating
             // any events that overlap with each other in time.
-            // Exclude overhead events that fall entirely within roof-closed periods
-            // (e.g. SafetyWait while roof is closed) to avoid inflating the accounted total.
+            // Exclude overhead events that fall within roof-closed periods:
+            // - Regular events: excluded if entirely within a closed interval
+            // - AbortedExposure: excluded if start time is within a closed interval
+            //   (end time is unreliable for orphaned aborts that default to sessionEnd)
             var effectiveOverheadEvents = roofIntervals.Count > 0
-                ? overheadEvents.Where(e => !RoofClosedHelper.IsEntirelyWithinClosed(e.StartTime, e.EndTime, roofIntervals)).ToList()
+                ? overheadEvents.Where(e => {
+                    if (e.EventType == "AbortedExposure")
+                        return !roofIntervals.Any(c => e.StartTime >= c.start && e.StartTime <= c.end);
+                    return !RoofClosedHelper.IsEntirelyWithinClosed(e.StartTime, e.EndTime, roofIntervals);
+                }).ToList()
                 : overheadEvents;
             var mergedOverheadSec = MergeOverheadIntervals(effectiveOverheadEvents);
             var coveragePct = impliedOverheadSec > 0
@@ -405,7 +412,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     ["SafetyWait"]     = "#f472b6",
                     ["FocuserMove"]    = "#a78bfa",
                     ["Rotator"]        = "#818cf8",
-                    ["Switch"]         = "#94a3b8"
+                    ["Switch"]         = "#94a3b8",
+                    ["AbortedExposure"]= "#fb7185"
                 };
 
                 sb.AppendLine("<div style='display:flex; height:24px; border-radius:6px; overflow:hidden; margin:8px 0;'>");
@@ -504,6 +512,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             "MountOps"       => "Mount",
             "SafetyWait"     => "Safety Wait",
             "FocuserMove"    => "Focuser Move",
+            "AbortedExposure"=> "Skipped Exposure",
             _                => eventType
         };
 

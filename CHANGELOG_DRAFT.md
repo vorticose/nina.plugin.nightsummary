@@ -50,6 +50,7 @@
 - Discord webhook URL validation no longer rejects legacy discordapp.com webhook URLs — the actual API response is used to determine success or failure instead
 - Overhead analysis now excludes roof-closed (unsafe) periods from implied overhead, preventing safety events from inflating the unaccounted overhead figure
 - Log parser now uses exact session boundaries instead of a ±5 minute buffer, preventing events from cancelled/restarted sequences from bleeding into the current session's overhead calculation
+- Exposures aborted by quality triggers (e.g. guiding RMS threshold) now appear as "Skipped Exposure" in the overhead breakdown, giving visibility into time lost to poor conditions
 
 
 ## v2.8.1
