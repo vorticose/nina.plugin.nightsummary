@@ -341,35 +341,52 @@ function loadTargetThumbnails() {
     sessionMap[sid].push(el);
   });
 
-  Object.keys(sessionMap).forEach(function(sid) {
-    api('/api/sessions/' + sid + '/thumbnails').then(function(thumbs) {
-      if (!Array.isArray(thumbs)) return;
-      sessionMap[sid].forEach(function(el) {
-        var target = el.getAttribute('data-target');
-        var match = null;
+  function applyThumbs(sid, thumbs) {
+    if (!Array.isArray(thumbs)) return;
+    sessionMap[sid].forEach(function(el) {
+      var target = el.getAttribute('data-target');
+      var match = null;
+      // Exact match first, then case-insensitive fallback
+      for (var i = 0; i < thumbs.length; i++) {
+        if (thumbs[i].target === target) { match = thumbs[i]; break; }
+      }
+      if (!match) {
+        var lower = target.toLowerCase();
         for (var i = 0; i < thumbs.length; i++) {
-          if (thumbs[i].target === target) { match = thumbs[i]; break; }
+          if (thumbs[i].target.toLowerCase() === lower) { match = thumbs[i]; break; }
         }
-        if (match && match.dataUri) {
-          el.innerHTML = '<img src="' + match.dataUri + '" alt="' + esc(target) + '">';
-          el.classList.add('has-image');
-          (function(thumbEl) {
-            thumbEl.addEventListener('click', function(e) {
-              e.stopPropagation();
-              var img = thumbEl.querySelector('img');
-              if (!img) return;
-              var overlay = document.createElement('div');
-              overlay.className = 'livestack-zoom-overlay';
-              var zoomImg = document.createElement('img');
-              zoomImg.src = img.src;
-              zoomImg.alt = img.alt;
-              overlay.appendChild(zoomImg);
-              overlay.addEventListener('click', function() { overlay.remove(); });
-              document.body.appendChild(overlay);
-            });
-          })(el);
-        }
-      });
+      }
+      if (match && match.dataUri) {
+        el.innerHTML = '<img src="' + match.dataUri + '" alt="' + esc(target) + '">';
+        el.classList.add('has-image');
+        (function(thumbEl) {
+          thumbEl.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var img = thumbEl.querySelector('img');
+            if (!img) return;
+            var overlay = document.createElement('div');
+            overlay.className = 'livestack-zoom-overlay';
+            var zoomImg = document.createElement('img');
+            zoomImg.src = img.src;
+            zoomImg.alt = img.alt;
+            overlay.appendChild(zoomImg);
+            overlay.addEventListener('click', function() { overlay.remove(); });
+            document.body.appendChild(overlay);
+          });
+        })(el);
+      }
+    });
+  }
+
+  Object.keys(sessionMap).forEach(function(sid) {
+    // Use cached thumbnails if already fetched (e.g. from sessions tab)
+    if (thumbnailCache[sid]) {
+      applyThumbs(sid, thumbnailCache[sid]);
+      return;
+    }
+    api('/api/sessions/' + sid + '/thumbnails').then(function(thumbs) {
+      if (Array.isArray(thumbs) && thumbs.length > 0) thumbnailCache[sid] = thumbs;
+      applyThumbs(sid, thumbs);
     }).catch(function() { /* leave placeholder */ });
   });
 }
@@ -594,19 +611,6 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
     ? 'opacity:0;transition:opacity 400ms cubic-bezier(0.22,1,0.36,1)'
     : 'opacity:1';
 
-  // Detach rendered altitude divs before rebuild — the IO observer watches the element
-  // itself, so we must preserve the exact node (not just its children)
-  var savedAltNodes = {};
-  if (initialLoadDone) {
-    filtered.forEach(function(s) {
-      if (!altitudeChartCache[s.sessionId]) return;
-      var altEl = document.getElementById('altitude-' + s.sessionId);
-      if (!altEl || !altEl.hasChildNodes()) return;
-      altEl.parentNode.removeChild(altEl); // detach; reference keeps it alive
-      savedAltNodes[s.sessionId] = altEl;
-    });
-  }
-
   el.innerHTML = filterHtml + '<div class="cards-container' + modeClass + '" style="' + fadeStyle + '">' + cards + '</div>';
   bindListEvents();
 
@@ -631,14 +635,13 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
     initialLoadDone = true;
   } else {
     loadThumbnails(filtered);
-    // Slot saved altitude divs back in — same DOM node, IO observer intact, no replay
-    Object.keys(savedAltNodes).forEach(function(id) {
-      var freshEl = document.getElementById('altitude-' + id);
-      if (freshEl && freshEl.parentNode) {
-        freshEl.parentNode.replaceChild(savedAltNodes[id], freshEl);
+    // Re-render cached charts directly (works even after navigation destroyed the old divs)
+    filtered.forEach(function(s) {
+      if (altitudeChartCache[s.sessionId]) {
+        renderAltitudeChart(s, altitudeChartCache[s.sessionId]);
       }
     });
-    // Lazy-load any newly visible uncached charts via IntersectionObserver
+    // IO observer for any uncached charts (lazy-loads as they scroll into view)
     setupAltitudeObserver(filtered);
   }
 }
