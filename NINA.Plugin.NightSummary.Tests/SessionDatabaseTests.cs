@@ -183,6 +183,57 @@ namespace NINA.Plugin.NightSummary.Tests {
             Assert.Null(images[0].SeeingFWHM);
         }
 
+        // ── Image stats round-trip ────────────────────────────────────────────
+
+        [Fact]
+        public void ImageStats_ArePersistedAndRetrieved() {
+            var sessionId = Guid.NewGuid().ToString();
+            CreateTestSession(sessionId);
+
+            var image = TestDataFactory.MakeImage(sessionId);
+            image.StatMedian   = 1523.0;
+            image.StatMean     = 1580.5;
+            image.StatStDev    = 245.3;
+            image.StatMAD      = 112.7;
+            image.StatMin      = 100;
+            image.StatMax      = 65535;
+            image.StatBitDepth = 16;
+            _db.SaveImageRecord(image);
+
+            var images = _db.GetImagesForSession(sessionId);
+
+            Assert.Single(images);
+            var r = images[0];
+            Assert.Equal(1523.0, r.StatMedian!.Value, precision: 1);
+            Assert.Equal(1580.5, r.StatMean!.Value,   precision: 1);
+            Assert.Equal(245.3,  r.StatStDev!.Value,  precision: 1);
+            Assert.Equal(112.7,  r.StatMAD!.Value,    precision: 1);
+            Assert.Equal(100,    r.StatMin!.Value);
+            Assert.Equal(65535,  r.StatMax!.Value);
+            Assert.Equal(16,     r.StatBitDepth!.Value);
+        }
+
+        [Fact]
+        public void ImageStats_Null_AreStoredAsNull() {
+            var sessionId = Guid.NewGuid().ToString();
+            CreateTestSession(sessionId);
+
+            var image = TestDataFactory.MakeImage(sessionId);
+            _db.SaveImageRecord(image);
+
+            var images = _db.GetImagesForSession(sessionId);
+
+            Assert.Single(images);
+            var r = images[0];
+            Assert.Null(r.StatMedian);
+            Assert.Null(r.StatMean);
+            Assert.Null(r.StatStDev);
+            Assert.Null(r.StatMAD);
+            Assert.Null(r.StatMin);
+            Assert.Null(r.StatMax);
+            Assert.Null(r.StatBitDepth);
+        }
+
         // ── Cumulative integration ────────────────────────────────────────────
 
         [Fact]

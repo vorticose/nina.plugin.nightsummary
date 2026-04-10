@@ -33,6 +33,7 @@ namespace NINA.Plugin.NightSummary.Tests {
         [InlineData(ChartGenerator.PrimaryStarCount)]
         [InlineData(ChartGenerator.PrimaryAzimuth)]
         [InlineData(ChartGenerator.PrimarySeeingFWHM)]
+        [InlineData(ChartGenerator.PrimaryMedian)]
         public void AllPrimaryMetrics_ProduceNonEmptySvg(int metric) {
             var sessionId = "test-session";
             var images    = TestDataFactory.MakeImageSeries(sessionId, 5);
@@ -53,6 +54,7 @@ namespace NINA.Plugin.NightSummary.Tests {
                 img.WindSpeed        = 3.5;
                 img.Pressure         = 1013.0;
                 img.SeeingFWHM       = 2.8;
+                img.StatMedian       = 1500.0;
             }
 
             var svg = ChartGenerator.GenerateMetricChart(images, metric, ChartGenerator.SecNone);

@@ -84,5 +84,14 @@ namespace NINA.Plugin.NightSummary.Data {
 
         // ASCOM seeing monitor; null = device not connected
         public double? SeeingFWHM { get; set; }    // star FWHM arcseconds from ASCOM seeing monitor
+
+        // Image statistics from NINA's IImageStatistics; null = not available (pre-v2.10 data)
+        public double? StatMedian    { get; set; }  // median ADU value
+        public double? StatMean      { get; set; }  // mean ADU value
+        public double? StatStDev     { get; set; }  // standard deviation
+        public double? StatMAD       { get; set; }  // median absolute deviation
+        public int?    StatMin       { get; set; }  // minimum pixel value
+        public int?    StatMax       { get; set; }  // maximum pixel value
+        public int?    StatBitDepth  { get; set; }  // image bit depth
     }
 }

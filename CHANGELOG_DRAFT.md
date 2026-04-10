@@ -38,6 +38,8 @@
 
 **New features**
 - Seeing FWHM metric — ASCOM seeing monitor star FWHM (arcseconds) is now recorded per image and available as a primary or secondary metric in the metric chart. Requires an ASCOM-compatible seeing monitor connected as a NINA weather data source.
+- Median ADU metric — image median ADU value is now recorded per image and available as a primary, secondary, or x-axis metric in the metric chart. Useful for tracking sky background brightness changes throughout a session.
+- Image statistics capture — all NINA image statistics (median, mean, standard deviation, median absolute deviation, min, max, bit depth) are now stored per image for future use.
 - Expandable filter breakdown in the session overview stat boxes — click Total Images or Total Exposure to see a per-filter breakdown
 - Support for up to 4 additional metric charts per report — configure extra charts from the Options page, each with independent primary and secondary metric selection
 
