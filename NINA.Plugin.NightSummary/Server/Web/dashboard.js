@@ -1592,37 +1592,81 @@ function loadMosaicThumbnail(panels, backdrop) {
     '&format=jpg' +
     '&projection=TAN';
 
-  // Build SVG overlay rects — one per panel with FOV data
+  // Build SVG overlay rects + smart-positioned labels (labels rendered last so they sit on top)
   var palette = ['rgba(144,202,249,0.9)','rgba(165,214,167,0.9)','rgba(255,204,128,0.9)',
                  'rgba(239,154,154,0.9)','rgba(206,147,216,0.9)','rgba(128,222,234,0.9)',
                  'rgba(188,170,164,0.9)','rgba(176,190,197,0.9)'];
-  var svgRects = '';
-  validPanels.forEach(function(p, i) {
-    if (p.fovWidthDeg == null || p.fovHeightDeg == null) return;
-    var dRA  = (p.ra * 15 - centerRA) * cosCenter;
-    var dDec = p.dec - centerDec;
-    var cx   = imgSize / 2 + (-dRA  / scale);  // East = left = -x
-    var cy   = imgSize / 2 + (-dDec / scale);  // North = up = -y
-    var wPx  = p.fovWidthDeg  / scale;
-    var hPx  = p.fovHeightDeg / scale;
-    var color = palette[i % palette.length];
-    var pa    = p.positionAngle != null ? p.positionAngle : (p.rotation || 0);
 
-    svgRects += '<g transform="translate(' + cx.toFixed(1) + ',' + cy.toFixed(1) + ')' +
-                ' rotate(' + (-pa).toFixed(1) + ')">';
-    svgRects += '<rect x="' + (-(wPx/2)).toFixed(1) + '" y="' + (-(hPx/2)).toFixed(1) +
-                '" width="' + wPx.toFixed(1) + '" height="' + hPx.toFixed(1) +
-                '" fill="none" stroke="' + color + '" stroke-width="5"/>';
-    svgRects += '<text x="' + (-(wPx/2) + 10).toFixed(1) + '" y="' + (-(hPx/2) + 22).toFixed(1) +
-                '" font-size="20" font-weight="700" fill="' + color +
-                '" stroke="rgba(0,0,0,0.8)" stroke-width="3" paint-order="stroke">' + (i + 1) + '</text>';
-    svgRects += '</g>';
+  // Precompute image-space geometry for every panel
+  var pGeo = validPanels.map(function(p) {
+    return {
+      cx:  imgSize / 2 + (-(p.ra * 15 - centerRA) * cosCenter / scale),
+      cy:  imgSize / 2 + (-(p.dec - centerDec) / scale),
+      wPx: p.fovWidthDeg  != null ? p.fovWidthDeg  / scale : 0,
+      hPx: p.fovHeightDeg != null ? p.fovHeightDeg / scale : 0,
+      pa:  p.positionAngle != null ? p.positionAngle : (p.rotation || 0)
+    };
+  });
+
+  // True if image-space point (px,py) lies inside panel j's rotated footprint.
+  // Inverse of SVG rotate(-pa): apply rotate(+pa) to bring point into panel's local frame.
+  function inPanel(px, py, j) {
+    var g = pGeo[j];
+    if (!g.wPx || !g.hPx) return false;
+    var r = g.pa * Math.PI / 180;
+    var dx = px - g.cx, dy = py - g.cy;
+    var lx = dx * Math.cos(r) - dy * Math.sin(r);
+    var ly = dx * Math.sin(r) + dy * Math.cos(r);
+    return Math.abs(lx) < g.wPx / 2 && Math.abs(ly) < g.hPx / 2;
+  }
+
+  var svgRects = '', svgLabels = '';
+  pGeo.forEach(function(g, i) {
+    if (!g.wPx || !g.hPx) return;
+    var color = palette[i % palette.length];
+    var r = g.pa * Math.PI / 180;
+    var cosR = Math.cos(r), sinR = Math.sin(r);
+
+    // Rect (inside rotated group)
+    svgRects += '<g transform="translate(' + g.cx.toFixed(1) + ',' + g.cy.toFixed(1) + ')' +
+                ' rotate(' + (-g.pa).toFixed(1) + ')">' +
+                '<rect x="' + (-(g.wPx/2)).toFixed(1) + '" y="' + (-(g.hPx/2)).toFixed(1) +
+                '" width="' + g.wPx.toFixed(1) + '" height="' + g.hPx.toFixed(1) +
+                '" fill="none" stroke="' + color + '" stroke-width="5"/></g>';
+
+    // Label placement: score 4 corners + 4 edge midpoints.
+    // Pick the candidate that is (1) inside the fewest other panels, then
+    // (2) furthest from the image center — i.e. the most "outer" uncontested spot.
+    var hw = g.wPx / 2, hh = g.hPx / 2;
+    var locals = [[-hw,-hh],[hw,-hh],[-hw,hh],[hw,hh],[0,-hh],[0,hh],[-hw,0],[hw,0]];
+    var bestPt = null, bestOvlp = 999, bestDist = -1;
+    locals.forEach(function(lc) {
+      // local → image space: apply SVG rotate(-pa), i.e. [cos(pa), sin(pa); -sin(pa), cos(pa)]
+      var ix = g.cx + lc[0] * cosR + lc[1] * sinR;
+      var iy = g.cy - lc[0] * sinR + lc[1] * cosR;
+      var ovlp = 0;
+      for (var j = 0; j < pGeo.length; j++) { if (j !== i && inPanel(ix, iy, j)) ovlp++; }
+      var dist = Math.sqrt(Math.pow(ix - imgSize/2, 2) + Math.pow(iy - imgSize/2, 2));
+      if (ovlp < bestOvlp || (ovlp === bestOvlp && dist > bestDist)) {
+        bestPt = [ix, iy]; bestOvlp = ovlp; bestDist = dist;
+      }
+    });
+
+    // Inset 20px from chosen position toward panel center so label sits clearly inside
+    var dx = g.cx - bestPt[0], dy = g.cy - bestPt[1];
+    var d = Math.sqrt(dx*dx + dy*dy) || 1;
+    var lbx = bestPt[0] + dx/d * 20, lby = bestPt[1] + dy/d * 20;
+
+    svgLabels += '<text x="' + lbx.toFixed(1) + '" y="' + lby.toFixed(1) +
+                 '" text-anchor="middle" dominant-baseline="central"' +
+                 ' font-size="22" font-weight="700" fill="' + color +
+                 '" stroke="rgba(0,0,0,0.85)" stroke-width="3.5" paint-order="stroke">' + (i+1) + '</text>';
   });
 
   var svgMarkup = '<svg viewBox="0 0 ' + imgSize + ' ' + imgSize + '"' +
     ' xmlns="http://www.w3.org/2000/svg"' +
     ' style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none">' +
-    svgRects + '</svg>';
+    svgRects + svgLabels + '</svg>';
 
   var img = new Image();
   img.className = 'pdp-mosaic-img';
