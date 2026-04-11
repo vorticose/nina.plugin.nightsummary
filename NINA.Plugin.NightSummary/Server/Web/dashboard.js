@@ -580,11 +580,38 @@ function renderGroupedTargets(targets, sortKey) {
     }
   });
 
-  // Sort by Active→Completed→Draft→Inactive→Closed
+  // Compute a sort value for a project item given the selected sort key.
+  // Standalone items use their single target's values; containers aggregate.
+  function projectSortValue(item) {
+    var tgts = item.type === 'standalone' ? [item.target] : (item.info.targets || []);
+    switch (sortKey) {
+      case 'recent':
+        var dates = tgts.map(function(t) { return t.lastImaged || ''; }).sort();
+        return dates[dates.length - 1] || ''; // latest date string
+      case 'sessions':
+        return tgts.reduce(function(s, t) { return s + (t.sessionCount || 0); }, 0);
+      case 'hours':
+        return tgts.reduce(function(s, t) { return s + (t.totalIntegrationHours || 0); }, 0);
+      case 'frames':
+        return tgts.reduce(function(s, t) { return s + (t.acceptedFrames || 0); }, 0);
+      case 'name':
+        return item.type === 'standalone' ? (item.target.target || '') : (item.info.name || '');
+      default:
+        return 0;
+    }
+  }
+
+  // Primary sort: state order (Active→Completed→Draft→Inactive→Closed)
+  // Secondary sort: selected sort key applied at project/container level
   items.sort(function(a, b) {
     var ia = TS_STATE_ORDER.indexOf(a.state); if (ia < 0) ia = 99;
     var ib = TS_STATE_ORDER.indexOf(b.state); if (ib < 0) ib = 99;
-    return ia - ib;
+    if (ia !== ib) return ia - ib;
+    var sa = projectSortValue(a);
+    var sb = projectSortValue(b);
+    if (sortKey === 'name') return sa < sb ? -1 : sa > sb ? 1 : 0;
+    if (sortKey === 'recent') return sa < sb ? 1 : sa > sb ? -1 : 0; // newest first
+    return sb - sa; // numeric: higher first
   });
 
   var html = '';
