@@ -65,6 +65,7 @@
     // Emulates C#'s ToString("F0") / ToString("F1").
     function fmt(value, format) {
         if (format === 'F0') return value.toFixed(0);
+        if (format === 'F2') return value.toFixed(2);
         return value.toFixed(1);
     }
 
