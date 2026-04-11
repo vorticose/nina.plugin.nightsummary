@@ -419,6 +419,8 @@
         btn.className = 'ns-chart-filter-btn';
         btn.setAttribute('data-filter', value);
         btn.textContent = label;
+        // title shows full name on hover when text is truncated by max-width ellipsis
+        if (label) btn.title = label;
         return btn;
     }
 
