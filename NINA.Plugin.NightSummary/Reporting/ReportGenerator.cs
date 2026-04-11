@@ -1072,9 +1072,19 @@ namespace NINA.Plugin.NightSummary.Reporting {
             // Pre-render a static SVG as the container's initial content. When the JS
             // renderer runs (preview window, real browser) it replaces this with the
             // interactive version. When JS is unavailable (Gmail attachment preview,
-            // clients that strip <script>) the static SVG is displayed instead.
+            // iOS Quick Look, clients that strip <script>) the static SVG is displayed instead.
             var staticSvg = ChartGenerator.GenerateMetricChart(images, primary, secondary, xAxis, markers);
-            sb.AppendLine($"<div class='metric-chart-container' data-chart='{attr}'>{staticSvg}</div>");
+            // Show a note below the static SVG explaining why filter selection isn't
+            // available and how to access the interactive version. Only shown when there
+            // are multiple filters (otherwise there's nothing to select). JS wipes the
+            // whole container on load so this note never appears in a real browser.
+            var fallbackNote = model.Filters.Count >= 2
+                ? "<div style=\"font-family:sans-serif;font-size:11px;text-align:center;" +
+                  "color:#8888aa;margin:-8px 0 10px\">" +
+                  "&#9432; Per-filter view requires JavaScript &mdash; " +
+                  "open in Safari or a browser for the interactive chart</div>"
+                : "";
+            sb.AppendLine($"<div class='metric-chart-container' data-chart='{attr}'>{staticSvg}{fallbackNote}</div>");
         }
 
         /// <summary>
