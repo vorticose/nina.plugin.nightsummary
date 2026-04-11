@@ -464,7 +464,9 @@ function renderTargetsControlBar(sortKey, groupBy) {
   html += '</div>';
   if (tsAvail) {
     var enabled = getTargetStatusFilter();
+    var allOn = TS_STATE_ORDER.every(function(s) { return enabled.indexOf(s) >= 0; });
     html += '<div class="targets-filter-row"><span class="targets-sort-label">Filter</span>';
+    html += '<button type="button" class="targets-status-chip' + (allOn ? ' active' : '') + '" data-filter-state="__all__">All</button>';
     TS_STATE_ORDER.forEach(function(state) {
       var on = enabled.indexOf(state) >= 0;
       var color = TS_STATE_COLORS[state] || '#90A4AE';
@@ -498,6 +500,11 @@ function initTargetsControlBar() {
     chip.addEventListener('click', function() {
       var state = chip.getAttribute('data-filter-state');
       if (!state) return;
+      if (state === '__all__') {
+        setTargetStatusFilter(TS_STATE_ORDER.slice());
+        renderStatsTabContent('targets');
+        return;
+      }
       var enabled = getTargetStatusFilter();
       var idx = enabled.indexOf(state);
       if (idx >= 0) {
