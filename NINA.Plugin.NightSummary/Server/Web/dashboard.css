@@ -6,6 +6,7 @@
   --bg: #111224;
   --text: #e0e0e0;
   --accent: #7eb8f7;
+  --accent-rgb: 126, 184, 247;
   --accent-light: #a0c4ff;
   --accent-lighter: #c0d8ff;
   --surface: #181930;
@@ -37,6 +38,7 @@
   --bg: #eef0f5;
   --text: #1a1a2e;
   --accent: #2563b8;
+  --accent-rgb: 37, 99, 184;
   --accent-light: #3b7dd8;
   --accent-lighter: #5a9ae6;
   --surface: #f8f9fc;
@@ -1965,9 +1967,9 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 }
 .target-card-ts-badge:hover { transform: scale(1.05); }
 .target-card-ts-badge[data-state="Active"]    { background: rgba(102,187,106,0.18); border-color: rgba(102,187,106,0.50); color: #A5D6A7; }
-.target-card-ts-badge[data-state="Completed"] { background: rgba(76,175,80,0.26);  border-color: rgba(76,175,80,0.65);  color: #C8E6C9; }
+.target-card-ts-badge[data-state="Completed"] { background: rgba(66,165,245,0.22);  border-color: rgba(66,165,245,0.60);  color: #90CAF9; }
 .target-card-ts-badge[data-state="Draft"]     { background: rgba(255,183,77,0.15); border-color: rgba(255,183,77,0.42); color: #FFCC80; }
-.target-card-ts-badge[data-state="Inactive"]  { background: rgba(176,190,197,0.12); border-color: rgba(176,190,197,0.32); color: #CFD8DC; }
+.target-card-ts-badge[data-state="Inactive"]  { background: rgba(239,83,80,0.15);  border-color: rgba(239,83,80,0.42);  color: #EF9A9A; }
 .target-card-ts-badge[data-state="Closed"]    { background: rgba(144,164,174,0.12); border-color: rgba(144,164,174,0.32); color: #B0BEC5; }
 .target-card-ts-badge .override-mark {
   display: inline-block;
@@ -2042,9 +2044,9 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   flex-shrink: 0;
 }
 .ts-override-option[data-state="Active"] .state-dot    { background: #66BB6A; box-shadow: 0 0 6px rgba(102,187,106,0.6); }
-.ts-override-option[data-state="Completed"] .state-dot { background: #4CAF50; box-shadow: 0 0 6px rgba(76,175,80,0.6); }
+.ts-override-option[data-state="Completed"] .state-dot { background: #42A5F5; box-shadow: 0 0 6px rgba(66,165,245,0.6); }
 .ts-override-option[data-state="Draft"] .state-dot     { background: #FFB74D; }
-.ts-override-option[data-state="Inactive"] .state-dot  { background: #B0BEC5; }
+.ts-override-option[data-state="Inactive"] .state-dot  { background: #EF5350; }
 .ts-override-option[data-state="Closed"] .state-dot    { background: #90A4AE; }
 .ts-override-reset {
   display: block;
@@ -2122,9 +2124,9 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 }
 .tdp-project-state-pill:hover { transform: scale(1.03); }
 .tdp-project-state-pill[data-state="Active"]    { background: rgba(102,187,106,0.18); border-color: rgba(102,187,106,0.50); color: #A5D6A7; }
-.tdp-project-state-pill[data-state="Completed"] { background: rgba(76,175,80,0.26);  border-color: rgba(76,175,80,0.65);  color: #C8E6C9; }
+.tdp-project-state-pill[data-state="Completed"] { background: rgba(66,165,245,0.22);  border-color: rgba(66,165,245,0.60);  color: #90CAF9; }
 .tdp-project-state-pill[data-state="Draft"]     { background: rgba(255,183,77,0.15); border-color: rgba(255,183,77,0.42); color: #FFCC80; }
-.tdp-project-state-pill[data-state="Inactive"]  { background: rgba(176,190,197,0.12); border-color: rgba(176,190,197,0.32); color: #CFD8DC; }
+.tdp-project-state-pill[data-state="Inactive"]  { background: rgba(239,83,80,0.15);  border-color: rgba(239,83,80,0.42);  color: #EF9A9A; }
 .tdp-project-state-pill[data-state="Closed"]    { background: rgba(144,164,174,0.12); border-color: rgba(144,164,174,0.32); color: #B0BEC5; }
 .tdp-project-meta-row {
   display: flex;
@@ -2143,17 +2145,37 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   text-transform: none;
   letter-spacing: 0;
 }
+/* Single 3-column grid for all progress rows so the label column auto-sizes to
+   the widest row. Individual rows use display:contents to become layout-wise
+   direct children of this grid. */
 .tdp-project-progress-grid {
   display: grid;
-  gap: 8px;
+  grid-template-columns: auto 1fr auto;
+  column-gap: 12px;
+  row-gap: 8px;
+  align-items: center;
 }
 .tdp-progress-row {
-  display: grid;
-  grid-template-columns: 28px 1fr auto;
-  align-items: center;
-  gap: 12px;
+  display: contents;
   font-size: 12px;
   color: var(--text-secondary);
+}
+.tdp-progress-row-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  white-space: nowrap;
+}
+.tdp-progress-row-label-text {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
 }
 .tdp-progress-bar-wrap {
   position: relative;
@@ -2170,12 +2192,15 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   left: 0;
   height: 100%;
   border-radius: 9px;
-  background: linear-gradient(90deg, var(--fill-a, #4CAF50), var(--fill-b, #66BB6A));
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.22);
+  background: var(--fill-color, #66BB6A);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.28),
+    inset 0 -1px 0 rgba(0,0,0,0.22);
   transition: width var(--t-medium);
 }
+/* When accepted > desired, brighten slightly to show overachievement */
 .tdp-progress-bar-wrap.over .tdp-progress-bar-fill {
-  --fill-a: #AED581; --fill-b: #C5E1A5;
+  filter: brightness(1.15);
 }
 .tdp-progress-row-count {
   font-variant-numeric: tabular-nums;
@@ -2192,28 +2217,55 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   text-transform: uppercase;
   letter-spacing: 0.4px;
 }
-.tdp-project-overall {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid rgba(255,255,255,0.06);
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 10px;
-  align-items: center;
-  font-size: 11px;
+/* Separator row — spans all 3 grid columns, draws the dividing line */
+.tdp-overall-separator {
+  grid-column: 1 / -1;
+  height: 1px;
+  background: rgba(255,255,255,0.06);
+  margin: 4px 0;
+}
+.tdp-overall-label {
+  font-size: 10px;
   color: var(--text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.6px;
   font-weight: 600;
 }
-.tdp-project-overall strong {
-  font-size: 15px;
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum";
-  text-transform: none;
-  letter-spacing: 0;
+.tdp-overall-bar-wrap {
+  height: 20px;
+}
+.tdp-overall-bar-fill {
+  background: rgba(255,255,255,0.45);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.25),
+    inset 0 -1px 0 rgba(0,0,0,0.22);
+}
+.tdp-overall-count {
+  font-size: 14px !important;
+  color: var(--text-primary) !important;
   font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+/* Floating tooltip for TS exposure profile names */
+.ts-bar-tip {
+  position: fixed;
+  background: var(--surface-well);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: var(--text-primary);
+  font-size: 11px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 9999;
+  white-space: nowrap;
+  max-width: 300px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+.ts-bar-tip.visible {
+  opacity: 1;
 }
 .tdp-project-actions {
   display: flex;
@@ -2657,11 +2709,28 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
     0 1px 2px rgba(0,0,0,0.5);
 }
 .tdp-row-link {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: rgba(var(--accent-rgb), 0.10);
+  border: 1px solid rgba(var(--accent-rgb), 0.28);
   color: var(--accent);
   cursor: pointer;
-  font-size: 11px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.18),
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    0 2px 4px rgba(0,0,0,0.25);
+  transition: background 0.15s, border-color 0.15s;
 }
-.tdp-row-link:hover { text-decoration: underline; }
+.tdp-row-link:hover {
+  background: rgba(var(--accent-rgb), 0.22);
+  border-color: rgba(var(--accent-rgb), 0.5);
+}
 
 /* Date has two forms — long for desktop, short for mobile */
 .tdp-date-short { display: none; }
@@ -2684,6 +2753,10 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   .tdp-body { padding: 14px 16px 18px; }
   .tdp-table { font-size: 11px; }
   .tdp-table th, .tdp-table td { padding: 5px 4px; }
+  /* Subrow cells have higher-specificity padding in base CSS — re-override on mobile
+     so their column widths match session rows and expanding doesn't cause reflow */
+  .tdp-table tr.tdp-filter-subrow td { padding: 5px 4px; }
+  .tdp-table tr.tdp-filter-subrow td:first-child { padding-left: 16px; }
   /* Mobile: show short date (no year) — year is in the header date range */
   .tdp-date-long { display: none; }
   .tdp-date-short { display: inline; }

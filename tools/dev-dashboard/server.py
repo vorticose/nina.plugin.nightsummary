@@ -315,6 +315,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         goals.append({
                             "filter":       e.get("filter"),
                             "templateName": e.get("templateName"),
+                            "exposureSec":  e.get("exposureSec"),
                             "desired":      desired,
                             "acquired":     int(e.get("acquired") or 0),
                             "accepted":     accepted,

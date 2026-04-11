@@ -751,7 +751,7 @@ function renderTargetDetailPanel(data, targetName, ts) {
         '<td>' + esc(sHFR) + '</td>' +
         '<td>' + esc(sGuide) + '</td>' +
         '<td>' + esc(s.moonPhase || '--') + '</td>' +
-        '<td><span class="tdp-row-link" data-session-id="' + esc(s.sessionId || '') + '">view \u2197</span></td>' +
+        '<td><span class="tdp-row-link" data-session-id="' + esc(s.sessionId || '') + '">View</span></td>' +
       '</tr>' + subRows;
   }).join('');
 
@@ -808,23 +808,49 @@ function renderTsProjectSection(ts, targetName) {
   var tgt  = ts.target || {};
   var goals = ts.goals || [];
 
-  // Per-filter progress rows (sorted by the standard filter stack order)
+  // Per-filter progress rows — primary sort by filter type (stack order),
+  // secondary by exposure length descending so "R 300s" shows above "R 5s".
   var STACK_ORDER = ['L', 'R', 'G', 'B', 'H', 'S', 'O', 'N'];
   var sortedGoals = goals.slice().sort(function(a, b) {
     var ai = STACK_ORDER.indexOf(resolveFilterType(a.filter) || '');
     var bi = STACK_ORDER.indexOf(resolveFilterType(b.filter) || '');
     if (ai < 0) ai = STACK_ORDER.length;
     if (bi < 0) bi = STACK_ORDER.length;
-    return ai - bi;
+    if (ai !== bi) return ai - bi;
+    return (b.exposureSec || 0) - (a.exposureSec || 0);
   });
+
+  // Regex fallback when exposureSec is missing from the API response.
+  // Most TS users name templates with a trailing "300s" or "5s" pattern.
+  function extractExposureFromTemplate(name) {
+    if (!name) return 0;
+    var m = String(name).match(/(\d+)\s*s\b/i);
+    return m ? parseInt(m[1], 10) : 0;
+  }
 
   var rows = sortedGoals.map(function(g) {
     var pct = g.percentComplete;
     var over = pct != null && g.accepted > g.desired;
     var widthPct = pct != null ? Math.min(100, pct) : 0;
+    // Use the same color map as the stacked chart bars (L is off-white).
+    var filterType = resolveFilterType(g.filter);
+    var fillColor = (filterType && FILTER_TYPE_CHART_COLORS[filterType]) || '#66BB6A';
+    // Always show the exposure length next to every filter pill. Prefer
+    // exposureSec from the API, fall back to extracting from templateName,
+    // and if we still can't parse it fall back to the raw template name.
+    var expSec = (g.exposureSec && g.exposureSec > 0)
+      ? g.exposureSec
+      : extractExposureFromTemplate(g.templateName);
+    var labelText = expSec > 0 ? (expSec + 's') : (g.templateName || '');
+    var labelHtml = labelText
+      ? '<span class="tdp-progress-row-label-text">' + esc(labelText) + '</span>'
+      : '';
+    var tmplAttr = g.templateName ? ' data-template="' + esc(g.templateName) + '"' : '';
     return '<div class="tdp-progress-row">' +
-      filterTypePill(g.filter) +
-      '<div class="tdp-progress-bar-wrap' + (over ? ' over' : '') + '">' +
+      '<div class="tdp-progress-row-label"' + tmplAttr + '>' +
+        filterTypePill(g.filter) + labelHtml +
+      '</div>' +
+      '<div class="tdp-progress-bar-wrap' + (over ? ' over' : '') + '" style="--fill-color:' + fillColor + '"' + tmplAttr + '>' +
         '<div class="tdp-progress-bar-fill" style="width:' + widthPct + '%"></div>' +
       '</div>' +
       '<div class="tdp-progress-row-count">' +
@@ -859,10 +885,20 @@ function renderTsProjectSection(ts, targetName) {
       '</span>' +
     '</div>' +
     (metaParts.length ? '<div class="tdp-project-meta-row">' + metaParts.join('') + (matchedByNote ? '<span>' + matchedByNote + '</span>' : '') + '</div>' : '') +
-    (rows ? '<div class="tdp-project-progress-grid">' + rows + '</div>' : '<div style="color:var(--text-tertiary);font-size:11px;">No exposure plans defined for this target.</div>') +
-    (proj.percentComplete != null
-      ? '<div class="tdp-project-overall"><span>Overall progress</span><strong>' + overallPct + '</strong></div>'
-      : '') +
+    (rows
+      ? '<div class="tdp-project-progress-grid">' + rows +
+          (proj.percentComplete != null
+            ? '<div class="tdp-overall-separator"></div>' +
+              '<div class="tdp-progress-row tdp-progress-row-overall">' +
+                '<div class="tdp-progress-row-label"><span class="tdp-progress-row-label-text tdp-overall-label">Overall</span></div>' +
+                '<div class="tdp-progress-bar-wrap tdp-overall-bar-wrap' + (proj.percentComplete > 100 ? ' over' : '') + '">' +
+                  '<div class="tdp-progress-bar-fill tdp-overall-bar-fill" style="width:' + Math.min(proj.percentComplete, 100).toFixed(1) + '%"></div>' +
+                '</div>' +
+                '<strong class="tdp-progress-row-count tdp-overall-count">' + overallPct + '</strong>' +
+              '</div>'
+            : '') +
+        '</div>'
+      : '<div style="color:var(--text-tertiary);font-size:11px;">No exposure plans defined for this target.</div>') +
     '<div class="tdp-project-actions">' +
       '<button type="button" class="tdp-project-action-btn" data-action="link-ts">Change TS link\u2026</button>' +
       (ts.matchedBy === 'manual'
@@ -1822,6 +1858,63 @@ function showTargetStatExpand(el, filters, type) {
 
 // Detect touch device once
 var isTouchDevice = 'ontouchstart' in window;
+
+// ── TS progress bar template name tooltip ────────────────────────────────
+(function() {
+  var tip = document.createElement('div');
+  tip.className = 'ts-bar-tip';
+  document.body.appendChild(tip);
+  var autoHide;
+
+  function show(text, target) {
+    clearTimeout(autoHide);
+    tip.textContent = text;
+    // Pre-position off-screen so we can measure dimensions before revealing
+    tip.style.top = '-9999px';
+    tip.style.left = '-9999px';
+    tip.classList.add('visible');
+    var r = target.getBoundingClientRect();
+    var tw = tip.offsetWidth;
+    var th = tip.offsetHeight;
+    var left = r.left + r.width / 2 - tw / 2;
+    left = Math.max(8, Math.min(left, window.innerWidth - tw - 8));
+    var top = r.top - th - 8;
+    if (top < 8) top = r.bottom + 8; // flip below if too close to top
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  }
+
+  function hide() {
+    clearTimeout(autoHide);
+    tip.classList.remove('visible');
+  }
+
+  // Desktop: show on hover
+  document.addEventListener('mouseover', function(e) {
+    if (isTouchDevice) return;
+    var el = e.target.closest('[data-template]');
+    if (el) show(el.dataset.template, el);
+  });
+  document.addEventListener('mouseout', function(e) {
+    if (isTouchDevice) return;
+    var el = e.target.closest('[data-template]');
+    if (el && !el.contains(e.relatedTarget)) hide();
+  });
+
+  // Mobile: tap to show; retap same element or tap elsewhere to hide
+  var activeEl = null;
+  document.addEventListener('click', function(e) {
+    if (!isTouchDevice) return;
+    var el = e.target.closest('[data-template]');
+    if (!el) { hide(); activeEl = null; return; }
+    if (tip.classList.contains('visible') && el === activeEl) {
+      hide(); activeEl = null; return;
+    }
+    activeEl = el;
+    show(el.dataset.template, el);
+    autoHide = setTimeout(function() { hide(); activeEl = null; }, 2500);
+  });
+})();
 
 // Event delegation for stat box hover expansion (desktop only)
 document.addEventListener('mouseenter', function(e) {

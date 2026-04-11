@@ -1216,6 +1216,7 @@ namespace NINA.Plugin.NightSummary.Server {
                         return new {
                             filter       = ep.Filter,
                             templateName = ep.TemplateName,
+                            exposureSec  = ep.ExposureSec,
                             desired      = ep.Desired,
                             acquired     = ep.Acquired,
                             accepted     = ep.Accepted,
