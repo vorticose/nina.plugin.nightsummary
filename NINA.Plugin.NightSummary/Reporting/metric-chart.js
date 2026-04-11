@@ -332,11 +332,11 @@
                 const rightPoly = rightPts.map(function (p) { return toXPx(p.x).toFixed(1) + ',' + toYR(p.y).toFixed(1); }).join(' ');
                 svg += '<polyline points="' + rightPoly + '" fill="none" stroke="' + palette.secondary + '" stroke-width="2" stroke-linejoin="round" stroke-dasharray="6,3"/>';
             }
-            const secUnit = model.secondary.unit;
-            const secFmt  = model.secondary.format;
+            const secUnit   = model.secondary.unit;
+            const secTipFmt = model.secondary.tooltipFormat || model.secondary.format;
             for (const p of rightPts) {
                 const filterTag = p.filter ? ' [' + p.filter + ']' : '';
-                const tip = formatTooltipX(p, model.xAxis) + ' \u2014 ' + fmt(p.y, secFmt) + secUnit + filterTag;
+                const tip = formatTooltipX(p, model.xAxis) + ' \u2014 ' + fmt(p.y, secTipFmt) + secUnit + filterTag;
                 svg += '<circle cx="' + toXPx(p.x).toFixed(1) + '" cy="' + toYR(p.y).toFixed(1) + '" r="3" fill="' + palette.secondaryDot + '"><title>' + escapeXml(tip) + '</title></circle>';
             }
         }
@@ -346,8 +346,8 @@
             const leftPoly = leftPts.map(function (p) { return toXPx(p.x).toFixed(1) + ',' + toYL(p.y).toFixed(1); }).join(' ');
             svg += '<polyline points="' + leftPoly + '" fill="none" stroke="' + leftColor + '" stroke-width="2" stroke-linejoin="round"/>';
         }
-        const leftUnit = leftMetric.unit;
-        const leftTipFmt = leftMetric.format;
+        const leftUnit   = leftMetric.unit;
+        const leftTipFmt = leftMetric.tooltipFormat || leftMetric.format;
         for (const p of leftPts) {
             const filterTag = p.filter ? ' [' + p.filter + ']' : '';
             const tip = formatTooltipX(p, model.xAxis) + ' \u2014 ' + fmt(p.y, leftTipFmt) + leftUnit + filterTag;

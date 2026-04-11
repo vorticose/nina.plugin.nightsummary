@@ -41,8 +41,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
         [JsonPropertyName("axisLabel")] public string AxisLabel { get; set; } = "";
         /// <summary>Unit string appended to tooltips (e.g. " px", "\"", " °C").</summary>
         [JsonPropertyName("unit")]      public string Unit      { get; set; } = "";
-        /// <summary>"F0" or "F1" — consumed by the JS formatter to match C# ToString semantics.</summary>
-        [JsonPropertyName("format")]    public string Format    { get; set; } = "F1";
+        /// <summary>"F0" or "F1" — axis tick label precision.</summary>
+        [JsonPropertyName("format")]        public string Format        { get; set; } = "F1";
+        /// <summary>"F0", "F1", or "F2" — tooltip precision (≥ axis Format for full detail).</summary>
+        [JsonPropertyName("tooltipFormat")] public string TooltipFormat { get; set; } = "F2";
         /// <summary>Minimum y-range span for nice-scale computation.</summary>
         [JsonPropertyName("minSpan")]   public double MinSpan   { get; set; } = 0.5;
         /// <summary>Non-null when this metric has &lt; 2 valid data points overall.</summary>

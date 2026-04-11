@@ -475,12 +475,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
         private static ChartMetricInfo BuildPrimaryMetricInfo(List<ImageRecord> images, int metric) {
             var info = new ChartMetricInfo {
-                Index     = metric,
-                Label     = GetPrimaryLabel(metric),
-                AxisLabel = GetPrimaryAxisLabel(metric),
-                Unit      = GetTooltipUnit(metric, true),
-                Format    = GetValueFormat(metric, true),
-                MinSpan   = GetPrimaryMinSpan(metric)
+                Index         = metric,
+                Label         = GetPrimaryLabel(metric),
+                AxisLabel     = GetPrimaryAxisLabel(metric),
+                Unit          = GetTooltipUnit(metric, true),
+                Format        = GetValueFormat(metric, true),
+                TooltipFormat = GetTooltipFormat(metric, true),
+                MinSpan       = GetPrimaryMinSpan(metric)
             };
             // Pre-populate the no-data message when there's globally insufficient data —
             // saves the JS renderer from having a lookup table of its own.
@@ -494,12 +495,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
         private static ChartMetricInfo BuildSecondaryMetricInfo(List<ImageRecord> images, int metric) {
             var info = new ChartMetricInfo {
-                Index     = metric,
-                Label     = GetSecondaryLabel(metric),
-                AxisLabel = GetSecondaryAxisLabel(metric),
-                Unit      = GetTooltipUnit(metric, false),
-                Format    = GetValueFormat(metric, false),
-                MinSpan   = GetSecondaryMinSpan(metric)
+                Index         = metric,
+                Label         = GetSecondaryLabel(metric),
+                AxisLabel     = GetSecondaryAxisLabel(metric),
+                Unit          = GetTooltipUnit(metric, false),
+                Format        = GetValueFormat(metric, false),
+                TooltipFormat = GetTooltipFormat(metric, false),
+                MinSpan       = GetSecondaryMinSpan(metric)
             };
             int valid = ExtractSecondary(images, metric).Count;
             if (valid < 2) {
@@ -860,6 +862,28 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 17 => "F0",   // Azimuth (degrees)
                 19 => "F0",   // Median ADU
                 _  => "F1"
+            };
+        }
+
+        /// <summary>
+        /// Returns the format string used in data-point tooltips — always at least as
+        /// precise as <see cref="GetValueFormat"/>, but bumped up for continuous metrics
+        /// so tooltips show full detail (e.g. "1.23 px") while axis ticks stay compact.
+        /// True integers keep F0; coarse metrics (altitude, humidity, etc.) use F1;
+        /// all other continuous metrics (HFR, FWHM, temperatures, …) use F2.
+        /// </summary>
+        private static string GetTooltipFormat(int metric, bool isPrimary) {
+            int m = isPrimary ? metric : metric - 1;  // secondary indices offset by 1
+            return m switch {
+                9  => "F0",   // Focuser Position (integer steps)
+                16 => "F0",   // Star Count (integer)
+                19 => "F0",   // Median ADU (integer)
+                6  => "F1",   // Altitude (degrees)
+                8  => "F1",   // Humidity (%)
+                11 => "F1",   // Cloud Cover (%)
+                15 => "F1",   // Pressure (hPa)
+                17 => "F1",   // Azimuth (degrees)
+                _  => "F2"    // HFR, FWHM, Guide RMS, temperatures, airmass, etc.
             };
         }
 
