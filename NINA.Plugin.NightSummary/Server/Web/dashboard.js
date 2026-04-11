@@ -600,6 +600,10 @@ function renderProjectContainer(info) {
   html += '</div>';
   html += '<div class="targets-project-header-right">';
   html += '<span class="targets-project-agg">' + totalHours.toFixed(1) + 'h\u00a0\u00b7\u00a0' + totalFrames + '\u00a0frames</span>';
+  if (info.targetCount > 1) {
+    html += '<button type="button" class="targets-project-view-btn" ' +
+      'data-guid="' + esc(info.guid) + '" data-name="' + esc(info.name) + '" aria-label="View project details">Details</button>';
+  }
   html += '<button type="button" class="targets-project-collapse-btn" aria-label="Collapse">&#9660;</button>';
   html += '</div>';
   html += '</div>';
@@ -716,10 +720,18 @@ function initProjectContainers() {
       if (c) c.classList.toggle('collapsed');
     });
   });
-  // Click anywhere on header also toggles (except the TS badge)
+  // View Details button → open project detail panel
+  document.querySelectorAll('.targets-project-view-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      openProjectDetail(btn.getAttribute('data-guid'), btn.getAttribute('data-name'));
+    });
+  });
+  // Click anywhere on header also toggles (except the TS badge and view button)
   document.querySelectorAll('.targets-project-header').forEach(function(header) {
     header.addEventListener('click', function(e) {
       if (e.target.closest('.target-card-ts-badge')) return;
+      if (e.target.closest('.targets-project-view-btn')) return;
       var c = header.closest('.targets-project-container');
       if (c) c.classList.toggle('collapsed');
     });
@@ -1390,6 +1402,247 @@ function openTargetDetail(targetName, latestSessionId) {
     var c = backdrop.querySelector('.tdp-close');
     if (c) c.addEventListener('click', closeTargetDetail);
   });
+}
+
+// ── Project Detail Panel (Phase 3c) ──────────────────────────────────────────
+// Shows combined mosaic HiPS thumbnail with per-panel FOV overlay rectangles,
+// plus per-panel stats. Opens when user clicks "View Details" on a project container.
+
+var _pdpKeyHandler = null;
+
+function closeProjectDetail() {
+  var backdrop = document.getElementById('pdp-backdrop');
+  if (!backdrop) return;
+  backdrop.classList.add('pdp-hiding');
+  setTimeout(function() { if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop); }, 160);
+  if (_pdpKeyHandler) {
+    document.removeEventListener('keydown', _pdpKeyHandler);
+    _pdpKeyHandler = null;
+  }
+}
+
+function openProjectDetail(projectGuid, projectName) {
+  if (!projectGuid) return;
+  closeProjectDetail();
+
+  var backdrop = document.createElement('div');
+  backdrop.id = 'pdp-backdrop';
+  backdrop.className = 'pdp-backdrop';
+  backdrop.innerHTML = '<div class="pdp-modal pdp-modal--loading"><span style="color:var(--text-tertiary)">Loading \u2026</span></div>';
+  document.body.appendChild(backdrop);
+
+  var loadClickHandler = function(e) { if (e.target === backdrop) closeProjectDetail(); };
+  backdrop.addEventListener('click', loadClickHandler);
+  _pdpKeyHandler = function(e) { if (e.key === 'Escape') closeProjectDetail(); };
+  document.addEventListener('keydown', _pdpKeyHandler);
+
+  api('/api/stats/projects/' + encodeURIComponent(projectGuid)).then(function(data) {
+    var current = document.getElementById('pdp-backdrop');
+    if (!current || current !== backdrop) return;
+    backdrop.removeEventListener('click', loadClickHandler);
+    backdrop.innerHTML = renderProjectDetailPanel(data);
+
+    backdrop.addEventListener('click', function(e) { if (e.target === backdrop) closeProjectDetail(); });
+    var closeBtn = backdrop.querySelector('.pdp-close');
+    if (closeBtn) closeBtn.addEventListener('click', closeProjectDetail);
+
+    loadMosaicThumbnail(data.panels || [], backdrop);
+  }).catch(function(err) {
+    var current = document.getElementById('pdp-backdrop');
+    if (!current || current !== backdrop) return;
+    backdrop.innerHTML = '<div class="pdp-modal pdp-modal--loading">' +
+      '<div style="color:#e15759;font-weight:600;margin-bottom:10px;">Failed to load</div>' +
+      '<div style="color:var(--text-tertiary);font-size:12px;">' + esc(err && err.message ? err.message : 'unknown error') + '</div>' +
+      '<button class="pdp-close">\u2715</button></div>';
+    var c = backdrop.querySelector('.pdp-close');
+    if (c) c.addEventListener('click', closeProjectDetail);
+  });
+}
+
+function renderProjectDetailPanel(data) {
+  var proj  = data.project  || {};
+  var panels = data.panels  || [];
+  var agg   = data.aggregate || {};
+
+  var html = '<div class="pdp-modal">';
+  html += '<button type="button" class="pdp-close" aria-label="Close">\u2715</button>';
+
+  // Header
+  html += '<div class="pdp-header">';
+  html += '<div class="pdp-header-title-row">';
+  html += '<h2 class="pdp-title">' + esc(proj.name || 'Project') + '</h2>';
+  html += '<span class="target-card-ts-badge" data-state="' + esc(proj.state || '') + '">' + esc(proj.state || '') + '</span>';
+  if (proj.isMosaic) html += '<span class="targets-project-mosaic-badge">Mosaic</span>';
+  html += '</div>';
+
+  // Aggregate KPIs
+  html += '<div class="pdp-kpi-row">';
+  html += '<div class="pdp-kpi"><div class="pdp-kpi-val">' + (agg.totalIntegrationHours || 0).toFixed(1) +
+    '<span class="unit">h</span></div><div class="pdp-kpi-label">Total</div></div>';
+  html += '<div class="pdp-kpi"><div class="pdp-kpi-val">' + (agg.acceptedFrames || 0) +
+    '</div><div class="pdp-kpi-label">Frames</div></div>';
+  html += '<div class="pdp-kpi"><div class="pdp-kpi-val">' + (agg.sessionCount || 0) +
+    '</div><div class="pdp-kpi-label">Sessions</div></div>';
+  html += '<div class="pdp-kpi"><div class="pdp-kpi-val">' + panels.length +
+    '</div><div class="pdp-kpi-label">Panels</div></div>';
+  html += '</div>';
+
+  if (proj.description) {
+    html += '<div class="pdp-description">' + esc(proj.description) + '</div>';
+  }
+  html += '</div>'; // end pdp-header
+
+  // Mosaic thumbnail + FOV overlay
+  html += '<div class="pdp-mosaic-section">';
+  html += '<div class="pdp-mosaic-thumb-wrap" id="pdp-thumb-wrap">';
+  html += '<div class="pdp-mosaic-placeholder">\u2606</div>';
+  html += '</div>';
+  html += '</div>';
+
+  // Per-panel cards
+  html += '<div class="pdp-panels-section">';
+  html += '<div class="pdp-section-title">Panels (' + panels.length + ')</div>';
+  html += '<div class="pdp-panels-grid">';
+  panels.forEach(function(panel, i) { html += renderPdpPanelCard(panel, i); });
+  html += '</div>';
+  html += '</div>';
+
+  html += '</div>';
+  return html;
+}
+
+function renderPdpPanelCard(panel, idx) {
+  var palette = ['#90CAF9','#A5D6A7','#FFCC80','#EF9A9A','#CE93D8','#80DEEA','#BCAAA4','#B0BEC5'];
+  var color = palette[idx % palette.length];
+  var totalHrs = (panel.totalIntegrationHours || 0).toFixed(1);
+  var frames   = panel.acceptedFrames || 0;
+
+  var html = '<div class="pdp-panel-card" style="--panel-color:' + color + '">';
+  html += '<div class="pdp-panel-index">Panel ' + (idx + 1) + '</div>';
+  html += '<div class="pdp-panel-name">' + esc(panel.name || 'Panel ' + (idx + 1)) + '</div>';
+  html += '<div class="pdp-panel-stats">';
+  html += '<span class="pdp-panel-stat-val">' + totalHrs + '<span class="unit">h</span></span>';
+  html += '<span class="pdp-panel-stat-sep">\u00b7</span>';
+  html += '<span class="pdp-panel-stat-val">' + frames + '\u00a0frames</span>';
+  html += '</div>';
+  if (panel.fovWidthDeg != null && panel.fovHeightDeg != null) {
+    html += '<div class="pdp-panel-fov">' +
+      panel.fovWidthDeg.toFixed(2) + '\u00b0\u00a0\u00d7\u00a0' + panel.fovHeightDeg.toFixed(2) + '\u00b0</div>';
+  }
+  if (panel.filters && panel.filters.length > 0) {
+    html += '<div class="pdp-panel-filters">';
+    panel.filters.slice(0, 5).forEach(function(f) {
+      html += '<span class="pdp-panel-filter-item">' + filterTypePill(f.filter) +
+        '<span class="pdp-panel-filter-hrs">' + (f.totalHours || 0).toFixed(1) + 'h</span></span>';
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+// Fetch the combined HiPS survey image and draw per-panel FOV rectangles as an SVG overlay.
+// SVG rotation convention: position angle (degrees E of N, CCW) → SVG rotate(-PA) because
+// astronomical images are N-up, E-left which mirrors the x-axis relative to SVG.
+function loadMosaicThumbnail(panels, backdrop) {
+  var wrap = backdrop ? backdrop.querySelector('#pdp-thumb-wrap') : null;
+  if (!wrap) return;
+
+  var validPanels = panels.filter(function(p) { return p.ra != null && p.dec != null; });
+  if (!validPanels.length) return;
+
+  var raDegArr  = validPanels.map(function(p) { return p.ra * 15; });
+  var decDegArr = validPanels.map(function(p) { return p.dec; });
+
+  var centerDec = decDegArr.reduce(function(s, d) { return s + d; }, 0) / decDegArr.length;
+  var centerRA  = raDegArr.reduce(function(s, r) { return s + r; }, 0) / raDegArr.length;
+  var cosCenter = Math.cos(centerDec * Math.PI / 180);
+
+  // Find minimum HiPS FOV that contains all panel footprints with 40% padding
+  var maxReach = 0;
+  validPanels.forEach(function(p) {
+    var dRA  = (p.ra * 15 - centerRA) * cosCenter;
+    var dDec = p.dec - centerDec;
+    var halfDiag = 0;
+    if (p.fovWidthDeg != null && p.fovHeightDeg != null) {
+      halfDiag = Math.sqrt(p.fovWidthDeg * p.fovWidthDeg + p.fovHeightDeg * p.fovHeightDeg) / 2;
+    }
+    maxReach = Math.max(maxReach, Math.sqrt(dRA * dRA + dDec * dDec) + halfDiag);
+  });
+
+  // Fallback for single-panel case where maxReach ≈ halfDiag only
+  if (maxReach < 0.5) {
+    var p0 = validPanels[0];
+    maxReach = (p0.fovWidthDeg && p0.fovHeightDeg)
+      ? Math.sqrt(p0.fovWidthDeg * p0.fovWidthDeg + p0.fovHeightDeg * p0.fovHeightDeg) / 2
+      : 1.0;
+  }
+
+  var hipsFov  = maxReach * 2 * 1.4;
+  var imgSize  = 1024;
+  var scale    = hipsFov / imgSize; // degrees per pixel
+
+  var hipsUrl = 'https://alasky.u-strasbg.fr/hips-image-services/hips2fits?' +
+    'hips=' + encodeURIComponent('CDS/P/DSS2/color') +
+    '&ra='  + centerRA.toFixed(6) +
+    '&dec=' + centerDec.toFixed(6) +
+    '&fov=' + hipsFov.toFixed(4) +
+    '&width='  + imgSize +
+    '&height=' + imgSize +
+    '&format=jpg' +
+    '&projection=TAN';
+
+  // Build SVG overlay rects — one per panel with FOV data
+  var palette = ['rgba(144,202,249,0.9)','rgba(165,214,167,0.9)','rgba(255,204,128,0.9)',
+                 'rgba(239,154,154,0.9)','rgba(206,147,216,0.9)','rgba(128,222,234,0.9)',
+                 'rgba(188,170,164,0.9)','rgba(176,190,197,0.9)'];
+  var svgRects = '';
+  validPanels.forEach(function(p, i) {
+    if (p.fovWidthDeg == null || p.fovHeightDeg == null) return;
+    var dRA  = (p.ra * 15 - centerRA) * cosCenter;
+    var dDec = p.dec - centerDec;
+    var cx   = imgSize / 2 + (-dRA  / scale);  // East = left = -x
+    var cy   = imgSize / 2 + (-dDec / scale);  // North = up = -y
+    var wPx  = p.fovWidthDeg  / scale;
+    var hPx  = p.fovHeightDeg / scale;
+    var color = palette[i % palette.length];
+    var pa    = p.positionAngle != null ? p.positionAngle : (p.rotation || 0);
+
+    svgRects += '<g transform="translate(' + cx.toFixed(1) + ',' + cy.toFixed(1) + ')' +
+                ' rotate(' + (-pa).toFixed(1) + ')">';
+    svgRects += '<rect x="' + (-(wPx/2)).toFixed(1) + '" y="' + (-(hPx/2)).toFixed(1) +
+                '" width="' + wPx.toFixed(1) + '" height="' + hPx.toFixed(1) +
+                '" fill="none" stroke="' + color + '" stroke-width="5"/>';
+    svgRects += '<text x="' + (-(wPx/2) + 10).toFixed(1) + '" y="' + (-(hPx/2) + 22).toFixed(1) +
+                '" font-size="20" font-weight="700" fill="' + color +
+                '" stroke="rgba(0,0,0,0.8)" stroke-width="3" paint-order="stroke">' + (i + 1) + '</text>';
+    svgRects += '</g>';
+  });
+
+  var svgMarkup = '<svg viewBox="0 0 ' + imgSize + ' ' + imgSize + '"' +
+    ' xmlns="http://www.w3.org/2000/svg"' +
+    ' style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none">' +
+    svgRects + '</svg>';
+
+  var img = new Image();
+  img.className = 'pdp-mosaic-img';
+  img.alt = 'Mosaic survey + FOV overlay';
+  img.onload = function() {
+    var placeholder = wrap.querySelector('.pdp-mosaic-placeholder');
+    if (placeholder) placeholder.style.display = 'none';
+    wrap.insertBefore(img, wrap.firstChild);
+    var svgContainer = document.createElement('div');
+    svgContainer.innerHTML = svgMarkup;
+    wrap.appendChild(svgContainer.firstChild);
+  };
+  img.onerror = function() {
+    var placeholder = wrap.querySelector('.pdp-mosaic-placeholder');
+    if (placeholder) {
+      placeholder.textContent = 'Survey image unavailable';
+      placeholder.style.fontSize = '13px';
+    }
+  };
+  img.src = hipsUrl;
 }
 
 function loadTargetThumbnails() {

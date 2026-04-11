@@ -209,6 +209,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.serve_file(filepath, "application/json")
             return
 
+        # /api/stats/projects/{guid} — project detail for Phase 3c
+        if len(parts) == 5 and parts[1] == "api" and parts[2] == "stats" and parts[3] == "projects":
+            import urllib.parse
+            project_guid = urllib.parse.unquote(parts[4])
+            self.serve_project_stats(project_guid)
+            return
+
         # /api/stats/targets/{name}/sessions — built on the fly from snapshot data
         if len(parts) == 6 and parts[1] == "api" and parts[2] == "stats" and parts[3] == "targets" and parts[5] == "sessions":
             import urllib.parse
@@ -439,6 +446,174 @@ class DashboardHandler(BaseHTTPRequestHandler):
             links[key] = ts_target_guid
         self._save_ts_meta(meta)
         self.send_json(200, {"ok": True, "sessionTargetName": session_target_name, "tsTargetGuid": ts_target_guid})
+
+    def serve_project_stats(self, project_guid):
+        """Return project detail for Phase 3c panel. Mirrors HandleGetProjectStats in DashboardServer.cs."""
+        try:
+            ts_status, ts_projects = self._load_ts_projects()
+            if ts_status != "available" or not ts_projects:
+                self.send_json(404, {"error": "Target Scheduler not available"})
+                return
+
+            proj = next((p for p in ts_projects
+                         if (p.get("guid") or "").lower() == project_guid.lower()), None)
+            if proj is None:
+                self.send_json(404, {"error": f"Project '{project_guid}' not found"})
+                return
+
+            meta = self._load_ts_meta()
+            status_overrides = meta.get("statusOverrides", {}) or {}
+
+            # Effective state
+            raw_state = proj.get("state") or "Draft"
+            override = status_overrides.get(proj.get("guid") or "")
+            total_desired_proj = sum(int(e.get("desired") or 0)
+                                     for t in proj.get("targets", [])
+                                     for e in t.get("exposurePlans", []))
+            total_accepted_proj = sum(int(e.get("accepted") or 0)
+                                      for t in proj.get("targets", [])
+                                      for e in t.get("exposurePlans", []))
+            pct_proj = None
+            if total_desired_proj > 0:
+                pct_proj = round(min(100.0, (total_accepted_proj * 100.0) / total_desired_proj), 1)
+
+            if override:
+                eff_state = override
+            elif raw_state == "Closed" and pct_proj is not None and pct_proj >= 100.0:
+                eff_state = "Completed"
+            else:
+                eff_state = raw_state
+
+            # Load session images for per-target stats
+            sessions_path = os.path.join(self.data_dir, "sessions.json")
+            all_sessions = []
+            if os.path.isfile(sessions_path):
+                with open(sessions_path, "r", encoding="utf-8") as f:
+                    all_sessions = json.load(f)
+            session_index = {s["sessionId"]: s for s in all_sessions if "sessionId" in s}
+
+            # Mock camera setup (matches user's ~3x2 deg FOV rig)
+            # pixelScale = (3.76 / 560) * 206.265 = 1.384 arcsec/px
+            MOCK_CAM = {
+                "camXSize": 6248,
+                "camYSize": 4176,
+                "pixelSizeMicrons": 3.76,
+                "focalLengthMm": 560.0,
+                "pixelScaleArcSec": round((3.76 / 560.0) * 206.265, 4),
+                "fovWidthDeg":  round(6248  * ((3.76 / 560.0) * 206.265) / 3600.0, 4),
+                "fovHeightDeg": round(4176 * ((3.76 / 560.0) * 206.265) / 3600.0, 4),
+            }
+
+            panels = []
+            agg_frames = 0
+            agg_seconds = 0.0
+            agg_sessions = 0
+            agg_last_imaged = None
+
+            for tgt in proj.get("targets", []):
+                tgt_name = tgt.get("name") or ""
+                tgt_lower = tgt_name.lower()
+
+                # Find sessions containing this target
+                tgt_session_ids = [
+                    s["sessionId"] for s in all_sessions
+                    if tgt_lower in [t.lower() for t in (s.get("targets") or [])]
+                ]
+
+                total_sec = 0.0
+                total_frames = 0
+                sess_count = 0
+                last_imaged = None
+                filters_agg = {}
+
+                for sid in tgt_session_ids:
+                    images_path = os.path.join(self.data_dir, "sessions", sid, "images.json")
+                    if not os.path.isfile(images_path):
+                        continue
+                    with open(images_path, "r", encoding="utf-8") as f:
+                        imgs = json.load(f)
+                    matching = [
+                        i for i in imgs
+                        if (i.get("targetName") or "").lower() == tgt_lower
+                        and (i.get("imageType") in (None, "", "LIGHT"))
+                    ]
+                    if not matching:
+                        continue
+                    sess_count += 1
+                    accepted = [i for i in matching if i.get("accepted")]
+                    total_sec += sum(float(i.get("exposureDuration") or 0) for i in accepted)
+                    total_frames += len(accepted)
+                    s_start = (session_index.get(sid) or {}).get("sessionStart")
+                    if s_start:
+                        if last_imaged is None or s_start > last_imaged:
+                            last_imaged = s_start
+
+                    for i in matching:
+                        if not i.get("accepted"):
+                            continue
+                        fn = i.get("filter") or "Unknown"
+                        fe = filters_agg.setdefault(fn, {"totalSeconds": 0.0, "frames": 0})
+                        fe["totalSeconds"] += float(i.get("exposureDuration") or 0)
+                        fe["frames"] += 1
+
+                agg_seconds  += total_sec
+                agg_frames   += total_frames
+                agg_sessions += sess_count
+                if last_imaged and (agg_last_imaged is None or last_imaged > agg_last_imaged):
+                    agg_last_imaged = last_imaged
+
+                filters_out = sorted([
+                    {
+                        "filter": fn,
+                        "totalHours": round(fe["totalSeconds"] / 3600.0, 2),
+                        "acceptedFrames": fe["frames"],
+                    }
+                    for fn, fe in filters_agg.items()
+                ], key=lambda x: -x["totalHours"])
+
+                panel = {
+                    "guid":     tgt.get("guid"),
+                    "name":     tgt_name,
+                    "active":   bool(tgt.get("active")),
+                    "ra":       tgt.get("ra") or 0,
+                    "dec":      tgt.get("dec") or 0,
+                    "rotation": tgt.get("rotation") or 0,
+                    "positionAngle": tgt.get("rotation"),  # use TS rotation as stand-in
+                    "totalIntegrationHours": round(total_sec / 3600.0, 2),
+                    "acceptedFrames": total_frames,
+                    "sessionCount": sess_count,
+                    "lastImaged": last_imaged,
+                    "filters": filters_out,
+                }
+                panel.update(MOCK_CAM)
+                panels.append(panel)
+
+            self.send_json(200, {
+                "project": {
+                    "guid":            proj.get("guid"),
+                    "name":            proj.get("name"),
+                    "description":     proj.get("description"),
+                    "state":           eff_state,
+                    "rawState":        raw_state,
+                    "isMosaic":        bool(proj.get("isMosaic")),
+                    "priority":        proj.get("priority"),
+                    "createDate":      proj.get("createDate"),
+                    "activeDate":      proj.get("activeDate"),
+                    "inactiveDate":    proj.get("inactiveDate"),
+                    "minimumAltitude": proj.get("minimumAltitude") or 0,
+                    "maximumAltitude": proj.get("maximumAltitude") or 0,
+                    "percentComplete": pct_proj,
+                },
+                "panels": panels,
+                "aggregate": {
+                    "totalIntegrationHours": round(agg_seconds / 3600.0, 2),
+                    "acceptedFrames":        agg_frames,
+                    "sessionCount":          agg_sessions,
+                    "lastImaged":            agg_last_imaged,
+                },
+            })
+        except Exception as e:
+            self.send_json(500, {"error": f"project stats: {e}"})
 
     def serve_target_sessions(self, target_name):
         """Build per-session detail for a target by aggregating the snapshot image files."""

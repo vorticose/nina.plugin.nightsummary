@@ -2015,6 +2015,29 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   color: var(--text-secondary);
   white-space: nowrap;
 }
+.targets-project-view-btn {
+  background: rgba(230,232,240,0.06);
+  border: 1px solid rgba(255,255,255,0.13);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  padding: 4px 10px;
+  line-height: 1.4;
+  white-space: nowrap;
+  transition: background var(--t-fast), color var(--t-fast), transform var(--t-fast);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.14),
+    inset 0 -1px 0 rgba(0,0,0,0.25),
+    0 2px 5px rgba(0,0,0,0.4);
+}
+.targets-project-view-btn:hover {
+  background: rgba(230,232,240,0.12);
+  color: var(--text-primary);
+  transform: scale(1.03);
+}
 .targets-project-collapse-btn {
   background: none;
   border: none;
@@ -2970,6 +2993,248 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   }
   /* Safety net: if the table still exceeds the body width, scroll horizontally */
   .tdp-body { overflow-x: auto; }
+}
+
+/* ── Project Detail Panel (Phase 3c) ─────────────────────────────────────── */
+.pdp-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.72);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: tdp-fade-in 180ms; /* reuse TDP keyframes */
+}
+.pdp-backdrop.pdp-hiding { animation: tdp-fade-out 160ms forwards; }
+
+.pdp-modal {
+  background: var(--surface);
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 14px;
+  width: min(1060px, 94vw);
+  max-height: 90vh;
+  overflow: auto;
+  position: relative;
+  box-shadow:
+    0 20px 60px rgba(0,0,0,0.75),
+    0 0 0 1px rgba(255,255,255,0.08);
+  animation: tdp-modal-in 200ms cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+.pdp-modal--loading {
+  padding: 40px;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 160px;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pdp-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: var(--text-secondary);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--t-fast), color var(--t-fast), transform var(--t-fast);
+  z-index: 2;
+}
+.pdp-close:hover {
+  background: rgba(255,255,255,0.15);
+  color: var(--text-primary);
+  transform: scale(1.1);
+}
+
+.pdp-header {
+  padding: 22px 60px 18px 28px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.pdp-header-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+/* Reuse .target-card-ts-badge inside header but reset absolute positioning */
+.pdp-header .target-card-ts-badge { position: static; }
+.pdp-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.pdp-kpi-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pdp-kpi {
+  background: var(--surface-well);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px;
+  padding: 8px 14px;
+  text-align: center;
+  min-width: 80px;
+}
+.pdp-kpi-val {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+.pdp-kpi-val .unit { font-size: 55%; color: var(--text-tertiary); }
+.pdp-kpi-label {
+  font-size: 9px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.9px;
+  font-weight: 600;
+  margin-top: 2px;
+}
+.pdp-description {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 12px;
+  line-height: 1.5;
+}
+
+/* Mosaic thumbnail section */
+.pdp-mosaic-section {
+  padding: 20px 28px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  display: flex;
+  justify-content: center;
+}
+.pdp-mosaic-thumb-wrap {
+  width: 100%;
+  max-width: 580px;
+  aspect-ratio: 1 / 1;
+  background: var(--surface-well);
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.10),
+    0 4px 12px rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pdp-mosaic-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.pdp-mosaic-placeholder {
+  font-size: 48px;
+  color: var(--text-quaternary);
+  user-select: none;
+  position: relative;
+  z-index: 0;
+}
+
+/* Panels section */
+.pdp-panels-section {
+  padding: 20px 28px 24px;
+}
+.pdp-section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-tertiary);
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+.pdp-panels-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px;
+}
+.pdp-panel-card {
+  background: var(--surface-well);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-left: 3px solid var(--panel-color, rgba(255,255,255,0.3));
+  border-radius: 8px;
+  padding: 12px 12px 10px;
+}
+.pdp-panel-index {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.9px;
+  color: var(--text-quaternary);
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.pdp-panel-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pdp-panel-stats {
+  font-size: 13px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.pdp-panel-stat-val .unit { font-size: 75%; color: var(--text-tertiary); }
+.pdp-panel-stat-sep { color: var(--text-quaternary); }
+.pdp-panel-fov {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 6px;
+}
+.pdp-panel-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.pdp-panel-filter-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+}
+.pdp-panel-filter-hrs {
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Mobile */
+@media (max-width: 640px) {
+  .pdp-modal { width: 96vw; border-radius: 10px; }
+  .pdp-header { padding: 16px 50px 14px 16px; }
+  .pdp-mosaic-section { padding: 14px 16px; }
+  .pdp-panels-section { padding: 14px 16px 18px; }
+  .pdp-panels-grid { grid-template-columns: repeat(2, 1fr); }
+  .pdp-title { font-size: 18px; }
 }
 
 .target-card-stats {

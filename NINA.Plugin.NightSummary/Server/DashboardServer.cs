@@ -271,6 +271,9 @@ namespace NINA.Plugin.NightSummary.Server {
                         var encoded = path.Substring(prefix.Length, path.Length - prefix.Length - suffix.Length);
                         var targetName = WebUtility.UrlDecode(encoded);
                         await HandleGetTargetSessions(res, targetName, done);
+                    } else if (path.StartsWith("/api/stats/projects/") && !path.Substring("/api/stats/projects/".Length).Contains("/")) {
+                        var projectGuid = WebUtility.UrlDecode(path.Substring("/api/stats/projects/".Length));
+                        await HandleGetProjectStats(res, projectGuid, done);
                     } else if (path == "/api/stats/summary") {
                         await HandleGetStatsSummary(res, done);
                     } else if (path == "/api/ts/projects") {
@@ -1396,6 +1399,215 @@ namespace NINA.Plugin.NightSummary.Server {
 
             await WriteJson(res, 200, result);
             done?.Invoke(200, $"{sessions.Count} sessions for '{targetName}'");
+        }
+
+        // ── Project detail (Phase 3c) ─────────────────────────────────────────
+
+        private async Task HandleGetProjectStats(HttpListenerResponse res, string projectGuid, Action<int, string> done) {
+            if (string.IsNullOrEmpty(projectGuid)) {
+                await WriteJson(res, 400, new { error = "Missing project guid" });
+                done?.Invoke(400, null);
+                return;
+            }
+
+            // TS must be available
+            var tsDb = new TargetSchedulerDatabase();
+            if (!TargetSchedulerDatabase.IsPluginInstalled || !tsDb.IsAvailable) {
+                await WriteJson(res, 404, new { error = "Target Scheduler not available" });
+                done?.Invoke(404, null);
+                return;
+            }
+
+            List<TsProjectInfo> allProjects;
+            try {
+                allProjects = tsDb.GetAllProjects();
+            } catch (Exception ex) {
+                await WriteJson(res, 500, new { error = ex.Message });
+                done?.Invoke(500, ex.Message);
+                return;
+            }
+
+            var proj = allProjects.FirstOrDefault(p =>
+                string.Equals(p.Guid, projectGuid, StringComparison.OrdinalIgnoreCase));
+            if (proj == null) {
+                await WriteJson(res, 404, new { error = $"Project '{projectGuid}' not found" });
+                done?.Invoke(404, null);
+                return;
+            }
+
+            // Load NS sessions for camera + FOV data
+            SessionRecord[] allSessions = Array.Empty<SessionRecord>();
+            Dictionary<string, double?> latestPaByTarget = new Dictionary<string, double?>(StringComparer.OrdinalIgnoreCase);
+            if (File.Exists(dbPath)) {
+                var db = new SessionDatabase(dbPath);
+                allSessions = db.GetAllSessions().ToArray();
+
+                // Query the most recent plate-solve PositionAngle per target name
+                using (var conn = new System.Data.SQLite.SQLiteConnection($"Data Source={dbPath};Version=3;"))
+                {
+                    conn.Open();
+                    string paSql = @"
+                        SELECT TargetName, PositionAngle
+                        FROM Images
+                        WHERE TargetName IS NOT NULL AND TargetName != ''
+                          AND PositionAngle IS NOT NULL
+                        ORDER BY TargetName, Timestamp DESC";
+                    using (var cmd = new System.Data.SQLite.SQLiteCommand(paSql, conn))
+                    using (var reader = cmd.ExecuteReader()) {
+                        while (reader.Read()) {
+                            var tname = reader["TargetName"].ToString();
+                            if (!latestPaByTarget.ContainsKey(tname)) {
+                                latestPaByTarget[tname] = Convert.ToDouble(reader["PositionAngle"]);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Session map by SessionId for quick camera-field lookup
+            var sessionById = allSessions.ToDictionary(s => s.SessionId, StringComparer.OrdinalIgnoreCase);
+
+            // Status override for this project
+            var statusOverrides = GetTsStatusOverrides();
+            string effectiveState;
+            if (statusOverrides.TryGetValue(proj.Guid ?? "", out var ov) && !string.IsNullOrEmpty(ov)) {
+                effectiveState = ov;
+            } else {
+                // Check completion to infer "Completed" from "Closed"
+                int totalDesired = proj.Targets.SelectMany(t => t.ExposurePlans).Sum(ep => ep.Desired);
+                int totalAccepted = proj.Targets.SelectMany(t => t.ExposurePlans).Sum(ep => ep.Accepted);
+                if (proj.State == "Closed" && totalDesired > 0 &&
+                    totalAccepted >= totalDesired) {
+                    effectiveState = "Completed";
+                } else {
+                    effectiveState = proj.State;
+                }
+            }
+
+            // Build per-panel data
+            var db2 = File.Exists(dbPath) ? new SessionDatabase(dbPath) : null;
+            var panels = new List<object>();
+            int aggFrames = 0;
+            double aggSeconds = 0;
+            int aggSessions = 0;
+            DateTime? aggLastImaged = null;
+
+            foreach (var tgt in proj.Targets) {
+                // Aggregate stats from NS DB (if available)
+                List<TargetSessionDetail> tgtSessions = db2 != null
+                    ? db2.GetSessionsForTarget(tgt.Name)
+                    : new List<TargetSessionDetail>();
+
+                double totalSec    = tgtSessions.Sum(s => s.IntegrationSeconds);
+                int    totFrames   = tgtSessions.Sum(s => s.AcceptedFrames);
+                int    sessCount   = tgtSessions.Count;
+                DateTime? lastImg  = tgtSessions.Count > 0
+                    ? tgtSessions.Max(s => s.SessionStart) as DateTime?
+                    : null;
+
+                aggFrames   += totFrames;
+                aggSeconds  += totalSec;
+                aggSessions += sessCount;
+                if (lastImg.HasValue && (aggLastImaged == null || lastImg.Value > aggLastImaged.Value))
+                    aggLastImaged = lastImg;
+
+                // Camera data: use the most recent session for this target that has valid camera fields
+                SessionRecord bestSession = null;
+                foreach (var tsd in tgtSessions) {
+                    if (sessionById.TryGetValue(tsd.SessionId, out var sr) &&
+                        sr.CamXSize > 0 && sr.PixelSizeMicrons > 0 && sr.FocalLengthMm > 0) {
+                        if (bestSession == null || sr.SessionStart > bestSession.SessionStart)
+                            bestSession = sr;
+                    }
+                }
+
+                // Compute FOV if camera data is available
+                // PixelScale (arcsec/px) = (PixelSizeMicrons / FocalLengthMm) * 206.265
+                double? pixelScale      = null;
+                double? fovWidthDeg     = null;
+                double? fovHeightDeg    = null;
+                int?    camXSize        = null;
+                int?    camYSize        = null;
+                double? pixelSizeMicrons = null;
+                double? focalLengthMm   = null;
+
+                if (bestSession != null) {
+                    camXSize         = bestSession.CamXSize;
+                    camYSize         = bestSession.CamYSize;
+                    pixelSizeMicrons = bestSession.PixelSizeMicrons;
+                    focalLengthMm    = bestSession.FocalLengthMm;
+                    pixelScale       = Math.Round((bestSession.PixelSizeMicrons / bestSession.FocalLengthMm) * 206.265, 4);
+                    fovWidthDeg      = Math.Round(bestSession.CamXSize  * pixelScale.Value / 3600.0, 4);
+                    fovHeightDeg     = Math.Round(bestSession.CamYSize * pixelScale.Value / 3600.0, 4);
+                }
+
+                // Most recent plate-solve position angle for this target
+                latestPaByTarget.TryGetValue(tgt.Name ?? "", out var plateAngle);
+
+                panels.Add(new {
+                    guid             = tgt.Guid,
+                    name             = tgt.Name,
+                    active           = tgt.Active,
+                    ra               = tgt.RA,
+                    dec              = tgt.Dec,
+                    rotation         = tgt.Rotation,
+                    positionAngle    = plateAngle,
+                    totalIntegrationHours = Math.Round(totalSec / 3600.0, 2),
+                    acceptedFrames   = totFrames,
+                    sessionCount     = sessCount,
+                    lastImaged       = lastImg.HasValue ? lastImg.Value.ToString("o") : (string)null,
+                    camXSize,
+                    camYSize,
+                    pixelSizeMicrons,
+                    focalLengthMm,
+                    pixelScaleArcSec = pixelScale,
+                    fovWidthDeg,
+                    fovHeightDeg,
+                    filters          = tgtSessions.SelectMany(s => s.Filters)
+                        .GroupBy(f => f.Filter)
+                        .Select(g => new {
+                            filter             = g.Key,
+                            totalHours         = Math.Round(g.Sum(f => f.IntegrationSeconds) / 3600.0, 2),
+                            acceptedFrames     = g.Sum(f => f.AcceptedFrames),
+                        })
+                        .OrderByDescending(f => f.totalHours)
+                        .ToList(),
+                });
+            }
+
+            int totalDesiredProj = proj.Targets.SelectMany(t => t.ExposurePlans).Sum(ep => ep.Desired);
+            int totalAcceptedProj = proj.Targets.SelectMany(t => t.ExposurePlans).Sum(ep => ep.Accepted);
+            double? projectPercent = totalDesiredProj > 0
+                ? Math.Round(Math.Min(100.0, (totalAcceptedProj * 100.0) / totalDesiredProj), 1)
+                : (double?)null;
+
+            var result = new {
+                project = new {
+                    guid            = proj.Guid,
+                    name            = proj.Name,
+                    description     = proj.Description,
+                    state           = effectiveState,
+                    rawState        = proj.State,
+                    isMosaic        = proj.IsMosaic,
+                    priority        = proj.Priority,
+                    createDate      = proj.CreateDate?.ToString("o"),
+                    activeDate      = proj.ActiveDate?.ToString("o"),
+                    inactiveDate    = proj.InactiveDate?.ToString("o"),
+                    minimumAltitude = proj.MinimumAltitude,
+                    maximumAltitude = proj.MaximumAltitude,
+                    percentComplete = projectPercent,
+                },
+                panels,
+                aggregate = new {
+                    totalIntegrationHours = Math.Round(aggSeconds / 3600.0, 2),
+                    acceptedFrames        = aggFrames,
+                    sessionCount          = aggSessions,
+                    lastImaged            = aggLastImaged.HasValue ? aggLastImaged.Value.ToString("o") : (string)null,
+                },
+            };
+
+            await WriteJson(res, 200, result);
+            done?.Invoke(200, $"project '{proj.Name}' ({proj.Targets.Count} panels)");
         }
 
         // ── Settings & Regeneration ──────────────────────────────────────────
