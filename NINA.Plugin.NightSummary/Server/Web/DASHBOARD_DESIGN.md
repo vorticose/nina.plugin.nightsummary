@@ -264,7 +264,9 @@ gets depth. Two base variants apply based on shape:
 
 Used on: `.subtitle` (sessions count), `.filter-bar .target-check` (toggle
 pills), `.target-dropdown-menu .target-check` (filter popover pills),
-`.card-target-badge`.
+`.card-target-badge`, `.targets-sort-pill`, `.targets-group-pill`,
+`.targets-status-chip`, `.tdp-row-link`, `.targets-project-mosaic-badge`,
+state/status badge pills.
 
 ```css
 box-shadow:
@@ -1009,6 +1011,66 @@ on `.target-check`).
 ---
 
 ## 16. Design Principles
+
+### Consult This Document First
+
+**Before implementing any new UI element, read this document.** It defines the
+exact values for every recurring pattern — pill shadows, translucent fills,
+text hierarchy, animation timing, etc. Implementing from memory or guessing at
+values leads to inconsistency. The correct workflow is:
+
+1. Find the pattern that matches your new element (pill, tile, badge, popup, etc.)
+2. Copy the exact values from this document
+3. Use CSS variables instead of hardcoded colors wherever possible
+4. If your element introduces a genuinely new pattern, add it here before shipping
+
+The pill style below is a prime example: every clickable pill in the dashboard
+uses identical `box-shadow`, `border-radius`, and translucent fill values.
+New pills should be built from that template, not invented ad-hoc.
+
+---
+
+### Translucent Pill Fill Pattern
+
+All interactive pills use a consistent translucent fill + 3D shadow treatment:
+
+**Inactive/resting state:**
+```css
+background: rgba(230,232,240,0.06);
+border: 1px solid rgba(230,232,240,0.12);
+color: var(--text-tertiary);
+box-shadow:
+  inset 0 1px 0 rgba(255,255,255,0.18),
+  inset 0 -1px 0 rgba(0,0,0,0.18),
+  0 2px 4px rgba(0,0,0,0.35),
+  0 1px 2px rgba(0,0,0,0.2);
+```
+
+**Hover state:**
+```css
+background: rgba(230,232,240,0.10);
+border-color: rgba(230,232,240,0.22);
+color: var(--text-secondary);
+```
+
+**Active/selected state (accent-colored):**
+```css
+background: rgba(var(--accent-rgb), 0.10);   /* --accent-rgb: 126,184,247 dark / 37,99,184 light */
+border-color: rgba(var(--accent-rgb), 0.28);
+color: var(--accent);
+```
+
+**Active hover:**
+```css
+background: rgba(var(--accent-rgb), 0.16);
+border-color: rgba(var(--accent-rgb), 0.40);
+```
+
+This pattern applies to: sort pills, group toggle, filter/status chips, filter
+bar toggle pills, TS detail view pill, mosaic badge, and any future pill-shaped
+interactive element.
+
+---
 
 ### Dark-First
 

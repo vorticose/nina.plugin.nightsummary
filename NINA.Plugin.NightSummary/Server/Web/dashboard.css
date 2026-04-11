@@ -1999,10 +1999,17 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   text-transform: uppercase;
   letter-spacing: 0.8px;
   font-weight: 600;
-  color: var(--text-tertiary);
-  padding: 2px 6px;
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 4px;
+  color: var(--text-secondary);
+  padding: 2px 8px;
+  background: rgba(230,232,240,0.07);
+  border: 1px solid rgba(230,232,240,0.16);
+  border-radius: 20px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.18),
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    0 2px 4px rgba(0,0,0,0.35),
+    0 1px 2px rgba(0,0,0,0.2);
+  flex-shrink: 0;
   flex-shrink: 0;
 }
 .targets-project-agg {
