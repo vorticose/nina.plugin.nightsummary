@@ -49,6 +49,24 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
         }
 
+        // Lazily-loaded metric-chart.js renderer source (embedded resource)
+        private static string? _metricChartJs;
+        private static string MetricChartJs {
+            get {
+                if (_metricChartJs != null) return _metricChartJs;
+                try {
+                    using var stream = Assembly.GetExecutingAssembly()
+                                               .GetManifestResourceStream("metric-chart.js");
+                    if (stream == null) { _metricChartJs = ""; return _metricChartJs; }
+                    using var reader = new System.IO.StreamReader(stream);
+                    _metricChartJs = reader.ReadToEnd();
+                } catch {
+                    _metricChartJs = "";
+                }
+                return _metricChartJs;
+            }
+        }
+
         // Filter classification and sorting delegated to FilterHelper
         private static bool IsBroadband(string filter) => FilterHelper.IsBroadband(filter);
         private static bool IsNarrowband(string filter) => FilterHelper.IsNarrowband(filter);
@@ -159,6 +177,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine(".iq-arrow::after { content: ' \\25B6'; font-size: 10px; color: var(--accent-light); }");
             sb.AppendLine("details.iq-row[open] .iq-arrow::after { content: ' \\25BC'; }");
             sb.AppendLine(".iq-expand { padding: 0 8px 8px; }");
+            // Metric chart filter selector
+            sb.AppendLine(".metric-chart-container { margin: 0 auto 16px; max-width: 800px; }");
+            sb.AppendLine(".ns-chart-filter-bar { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 0 auto 8px; }");
+            sb.AppendLine(".ns-chart-filter-btn { background: var(--surface); color: var(--muted); border: 1px solid var(--border); border-radius: 12px; padding: 3px 12px; font-size: 12px; font-family: inherit; cursor: pointer; transition: all 0.15s; }");
+            sb.AppendLine(".ns-chart-filter-btn:hover { border-color: var(--accent-light); color: var(--text); }");
+            sb.AppendLine(".ns-chart-filter-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: bold; }");
+            sb.AppendLine(".ns-chart-svg { width: 100%; }");
             sb.AppendLine("</style></head><body>");
 
             sb.Append(BuildHeader(data));
@@ -172,6 +197,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine("<p><em>No images were recorded during this session.</em></p>");
                 if (detailLevel >= 2) sb.Append(BuildNextNightPreviewSection(data));
                 sb.Append(BuildFooter());
+                AppendChartRendererScript(sb);
                 sb.AppendLine("</body></html>");
                 return sb.ToString();
             }
@@ -189,6 +215,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             if (detailLevel >= 2) sb.Append(BuildNextNightPreviewSection(data));
             sb.Append(BuildFooter());
 
+            AppendChartRendererScript(sb);
             sb.AppendLine("</body></html>");
 
             // Replace placeholder with warnings banner if any were collected during generation
@@ -993,7 +1020,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var markers = eventMarkers.Count > 0 ? eventMarkers : null;
 
                 sb.AppendLine($"<h2>{ChartGenerator.GetChartTitle(primary, secondary, xAxis)}</h2>");
-                sb.AppendLine(ChartGenerator.GenerateMetricChart(data.Images, primary, secondary, xAxis, markers));
+                EmitMetricChart(sb, data.Images, primary, secondary, xAxis, markers);
 
                 var additionalRaw = SettingsManager.Instance.Current.AdditionalChartConfigs;
                 if (!string.IsNullOrWhiteSpace(additionalRaw)) {
@@ -1004,7 +1031,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                             && int.TryParse(tokens[1], out int s)) {
                             int ax = tokens.Length >= 3 && int.TryParse(tokens[2], out int a) ? a : 0;
                             sb.AppendLine($"<h2>{ChartGenerator.GetChartTitle(p, s, ax)}</h2>");
-                            sb.AppendLine(ChartGenerator.GenerateMetricChart(data.Images, p, s, ax, markers));
+                            EmitMetricChart(sb, data.Images, p, s, ax, markers);
                         }
                     }
                 }
@@ -1012,6 +1039,50 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             sb.AppendLine("</div>");
             return sb.ToString();
+        }
+
+        // JSON serializer options for chart models: camelCase, no pretty-printing
+        // (size matters when this is embedded in every report), and don't escape
+        // HTML characters — they'll be inside a single-quoted attribute and we
+        // handle apostrophes explicitly in EmitMetricChart.
+        private static readonly JsonSerializerOptions ChartJsonOptions = new JsonSerializerOptions {
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            WriteIndented = false
+        };
+
+        /// <summary>
+        /// Emits one metric chart as a <c>&lt;div data-chart='...'&gt;</c> container
+        /// consumed by the metric-chart.js renderer. The JSON model carries all
+        /// points, axis metadata, event markers, and the distinct filter list for
+        /// the per-filter selector.
+        /// </summary>
+        private void EmitMetricChart(
+                StringBuilder sb,
+                List<ImageRecord> images,
+                int primary,
+                int secondary,
+                int xAxis,
+                List<(DateTime timestamp, string eventType, string description)>? markers) {
+            var model = ChartGenerator.BuildChartModel(images, primary, secondary, xAxis, markers);
+            var json  = JsonSerializer.Serialize(model, ChartJsonOptions);
+            // The container is wrapped in a single-quoted HTML attribute, so any
+            // apostrophes inside JSON strings (filter names, descriptions) need to
+            // be escaped. JSON uses double quotes for strings so &apos; is safe.
+            var attr = json.Replace("'", "&#39;");
+            sb.AppendLine($"<div class='metric-chart-container' data-chart='{attr}'></div>");
+        }
+
+        /// <summary>
+        /// Appends the metric-chart.js renderer source inside a &lt;script&gt; tag.
+        /// Called once, just before &lt;/body&gt;. The IIFE inside the renderer
+        /// auto-initializes all <c>[data-chart]</c> containers on DOMContentLoaded.
+        /// </summary>
+        private static void AppendChartRendererScript(StringBuilder sb) {
+            var js = MetricChartJs;
+            if (string.IsNullOrEmpty(js)) return;
+            sb.AppendLine("<script>");
+            sb.Append(js);
+            sb.AppendLine("</script>");
         }
 
         /// <summary>

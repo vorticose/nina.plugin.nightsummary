@@ -314,6 +314,156 @@ namespace NINA.Plugin.NightSummary.Reporting {
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Builds a JSON-ready <see cref="ChartModel"/> describing the chart.
+        /// This is the JS-renderer path: the model is serialized and embedded in the
+        /// HTML report as a data attribute, then rendered client-side. Same shape is
+        /// served by the dashboard API. No SVG is produced here.
+        /// </summary>
+        public static ChartModel BuildChartModel(
+                List<ImageRecord> images,
+                int primaryMetric,
+                int secondaryMetric,
+                int xAxisMetric = XAxisTime,
+                List<(DateTime timestamp, string eventType, string description)>? eventMarkers = null) {
+
+            var model = new ChartModel {
+                Width     = Width,
+                Height    = Height,
+                LightMode = IsLight,
+                Title     = GetChartTitle(primaryMetric, secondaryMetric, xAxisMetric),
+                Primary   = BuildPrimaryMetricInfo(images, primaryMetric),
+                XAxis     = BuildXAxisInfo(xAxisMetric)
+            };
+
+            if (secondaryMetric > SecNone)
+                model.Secondary = BuildSecondaryMetricInfo(images, secondaryMetric);
+
+            // Data extraction — same join logic as GenerateMetricChart so the JS
+            // renderer operates on the same point set the SVG renderer would have.
+            var primaryRaw   = ExtractPrimary(images, primaryMetric);
+            var secondaryRaw = secondaryMetric > SecNone
+                ? ExtractSecondary(images, secondaryMetric)
+                : new List<(DateTime t, double v)>();
+            var xByTime = BuildXAxisLookup(images, xAxisMetric);
+
+            // Filter lookup so each point carries its filter name for the selector UI.
+            var filterByTime = new Dictionary<DateTime, string>();
+            foreach (var img in images.OrderBy(i => i.Timestamp)) {
+                filterByTime[img.Timestamp] = img.Filter ?? "";
+            }
+
+            model.PrimaryPoints   = BuildPointList(primaryRaw,   xByTime, filterByTime);
+            model.SecondaryPoints = BuildPointList(secondaryRaw, xByTime, filterByTime);
+
+            // Event markers — precompute xValue (seconds since session start) so the
+            // JS renderer doesn't need to rerun time math on every re-render.
+            if (eventMarkers != null && eventMarkers.Count > 0 && images.Count > 0) {
+                var minTime = images.OrderBy(i => i.Timestamp).First().Timestamp;
+                foreach (var (ts, evtType, desc) in eventMarkers) {
+                    double xSec = (ts - minTime).TotalSeconds;
+                    var label = evtType switch {
+                        "AutoFocus"    => "AF",
+                        "MeridianFlip" => "MF",
+                        "RoofOpen"     => "S",
+                        _              => "US"
+                    };
+                    model.EventMarkers.Add(new ChartEventMarker {
+                        Timestamp   = ts,
+                        XValue      = xSec,
+                        Type        = evtType,
+                        Label       = label,
+                        Description = desc ?? evtType
+                    });
+                }
+            }
+
+            // Distinct filters in FilterHelper sort order (L, R, G, B, Ha, Sii, Oiii, …).
+            var allPts = model.PrimaryPoints.Concat(model.SecondaryPoints);
+            model.Filters = allPts
+                .Select(p => p.Filter)
+                .Where(f => !string.IsNullOrEmpty(f))
+                .Distinct()
+                .OrderBy(FilterHelper.SortKey)
+                .ThenBy(f => f)
+                .ToList();
+
+            return model;
+        }
+
+        private static ChartMetricInfo BuildPrimaryMetricInfo(List<ImageRecord> images, int metric) {
+            var info = new ChartMetricInfo {
+                Index     = metric,
+                Label     = GetPrimaryLabel(metric),
+                AxisLabel = GetPrimaryAxisLabel(metric),
+                Unit      = GetTooltipUnit(metric, true),
+                Format    = GetValueFormat(metric, true),
+                MinSpan   = GetPrimaryMinSpan(metric)
+            };
+            // Pre-populate the no-data message when there's globally insufficient data —
+            // saves the JS renderer from having a lookup table of its own.
+            int valid = ExtractPrimary(images, metric).Count;
+            if (valid < 2) {
+                info.NoDataMessage = GetPrimaryNoDataMsg(metric);
+                info.NoDataHint    = GetPrimaryNoDataHint(metric);
+            }
+            return info;
+        }
+
+        private static ChartMetricInfo BuildSecondaryMetricInfo(List<ImageRecord> images, int metric) {
+            var info = new ChartMetricInfo {
+                Index     = metric,
+                Label     = GetSecondaryLabel(metric),
+                AxisLabel = GetSecondaryAxisLabel(metric),
+                Unit      = GetTooltipUnit(metric, false),
+                Format    = GetValueFormat(metric, false),
+                MinSpan   = GetSecondaryMinSpan(metric)
+            };
+            int valid = ExtractSecondary(images, metric).Count;
+            if (valid < 2) {
+                info.NoDataMessage = GetSecondaryNoDataMsg(metric);
+                info.NoDataHint    = GetSecondaryNoDataHint(metric);
+            }
+            return info;
+        }
+
+        private static ChartXAxisInfo BuildXAxisInfo(int xAxisMetric) {
+            var info = new ChartXAxisInfo {
+                Mode  = xAxisMetric,
+                Label = GetXAxisLabel(xAxisMetric)
+            };
+            if (xAxisMetric == XAxisTime) {
+                info.AxisLabel = "";  // Time axis draws no bottom label
+            } else if (xAxisMetric == XAxisFrameIndex) {
+                info.AxisLabel = "Frame #";
+            } else {
+                int primaryIdx = xAxisMetric - XAxisMetricOffset;
+                info.AxisLabel = GetPrimaryAxisLabel(primaryIdx);
+                info.Format    = GetValueFormat(primaryIdx, true);
+                info.Unit      = GetTooltipUnit(primaryIdx, true);
+            }
+            return info;
+        }
+
+        private static List<ChartPoint> BuildPointList(
+                List<(DateTime t, double v)> yData,
+                Dictionary<DateTime, double> xByTime,
+                Dictionary<DateTime, string> filterByTime) {
+            var list = new List<ChartPoint>(yData.Count);
+            foreach (var (t, v) in yData) {
+                if (!xByTime.TryGetValue(t, out double x)) continue;
+                filterByTime.TryGetValue(t, out var filter);
+                list.Add(new ChartPoint {
+                    X         = x,
+                    Y         = v,
+                    Filter    = filter ?? "",
+                    Timestamp = t
+                });
+            }
+            list.Sort((a, b) => a.X.CompareTo(b.X));
+            return list;
+        }
+
         // ── X-axis helpers ──────────────────────────────────────────────────
 
         /// <summary>
