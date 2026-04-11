@@ -265,6 +265,12 @@ namespace NINA.Plugin.NightSummary.Server {
                         await HandleGetSession(res, sessionId, done);
                     } else if (path == "/api/stats/targets") {
                         await HandleGetTargetStats(res, done);
+                    } else if (path.StartsWith("/api/stats/targets/") && path.EndsWith("/sessions")) {
+                        var prefix = "/api/stats/targets/";
+                        var suffix = "/sessions";
+                        var encoded = path.Substring(prefix.Length, path.Length - prefix.Length - suffix.Length);
+                        var targetName = WebUtility.UrlDecode(encoded);
+                        await HandleGetTargetSessions(res, targetName, done);
                     } else if (path == "/api/stats/summary") {
                         await HandleGetStatsSummary(res, done);
                     } else if (path == "/api/filters") {
@@ -1082,6 +1088,76 @@ namespace NINA.Plugin.NightSummary.Server {
 
             await WriteJson(res, 200, new { targets = result });
             done?.Invoke(200, $"{result.Count} targets");
+        }
+
+        private async Task HandleGetTargetSessions(HttpListenerResponse res, string targetName, Action<int, string> done) {
+            if (!File.Exists(dbPath)) {
+                await WriteJson(res, 200, new { target = targetName, sessions = Array.Empty<object>() });
+                done?.Invoke(200, "0 sessions (no db)");
+                return;
+            }
+
+            var db = new SessionDatabase(dbPath);
+            var sessions = db.GetSessionsForTarget(targetName);
+
+            // Parse moon phase from each session's report HTML (same pattern as HandleGetSessions)
+            var moonBySessionId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var s in sessions) {
+                var reportPath = Path.Combine(reportsDir, $"{s.SessionId}.html");
+                if (!File.Exists(reportPath)) continue;
+                try {
+                    var html = File.ReadAllText(reportPath);
+                    var moonMatch = Regex.Match(html, @"<div class='stat-value'>(\d+%\s*[^\<]*)</div>\s*<div class='stat-label'>Moon</div>");
+                    if (moonMatch.Success) {
+                        moonBySessionId[s.SessionId] = Regex.Replace(
+                            WebUtility.HtmlDecode(moonMatch.Groups[1].Value), @"\s+", " ").Trim();
+                    }
+                } catch { }
+            }
+
+            // Aggregate totals across all sessions
+            var totalSeconds = sessions.Sum(s => s.IntegrationSeconds);
+            var totalFrames  = sessions.Sum(s => s.AcceptedFrames);
+            var firstSession = sessions.Count > 0 ? sessions.Min(s => s.SessionStart) : DateTime.MinValue;
+            var lastSession  = sessions.Count > 0 ? sessions.Max(s => s.SessionStart) : DateTime.MinValue;
+            var avgHFR       = sessions.Where(s => s.AvgHFR > 0).Select(s => s.AvgHFR).DefaultIfEmpty(0).Average();
+            var avgGuide     = sessions.Where(s => s.AvgGuidingRMS > 0).Select(s => s.AvgGuidingRMS).DefaultIfEmpty(0).Average();
+
+            var result = new {
+                target           = targetName,
+                totalIntegrationHours = Math.Round(totalSeconds / 3600.0, 2),
+                totalFrames,
+                sessionCount     = sessions.Count,
+                firstSession     = firstSession > DateTime.MinValue ? firstSession.ToString("o") : null,
+                lastSession      = lastSession  > DateTime.MinValue ? lastSession.ToString("o")  : null,
+                avgHFR           = avgHFR   > 0 ? (double?)Math.Round(avgHFR,   2) : null,
+                avgGuidingRMS    = avgGuide > 0 ? (double?)Math.Round(avgGuide, 2) : null,
+                sessions = sessions.Select(s => new {
+                    sessionId             = s.SessionId,
+                    sessionStart          = s.SessionStart.ToString("o"),
+                    sessionEnd            = s.SessionEnd.ToString("o"),
+                    durationMinutes       = (int)Math.Round((s.SessionEnd - s.SessionStart).TotalMinutes),
+                    integrationHours      = Math.Round(s.IntegrationSeconds / 3600.0, 2),
+                    integrationSeconds    = s.IntegrationSeconds,
+                    frames                = s.AcceptedFrames,
+                    totalFrames           = s.FrameCount,
+                    avgHFR                = s.AvgHFR        > 0 ? (double?)s.AvgHFR        : null,
+                    avgGuidingRMS         = s.AvgGuidingRMS > 0 ? (double?)s.AvgGuidingRMS : null,
+                    moonPhase             = moonBySessionId.TryGetValue(s.SessionId, out var m) ? m : null,
+                    filters = s.Filters.Select(f => new {
+                        filter             = f.Filter,
+                        integrationSeconds = f.IntegrationSeconds,
+                        integrationHours   = Math.Round(f.IntegrationSeconds / 3600.0, 2),
+                        frames             = f.AcceptedFrames,
+                        totalFrames        = f.FrameCount,
+                        avgHFR             = f.AvgHFR        > 0 ? (double?)f.AvgHFR        : null,
+                        avgGuidingRMS      = f.AvgGuidingRMS > 0 ? (double?)f.AvgGuidingRMS : null,
+                    })
+                })
+            };
+
+            await WriteJson(res, 200, result);
+            done?.Invoke(200, $"{sessions.Count} sessions for '{targetName}'");
         }
 
         // ── Settings & Regeneration ──────────────────────────────────────────

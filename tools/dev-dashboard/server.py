@@ -196,8 +196,145 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.serve_file(filepath, "application/json")
             return
 
+        # /api/stats/targets/{name}/sessions — built on the fly from snapshot data
+        if len(parts) == 6 and parts[1] == "api" and parts[2] == "stats" and parts[3] == "targets" and parts[5] == "sessions":
+            import urllib.parse
+            target_name = urllib.parse.unquote(parts[4])
+            self.serve_target_sessions(target_name)
+            return
+
         # Not found
         self.send_json(404, {"error": f"Not found: {path}"})
+
+    def serve_target_sessions(self, target_name):
+        """Build per-session detail for a target by aggregating the snapshot image files."""
+        try:
+            sessions_path = os.path.join(self.data_dir, "sessions.json")
+            if not os.path.isfile(sessions_path):
+                self.send_json(200, {"target": target_name, "sessions": []})
+                return
+            with open(sessions_path, "r", encoding="utf-8") as f:
+                all_sessions = json.load(f)
+
+            target_lower = target_name.lower()
+            result_sessions = []
+
+            for s in all_sessions:
+                sid = s.get("sessionId")
+                if not sid:
+                    continue
+                # Only sessions that imaged this target
+                targets = [t.lower() for t in (s.get("targets") or [])]
+                if target_lower not in targets:
+                    continue
+
+                images_path = os.path.join(self.data_dir, "sessions", sid, "images.json")
+                if not os.path.isfile(images_path):
+                    continue
+                with open(images_path, "r", encoding="utf-8") as f:
+                    imgs = json.load(f)
+
+                # Only LIGHT frames for this target
+                matching = [
+                    i for i in imgs
+                    if (i.get("targetName") or "").lower() == target_lower
+                    and (i.get("imageType") in (None, "", "LIGHT"))
+                ]
+                if not matching:
+                    continue
+
+                # Session-level aggregates
+                accepted = [i for i in matching if i.get("accepted")]
+                integ_sec = sum(float(i.get("exposureDuration") or 0) for i in accepted)
+                hfrs = [i["hfr"] for i in accepted if i.get("hfr") and i["hfr"] > 0]
+                guides = [i["guidingRmsTotal"] for i in accepted if i.get("guidingRmsTotal") and i["guidingRmsTotal"] > 0]
+                avg_hfr = sum(hfrs) / len(hfrs) if hfrs else None
+                avg_guide = sum(guides) / len(guides) if guides else None
+
+                # Per-filter breakdown
+                by_filter = {}
+                for i in matching:
+                    f_name = i.get("filter") or "Unknown"
+                    fe = by_filter.setdefault(f_name, {
+                        "filter": f_name, "integrationSeconds": 0.0,
+                        "frames": 0, "totalFrames": 0,
+                        "_hfrs": [], "_guides": []
+                    })
+                    fe["totalFrames"] += 1
+                    if i.get("accepted"):
+                        fe["frames"] += 1
+                        fe["integrationSeconds"] += float(i.get("exposureDuration") or 0)
+                        if i.get("hfr") and i["hfr"] > 0:
+                            fe["_hfrs"].append(i["hfr"])
+                        if i.get("guidingRmsTotal") and i["guidingRmsTotal"] > 0:
+                            fe["_guides"].append(i["guidingRmsTotal"])
+
+                filters_out = []
+                for f_name, fe in by_filter.items():
+                    fh = sum(fe["_hfrs"]) / len(fe["_hfrs"]) if fe["_hfrs"] else None
+                    fg = sum(fe["_guides"]) / len(fe["_guides"]) if fe["_guides"] else None
+                    filters_out.append({
+                        "filter": f_name,
+                        "integrationSeconds": fe["integrationSeconds"],
+                        "integrationHours": round(fe["integrationSeconds"] / 3600.0, 2),
+                        "frames": fe["frames"],
+                        "totalFrames": fe["totalFrames"],
+                        "avgHFR": round(fh, 2) if fh else None,
+                        "avgGuidingRMS": round(fg, 2) if fg else None,
+                    })
+                filters_out.sort(key=lambda x: -x["integrationSeconds"])
+
+                # Session duration in minutes (from session start/end strings)
+                start_str = s.get("sessionStart")
+                end_str = s.get("sessionEnd")
+                dur_min = 0
+                try:
+                    if start_str and end_str:
+                        d1 = datetime.datetime.fromisoformat(start_str)
+                        d2 = datetime.datetime.fromisoformat(end_str)
+                        dur_min = int(round((d2 - d1).total_seconds() / 60.0))
+                except Exception:
+                    pass
+
+                result_sessions.append({
+                    "sessionId": sid,
+                    "sessionStart": start_str,
+                    "sessionEnd": end_str,
+                    "durationMinutes": dur_min,
+                    "integrationHours": round(integ_sec / 3600.0, 2),
+                    "integrationSeconds": integ_sec,
+                    "frames": len(accepted),
+                    "totalFrames": len(matching),
+                    "avgHFR": round(avg_hfr, 2) if avg_hfr else None,
+                    "avgGuidingRMS": round(avg_guide, 2) if avg_guide else None,
+                    "moonPhase": s.get("moonPhase"),
+                    "filters": filters_out,
+                })
+
+            # Sort newest-first
+            result_sessions.sort(key=lambda x: x["sessionStart"] or "", reverse=True)
+
+            # Overall aggregates
+            total_sec = sum(x["integrationSeconds"] for x in result_sessions)
+            total_frames = sum(x["frames"] for x in result_sessions)
+            all_hfrs = [x["avgHFR"] for x in result_sessions if x["avgHFR"]]
+            all_guides = [x["avgGuidingRMS"] for x in result_sessions if x["avgGuidingRMS"]]
+            first_sess = min((x["sessionStart"] for x in result_sessions if x["sessionStart"]), default=None)
+            last_sess = max((x["sessionStart"] for x in result_sessions if x["sessionStart"]), default=None)
+
+            self.send_json(200, {
+                "target": target_name,
+                "totalIntegrationHours": round(total_sec / 3600.0, 2),
+                "totalFrames": total_frames,
+                "sessionCount": len(result_sessions),
+                "firstSession": first_sess,
+                "lastSession": last_sess,
+                "avgHFR": round(sum(all_hfrs) / len(all_hfrs), 2) if all_hfrs else None,
+                "avgGuidingRMS": round(sum(all_guides) / len(all_guides), 2) if all_guides else None,
+                "sessions": result_sessions,
+            })
+        except Exception as e:
+            self.send_json(500, {"error": f"target sessions: {e}"})
 
     def do_GET(self):
         self.route("GET")
