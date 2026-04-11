@@ -1909,8 +1909,8 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   height: 28px;
   padding: 0 10px;
   border-radius: 20px;
-  background: none;
-  border: 1px solid rgba(230,232,240,0.10);
+  background: rgba(230,232,240,0.06);
+  border: 1px solid rgba(230,232,240,0.12);
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -1919,16 +1919,26 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   color: var(--text-tertiary);
   font-family: inherit;
   cursor: pointer;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.18),
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    0 2px 4px rgba(0,0,0,0.35),
+    0 1px 2px rgba(0,0,0,0.2);
   transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
 }
 .targets-status-chip:hover {
-  background: rgba(230,232,240,0.08);
-  border-color: rgba(230,232,240,0.20);
+  background: rgba(230,232,240,0.10);
+  border-color: rgba(230,232,240,0.22);
   color: var(--text-secondary);
 }
 .targets-status-chip.active {
-  border-color: rgba(230,232,240,0.18);
-  color: var(--text-primary);
+  background: rgba(126,184,247,0.10);
+  border-color: rgba(126,184,247,0.28);
+  color: var(--accent);
+}
+.targets-status-chip.active:hover {
+  background: rgba(126,184,247,0.16);
+  border-color: rgba(126,184,247,0.40);
 }
 .status-chip-dot {
   width: 7px;
