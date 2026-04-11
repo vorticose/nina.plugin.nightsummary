@@ -260,6 +260,13 @@ namespace NINA.Plugin.NightSummary {
                 try {
                     await StartLocalServerAsync();
                     LocalServerStatus.Text = "✓ Running";
+                    // Persist the intent so the server auto-starts on next NINA launch.
+                    // Keeps the Start button and the "Enable Local Dashboard" checkbox in sync.
+                    if (!S.LocalServerEnabled) {
+                        S.LocalServerEnabled = true;
+                        SaveSettings();
+                        RaisePropertyChanged(nameof(LocalServerEnabled));
+                    }
                     RaisePropertyChanged(nameof(IsLocalServerRunning));
                     RaisePropertyChanged(nameof(LocalServerUrl));
                     RaisePropertyChanged(nameof(TailscaleUrl));
@@ -273,6 +280,12 @@ namespace NINA.Plugin.NightSummary {
                 LocalServerStatus.Text = "";
                 await StopLocalServerAsync();
                 LocalServerStatus.Text = "Stopped";
+                // Clear the auto-start flag too so the server stays off across restarts.
+                if (S.LocalServerEnabled) {
+                    S.LocalServerEnabled = false;
+                    SaveSettings();
+                    RaisePropertyChanged(nameof(LocalServerEnabled));
+                }
                 RaisePropertyChanged(nameof(IsLocalServerRunning));
                 RaisePropertyChanged(nameof(LocalServerUrl));
                 RaisePropertyChanged(nameof(TailscaleUrl));

@@ -343,6 +343,17 @@ function renderTargetCard(t, index) {
   if (sessionCount > 0) {
     html += '<span class="target-card-session-badge">' + sessionCount + '\u00a0session' + (sessionCount !== 1 ? 's' : '') + '</span>';
   }
+  // Phase 3a: TS state badge (top-left) when the target is linked to a TS project
+  if (t.ts && t.ts.project) {
+    var state    = t.ts.project.state || 'Draft';
+    var overridden = t.ts.project.stateSource === 'override';
+    html += '<span class="target-card-ts-badge" data-state="' + esc(state) +
+            '" data-project-guid="' + esc(t.ts.project.guid || '') +
+            '" data-target="' + esc(t.target) + '" title="Click to override status">' +
+            esc(state) +
+            (overridden ? '<span class="override-mark" title="User override active"></span>' : '') +
+            '</span>';
+  }
   html += '<div class="target-card-name-overlay">' + esc(t.target) + '</div>';
   html += '</div>';
 
@@ -662,7 +673,7 @@ function renderTargetChart(sessionsDesc, widthPx) {
   return { svg: svg, filtersUsed: filtersUsedList };
 }
 
-function renderTargetDetailPanel(data, targetName) {
+function renderTargetDetailPanel(data, targetName, ts) {
   var initial = targetName ? targetName.charAt(0).toUpperCase() : '?';
   var totalHrs = data.totalIntegrationHours != null ? data.totalIntegrationHours.toFixed(1) : '--';
   var hrsLabel = '<div class="tdp-kpi-val">' + esc(totalHrs) + '<span class="unit">h</span></div>';
@@ -740,9 +751,13 @@ function renderTargetDetailPanel(data, targetName) {
         '<td>' + esc(sHFR) + '</td>' +
         '<td>' + esc(sGuide) + '</td>' +
         '<td>' + esc(s.moonPhase || '--') + '</td>' +
-        '<td><span class="tdp-row-link" data-session-id="' + esc(s.sessionId || '') + '">view \u2197</span></td>' +
+        '<td><span class="tdp-row-link" data-session-id="' + esc(s.sessionId || '') + '">View</span></td>' +
       '</tr>' + subRows;
   }).join('');
+
+  // Phase 3a: project section (rendered if target is linked to a TS project, or an
+  // "unlinked" CTA if TS is available but no match was found).
+  var projectSectionHtml = renderTsProjectSection(ts, targetName);
 
   // Chart is injected after the panel is in the DOM (so we can measure width).
   // sessions data is stashed on the wrapper via a data attribute handled in JS.
@@ -760,6 +775,7 @@ function renderTargetDetailPanel(data, targetName) {
         '</div>' +
       '</div>' +
       '<div class="tdp-body">' +
+        projectSectionHtml +
         '<div class="tdp-section-title">Integration Over Time</div>' +
         '<div class="tdp-chart-wrap">' +
           '<div class="tdp-chart-svg"></div>' +
@@ -772,6 +788,124 @@ function renderTargetDetailPanel(data, targetName) {
         '</table>' +
       '</div>' +
     '</div>';
+}
+
+// ── Phase 3a: TS project section in target detail panel ───────────────────
+
+function renderTsProjectSection(ts, targetName) {
+  // Not shown when TS data isn't available at all
+  if (statsTsStatus !== 'available') return '';
+
+  // Unlinked target: show CTA to link manually
+  if (!ts || !ts.project) {
+    return '<div class="tdp-project-unlinked">' +
+      '<div>No Target Scheduler project linked to <strong>' + esc(targetName) + '</strong>.</div>' +
+      '<button type="button" class="tdp-project-action-btn" data-action="link-ts">Link to TS target\u2026</button>' +
+    '</div>';
+  }
+
+  var proj = ts.project;
+  var tgt  = ts.target || {};
+  var goals = ts.goals || [];
+
+  // Per-filter progress rows — primary sort by filter type (stack order),
+  // secondary by exposure length descending so "R 300s" shows above "R 5s".
+  var STACK_ORDER = ['L', 'R', 'G', 'B', 'H', 'S', 'O', 'N'];
+  var sortedGoals = goals.slice().sort(function(a, b) {
+    var ai = STACK_ORDER.indexOf(resolveFilterType(a.filter) || '');
+    var bi = STACK_ORDER.indexOf(resolveFilterType(b.filter) || '');
+    if (ai < 0) ai = STACK_ORDER.length;
+    if (bi < 0) bi = STACK_ORDER.length;
+    if (ai !== bi) return ai - bi;
+    return (b.exposureSec || 0) - (a.exposureSec || 0);
+  });
+
+  // Regex fallback when exposureSec is missing from the API response.
+  // Most TS users name templates with a trailing "300s" or "5s" pattern.
+  function extractExposureFromTemplate(name) {
+    if (!name) return 0;
+    var m = String(name).match(/(\d+)\s*s\b/i);
+    return m ? parseInt(m[1], 10) : 0;
+  }
+
+  var rows = sortedGoals.map(function(g) {
+    var pct = g.percentComplete;
+    var over = pct != null && g.accepted > g.desired;
+    var widthPct = pct != null ? Math.min(100, pct) : 0;
+    // Use the same color map as the stacked chart bars (L is off-white).
+    var filterType = resolveFilterType(g.filter);
+    var fillColor = (filterType && FILTER_TYPE_CHART_COLORS[filterType]) || '#66BB6A';
+    // Always show the exposure length next to every filter pill. Prefer
+    // exposureSec from the API, fall back to extracting from templateName,
+    // and if we still can't parse it fall back to the raw template name.
+    var expSec = (g.exposureSec && g.exposureSec > 0)
+      ? g.exposureSec
+      : extractExposureFromTemplate(g.templateName);
+    var labelText = expSec > 0 ? (expSec + 's') : (g.templateName || '');
+    var labelHtml = labelText
+      ? '<span class="tdp-progress-row-label-text">' + esc(labelText) + '</span>'
+      : '';
+    var tmplAttr = g.templateName ? ' data-template="' + esc(g.templateName) + '"' : '';
+    return '<div class="tdp-progress-row">' +
+      '<div class="tdp-progress-row-label"' + tmplAttr + '>' +
+        filterTypePill(g.filter) + labelHtml +
+      '</div>' +
+      '<div class="tdp-progress-bar-wrap' + (over ? ' over' : '') + '" style="--fill-color:' + fillColor + '"' + tmplAttr + '>' +
+        '<div class="tdp-progress-bar-fill" style="width:' + widthPct + '%"></div>' +
+      '</div>' +
+      '<div class="tdp-progress-row-count">' +
+        g.accepted + ' <span class="unit">/ ' + g.desired + '</span>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  // Metadata row (priority, altitude, created, activated)
+  var metaParts = [];
+  if (proj.priority)        metaParts.push('<span>Priority <strong>' + esc(proj.priority) + '</strong></span>');
+  if (proj.isMosaic)        metaParts.push('<span>Mosaic <strong>panel of ' + proj.targetCount + '</strong></span>');
+  if (proj.minimumAltitude) metaParts.push('<span>Min alt <strong>' + proj.minimumAltitude + '\u00b0</strong></span>');
+  if (proj.activeDate)      metaParts.push('<span>Started <strong>' + esc(fmtRelativeTime(proj.activeDate)) + '</strong></span>');
+  else if (proj.createDate) metaParts.push('<span>Created <strong>' + esc(fmtRelativeTime(proj.createDate)) + '</strong></span>');
+
+  var matchedByNote = ts.matchedBy === 'manual'
+    ? '<span style="color:var(--accent);">manually linked</span>'
+    : '';
+
+  var overallPct = proj.percentComplete != null ? proj.percentComplete.toFixed(1) + '%' : '\u2014';
+
+  return '<div class="tdp-project-section">' +
+    '<div class="tdp-project-header">' +
+      '<div class="tdp-project-name">' + esc(proj.name || 'TS Project') +
+        (proj.isMosaic ? ' <span style="font-size:9px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.8px;font-weight:600;">\u00b7 Mosaic</span>' : '') +
+      '</div>' +
+      '<span class="tdp-project-state-pill" data-state="' + esc(proj.state || 'Draft') +
+        '" data-project-guid="' + esc(proj.guid || '') + '" title="Click to override status">' +
+        esc(proj.state || 'Draft') +
+        (proj.stateSource === 'override' ? ' \u00b7' : '') +
+      '</span>' +
+    '</div>' +
+    (metaParts.length ? '<div class="tdp-project-meta-row">' + metaParts.join('') + (matchedByNote ? '<span>' + matchedByNote + '</span>' : '') + '</div>' : '') +
+    (rows
+      ? '<div class="tdp-project-progress-grid">' + rows +
+          (proj.percentComplete != null
+            ? '<div class="tdp-overall-separator"></div>' +
+              '<div class="tdp-progress-row tdp-progress-row-overall">' +
+                '<div class="tdp-progress-row-label"><span class="tdp-progress-row-label-text tdp-overall-label">Overall</span></div>' +
+                '<div class="tdp-progress-bar-wrap tdp-overall-bar-wrap' + (proj.percentComplete > 100 ? ' over' : '') + '">' +
+                  '<div class="tdp-progress-bar-fill tdp-overall-bar-fill" style="width:' + Math.min(proj.percentComplete, 100).toFixed(1) + '%"></div>' +
+                '</div>' +
+                '<strong class="tdp-progress-row-count tdp-overall-count">' + overallPct + '</strong>' +
+              '</div>'
+            : '') +
+        '</div>'
+      : '<div style="color:var(--text-tertiary);font-size:11px;">No exposure plans defined for this target.</div>') +
+    '<div class="tdp-project-actions">' +
+      '<button type="button" class="tdp-project-action-btn" data-action="link-ts">Change TS link\u2026</button>' +
+      (ts.matchedBy === 'manual'
+        ? '<button type="button" class="tdp-project-action-btn" data-action="unlink-ts">Clear manual link</button>'
+        : '') +
+    '</div>' +
+  '</div>';
 }
 
 // Measure the chart container and render the SVG + HTML legend into it.
@@ -856,6 +990,30 @@ function bindTargetDetailEvents(backdrop, targetName) {
       window.open('/api/sessions/' + encodeURIComponent(sid) + '/report', '_blank', 'noopener');
     });
   });
+
+  // Phase 3a: project state pill (override dropdown), link-ts + unlink buttons
+  var statePill = backdrop.querySelector('.tdp-project-state-pill');
+  if (statePill) {
+    statePill.addEventListener('click', function(e) {
+      e.stopPropagation();
+      openTsOverrideDropdown(statePill);
+    });
+  }
+  backdrop.querySelectorAll('.tdp-project-action-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var action = btn.getAttribute('data-action');
+      if (action === 'link-ts') {
+        openTsLinkPicker(targetName);
+      } else if (action === 'unlink-ts') {
+        applyTsTargetLink(targetName, '', function() {
+          // Close and re-open the panel with refreshed data
+          closeTargetDetail();
+          renderStats();
+        });
+      }
+    });
+  });
 }
 
 // Load the thumbnail for the panel header from the latest session's thumbnails
@@ -892,6 +1050,17 @@ function loadTargetDetailThumb(targetName, latestSessionId) {
   }).catch(function() { /* leave placeholder */ });
 }
 
+// Look up the TS payload for a target by name from the current statsTargetData cache.
+function findTsForTarget(targetName) {
+  if (!statsTargetData || !targetName) return null;
+  var lower = targetName.toLowerCase();
+  for (var i = 0; i < statsTargetData.length; i++) {
+    var t = statsTargetData[i];
+    if (t && t.target && t.target.toLowerCase() === lower) return t.ts || null;
+  }
+  return null;
+}
+
 function openTargetDetail(targetName, latestSessionId) {
   if (!targetName) return;
   // Close any existing panel first
@@ -910,12 +1079,14 @@ function openTargetDetail(targetName, latestSessionId) {
   _tdpKeyHandler = function(e) { if (e.key === 'Escape') closeTargetDetail(); };
   document.addEventListener('keydown', _tdpKeyHandler);
 
+  var ts = findTsForTarget(targetName);
+
   api('/api/stats/targets/' + encodeURIComponent(targetName) + '/sessions').then(function(data) {
     // If the user closed it while loading, bail out
     var current = document.getElementById('tdp-backdrop');
     if (!current || current !== backdrop) return;
     backdrop.removeEventListener('click', loadClickHandler);
-    backdrop.innerHTML = renderTargetDetailPanel(data, targetName);
+    backdrop.innerHTML = renderTargetDetailPanel(data, targetName, ts);
     bindTargetDetailEvents(backdrop, targetName);
     loadTargetDetailThumb(targetName, latestSessionId);
     // Chart renders after the panel is in the DOM so we can measure available width.
@@ -1687,6 +1858,63 @@ function showTargetStatExpand(el, filters, type) {
 
 // Detect touch device once
 var isTouchDevice = 'ontouchstart' in window;
+
+// ── TS progress bar template name tooltip ────────────────────────────────
+(function() {
+  var tip = document.createElement('div');
+  tip.className = 'ts-bar-tip';
+  document.body.appendChild(tip);
+  var autoHide;
+
+  function show(text, target) {
+    clearTimeout(autoHide);
+    tip.textContent = text;
+    // Pre-position off-screen so we can measure dimensions before revealing
+    tip.style.top = '-9999px';
+    tip.style.left = '-9999px';
+    tip.classList.add('visible');
+    var r = target.getBoundingClientRect();
+    var tw = tip.offsetWidth;
+    var th = tip.offsetHeight;
+    var left = r.left + r.width / 2 - tw / 2;
+    left = Math.max(8, Math.min(left, window.innerWidth - tw - 8));
+    var top = r.top - th - 8;
+    if (top < 8) top = r.bottom + 8; // flip below if too close to top
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  }
+
+  function hide() {
+    clearTimeout(autoHide);
+    tip.classList.remove('visible');
+  }
+
+  // Desktop: show on hover
+  document.addEventListener('mouseover', function(e) {
+    if (isTouchDevice) return;
+    var el = e.target.closest('[data-template]');
+    if (el) show(el.dataset.template, el);
+  });
+  document.addEventListener('mouseout', function(e) {
+    if (isTouchDevice) return;
+    var el = e.target.closest('[data-template]');
+    if (el && !el.contains(e.relatedTarget)) hide();
+  });
+
+  // Mobile: tap to show; retap same element or tap elsewhere to hide
+  var activeEl = null;
+  document.addEventListener('click', function(e) {
+    if (!isTouchDevice) return;
+    var el = e.target.closest('[data-template]');
+    if (!el) { hide(); activeEl = null; return; }
+    if (tip.classList.contains('visible') && el === activeEl) {
+      hide(); activeEl = null; return;
+    }
+    activeEl = el;
+    show(el.dataset.template, el);
+    autoHide = setTimeout(function() { hide(); activeEl = null; }, 2500);
+  });
+})();
 
 // Event delegation for stat box hover expansion (desktop only)
 document.addEventListener('mouseenter', function(e) {
@@ -3191,6 +3419,10 @@ function pollRegenAllProgress(sessionId, regenBtn, regenAllBtn, statusEl) {
 // ── Stats Page ─────────────────────────────────────────────────────────────
 
 var statsTargetData = null;
+// Phase 3a: Target Scheduler integration state (populated by renderStats on each load)
+var statsTsStatus   = null;   // "available" | "not_installed" | "error" | null
+var statsTsError    = null;   // string or null
+var statsTsProjects = null;   // array of { guid, name, state, isMosaic, targetCount, targets: [{guid,name}] }
 
 function renderStatsTabContent(tabId) {
   var container = document.getElementById('stats-tab-content');
@@ -3204,7 +3436,8 @@ function renderStatsTabContent(tabId) {
     }
     var sortKey = getTargetSortKey();
     var sorted = sortTargets(targets, sortKey);
-    var html = renderTargetsSortBar(sortKey);
+    var html = renderTsStatusBanner();
+    html += renderTargetsSortBar(sortKey);
     html += '<div class="target-grid">';
     sorted.forEach(function(t, i) {
       html += renderTargetCard(t, i);
@@ -3214,23 +3447,265 @@ function renderStatsTabContent(tabId) {
     loadTargetThumbnails();
     initTargetsSortBar();
     initTargetCardClicks();
+    initTsBadgeClicks();
     requestAnimationFrame(fitTargetNameOverlays);
   }
 }
 
+// ── Phase 3a: TS status banner ─────────────────────────────────────────────
+
+function renderTsStatusBanner() {
+  if (statsTsStatus === 'available' || statsTsStatus == null) return '';
+  if (statsTsStatus === 'not_installed') {
+    // Silent when TS isn't installed — no banner, no clutter
+    return '';
+  }
+  if (statsTsStatus === 'error') {
+    var msg = statsTsError ? ' — ' + esc(statsTsError) : '';
+    return '<div class="ts-status-banner">Target Scheduler data unavailable' + msg + '. Project badges and goals will not appear until this is resolved.</div>';
+  }
+  return '';
+}
+
 // Card-level click handler: opens the target detail panel when a card is clicked
 // anywhere except the expandable Hours/Frames stat boxes (which have their own
-// per-filter hover popup and shouldn't trigger the panel).
+// per-filter hover popup and shouldn't trigger the panel) and the TS state badge
+// (which opens its own override dropdown).
 function initTargetCardClicks() {
   var cards = document.querySelectorAll('.target-card[data-target]');
   cards.forEach(function(card) {
     card.addEventListener('click', function(e) {
       if (e.target.closest('.target-stat-expandable')) return;
+      if (e.target.closest('.target-card-ts-badge')) return;
       var name = card.getAttribute('data-target');
       var sid = card.getAttribute('data-latest-session');
       openTargetDetail(name, sid);
     });
     card.style.cursor = 'pointer';
+  });
+}
+
+// ── Phase 3a: TS state badge click \u2192 override dropdown ────────────────────
+
+var TS_STATES = ['Active', 'Completed', 'Draft', 'Inactive', 'Closed'];
+
+function initTsBadgeClicks() {
+  var badges = document.querySelectorAll('.target-card-ts-badge');
+  badges.forEach(function(badge) {
+    badge.addEventListener('click', function(e) {
+      e.stopPropagation();
+      openTsOverrideDropdown(badge);
+    });
+  });
+}
+
+function closeTsOverrideDropdown() {
+  var existing = document.getElementById('ts-override-dropdown');
+  if (existing) {
+    existing.classList.remove('visible');
+    setTimeout(function() { if (existing.parentNode) existing.parentNode.removeChild(existing); }, 150);
+  }
+  document.removeEventListener('click', _tsOverrideOutsideHandler, true);
+  document.removeEventListener('keydown', _tsOverrideKeyHandler);
+}
+
+var _tsOverrideOutsideHandler = function(e) {
+  var dropdown = document.getElementById('ts-override-dropdown');
+  if (!dropdown) return;
+  if (dropdown.contains(e.target)) return;
+  if (e.target.closest('.target-card-ts-badge')) return;
+  closeTsOverrideDropdown();
+};
+var _tsOverrideKeyHandler = function(e) {
+  if (e.key === 'Escape') closeTsOverrideDropdown();
+};
+
+function openTsOverrideDropdown(anchorBadge) {
+  closeTsOverrideDropdown();
+  var projectGuid = anchorBadge.getAttribute('data-project-guid');
+  var currentState = anchorBadge.getAttribute('data-state');
+  if (!projectGuid) return;
+
+  var options = TS_STATES.map(function(state) {
+    var cls = 'ts-override-option' + (state === currentState ? ' selected' : '');
+    return '<div class="' + cls + '" data-state="' + esc(state) + '">' +
+      '<span class="state-dot"></span>' + esc(state) +
+      '</div>';
+  }).join('');
+
+  var html =
+    '<div class="ts-override-dropdown-header">Project status</div>' +
+    options +
+    '<div class="ts-override-reset" data-action="reset">Reset to TS value</div>';
+
+  var dropdown = document.createElement('div');
+  dropdown.id = 'ts-override-dropdown';
+  dropdown.className = 'ts-override-dropdown';
+  dropdown.setAttribute('data-project-guid', projectGuid);
+  dropdown.innerHTML = html;
+  document.body.appendChild(dropdown);
+
+  // Position below the badge, clamp to viewport
+  var rect = anchorBadge.getBoundingClientRect();
+  var top = rect.bottom + window.scrollY + 6;
+  var left = rect.left + window.scrollX;
+  dropdown.style.top = top + 'px';
+  dropdown.style.left = left + 'px';
+
+  requestAnimationFrame(function() {
+    var dr = dropdown.getBoundingClientRect();
+    if (dr.right > window.innerWidth - 12) {
+      dropdown.style.left = (window.innerWidth - dr.width - 12 + window.scrollX) + 'px';
+    }
+    if (dr.bottom > window.innerHeight - 12) {
+      // flip above if no room below
+      dropdown.style.top = (rect.top + window.scrollY - dr.height - 6) + 'px';
+    }
+    dropdown.classList.add('visible');
+  });
+
+  // Wire up click handlers
+  dropdown.querySelectorAll('.ts-override-option').forEach(function(opt) {
+    opt.addEventListener('click', function() {
+      applyTsStatusOverride(projectGuid, opt.getAttribute('data-state'));
+    });
+  });
+  var reset = dropdown.querySelector('.ts-override-reset');
+  if (reset) reset.addEventListener('click', function() {
+    applyTsStatusOverride(projectGuid, '');
+  });
+
+  // Dismiss on outside click or Escape
+  setTimeout(function() {
+    document.addEventListener('click', _tsOverrideOutsideHandler, true);
+    document.addEventListener('keydown', _tsOverrideKeyHandler);
+  }, 0);
+}
+
+function applyTsStatusOverride(projectGuid, status) {
+  closeTsOverrideDropdown();
+  fetch('/api/stats/ts/override', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectGuid: projectGuid, status: status || '' })
+  }).then(function(r) {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  }).then(function() {
+    // Reload stats data so all cards reflect the new state
+    logInfo('TS override applied:', projectGuid, '->', status || '(cleared)');
+    renderStats();
+  }).catch(function(err) {
+    logError('TS override failed:', err.message);
+  });
+}
+
+function applyTsTargetLink(sessionTargetName, tsTargetGuid, onDone) {
+  fetch('/api/stats/ts/link', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionTargetName: sessionTargetName, tsTargetGuid: tsTargetGuid || '' })
+  }).then(function(r) {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  }).then(function() {
+    logInfo('TS link applied:', sessionTargetName, '->', tsTargetGuid || '(cleared)');
+    if (onDone) onDone();
+  }).catch(function(err) {
+    logError('TS link failed:', err.message);
+  });
+}
+
+// ── TS Link picker modal ──────────────────────────────────────────────────
+
+function closeTsLinkPicker() {
+  var bd = document.getElementById('ts-link-picker-backdrop');
+  if (bd && bd.parentNode) bd.parentNode.removeChild(bd);
+  document.removeEventListener('keydown', _tsLinkPickerKeyHandler);
+}
+
+var _tsLinkPickerKeyHandler = function(e) {
+  if (e.key === 'Escape') closeTsLinkPicker();
+};
+
+function openTsLinkPicker(sessionTargetName) {
+  if (!statsTsProjects || statsTsProjects.length === 0) {
+    logError('No TS projects available for linking');
+    return;
+  }
+
+  // Figure out current linked target guid (if any) for visual highlighting
+  var currentTs = findTsForTarget(sessionTargetName);
+  var currentGuid = currentTs && currentTs.target ? currentTs.target.guid : null;
+
+  // Flatten all targets across all projects with their project context
+  var items = [];
+  statsTsProjects.forEach(function(p) {
+    (p.targets || []).forEach(function(t) {
+      items.push({
+        guid: t.guid,
+        targetName: t.name,
+        projectName: p.name,
+        projectState: p.state,
+        isMosaic: p.isMosaic
+      });
+    });
+  });
+
+  // Sort: current match first, then alphabetical
+  items.sort(function(a, b) {
+    if (a.guid === currentGuid && b.guid !== currentGuid) return -1;
+    if (b.guid === currentGuid && a.guid !== currentGuid) return 1;
+    return (a.targetName || '').localeCompare(b.targetName || '');
+  });
+
+  var list = items.map(function(it) {
+    var cls = 'ts-link-picker-item' + (it.guid === currentGuid ? ' current' : '');
+    return '<div class="' + cls + '" data-target-guid="' + esc(it.guid || '') + '">' +
+      '<span class="target-name">' + esc(it.targetName || 'Unnamed') + '</span>' +
+      '<span class="project-name">' + esc(it.projectName || '') + (it.isMosaic ? ' \u00b7 mosaic' : '') + '</span>' +
+    '</div>';
+  }).join('');
+
+  var html =
+    '<div class="ts-link-picker" role="dialog" aria-label="Link to TS target">' +
+      '<h3>Link to Target Scheduler target</h3>' +
+      '<div class="ts-link-picker-sub">Session target: <strong>' + esc(sessionTargetName) + '</strong></div>' +
+      '<div class="ts-link-picker-list">' + list + '</div>' +
+      '<div class="ts-link-picker-footer">' +
+        '<button type="button" data-action="cancel">Cancel</button>' +
+        '<button type="button" class="danger" data-action="clear">Clear manual link</button>' +
+      '</div>' +
+    '</div>';
+
+  var backdrop = document.createElement('div');
+  backdrop.id = 'ts-link-picker-backdrop';
+  backdrop.className = 'ts-link-picker-backdrop';
+  backdrop.innerHTML = html;
+  document.body.appendChild(backdrop);
+
+  backdrop.addEventListener('click', function(e) {
+    if (e.target === backdrop) closeTsLinkPicker();
+  });
+  document.addEventListener('keydown', _tsLinkPickerKeyHandler);
+
+  backdrop.querySelectorAll('.ts-link-picker-item').forEach(function(item) {
+    item.addEventListener('click', function() {
+      var guid = item.getAttribute('data-target-guid');
+      closeTsLinkPicker();
+      applyTsTargetLink(sessionTargetName, guid, function() {
+        closeTargetDetail();
+        renderStats();
+      });
+    });
+  });
+  backdrop.querySelector('[data-action="cancel"]').addEventListener('click', closeTsLinkPicker);
+  backdrop.querySelector('[data-action="clear"]').addEventListener('click', function() {
+    closeTsLinkPicker();
+    applyTsTargetLink(sessionTargetName, '', function() {
+      closeTargetDetail();
+      renderStats();
+    });
   });
 }
 
@@ -3251,6 +3726,9 @@ function renderStats() {
     var settings   = results[2];
     var targets = targetData.targets || [];
     statsTargetData = targets;
+    statsTsStatus   = targetData.tsStatus   || null;
+    statsTsError    = targetData.tsError    || null;
+    statsTsProjects = targetData.tsProjects || null;
 
     // Populate globalFilterTypeMap from plugin settings (case-insensitive)
     globalFilterTypeMap = {};

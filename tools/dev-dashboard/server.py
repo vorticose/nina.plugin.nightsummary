@@ -121,9 +121,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
 
         # Global endpoints
+        # /api/stats/targets — merge TS project data from ts-projects.json before serving
+        if path == "/api/stats/targets":
+            self.serve_stats_targets_with_ts_merge()
+            return
+
         global_map = {
             "/api/sessions": "sessions.json",
-            "/api/stats/targets": "stats-targets.json",
             "/api/stats/summary": "stats-summary.json",
             "/api/filters": "filters.json",
             "/api/settings": "settings.json",
@@ -143,6 +147,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
         # Regenerate-all POST (mock)
         if path == "/api/regenerate-all" and method == "POST":
             self.send_json(200, {"status": "ok", "total": 0})
+            return
+
+        # Phase 3a: TS status override / target link POST endpoints (dev server persists
+        # to data/ts-dashboard-meta.json so overrides survive reloads)
+        if path == "/api/stats/ts/override" and method == "POST":
+            self.handle_ts_override()
+            return
+        if path == "/api/stats/ts/link" and method == "POST":
+            self.handle_ts_link()
             return
 
         # Per-session endpoints: /api/sessions/{id}/...
@@ -205,6 +218,227 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         # Not found
         self.send_json(404, {"error": f"Not found: {path}"})
+
+    # ── Phase 3a: TS project merge + override/link POST handlers ──
+
+    def _load_ts_meta(self):
+        """Load dashboard metadata (status overrides + manual target links) from disk."""
+        path = os.path.join(self.data_dir, "ts-dashboard-meta.json")
+        try:
+            if os.path.isfile(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+        except Exception:
+            pass
+        return {"statusOverrides": {}, "targetLinks": {}}
+
+    def _save_ts_meta(self, meta):
+        path = os.path.join(self.data_dir, "ts-dashboard-meta.json")
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(meta, f, indent=2)
+        except Exception as e:
+            sys.stderr.write(f"  failed to save ts-dashboard-meta.json: {e}\n")
+
+    def _load_ts_projects(self):
+        """Load the mock TS project tree from ts-projects.json. Returns (tsStatus, projects)."""
+        path = os.path.join(self.data_dir, "ts-projects.json")
+        if not os.path.isfile(path):
+            return "not_installed", []
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                d = json.load(f)
+            return d.get("tsStatus", "available"), d.get("projects", [])
+        except Exception as e:
+            sys.stderr.write(f"  failed to load ts-projects.json: {e}\n")
+            return "error", []
+
+    def serve_stats_targets_with_ts_merge(self):
+        """Merge TS project data into /api/stats/targets response, mirroring the real server's logic."""
+        try:
+            targets_path = os.path.join(self.data_dir, "stats-targets.json")
+            if not os.path.isfile(targets_path):
+                self.send_json(200, {"targets": [], "tsStatus": "not_installed"})
+                return
+            with open(targets_path, "r", encoding="utf-8") as f:
+                targets_data = json.load(f)
+            targets = targets_data.get("targets", [])
+
+            ts_status, ts_projects = self._load_ts_projects()
+            meta = self._load_ts_meta()
+            status_overrides = meta.get("statusOverrides", {}) or {}
+            manual_links     = meta.get("targetLinks", {}) or {}
+
+            # Build lookups: lowercase-name → (project, target), guid → (project, target)
+            ts_by_name = {}
+            ts_by_guid = {}
+            for p in ts_projects:
+                for t in p.get("targets", []):
+                    name = (t.get("name") or "").lower()
+                    if name and name not in ts_by_name:
+                        ts_by_name[name] = (p, t)
+                    g = t.get("guid")
+                    if g:
+                        ts_by_guid[g] = (p, t)
+
+            enriched = []
+            for row in targets:
+                target_name = row.get("target") or ""
+                ts_match = None
+                matched_by = None
+
+                # 1. Manual link wins
+                linked = manual_links.get(target_name.lower())
+                if linked and linked in ts_by_guid:
+                    ts_match = ts_by_guid[linked]
+                    matched_by = "manual"
+                # 2. Case-insensitive exact-name auto-match
+                elif target_name.lower() in ts_by_name:
+                    ts_match = ts_by_name[target_name.lower()]
+                    matched_by = "name"
+
+                ts_obj = None
+                if ts_match:
+                    proj, tgt = ts_match
+                    plans = tgt.get("exposurePlans", [])
+                    total_desired  = sum(int(e.get("desired")  or 0) for e in plans)
+                    total_accepted = sum(int(e.get("accepted") or 0) for e in plans)
+                    project_percent = None
+                    if total_desired > 0:
+                        project_percent = round(min(100.0, (total_accepted * 100.0) / total_desired), 1)
+
+                    goals = []
+                    for e in plans:
+                        desired  = int(e.get("desired") or 0)
+                        accepted = int(e.get("accepted") or 0)
+                        pct = round(min(100.0, (accepted * 100.0) / desired), 1) if desired > 0 else None
+                        goals.append({
+                            "filter":       e.get("filter"),
+                            "templateName": e.get("templateName"),
+                            "exposureSec":  e.get("exposureSec"),
+                            "desired":      desired,
+                            "acquired":     int(e.get("acquired") or 0),
+                            "accepted":     accepted,
+                            "percentComplete": pct,
+                        })
+
+                    # Effective state: override > inferred Completed (Closed + 100%) > raw
+                    raw_state = proj.get("state") or "Draft"
+                    override  = status_overrides.get(proj.get("guid") or "")
+                    if override:
+                        eff_state = override
+                        eff_src   = "override"
+                    elif raw_state == "Closed" and project_percent is not None and project_percent >= 100.0:
+                        eff_state = "Completed"
+                        eff_src   = "inferred"
+                    else:
+                        eff_state = raw_state
+                        eff_src   = "raw"
+
+                    ts_obj = {
+                        "project": {
+                            "id":              proj.get("id"),
+                            "guid":            proj.get("guid"),
+                            "profileId":       proj.get("profileId"),
+                            "name":            proj.get("name"),
+                            "description":     proj.get("description"),
+                            "rawState":        raw_state,
+                            "state":           eff_state,
+                            "stateSource":     eff_src,
+                            "priority":        proj.get("priority"),
+                            "isMosaic":        bool(proj.get("isMosaic")),
+                            "createDate":      proj.get("createDate"),
+                            "activeDate":      proj.get("activeDate"),
+                            "inactiveDate":    proj.get("inactiveDate"),
+                            "minimumAltitude": proj.get("minimumAltitude") or 0,
+                            "maximumAltitude": proj.get("maximumAltitude") or 0,
+                            "targetCount":     len(proj.get("targets", [])),
+                            "percentComplete": project_percent,
+                        },
+                        "target": {
+                            "id":       tgt.get("id"),
+                            "guid":     tgt.get("guid"),
+                            "name":     tgt.get("name"),
+                            "active":   bool(tgt.get("active")),
+                            "ra":       tgt.get("ra")       or 0,
+                            "dec":      tgt.get("dec")      or 0,
+                            "rotation": tgt.get("rotation") or 0,
+                        },
+                        "goals":     goals,
+                        "matchedBy": matched_by,
+                    }
+
+                enriched_row = dict(row)
+                enriched_row["ts"] = ts_obj
+                enriched.append(enriched_row)
+
+            # Summary of all TS projects for manual-link picker UI
+            ts_projects_summary = None
+            if ts_projects:
+                ts_projects_summary = [{
+                    "guid":        p.get("guid"),
+                    "name":        p.get("name"),
+                    "state":       p.get("state"),
+                    "isMosaic":    bool(p.get("isMosaic")),
+                    "targetCount": len(p.get("targets", [])),
+                    "targets": [{
+                        "guid": t.get("guid"),
+                        "name": t.get("name"),
+                    } for t in p.get("targets", [])],
+                } for p in ts_projects]
+
+            self.send_json(200, {
+                "targets":    enriched,
+                "tsStatus":   ts_status,
+                "tsError":    None,
+                "tsProjects": ts_projects_summary,
+            })
+        except Exception as e:
+            self.send_json(500, {"error": f"ts merge failed: {e}"})
+
+    def _read_post_body(self):
+        raw = getattr(self, "_post_body", b"") or b""
+        try:
+            return json.loads(raw.decode("utf-8")) if raw else {}
+        except Exception:
+            return {}
+
+    def handle_ts_override(self):
+        body = self._read_post_body()
+        project_guid = body.get("projectGuid")
+        status       = body.get("status")
+        if not project_guid:
+            self.send_json(400, {"error": "projectGuid required"})
+            return
+        meta = self._load_ts_meta()
+        overrides = meta.setdefault("statusOverrides", {})
+        if not status:
+            overrides.pop(project_guid, None)
+        else:
+            allowed = {"Draft", "Active", "Inactive", "Closed", "Completed"}
+            if status not in allowed:
+                self.send_json(400, {"error": "invalid status"})
+                return
+            overrides[project_guid] = status
+        self._save_ts_meta(meta)
+        self.send_json(200, {"ok": True, "projectGuid": project_guid, "status": status})
+
+    def handle_ts_link(self):
+        body = self._read_post_body()
+        session_target_name = body.get("sessionTargetName")
+        ts_target_guid      = body.get("tsTargetGuid")
+        if not session_target_name:
+            self.send_json(400, {"error": "sessionTargetName required"})
+            return
+        meta = self._load_ts_meta()
+        links = meta.setdefault("targetLinks", {})
+        key = session_target_name.lower()
+        if not ts_target_guid:
+            links.pop(key, None)
+        else:
+            links[key] = ts_target_guid
+        self._save_ts_meta(meta)
+        self.send_json(200, {"ok": True, "sessionTargetName": session_target_name, "tsTargetGuid": ts_target_guid})
 
     def serve_target_sessions(self, target_name):
         """Build per-session detail for a target by aggregating the snapshot image files."""
@@ -343,10 +577,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.route("HEAD")
 
     def do_POST(self):
-        # Read and discard body
+        # Read body once and stash on self so handlers can access it via _post_body
         length = int(self.headers.get("Content-Length", 0))
-        if length > 0:
-            self.rfile.read(length)
+        self._post_body = self.rfile.read(length) if length > 0 else b""
         self.route("POST")
 
 

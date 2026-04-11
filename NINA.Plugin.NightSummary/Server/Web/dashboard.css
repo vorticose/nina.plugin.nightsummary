@@ -6,6 +6,7 @@
   --bg: #111224;
   --text: #e0e0e0;
   --accent: #7eb8f7;
+  --accent-rgb: 126, 184, 247;
   --accent-light: #a0c4ff;
   --accent-lighter: #c0d8ff;
   --surface: #181930;
@@ -37,6 +38,7 @@
   --bg: #eef0f5;
   --text: #1a1a2e;
   --accent: #2563b8;
+  --accent-rgb: 37, 99, 184;
   --accent-light: #3b7dd8;
   --accent-lighter: #5a9ae6;
   --surface: #f8f9fc;
@@ -1941,6 +1943,473 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
     0 2px 6px rgba(0,0,0,0.5);
 }
 
+/* TS status badge — top-LEFT of thumbnail (Phase 3a) */
+.target-card-ts-badge {
+  position: absolute;
+  top: 9px;
+  left: 9px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.55px;
+  padding: 4px 9px;
+  border-radius: 10px;
+  border: 1px solid;
+  z-index: 3;
+  cursor: pointer;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.22),
+    inset 0 -1px 0 rgba(0,0,0,0.3),
+    0 2px 6px rgba(0,0,0,0.5);
+  transition: transform var(--t-fast);
+}
+.target-card-ts-badge:hover { transform: scale(1.05); }
+.target-card-ts-badge[data-state="Active"]    { background: rgba(102,187,106,0.18); border-color: rgba(102,187,106,0.50); color: #A5D6A7; }
+.target-card-ts-badge[data-state="Completed"] { background: rgba(66,165,245,0.22);  border-color: rgba(66,165,245,0.60);  color: #90CAF9; }
+.target-card-ts-badge[data-state="Draft"]     { background: rgba(255,183,77,0.15); border-color: rgba(255,183,77,0.42); color: #FFCC80; }
+.target-card-ts-badge[data-state="Inactive"]  { background: rgba(239,83,80,0.15);  border-color: rgba(239,83,80,0.42);  color: #EF9A9A; }
+.target-card-ts-badge[data-state="Closed"]    { background: rgba(144,164,174,0.12); border-color: rgba(144,164,174,0.32); color: #B0BEC5; }
+.target-card-ts-badge .override-mark {
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  margin-left: 5px;
+  opacity: 0.75;
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
+}
+
+/* TS state override dropdown — appended to document.body, positioned in viewport coords */
+.ts-override-dropdown {
+  position: absolute;
+  z-index: 1100;
+  background: var(--surface);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 10px;
+  padding: 6px;
+  min-width: 160px;
+  box-shadow:
+    0 12px 32px rgba(0,0,0,0.65),
+    0 2px 6px rgba(0,0,0,0.35),
+    inset 0 1px 0 rgba(255,255,255,0.08);
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity var(--t-fast), transform var(--t-fast);
+  pointer-events: none;
+}
+.ts-override-dropdown.visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.ts-override-dropdown-header {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.9px;
+  color: var(--text-tertiary);
+  padding: 6px 10px 4px;
+  font-weight: 600;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  margin-bottom: 4px;
+}
+.ts-override-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background var(--t-fast), color var(--t-fast);
+  font-weight: 500;
+}
+.ts-override-option:hover {
+  background: rgba(255,255,255,0.06);
+  color: var(--text-primary);
+}
+.ts-override-option.selected {
+  background: rgba(126,184,247,0.08);
+  color: var(--accent);
+}
+.ts-override-option .state-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.ts-override-option[data-state="Active"] .state-dot    { background: #66BB6A; box-shadow: 0 0 6px rgba(102,187,106,0.6); }
+.ts-override-option[data-state="Completed"] .state-dot { background: #42A5F5; box-shadow: 0 0 6px rgba(66,165,245,0.6); }
+.ts-override-option[data-state="Draft"] .state-dot     { background: #FFB74D; }
+.ts-override-option[data-state="Inactive"] .state-dot  { background: #EF5350; }
+.ts-override-option[data-state="Closed"] .state-dot    { background: #90A4AE; }
+.ts-override-reset {
+  display: block;
+  padding: 6px 10px 7px;
+  margin-top: 4px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  font-size: 10px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-weight: 600;
+}
+.ts-override-reset:hover { color: var(--accent); }
+
+/* TS status banner at the top of the Stats page */
+.ts-status-banner {
+  background: rgba(255,183,77,0.08);
+  border: 1px solid rgba(255,183,77,0.25);
+  color: #FFCC80;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ts-status-banner.info {
+  background: rgba(255,255,255,0.03);
+  border-color: rgba(255,255,255,0.10);
+  color: var(--text-tertiary);
+}
+.ts-status-banner::before {
+  content: 'ⓘ';
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+/* Target detail panel project section (1:1 targets) */
+.tdp-project-section {
+  background: var(--surface-well);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 14px 16px 16px;
+  margin-bottom: 22px;
+}
+.tdp-project-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.tdp-project-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tdp-project-state-pill {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  padding: 3px 8px;
+  border-radius: 9px;
+  border: 1px solid;
+  cursor: pointer;
+  transition: transform var(--t-fast);
+}
+.tdp-project-state-pill:hover { transform: scale(1.03); }
+.tdp-project-state-pill[data-state="Active"]    { background: rgba(102,187,106,0.18); border-color: rgba(102,187,106,0.50); color: #A5D6A7; }
+.tdp-project-state-pill[data-state="Completed"] { background: rgba(66,165,245,0.22);  border-color: rgba(66,165,245,0.60);  color: #90CAF9; }
+.tdp-project-state-pill[data-state="Draft"]     { background: rgba(255,183,77,0.15); border-color: rgba(255,183,77,0.42); color: #FFCC80; }
+.tdp-project-state-pill[data-state="Inactive"]  { background: rgba(239,83,80,0.15);  border-color: rgba(239,83,80,0.42);  color: #EF9A9A; }
+.tdp-project-state-pill[data-state="Closed"]    { background: rgba(144,164,174,0.12); border-color: rgba(144,164,174,0.32); color: #B0BEC5; }
+.tdp-project-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  font-size: 10px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 14px;
+}
+.tdp-project-meta-row span strong {
+  color: var(--text-secondary);
+  font-weight: 600;
+  margin-left: 4px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+/* Single 3-column grid for all progress rows so the label column auto-sizes to
+   the widest row. Individual rows use display:contents to become layout-wise
+   direct children of this grid. */
+.tdp-project-progress-grid {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  column-gap: 12px;
+  row-gap: 8px;
+  align-items: center;
+}
+.tdp-progress-row {
+  display: contents;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.tdp-progress-row-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  white-space: nowrap;
+}
+.tdp-progress-row-label-text {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+.tdp-progress-bar-wrap {
+  position: relative;
+  height: 16px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 9px;
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.35);
+}
+.tdp-progress-bar-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 9px;
+  background: var(--fill-color, #66BB6A);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.28),
+    inset 0 -1px 0 rgba(0,0,0,0.22);
+  transition: width var(--t-medium);
+}
+/* When accepted > desired, brighten slightly to show overachievement */
+.tdp-progress-bar-wrap.over .tdp-progress-bar-fill {
+  filter: brightness(1.15);
+}
+.tdp-progress-row-count {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  font-size: 11px;
+  color: var(--text-primary);
+  min-width: 66px;
+  text-align: right;
+}
+.tdp-progress-row-count .unit {
+  color: var(--text-tertiary);
+  font-size: 9px;
+  margin-left: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+/* Separator row — spans all 3 grid columns, draws the dividing line */
+.tdp-overall-separator {
+  grid-column: 1 / -1;
+  height: 1px;
+  background: rgba(255,255,255,0.06);
+  margin: 4px 0;
+}
+.tdp-overall-label {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-weight: 600;
+}
+.tdp-overall-bar-wrap {
+  height: 20px;
+}
+.tdp-overall-bar-fill {
+  background: rgba(255,255,255,0.45);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.25),
+    inset 0 -1px 0 rgba(0,0,0,0.22);
+}
+.tdp-overall-count {
+  font-size: 14px !important;
+  color: var(--text-primary) !important;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+/* Floating tooltip for TS exposure profile names */
+.ts-bar-tip {
+  position: fixed;
+  background: var(--surface-well);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: var(--text-primary);
+  font-size: 11px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 9999;
+  white-space: nowrap;
+  max-width: 300px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+.ts-bar-tip.visible {
+  opacity: 1;
+}
+.tdp-project-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+.tdp-project-action-btn {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.55px;
+  padding: 6px 12px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--t-fast);
+  font-family: inherit;
+}
+.tdp-project-action-btn:hover {
+  background: rgba(126,184,247,0.10);
+  border-color: rgba(126,184,247,0.35);
+  color: var(--accent);
+}
+
+/* TS unlinked fallback (no auto-match) */
+.tdp-project-unlinked {
+  background: rgba(255,255,255,0.03);
+  border: 1px dashed rgba(255,255,255,0.12);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 22px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+
+/* TS Link picker modal */
+.ts-link-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.75);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: tdp-fade-in 160ms;
+}
+.ts-link-picker {
+  background: var(--surface);
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 12px;
+  width: min(520px, 92vw);
+  max-height: 82vh;
+  overflow: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.75);
+  padding: 18px 22px;
+}
+.ts-link-picker h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  color: var(--text-primary);
+}
+.ts-link-picker-sub {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-bottom: 14px;
+}
+.ts-link-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+.ts-link-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--surface-well);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--t-fast);
+}
+.ts-link-picker-item:hover {
+  background: rgba(126,184,247,0.06);
+  border-color: rgba(126,184,247,0.30);
+  color: var(--accent);
+}
+.ts-link-picker-item.current {
+  background: rgba(126,184,247,0.10);
+  border-color: rgba(126,184,247,0.40);
+  color: var(--accent);
+}
+.ts-link-picker-item .target-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ts-link-picker-item .project-name {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.ts-link-picker-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+.ts-link-picker-footer button {
+  font-size: 12px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+}
+.ts-link-picker-footer button:hover {
+  background: rgba(255,255,255,0.08);
+  color: var(--text-primary);
+}
+.ts-link-picker-footer button.danger:hover {
+  background: rgba(225,87,89,0.12);
+  border-color: rgba(225,87,89,0.40);
+  color: #e15759;
+}
+
 /* Target name caption overlay — gradient bottom of thumbnail, 3D chisel text */
 .target-card-name-overlay {
   position: absolute;
@@ -2240,11 +2709,28 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
     0 1px 2px rgba(0,0,0,0.5);
 }
 .tdp-row-link {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: rgba(var(--accent-rgb), 0.10);
+  border: 1px solid rgba(var(--accent-rgb), 0.28);
   color: var(--accent);
   cursor: pointer;
-  font-size: 11px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.18),
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    0 2px 4px rgba(0,0,0,0.25);
+  transition: background 0.15s, border-color 0.15s;
 }
-.tdp-row-link:hover { text-decoration: underline; }
+.tdp-row-link:hover {
+  background: rgba(var(--accent-rgb), 0.22);
+  border-color: rgba(var(--accent-rgb), 0.5);
+}
 
 /* Date has two forms — long for desktop, short for mobile */
 .tdp-date-short { display: none; }
@@ -2267,6 +2753,10 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   .tdp-body { padding: 14px 16px 18px; }
   .tdp-table { font-size: 11px; }
   .tdp-table th, .tdp-table td { padding: 5px 4px; }
+  /* Subrow cells have higher-specificity padding in base CSS — re-override on mobile
+     so their column widths match session rows and expanding doesn't cause reflow */
+  .tdp-table tr.tdp-filter-subrow td { padding: 5px 4px; }
+  .tdp-table tr.tdp-filter-subrow td:first-child { padding-left: 16px; }
   /* Mobile: show short date (no year) — year is in the header date range */
   .tdp-date-long { display: none; }
   .tdp-date-short { display: inline; }

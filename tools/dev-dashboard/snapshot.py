@@ -12,6 +12,7 @@ GLOBAL_ENDPOINTS = [
     ("/api/sessions", "sessions.json"),
     ("/api/stats/targets", "stats-targets.json"),
     ("/api/stats/summary", "stats-summary.json"),
+    ("/api/ts/projects", "ts-projects.json"),
     ("/api/filters", "filters.json"),
     ("/api/settings", "settings.json"),
 ]

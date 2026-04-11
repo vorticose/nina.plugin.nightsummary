@@ -273,6 +273,8 @@ namespace NINA.Plugin.NightSummary.Server {
                         await HandleGetTargetSessions(res, targetName, done);
                     } else if (path == "/api/stats/summary") {
                         await HandleGetStatsSummary(res, done);
+                    } else if (path == "/api/ts/projects") {
+                        await HandleGetTsProjects(res, done);
                     } else if (path == "/api/filters") {
                         await HandleGetFilters(res, done);
                     } else if (path == "/api/regenerate-all/status") {
@@ -294,6 +296,10 @@ namespace NINA.Plugin.NightSummary.Server {
                     } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/regenerate")) {
                         var sessionId = ExtractSessionId(path, "/regenerate");
                         await HandleRegenerateReport(req, res, sessionId, done);
+                    } else if (path == "/api/stats/ts/override") {
+                        await HandleTsStatusOverride(req, res, done);
+                    } else if (path == "/api/stats/ts/link") {
+                        await HandleTsTargetLink(req, res, done);
                     } else {
                         await WriteJson(res, 404, new { error = "Not found" });
                         done?.Invoke(404, null);
@@ -816,10 +822,83 @@ namespace NINA.Plugin.NightSummary.Server {
                         "CREATE TABLE IF NOT EXISTS AltitudeCharts (SessionId TEXT PRIMARY KEY, ChartJson TEXT NOT NULL, GeneratedAt TEXT NOT NULL)",
                         conn))
                         cmd.ExecuteNonQuery();
+                    // Generic key/value store for dashboard-side metadata (TS status overrides,
+                    // manual target→TS links, etc.) Avoids touching SettingsManager for features
+                    // that don't need XAML bindings.
+                    using (var cmd = new SQLiteCommand(
+                        "CREATE TABLE IF NOT EXISTS DashboardMetadata (Key TEXT PRIMARY KEY, Value TEXT NOT NULL, UpdatedAt TEXT NOT NULL)",
+                        conn))
+                        cmd.ExecuteNonQuery();
                 }
             } catch (Exception ex) {
                 log?.Warn($"Could not initialize dashboard cache DB: {ex.Message}");
             }
+        }
+
+        private string GetDashboardMeta(string key) {
+            try {
+                using (var conn = new SQLiteConnection($"Data Source={cachePath};Version=3;")) {
+                    conn.Open();
+                    using (var cmd = new SQLiteCommand("SELECT Value FROM DashboardMetadata WHERE Key = @k", conn)) {
+                        cmd.Parameters.AddWithValue("@k", key);
+                        return cmd.ExecuteScalar() as string;
+                    }
+                }
+            } catch { return null; }
+        }
+
+        private void SetDashboardMeta(string key, string value) {
+            try {
+                using (var conn = new SQLiteConnection($"Data Source={cachePath};Version=3;")) {
+                    conn.Open();
+                    using (var cmd = new SQLiteCommand(
+                        "INSERT OR REPLACE INTO DashboardMetadata (Key, Value, UpdatedAt) VALUES (@k, @v, @ts)",
+                        conn)) {
+                        cmd.Parameters.AddWithValue("@k", key);
+                        cmd.Parameters.AddWithValue("@v", value ?? "");
+                        cmd.Parameters.AddWithValue("@ts", DateTime.UtcNow.ToString("o"));
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+            } catch (Exception ex) {
+                log?.Warn($"Could not write DashboardMetadata key '{key}': {ex.Message}");
+            }
+        }
+
+        // Typed wrappers for the TS overrides + manual links JSON blobs.
+        private const string TsStatusOverridesKey = "ts.statusOverrides";
+        private const string TsTargetLinksKey     = "ts.targetLinks";
+
+        private Dictionary<string, string> GetTsStatusOverrides() {
+            var raw = GetDashboardMeta(TsStatusOverridesKey);
+            if (string.IsNullOrEmpty(raw)) return new Dictionary<string, string>();
+            try {
+                return JsonSerializer.Deserialize<Dictionary<string, string>>(raw) ?? new Dictionary<string, string>();
+            } catch { return new Dictionary<string, string>(); }
+        }
+
+        private void SetTsStatusOverride(string projectGuid, string statusOrNull) {
+            if (string.IsNullOrEmpty(projectGuid)) return;
+            var map = GetTsStatusOverrides();
+            if (string.IsNullOrEmpty(statusOrNull)) map.Remove(projectGuid);
+            else map[projectGuid] = statusOrNull;
+            SetDashboardMeta(TsStatusOverridesKey, JsonSerializer.Serialize(map));
+        }
+
+        private Dictionary<string, string> GetTsTargetLinks() {
+            var raw = GetDashboardMeta(TsTargetLinksKey);
+            if (string.IsNullOrEmpty(raw)) return new Dictionary<string, string>();
+            try {
+                return JsonSerializer.Deserialize<Dictionary<string, string>>(raw) ?? new Dictionary<string, string>();
+            } catch { return new Dictionary<string, string>(); }
+        }
+
+        private void SetTsTargetLink(string sessionTargetNameLower, string tsTargetGuidOrNull) {
+            if (string.IsNullOrEmpty(sessionTargetNameLower)) return;
+            var map = GetTsTargetLinks();
+            if (string.IsNullOrEmpty(tsTargetGuidOrNull)) map.Remove(sessionTargetNameLower);
+            else map[sessionTargetNameLower] = tsTargetGuidOrNull;
+            SetDashboardMeta(TsTargetLinksKey, JsonSerializer.Serialize(map));
         }
 
         private string GetCachedChartJson(string sessionId) {
@@ -1056,38 +1135,197 @@ namespace NINA.Plugin.NightSummary.Server {
 
         private async Task HandleGetTargetStats(HttpListenerResponse res, Action<int, string> done) {
             if (!File.Exists(dbPath)) {
-                await WriteJson(res, 200, new { targets = Array.Empty<object>() });
+                await WriteJson(res, 200, new { targets = Array.Empty<object>(), tsStatus = "not_installed" });
                 done?.Invoke(200, "0 targets (no db)");
                 return;
             }
 
             var db = new SessionDatabase(dbPath);
             var details = db.GetTargetDetails();
-            var result = details.Select(t => new {
-                target = t.TargetName,
-                totalIntegrationSeconds = t.TotalIntegrationSeconds,
-                totalIntegrationHours = Math.Round(t.TotalIntegrationSeconds / 3600.0, 2),
-                sessionCount = t.SessionCount,
-                lastImaged = t.LastSessionStart > DateTime.MinValue ? t.LastSessionStart.ToString("o") : null,
-                latestSessionId = t.LatestSessionId,
-                totalFrames = t.TotalFrames,
-                acceptedFrames = t.AcceptedFrames,
-                avgHFR = t.AvgHFR > 0 ? (double?)t.AvgHFR : null,
-                avgFWHM = t.AvgFWHM > 0 ? (double?)t.AvgFWHM : null,
-                avgGuidingRMS = t.AvgGuidingRMS > 0 ? (double?)t.AvgGuidingRMS : null,
-                raHours = t.RaHours != 0 ? (double?)t.RaHours : null,
-                decDegrees = t.DecDegrees != 0 ? (double?)t.DecDegrees : null,
-                filters = t.Filters.Select(f => new {
-                    filter = f.Filter,
-                    totalSeconds = f.TotalSeconds,
-                    totalHours = Math.Round(f.TotalSeconds / 3600.0, 2),
-                    frameCount = f.FrameCount,
-                    acceptedCount = f.AcceptedCount
-                })
+
+            // ── Phase 3a: Target Scheduler enrichment ──
+            // Load TS projects via direct SQLite. If TS isn't installed or the read fails,
+            // we return the target data unchanged with tsStatus = "not_installed" | "error".
+            string tsStatus = "available";
+            string tsError  = null;
+            List<TsProjectInfo> tsProjects = null;
+            var tsDb = new TargetSchedulerDatabase();
+            if (!TargetSchedulerDatabase.IsPluginInstalled || !tsDb.IsAvailable) {
+                tsStatus = "not_installed";
+            } else {
+                try {
+                    tsProjects = tsDb.GetAllProjects();
+                } catch (Exception ex) {
+                    tsStatus = "error";
+                    tsError  = ex.Message;
+                    Logger.Error($"NightSummary: TS GetAllProjects threw. {ex.Message}");
+                }
+            }
+
+            // Build a case-insensitive lookup from target name → (project, target)
+            // Also index targets by Guid for manual-link resolution.
+            var tsTargetByNameLower = new Dictionary<string, (TsProjectInfo project, TsProjectTarget target)>(StringComparer.OrdinalIgnoreCase);
+            var tsTargetByGuid      = new Dictionary<string, (TsProjectInfo project, TsProjectTarget target)>(StringComparer.OrdinalIgnoreCase);
+            if (tsProjects != null) {
+                foreach (var proj in tsProjects) {
+                    foreach (var tgt in proj.Targets) {
+                        // First match wins on name collisions (rare; only happens if user has
+                        // multiple TS targets with identical names). Manual link can override.
+                        if (!string.IsNullOrEmpty(tgt.Name) && !tsTargetByNameLower.ContainsKey(tgt.Name)) {
+                            tsTargetByNameLower[tgt.Name] = (proj, tgt);
+                        }
+                        if (!string.IsNullOrEmpty(tgt.Guid)) {
+                            tsTargetByGuid[tgt.Guid] = (proj, tgt);
+                        }
+                    }
+                }
+            }
+
+            // Load overrides + manual links from the dashboard cache DB
+            var statusOverrides = GetTsStatusOverrides();
+            var manualLinks     = GetTsTargetLinks();
+
+            var result = details.Select(t => {
+                (TsProjectInfo project, TsProjectTarget target)? ts = null;
+                string matchedBy = null;
+
+                // 1. Manual link (session target name → ts target guid) wins over auto-match
+                if (tsProjects != null && manualLinks.TryGetValue((t.TargetName ?? "").ToLowerInvariant(), out var linkedGuid)
+                    && tsTargetByGuid.TryGetValue(linkedGuid, out var linked)) {
+                    ts = linked;
+                    matchedBy = "manual";
+                }
+                // 2. Auto-match on case-insensitive target name
+                else if (tsProjects != null && !string.IsNullOrEmpty(t.TargetName)
+                    && tsTargetByNameLower.TryGetValue(t.TargetName, out var auto)) {
+                    ts = auto;
+                    matchedBy = "name";
+                }
+
+                object tsObj = null;
+                if (ts.HasValue) {
+                    var proj = ts.Value.project;
+                    var tgt  = ts.Value.target;
+
+                    // Per-filter goals + progress
+                    int totalDesired  = 0;
+                    int totalAccepted = 0;
+                    var goals = tgt.ExposurePlans.Select(ep => {
+                        totalDesired  += ep.Desired;
+                        totalAccepted += ep.Accepted;
+                        return new {
+                            filter       = ep.Filter,
+                            templateName = ep.TemplateName,
+                            exposureSec  = ep.ExposureSec,
+                            desired      = ep.Desired,
+                            acquired     = ep.Acquired,
+                            accepted     = ep.Accepted,
+                            percentComplete = ep.Desired > 0
+                                ? Math.Round(Math.Min(100.0, (ep.Accepted * 100.0) / ep.Desired), 1)
+                                : (double?)null,
+                        };
+                    }).ToList();
+                    double? projectPercent = totalDesired > 0
+                        ? Math.Round(Math.Min(100.0, (totalAccepted * 100.0) / totalDesired), 1)
+                        : (double?)null;
+
+                    // Effective state = override > inferred Completed > raw state
+                    // "Completed" inferred when state == Closed and all filters with Desired>0 are fully accepted.
+                    string effectiveState;
+                    string effectiveStateSource;
+                    if (statusOverrides.TryGetValue(proj.Guid ?? "", out var overrideState) && !string.IsNullOrEmpty(overrideState)) {
+                        effectiveState = overrideState;
+                        effectiveStateSource = "override";
+                    } else if (proj.State == "Closed" && projectPercent.HasValue && projectPercent.Value >= 100.0) {
+                        effectiveState = "Completed";
+                        effectiveStateSource = "inferred";
+                    } else {
+                        effectiveState = proj.State;
+                        effectiveStateSource = "raw";
+                    }
+
+                    tsObj = new {
+                        project = new {
+                            id              = proj.Id,
+                            guid            = proj.Guid,
+                            profileId       = proj.ProfileId,
+                            name            = proj.Name,
+                            description     = proj.Description,
+                            rawState        = proj.State,
+                            state           = effectiveState,
+                            stateSource     = effectiveStateSource,
+                            priority        = proj.Priority,
+                            isMosaic        = proj.IsMosaic,
+                            createDate      = proj.CreateDate?.ToString("o"),
+                            activeDate      = proj.ActiveDate?.ToString("o"),
+                            inactiveDate    = proj.InactiveDate?.ToString("o"),
+                            minimumAltitude = proj.MinimumAltitude,
+                            maximumAltitude = proj.MaximumAltitude,
+                            targetCount     = proj.Targets.Count,
+                            percentComplete = projectPercent,
+                        },
+                        target = new {
+                            id       = tgt.Id,
+                            guid     = tgt.Guid,
+                            name     = tgt.Name,
+                            active   = tgt.Active,
+                            ra       = tgt.RA,
+                            dec      = tgt.Dec,
+                            rotation = tgt.Rotation,
+                        },
+                        goals,
+                        matchedBy,
+                    };
+                }
+
+                return new {
+                    target = t.TargetName,
+                    totalIntegrationSeconds = t.TotalIntegrationSeconds,
+                    totalIntegrationHours = Math.Round(t.TotalIntegrationSeconds / 3600.0, 2),
+                    sessionCount = t.SessionCount,
+                    lastImaged = t.LastSessionStart > DateTime.MinValue ? t.LastSessionStart.ToString("o") : null,
+                    latestSessionId = t.LatestSessionId,
+                    totalFrames = t.TotalFrames,
+                    acceptedFrames = t.AcceptedFrames,
+                    avgHFR = t.AvgHFR > 0 ? (double?)t.AvgHFR : null,
+                    avgFWHM = t.AvgFWHM > 0 ? (double?)t.AvgFWHM : null,
+                    avgGuidingRMS = t.AvgGuidingRMS > 0 ? (double?)t.AvgGuidingRMS : null,
+                    raHours = t.RaHours != 0 ? (double?)t.RaHours : null,
+                    decDegrees = t.DecDegrees != 0 ? (double?)t.DecDegrees : null,
+                    filters = t.Filters.Select(f => new {
+                        filter = f.Filter,
+                        totalSeconds = f.TotalSeconds,
+                        totalHours = Math.Round(f.TotalSeconds / 3600.0, 2),
+                        frameCount = f.FrameCount,
+                        acceptedCount = f.AcceptedCount
+                    }),
+                    ts = tsObj,
+                };
             }).ToList();
 
-            await WriteJson(res, 200, new { targets = result });
-            done?.Invoke(200, $"{result.Count} targets");
+            // Summary of TS projects for the manual-link picker and any global UI
+            object tsProjectsSummary = null;
+            if (tsProjects != null) {
+                tsProjectsSummary = tsProjects.Select(p => new {
+                    guid        = p.Guid,
+                    name        = p.Name,
+                    state       = p.State,
+                    isMosaic    = p.IsMosaic,
+                    targetCount = p.Targets.Count,
+                    targets = p.Targets.Select(tt => new {
+                        guid = tt.Guid,
+                        name = tt.Name,
+                    }),
+                }).ToList();
+            }
+
+            await WriteJson(res, 200, new {
+                targets = result,
+                tsStatus,
+                tsError,
+                tsProjects = tsProjectsSummary,
+            });
+            done?.Invoke(200, $"{result.Count} targets (ts: {tsStatus})");
         }
 
         private async Task HandleGetTargetSessions(HttpListenerResponse res, string targetName, Action<int, string> done) {
@@ -1212,6 +1450,127 @@ namespace NINA.Plugin.NightSummary.Server {
                 filterTypeOverrides    = s.FilterTypeOverrides,
                 equipmentOverrides     = s.EquipmentOverrides
             });
+        }
+
+        /// <summary>
+        /// Returns the full Target Scheduler project tree in the exact shape expected by
+        /// the dev server's <c>tools/dev-dashboard/data/ts-projects.json</c> file. Used by
+        /// <c>snapshot.py</c> to capture a real TS snapshot for offline dev work.
+        /// </summary>
+        private async Task HandleGetTsProjects(HttpListenerResponse res, Action<int, string> done) {
+            string tsStatus = "available";
+            List<TsProjectInfo> projects = null;
+
+            var tsDb = new TargetSchedulerDatabase();
+            if (!TargetSchedulerDatabase.IsPluginInstalled || !tsDb.IsAvailable) {
+                tsStatus = "not_installed";
+                projects = new List<TsProjectInfo>();
+            } else {
+                try {
+                    projects = tsDb.GetAllProjects();
+                } catch (Exception ex) {
+                    tsStatus = "error";
+                    Logger.Error($"NightSummary: TS GetAllProjects threw during snapshot. {ex.Message}");
+                    projects = new List<TsProjectInfo>();
+                }
+            }
+
+            var result = new {
+                tsStatus,
+                projects = projects.Select(p => new {
+                    id              = p.Id,
+                    guid            = p.Guid,
+                    profileId       = p.ProfileId,
+                    name            = p.Name,
+                    description     = p.Description,
+                    state           = p.State,
+                    stateValue      = p.StateValue,
+                    priority        = p.Priority,
+                    isMosaic        = p.IsMosaic,
+                    createDate      = p.CreateDate?.ToString("o"),
+                    activeDate      = p.ActiveDate?.ToString("o"),
+                    inactiveDate    = p.InactiveDate?.ToString("o"),
+                    minimumAltitude = p.MinimumAltitude,
+                    maximumAltitude = p.MaximumAltitude,
+                    targets = p.Targets.Select(t => new {
+                        id       = t.Id,
+                        guid     = t.Guid,
+                        projectId = t.ProjectId,
+                        name     = t.Name,
+                        active   = t.Active,
+                        ra       = t.RA,
+                        dec      = t.Dec,
+                        rotation = t.Rotation,
+                        exposurePlans = t.ExposurePlans.Select(ep => new {
+                            filter       = ep.Filter,
+                            templateName = ep.TemplateName,
+                            exposureSec  = ep.ExposureSec,
+                            desired      = ep.Desired,
+                            acquired     = ep.Acquired,
+                            accepted     = ep.Accepted,
+                        }),
+                    }),
+                }),
+            };
+
+            await WriteJson(res, 200, result);
+            done?.Invoke(200, $"{projects.Count} ts projects (status: {tsStatus})");
+        }
+
+        private async Task HandleTsStatusOverride(HttpListenerRequest req, HttpListenerResponse res, Action<int, string> done) {
+            try {
+                string body;
+                using (var reader = new StreamReader(req.InputStream, req.ContentEncoding)) body = await reader.ReadToEndAsync();
+                using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                var root = doc.RootElement;
+                var projectGuid = root.TryGetProperty("projectGuid", out var pg) && pg.ValueKind == JsonValueKind.String ? pg.GetString() : null;
+                var status      = root.TryGetProperty("status",      out var st) && st.ValueKind == JsonValueKind.String ? st.GetString() : null;
+                if (string.IsNullOrEmpty(projectGuid)) {
+                    await WriteJson(res, 400, new { error = "projectGuid required" });
+                    done?.Invoke(400, "missing projectGuid");
+                    return;
+                }
+                // Valid statuses: Draft, Active, Inactive, Closed, Completed. Empty string clears override.
+                if (!string.IsNullOrEmpty(status)) {
+                    var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
+                        "Draft", "Active", "Inactive", "Closed", "Completed"
+                    };
+                    if (!allowed.Contains(status)) {
+                        await WriteJson(res, 400, new { error = "invalid status" });
+                        done?.Invoke(400, "invalid status");
+                        return;
+                    }
+                }
+                SetTsStatusOverride(projectGuid, status);
+                await WriteJson(res, 200, new { ok = true, projectGuid, status });
+                done?.Invoke(200, $"ts override {projectGuid}={status ?? "(cleared)"}");
+            } catch (Exception ex) {
+                await WriteJson(res, 500, new { error = ex.Message });
+                done?.Invoke(500, ex.Message);
+            }
+        }
+
+        private async Task HandleTsTargetLink(HttpListenerRequest req, HttpListenerResponse res, Action<int, string> done) {
+            try {
+                string body;
+                using (var reader = new StreamReader(req.InputStream, req.ContentEncoding)) body = await reader.ReadToEndAsync();
+                using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                var root = doc.RootElement;
+                var sessionTargetName = root.TryGetProperty("sessionTargetName", out var sn) && sn.ValueKind == JsonValueKind.String ? sn.GetString() : null;
+                var tsTargetGuid      = root.TryGetProperty("tsTargetGuid",      out var tg) && tg.ValueKind == JsonValueKind.String ? tg.GetString() : null;
+                if (string.IsNullOrEmpty(sessionTargetName)) {
+                    await WriteJson(res, 400, new { error = "sessionTargetName required" });
+                    done?.Invoke(400, "missing sessionTargetName");
+                    return;
+                }
+                // Empty tsTargetGuid removes the manual link (reverts to auto-match)
+                SetTsTargetLink(sessionTargetName.ToLowerInvariant(), tsTargetGuid);
+                await WriteJson(res, 200, new { ok = true, sessionTargetName, tsTargetGuid });
+                done?.Invoke(200, $"ts link '{sessionTargetName}' -> {tsTargetGuid ?? "(cleared)"}");
+            } catch (Exception ex) {
+                await WriteJson(res, 500, new { error = ex.Message });
+                done?.Invoke(500, ex.Message);
+            }
         }
 
         private async Task HandleRegenerateReport(HttpListenerRequest req, HttpListenerResponse res, string sessionId, Action<int, string> done) {
