@@ -1888,6 +1888,16 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   border-color: rgba(126,184,247,0.40);
 }
 
+/* Thin divider between state chips and type chips in the filter row */
+.filter-row-divider {
+  width: 1px;
+  height: 16px;
+  background: rgba(255,255,255,0.10);
+  flex-shrink: 0;
+  align-self: center;
+  margin: 0 2px;
+}
+
 /* Status filter row */
 .targets-filter-row {
   display: flex;

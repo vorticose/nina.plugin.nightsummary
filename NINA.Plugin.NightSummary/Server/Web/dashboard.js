@@ -448,7 +448,32 @@ function setTargetStatusFilter(arr) {
   localStorage.setItem('ns-targets-status-filter', JSON.stringify(arr));
 }
 
-// Renders the full control bar: sort pills + optional group toggle + optional status filter row
+var TARGET_TYPE_OPTIONS = [
+  { key: 'single', label: '1:1' },
+  { key: 'multi',  label: 'Multi' },
+  { key: 'mosaic', label: 'Mosaic' }
+];
+
+function getTargetTypeFilter() {
+  try {
+    var raw = localStorage.getItem('ns-targets-type-filter');
+    if (raw) { var arr = JSON.parse(raw); if (Array.isArray(arr)) return arr; }
+  } catch (e) {}
+  return ['single', 'multi', 'mosaic'];
+}
+
+function setTargetTypeFilter(arr) {
+  localStorage.setItem('ns-targets-type-filter', JSON.stringify(arr));
+}
+
+// Returns 'single' | 'multi' | 'mosaic' for a TS project
+function projectType(isMosaic, targetCount) {
+  if (isMosaic) return 'mosaic';
+  if ((targetCount || 1) > 1) return 'multi';
+  return 'single';
+}
+
+// Renders the full control bar: sort pills + optional group toggle + optional filter row
 function renderTargetsControlBar(sortKey, groupBy) {
   var tsAvail = statsTsStatus === 'available';
   var html = '<div class="targets-control-bar">';
@@ -463,16 +488,23 @@ function renderTargetsControlBar(sortKey, groupBy) {
   }
   html += '</div>';
   if (tsAvail) {
-    var enabled = getTargetStatusFilter();
-    var allOn = TS_STATE_ORDER.every(function(s) { return enabled.indexOf(s) >= 0; });
+    var enabledStates = getTargetStatusFilter();
+    var enabledTypes  = getTargetTypeFilter();
+    var allStatesOn = TS_STATE_ORDER.every(function(s) { return enabledStates.indexOf(s) >= 0; });
+    var allTypesOn  = TARGET_TYPE_OPTIONS.every(function(o) { return enabledTypes.indexOf(o.key) >= 0; });
     html += '<div class="targets-filter-row"><span class="targets-sort-label">Filter</span>';
-    html += '<button type="button" class="targets-status-chip' + (allOn ? ' active' : '') + '" data-filter-state="__all__">All</button>';
+    html += '<button type="button" class="targets-status-chip' + (allStatesOn && allTypesOn ? ' active' : '') + '" data-filter-state="__all__">All</button>';
     TS_STATE_ORDER.forEach(function(state) {
-      var on = enabled.indexOf(state) >= 0;
+      var on = enabledStates.indexOf(state) >= 0;
       var color = TS_STATE_COLORS[state] || '#90A4AE';
       var cls = 'targets-status-chip' + (on ? ' active' : '');
       html += '<button type="button" class="' + cls + '" data-filter-state="' + esc(state) + '">' +
         '<span class="status-chip-dot" style="background:' + color + '"></span>' + esc(state) + '</button>';
+    });
+    html += '<span class="filter-row-divider"></span>';
+    TARGET_TYPE_OPTIONS.forEach(function(opt) {
+      var on = enabledTypes.indexOf(opt.key) >= 0;
+      html += '<button type="button" class="targets-status-chip' + (on ? ' active' : '') + '" data-filter-type="' + esc(opt.key) + '">' + esc(opt.label) + '</button>';
     });
     html += '</div>';
   }
@@ -496,12 +528,13 @@ function initTargetsControlBar() {
       renderStatsTabContent('targets');
     });
   }
-  document.querySelectorAll('.targets-status-chip').forEach(function(chip) {
+  document.querySelectorAll('.targets-status-chip[data-filter-state]').forEach(function(chip) {
     chip.addEventListener('click', function() {
       var state = chip.getAttribute('data-filter-state');
       if (!state) return;
       if (state === '__all__') {
         setTargetStatusFilter(TS_STATE_ORDER.slice());
+        setTargetTypeFilter(['single', 'multi', 'mosaic']);
         renderStatsTabContent('targets');
         return;
       }
@@ -517,14 +550,34 @@ function initTargetsControlBar() {
       renderStatsTabContent('targets');
     });
   });
+  document.querySelectorAll('.targets-status-chip[data-filter-type]').forEach(function(chip) {
+    chip.addEventListener('click', function() {
+      var type = chip.getAttribute('data-filter-type');
+      if (!type) return;
+      var enabled = getTargetTypeFilter();
+      var idx = enabled.indexOf(type);
+      if (idx >= 0) {
+        if (enabled.length <= 1) return; // keep at least one enabled
+        enabled.splice(idx, 1);
+      } else {
+        enabled.push(type);
+      }
+      setTargetTypeFilter(enabled);
+      renderStatsTabContent('targets');
+    });
+  });
 }
 
-// Flat-mode status filter: targets with no TS link always pass through
-function filterTargetsByStatus(targets) {
-  var enabled = getTargetStatusFilter();
+// Flat-mode filter by state + type; targets with no TS link always pass through
+function filterTargets(targets) {
+  var enabledStates = getTargetStatusFilter();
+  var enabledTypes  = getTargetTypeFilter();
   return targets.filter(function(t) {
     if (!t.ts || !t.ts.project) return true;
-    return enabled.indexOf(t.ts.project.state) >= 0;
+    var proj = t.ts.project;
+    if (enabledStates.indexOf(proj.state) < 0) return false;
+    if (enabledTypes.indexOf(projectType(!!proj.isMosaic, proj.targetCount)) < 0) return false;
+    return true;
   });
 }
 
@@ -576,10 +629,13 @@ function renderGroupedTargets(targets, sortKey) {
     containerMap[guid].targets.push(t);
   });
 
+  var enabledTypes = getTargetTypeFilter();
   var items = [];
   Object.keys(containerMap).forEach(function(guid) {
     var grp = containerMap[guid];
-    if (enabled.indexOf(grp.state) < 0) return; // filtered out
+    if (enabled.indexOf(grp.state) < 0) return; // state filtered
+    var pType = projectType(grp.isMosaic, grp.targetCount);
+    if (enabledTypes.indexOf(pType) < 0) return; // type filtered
     if (!grp.isMosaic && grp.targetCount <= 1) {
       items.push({ type: 'standalone', target: grp.targets[0], state: grp.state });
     } else {
@@ -3665,7 +3721,7 @@ function renderStatsTabContent(tabId) {
     if (groupBy === 'project' && tsAvail) {
       html += '<div class="targets-grouped">' + renderGroupedTargets(targets, sortKey) + '</div>';
     } else {
-      var filtered = tsAvail ? filterTargetsByStatus(targets) : targets;
+      var filtered = tsAvail ? filterTargets(targets) : targets;
       var sorted = sortTargets(filtered, sortKey);
       html += '<div class="target-grid">';
       sorted.forEach(function(t) { html += renderTargetCard(t, allTargets.indexOf(t)); });
