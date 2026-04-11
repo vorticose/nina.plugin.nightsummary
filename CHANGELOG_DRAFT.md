@@ -1,6 +1,12 @@
 # Night Summary — Changelog
 
 
+## v2.11.0
+
+**New features**
+- Per-filter selector on metric charts -- click a filter chip above any metric chart to show only one filter's data points. Y-axes auto-rescale to the visible subset so per-filter trends are visible at maximum resolution -- especially useful for mono LRGB rotating workflows where alternating filters would otherwise mask the underlying trend within each filter. Applies to the primary chart and any additional charts, dark and light modes, and works on historical sessions via "Resend Previous Session".
+
+
 ## v2.10.0
 
 **New features**
