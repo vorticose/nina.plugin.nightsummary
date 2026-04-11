@@ -276,12 +276,16 @@
         }
 
         // X axis labels
+        // When an axis title is present push tick labels up to avoid overlap.
+        // Time mode never has a title so it keeps the original H-10 position.
+        const hasXTitle = model.xAxis.mode !== 0 && !!model.xAxis.axisLabel;
+        const xTickY = hasXTitle ? H - 23 : H - 10;
         if (isSinglePoint) {
             // One grid line + label centered on the single data point
             const xPx = PAD_LEFT + plotW / 2;
             const xLabel = formatXAxisValue(rawMinX, model.xAxis, minTime);
             svg += '<line x1="' + xPx.toFixed(1) + '" y1="' + PAD_TOP + '" x2="' + xPx.toFixed(1) + '" y2="' + (PAD_TOP + plotH) + '" stroke="' + palette.grid + '" stroke-width="1"/>';
-            svg += '<text x="' + xPx.toFixed(1) + '" y="' + (H - 10) + '" fill="' + palette.label + '" font-size="11" text-anchor="middle">' + escapeXml(xLabel) + '</text>';
+            svg += '<text x="' + xPx.toFixed(1) + '" y="' + xTickY + '" fill="' + palette.label + '" font-size="11" text-anchor="middle">' + escapeXml(xLabel) + '</text>';
         } else {
             const pointCount = Math.max(leftPts.length, hasDual ? rightPts.length : 0);
             const xSteps = Math.max(1, Math.min(6, pointCount - 1));
@@ -290,7 +294,7 @@
                 const xPx  = toXPx(xVal);
                 svg += '<line x1="' + xPx.toFixed(1) + '" y1="' + PAD_TOP + '" x2="' + xPx.toFixed(1) + '" y2="' + (PAD_TOP + plotH) + '" stroke="' + palette.grid + '" stroke-width="1"/>';
                 const xLabel = formatXAxisValue(xVal, model.xAxis, minTime);
-                svg += '<text x="' + xPx.toFixed(1) + '" y="' + (H - 10) + '" fill="' + palette.label + '" font-size="11" text-anchor="middle">' + escapeXml(xLabel) + '</text>';
+                svg += '<text x="' + xPx.toFixed(1) + '" y="' + xTickY + '" fill="' + palette.label + '" font-size="11" text-anchor="middle">' + escapeXml(xLabel) + '</text>';
             }
         }
 
@@ -303,8 +307,8 @@
         svg += '<text x="14" y="' + (H / 2) + '" fill="' + leftTitleColor + '" font-size="11" text-anchor="middle" transform="rotate(-90,14,' + (H / 2) + ')">' + escapeXml(leftAxisLabel) + '</text>';
 
         // X axis title (for non-time axes)
-        if (model.xAxis.mode !== 0 && model.xAxis.axisLabel) {
-            svg += '<text x="' + (PAD_LEFT + plotW / 2) + '" y="' + (H - 2) + '" fill="' + palette.label + '" font-size="10" text-anchor="middle">' + escapeXml(model.xAxis.axisLabel) + '</text>';
+        if (hasXTitle) {
+            svg += '<text x="' + (PAD_LEFT + plotW / 2) + '" y="' + (H - 7) + '" fill="' + palette.label + '" font-size="10" text-anchor="middle">' + escapeXml(model.xAxis.axisLabel) + '</text>';
         }
 
         // Event markers (Time x-axis only, drawn before data lines so points render on top)
