@@ -374,12 +374,15 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             // Distinct filters in FilterHelper sort order (L, R, G, B, Ha, Sii, Oiii, …).
-            // Pulled from the point list (which is filtered to valid data) rather than
-            // the raw images so we don't list filters that have no plottable points.
-            var allPts = model.PrimaryPoints.Concat(model.SecondaryPoints);
-            model.Filters = allPts
-                .Select(p => p.Filter)
-                .Where(f => !string.IsNullOrEmpty(f))
+            // Sourced from the raw images, NOT from the extracted point list — that way
+            // every chart in the report shows the same filter chip list (the filters
+            // actually used this session), regardless of which metric the chart is
+            // plotting. If a filter has images but no valid points for the current
+            // metric (e.g. Ha with no star detection and HFR chart), clicking the chip
+            // correctly falls through to the "No data for filter X" placeholder.
+            model.Filters = ordered
+                .Select(i => i.Filter)
+                .Where(f => !string.IsNullOrWhiteSpace(f))
                 .Distinct()
                 .OrderBy(FilterHelper.SortKey)
                 .ThenBy(f => f)

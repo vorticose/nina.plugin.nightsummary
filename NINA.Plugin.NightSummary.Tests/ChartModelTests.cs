@@ -138,6 +138,46 @@ namespace NINA.Plugin.NightSummary.Tests {
             Assert.Equal(new[] { "B", "G", "L", "R" }, pointFilters);
         }
 
+        [Fact]
+        public void BuildChartModel_FilterList_IncludesFiltersWithImagesButNoMetricData() {
+            // Session has two filters. L has normal HFR values; Ha has HFR=0 for every
+            // image (narrowband with no star detection). The filter chip list should
+            // still include Ha because images exist — clicking it should fall through
+            // to the placeholder rather than hiding the filter entirely.
+            var images = new List<ImageRecord> {
+                TestDataFactory.MakeImage("t", filter: "L",  hfr: 1.8),
+                TestDataFactory.MakeImage("t", filter: "L",  hfr: 1.9),
+                TestDataFactory.MakeImage("t", filter: "Ha", hfr: 0),
+                TestDataFactory.MakeImage("t", filter: "Ha", hfr: 0)
+            };
+            // Spread timestamps so collisions don't interfere
+            for (int i = 0; i < images.Count; i++)
+                images[i].Timestamp = new DateTime(2025, 1, 15, 22, 0, 0).AddMinutes(i * 5);
+
+            var model = ChartGenerator.BuildChartModel(images, ChartGenerator.PrimaryHFR, ChartGenerator.SecNone);
+
+            // Both filters present in the chip list...
+            Assert.Equal(new[] { "L", "Ha" }, model.Filters);
+            // ...but only L contributed points to the HFR chart
+            Assert.All(model.PrimaryPoints, p => Assert.Equal("L", p.Filter));
+        }
+
+        [Fact]
+        public void BuildChartModel_FilterList_IgnoresEmptyAndWhitespaceFilters() {
+            var images = new List<ImageRecord> {
+                TestDataFactory.MakeImage("t", filter: "L"),
+                TestDataFactory.MakeImage("t", filter: ""),
+                TestDataFactory.MakeImage("t", filter: "   "),
+                TestDataFactory.MakeImage("t", filter: "R")
+            };
+            for (int i = 0; i < images.Count; i++)
+                images[i].Timestamp = new DateTime(2025, 1, 15, 22, 0, 0).AddMinutes(i * 5);
+
+            var model = ChartGenerator.BuildChartModel(images, ChartGenerator.PrimaryHFR, ChartGenerator.SecNone);
+
+            Assert.Equal(new[] { "L", "R" }, model.Filters);
+        }
+
         // ── Event markers ────────────────────────────────────────────────────
 
         [Fact]
