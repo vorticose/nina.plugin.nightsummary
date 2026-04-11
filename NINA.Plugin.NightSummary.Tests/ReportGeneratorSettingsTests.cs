@@ -213,8 +213,10 @@ namespace NINA.Plugin.NightSummary.Tests {
             SettingsManager.Instance.Current.AdditionalChartConfigs = "";
             var data   = TestDataFactory.MakeReportData(imageCount: 10);
             var report = await _generator.GenerateHtmlReport(data);
-            // Only one chart — "HFR Vs. Time" should appear exactly once as an h2
-            var count = CountOccurrences(report, "HFR Vs. Time");
+            // Only one chart section. Match the <h2> header exactly — the chart
+            // title also appears inside the data-chart JSON blob, so a raw
+            // substring count would double-count.
+            var count = CountOccurrences(report, "<h2>HFR Vs. Time</h2>");
             Assert.Equal(1, count);
         }
 

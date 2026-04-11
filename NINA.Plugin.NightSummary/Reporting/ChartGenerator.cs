@@ -339,27 +339,22 @@ namespace NINA.Plugin.NightSummary.Reporting {
             if (secondaryMetric > SecNone)
                 model.Secondary = BuildSecondaryMetricInfo(images, secondaryMetric);
 
-            // Data extraction — same join logic as GenerateMetricChart so the JS
-            // renderer operates on the same point set the SVG renderer would have.
-            var primaryRaw   = ExtractPrimary(images, primaryMetric);
-            var secondaryRaw = secondaryMetric > SecNone
-                ? ExtractSecondary(images, secondaryMetric)
-                : new List<(DateTime t, double v)>();
-            var xByTime = BuildXAxisLookup(images, xAxisMetric);
+            // Iterate images directly rather than going through the timestamp-keyed
+            // ExtractPrimary/JoinWithXAxis pipeline the legacy SVG path uses. Keyed
+            // lookups drop points when two images share a timestamp, and (more
+            // importantly here) misattribute filter names. Iterating the ordered
+            // list guarantees each point carries its own image's filter.
+            var ordered = images.OrderBy(i => i.Timestamp).ToList();
 
-            // Filter lookup so each point carries its filter name for the selector UI.
-            var filterByTime = new Dictionary<DateTime, string>();
-            foreach (var img in images.OrderBy(i => i.Timestamp)) {
-                filterByTime[img.Timestamp] = img.Filter ?? "";
+            model.PrimaryPoints = BuildPointsForMetric(ordered, primaryMetric, xAxisMetric, isPrimary: true);
+            if (secondaryMetric > SecNone) {
+                model.SecondaryPoints = BuildPointsForMetric(ordered, secondaryMetric, xAxisMetric, isPrimary: false);
             }
-
-            model.PrimaryPoints   = BuildPointList(primaryRaw,   xByTime, filterByTime);
-            model.SecondaryPoints = BuildPointList(secondaryRaw, xByTime, filterByTime);
 
             // Event markers — precompute xValue (seconds since session start) so the
             // JS renderer doesn't need to rerun time math on every re-render.
-            if (eventMarkers != null && eventMarkers.Count > 0 && images.Count > 0) {
-                var minTime = images.OrderBy(i => i.Timestamp).First().Timestamp;
+            if (eventMarkers != null && eventMarkers.Count > 0 && ordered.Count > 0) {
+                var minTime = ordered[0].Timestamp;
                 foreach (var (ts, evtType, desc) in eventMarkers) {
                     double xSec = (ts - minTime).TotalSeconds;
                     var label = evtType switch {
@@ -379,6 +374,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             // Distinct filters in FilterHelper sort order (L, R, G, B, Ha, Sii, Oiii, …).
+            // Pulled from the point list (which is filtered to valid data) rather than
+            // the raw images so we don't list filters that have no plottable points.
             var allPts = model.PrimaryPoints.Concat(model.SecondaryPoints);
             model.Filters = allPts
                 .Select(p => p.Filter)
@@ -389,6 +386,88 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 .ToList();
 
             return model;
+        }
+
+        /// <summary>
+        /// Builds the plot-point list for one metric by iterating the ordered
+        /// image list. Each emitted point carries the x-axis value (time-since-start,
+        /// frame index, or metric value) plus the source image's filter and timestamp.
+        /// Points with no valid y-value (or no valid x-value in metric x-axis mode)
+        /// are skipped. Returned list is sorted by X.
+        /// </summary>
+        private static List<ChartPoint> BuildPointsForMetric(
+                List<ImageRecord> ordered,
+                int metric,
+                int xAxisMetric,
+                bool isPrimary) {
+            var list = new List<ChartPoint>(ordered.Count);
+            if (ordered.Count == 0) return list;
+
+            var sessionStart = ordered[0].Timestamp;
+            int xMetricIdx = xAxisMetric >= XAxisMetricOffset ? xAxisMetric - XAxisMetricOffset : -1;
+
+            for (int i = 0; i < ordered.Count; i++) {
+                var img = ordered[i];
+                double? y = ExtractMetricValue(img, metric, isPrimary);
+                if (y == null) continue;
+
+                double x;
+                if (xAxisMetric == XAxisTime) {
+                    x = (img.Timestamp - sessionStart).TotalSeconds;
+                } else if (xAxisMetric == XAxisFrameIndex) {
+                    x = i + 1;
+                } else {
+                    // Metric x-axis: skip points whose x-metric has no value
+                    double? xVal = ExtractMetricValue(img, xMetricIdx, isPrimary: true);
+                    if (xVal == null) continue;
+                    x = xVal.Value;
+                }
+
+                list.Add(new ChartPoint {
+                    X         = x,
+                    Y         = y.Value,
+                    Filter    = img.Filter ?? "",
+                    Timestamp = img.Timestamp
+                });
+            }
+
+            list.Sort((a, b) => a.X.CompareTo(b.X));
+            return list;
+        }
+
+        /// <summary>
+        /// Unified per-image metric extractor. Returns null when the image lacks
+        /// a valid value for the requested metric (matching the &gt;0 / HasValue
+        /// filters in ExtractPrimary/ExtractSecondary). The <paramref name="isPrimary"/>
+        /// flag selects between the primary and secondary metric index spaces,
+        /// which differ by 1 (SecNone = 0 shifts all secondary indices up by 1).
+        /// </summary>
+        private static double? ExtractMetricValue(ImageRecord img, int metric, bool isPrimary) {
+            // Normalize to the primary index space so the switch has one set of cases.
+            int m = isPrimary ? metric : metric - 1;
+            return m switch {
+                PrimaryHFR          => img.HFR > 0                  ? img.HFR : (double?)null,
+                PrimaryFWHM         => img.FWHM > 0                 ? img.FWHM : (double?)null,
+                PrimaryGuidingRMS   => img.GuidingRMSTotal > 0      ? img.GuidingRMSTotal : (double?)null,
+                PrimaryFocuserTemp  => img.FocuserTemp,
+                PrimaryAmbientTemp  => img.AmbientTemp,
+                PrimaryEccentricity => img.Eccentricity > 0         ? img.Eccentricity : (double?)null,
+                PrimaryAltitude     => img.Altitude,
+                PrimaryAirmass      => img.Airmass,
+                PrimaryHumidity     => img.Humidity,
+                PrimaryFocuserPos   => img.FocuserPosition.HasValue ? (double)img.FocuserPosition.Value : (double?)null,
+                PrimarySkyQuality   => img.SkyQuality,
+                PrimaryCloudCover   => img.CloudCover,
+                PrimaryCameraTemp   => img.CameraTemp,
+                PrimaryDewPoint     => img.DewPoint,
+                PrimaryWindSpeed    => img.WindSpeed,
+                PrimaryPressure     => img.Pressure,
+                PrimaryStarCount    => img.StarCount > 0            ? img.StarCount : (double?)null,
+                PrimaryAzimuth      => img.Azimuth,
+                PrimarySeeingFWHM   => img.SeeingFWHM,
+                PrimaryMedian       => img.StatMedian,
+                _                   => null
+            };
         }
 
         private static ChartMetricInfo BuildPrimaryMetricInfo(List<ImageRecord> images, int metric) {
@@ -443,25 +522,6 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 info.Unit      = GetTooltipUnit(primaryIdx, true);
             }
             return info;
-        }
-
-        private static List<ChartPoint> BuildPointList(
-                List<(DateTime t, double v)> yData,
-                Dictionary<DateTime, double> xByTime,
-                Dictionary<DateTime, string> filterByTime) {
-            var list = new List<ChartPoint>(yData.Count);
-            foreach (var (t, v) in yData) {
-                if (!xByTime.TryGetValue(t, out double x)) continue;
-                filterByTime.TryGetValue(t, out var filter);
-                list.Add(new ChartPoint {
-                    X         = x,
-                    Y         = v,
-                    Filter    = filter ?? "",
-                    Timestamp = t
-                });
-            }
-            list.Sort((a, b) => a.X.CompareTo(b.X));
-            return list;
         }
 
         // ── X-axis helpers ──────────────────────────────────────────────────
