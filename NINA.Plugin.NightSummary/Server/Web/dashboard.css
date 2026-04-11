@@ -1794,12 +1794,17 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 .stats-tab-btn:hover { color: var(--text-secondary); }
 .stats-tab-btn.active { color: var(--accent); }
 
-/* ── Targets tab sort bar ── */
+/* ── Targets tab control bar (sort + group toggle + status filter) ── */
+.targets-control-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
 .targets-sort-bar {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 14px;
   flex-wrap: wrap;
 }
 .targets-sort-label {
@@ -1845,6 +1850,177 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   border-color: rgba(126,184,247,0.40);
 }
 :root.light .targets-sort-pill { border-color: rgba(0,0,0,0.08); }
+
+/* Group-by-project toggle — same pill style, pushed to right end of sort row */
+.targets-group-pill {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 20px;
+  background: rgba(230,232,240,0.06);
+  border: 1px solid rgba(230,232,240,0.12);
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-family: inherit;
+  cursor: pointer;
+  margin-left: auto;
+  transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.18),
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    0 2px 4px rgba(0,0,0,0.35),
+    0 1px 2px rgba(0,0,0,0.2);
+}
+.targets-group-pill:hover {
+  background: rgba(230,232,240,0.10);
+  border-color: rgba(230,232,240,0.22);
+  color: var(--text-secondary);
+}
+.targets-group-pill.active {
+  background: rgba(126,184,247,0.10);
+  border-color: rgba(126,184,247,0.28);
+  color: var(--accent);
+}
+.targets-group-pill.active:hover {
+  background: rgba(126,184,247,0.16);
+  border-color: rgba(126,184,247,0.40);
+}
+
+/* Status filter row */
+.targets-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.targets-status-chip {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 20px;
+  background: none;
+  border: 1px solid rgba(230,232,240,0.10);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  font-family: inherit;
+  cursor: pointer;
+  transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
+}
+.targets-status-chip:hover {
+  background: rgba(230,232,240,0.08);
+  border-color: rgba(230,232,240,0.20);
+  color: var(--text-secondary);
+}
+.targets-status-chip.active {
+  border-color: rgba(230,232,240,0.18);
+  color: var(--text-primary);
+}
+.status-chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── Project containers (grouped mode) ── */
+.targets-grouped { display: flex; flex-direction: column; gap: 14px; }
+.targets-grouped-cards { margin-bottom: 0; } /* spacing handled by flex gap */
+
+.targets-project-container {
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.targets-project-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 16px;
+  background: rgba(255,255,255,0.03);
+  cursor: pointer;
+  user-select: none;
+  gap: 12px;
+  transition: background var(--t-fast);
+}
+.targets-project-header:hover { background: rgba(255,255,255,0.05); }
+.targets-project-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.targets-project-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.targets-project-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* State badge inside project container header — reset absolute positioning */
+.targets-project-header .target-card-ts-badge {
+  position: static;
+  font-size: 9px;
+}
+.targets-project-mosaic-badge {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  padding: 2px 6px;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.targets-project-agg {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.targets-project-collapse-btn {
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 4px 2px;
+  line-height: 1;
+  transition: transform 0.2s, color var(--t-fast);
+}
+.targets-project-collapse-btn:hover { color: var(--text-secondary); }
+.targets-project-container.collapsed .targets-project-collapse-btn {
+  transform: rotate(-90deg);
+}
+.targets-project-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(224px, 1fr));
+  gap: 14px;
+  padding: 14px;
+}
+.targets-project-container.collapsed .targets-project-grid { display: none; }
+
+/* Unassigned section */
+.targets-unassigned-section { display: flex; flex-direction: column; gap: 10px; }
+.targets-unassigned-header {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.9px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
 
 /* ── Target card grid ── */
 .target-grid {
@@ -2993,6 +3169,10 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   .target-card-session-badge { font-size: 9px; padding: 3px 8px; border-radius: 10px; }
   .targets-sort-bar { gap: 5px; }
   .targets-sort-pill { height: 30px; padding: 0 10px; font-size: 11px; }
+  .targets-group-pill { height: 30px; padding: 0 10px; font-size: 11px; }
+  .targets-status-chip { height: 26px; padding: 0 8px; font-size: 11px; }
+  .targets-project-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 10px; }
+  .targets-project-name { font-size: 13px; }
   /* ── Mobile thumbnail zoom preview ── */
   .mobile-thumb-preview {
     position: absolute;

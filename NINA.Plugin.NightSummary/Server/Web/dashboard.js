@@ -426,24 +426,212 @@ function sortTargets(targets, key) {
   return sorted;
 }
 
-function renderTargetsSortBar(activeKey) {
-  var html = '<div class="targets-sort-bar"><span class="targets-sort-label">Sort</span>';
+// ── Phase 3b: Grouping + Status Filters ──────────────────────────────────
+
+var TS_STATE_ORDER  = ['Active', 'Completed', 'Draft', 'Inactive', 'Closed'];
+var TS_STATE_COLORS = { Active: '#66BB6A', Completed: '#42A5F5', Draft: '#FFB74D', Inactive: '#EF5350', Closed: '#90A4AE' };
+var DEFAULT_STATUS_FILTER = ['Active', 'Completed', 'Draft', 'Inactive'];
+
+function getTargetGroupBy() {
+  return localStorage.getItem('ns-targets-group') === 'project' ? 'project' : 'flat';
+}
+
+function getTargetStatusFilter() {
+  try {
+    var raw = localStorage.getItem('ns-targets-status-filter');
+    if (raw) { var arr = JSON.parse(raw); if (Array.isArray(arr)) return arr; }
+  } catch (e) {}
+  return DEFAULT_STATUS_FILTER.slice();
+}
+
+function setTargetStatusFilter(arr) {
+  localStorage.setItem('ns-targets-status-filter', JSON.stringify(arr));
+}
+
+// Renders the full control bar: sort pills + optional group toggle + optional status filter row
+function renderTargetsControlBar(sortKey, groupBy) {
+  var tsAvail = statsTsStatus === 'available';
+  var html = '<div class="targets-control-bar">';
+  html += '<div class="targets-sort-bar"><span class="targets-sort-label">Sort</span>';
   TARGET_SORT_OPTIONS.forEach(function(opt) {
-    var cls = 'targets-sort-pill' + (opt.key === activeKey ? ' active' : '');
+    var cls = 'targets-sort-pill' + (opt.key === sortKey ? ' active' : '');
     html += '<button type="button" class="' + cls + '" data-sort-key="' + opt.key + '">' + esc(opt.label) + '</button>';
   });
+  if (tsAvail) {
+    var grpCls = 'targets-group-pill' + (groupBy === 'project' ? ' active' : '');
+    html += '<button type="button" class="' + grpCls + '" data-action="toggle-group">Group by project</button>';
+  }
+  html += '</div>';
+  if (tsAvail) {
+    var enabled = getTargetStatusFilter();
+    html += '<div class="targets-filter-row"><span class="targets-sort-label">Filter</span>';
+    TS_STATE_ORDER.forEach(function(state) {
+      var on = enabled.indexOf(state) >= 0;
+      var color = TS_STATE_COLORS[state] || '#90A4AE';
+      var cls = 'targets-status-chip' + (on ? ' active' : '');
+      html += '<button type="button" class="' + cls + '" data-filter-state="' + esc(state) + '">' +
+        '<span class="status-chip-dot" style="background:' + color + '"></span>' + esc(state) + '</button>';
+    });
+    html += '</div>';
+  }
   html += '</div>';
   return html;
 }
 
-function initTargetsSortBar() {
-  var pills = document.querySelectorAll('.targets-sort-pill');
-  pills.forEach(function(pill) {
+function initTargetsControlBar() {
+  document.querySelectorAll('.targets-sort-pill').forEach(function(pill) {
     pill.addEventListener('click', function() {
       var key = pill.getAttribute('data-sort-key');
       if (!key || key === getTargetSortKey()) return;
       localStorage.setItem('ns-targets-sort', key);
       renderStatsTabContent('targets');
+    });
+  });
+  var grpBtn = document.querySelector('.targets-group-pill');
+  if (grpBtn) {
+    grpBtn.addEventListener('click', function() {
+      localStorage.setItem('ns-targets-group', getTargetGroupBy() === 'project' ? 'flat' : 'project');
+      renderStatsTabContent('targets');
+    });
+  }
+  document.querySelectorAll('.targets-status-chip').forEach(function(chip) {
+    chip.addEventListener('click', function() {
+      var state = chip.getAttribute('data-filter-state');
+      if (!state) return;
+      var enabled = getTargetStatusFilter();
+      var idx = enabled.indexOf(state);
+      if (idx >= 0) {
+        if (enabled.length <= 1) return; // keep at least one enabled
+        enabled.splice(idx, 1);
+      } else {
+        enabled.push(state);
+      }
+      setTargetStatusFilter(enabled);
+      renderStatsTabContent('targets');
+    });
+  });
+}
+
+// Flat-mode status filter: targets with no TS link always pass through
+function filterTargetsByStatus(targets) {
+  var enabled = getTargetStatusFilter();
+  return targets.filter(function(t) {
+    if (!t.ts || !t.ts.project) return true;
+    return enabled.indexOf(t.ts.project.state) >= 0;
+  });
+}
+
+function renderProjectContainer(info, sortKey) {
+  var allTargets = statsTargetData || [];
+  var sorted = sortTargets(info.targets, sortKey);
+  var totalHours = 0, totalFrames = 0;
+  info.targets.forEach(function(t) {
+    totalHours += t.totalIntegrationHours || 0;
+    totalFrames += t.acceptedFrames || 0;
+  });
+  var html = '<div class="targets-project-container" data-guid="' + esc(info.guid) +
+    '" data-state="' + esc(info.state) + '">';
+  html += '<div class="targets-project-header">';
+  html += '<div class="targets-project-header-left">';
+  html += '<span class="targets-project-name">' + esc(info.name) + '</span>';
+  if (info.isMosaic) html += '<span class="targets-project-mosaic-badge">Mosaic</span>';
+  html += '<span class="target-card-ts-badge" data-state="' + esc(info.state) +
+    '" data-project-guid="' + esc(info.guid) + '" title="Click to override status">' + esc(info.state) + '</span>';
+  html += '</div>';
+  html += '<div class="targets-project-header-right">';
+  html += '<span class="targets-project-agg">' + totalHours.toFixed(1) + 'h\u00a0\u00b7\u00a0' + totalFrames + '\u00a0frames</span>';
+  html += '<button type="button" class="targets-project-collapse-btn" aria-label="Collapse">&#9660;</button>';
+  html += '</div>';
+  html += '</div>';
+  html += '<div class="targets-project-grid">';
+  sorted.forEach(function(t) { html += renderTargetCard(t, allTargets.indexOf(t)); });
+  html += '</div>';
+  html += '</div>';
+  return html;
+}
+
+// Build grouped HTML: project containers + batched standalone cards + unassigned section
+function renderGroupedTargets(targets, sortKey) {
+  var enabled = getTargetStatusFilter();
+  var allTargets = statsTargetData || [];
+  var containerMap = {};
+  var unassigned = [];
+
+  targets.forEach(function(t) {
+    if (!t.ts || !t.ts.project || !t.ts.project.guid) { unassigned.push(t); return; }
+    var proj = t.ts.project;
+    var guid = proj.guid;
+    if (!containerMap[guid]) {
+      containerMap[guid] = { guid: guid, name: proj.name || 'TS Project',
+        state: proj.state || 'Draft', isMosaic: !!proj.isMosaic,
+        targetCount: proj.targetCount || 1, targets: [] };
+    }
+    containerMap[guid].targets.push(t);
+  });
+
+  var items = [];
+  Object.keys(containerMap).forEach(function(guid) {
+    var grp = containerMap[guid];
+    if (enabled.indexOf(grp.state) < 0) return; // filtered out
+    if (!grp.isMosaic && grp.targetCount <= 1) {
+      items.push({ type: 'standalone', target: grp.targets[0], state: grp.state });
+    } else {
+      items.push({ type: 'container', info: grp, state: grp.state });
+    }
+  });
+
+  // Sort by Active→Completed→Draft→Inactive→Closed
+  items.sort(function(a, b) {
+    var ia = TS_STATE_ORDER.indexOf(a.state); if (ia < 0) ia = 99;
+    var ib = TS_STATE_ORDER.indexOf(b.state); if (ib < 0) ib = 99;
+    return ia - ib;
+  });
+
+  var html = '';
+  var cardBatch = [];
+
+  function flushBatch() {
+    if (!cardBatch.length) return;
+    html += '<div class="target-grid targets-grouped-cards">';
+    cardBatch.forEach(function(item) { html += renderTargetCard(item.target, allTargets.indexOf(item.target)); });
+    html += '</div>';
+    cardBatch = [];
+  }
+
+  items.forEach(function(item) {
+    if (item.type === 'standalone') { cardBatch.push(item); }
+    else { flushBatch(); html += renderProjectContainer(item.info, sortKey); }
+  });
+  flushBatch();
+
+  if (unassigned.length > 0) {
+    var sortedU = sortTargets(unassigned, sortKey);
+    html += '<div class="targets-unassigned-section">';
+    html += '<div class="targets-unassigned-header">Unassigned</div>';
+    html += '<div class="target-grid">';
+    sortedU.forEach(function(t) { html += renderTargetCard(t, allTargets.indexOf(t)); });
+    html += '</div></div>';
+  }
+
+  if (!html) html = '<div class="empty" style="margin-top:32px">No targets match the current filter.</div>';
+  return html;
+}
+
+function initProjectContainers() {
+  // Collapse button click
+  document.querySelectorAll('.targets-project-collapse-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var c = btn.closest('.targets-project-container');
+      if (c) c.classList.toggle('collapsed');
+    });
+  });
+  // Click anywhere on header also toggles (except the TS badge)
+  document.querySelectorAll('.targets-project-header').forEach(function(header) {
+    header.addEventListener('click', function(e) {
+      if (e.target.closest('.target-card-ts-badge')) return;
+      var c = header.closest('.targets-project-container');
+      if (c) c.classList.toggle('collapsed');
     });
   });
 }
@@ -3435,19 +3623,29 @@ function renderStatsTabContent(tabId) {
       return;
     }
     var sortKey = getTargetSortKey();
-    var sorted = sortTargets(targets, sortKey);
+    var groupBy = getTargetGroupBy();
+    var tsAvail = statsTsStatus === 'available';
+    var allTargets = statsTargetData || [];
     var html = renderTsStatusBanner();
-    html += renderTargetsSortBar(sortKey);
-    html += '<div class="target-grid">';
-    sorted.forEach(function(t, i) {
-      html += renderTargetCard(t, i);
-    });
-    html += '</div>';
+    html += renderTargetsControlBar(sortKey, groupBy);
+    if (groupBy === 'project' && tsAvail) {
+      html += '<div class="targets-grouped">' + renderGroupedTargets(targets, sortKey) + '</div>';
+    } else {
+      var filtered = tsAvail ? filterTargetsByStatus(targets) : targets;
+      var sorted = sortTargets(filtered, sortKey);
+      html += '<div class="target-grid">';
+      sorted.forEach(function(t) { html += renderTargetCard(t, allTargets.indexOf(t)); });
+      html += '</div>';
+      if (filtered.length === 0 && targets.length > 0) {
+        html += '<div class="empty" style="margin-top:40px">No targets match the current filter.</div>';
+      }
+    }
     container.innerHTML = html;
     loadTargetThumbnails();
-    initTargetsSortBar();
+    initTargetsControlBar();
     initTargetCardClicks();
     initTsBadgeClicks();
+    if (groupBy === 'project' && tsAvail) initProjectContainers();
     requestAnimationFrame(fitTargetNameOverlays);
   }
 }
