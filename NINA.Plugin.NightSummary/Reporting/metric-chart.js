@@ -163,8 +163,8 @@
         const secondaryPts = (model.secondaryPoints || []).filter(filterFn);
 
         const wantSecondary = model.secondary != null;
-        const hasPrimary    = primaryPts.length   >= 2;
-        const hasSecondary  = secondaryPts.length >= 2;
+        const hasPrimary    = primaryPts.length   >= 1;
+        const hasSecondary  = secondaryPts.length >= 1;
 
         // Both empty → placeholder
         if (!hasPrimary && !hasSecondary) {
@@ -188,7 +188,7 @@
         const swapped = !hasPrimary && hasSecondary;
         const leftPts  = swapped ? secondaryPts : primaryPts;
         const rightPts = (!swapped && hasSecondary) ? secondaryPts : [];
-        const hasDual  = rightPts.length >= 2;
+        const hasDual  = rightPts.length >= 1;
 
         const leftMetric = swapped ? model.secondary : model.primary;
         const leftColor      = swapped ? palette.secondary    : palette.primary;
@@ -212,10 +212,13 @@
 
         // X range — union of visible points
         const allX = leftPts.map(function (p) { return p.x; }).concat(rightPts.map(function (p) { return p.x; }));
-        const minX = Math.min.apply(null, allX);
-        const maxX = Math.max.apply(null, allX);
+        const rawMinX = Math.min.apply(null, allX);
+        const rawMaxX = Math.max.apply(null, allX);
         const xRangeMin = model.xAxis.mode === 1 ? 1 : 0.001;
-        const xRange = Math.max(maxX - minX, xRangeMin);
+        // Single-point: center the dot horizontally by padding ±1 around the value
+        const isSinglePoint = rawMaxX - rawMinX < xRangeMin;
+        const minX  = isSinglePoint ? rawMinX - 1 : rawMinX;
+        const xRange = isSinglePoint ? 2 : (rawMaxX - rawMinX);
 
         // Y scales (from visible points only → rescale on filter change)
         const leftMinSpan = leftMetric.minSpan;
@@ -272,14 +275,22 @@
         }
 
         // X axis labels
-        const pointCount = Math.max(leftPts.length, hasDual ? rightPts.length : 0);
-        const xSteps = Math.max(1, Math.min(6, pointCount - 1));
-        for (let i = 0; i <= xSteps; i++) {
-            const xVal = minX + (xRange / xSteps * i);
-            const xPx  = toXPx(xVal);
+        if (isSinglePoint) {
+            // One grid line + label centered on the single data point
+            const xPx = PAD_LEFT + plotW / 2;
+            const xLabel = formatXAxisValue(rawMinX, model.xAxis, minTime);
             svg += '<line x1="' + xPx.toFixed(1) + '" y1="' + PAD_TOP + '" x2="' + xPx.toFixed(1) + '" y2="' + (PAD_TOP + plotH) + '" stroke="' + palette.grid + '" stroke-width="1"/>';
-            const xLabel = formatXAxisValue(xVal, model.xAxis, minTime);
             svg += '<text x="' + xPx.toFixed(1) + '" y="' + (H - 10) + '" fill="' + palette.label + '" font-size="11" text-anchor="middle">' + escapeXml(xLabel) + '</text>';
+        } else {
+            const pointCount = Math.max(leftPts.length, hasDual ? rightPts.length : 0);
+            const xSteps = Math.max(1, Math.min(6, pointCount - 1));
+            for (let i = 0; i <= xSteps; i++) {
+                const xVal = minX + (xRange / xSteps * i);
+                const xPx  = toXPx(xVal);
+                svg += '<line x1="' + xPx.toFixed(1) + '" y1="' + PAD_TOP + '" x2="' + xPx.toFixed(1) + '" y2="' + (PAD_TOP + plotH) + '" stroke="' + palette.grid + '" stroke-width="1"/>';
+                const xLabel = formatXAxisValue(xVal, model.xAxis, minTime);
+                svg += '<text x="' + xPx.toFixed(1) + '" y="' + (H - 10) + '" fill="' + palette.label + '" font-size="11" text-anchor="middle">' + escapeXml(xLabel) + '</text>';
+            }
         }
 
         // Left and bottom axes
@@ -299,7 +310,7 @@
         if (model.xAxis.mode === 0 && model.eventMarkers && model.eventMarkers.length > 0) {
             for (const evt of model.eventMarkers) {
                 const evtX = evt.xValue;
-                if (evtX < minX || evtX > maxX) continue;
+                if (evtX < minX || evtX > minX + xRange) continue;
                 const xPx = toXPx(evtX);
                 let color, label;
                 if (evt.type === 'AutoFocus')     { color = palette.afMarker;   label = 'AF'; }
@@ -317,8 +328,10 @@
 
         // Secondary line (drawn first so primary renders on top)
         if (hasDual) {
-            const rightPoly = rightPts.map(function (p) { return toXPx(p.x).toFixed(1) + ',' + toYR(p.y).toFixed(1); }).join(' ');
-            svg += '<polyline points="' + rightPoly + '" fill="none" stroke="' + palette.secondary + '" stroke-width="2" stroke-linejoin="round" stroke-dasharray="6,3"/>';
+            if (rightPts.length >= 2) {
+                const rightPoly = rightPts.map(function (p) { return toXPx(p.x).toFixed(1) + ',' + toYR(p.y).toFixed(1); }).join(' ');
+                svg += '<polyline points="' + rightPoly + '" fill="none" stroke="' + palette.secondary + '" stroke-width="2" stroke-linejoin="round" stroke-dasharray="6,3"/>';
+            }
             const secUnit = model.secondary.unit;
             const secFmt  = model.secondary.format;
             for (const p of rightPts) {
@@ -329,8 +342,10 @@
         }
 
         // Primary line
-        const leftPoly = leftPts.map(function (p) { return toXPx(p.x).toFixed(1) + ',' + toYL(p.y).toFixed(1); }).join(' ');
-        svg += '<polyline points="' + leftPoly + '" fill="none" stroke="' + leftColor + '" stroke-width="2" stroke-linejoin="round"/>';
+        if (leftPts.length >= 2) {
+            const leftPoly = leftPts.map(function (p) { return toXPx(p.x).toFixed(1) + ',' + toYL(p.y).toFixed(1); }).join(' ');
+            svg += '<polyline points="' + leftPoly + '" fill="none" stroke="' + leftColor + '" stroke-width="2" stroke-linejoin="round"/>';
+        }
         const leftUnit = leftMetric.unit;
         const leftTipFmt = leftMetric.format;
         for (const p of leftPts) {
