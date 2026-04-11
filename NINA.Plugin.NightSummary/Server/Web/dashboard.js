@@ -101,10 +101,24 @@ var FILTER_TYPE_COLORS = {
   'S': '#C62828', // SII        — 672nm deep crimson (longer λ → deeper)
   'O': '#00ACC1', // OIII       — 500nm cyan-teal
   'N': '#FB8C00', // NII        — 658nm amber (near Ha; amber for visual separation)
-  'L': '#90A4AE', // Luminance  — full spectrum blue-silver
+  'L': '#90A4AE', // Luminance  — muted blue-silver (pill bg/border; letter uses white override)
   'R': '#FF7043', // Red BB     — warm orange-red (broadband = less spectrally pure)
   'G': '#66BB6A', // Green BB
   'B': '#42A5F5', // Blue BB
+};
+
+// Chart bar fill override: L renders as off-white so luminance segments read as
+// "bright" rather than blending into the muted end of the palette. All other
+// types use the same colors as the pills.
+var FILTER_TYPE_CHART_COLORS = {
+  'H': '#E53935',
+  'S': '#C62828',
+  'O': '#00ACC1',
+  'N': '#FB8C00',
+  'L': '#DCE1E8', // off-white for luminance bars
+  'R': '#FF7043',
+  'G': '#66BB6A',
+  'B': '#42A5F5',
 };
 
 // Well-known filter names → canonical type. Keys are lowercase for O(1) lookup.
@@ -321,7 +335,7 @@ function renderTargetCard(t, index) {
   var initial = t.target ? t.target.charAt(0).toUpperCase() : '?';
   var sessionCount = t.sessionCount || 0;
 
-  var html = '<div class="target-card">';
+  var html = '<div class="target-card" data-target="' + esc(t.target) + '" data-latest-session="' + esc(t.latestSessionId || '') + '">';
 
   // Thumbnail with overlaid name + session badge
   html += '<div class="target-card-thumb" data-session-id="' + esc(t.latestSessionId || '') + '" data-target="' + esc(t.target) + '">';
@@ -468,6 +482,457 @@ window.addEventListener('resize', function() {
   _fitNamesDebounce = setTimeout(fitTargetNameOverlays, 120);
 });
 
+// ── Target Detail Panel (Phase 2) ────────────────────────────────────────
+
+// Filter ordering for stacked bars — consistent across all bars in a chart
+var TDP_FILTER_STACK_ORDER = ['L', 'R', 'G', 'B', 'H', 'O', 'S', 'N'];
+
+function tdpFmtDuration(mins) {
+  if (!mins || mins <= 0) return '--';
+  var h = Math.floor(mins / 60);
+  var m = Math.round(mins % 60);
+  if (h === 0) return m + 'm';
+  if (m === 0) return h + 'h';
+  return h + 'h ' + m + 'm';
+}
+
+function tdpFmtDate(iso) {
+  if (!iso) return '--';
+  var d = new Date(iso);
+  if (isNaN(d.getTime())) return '--';
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// Build the same translucent circular pill used in the per-filter hover popups.
+// Accepts either a filter name or a resolved type letter. Falls back to a neutral
+// gray pill when the type is unresolved.
+// Special case: L (luminance) uses a white letter since its muted blue-silver
+// base color wouldn't read clearly on the translucent dark background.
+function filterTypePill(filterNameOrType) {
+  var fc = getFilterColor(filterNameOrType);
+  var typeLetter = resolveFilterType(filterNameOrType) ||
+    (filterNameOrType ? String(filterNameOrType).charAt(0).toUpperCase() : '?');
+  var rgb = fc ? hexToRgb(fc) : null;
+  var letterColor = typeLetter === 'L' ? '#FFFFFF' : fc;
+  var dotStyle = rgb
+    ? 'background:rgba(' + rgb + ',0.10);border-color:rgba(' + rgb + ',0.28);color:' + letterColor
+    : 'background:rgba(128,128,128,0.10);border-color:rgba(128,128,128,0.28);color:var(--muted)';
+  return '<span class="filter-type-dot" style="' + dotStyle + '">' + esc(typeLetter) + '</span>';
+}
+
+// Render the stacked-by-filter chart + cumulative line. Takes the raw sessions array
+// from /api/stats/targets/{name}/sessions (newest-first; will sort ascending internally).
+// widthPx: SVG viewBox width in pixels (pass the measured container width).
+// Returns { svg: string, filtersUsed: ['H','O','S',...] } so the caller can render the
+// HTML pill legend alongside the SVG.
+function renderTargetChart(sessionsDesc, widthPx) {
+  var W = Math.max(320, Math.round(widthPx || 540));
+  var H = 160, PAD_L = 38, PAD_R = 20, PAD_T = 12, PAD_B = 22;
+  var plotW = W - PAD_L - PAD_R;
+  var plotH = H - PAD_T - PAD_B;
+
+  var sorted = sessionsDesc.slice().sort(function(a, b) {
+    return (a.sessionStart || '') < (b.sessionStart || '') ? -1 : 1;
+  });
+  if (sorted.length === 0) {
+    return {
+      svg: '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg">' +
+        '<text x="' + (W/2) + '" y="' + (H/2) + '" fill="#7a8394" font-size="11" text-anchor="middle">No session data</text></svg>',
+      filtersUsed: []
+    };
+  }
+
+  // Group each filter by resolved type letter so the stack is stable
+  function filterType(name) { return resolveFilterType(name) || 'Unknown'; }
+  var filtersUsed = {};
+  sorted.forEach(function(s) {
+    (s.filters || []).forEach(function(f) { filtersUsed[filterType(f.filter)] = true; });
+  });
+
+  // Per-session total hours for bar height scaling
+  var maxNightHrs = Math.max.apply(null, sorted.map(function(s) { return s.integrationHours || 0; }));
+  var totalHrs = sorted.reduce(function(acc, s) { return acc + (s.integrationHours || 0); }, 0);
+  var yMaxBar = Math.max(0.5, Math.ceil(maxNightHrs * 1.1 * 2) / 2);
+  var yMaxLine = Math.max(1, Math.ceil(totalHrs * 1.05));
+
+  var barW = Math.max(8, Math.min(32, Math.floor(plotW / sorted.length) - 6));
+  var xStep = plotW / sorted.length;
+
+  var cum = 0;
+  var linePts = [];
+  var barsSvg = sorted.map(function(s, i) {
+    var cx = PAD_L + i * xStep + xStep / 2;
+    var barX = cx - barW / 2;
+    var baseY = PAD_T + plotH;
+    cum += s.integrationHours || 0;
+    var lineY = PAD_T + plotH - (cum / yMaxLine) * plotH;
+    linePts.push(cx + ',' + lineY);
+
+    // Aggregate per-type (collapsing multiple filters that resolve to the same type)
+    var byType = {};
+    (s.filters || []).forEach(function(f) {
+      var t = filterType(f.filter);
+      byType[t] = (byType[t] || 0) + (f.integrationHours || 0);
+    });
+
+    var stackY = baseY;
+    var segs = '';
+    TDP_FILTER_STACK_ORDER.forEach(function(t) {
+      var hrs = byType[t] || 0;
+      if (hrs <= 0) return;
+      var segH = (hrs / yMaxBar) * plotH;
+      if (segH < 0.4) return;
+      stackY -= segH;
+      var color = FILTER_TYPE_CHART_COLORS[t] || '#808080';
+      segs += '<rect x="' + barX + '" y="' + stackY + '" width="' + barW +
+        '" height="' + segH + '" fill="' + color +
+        '" opacity="0.85" stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>';
+    });
+    // Unknown type fallback (anything not in STACK_ORDER)
+    Object.keys(byType).forEach(function(t) {
+      if (TDP_FILTER_STACK_ORDER.indexOf(t) === -1) {
+        var hrs = byType[t];
+        var segH = (hrs / yMaxBar) * plotH;
+        if (segH < 0.4) return;
+        stackY -= segH;
+        segs += '<rect x="' + barX + '" y="' + stackY + '" width="' + barW +
+          '" height="' + segH + '" fill="#808080" opacity="0.7" stroke="rgba(0,0,0,0.3)" stroke-width="0.5"/>';
+      }
+    });
+    return segs;
+  }).join('');
+
+  // Y axis labels
+  var axisLeft =
+    '<text x="' + (PAD_L - 4) + '" y="' + (PAD_T + plotH + 4) + '" fill="#7a8394" font-size="9" text-anchor="end">0</text>' +
+    '<text x="' + (PAD_L - 4) + '" y="' + (PAD_T + plotH/2 + 3) + '" fill="#7a8394" font-size="9" text-anchor="end">' + (yMaxBar/2).toFixed(1) + 'h</text>' +
+    '<text x="' + (PAD_L - 4) + '" y="' + (PAD_T + 7) + '" fill="#7a8394" font-size="9" text-anchor="end">' + yMaxBar.toFixed(1) + 'h</text>';
+  var axisRight =
+    '<text x="' + (W - PAD_R + 4) + '" y="' + (PAD_T + plotH + 4) + '" fill="#b8c0d0" font-size="9" text-anchor="start">0</text>' +
+    '<text x="' + (W - PAD_R + 4) + '" y="' + (PAD_T + 7) + '" fill="#b8c0d0" font-size="9" text-anchor="start">' + yMaxLine.toFixed(0) + 'h</text>';
+
+  // X axis labels: first, middle, last
+  var xLabels = '';
+  function monthDay(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    var m = d.getMonth() + 1, dd = d.getDate();
+    return (m < 10 ? '0' : '') + m + '-' + (dd < 10 ? '0' : '') + dd;
+  }
+  if (sorted.length > 0) {
+    var firstX = PAD_L + xStep/2;
+    var lastX = PAD_L + (sorted.length - 1) * xStep + xStep/2;
+    var midIdx = Math.floor(sorted.length / 2);
+    var midX = PAD_L + midIdx * xStep + xStep/2;
+    xLabels =
+      '<text x="' + firstX + '" y="' + (PAD_T + plotH + 14) + '" fill="#7a8394" font-size="9" text-anchor="middle">' + monthDay(sorted[0].sessionStart) + '</text>' +
+      '<text x="' + midX + '" y="' + (PAD_T + plotH + 14) + '" fill="#7a8394" font-size="9" text-anchor="middle">' + monthDay(sorted[midIdx].sessionStart) + '</text>' +
+      '<text x="' + lastX + '" y="' + (PAD_T + plotH + 14) + '" fill="#7a8394" font-size="9" text-anchor="middle">' + monthDay(sorted[sorted.length-1].sessionStart) + '</text>';
+  }
+
+  // Cumulative line overlay
+  var line = '<polyline points="' + linePts.join(' ') + '" fill="none" stroke="#b8c0d0" stroke-width="1.5" stroke-linejoin="round" opacity="0.9"/>';
+  var dots = linePts.map(function(p) {
+    var xy = p.split(',');
+    return '<circle cx="' + xy[0] + '" cy="' + xy[1] + '" r="2" fill="#b8c0d0" stroke="#161a24" stroke-width="1"/>';
+  }).join('');
+
+  // Baseline
+  var baseline = '<line x1="' + PAD_L + '" y1="' + (PAD_T + plotH) + '" x2="' + (W - PAD_R) + '" y2="' + (PAD_T + plotH) + '" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>';
+
+  var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg">' +
+    baseline + barsSvg + line + dots + axisLeft + axisRight + xLabels +
+    '</svg>';
+
+  var filtersUsedList = TDP_FILTER_STACK_ORDER.filter(function(k) { return filtersUsed[k]; });
+  // Append any unresolved types
+  Object.keys(filtersUsed).forEach(function(k) {
+    if (filtersUsedList.indexOf(k) === -1) filtersUsedList.push(k);
+  });
+  return { svg: svg, filtersUsed: filtersUsedList };
+}
+
+function renderTargetDetailPanel(data, targetName) {
+  var initial = targetName ? targetName.charAt(0).toUpperCase() : '?';
+  var totalHrs = data.totalIntegrationHours != null ? data.totalIntegrationHours.toFixed(1) : '--';
+  var hrsLabel = '<div class="tdp-kpi-val">' + esc(totalHrs) + '<span class="unit">h</span></div>';
+  var avgHFR = data.avgHFR != null ? data.avgHFR.toFixed(2) : '--';
+  var avgGuide = data.avgGuidingRMS != null ? data.avgGuidingRMS.toFixed(2) + '"' : '--';
+
+  var firstDate = tdpFmtDate(data.firstSession);
+  var lastDate  = tdpFmtDate(data.lastSession);
+  var dateRange = 'First captured ' + firstDate + ' \u00b7 Last imaged ' + lastDate;
+
+  // Aggregate per-filter totals across all sessions so the Integration/Frames KPI
+  // boxes can show the same per-filter breakdown popup as the target card stats.
+  // Output shape matches statsTargetData[idx].filters: { filter, totalSeconds, acceptedCount }.
+  var aggregated = {};
+  (data.sessions || []).forEach(function(s) {
+    (s.filters || []).forEach(function(f) {
+      var name = f.filter || 'Unknown';
+      if (!aggregated[name]) {
+        aggregated[name] = { filter: name, totalSeconds: 0, acceptedCount: 0, frameCount: 0 };
+      }
+      aggregated[name].totalSeconds  += f.integrationSeconds || 0;
+      aggregated[name].acceptedCount += f.frames             || 0;
+      aggregated[name].frameCount    += f.totalFrames        || 0;
+    });
+  });
+  tdpKpiFilters = Object.keys(aggregated).map(function(k) { return aggregated[k]; });
+
+  var headerStats =
+    '<div class="tdp-header-stats">' +
+      '<div class="tdp-kpi target-stat-expandable" data-stat-type="integration" data-stat-source="tdp">' + hrsLabel + '<div class="tdp-kpi-label">Integration</div></div>' +
+      '<div class="tdp-kpi target-stat-expandable" data-stat-type="frames" data-stat-source="tdp"><div class="tdp-kpi-val">' + (data.totalFrames || 0) + '</div><div class="tdp-kpi-label">Frames</div></div>' +
+      '<div class="tdp-kpi"><div class="tdp-kpi-val">' + (data.sessionCount || 0) + '</div><div class="tdp-kpi-label">Sessions</div></div>' +
+      '<div class="tdp-kpi"><div class="tdp-kpi-val">' + esc(avgHFR) + '<span class="unit">px</span></div><div class="tdp-kpi-label">Avg HFR</div></div>' +
+    '</div>';
+
+  // Session table rows with per-filter sub-rows (aligned to parent columns,
+  // Moon at the end so blank filter-cell doesn't leave a visual gap)
+  var sessions = data.sessions || [];
+  var rows = sessions.map(function(s, idx) {
+    var subRows = (s.filters || [])
+      .slice()
+      .sort(function(a, b) {
+        // Sort sub-rows by same stack order
+        var ta = resolveFilterType(a.filter) || 'Z';
+        var tb = resolveFilterType(b.filter) || 'Z';
+        var ia = TDP_FILTER_STACK_ORDER.indexOf(ta); if (ia === -1) ia = 99;
+        var ib = TDP_FILTER_STACK_ORDER.indexOf(tb); if (ib === -1) ib = 99;
+        return ia - ib;
+      })
+      .map(function(f) {
+        var fHFR = f.avgHFR != null ? f.avgHFR.toFixed(2) : '--';
+        var fGuide = f.avgGuidingRMS != null ? f.avgGuidingRMS.toFixed(2) + '"' : '--';
+        var fMin = Math.round((f.integrationSeconds || 0) / 60);
+        return '<tr class="tdp-filter-subrow" data-for="' + idx + '" style="display:none">' +
+          '<td>' + filterTypePill(f.filter) + '</td>' +
+          '<td>' + esc(tdpFmtDuration(fMin)) + '</td>' +
+          '<td>' + (f.frames || 0) + '</td>' +
+          '<td>' + esc(fHFR) + '</td>' +
+          '<td>' + esc(fGuide) + '</td>' +
+          '<td></td>' +
+          '<td></td>' +
+        '</tr>';
+      }).join('');
+
+    var sHFR = s.avgHFR != null ? s.avgHFR.toFixed(2) : '--';
+    var sGuide = s.avgGuidingRMS != null ? s.avgGuidingRMS.toFixed(2) + '"' : '--';
+    var sessionDurMin = Math.round((s.integrationSeconds || 0) / 60);
+    var sessionDurationDisplay = tdpFmtDuration(sessionDurMin);
+
+    return '<tr class="tdp-session-row" data-idx="' + idx + '" data-session-id="' + esc(s.sessionId || '') + '">' +
+        '<td>' + esc(tdpFmtDate(s.sessionStart)) + '</td>' +
+        '<td>' + esc(sessionDurationDisplay) + '</td>' +
+        '<td>' + (s.frames || 0) + '</td>' +
+        '<td>' + esc(sHFR) + '</td>' +
+        '<td>' + esc(sGuide) + '</td>' +
+        '<td>' + esc(s.moonPhase || '--') + '</td>' +
+        '<td><span class="tdp-row-link" data-session-id="' + esc(s.sessionId || '') + '">view \u2197</span></td>' +
+      '</tr>' + subRows;
+  }).join('');
+
+  // Chart is injected after the panel is in the DOM (so we can measure width).
+  // sessions data is stashed on the wrapper via a data attribute handled in JS.
+  return '' +
+    '<div class="tdp-modal" role="dialog" aria-label="Target detail">' +
+      '<button class="tdp-close" aria-label="Close">\u2715</button>' +
+      '<div class="tdp-header">' +
+        '<div class="tdp-header-thumb" id="tdp-header-thumb">' +
+          '<div class="tdp-thumb-placeholder">' + esc(initial) + '</div>' +
+        '</div>' +
+        '<div class="tdp-header-main">' +
+          '<h2>' + esc(targetName) + '</h2>' +
+          '<div class="tdp-daterange">' + esc(dateRange) + '</div>' +
+          headerStats +
+        '</div>' +
+      '</div>' +
+      '<div class="tdp-body">' +
+        '<div class="tdp-section-title">Integration Over Time</div>' +
+        '<div class="tdp-chart-wrap">' +
+          '<div class="tdp-chart-svg"></div>' +
+          '<div class="tdp-chart-legend"></div>' +
+        '</div>' +
+        '<div class="tdp-section-title">Session History</div>' +
+        '<table class="tdp-table">' +
+          '<thead><tr><th>Date</th><th>Duration</th><th>Frames</th><th>HFR</th><th>Guide</th><th>Moon</th><th></th></tr></thead>' +
+          '<tbody>' + rows + '</tbody>' +
+        '</table>' +
+      '</div>' +
+    '</div>';
+}
+
+// Measure the chart container and render the SVG + HTML legend into it.
+// Called after the panel is inserted, and again on window resize.
+function renderChartIntoPanel(backdrop, sessions) {
+  if (!backdrop) return;
+  var wrap = backdrop.querySelector('.tdp-chart-wrap');
+  var svgHost = backdrop.querySelector('.tdp-chart-svg');
+  var legendHost = backdrop.querySelector('.tdp-chart-legend');
+  if (!wrap || !svgHost || !legendHost) return;
+
+  var cs = window.getComputedStyle(wrap);
+  var pL = parseFloat(cs.paddingLeft) || 0;
+  var pR = parseFloat(cs.paddingRight) || 0;
+  var innerWidth = Math.max(320, Math.floor(wrap.clientWidth - pL - pR));
+
+  var chart = renderTargetChart(sessions, innerWidth);
+  svgHost.innerHTML = chart.svg;
+
+  // HTML legend: filter pills + cumulative line marker
+  var pillsHtml = (chart.filtersUsed || []).map(function(k) { return filterTypePill(k); }).join('');
+  var cumHtml = '<span class="tdp-chart-legend-cum"><span class="tdp-cum-line"></span>Cumulative</span>';
+  legendHost.innerHTML = pillsHtml + cumHtml;
+}
+
+var _tdpKeyHandler = null;
+var _tdpResizeHandler = null;
+var _tdpResizeDebounce = null;
+function closeTargetDetail() {
+  var backdrop = document.getElementById('tdp-backdrop');
+  if (!backdrop) return;
+  backdrop.classList.add('tdp-hiding');
+  setTimeout(function() { if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop); }, 160);
+  if (_tdpKeyHandler) {
+    document.removeEventListener('keydown', _tdpKeyHandler);
+    _tdpKeyHandler = null;
+  }
+  if (_tdpResizeHandler) {
+    window.removeEventListener('resize', _tdpResizeHandler);
+    _tdpResizeHandler = null;
+  }
+  if (_tdpResizeDebounce) {
+    clearTimeout(_tdpResizeDebounce);
+    _tdpResizeDebounce = null;
+  }
+  tdpKpiFilters = null;
+  // Dismiss any stat expand popup that was anchored to a KPI box
+  if (typeof hideStatExpand === 'function') hideStatExpand();
+}
+
+function bindTargetDetailEvents(backdrop, targetName) {
+  // Click outside modal = close
+  backdrop.addEventListener('click', function(e) {
+    if (e.target === backdrop) closeTargetDetail();
+  });
+  // Close button
+  var closeBtn = backdrop.querySelector('.tdp-close');
+  if (closeBtn) closeBtn.addEventListener('click', closeTargetDetail);
+
+  // Escape key closes
+  _tdpKeyHandler = function(e) { if (e.key === 'Escape') closeTargetDetail(); };
+  document.addEventListener('keydown', _tdpKeyHandler);
+
+  // Expand/collapse session rows
+  backdrop.querySelectorAll('tr.tdp-session-row').forEach(function(row) {
+    row.addEventListener('click', function(e) {
+      if (e.target.classList.contains('tdp-row-link')) return; // let the link handler run
+      var idx = row.getAttribute('data-idx');
+      var subs = backdrop.querySelectorAll('tr.tdp-filter-subrow[data-for="' + idx + '"]');
+      if (!subs.length) return;
+      var isOpen = row.classList.toggle('tdp-expanded');
+      subs.forEach(function(sub) { sub.style.display = isOpen ? '' : 'none'; });
+    });
+  });
+
+  // View report link → opens the session report in a new tab
+  backdrop.querySelectorAll('.tdp-row-link').forEach(function(link) {
+    link.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var sid = link.getAttribute('data-session-id');
+      if (!sid) return;
+      window.open('/api/sessions/' + encodeURIComponent(sid) + '/report', '_blank', 'noopener');
+    });
+  });
+}
+
+// Load the thumbnail for the panel header from the latest session's thumbnails
+// (case-insensitive target match). Reuses thumbnailCache.
+function loadTargetDetailThumb(targetName, latestSessionId) {
+  if (!latestSessionId) return;
+  var thumbEl = document.getElementById('tdp-header-thumb');
+  if (!thumbEl) return;
+
+  function apply(thumbs) {
+    if (!Array.isArray(thumbs)) return;
+    var lower = (targetName || '').toLowerCase();
+    var match = null;
+    for (var i = 0; i < thumbs.length; i++) {
+      if (thumbs[i].target === targetName) { match = thumbs[i]; break; }
+    }
+    if (!match) {
+      for (var j = 0; j < thumbs.length; j++) {
+        if ((thumbs[j].target || '').toLowerCase() === lower) { match = thumbs[j]; break; }
+      }
+    }
+    if (match && match.dataUri) {
+      thumbEl.innerHTML = '<img src="' + match.dataUri + '" alt="' + esc(targetName) + '">';
+    }
+  }
+
+  if (thumbnailCache[latestSessionId]) {
+    apply(thumbnailCache[latestSessionId]);
+    return;
+  }
+  api('/api/sessions/' + latestSessionId + '/thumbnails').then(function(thumbs) {
+    if (Array.isArray(thumbs) && thumbs.length > 0) thumbnailCache[latestSessionId] = thumbs;
+    apply(thumbs);
+  }).catch(function() { /* leave placeholder */ });
+}
+
+function openTargetDetail(targetName, latestSessionId) {
+  if (!targetName) return;
+  // Close any existing panel first
+  closeTargetDetail();
+
+  // Loading placeholder so the user gets immediate feedback
+  var backdrop = document.createElement('div');
+  backdrop.id = 'tdp-backdrop';
+  backdrop.className = 'tdp-backdrop';
+  backdrop.innerHTML = '<div class="tdp-modal" style="padding:40px;text-align:center;color:var(--text-tertiary);">Loading \u2026</div>';
+  document.body.appendChild(backdrop);
+
+  // Tentative close on backdrop click while loading
+  var loadClickHandler = function(e) { if (e.target === backdrop) closeTargetDetail(); };
+  backdrop.addEventListener('click', loadClickHandler);
+  _tdpKeyHandler = function(e) { if (e.key === 'Escape') closeTargetDetail(); };
+  document.addEventListener('keydown', _tdpKeyHandler);
+
+  api('/api/stats/targets/' + encodeURIComponent(targetName) + '/sessions').then(function(data) {
+    // If the user closed it while loading, bail out
+    var current = document.getElementById('tdp-backdrop');
+    if (!current || current !== backdrop) return;
+    backdrop.removeEventListener('click', loadClickHandler);
+    backdrop.innerHTML = renderTargetDetailPanel(data, targetName);
+    bindTargetDetailEvents(backdrop, targetName);
+    loadTargetDetailThumb(targetName, latestSessionId);
+    // Chart renders after the panel is in the DOM so we can measure available width.
+    // Use rAF to ensure layout has settled (kpi grid, etc.).
+    var sessions = data.sessions || [];
+    requestAnimationFrame(function() { renderChartIntoPanel(backdrop, sessions); });
+    // Re-render chart on window resize (debounced) so it stays full-width.
+    _tdpResizeHandler = function() {
+      if (_tdpResizeDebounce) clearTimeout(_tdpResizeDebounce);
+      _tdpResizeDebounce = setTimeout(function() {
+        renderChartIntoPanel(backdrop, sessions);
+      }, 120);
+    };
+    window.addEventListener('resize', _tdpResizeHandler);
+  }).catch(function(err) {
+    logError('Failed to load target detail:', err && err.message);
+    var current = document.getElementById('tdp-backdrop');
+    if (!current || current !== backdrop) return;
+    backdrop.innerHTML = '<div class="tdp-modal" style="padding:40px;text-align:center;">' +
+      '<div style="color:#e15759;font-weight:600;margin-bottom:10px;">Failed to load</div>' +
+      '<div style="color:var(--text-tertiary);font-size:12px;">' + esc(err && err.message ? err.message : 'unknown error') + '</div>' +
+      '<button class="tdp-close" aria-label="Close">\u2715</button></div>';
+    var c = backdrop.querySelector('.tdp-close');
+    if (c) c.addEventListener('click', closeTargetDetail);
+  });
+}
+
 function loadTargetThumbnails() {
   var thumbEls = document.querySelectorAll('.target-card-thumb[data-session-id]');
   var sessionMap = {};
@@ -505,21 +970,7 @@ function loadTargetThumbnails() {
         // Insert as first child so overlay/badge (absolute, higher z-index) stack above
         el.insertBefore(imgEl, el.firstChild);
         el.classList.add('has-image');
-        (function(thumbEl) {
-          thumbEl.addEventListener('click', function(e) {
-            e.stopPropagation();
-            var img = thumbEl.querySelector('img');
-            if (!img) return;
-            var overlay = document.createElement('div');
-            overlay.className = 'livestack-zoom-overlay';
-            var zoomImg = document.createElement('img');
-            zoomImg.src = img.src;
-            zoomImg.alt = img.alt;
-            overlay.appendChild(zoomImg);
-            overlay.addEventListener('click', function() { overlay.remove(); });
-            document.body.appendChild(overlay);
-          });
-        })(el);
+        // No lightbox click — whole card now opens the target detail panel instead
       }
     });
   }
@@ -1167,12 +1618,11 @@ function showStatExpand(el, sessionId, type) {
   }
 }
 
-function showTargetStatExpand(el, targetIdx, type) {
-  var t = statsTargetData && statsTargetData[targetIdx];
-  if (!t || !t.filters || t.filters.length === 0) return;
+function showTargetStatExpand(el, filters, type) {
+  if (!filters || filters.length === 0) return;
 
   var SORT_ORDER = ['L', 'R', 'G', 'B', 'H', 'S', 'O', 'N'];
-  var sorted = t.filters.slice().filter(function(f) {
+  var sorted = filters.slice().filter(function(f) {
     return type === 'integration' ? (f.totalSeconds || 0) >= 1 : (f.acceptedCount || 0) > 0;
   }).sort(function(a, b) {
     var ai = SORT_ORDER.indexOf(resolveFilterType(a.filter) || '');
@@ -1185,15 +1635,8 @@ function showTargetStatExpand(el, targetIdx, type) {
 
   var rows = sorted.map(function(f) {
     var val = type === 'integration' ? fmt(f.totalSeconds) : (f.acceptedCount || 0);
-    var fc = getFilterColor(f.filter);
-    var typeLetter = resolveFilterType(f.filter) || f.filter.charAt(0).toUpperCase();
-    var rgb = fc ? hexToRgb(fc) : null;
-    var dotStyle = rgb
-      ? 'background:rgba(' + rgb + ',0.10);border-color:rgba(' + rgb + ',0.28);color:' + fc
-      : 'background:rgba(128,128,128,0.10);border-color:rgba(128,128,128,0.28);color:var(--muted)';
-    var dot = '<span class="filter-type-dot" style="' + dotStyle + '">' + esc(typeLetter) + '</span>';
     return '<div class="stat-expand-row">' +
-      '<span class="stat-expand-filter">' + dot + '</span>' +
+      '<span class="stat-expand-filter">' + filterTypePill(f.filter) + '</span>' +
       '<span class="stat-expand-val">' + esc(String(val)) + '</span>' +
       '</div>';
   }).join('');
@@ -1290,13 +1733,13 @@ document.addEventListener('click', function(e) {
   if (tel && 'ontouchstart' in window) {
     e.stopPropagation();
     e.preventDefault();
-    var targetIdx = parseInt(tel.dataset.targetIdx, 10);
     var ttype = tel.dataset.statType;
     if (statExpandActiveEl === tel) {
       hideStatExpand();
     } else {
       statExpandActiveEl = tel;
-      showTargetStatExpand(tel, targetIdx, ttype);
+      var tfilters = resolveTargetStatFilters(tel);
+      if (tfilters) showTargetStatExpand(tel, tfilters, ttype);
     }
     return;
   }
@@ -1309,18 +1752,36 @@ document.addEventListener('click', function(e) {
   }
 }, true); // capture phase
 
+// Resolve the filters array for a `.target-stat-expandable` element.
+// Target cards use data-target-idx → statsTargetData lookup.
+// Detail panel KPI boxes use data-stat-source="tdp" → lookup in tdpKpiFilters.
+function resolveTargetStatFilters(el) {
+  var source = el.dataset.statSource;
+  if (source === 'tdp') {
+    return tdpKpiFilters || null;
+  }
+  var targetIdx = parseInt(el.dataset.targetIdx, 10);
+  if (isNaN(targetIdx)) return null;
+  var t = statsTargetData && statsTargetData[targetIdx];
+  return (t && t.filters) || null;
+}
+
+// Filters for the currently open detail panel (used by KPI box popups).
+var tdpKpiFilters = null;
+
 // Event delegation for target card stat box hover expansion (desktop only)
 document.addEventListener('mouseenter', function(e) {
   if (isTouchDevice) return;
   var el = e.target.closest('.target-stat-expandable');
   if (!el) return;
-  var targetIdx = parseInt(el.dataset.targetIdx, 10);
   var type = el.dataset.statType;
-  if (isNaN(targetIdx) || !type) return;
+  if (!type) return;
+  var filters = resolveTargetStatFilters(el);
+  if (!filters) return;
   clearTimeout(statExpandTimer);
   statExpandActiveEl = el;
   statExpandTimer = setTimeout(function() {
-    showTargetStatExpand(el, targetIdx, type);
+    showTargetStatExpand(el, filters, type);
   }, 350);
 }, true);
 
@@ -2742,8 +3203,25 @@ function renderStatsTabContent(tabId) {
     container.innerHTML = html;
     loadTargetThumbnails();
     initTargetsSortBar();
+    initTargetCardClicks();
     requestAnimationFrame(fitTargetNameOverlays);
   }
+}
+
+// Card-level click handler: opens the target detail panel when a card is clicked
+// anywhere except the expandable Hours/Frames stat boxes (which have their own
+// per-filter hover popup and shouldn't trigger the panel).
+function initTargetCardClicks() {
+  var cards = document.querySelectorAll('.target-card[data-target]');
+  cards.forEach(function(card) {
+    card.addEventListener('click', function(e) {
+      if (e.target.closest('.target-stat-expandable')) return;
+      var name = card.getAttribute('data-target');
+      var sid = card.getAttribute('data-latest-session');
+      openTargetDetail(name, sid);
+    });
+    card.style.cursor = 'pointer';
+  });
 }
 
 function renderStats() {

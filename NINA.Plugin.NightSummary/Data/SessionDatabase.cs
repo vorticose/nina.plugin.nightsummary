@@ -1164,6 +1164,96 @@ namespace NINA.Plugin.NightSummary.Data {
         }
 
         /// <summary>
+        /// Returns the full per-session history for a target, including per-filter breakdown
+        /// per session. Used by the Stats tab target detail panel (Phase 2).
+        /// Ordered most-recent first. Case-insensitive target name match.
+        /// </summary>
+        public List<TargetSessionDetail> GetSessionsForTarget(string targetName) {
+            var sessions = new Dictionary<string, TargetSessionDetail>(StringComparer.OrdinalIgnoreCase);
+            if (string.IsNullOrEmpty(targetName)) return new List<TargetSessionDetail>();
+
+            using (var conn = new SQLiteConnection(connectionString)) {
+                conn.Open();
+
+                // Query 1: per-session aggregates for the target
+                string sqlAgg = @"
+                    SELECT
+                        s.SessionId, s.SessionStart, s.SessionEnd,
+                        SUM(CASE WHEN i.Accepted = 1 THEN i.ExposureDuration ELSE 0 END) AS IntegrationSeconds,
+                        COUNT(*)                                                         AS FrameCount,
+                        SUM(CASE WHEN i.Accepted = 1 THEN 1 ELSE 0 END)                 AS AcceptedFrames,
+                        AVG(CASE WHEN i.Accepted = 1 AND i.HFR > 0 THEN i.HFR END)       AS AvgHFR,
+                        AVG(CASE WHEN i.Accepted = 1 AND i.GuidingRMSTotal > 0 THEN i.GuidingRMSTotal END) AS AvgGuidingRMS
+                    FROM Images i
+                    JOIN Sessions s ON s.SessionId = i.SessionId
+                    WHERE i.TargetName = @TargetName COLLATE NOCASE
+                      AND (i.ImageType IS NULL OR i.ImageType = '' OR i.ImageType = 'LIGHT')
+                    GROUP BY s.SessionId, s.SessionStart, s.SessionEnd
+                    ORDER BY s.SessionStart DESC";
+
+                using (var cmd = new SQLiteCommand(sqlAgg, conn)) {
+                    cmd.Parameters.AddWithValue("@TargetName", targetName);
+                    using (var reader = cmd.ExecuteReader()) {
+                        while (reader.Read()) {
+                            var sid = reader["SessionId"].ToString();
+                            if (string.IsNullOrEmpty(sid)) continue;
+                            sessions[sid] = new TargetSessionDetail {
+                                SessionId          = sid,
+                                SessionStart       = reader["SessionStart"] == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionStart"].ToString()),
+                                SessionEnd         = reader["SessionEnd"]   == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionEnd"].ToString()),
+                                IntegrationSeconds = reader["IntegrationSeconds"] == DBNull.Value ? 0 : Convert.ToDouble(reader["IntegrationSeconds"]),
+                                FrameCount         = reader["FrameCount"]     == DBNull.Value ? 0 : Convert.ToInt32(reader["FrameCount"]),
+                                AcceptedFrames     = reader["AcceptedFrames"] == DBNull.Value ? 0 : Convert.ToInt32(reader["AcceptedFrames"]),
+                                AvgHFR             = reader["AvgHFR"]         == DBNull.Value ? 0 : Math.Round(Convert.ToDouble(reader["AvgHFR"]), 2),
+                                AvgGuidingRMS      = reader["AvgGuidingRMS"]  == DBNull.Value ? 0 : Math.Round(Convert.ToDouble(reader["AvgGuidingRMS"]), 2),
+                            };
+                        }
+                    }
+                }
+
+                if (sessions.Count == 0) return new List<TargetSessionDetail>();
+
+                // Query 2: per-session per-filter breakdown for the target
+                string sqlFilters = @"
+                    SELECT
+                        i.SessionId, i.Filter,
+                        SUM(CASE WHEN i.Accepted = 1 THEN i.ExposureDuration ELSE 0 END) AS IntegrationSeconds,
+                        COUNT(*)                                                         AS FrameCount,
+                        SUM(CASE WHEN i.Accepted = 1 THEN 1 ELSE 0 END)                 AS AcceptedFrames,
+                        AVG(CASE WHEN i.Accepted = 1 AND i.HFR > 0 THEN i.HFR END)       AS AvgHFR,
+                        AVG(CASE WHEN i.Accepted = 1 AND i.GuidingRMSTotal > 0 THEN i.GuidingRMSTotal END) AS AvgGuidingRMS
+                    FROM Images i
+                    WHERE i.TargetName = @TargetName COLLATE NOCASE
+                      AND (i.ImageType IS NULL OR i.ImageType = '' OR i.ImageType = 'LIGHT')
+                    GROUP BY i.SessionId, i.Filter
+                    ORDER BY i.SessionId, IntegrationSeconds DESC";
+
+                using (var cmd = new SQLiteCommand(sqlFilters, conn)) {
+                    cmd.Parameters.AddWithValue("@TargetName", targetName);
+                    using (var reader = cmd.ExecuteReader()) {
+                        while (reader.Read()) {
+                            var sid = reader["SessionId"].ToString();
+                            if (!sessions.ContainsKey(sid)) continue;
+                            var filter = reader["Filter"] == DBNull.Value ? "" : reader["Filter"].ToString();
+                            sessions[sid].Filters.Add(new TargetSessionFilterDetail {
+                                Filter             = string.IsNullOrEmpty(filter) ? "Unknown" : filter,
+                                IntegrationSeconds = reader["IntegrationSeconds"] == DBNull.Value ? 0 : Convert.ToDouble(reader["IntegrationSeconds"]),
+                                FrameCount         = reader["FrameCount"]     == DBNull.Value ? 0 : Convert.ToInt32(reader["FrameCount"]),
+                                AcceptedFrames     = reader["AcceptedFrames"] == DBNull.Value ? 0 : Convert.ToInt32(reader["AcceptedFrames"]),
+                                AvgHFR             = reader["AvgHFR"]         == DBNull.Value ? 0 : Math.Round(Convert.ToDouble(reader["AvgHFR"]), 2),
+                                AvgGuidingRMS      = reader["AvgGuidingRMS"]  == DBNull.Value ? 0 : Math.Round(Convert.ToDouble(reader["AvgGuidingRMS"]), 2),
+                            });
+                        }
+                    }
+                }
+            }
+
+            return sessions.Values
+                .OrderByDescending(s => s.SessionStart)
+                .ToList();
+        }
+
+        /// <summary>
         /// Returns the most recent <paramref name="limit"/> sessions, newest-first.
         /// </summary>
         public List<SessionRecord> GetRecentSessions(int limit) {
