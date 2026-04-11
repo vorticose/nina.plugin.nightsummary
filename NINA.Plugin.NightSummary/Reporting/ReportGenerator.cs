@@ -1082,7 +1082,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 ? "<div style=\"font-family:sans-serif;font-size:11px;text-align:center;" +
                   "color:#8888aa;margin:-8px 0 10px\">" +
                   "&#9432; Per-filter view requires JavaScript &mdash; " +
-                  "open in Safari or a browser for the interactive chart</div>"
+                  "open in a browser for the interactive chart</div>"
                 : "";
             sb.AppendLine($"<div class='metric-chart-container' data-chart='{attr}'>{staticSvg}{fallbackNote}</div>");
         }
