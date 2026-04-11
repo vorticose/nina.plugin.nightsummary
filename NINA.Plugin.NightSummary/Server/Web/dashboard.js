@@ -581,9 +581,9 @@ function filterTargets(targets) {
   });
 }
 
-function renderProjectContainer(info, sortKey) {
+function renderProjectContainer(info) {
   var allTargets = statsTargetData || [];
-  var sorted = sortTargets(info.targets, sortKey);
+  var sorted = info.targets; // natural order — sort only applies between containers, not within
   var totalHours = 0, totalFrames = 0;
   info.targets.forEach(function(t) {
     totalHours += t.totalIntegrationHours || 0;
@@ -690,7 +690,7 @@ function renderGroupedTargets(targets, sortKey) {
 
   items.forEach(function(item) {
     if (item.type === 'standalone') { cardBatch.push(item); }
-    else { flushBatch(); html += renderProjectContainer(item.info, sortKey); }
+    else { flushBatch(); html += renderProjectContainer(item.info); }
   });
   flushBatch();
 
