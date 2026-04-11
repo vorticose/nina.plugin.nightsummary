@@ -45,6 +45,33 @@ function fmtDateTime(iso) {
   return fmtDate(iso) + '  ' + fmtTime(iso);
 }
 
+function fmtRelativeTime(iso) {
+  if (!iso) return '';
+  var parts = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  var d = parts
+    ? new Date(parseInt(parts[1]), parseInt(parts[2]) - 1, parseInt(parts[3]))
+    : new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  var now = new Date();
+  var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  var then = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  var days = Math.round((today - then) / (1000 * 60 * 60 * 24));
+  if (days < 0) return 'in the future';
+  if (days === 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 7) return days + ' days ago';
+  if (days < 30) {
+    var weeks = Math.floor(days / 7);
+    return weeks + (weeks === 1 ? ' week ago' : ' weeks ago');
+  }
+  if (days < 365) {
+    var months = Math.floor(days / 30);
+    return months + (months === 1 ? ' month ago' : ' months ago');
+  }
+  var years = Math.floor(days / 365);
+  return years + (years === 1 ? ' year ago' : ' years ago');
+}
+
 function esc(str) {
   if (!str) return '';
   var d = document.createElement('div');
@@ -291,27 +318,27 @@ function fmtCoord(raH, decD) {
 }
 
 function renderTargetCard(t, index) {
-  var color = TARGET_COLORS[index % TARGET_COLORS.length];
   var initial = t.target ? t.target.charAt(0).toUpperCase() : '?';
+  var sessionCount = t.sessionCount || 0;
 
   var html = '<div class="target-card">';
 
-  // Thumbnail
+  // Thumbnail with overlaid name + session badge
   html += '<div class="target-card-thumb" data-session-id="' + esc(t.latestSessionId || '') + '" data-target="' + esc(t.target) + '">';
   html += '<span class="thumb-placeholder">' + esc(initial) + '</span>';
+  if (sessionCount > 0) {
+    html += '<span class="target-card-session-badge">' + sessionCount + '\u00a0session' + (sessionCount !== 1 ? 's' : '') + '</span>';
+  }
+  html += '<div class="target-card-name-overlay">' + esc(t.target) + '</div>';
   html += '</div>';
 
   // Body
   html += '<div class="target-card-body">';
 
-  // Name with accent border
-  html += '<div class="target-card-name" style="border-left:3px solid ' + color + '">' + esc(t.target) + '</div>';
-
-  // Meta line
-  var meta = [];
-  if (t.sessionCount) meta.push(t.sessionCount + ' session' + (t.sessionCount !== 1 ? 's' : ''));
-  if (t.lastImaged) meta.push('Last: ' + fmtDate(t.lastImaged));
-  if (meta.length) html += '<div class="target-card-meta">' + esc(meta.join(' \u00b7 ')) + '</div>';
+  // Last imaged chip
+  if (t.lastImaged) {
+    html += '<div class="target-card-last-imaged">Last imaged ' + esc(fmtRelativeTime(t.lastImaged)) + '</div>';
+  }
 
   // Stat boxes — Hours and Frames are expandable (hover/tap shows per-filter breakdown)
   html += '<div class="target-card-stats">';
@@ -330,6 +357,116 @@ function renderTargetCard(t, index) {
   html += '</div></div>';
   return html;
 }
+
+// ── Targets tab sort controls ─────────────────────────────────────────────
+
+var TARGET_SORT_OPTIONS = [
+  { key: 'recent',   label: 'Most recent' },
+  { key: 'sessions', label: 'Most sessions' },
+  { key: 'hours',    label: 'Most hours' },
+  { key: 'frames',   label: 'Most frames' },
+  { key: 'name',     label: 'Name' }
+];
+
+function getTargetSortKey() {
+  var k = localStorage.getItem('ns-targets-sort') || 'recent';
+  var valid = TARGET_SORT_OPTIONS.some(function(o) { return o.key === k; });
+  return valid ? k : 'recent';
+}
+
+function sortTargets(targets, key) {
+  var sorted = targets.slice();
+  switch (key) {
+    case 'recent':
+      sorted.sort(function(a, b) {
+        var la = a.lastImaged || '';
+        var lb = b.lastImaged || '';
+        if (la === lb) return 0;
+        return la < lb ? 1 : -1;
+      });
+      break;
+    case 'sessions':
+      sorted.sort(function(a, b) { return (b.sessionCount || 0) - (a.sessionCount || 0); });
+      break;
+    case 'hours':
+      sorted.sort(function(a, b) { return (b.totalIntegrationHours || 0) - (a.totalIntegrationHours || 0); });
+      break;
+    case 'frames':
+      sorted.sort(function(a, b) { return (b.acceptedFrames || 0) - (a.acceptedFrames || 0); });
+      break;
+    case 'name':
+      sorted.sort(function(a, b) { return (a.target || '').localeCompare(b.target || ''); });
+      break;
+  }
+  return sorted;
+}
+
+function renderTargetsSortBar(activeKey) {
+  var html = '<div class="targets-sort-bar"><span class="targets-sort-label">Sort</span>';
+  TARGET_SORT_OPTIONS.forEach(function(opt) {
+    var cls = 'targets-sort-pill' + (opt.key === activeKey ? ' active' : '');
+    html += '<button type="button" class="' + cls + '" data-sort-key="' + opt.key + '">' + esc(opt.label) + '</button>';
+  });
+  html += '</div>';
+  return html;
+}
+
+function initTargetsSortBar() {
+  var pills = document.querySelectorAll('.targets-sort-pill');
+  pills.forEach(function(pill) {
+    pill.addEventListener('click', function() {
+      var key = pill.getAttribute('data-sort-key');
+      if (!key || key === getTargetSortKey()) return;
+      localStorage.setItem('ns-targets-sort', key);
+      renderStatsTabContent('targets');
+    });
+  });
+}
+
+// Measure text width using a canvas — works even when parents clip with overflow:hidden.
+function _measureTextWidth(text, fontSizePx, fontWeight, fontFamily, letterSpacingPx) {
+  var canvas = _measureTextWidth._canvas || (_measureTextWidth._canvas = document.createElement('canvas'));
+  var ctx = canvas.getContext('2d');
+  ctx.font = fontWeight + ' ' + fontSizePx + 'px ' + fontFamily;
+  var w = ctx.measureText(text).width;
+  // Canvas measureText ignores CSS letter-spacing — approximate by adding it per gap
+  var ls = parseFloat(letterSpacingPx) || 0;
+  if (ls && text.length > 1) w += ls * (text.length - 1);
+  return w;
+}
+
+// Shrink target-card-name-overlay font-size until the text fits on one line.
+// Uses canvas measurement because the overlay is inside overflow:hidden parents.
+function fitTargetNameOverlays() {
+  var overlays = document.querySelectorAll('.target-card-name-overlay');
+  overlays.forEach(function(el) {
+    el.style.fontSize = '';
+    var cs = window.getComputedStyle(el);
+    var max = parseFloat(cs.fontSize) || 14;
+    var min = 9;
+    var family = cs.fontFamily;
+    var weight = cs.fontWeight;
+    var ls = cs.letterSpacing;
+    var text = el.textContent || '';
+    if (!text) return;
+    var pL = parseFloat(cs.paddingLeft) || 0;
+    var pR = parseFloat(cs.paddingRight) || 0;
+    var avail = el.clientWidth - pL - pR;
+    if (avail <= 0) return;
+    var size = max;
+    var guard = 40;
+    while (size > min && _measureTextWidth(text, size, weight, family, ls) > avail && guard-- > 0) {
+      size -= 0.5;
+    }
+    if (size !== max) el.style.fontSize = size + 'px';
+  });
+}
+
+var _fitNamesDebounce = null;
+window.addEventListener('resize', function() {
+  if (_fitNamesDebounce) clearTimeout(_fitNamesDebounce);
+  _fitNamesDebounce = setTimeout(fitTargetNameOverlays, 120);
+});
 
 function loadTargetThumbnails() {
   var thumbEls = document.querySelectorAll('.target-card-thumb[data-session-id]');
@@ -357,7 +494,16 @@ function loadTargetThumbnails() {
         }
       }
       if (match && match.dataUri) {
-        el.innerHTML = '<img src="' + match.dataUri + '" alt="' + esc(target) + '">';
+        // Remove placeholder but preserve overlay + session badge (children of the thumb)
+        var placeholder = el.querySelector('.thumb-placeholder');
+        if (placeholder) placeholder.remove();
+        var existingImg = el.querySelector('img');
+        if (existingImg) existingImg.remove();
+        var imgEl = document.createElement('img');
+        imgEl.src = match.dataUri;
+        imgEl.alt = target;
+        // Insert as first child so overlay/badge (absolute, higher z-index) stack above
+        el.insertBefore(imgEl, el.firstChild);
         el.classList.add('has-image');
         (function(thumbEl) {
           thumbEl.addEventListener('click', function(e) {
@@ -2585,13 +2731,18 @@ function renderStatsTabContent(tabId) {
       container.innerHTML = '<div class="empty">No target data available yet.</div>';
       return;
     }
-    var html = '<div class="target-grid">';
-    targets.forEach(function(t, i) {
+    var sortKey = getTargetSortKey();
+    var sorted = sortTargets(targets, sortKey);
+    var html = renderTargetsSortBar(sortKey);
+    html += '<div class="target-grid">';
+    sorted.forEach(function(t, i) {
       html += renderTargetCard(t, i);
     });
     html += '</div>';
     container.innerHTML = html;
     loadTargetThumbnails();
+    initTargetsSortBar();
+    requestAnimationFrame(fitTargetNameOverlays);
   }
 }
 
