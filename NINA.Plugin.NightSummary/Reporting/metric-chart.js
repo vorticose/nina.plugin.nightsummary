@@ -322,7 +322,8 @@
             const secUnit = model.secondary.unit;
             const secFmt  = model.secondary.format;
             for (const p of rightPts) {
-                const tip = formatTooltipX(p, model.xAxis) + ' \u2014 ' + fmt(p.y, secFmt) + secUnit;
+                const filterTag = p.filter ? ' [' + p.filter + ']' : '';
+                const tip = formatTooltipX(p, model.xAxis) + ' \u2014 ' + fmt(p.y, secFmt) + secUnit + filterTag;
                 svg += '<circle cx="' + toXPx(p.x).toFixed(1) + '" cy="' + toYR(p.y).toFixed(1) + '" r="3" fill="' + palette.secondaryDot + '"><title>' + escapeXml(tip) + '</title></circle>';
             }
         }
@@ -333,7 +334,8 @@
         const leftUnit = leftMetric.unit;
         const leftTipFmt = leftMetric.format;
         for (const p of leftPts) {
-            const tip = formatTooltipX(p, model.xAxis) + ' \u2014 ' + fmt(p.y, leftTipFmt) + leftUnit;
+            const filterTag = p.filter ? ' [' + p.filter + ']' : '';
+            const tip = formatTooltipX(p, model.xAxis) + ' \u2014 ' + fmt(p.y, leftTipFmt) + leftUnit + filterTag;
             svg += '<circle cx="' + toXPx(p.x).toFixed(1) + '" cy="' + toYL(p.y).toFixed(1) + '" r="3" fill="' + leftDotColor + '"><title>' + escapeXml(tip) + '</title></circle>';
         }
 
