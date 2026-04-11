@@ -484,7 +484,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             else:
                 eff_state = raw_state
 
-            # Load session images for per-target stats
+            # Load sessions list for per-target stats
             sessions_path = os.path.join(self.data_dir, "sessions.json")
             all_sessions = []
             if os.path.isfile(sessions_path):
@@ -492,17 +492,39 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     all_sessions = json.load(f)
             session_index = {s["sessionId"]: s for s in all_sessions if "sessionId" in s}
 
-            # Mock camera setup (matches user's ~3x2 deg FOV rig)
-            # pixelScale = (3.76 / 560) * 206.265 = 1.384 arcsec/px
-            MOCK_CAM = {
-                "camXSize": 6248,
-                "camYSize": 4176,
-                "pixelSizeMicrons": 3.76,
-                "focalLengthMm": 560.0,
-                "pixelScaleArcSec": round((3.76 / 560.0) * 206.265, 4),
-                "fovWidthDeg":  round(6248  * ((3.76 / 560.0) * 206.265) / 3600.0, 4),
-                "fovHeightDeg": round(4176 * ((3.76 / 560.0) * 206.265) / 3600.0, 4),
-            }
+            # Load real camera data from session detail.json files.
+            # detail.json has cameraInfo: {xSize, ySize, pixelSizeMicrons, focalLengthMm}.
+            # We cache per-session to avoid re-reading the same file multiple times.
+            _detail_cache = {}
+            def _get_cam_from_detail(sid):
+                if sid in _detail_cache:
+                    return _detail_cache[sid]
+                detail_path = os.path.join(self.data_dir, "sessions", sid, "detail.json")
+                result = None
+                try:
+                    if os.path.isfile(detail_path):
+                        with open(detail_path, "r", encoding="utf-8") as f:
+                            d = json.load(f)
+                        ci = d.get("cameraInfo") or {}
+                        x = ci.get("xSize") or 0
+                        y = ci.get("ySize") or 0
+                        ps = ci.get("pixelSizeMicrons") or 0
+                        fl = ci.get("focalLengthMm") or 0
+                        if x > 0 and y > 0 and ps > 0 and fl > 0:
+                            scale = round((ps / fl) * 206.265, 4)
+                            result = {
+                                "camXSize": x,
+                                "camYSize": y,
+                                "pixelSizeMicrons": ps,
+                                "focalLengthMm": fl,
+                                "pixelScaleArcSec": scale,
+                                "fovWidthDeg":  round(x * scale / 3600.0, 4),
+                                "fovHeightDeg": round(y * scale / 3600.0, 4),
+                            }
+                except Exception:
+                    pass
+                _detail_cache[sid] = result
+                return result
 
             panels = []
             agg_frames = 0
@@ -514,9 +536,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 tgt_name = tgt.get("name") or ""
                 tgt_lower = tgt_name.lower()
 
-                # Find sessions containing this target
+                # Find sessions containing this target (ordered newest-first)
                 tgt_session_ids = [
-                    s["sessionId"] for s in all_sessions
+                    s["sessionId"] for s in sorted(all_sessions,
+                        key=lambda x: x.get("sessionStart") or "", reverse=True)
                     if tgt_lower in [t.lower() for t in (s.get("targets") or [])]
                 ]
 
@@ -525,8 +548,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 sess_count = 0
                 last_imaged = None
                 filters_agg = {}
+                best_cam = None  # camera data from the most-recent session with valid info
 
                 for sid in tgt_session_ids:
+                    if best_cam is None:
+                        best_cam = _get_cam_from_detail(sid)
+
                     images_path = os.path.join(self.data_dir, "sessions", sid, "images.json")
                     if not os.path.isfile(images_path):
                         continue
@@ -585,7 +612,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     "lastImaged": last_imaged,
                     "filters": filters_out,
                 }
-                panel.update(MOCK_CAM)
+                if best_cam:
+                    panel.update(best_cam)
                 panels.append(panel)
 
             self.send_json(200, {
