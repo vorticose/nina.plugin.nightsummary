@@ -503,6 +503,15 @@ function tdpFmtDate(iso) {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+// Shorter date format for narrow (mobile) layouts — drops the year since the
+// date range header already covers it.
+function tdpFmtDateShort(iso) {
+  if (!iso) return '--';
+  var d = new Date(iso);
+  if (isNaN(d.getTime())) return '--';
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 // Build the same translucent circular pill used in the per-filter hover popups.
 // Accepts either a filter name or a resolved type letter. Falls back to a neutral
 // gray pill when the type is unresolved.
@@ -724,7 +733,8 @@ function renderTargetDetailPanel(data, targetName) {
     var sessionDurationDisplay = tdpFmtDuration(sessionDurMin);
 
     return '<tr class="tdp-session-row" data-idx="' + idx + '" data-session-id="' + esc(s.sessionId || '') + '">' +
-        '<td>' + esc(tdpFmtDate(s.sessionStart)) + '</td>' +
+        '<td><span class="tdp-date-long">' + esc(tdpFmtDate(s.sessionStart)) + '</span>' +
+             '<span class="tdp-date-short">' + esc(tdpFmtDateShort(s.sessionStart)) + '</span></td>' +
         '<td>' + esc(sessionDurationDisplay) + '</td>' +
         '<td>' + (s.frames || 0) + '</td>' +
         '<td>' + esc(sHFR) + '</td>' +

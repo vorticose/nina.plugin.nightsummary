@@ -2025,8 +2025,8 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   align-items: flex-start;
 }
 .tdp-header-thumb {
-  width: 120px;
-  height: 120px;
+  width: 200px;
+  height: 200px;
   border-radius: 10px;
   background: var(--surface-well);
   flex-shrink: 0;
@@ -2048,7 +2048,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 40px;
+  font-size: 64px;
   font-weight: 700;
   color: var(--text-quaternary);
 }
@@ -2246,6 +2246,9 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 }
 .tdp-row-link:hover { text-decoration: underline; }
 
+/* Date has two forms — long for desktop, short for mobile */
+.tdp-date-short { display: none; }
+
 /* Mobile adjustments */
 @media (max-width: 600px) {
   .tdp-modal { width: 96vw; max-height: 92vh; border-radius: 10px; }
@@ -2263,7 +2266,19 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   .tdp-header-stats { grid-template-columns: repeat(2, 1fr); }
   .tdp-body { padding: 14px 16px 18px; }
   .tdp-table { font-size: 11px; }
-  .tdp-table th, .tdp-table td { padding: 6px 5px; }
+  .tdp-table th, .tdp-table td { padding: 5px 4px; }
+  /* Mobile: show short date (no year) — year is in the header date range */
+  .tdp-date-long { display: none; }
+  .tdp-date-short { display: inline; }
+  /* Force single-line rows so nothing wraps to 2 lines.
+     Taller vertical padding (12px) for comfortable tap targets (~42px rows). */
+  .tdp-table tr.tdp-session-row td {
+    white-space: nowrap;
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+  /* Safety net: if the table still exceeds the body width, scroll horizontally */
+  .tdp-body { overflow-x: auto; }
 }
 
 .target-card-stats {
