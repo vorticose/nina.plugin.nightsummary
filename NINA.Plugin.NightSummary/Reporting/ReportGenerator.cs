@@ -1069,7 +1069,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
             // apostrophes inside JSON strings (filter names, descriptions) need to
             // be escaped. JSON uses double quotes for strings so &apos; is safe.
             var attr = json.Replace("'", "&#39;");
-            sb.AppendLine($"<div class='metric-chart-container' data-chart='{attr}'></div>");
+            // Pre-render a static SVG as the container's initial content. When the JS
+            // renderer runs (preview window, real browser) it replaces this with the
+            // interactive version. When JS is unavailable (Gmail attachment preview,
+            // clients that strip <script>) the static SVG is displayed instead.
+            var staticSvg = ChartGenerator.GenerateMetricChart(images, primary, secondary, xAxis, markers);
+            sb.AppendLine($"<div class='metric-chart-container' data-chart='{attr}'>{staticSvg}</div>");
         }
 
         /// <summary>
