@@ -608,21 +608,28 @@ function renderProjectContainer(info) {
   html += '</div>';
   html += '</div>';
 
-  // Progress bar — segmented by panel, one segment per target, only if TS data is present
-  // and at least one target has a non-zero percentComplete
+  // Progress bar — segmented by panel. Each segment has a low-opacity tinted background
+  // (shows panel extent + identity) and a high-opacity fill (shows actual progress).
+  // Tooltip gives exact name + %. Scales cleanly to 10+ panels.
+  // Only rendered if TS data is present and at least one panel has a non-zero percentComplete.
   var panelPcts = info.targets.map(function(t) {
-    return (t.ts && t.ts.project && t.ts.project.percentComplete != null)
-      ? t.ts.project.percentComplete : null;
+    return {
+      pct: (t.ts && t.ts.project && t.ts.project.percentComplete != null)
+            ? t.ts.project.percentComplete : null,
+      name: t.target || ''
+    };
   });
-  var hasAnyPct = panelPcts.some(function(p) { return p !== null && p > 0; });
+  var hasAnyPct = panelPcts.some(function(p) { return p.pct !== null && p.pct > 0; });
   if (hasAnyPct) {
     var palette = ['#90CAF9','#A5D6A7','#FFCC80','#EF9A9A','#CE93D8','#80DEEA','#BCAAA4','#B0BEC5'];
     html += '<div class="targets-project-progress" aria-label="Project completion">';
-    panelPcts.forEach(function(pct, i) {
+    panelPcts.forEach(function(p, i) {
       var color = palette[i % palette.length];
-      var fill = pct != null ? Math.min(100, Math.max(0, pct)) : 0;
-      html += '<div class="targets-project-progress-seg" style="flex:1">' +
-              '<div class="targets-project-progress-fill" style="width:' + fill.toFixed(1) + '%;background:' + color + '"></div>' +
+      var fill = p.pct != null ? Math.min(100, Math.max(0, p.pct)) : 0;
+      var tip = 'Panel ' + (i + 1) + (p.name ? ' \u00b7 ' + p.name : '') +
+                ' \u00b7 ' + fill.toFixed(0) + '%';
+      html += '<div class="targets-project-progress-seg" style="--seg-color:' + color + '" title="' + esc(tip) + '">' +
+              '<div class="targets-project-progress-fill" style="width:' + fill.toFixed(1) + '%"></div>' +
               '</div>';
     });
     html += '</div>';

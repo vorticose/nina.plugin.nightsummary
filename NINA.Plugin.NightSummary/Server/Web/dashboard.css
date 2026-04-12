@@ -2053,22 +2053,26 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   transform: rotate(-90deg);
 }
 
-/* Project completion bar — segmented by panel, sits flush below header */
+/* Project completion bar — segmented by panel, sits flush below header.
+   --seg-color is set per-segment in JS. Background = tinted to show extent;
+   fill = saturated to show progress. 2px gap makes boundaries crisp. */
 .targets-project-progress {
   display: flex;
-  height: 5px;
-  background: rgba(255,255,255,0.06);
-  gap: 1px;
+  height: 18px;
+  gap: 2px;
+  background: rgba(0,0,0,0.25); /* gap color */
 }
 .targets-project-progress-seg {
-  background: rgba(255,255,255,0.06);
+  flex: 1;
+  background: color-mix(in srgb, var(--seg-color) 22%, transparent);
   overflow: hidden;
   position: relative;
+  cursor: default;
 }
 .targets-project-progress-fill {
   height: 100%;
+  background: color-mix(in srgb, var(--seg-color) 80%, transparent);
   transition: width 0.4s ease;
-  opacity: 0.75;
 }
 
 .targets-project-grid {
