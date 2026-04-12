@@ -337,15 +337,16 @@ function renderTargetCard(t, index) {
 
   var html = '<div class="target-card" data-target="' + esc(t.target) + '" data-latest-session="' + esc(t.latestSessionId || '') + '">';
 
-  // Thumbnail with overlaid name + session badge
-  html += '<div class="target-card-thumb" data-session-id="' + esc(t.latestSessionId || '') + '" data-target="' + esc(t.target) + '">';
-  html += '<span class="thumb-placeholder">' + esc(initial) + '</span>';
-  if (sessionCount > 0) {
-    html += '<span class="target-card-session-badge">' + sessionCount + '\u00a0session' + (sessionCount !== 1 ? 's' : '') + '</span>';
-  }
-  // Phase 3a: TS state badge (top-left) when the target is linked to a TS project
+  // Header: name + type pill + badges + progress bar
+  html += '<div class="target-card-header">';
+  html += '<div class="target-card-header-left">';
+  html += '<span class="target-card-name">' + esc(t.target) + '</span>';
+  // Type pill — only show for TS-linked targets
   if (t.ts && t.ts.project) {
-    var state    = t.ts.project.state || 'Draft';
+    var pType = projectType(!!t.ts.project.isMosaic, t.ts.project.targetCount);
+    var typeLabel = pType === 'single' ? 'Single' : pType === 'multi' ? 'Multi' : 'Mosaic';
+    html += '<span class="targets-project-type-badge">' + typeLabel + '</span>';
+    var state = t.ts.project.state || 'Draft';
     var overridden = t.ts.project.stateSource === 'override';
     html += '<span class="target-card-ts-badge" data-state="' + esc(state) +
             '" data-project-guid="' + esc(t.ts.project.guid || '') +
@@ -354,30 +355,52 @@ function renderTargetCard(t, index) {
             (overridden ? '<span class="override-mark" title="User override active"></span>' : '') +
             '</span>';
   }
-  html += '<div class="target-card-name-overlay">' + esc(t.target) + '</div>';
   html += '</div>';
 
-  // Body
+  // Progress bar
+  if (t.ts && t.ts.project && t.ts.project.percentComplete != null && t.ts.project.percentComplete > 0) {
+    var pct = t.ts.project.percentComplete;
+    html += '<div class="targets-project-progress">';
+    html += '<div class="targets-project-progress-overall">';
+    html += '<div class="targets-project-progress-overall-track">' +
+            '<div class="targets-project-progress-overall-fill" style="width:' + pct.toFixed(1) + '%"></div>' +
+            '</div>';
+    html += '<span class="targets-project-progress-overall-pct">' + pct.toFixed(0) + '%</span>';
+    html += '</div>';
+    html += '</div>';
+  }
+
+  html += '<div class="target-card-header-right">';
+  html += '<button type="button" class="targets-project-collapse-btn" aria-label="Collapse"></button>';
+  html += '</div>';
+  html += '</div>'; // .target-card-header
+
+  // Body: thumbnail left, stat boxes right
   html += '<div class="target-card-body">';
 
-  // Last imaged chip
+  // Thumbnail column
+  html += '<div class="target-card-thumb-col">';
+  html += '<div class="target-card-thumb" data-session-id="' + esc(t.latestSessionId || '') + '" data-target="' + esc(t.target) + '">';
+  html += '<span class="thumb-placeholder">' + esc(initial) + '</span>';
   if (t.lastImaged) {
     html += '<div class="target-card-last-imaged">Last imaged ' + esc(fmtRelativeTime(t.lastImaged)) + '</div>';
   }
+  html += '</div>'; // .target-card-thumb
+  html += '</div>'; // .target-card-thumb-col
 
-  // Stat boxes — Hours and Frames are expandable (hover/tap shows per-filter breakdown)
-  html += '<div class="target-card-stats">';
+  // Stat boxes column — Sessions, Integration, Frames, Avg HFR
   var hours = t.totalIntegrationHours != null ? t.totalIntegrationHours.toFixed(1) : '--';
   var frames = t.acceptedFrames != null ? t.acceptedFrames : '--';
-  html += '<div class="target-card-stat target-stat-expandable" data-stat-type="integration" data-target-idx="' + index + '">' +
-    '<div class="target-card-stat-value">' + esc(String(hours)) + '<span class="target-card-stat-unit">h</span></div>' +
-    '<div class="target-card-stat-label">Hours</div></div>';
-  html += '<div class="target-card-stat target-stat-expandable" data-stat-type="frames" data-target-idx="' + index + '">' +
-    '<div class="target-card-stat-value">' + esc(String(frames)) + '</div>' +
-    '<div class="target-card-stat-label">Frames</div></div>';
-  html += targetStatBox(t.avgHFR ? t.avgHFR.toFixed(2) : '--', 'HFR', 'px');
-  html += targetStatBox(t.avgGuidingRMS ? t.avgGuidingRMS.toFixed(2) + '"' : '--', 'Guide');
-  html += '</div>';
+  html += '<div class="target-card-stat-boxes">';
+  html += '<div class="stat-box"><div class="stat-value">' + sessionCount +
+          '</div><div class="stat-label">Sessions</div></div>';
+  html += '<div class="stat-box"><div class="stat-value">' + esc(String(hours)) +
+          '<span class="unit">h</span></div><div class="stat-label">Integration</div></div>';
+  html += '<div class="stat-box"><div class="stat-value">' + esc(String(frames)) +
+          '</div><div class="stat-label">Frames</div></div>';
+  html += '<div class="stat-box"><div class="stat-value">' + (t.avgHFR ? t.avgHFR.toFixed(2) : '--') +
+          '<span class="unit">px</span></div><div class="stat-label">Avg HFR</div></div>';
+  html += '</div>'; // .target-card-stat-boxes
 
   html += '</div></div>';
   return html;
@@ -390,7 +413,8 @@ var TARGET_SORT_OPTIONS = [
   { key: 'sessions', label: 'Most sessions' },
   { key: 'hours',    label: 'Most hours' },
   { key: 'frames',   label: 'Most frames' },
-  { key: 'name',     label: 'Name' }
+  { key: 'name',     label: 'Name' },
+  { key: 'type',     label: 'Type' }
 ];
 
 function getTargetSortKey() {
@@ -422,6 +446,14 @@ function sortTargets(targets, key) {
     case 'name':
       sorted.sort(function(a, b) { return (a.target || '').localeCompare(b.target || ''); });
       break;
+    case 'type': // in flat view, same as recent
+      sorted.sort(function(a, b) {
+        var la = a.lastImaged || '';
+        var lb = b.lastImaged || '';
+        if (la === lb) return 0;
+        return la < lb ? 1 : -1;
+      });
+      break;
   }
   return sorted;
 }
@@ -449,7 +481,7 @@ function setTargetStatusFilter(arr) {
 }
 
 var TARGET_TYPE_OPTIONS = [
-  { key: 'single', label: '1:1' },
+  { key: 'single', label: 'Single' },
   { key: 'multi',  label: 'Multi' },
   { key: 'mosaic', label: 'Mosaic' }
 ];
@@ -580,7 +612,7 @@ function initTargetsControlBar() {
       document.querySelectorAll('.mosaic-fov-svg').forEach(function(svg) {
         svg.style.display = showFovOverlay ? '' : 'none';
       });
-      document.querySelectorAll('.card-thumb-wrap svg').forEach(function(svg) {
+      document.querySelectorAll('.card-thumb-wrap svg, .target-card-thumb svg').forEach(function(svg) {
         svg.style.display = showFovOverlay ? '' : 'none';
       });
     });
@@ -613,7 +645,8 @@ function renderProjectContainer(info) {
   html += '<div class="targets-project-header">';
   html += '<div class="targets-project-header-left">';
   html += '<span class="targets-project-name">' + esc(info.name) + '</span>';
-  if (info.isMosaic) html += '<span class="targets-project-mosaic-badge">Mosaic</span>';
+  var containerType = info.isMosaic ? 'Mosaic' : (info.targetCount > 1 ? 'Multi' : 'Single');
+  html += '<span class="targets-project-type-badge">' + containerType + '</span>';
   html += '<span class="target-card-ts-badge" data-state="' + esc(info.state) +
     '" data-project-guid="' + esc(info.guid) + '" title="Click to override status">' + esc(info.state) + '</span>';
   html += '</div>';
@@ -674,10 +707,35 @@ function renderProjectContainer(info) {
             '</div><div class="stat-label">Sessions</div></div>';
     html += '</div>'; // .targets-project-stat-boxes
   } else {
-    // Non-mosaic grouped project — just a stat line
-    var statParts = [totalHours.toFixed(1) + 'h', totalFrames + '\u00a0frames'];
-    if (lastImaged) statParts.push('Last imaged ' + fmtRelativeTime(lastImaged));
-    html += '<div class="targets-project-stat-line">' + statParts.join('\u00a0\u00b7\u00a0') + '</div>';
+    // Non-mosaic grouped project — thumbnail from first target + stat boxes
+    var firstTarget = info.targets[0];
+    html += '<div class="targets-project-thumb-col">';
+    html += '<div class="targets-project-thumb-wrap target-card-thumb" data-session-id="' +
+            esc(firstTarget ? firstTarget.latestSessionId || '' : '') +
+            '" data-target="' + esc(firstTarget ? firstTarget.target || '' : '') + '">';
+    var initial = firstTarget && firstTarget.target ? firstTarget.target.charAt(0).toUpperCase() : '?';
+    html += '<span class="thumb-placeholder">' + esc(initial) + '</span>';
+    if (lastImaged) {
+      html += '<div class="targets-project-last-imaged">Last imaged ' + fmtRelativeTime(lastImaged) + '</div>';
+    }
+    html += '</div>'; // .targets-project-thumb-wrap
+    html += '</div>'; // .targets-project-thumb-col
+
+    var avgHFR = 0, hfrCount = 0;
+    info.targets.forEach(function(t) {
+      if (t.avgHFR) { avgHFR += t.avgHFR; hfrCount++; }
+    });
+
+    html += '<div class="targets-project-stat-boxes">';
+    html += '<div class="stat-box"><div class="stat-value">' + totalSessions +
+            '</div><div class="stat-label">Sessions</div></div>';
+    html += '<div class="stat-box"><div class="stat-value">' + totalHours.toFixed(1) +
+            '<span class="unit">h</span></div><div class="stat-label">Integration</div></div>';
+    html += '<div class="stat-box"><div class="stat-value">' + totalFrames +
+            '</div><div class="stat-label">Frames</div></div>';
+    html += '<div class="stat-box"><div class="stat-value">' + (hfrCount > 0 ? (avgHFR / hfrCount).toFixed(2) : '--') +
+            '<span class="unit">px</span></div><div class="stat-label">Avg HFR</div></div>';
+    html += '</div>'; // .targets-project-stat-boxes
   }
   html += '</div>'; // .targets-project-body
 
@@ -712,9 +770,9 @@ function renderGroupedTargets(targets, sortKey) {
     var pType = projectType(grp.isMosaic, grp.targetCount);
     if (enabledTypes.indexOf(pType) < 0) return; // type filtered
     if (!grp.isMosaic && grp.targetCount <= 1) {
-      items.push({ type: 'standalone', target: grp.targets[0], state: grp.state });
+      items.push({ type: 'standalone', pType: pType, target: grp.targets[0], state: grp.state });
     } else {
-      items.push({ type: 'container', info: grp, state: grp.state });
+      items.push({ type: 'container', pType: pType, info: grp, state: grp.state });
     }
   });
 
@@ -734,40 +792,64 @@ function renderGroupedTargets(targets, sortKey) {
         return tgts.reduce(function(s, t) { return s + (t.acceptedFrames || 0); }, 0);
       case 'name':
         return item.type === 'standalone' ? (item.target.target || '') : (item.info.name || '');
+      case 'type': // secondary sort is by recency within each type group
+        var typeDates = tgts.map(function(t) { return t.lastImaged || ''; }).sort();
+        return typeDates[typeDates.length - 1] || '';
       default:
         return 0;
     }
   }
 
-  // Primary sort: state order (Active→Completed→Draft→Inactive→Closed)
-  // Secondary sort: selected sort key applied at project/container level
+  // Type order: mosaic → multi → single (default), reversed if user sorts differently
+  var TYPE_ORDER = ['mosaic', 'multi', 'single'];
+
+  // Sort items: primary by type group, secondary by state, tertiary by selected sort key
   items.sort(function(a, b) {
+    // Type grouping
+    var ta = TYPE_ORDER.indexOf(a.pType); if (ta < 0) ta = 99;
+    var tb = TYPE_ORDER.indexOf(b.pType); if (tb < 0) tb = 99;
+    if (ta !== tb) return ta - tb;
+    // State within type
     var ia = TS_STATE_ORDER.indexOf(a.state); if (ia < 0) ia = 99;
     var ib = TS_STATE_ORDER.indexOf(b.state); if (ib < 0) ib = 99;
     if (ia !== ib) return ia - ib;
+    // Value sort within state
     var sa = projectSortValue(a);
     var sb = projectSortValue(b);
     if (sortKey === 'name') return sa < sb ? -1 : sa > sb ? 1 : 0;
-    if (sortKey === 'recent') return sa < sb ? 1 : sa > sb ? -1 : 0; // newest first
+    if (sortKey === 'recent' || sortKey === 'type') return sa < sb ? 1 : sa > sb ? -1 : 0; // newest first
     return sb - sa; // numeric: higher first
   });
 
-  var html = '';
-  var cardBatch = [];
+  var TYPE_LABELS = { mosaic: 'Mosaic Projects', multi: 'Multi-Target Projects', single: 'Single Target Projects' };
 
-  function flushBatch() {
-    if (!cardBatch.length) return;
-    html += '<div class="target-grid targets-grouped-cards">';
-    cardBatch.forEach(function(item) { html += renderTargetCard(item.target, allTargets.indexOf(item.target)); });
-    html += '</div>';
-    cardBatch = [];
+  var html = '';
+  var currentType = null;
+
+  function renderItem(item) {
+    if (item.type === 'standalone') {
+      return renderTargetCard(item.target, allTargets.indexOf(item.target));
+    } else {
+      return renderProjectContainer(item.info);
+    }
   }
 
+  // Group items by type, render each group in its own grid with a separator header
+  var typeGroups = {};
   items.forEach(function(item) {
-    if (item.type === 'standalone') { cardBatch.push(item); }
-    else { flushBatch(); html += renderProjectContainer(item.info); }
+    if (!typeGroups[item.pType]) typeGroups[item.pType] = [];
+    typeGroups[item.pType].push(item);
   });
-  flushBatch();
+
+  TYPE_ORDER.forEach(function(pType) {
+    var group = typeGroups[pType];
+    if (!group || !group.length) return;
+    html += '<div class="targets-type-section">';
+    html += '<div class="targets-type-header">' + (TYPE_LABELS[pType] || pType) + '</div>';
+    html += '<div class="targets-grouped">';
+    group.forEach(function(item) { html += renderItem(item); });
+    html += '</div></div>';
+  });
 
   if (unassigned.length > 0) {
     var sortedU = sortTargets(unassigned, sortKey);
@@ -1914,7 +1996,7 @@ function loadTargetThumbnails() {
         }
       }
       if (match && match.dataUri) {
-        // Remove placeholder but preserve overlay + session badge (children of the thumb)
+        // Remove placeholder but preserve overlay + last-imaged chip (children of the thumb)
         var placeholder = el.querySelector('.thumb-placeholder');
         if (placeholder) placeholder.remove();
         var existingImg = el.querySelector('img');
@@ -1925,7 +2007,19 @@ function loadTargetThumbnails() {
         // Insert as first child so overlay/badge (absolute, higher z-index) stack above
         el.insertBefore(imgEl, el.firstChild);
         el.classList.add('has-image');
-        // No lightbox click — whole card now opens the target detail panel instead
+        // FOV overlay — simple rectangle, no color or labels
+        if (match.fovSvg) {
+          var oldSvg = el.querySelector('svg');
+          if (oldSvg) oldSvg.remove();
+          var fovHtml = match.fovSvg
+            .replace(/width='\d+'/, "width='100%'")
+            .replace(/height='\d+'/, "height='100%'")
+            .replace("<svg ", "<svg viewBox='0 0 200 200' " + (showFovOverlay ? '' : "style='display:none' "));
+          var fovDiv = document.createElement('div');
+          fovDiv.innerHTML = fovHtml;
+          var svgEl = fovDiv.firstChild;
+          el.appendChild(svgEl);
+        }
       }
     });
   }
@@ -3513,7 +3607,7 @@ function bindListEvents() {
     fovEl.addEventListener('change', function() {
       showFovOverlay = this.checked;
       localStorage.setItem('ns-show-fov', showFovOverlay ? 'true' : 'false');
-      document.querySelectorAll('.card-thumb-wrap svg').forEach(function(svg) {
+      document.querySelectorAll('.card-thumb-wrap svg, .target-card-thumb svg').forEach(function(svg) {
         svg.style.display = showFovOverlay ? '' : 'none';
       });
       document.querySelectorAll('.mosaic-fov-svg').forEach(function(svg) {
@@ -4261,9 +4355,18 @@ function renderTsStatusBanner() {
 function initTargetCardClicks() {
   var cards = document.querySelectorAll('.target-card[data-target]');
   cards.forEach(function(card) {
+    // Collapse button
+    var collapseBtn = card.querySelector('.targets-project-collapse-btn');
+    if (collapseBtn) {
+      collapseBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        card.classList.toggle('collapsed');
+      });
+    }
     card.addEventListener('click', function(e) {
       if (e.target.closest('.target-stat-expandable')) return;
       if (e.target.closest('.target-card-ts-badge')) return;
+      if (e.target.closest('.targets-project-collapse-btn')) return;
       var name = card.getAttribute('data-target');
       var sid = card.getAttribute('data-latest-session');
       openTargetDetail(name, sid);

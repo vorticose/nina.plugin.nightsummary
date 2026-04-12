@@ -1990,7 +1990,10 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   gap: 14px;
 }
 .targets-grouped-cards {
-  grid-column: 1 / -1; /* standalone card batches always span full width */
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
+  gap: 14px;
   margin-bottom: 0;
 }
 
@@ -2018,7 +2021,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   display: flex;
   align-items: center;
   gap: 10px;
-  min-width: 0;
+  flex-shrink: 0;
 }
 .targets-project-header-right {
   display: flex;
@@ -2039,15 +2042,16 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   position: static;
   font-size: 9px;
 }
-.targets-project-mosaic-badge {
+/* Project type badge (Single / Multi / Mosaic) */
+.targets-project-type-badge {
   font-size: 9px;
   text-transform: uppercase;
   letter-spacing: 0.55px;
   font-weight: 700;
-  color: #CE93D8;
+  color: var(--text-secondary);
   padding: 4px 9px;
-  background: rgba(186,104,200,0.15);
-  border: 1px solid rgba(186,104,200,0.45);
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.15);
   border-radius: 10px;
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.22),
@@ -2197,10 +2201,20 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 .targets-project-stat-boxes .stat-box .stat-label {
   font-size: 7.5px;
 }
-.targets-project-stat-line {
-  font-size: 12px;
-  color: var(--text-secondary);
-  padding: 4px 0;
+/* .targets-project-stat-line removed — non-mosaic projects now use thumb + stat boxes */
+
+/* Type section separators (grouped mode) */
+.targets-type-section { margin-bottom: 24px; }
+.targets-type-section:last-child { margin-bottom: 0; }
+.targets-type-header {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  padding: 0 0 10px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 
 /* Unassigned section */
@@ -2216,98 +2230,125 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 /* ── Target card grid ── */
 .target-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(224px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
   gap: 14px;
 }
 
-/* ── Target card (hero layout — thumbnail fills card) ── */
+/* ── Target card (horizontal layout — thumbnail left, stat boxes right) ── */
 .target-card {
-  background: var(--surface);
-  border-radius: 10px;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 12px;
   overflow: hidden;
-  position: relative;
-  box-shadow:
-    0px 0px 0px 1px rgba(255,255,255,0.07),
-    0px 2px 4px rgba(0,0,0,0.3),
-    0px 8px 16px -4px rgba(0,0,0,0.25),
-    inset 0px 1px 0px rgba(255,255,255,0.04);
-  transition: box-shadow var(--t-medium), transform var(--t-medium);
+  cursor: pointer;
+  transition: border-color var(--t-medium);
+}
+.target-card:hover { border-color: rgba(255,255,255,0.15); }
+.target-card.collapsed .target-card-body { display: none; }
+.target-card.collapsed .targets-project-collapse-btn { transform: rotate(-90deg); }
+
+/* Header: name + badges */
+.target-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 16px;
+  background: rgba(255,255,255,0.03);
+  user-select: none;
+  gap: 12px;
+  transition: background var(--t-fast);
+}
+.target-card-header:hover { background: rgba(255,255,255,0.05); }
+.target-card-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.target-card-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Reset TS badge positioning inside target-card-header */
+.target-card-header .target-card-ts-badge {
+  position: static;
+  font-size: 9px;
+}
+.target-card-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
-.target-card:hover {
-  transform: translateY(-2px);
-  box-shadow:
-    0px 0px 0px 1px rgba(255,255,255,0.11),
-    0px 4px 8px rgba(0,0,0,0.35),
-    0px 12px 24px -4px rgba(0,0,14,0.35),
-    inset 0px 1px 0px rgba(255,255,255,0.06);
+/* Body: thumbnail left, stat boxes right */
+.target-card-body {
+  padding: 12px 16px 14px;
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
 }
-
+.target-card-thumb-col {
+  flex: 1;
+  min-width: 0;
+}
 .target-card-thumb {
-  width: 100%;
-  aspect-ratio: 1 / 1;
   position: relative;
-  background: var(--surface-well);
+  width: 100%;
+  aspect-ratio: 1;
+  max-height: 360px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(0,0,0,0.3);
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
 }
-
-.target-card-thumb::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.14),
-    inset 0 0 0 1px rgba(255,255,255,0.07),
-    inset 0 -3px 10px rgba(0,0,0,0.35),
-    inset 3px 0 10px rgba(0,0,0,0.12),
-    inset -3px 0 10px rgba(0,0,0,0.12);
-  pointer-events: none;
-  z-index: 2;
-}
-
 .target-card-thumb img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform var(--t-medium);
+  display: block;
 }
-
-.target-card-thumb.has-image { cursor: pointer; }
-.target-card-thumb.has-image:hover img {
-  transform: scale(1.05);
-}
-
 .target-card-thumb .thumb-placeholder {
   font-size: 52px;
   font-weight: 700;
   color: var(--text-quaternary);
 }
-
-/* Session count badge — top-right of thumbnail */
-.target-card-session-badge {
+.target-card-thumb svg {
   position: absolute;
-  top: 9px;
-  right: 9px;
-  background: rgba(0,0,0,0.62);
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
-  color: #fff;
-  font-size: 9px;
-  font-weight: 600;
-  padding: 4px 9px;
-  border-radius: 10px;
-  z-index: 3;
-  letter-spacing: 0.25px;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.22),
-    inset 0 -1px 0 rgba(0,0,0,0.3),
-    0 2px 6px rgba(0,0,0,0.5);
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  pointer-events: none;
+}
+/* Stat boxes column — matches mosaic project stat boxes */
+.target-card-stat-boxes {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex-shrink: 0;
+  width: 72px;
+}
+.target-card-stat-boxes .stat-box {
+  padding: 5px 7px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.target-card-stat-boxes .stat-box .stat-value {
+  font-size: 14px;
+  line-height: 18px;
+}
+.target-card-stat-boxes .stat-box .stat-label {
+  font-size: 7.5px;
 }
 
 /* TS status badge — top-LEFT of thumbnail (Phase 3a) */
@@ -2778,44 +2819,18 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 }
 
 /* Target name caption overlay — gradient bottom of thumbnail, 3D chisel text */
-.target-card-name-overlay {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 28px 12px 10px 12px;
-  background: linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.58) 55%, transparent 100%);
-  color: #f5f7fb;
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.25px;
-  text-shadow:
-    0 -1px 0 rgba(255,255,255,0.85),
-    0 -1px 3px rgba(255,255,255,0.30),
-    0 1px 0 rgba(0,0,0,0.98),
-    0 2px 1px rgba(0,0,0,0.85),
-    0 4px 8px rgba(0,0,0,0.92);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  z-index: 2;
-  box-sizing: border-box;
-}
-
-.target-card-body {
-  padding: 10px 12px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
+/* .target-card-name-overlay removed — name is now in header */
 
 .target-card-last-imaged {
+  position: absolute;
+  bottom: 6px;
+  left: 8px;
   font-size: 10px;
-  color: var(--text-tertiary);
-  text-align: center;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-weight: 500;
+  color: rgba(255,255,255,0.75);
+  background: rgba(0,0,0,0.55);
+  padding: 2px 6px;
+  border-radius: 3px;
+  pointer-events: none;
 }
 
 /* ── Target detail panel (Phase 2) ── */
@@ -3454,50 +3469,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   .pdp-title { font-size: 18px; }
 }
 
-.target-card-stats {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-}
-.target-card-stats > :last-child:nth-child(odd) {
-  grid-column: 1 / -1;
-}
-
-.target-card-stat {
-  background: linear-gradient(to bottom, rgba(255,255,255,0.04) 0%, transparent 60%), var(--surface-well);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 5px;
-  padding: 5px 10px;
-  text-align: center;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.10),
-    inset 0 -1px 0 rgba(0,0,0,0.18),
-    0 2px 8px rgba(0,0,0,0.3),
-    0 1px 2px rgba(0,0,0,0.2);
-}
-:root.light .target-card-stat { border-color: rgba(0,0,0,0.06); }
-
-.target-card-stat-value {
-  font-size: 15px;
-  font-weight: bold;
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum";
-}
-
-.target-card-stat-unit {
-  font-size: 55%;
-  color: var(--text-tertiary);
-}
-
-.target-card-stat-label {
-  font-size: 9px;
-  color: var(--text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  font-weight: 600;
-  margin-top: 1px;
-}
+/* Old target-card-stat 2x2 grid removed — now uses .target-card-stat-boxes + .stat-box */
 
 /* ── Expandable target stat boxes ── */
 .target-stat-expandable {
@@ -3666,14 +3638,8 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   /* ── Filter & navigation ── */
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
   .stats-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  /* Hero card layout — auto-fill handles narrow screens, this enforces 2-col on phones */
-  .target-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-  .target-card-name-overlay { font-size: 13px; padding: 24px 10px 8px 10px; }
-  .target-card-body { padding: 8px 10px 10px; gap: 6px; }
-  .target-card-stat { padding: 4px 8px; }
-  .target-card-stat-value { font-size: 13px; }
-  .target-card-stat-label { font-size: 8px; }
-  .target-card-session-badge { font-size: 9px; padding: 3px 8px; border-radius: 10px; }
+  /* Target cards — single column on mobile */
+  .target-grid { grid-template-columns: 1fr; gap: 10px; }
   .targets-sort-bar { gap: 5px; }
   .targets-sort-pill { height: 30px; padding: 0 10px; font-size: 11px; }
   .targets-group-pill { height: 30px; padding: 0 10px; font-size: 11px; }

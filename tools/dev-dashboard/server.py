@@ -317,21 +317,26 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     plans = tgt.get("exposurePlans", [])
                     total_desired  = sum(int(e.get("desired")  or 0) for e in plans)
                     total_accepted = sum(int(e.get("accepted") or 0) for e in plans)
+                    # Grading-pending fallback: use acquired when accepted=0 but acquired>0
+                    total_acquired = sum(int(e.get("acquired") or 0) for e in plans)
+                    total_effective = total_accepted if total_accepted > 0 else total_acquired
                     project_percent = None
                     if total_desired > 0:
-                        project_percent = round(min(100.0, (total_accepted * 100.0) / total_desired), 1)
+                        project_percent = round(min(100.0, (total_effective * 100.0) / total_desired), 1)
 
                     goals = []
                     for e in plans:
                         desired  = int(e.get("desired") or 0)
                         accepted = int(e.get("accepted") or 0)
-                        pct = round(min(100.0, (accepted * 100.0) / desired), 1) if desired > 0 else None
+                        acquired = int(e.get("acquired") or 0)
+                        effective = accepted if accepted > 0 else acquired
+                        pct = round(min(100.0, (effective * 100.0) / desired), 1) if desired > 0 else None
                         goals.append({
                             "filter":       e.get("filter"),
                             "templateName": e.get("templateName"),
                             "exposureSec":  e.get("exposureSec"),
                             "desired":      desired,
-                            "acquired":     int(e.get("acquired") or 0),
+                            "acquired":     acquired,
                             "accepted":     accepted,
                             "percentComplete": pct,
                         })
@@ -480,9 +485,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
             total_accepted_proj = sum(int(e.get("accepted") or 0)
                                       for t in proj.get("targets", [])
                                       for e in t.get("exposurePlans", []))
+            total_acquired_proj = sum(int(e.get("acquired") or 0)
+                                      for t in proj.get("targets", [])
+                                      for e in t.get("exposurePlans", []))
+            # Grading-pending fallback: if accepted=0 but acquired>0, use acquired
+            total_effective_proj = total_accepted_proj if total_accepted_proj > 0 else total_acquired_proj
             pct_proj = None
             if total_desired_proj > 0:
-                pct_proj = round(min(100.0, (total_accepted_proj * 100.0) / total_desired_proj), 1)
+                pct_proj = round(min(100.0, (total_effective_proj * 100.0) / total_desired_proj), 1)
 
             if override:
                 eff_state = override
@@ -707,16 +717,22 @@ class DashboardHandler(BaseHTTPRequestHandler):
                             pass
                 return (0.0, 0.0)
 
+            # Center only on panels that have been imaged (have camera data).
+            # Unimaged panels have planned TS coords but shift the center — use
+            # all panels as fallback only if nothing has been imaged yet.
+            ts_imaged = [t for t in ts_targets if _get_cam(t.get("name") or "") != (0.0, 0.0)]
+            ts_center = ts_imaged if ts_imaged else ts_targets
+
             # Compute center and FOV — same math as loadMosaicThumbnail in JS
-            ra_degs  = [t["ra"] * 15 for t in ts_targets]
-            dec_degs = [t["dec"] for t in ts_targets]
+            ra_degs  = [t["ra"] * 15 for t in ts_center]
+            dec_degs = [t["dec"] for t in ts_center]
             center_ra  = sum(ra_degs)  / len(ra_degs)
             center_dec = sum(dec_degs) / len(dec_degs)
             cos_center = math.cos(math.radians(center_dec))
 
             img_size = 1024
             max_reach = 0.0
-            for t in ts_targets:
+            for t in ts_targets:  # FOV must cover ALL panels, not just imaged ones
                 d_ra  = (t["ra"] * 15 - center_ra) * cos_center
                 d_dec = t["dec"] - center_dec
                 fov_w, fov_h = _get_cam(t.get("name") or "")
@@ -724,7 +740,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 max_reach = max(max_reach, math.sqrt(d_ra**2 + d_dec**2) + half_diag)
 
             if max_reach < 0.5:
-                fov_w, fov_h = _get_cam(ts_targets[0].get("name") or "")
+                fov_w, fov_h = _get_cam(ts_center[0].get("name") or "")
                 max_reach = math.sqrt(fov_w**2 + fov_h**2) / 2 if (fov_w and fov_h) else 1.0
 
             hips_fov = max_reach * 2 * 1.15
