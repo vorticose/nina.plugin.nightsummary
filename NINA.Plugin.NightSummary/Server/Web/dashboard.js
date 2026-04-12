@@ -608,9 +608,8 @@ function renderProjectContainer(info) {
   html += '</div>';
   html += '</div>';
 
-  // Progress bar — segmented by panel. Each segment has a low-opacity tinted background
-  // (shows panel extent + identity) and a high-opacity fill (shows actual progress).
-  // Tooltip gives exact name + %. Scales cleanly to 10+ panels.
+  // Mini bar chart — one vertical bar per panel. Fixed-width columns scale to any panel count.
+  // 100% height = 100% complete; fill rises from bottom. Tinted background shows panel extent.
   // Only rendered if TS data is present and at least one panel has a non-zero percentComplete.
   var panelPcts = info.targets.map(function(t) {
     return {
@@ -628,8 +627,8 @@ function renderProjectContainer(info) {
       var fill = p.pct != null ? Math.min(100, Math.max(0, p.pct)) : 0;
       var tip = 'Panel ' + (i + 1) + (p.name ? ' \u00b7 ' + p.name : '') +
                 ' \u00b7 ' + fill.toFixed(0) + '%';
-      html += '<div class="targets-project-progress-seg" style="--seg-color:' + color + '" title="' + esc(tip) + '">' +
-              '<div class="targets-project-progress-fill" style="width:' + fill.toFixed(1) + '%"></div>' +
+      html += '<div class="targets-project-progress-bar" style="--seg-color:' + color + '" title="' + esc(tip) + '">' +
+              '<div class="targets-project-progress-fill" style="height:' + fill.toFixed(1) + '%"></div>' +
               '</div>';
     });
     html += '</div>';

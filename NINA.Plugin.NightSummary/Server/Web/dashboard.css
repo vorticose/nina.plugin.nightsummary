@@ -2053,26 +2053,32 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   transform: rotate(-90deg);
 }
 
-/* Project completion bar — segmented by panel, sits flush below header.
-   --seg-color is set per-segment in JS. Background = tinted to show extent;
-   fill = saturated to show progress. 2px gap makes boundaries crisp. */
+/* Mini bar chart — one vertical bar per panel. Fixed-width columns scale to any panel count.
+   Fill rises from the bottom; tinted background shows the full column extent. */
 .targets-project-progress {
   display: flex;
-  height: 18px;
-  gap: 2px;
-  background: rgba(0,0,0,0.25); /* gap color */
+  align-items: flex-end;
+  gap: 3px;
+  height: 40px;
+  padding: 6px 16px 6px;
 }
-.targets-project-progress-seg {
-  flex: 1;
-  background: color-mix(in srgb, var(--seg-color) 22%, transparent);
+.targets-project-progress-bar {
+  width: 12px;
+  height: 100%;
+  background: color-mix(in srgb, var(--seg-color) 20%, transparent);
+  border-radius: 2px;
   overflow: hidden;
-  position: relative;
+  display: flex;
+  align-items: flex-end;
   cursor: default;
+  flex-shrink: 0;
 }
 .targets-project-progress-fill {
-  height: 100%;
-  background: color-mix(in srgb, var(--seg-color) 80%, transparent);
-  transition: width 0.4s ease;
+  width: 100%;
+  background: color-mix(in srgb, var(--seg-color) 85%, transparent);
+  border-radius: 2px;
+  transition: height 0.4s ease;
+  min-height: 2px;
 }
 
 .targets-project-grid {
