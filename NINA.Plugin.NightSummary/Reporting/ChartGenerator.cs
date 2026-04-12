@@ -179,10 +179,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
             int plotH    = Height - PadTop  - PadBottom;
 
             // X range — union of all points
-            var allX    = leftPts.Select(p => p.x).Concat(rightPts.Select(p => p.x)).ToList();
-            double minX = allX.Min();
-            double maxX = allX.Max();
-            double xRange = Math.Max(maxX - minX, xAxisMetric == XAxisFrameIndex ? 1 : 0.001);
+            var allX      = leftPts.Select(p => p.x).Concat(rightPts.Select(p => p.x)).ToList();
+            double rawMinX = allX.Min();
+            double rawMaxX = allX.Max();
+            // Single-point: pad ±1 so ToXPx(rawMinX) == center (matches JS isSinglePoint logic)
+            bool isSinglePoint = rawMaxX - rawMinX < (xAxisMetric == XAxisFrameIndex ? 1.0 : 0.001);
+            double minX  = isSinglePoint ? rawMinX - 1 : rawMinX;
+            double xRange = isSinglePoint ? 2.0 : Math.Max(rawMaxX - rawMinX, xAxisMetric == XAxisFrameIndex ? 1 : 0.001);
 
             // Y scales
             double leftMinSpan = swapped ? GetSecondaryMinSpan(secondaryMetric) : GetPrimaryMinSpan(primaryMetric);
@@ -227,13 +230,21 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             // X axis labels
             int pointCount = Math.Max(leftPts.Count, hasDual ? rightPts.Count : 0);
-            int xSteps = Math.Max(1, Math.Min(6, pointCount - 1));
-            for (int i = 0; i <= xSteps; i++) {
-                double xVal = minX + (xRange / xSteps * i);
-                double xPx  = ToXPx(xVal);
+            if (isSinglePoint) {
+                // One grid line + label centered on the single data point (matches JS isSinglePoint rendering)
+                double xPx = PadLeft + plotW / 2.0;
+                string xLabel = FormatXAxisValue(rawMinX, xAxisMetric, leftPts.Count > 0 ? leftPts[0].t : DateTime.MinValue, rawMinX);
                 sb.AppendLine($"<line x1=\"{xPx:F1}\" y1=\"{PadTop}\" x2=\"{xPx:F1}\" y2=\"{PadTop + plotH}\" stroke=\"{ColorGrid}\" stroke-width=\"1\"/>");
-                string xLabel = FormatXAxisValue(xVal, xAxisMetric, leftPts.Count > 0 ? leftPts[0].t : DateTime.MinValue, minX);
                 sb.AppendLine($"<text x=\"{xPx:F1}\" y=\"{Height - 10}\" fill=\"{ColorLabel}\" font-size=\"11\" text-anchor=\"middle\">{xLabel}</text>");
+            } else {
+                int xSteps = Math.Max(1, Math.Min(6, pointCount - 1));
+                for (int i = 0; i <= xSteps; i++) {
+                    double xVal = minX + (xRange / xSteps * i);
+                    double xPx  = ToXPx(xVal);
+                    sb.AppendLine($"<line x1=\"{xPx:F1}\" y1=\"{PadTop}\" x2=\"{xPx:F1}\" y2=\"{PadTop + plotH}\" stroke=\"{ColorGrid}\" stroke-width=\"1\"/>");
+                    string xLabel = FormatXAxisValue(xVal, xAxisMetric, leftPts.Count > 0 ? leftPts[0].t : DateTime.MinValue, minX);
+                    sb.AppendLine($"<text x=\"{xPx:F1}\" y=\"{Height - 10}\" fill=\"{ColorLabel}\" font-size=\"11\" text-anchor=\"middle\">{xLabel}</text>");
+                }
             }
 
             // Left and bottom axes
@@ -252,7 +263,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             if (xAxisMetric == XAxisTime && eventMarkers != null && minTime != DateTime.MinValue) {
                 foreach (var (ts, evtType, desc) in eventMarkers) {
                     double evtSec = (ts - minTime).TotalSeconds;
-                    if (evtSec < minX || evtSec > maxX) continue;
+                    if (evtSec < minX || evtSec > minX + xRange) continue;
 
                     double xPx = ToXPx(evtSec);
                     var (color, label) = evtType switch {

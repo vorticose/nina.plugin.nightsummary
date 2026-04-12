@@ -185,7 +185,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             // Metric chart filter selector
             sb.AppendLine(".metric-chart-container { margin: 0 auto 16px; max-width: 800px; }");
             sb.AppendLine(".ns-chart-filter-bar { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 0 auto 8px; }");
-            sb.AppendLine(".ns-chart-filter-btn { background: var(--surface); color: var(--muted); border: 1px solid var(--border); border-radius: 12px; padding: 3px 12px; font-size: 12px; font-family: inherit; cursor: pointer; transition: all 0.15s; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;}");
+            sb.AppendLine(".ns-chart-filter-btn { background: var(--surface); color: var(--muted); border: 1px solid var(--border); border-radius: 18px; padding: 5px 18px; font-size: 18px; font-family: inherit; cursor: pointer; transition: all 0.15s; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;}");
             sb.AppendLine(".ns-chart-filter-btn:hover { border-color: var(--accent-light); color: var(--text); }");
             sb.AppendLine(".ns-chart-filter-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: bold; }");
             sb.AppendLine(".ns-chart-svg { width: 100%; }");
