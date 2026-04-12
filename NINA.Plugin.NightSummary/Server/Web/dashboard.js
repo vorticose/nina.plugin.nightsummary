@@ -4540,22 +4540,55 @@ function openManageProjectsModal() {
   closeManageProjectsModal();
   var projects = statsTsProjects || [];
 
-  var listHtml = projects.map(function(p) {
-    var assignedTargets = [];
+  // Build target list for each project
+  function projectTargetList(p) {
+    var targets = [];
+    // TS targets from the project itself (custom project targets are all assigned)
+    var srcForBuiltin = p.isCustom ? 'assigned' : 'ts';
+    if (p.targets) {
+      p.targets.forEach(function(t) { targets.push({ name: t.name, source: srcForBuiltin }); });
+    }
+    // Manually assigned targets (only add if not already listed from p.targets)
     Object.keys(statsProjectAssignments || {}).forEach(function(k) {
-      if (statsProjectAssignments[k] === p.guid) assignedTargets.push(k);
+      if (statsProjectAssignments[k] === p.guid) {
+        var alreadyListed = targets.some(function(t) { return t.name.toLowerCase() === k; });
+        if (!alreadyListed) targets.push({ name: k, source: 'assigned' });
+      }
     });
-    var targetNames = (p.targets || []).map(function(t) { return t.name; });
+    return targets;
+  }
+
+  var listHtml = projects.map(function(p) {
+    var targets = projectTargetList(p);
     var subtitle = p.isCustom
-      ? (assignedTargets.length > 0 ? assignedTargets.length + ' assigned target' + (assignedTargets.length > 1 ? 's' : '') : 'No targets assigned')
+      ? (targets.length > 0 ? targets.length + ' assigned target' + (targets.length > 1 ? 's' : '') : 'No targets assigned')
       : p.targetCount + ' TS target' + (p.targetCount !== 1 ? 's' : '');
     var typeTag = p.isMosaic ? 'Mosaic' : (p.isCustom ? 'Custom' : (p.targetCount > 1 ? 'Multi' : 'Single'));
-    return '<div class="manage-project-item" data-guid="' + esc(p.guid) + '">' +
-      '<div class="manage-project-info">' +
-        '<span class="manage-project-name">' + esc(p.name) + '</span>' +
-        '<span class="manage-project-meta">' + esc(typeTag) + ' \u00b7 ' + esc(subtitle) + '</span>' +
+    var hasTargets = targets.length > 0;
+
+    var targetsHtml = '';
+    if (hasTargets) {
+      targetsHtml = '<div class="manage-project-targets" data-guid="' + esc(p.guid) + '" style="display:none">';
+      targets.forEach(function(t) {
+        var removable = t.source === 'assigned';
+        targetsHtml += '<div class="manage-project-target">' +
+          '<span class="manage-project-target-name">' + esc(t.name) + '</span>' +
+          (removable ? '<button type="button" class="manage-project-target-remove" data-target="' + esc(t.name) + '" data-project="' + esc(p.guid) + '" title="Remove from project">\u00d7</button>' : '') +
+        '</div>';
+      });
+      targetsHtml += '</div>';
+    }
+
+    return '<div class="manage-project-row">' +
+      '<div class="manage-project-item' + (hasTargets ? ' expandable' : '') + '" data-guid="' + esc(p.guid) + '">' +
+        (hasTargets ? '<span class="manage-project-chevron">\u25b8</span>' : '') +
+        '<div class="manage-project-info">' +
+          '<span class="manage-project-name">' + esc(p.name) + '</span>' +
+          '<span class="manage-project-meta">' + esc(typeTag) + ' \u00b7 ' + esc(subtitle) + '</span>' +
+        '</div>' +
+        (p.isCustom ? '<button type="button" class="manage-project-delete" data-guid="' + esc(p.guid) + '" title="Delete project">\u00d7</button>' : '') +
       '</div>' +
-      (p.isCustom ? '<button type="button" class="manage-project-delete" data-guid="' + esc(p.guid) + '" title="Delete project">\u00d7</button>' : '') +
+      targetsHtml +
     '</div>';
   }).join('');
 
@@ -4568,6 +4601,7 @@ function openManageProjectsModal() {
         '<button type="button" class="manage-projects-add-btn">Create</button>' +
       '</div>' +
       '<div class="manage-projects-footer">' +
+        '<button type="button" class="manage-projects-reset-btn" data-action="reset">Reset to TS</button>' +
         '<button type="button" data-action="close">Close</button>' +
       '</div>' +
     '</div>';
@@ -4585,6 +4619,37 @@ function openManageProjectsModal() {
 
   // Close button
   backdrop.querySelector('[data-action="close"]').addEventListener('click', closeManageProjectsModal);
+
+  // Expand/collapse project target lists
+  backdrop.querySelectorAll('.manage-project-item.expandable').forEach(function(item) {
+    item.addEventListener('click', function(e) {
+      if (e.target.closest('.manage-project-delete')) return;
+      var guid = item.getAttribute('data-guid');
+      var targetList = backdrop.querySelector('.manage-project-targets[data-guid="' + guid + '"]');
+      var chevron = item.querySelector('.manage-project-chevron');
+      if (!targetList) return;
+      var open = targetList.style.display !== 'none';
+      targetList.style.display = open ? 'none' : 'block';
+      if (chevron) chevron.textContent = open ? '\u25b8' : '\u25be';
+    });
+  });
+
+  // Remove target from project
+  backdrop.querySelectorAll('.manage-project-target-remove').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var targetName = btn.getAttribute('data-target');
+      fetch('/api/stats/ts/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetName: targetName, projectGuid: '' })
+      }).then(function(r) { return r.json(); }).then(function() {
+        closeManageProjectsModal();
+        renderStats();
+        setTimeout(openManageProjectsModal, 600);
+      });
+    });
+  });
 
   // Create button
   var input = backdrop.querySelector('.manage-projects-input');
@@ -4620,6 +4685,19 @@ function openManageProjectsModal() {
         renderStats();
         setTimeout(openManageProjectsModal, 600);
       });
+    });
+  });
+
+  // Reset to TS button
+  backdrop.querySelector('[data-action="reset"]').addEventListener('click', function() {
+    if (!confirm('Reset all project assignments?\n\nThis will remove all custom projects and target assignments, restoring the default TS project grouping.')) return;
+    fetch('/api/stats/projects/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    }).then(function(r) { return r.json(); }).then(function() {
+      closeManageProjectsModal();
+      renderStats();
     });
   });
 }

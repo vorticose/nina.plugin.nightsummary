@@ -163,6 +163,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if path == "/api/stats/projects/custom" and method == "POST":
             self.handle_custom_project()
             return
+        if path == "/api/stats/projects/reset" and method == "POST":
+            self.handle_projects_reset()
+            return
 
         # Per-session endpoints: /api/sessions/{id}/...
         # Match: /api/sessions/{id}/livestack/{filename} (6 segments)
@@ -606,6 +609,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_json(200, {"ok": True, "guid": guid, "deleted": True})
         else:
             self.send_json(400, {"error": "unknown action: " + str(action)})
+
+    def handle_projects_reset(self):
+        """Reset all custom projects and project assignments back to TS-only state."""
+        meta = self._load_ts_meta()
+        meta["customProjects"] = {}
+        meta["projectAssignments"] = {}
+        self._save_ts_meta(meta)
+        self.send_json(200, {"ok": True, "reset": True})
 
     def serve_project_stats(self, project_guid):
         """Return project detail for Phase 3c panel. Mirrors HandleGetProjectStats in DashboardServer.cs."""
