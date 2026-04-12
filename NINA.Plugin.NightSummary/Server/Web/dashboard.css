@@ -3640,6 +3640,8 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 
   /* ── Project progress: wrap to second row on mobile ── */
   .targets-project-header { flex-wrap: wrap; }
+  /* Hide agg stats (hours · frames) — redundant on mobile, takes too much row-1 space */
+  .targets-project-agg { display: none; }
   .targets-project-progress {
     order: 3;          /* push below left + right rows */
     width: 100%;
