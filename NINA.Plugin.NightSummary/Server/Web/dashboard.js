@@ -1751,13 +1751,17 @@ function loadMosaicThumbnail(panels, wrapOrBackdrop, projectGuid) {
                  'rgba(188,170,164,0.9)','rgba(176,190,197,0.9)'];
 
   // Precompute image-space geometry for every panel
-  var pGeo = validPanels.map(function(p) {
+  var pGeo = validPanels.map(function(p, i) {
+    // Use trailing number from TS target name (e.g. "Spaghetti Nebula Panel 2" → 2),
+    // fall back to sequential 1-based index.
+    var nameMatch = p.name && p.name.match(/(\d+)\s*$/);
     return {
-      cx:  imgSize / 2 + (-(p.ra * 15 - centerRA) * cosCenter / scale),
-      cy:  imgSize / 2 + (-(p.dec - centerDec) / scale),
-      wPx: p.fovWidthDeg  != null ? p.fovWidthDeg  / scale : 0,
-      hPx: p.fovHeightDeg != null ? p.fovHeightDeg / scale : 0,
-      pa:  p.positionAngle != null ? p.positionAngle : (p.rotation || 0)
+      cx:    imgSize / 2 + (-(p.ra * 15 - centerRA) * cosCenter / scale),
+      cy:    imgSize / 2 + (-(p.dec - centerDec) / scale),
+      wPx:   p.fovWidthDeg  != null ? p.fovWidthDeg  / scale : 0,
+      hPx:   p.fovHeightDeg != null ? p.fovHeightDeg / scale : 0,
+      pa:    p.positionAngle != null ? p.positionAngle : (p.rotation || 0),
+      label: nameMatch ? nameMatch[1] : String(i + 1)
     };
   });
 
@@ -1805,15 +1809,16 @@ function loadMosaicThumbnail(panels, wrapOrBackdrop, projectGuid) {
       }
     });
 
-    // Inset 20px from chosen position toward panel center so label sits clearly inside
+    // Inset from chosen corner toward panel center so label sits clearly inside.
+    // Inset distance scales with font size to keep the number off the border.
     var dx = g.cx - bestPt[0], dy = g.cy - bestPt[1];
     var d = Math.sqrt(dx*dx + dy*dy) || 1;
-    var lbx = bestPt[0] + dx/d * 20, lby = bestPt[1] + dy/d * 20;
+    var lbx = bestPt[0] + dx/d * 54, lby = bestPt[1] + dy/d * 54;
 
     svgLabels += '<text x="' + lbx.toFixed(1) + '" y="' + lby.toFixed(1) +
                  '" text-anchor="middle" dominant-baseline="central"' +
-                 ' font-size="22" font-weight="700" fill="' + color +
-                 '" stroke="rgba(0,0,0,0.85)" stroke-width="3.5" paint-order="stroke">' + (i+1) + '</text>';
+                 ' font-size="36" font-weight="700" fill="' + color +
+                 '" stroke="rgba(0,0,0,0.85)" stroke-width="4.5" paint-order="stroke">' + g.label + '</text>';
   });
 
   var svgMarkup = '<svg viewBox="0 0 ' + imgSize + ' ' + imgSize + '"' +
