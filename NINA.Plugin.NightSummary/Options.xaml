@@ -491,6 +491,12 @@
                                 <DataTemplate>
                                     <StackPanel Margin="0,3,0,3">
                                         <StackPanel Orientation="Horizontal" Margin="0,2">
+                                            <TextBlock Text="X-Axis" Width="130" VerticalAlignment="Center" />
+                                            <ComboBox SelectedIndex="{Binding XAxis, Mode=TwoWay}"
+                                                      ItemsSource="{Binding DataContext.XAxisMetricNames, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                      MinWidth="160" />
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,2">
                                             <TextBlock Text="Primary Metric" Width="130" VerticalAlignment="Center" />
                                             <ComboBox SelectedIndex="{Binding Primary, Mode=TwoWay}"
                                                       ItemsSource="{Binding DataContext.PrimaryMetricNames, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
@@ -501,12 +507,6 @@
                                             <TextBlock Text="Secondary Metric" Width="130" VerticalAlignment="Center" />
                                             <ComboBox SelectedIndex="{Binding Secondary, Mode=TwoWay}"
                                                       ItemsSource="{Binding DataContext.SecondaryMetricNames, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                      MinWidth="160" />
-                                        </StackPanel>
-                                        <StackPanel Orientation="Horizontal" Margin="0,2">
-                                            <TextBlock Text="X-Axis" Width="130" VerticalAlignment="Center" />
-                                            <ComboBox SelectedIndex="{Binding XAxis, Mode=TwoWay}"
-                                                      ItemsSource="{Binding DataContext.XAxisMetricNames, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                       MinWidth="160" />
                                         </StackPanel>
                                     </StackPanel>
