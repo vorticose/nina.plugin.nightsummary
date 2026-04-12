@@ -621,6 +621,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 }
                 if best_cam:
                     panel.update(best_cam)
+                # Skip placeholder panels with unset coordinates
+                if tgt.get("ra") == 0 and tgt.get("dec") == 0:
+                    continue
                 panels.append(panel)
 
             self.send_json(200, {
@@ -724,7 +727,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 fov_w, fov_h = _get_cam(ts_targets[0].get("name") or "")
                 max_reach = math.sqrt(fov_w**2 + fov_h**2) / 2 if (fov_w and fov_h) else 1.0
 
-            hips_fov = max_reach * 2 * 1.4
+            hips_fov = max_reach * 2 * 1.15
 
             # Build cache key from URL params
             param_str = f"{center_ra:.6f}_{center_dec:.6f}_{hips_fov:.4f}_{img_size}"

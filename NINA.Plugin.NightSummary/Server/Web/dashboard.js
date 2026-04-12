@@ -1697,7 +1697,9 @@ function loadMosaicThumbnail(panels, wrapOrBackdrop, projectGuid) {
     : (wrapOrBackdrop ? wrapOrBackdrop.querySelector('#pdp-thumb-wrap') : null);
   if (!wrap) return;
 
-  var validPanels = panels.filter(function(p) { return p.ra != null && p.dec != null; });
+  var validPanels = panels.filter(function(p) {
+    return p.ra != null && p.dec != null && !(p.ra === 0 && p.dec === 0);
+  });
   if (!validPanels.length) return;
 
   var raDegArr  = validPanels.map(function(p) { return p.ra * 15; });
@@ -1727,7 +1729,7 @@ function loadMosaicThumbnail(panels, wrapOrBackdrop, projectGuid) {
       : 1.0;
   }
 
-  var hipsFov  = maxReach * 2 * 1.4;
+  var hipsFov  = maxReach * 2 * 1.15;
   var imgSize  = 1024;
   var scale    = hipsFov / imgSize; // degrees per pixel
 
