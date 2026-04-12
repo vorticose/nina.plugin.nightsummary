@@ -652,26 +652,40 @@ function renderProjectContainer(info) {
   html += '</div>';
   html += '</div>';
 
-  // Card body — compact mosaic thumbnail + stat line for mosaics,
-  // or just a stat line for non-mosaic grouped projects.
-  html += '<div class="targets-project-body">';
-  if (info.isMosaic && info.guid) {
-    html += '<div class="targets-project-thumb-wrap">' +
-            '<img class="targets-project-thumb" src="/api/stats/projects/' + encodeURIComponent(info.guid) + '/mosaic-thumb" ' +
-            'alt="Mosaic survey thumbnail" loading="lazy">' +
-            '</div>';
-  }
-  // Stat line — panels · hours · frames · last imaged
+  // Card body — thumbnail left, stat boxes right, last imaged below thumb.
   var lastImaged = '';
   info.targets.forEach(function(t) {
     if (t.lastImaged && (!lastImaged || t.lastImaged > lastImaged)) lastImaged = t.lastImaged;
   });
-  var statParts = [];
-  if (info.isMosaic) statParts.push(info.targets.length + ' panels');
-  statParts.push(totalHours.toFixed(1) + 'h');
-  statParts.push(totalFrames + ' frames');
-  if (lastImaged) statParts.push('Last imaged ' + fmtRelativeTime(lastImaged));
-  html += '<div class="targets-project-stat-line">' + statParts.join('\u00a0\u00b7\u00a0') + '</div>';
+
+  html += '<div class="targets-project-body">';
+  if (info.isMosaic && info.guid) {
+    html += '<div class="targets-project-thumb-col">';
+    html += '<div class="targets-project-thumb-wrap">' +
+            '<img class="targets-project-thumb" src="/api/stats/projects/' + encodeURIComponent(info.guid) + '/mosaic-thumb" ' +
+            'alt="Mosaic survey thumbnail" loading="lazy">' +
+            '</div>';
+    if (lastImaged) {
+      html += '<div class="targets-project-last-imaged">Last imaged ' + fmtRelativeTime(lastImaged) + '</div>';
+    }
+    html += '</div>'; // .targets-project-thumb-col
+
+    html += '<div class="targets-project-stat-boxes">';
+    if (info.isMosaic) {
+      html += '<div class="stat-box"><div class="stat-value">' + info.targets.length +
+              '</div><div class="stat-label">Panels</div></div>';
+    }
+    html += '<div class="stat-box"><div class="stat-value">' + totalHours.toFixed(1) +
+            '<span class="unit">h</span></div><div class="stat-label">Integration</div></div>';
+    html += '<div class="stat-box"><div class="stat-value">' + totalFrames +
+            '</div><div class="stat-label">Frames</div></div>';
+    html += '</div>'; // .targets-project-stat-boxes
+  } else {
+    // Non-mosaic grouped project — just a stat line
+    var statParts = [totalHours.toFixed(1) + 'h', totalFrames + '\u00a0frames'];
+    if (lastImaged) statParts.push('Last imaged ' + fmtRelativeTime(lastImaged));
+    html += '<div class="targets-project-stat-line">' + statParts.join('\u00a0\u00b7\u00a0') + '</div>';
+  }
   html += '</div>'; // .targets-project-body
 
   html += '</div>';
