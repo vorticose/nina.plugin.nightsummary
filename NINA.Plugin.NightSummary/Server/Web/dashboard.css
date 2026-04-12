@@ -2053,32 +2053,85 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   transform: rotate(-90deg);
 }
 
-/* Mini bar chart — one vertical bar per panel. Fixed-width columns scale to any panel count.
-   Fill rises from the bottom; tinted background shows the full column extent. */
+/* Progress section — lives inside the header flex row between left badges and right stats.
+   Left: mini vertical bars per panel. Right: fixed-width overall horizontal bar + %. */
 .targets-project-progress {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+}
+.targets-project-header-left { flex-shrink: 0; }
+
+/* Mini vertical bars */
+.targets-project-progress-bars {
   display: flex;
   align-items: flex-end;
   gap: 3px;
-  height: 40px;
-  padding: 6px 16px 6px;
+  height: 28px;
+  flex-shrink: 0;
 }
 .targets-project-progress-bar {
-  width: 12px;
+  width: 14px;
   height: 100%;
   background: color-mix(in srgb, var(--seg-color) 20%, transparent);
   border-radius: 2px;
   overflow: hidden;
+  position: relative;
   display: flex;
   align-items: flex-end;
   cursor: default;
   flex-shrink: 0;
 }
+.targets-project-progress-bar-num {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 7px;
+  font-weight: 700;
+  line-height: 1;
+  color: rgba(255,255,255,0.7);
+  pointer-events: none;
+  z-index: 1;
+}
 .targets-project-progress-fill {
   width: 100%;
   background: color-mix(in srgb, var(--seg-color) 85%, transparent);
-  border-radius: 2px;
+  border-radius: 2px 2px 0 0;
   transition: height 0.4s ease;
   min-height: 2px;
+}
+/* Narrow bars for 10+ panels — drop number labels */
+.targets-project-progress-bars.many-panels .targets-project-progress-bar { width: 10px; }
+
+/* Overall horizontal bar */
+.targets-project-progress-overall {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+}
+.targets-project-progress-overall-track {
+  width: 120px;
+  height: 5px;
+  background: rgba(255,255,255,0.10);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.targets-project-progress-overall-fill {
+  height: 100%;
+  background: rgba(255,255,255,0.45);
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+.targets-project-progress-overall-pct {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
 }
 
 .targets-project-grid {

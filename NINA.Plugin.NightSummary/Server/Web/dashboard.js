@@ -598,18 +598,7 @@ function renderProjectContainer(info) {
   html += '<span class="target-card-ts-badge" data-state="' + esc(info.state) +
     '" data-project-guid="' + esc(info.guid) + '" title="Click to override status">' + esc(info.state) + '</span>';
   html += '</div>';
-  html += '<div class="targets-project-header-right">';
-  html += '<span class="targets-project-agg">' + totalHours.toFixed(1) + 'h\u00a0\u00b7\u00a0' + totalFrames + '\u00a0frames</span>';
-  if (info.targetCount > 1) {
-    html += '<button type="button" class="targets-project-view-btn" ' +
-      'data-guid="' + esc(info.guid) + '" data-name="' + esc(info.name) + '" aria-label="View project details">Details</button>';
-  }
-  html += '<button type="button" class="targets-project-collapse-btn" aria-label="Collapse">&#9660;</button>';
-  html += '</div>';
-  html += '</div>';
-
-  // Mini bar chart — one vertical bar per panel. Fixed-width columns scale to any panel count.
-  // 100% height = 100% complete; fill rises from bottom. Tinted background shows panel extent.
+  // Progress section — mini vertical bars + overall horizontal bar, inline in header.
   // Only rendered if TS data is present and at least one panel has a non-zero percentComplete.
   var panelPcts = info.targets.map(function(t) {
     return {
@@ -621,18 +610,47 @@ function renderProjectContainer(info) {
   var hasAnyPct = panelPcts.some(function(p) { return p.pct !== null && p.pct > 0; });
   if (hasAnyPct) {
     var palette = ['#90CAF9','#A5D6A7','#FFCC80','#EF9A9A','#CE93D8','#80DEEA','#BCAAA4','#B0BEC5'];
-    html += '<div class="targets-project-progress" aria-label="Project completion">';
+    var manyPanels = panelPcts.length >= 10;
+    var validPcts = panelPcts.filter(function(p) { return p.pct !== null; });
+    var overallPct = validPcts.length
+      ? validPcts.reduce(function(s, p) { return s + p.pct; }, 0) / validPcts.length
+      : 0;
+
+    html += '<div class="targets-project-progress">';
+
+    // Mini vertical bars — per panel
+    html += '<div class="targets-project-progress-bars' + (manyPanels ? ' many-panels' : '') + '">';
     panelPcts.forEach(function(p, i) {
       var color = palette[i % palette.length];
       var fill = p.pct != null ? Math.min(100, Math.max(0, p.pct)) : 0;
-      var tip = 'Panel ' + (i + 1) + (p.name ? ' \u00b7 ' + p.name : '') +
-                ' \u00b7 ' + fill.toFixed(0) + '%';
-      html += '<div class="targets-project-progress-bar" style="--seg-color:' + color + '" title="' + esc(tip) + '">' +
-              '<div class="targets-project-progress-fill" style="height:' + fill.toFixed(1) + '%"></div>' +
-              '</div>';
+      var tip = 'Panel ' + (i + 1) + (p.name ? ' \u00b7 ' + p.name : '') + ' \u00b7 ' + fill.toFixed(0) + '%';
+      html += '<div class="targets-project-progress-bar" style="--seg-color:' + color + '" title="' + esc(tip) + '">';
+      if (!manyPanels) html += '<span class="targets-project-progress-bar-num">' + (i + 1) + '</span>';
+      html += '<div class="targets-project-progress-fill" style="height:' + fill.toFixed(1) + '%"></div>';
+      html += '</div>';
     });
     html += '</div>';
+
+    // Overall horizontal bar — fixed width, always legible regardless of panel count
+    html += '<div class="targets-project-progress-overall">';
+    html += '<div class="targets-project-progress-overall-track">' +
+            '<div class="targets-project-progress-overall-fill" style="width:' + overallPct.toFixed(1) + '%"></div>' +
+            '</div>';
+    html += '<span class="targets-project-progress-overall-pct">' + overallPct.toFixed(0) + '%</span>';
+    html += '</div>';
+
+    html += '</div>'; // .targets-project-progress
   }
+
+  html += '<div class="targets-project-header-right">';
+  html += '<span class="targets-project-agg">' + totalHours.toFixed(1) + 'h\u00a0\u00b7\u00a0' + totalFrames + '\u00a0frames</span>';
+  if (info.targetCount > 1) {
+    html += '<button type="button" class="targets-project-view-btn" ' +
+      'data-guid="' + esc(info.guid) + '" data-name="' + esc(info.name) + '" aria-label="View project details">Details</button>';
+  }
+  html += '<button type="button" class="targets-project-collapse-btn" aria-label="Collapse">&#9660;</button>';
+  html += '</div>';
+  html += '</div>';
 
   html += '<div class="targets-project-grid">';
   sorted.forEach(function(t) { html += renderTargetCard(t, allTargets.indexOf(t)); });
