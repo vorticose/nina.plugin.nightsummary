@@ -1097,7 +1097,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             // Pre-render one SVG per visible state: "All", "Colors" (multi-curve), + one per filter
             var allSvg    = ChartGenerator.GenerateMetricChart(images, primary, secondary, xAxis, markers);
-            var colorsSvg = ChartGenerator.GenerateMultiCurveChart(images, primary, xAxis, markers);
+            var colorsSvg = ChartGenerator.GenerateMultiCurveChart(images, primary, secondary, xAxis, markers);
             var filterSvgs = filters.ToDictionary(
                 f => f,
                 f => ChartGenerator.GenerateMetricChart(
@@ -1146,7 +1146,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             // Chip bar: All → Colors → per-filter chips
             sb.Append($"<div class=\"ns-chart-filter-bar {pfx}-bar\">");
             sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-all\">All</label>");
-            sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-colors\">Colors</label>");
+            sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-colors\">Multi</label>");
             foreach (var f in filters) {
                 var encoded = WebUtility.HtmlEncode(f);
                 sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-{ChartSafeId(f)}\" title=\"{encoded}\">{encoded}</label>");

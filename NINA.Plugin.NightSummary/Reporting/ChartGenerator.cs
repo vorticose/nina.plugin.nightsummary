@@ -374,13 +374,15 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
         /// <summary>
         /// Generates a multi-curve SVG chart where each filter is drawn as its own
-        /// colored line/dot series on a shared axis. Colors are spectrally motivated
-        /// (same palette as the dashboard filter badges). One y-axis only — no secondary
-        /// metric. Intended as the "Colors" chip in the per-filter chip selector.
+        /// colored line/dot series on shared axes. Primary metric uses solid dots + line;
+        /// secondary metric (if configured) uses hollow dots + dashed line, same filter color.
+        /// Colors are spectrally motivated (same palette as the dashboard filter badges).
+        /// Intended as the "Multi" chip in the per-filter chip selector.
         /// </summary>
         public static string GenerateMultiCurveChart(
                 List<ImageRecord> images,
                 int primaryMetric,
+                int secondaryMetric = SecNone,
                 int xAxisMetric = XAxisTime,
                 List<(DateTime timestamp, string eventType, string description)>? eventMarkers = null) {
 
@@ -388,12 +390,19 @@ namespace NINA.Plugin.NightSummary.Reporting {
             if (ordered.Count == 0)
                 return GeneratePlaceholderSvg(new List<string> { GetPrimaryNoDataMsg(primaryMetric) });
 
-            // Reuse BuildPointsForMetric — it correctly attributes each point's filter
+            // Primary points — BuildPointsForMetric correctly attributes each point's filter
             var allPts = BuildPointsForMetric(ordered, primaryMetric, xAxisMetric, isPrimary: true);
             if (allPts.Count == 0)
                 return GeneratePlaceholderSvg(new List<string> { GetPrimaryNoDataMsg(primaryMetric) });
 
-            // Group by filter in canonical sort order
+            // Secondary points (if configured)
+            bool hasDual = secondaryMetric > SecNone;
+            var allSecPts = hasDual
+                ? BuildPointsForMetric(ordered, secondaryMetric, xAxisMetric, isPrimary: false)
+                : new List<ChartPoint>();
+            hasDual = hasDual && allSecPts.Count > 0;
+
+            // Group primary by filter in canonical sort order
             var filterGroups = allPts
                 .GroupBy(p => p.Filter)
                 .OrderBy(g => FilterHelper.SortKey(g.Key))
@@ -401,24 +410,39 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 .Select(g => (Filter: g.Key, Pts: g.OrderBy(p => p.X).ToList()))
                 .ToList();
 
-            // Shared x range
-            double rawMinX = allPts.Min(p => p.X);
-            double rawMaxX = allPts.Max(p => p.X);
+            // Group secondary by filter (same order)
+            var secByFilter = allSecPts
+                .GroupBy(p => p.Filter)
+                .ToDictionary(g => g.Key, g => g.OrderBy(p => p.X).ToList());
+
+            // Shared x range (union of primary + secondary)
+            var xUnion = allPts.Select(p => p.X)
+                .Concat(allSecPts.Select(p => p.X)).ToList();
+            double rawMinX = xUnion.Min();
+            double rawMaxX = xUnion.Max();
             bool spx = rawMaxX - rawMinX < (xAxisMetric == XAxisFrameIndex ? 1.0 : 0.001);
-            double minX  = spx ? rawMinX - 1 : rawMinX;
+            double minX   = spx ? rawMinX - 1 : rawMinX;
             double xRange = spx ? 2.0 : Math.Max(rawMaxX - rawMinX, xAxisMetric == XAxisFrameIndex ? 1 : 0.001);
 
-            // Shared y scale
+            // Left (primary) y scale
             var (minL, maxL, stepL) = ComputeNiceScale(allPts.Select(p => p.Y), GetPrimaryMinSpan(primaryMetric));
             double rangeL = maxL - minL;
 
-            int plotW = Width - PadLeft - PadRight;
+            // Right (secondary) y scale
+            double minR = 0, maxR = 1, stepR = 1, rangeR = 1;
+            if (hasDual) {
+                (minR, maxR, stepR) = ComputeNiceScale(allSecPts.Select(p => p.Y), GetSecondaryMinSpan(secondaryMetric));
+                rangeR = maxR - minR;
+            }
+
+            int padRight = hasDual ? PadRightDual : PadRight;
+            int plotW = Width - PadLeft - padRight;
             int plotH = Height - PadTop  - PadBottom;
 
             double ToXPx(double x) => PadLeft + ((x - minX) / xRange) * plotW;
-            double ToYPx(double y) => PadTop  + plotH - ((y - minL) / rangeL) * plotH;
+            double ToYL(double y)  => PadTop  + plotH - ((y - minL) / rangeL) * plotH;
+            double ToYR(double y)  => PadTop  + plotH - ((y - minR) / rangeR) * plotH;
 
-            // Session start for event marker positioning (Time x-axis only)
             DateTime sessionStart = xAxisMetric == XAxisTime && ordered.Count > 0
                 ? ordered[0].Timestamp : DateTime.MinValue;
 
@@ -430,9 +454,23 @@ namespace NINA.Plugin.NightSummary.Reporting {
             // Horizontal grid + left Y labels
             string leftFmt = GetValueFormat(primaryMetric, true);
             for (double v = minL; v <= maxL + stepL * 0.001; v += stepL) {
-                double y = ToYPx(v);
-                sb.AppendLine($"<line x1=\"{PadLeft}\" y1=\"{y:F1}\" x2=\"{Width - PadRight}\" y2=\"{y:F1}\" stroke=\"{ColorGrid}\" stroke-width=\"1\"/>");
+                double y = ToYL(v);
+                sb.AppendLine($"<line x1=\"{PadLeft}\" y1=\"{y:F1}\" x2=\"{Width - padRight}\" y2=\"{y:F1}\" stroke=\"{ColorGrid}\" stroke-width=\"1\"/>");
                 sb.AppendLine($"<text x=\"{PadLeft - 6}\" y=\"{y + 4:F1}\" fill=\"{ColorLabel}\" font-size=\"11\" text-anchor=\"end\">{v.ToString(leftFmt)}</text>");
+            }
+
+            // Right Y axis
+            if (hasDual) {
+                string rightFmt   = GetValueFormat(secondaryMetric, false);
+                int rightLineX    = Width - padRight;
+                int rightLabelX   = rightLineX + 6;
+                int rightTitleX   = Width - 10;
+                sb.AppendLine($"<line x1=\"{rightLineX}\" y1=\"{PadTop}\" x2=\"{rightLineX}\" y2=\"{PadTop + plotH}\" stroke=\"{ColorAxis}\" stroke-width=\"1\"/>");
+                for (double v = minR; v <= maxR + stepR * 0.001; v += stepR) {
+                    double y = ToYR(v);
+                    sb.AppendLine($"<text x=\"{rightLabelX}\" y=\"{y + 4:F1}\" fill=\"{ColorLabel}\" font-size=\"11\" text-anchor=\"start\">{v.ToString(rightFmt)}</text>");
+                }
+                sb.AppendLine($"<text x=\"{rightTitleX}\" y=\"{Height / 2}\" fill=\"{ColorLabel}\" font-size=\"11\" text-anchor=\"middle\" transform=\"rotate(90,{rightTitleX},{Height / 2})\">{GetSecondaryAxisLabel(secondaryMetric)}</text>");
             }
 
             // X axis labels
@@ -442,22 +480,19 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine($"<line x1=\"{xPx:F1}\" y1=\"{PadTop}\" x2=\"{xPx:F1}\" y2=\"{PadTop + plotH}\" stroke=\"{ColorGrid}\" stroke-width=\"1\"/>");
                 sb.AppendLine($"<text x=\"{xPx:F1}\" y=\"{Height - 10}\" fill=\"{ColorLabel}\" font-size=\"11\" text-anchor=\"middle\">{xLbl}</text>");
             } else {
-                int pointCount = allPts.Count;
-                int xSteps = Math.Max(1, Math.Min(6, pointCount - 1));
+                int xSteps = Math.Max(1, Math.Min(6, allPts.Count - 1));
                 for (int i = 0; i <= xSteps; i++) {
                     double xVal = minX + (xRange / xSteps * i);
                     double xPx  = ToXPx(xVal);
                     sb.AppendLine($"<line x1=\"{xPx:F1}\" y1=\"{PadTop}\" x2=\"{xPx:F1}\" y2=\"{PadTop + plotH}\" stroke=\"{ColorGrid}\" stroke-width=\"1\"/>");
-                    string xLbl = FormatXAxisValue(xVal, xAxisMetric, sessionStart, minX);
-                    sb.AppendLine($"<text x=\"{xPx:F1}\" y=\"{Height - 10}\" fill=\"{ColorLabel}\" font-size=\"11\" text-anchor=\"middle\">{xLbl}</text>");
+                    sb.AppendLine($"<text x=\"{xPx:F1}\" y=\"{Height - 10}\" fill=\"{ColorLabel}\" font-size=\"11\" text-anchor=\"middle\">{FormatXAxisValue(xVal, xAxisMetric, sessionStart, minX)}</text>");
                 }
             }
 
-            // Axes + axis labels
+            // Left + bottom axes + titles
             sb.AppendLine($"<line x1=\"{PadLeft}\" y1=\"{PadTop}\" x2=\"{PadLeft}\" y2=\"{PadTop + plotH}\" stroke=\"{ColorAxis}\" stroke-width=\"1\"/>");
-            sb.AppendLine($"<line x1=\"{PadLeft}\" y1=\"{PadTop + plotH}\" x2=\"{Width - PadRight}\" y2=\"{PadTop + plotH}\" stroke=\"{ColorAxis}\" stroke-width=\"1\"/>");
-            string leftAxisLabel = GetPrimaryAxisLabel(primaryMetric);
-            sb.AppendLine($"<text x=\"14\" y=\"{Height / 2}\" fill=\"{ColorLabel}\" font-size=\"11\" text-anchor=\"middle\" transform=\"rotate(-90,14,{Height / 2})\">{leftAxisLabel}</text>");
+            sb.AppendLine($"<line x1=\"{PadLeft}\" y1=\"{PadTop + plotH}\" x2=\"{Width - padRight}\" y2=\"{PadTop + plotH}\" stroke=\"{ColorAxis}\" stroke-width=\"1\"/>");
+            sb.AppendLine($"<text x=\"14\" y=\"{Height / 2}\" fill=\"{ColorLabel}\" font-size=\"11\" text-anchor=\"middle\" transform=\"rotate(-90,14,{Height / 2})\">{GetPrimaryAxisLabel(primaryMetric)}</text>");
             if (xAxisMetric != XAxisTime)
                 sb.AppendLine($"<text x=\"{PadLeft + plotW / 2}\" y=\"{Height - 2}\" fill=\"{ColorLabel}\" font-size=\"10\" text-anchor=\"middle\">{GetXAxisAxisLabel(xAxisMetric)}</text>");
 
@@ -478,30 +513,45 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 }
             }
 
-            // Per-filter: polyline then dots (drawn front-to-back so earlier filters aren't hidden)
+            // Secondary series first (drawn behind primary)
+            if (hasDual) {
+                string secTipFmt  = GetTooltipFormat(secondaryMetric, false);
+                string secTipUnit = GetTooltipUnit(secondaryMetric, false);
+                foreach (var (filter, _) in filterGroups) {
+                    if (!secByFilter.TryGetValue(filter, out var secPts) || secPts.Count == 0) continue;
+                    string col = GetFilterChartColor(filter);
+                    if (secPts.Count > 1) {
+                        var poly = string.Join(" ", secPts.Select(p => $"{ToXPx(p.X):F1},{ToYR(p.Y):F1}"));
+                        sb.AppendLine($"<polyline points=\"{poly}\" fill=\"none\" stroke=\"{col}\" stroke-width=\"2\" stroke-dasharray=\"6,3\" stroke-linejoin=\"round\"/>");
+                    }
+                    foreach (var p in secPts) {
+                        string tipX = FormatTooltipX((p.X, p.Y, p.Timestamp), xAxisMetric, minX);
+                        string tip  = $"{tipX} — {p.Y.ToString(secTipFmt)}{secTipUnit} [{EscapeXml(filter)}]";
+                        sb.AppendLine($"<circle cx=\"{ToXPx(p.X):F1}\" cy=\"{ToYR(p.Y):F1}\" r=\"3\" fill=\"none\" stroke=\"{col}\" stroke-width=\"1.5\"><title>{tip}</title></circle>");
+                    }
+                }
+            }
+
+            // Primary series (solid dots + line, drawn on top)
             string tipFmt  = GetTooltipFormat(primaryMetric, true);
             string tipUnit = GetTooltipUnit(primaryMetric, true);
             foreach (var (filter, pts) in filterGroups) {
                 string col = GetFilterChartColor(filter);
-
                 if (pts.Count > 1) {
-                    var poly = string.Join(" ", pts.Select(p => $"{ToXPx(p.X):F1},{ToYPx(p.Y):F1}"));
+                    var poly = string.Join(" ", pts.Select(p => $"{ToXPx(p.X):F1},{ToYL(p.Y):F1}"));
                     sb.AppendLine($"<polyline points=\"{poly}\" fill=\"none\" stroke=\"{col}\" stroke-width=\"2\" stroke-linejoin=\"round\"/>");
                 }
-
                 foreach (var p in pts) {
                     string tipX = FormatTooltipX((p.X, p.Y, p.Timestamp), xAxisMetric, minX);
                     string tip  = $"{tipX} — {p.Y.ToString(tipFmt)}{tipUnit} [{EscapeXml(filter)}]";
-                    sb.AppendLine($"<circle cx=\"{ToXPx(p.X):F1}\" cy=\"{ToYPx(p.Y):F1}\" r=\"3\" fill=\"{col}\"><title>{tip}</title></circle>");
+                    sb.AppendLine($"<circle cx=\"{ToXPx(p.X):F1}\" cy=\"{ToYL(p.Y):F1}\" r=\"3\" fill=\"{col}\"><title>{tip}</title></circle>");
                 }
             }
 
             // Legend — horizontal pill, top-right inside the plot area
-            // Estimate width: each item is swatch(16) + name chars * 7 + gap(12)
             const int LegSwatchW = 16, LegTextPx = 7, LegItemPad = 12, LegH = 20, LegPad = 6;
-            var itemWidths = filterGroups.Select(g => LegSwatchW + g.Filter.Length * LegTextPx + LegItemPad).ToList();
-            int legW = itemWidths.Sum() + LegPad;
-            legW = Math.Min(legW, plotW - 8); // cap to plot width
+            int legW = filterGroups.Sum(g => LegSwatchW + g.Filter.Length * LegTextPx + LegItemPad) + LegPad;
+            legW = Math.Min(legW, plotW - 8);
             int legX = PadLeft + plotW - legW - 4;
             int legY = PadTop + 5;
             sb.AppendLine($"<rect x=\"{legX}\" y=\"{legY}\" width=\"{legW}\" height=\"{LegH}\" rx=\"3\" fill=\"{ColorBackground}\" stroke=\"{ColorGrid}\" stroke-width=\"1\" opacity=\"0.92\"/>");
@@ -509,7 +559,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             foreach (var (filter, _) in filterGroups) {
                 string col = GetFilterChartColor(filter);
                 int iw = LegSwatchW + filter.Length * LegTextPx + LegItemPad;
-                if (ix + iw > legX + legW) break; // don't overflow
+                if (ix + iw > legX + legW) break;
                 int cy = legY + LegH / 2;
                 sb.AppendLine($"<line x1=\"{ix}\" y1=\"{cy}\" x2=\"{ix + LegSwatchW - 4}\" y2=\"{cy}\" stroke=\"{col}\" stroke-width=\"2\"/>");
                 sb.AppendLine($"<circle cx=\"{ix + (LegSwatchW - 4) / 2}\" cy=\"{cy}\" r=\"3\" fill=\"{col}\"/>");
