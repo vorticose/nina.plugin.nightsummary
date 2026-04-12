@@ -672,7 +672,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self.send_json(404, {"error": "Project not found"}); return
 
             ts_targets = [t for t in (proj.get("targets") or [])
-                          if t.get("ra") is not None and t.get("dec") is not None]
+                          if t.get("ra") is not None and t.get("dec") is not None
+                          and not (t.get("ra") == 0 and t.get("dec") == 0)]
             if not ts_targets:
                 self.send_json(404, {"error": "No targets with coordinates"}); return
 

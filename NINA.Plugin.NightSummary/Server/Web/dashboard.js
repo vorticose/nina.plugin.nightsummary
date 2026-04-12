@@ -619,10 +619,6 @@ function renderProjectContainer(info) {
   }
 
   html += '<div class="targets-project-header-right">';
-  if (info.targetCount > 1) {
-    html += '<button type="button" class="targets-project-view-btn" ' +
-      'data-guid="' + esc(info.guid) + '" data-name="' + esc(info.name) + '" aria-label="View project details">Details</button>';
-  }
   html += '<button type="button" class="targets-project-collapse-btn" aria-label="Collapse"></button>';
   html += '</div>';
   html += '</div>'; // .targets-project-header
@@ -776,20 +772,23 @@ function initProjectContainers() {
       if (c) c.classList.toggle('collapsed');
     });
   });
-  // View Details button → open project detail panel
-  document.querySelectorAll('.targets-project-view-btn').forEach(function(btn) {
+  // Collapse button toggles collapse
+  document.querySelectorAll('.targets-project-collapse-btn').forEach(function(btn) {
     btn.addEventListener('click', function(e) {
       e.stopPropagation();
-      openProjectDetail(btn.getAttribute('data-guid'), btn.getAttribute('data-name'));
+      var c = btn.closest('.targets-project-container');
+      if (c) c.classList.toggle('collapsed');
     });
   });
-  // Click anywhere on header also toggles (except the TS badge and view button)
-  document.querySelectorAll('.targets-project-header').forEach(function(header) {
-    header.addEventListener('click', function(e) {
+  // Clicking the card (anywhere except TS badge and collapse btn) opens detail view
+  document.querySelectorAll('.targets-project-container').forEach(function(container) {
+    var guid = container.getAttribute('data-guid');
+    var name = container.querySelector('.targets-project-name');
+    if (!guid) return;
+    container.addEventListener('click', function(e) {
       if (e.target.closest('.target-card-ts-badge')) return;
-      if (e.target.closest('.targets-project-view-btn')) return;
-      var c = header.closest('.targets-project-container');
-      if (c) c.classList.toggle('collapsed');
+      if (e.target.closest('.targets-project-collapse-btn')) return;
+      openProjectDetail(guid, name ? name.textContent : guid);
     });
   });
 }
