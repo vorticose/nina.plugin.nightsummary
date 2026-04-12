@@ -2063,68 +2063,25 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   transform: rotate(-90deg);
 }
 
-/* Progress section — lives inside the header flex row between left badges and right stats.
-   Left: mini vertical bars per panel. Right: fixed-width overall horizontal bar + %. */
+/* Progress section — overall bar only, sits between badges and Details button in header */
 .targets-project-progress {
   flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 10px;
   overflow: hidden;
 }
-
-/* Mini vertical bars */
-.targets-project-progress-bars {
-  display: flex;
-  align-items: flex-end;
-  gap: 3px;
-  height: 28px;
-  flex-shrink: 0;
-}
-.targets-project-progress-bar {
-  width: 14px;
-  height: 100%;
-  background: color-mix(in srgb, var(--seg-color) 20%, transparent);
-  border-radius: 2px;
-  overflow: hidden;
-  position: relative;
-  display: flex;
-  align-items: flex-end;
-  cursor: default;
-  flex-shrink: 0;
-}
-.targets-project-progress-bar-num {
-  position: absolute;
-  top: 2px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 7px;
-  font-weight: 700;
-  line-height: 1;
-  color: rgba(255,255,255,0.7);
-  pointer-events: none;
-  z-index: 1;
-}
-.targets-project-progress-fill {
-  width: 100%;
-  background: color-mix(in srgb, var(--seg-color) 85%, transparent);
-  border-radius: 2px 2px 0 0;
-  transition: height 0.4s ease;
-  min-height: 2px;
-}
-/* Narrow bars for 10+ panels — drop number labels */
-.targets-project-progress-bars.many-panels .targets-project-progress-bar { width: 10px; }
 
 /* Overall horizontal bar */
 .targets-project-progress-overall {
   display: flex;
   align-items: center;
   gap: 7px;
-  flex-shrink: 0;
+  flex: 1;
+  min-width: 0;
 }
 .targets-project-progress-overall-track {
-  width: 120px;
+  flex: 1;
   height: 5px;
   background: rgba(255,255,255,0.10);
   border-radius: 3px;
@@ -2152,14 +2109,14 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 }
 .targets-project-container.collapsed .targets-project-body { display: none; }
 .targets-project-thumb-col {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  flex-shrink: 0;
+  flex: 1;
+  min-width: 0;
 }
 .targets-project-thumb-wrap {
-  width: 240px;
-  height: 240px;
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  max-height: 360px;
   border-radius: 8px;
   overflow: hidden;
   background: rgba(0,0,0,0.3);
@@ -2171,9 +2128,15 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   display: block;
 }
 .targets-project-last-imaged {
+  position: absolute;
+  bottom: 6px;
+  left: 8px;
   font-size: 10px;
-  color: var(--text-tertiary);
-  text-align: center;
+  color: rgba(255,255,255,0.75);
+  background: rgba(0,0,0,0.55);
+  padding: 2px 6px;
+  border-radius: 3px;
+  pointer-events: none;
 }
 .targets-project-stat-boxes {
   display: flex;
@@ -2200,47 +2163,6 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   font-size: 12px;
   color: var(--text-secondary);
   padding: 4px 0;
-}
-.targets-project-filter-panel {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 2px 0;
-  align-self: flex-start;
-}
-.targets-project-filter-label {
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-tertiary);
-  margin-bottom: 2px;
-}
-.targets-project-filter-row {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-.targets-project-filter-bar-track {
-  flex: 1;
-  height: 6px;
-  background: rgba(255,255,255,0.07);
-  border-radius: 3px;
-  overflow: hidden;
-}
-.targets-project-filter-bar-fill {
-  height: 100%;
-  border-radius: 3px;
-  opacity: 0.75;
-  transition: width 0.3s ease;
-}
-.targets-project-filter-val {
-  font-size: 10px;
-  color: var(--text-secondary);
-  min-width: 32px;
-  text-align: right;
-  flex-shrink: 0;
 }
 
 /* Unassigned section */
@@ -3829,7 +3751,6 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   }
   .targets-project-progress-overall-track { flex: 1; width: auto; }
   .targets-project-progress-overall { flex: 1; min-width: 0; }
-  /* On narrow screens, force 1-column grid and shrink thumbnail */
+  /* On narrow screens, force 1-column grid */
   .targets-grouped { grid-template-columns: 1fr; }
-  .targets-project-thumb-wrap { width: 160px; height: 160px; }
 }

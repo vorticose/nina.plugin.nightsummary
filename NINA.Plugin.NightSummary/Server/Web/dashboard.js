@@ -598,90 +598,56 @@ function renderProjectContainer(info) {
   html += '<span class="target-card-ts-badge" data-state="' + esc(info.state) +
     '" data-project-guid="' + esc(info.guid) + '" title="Click to override status">' + esc(info.state) + '</span>';
   html += '</div>';
-  // Progress section — mini vertical bars + overall horizontal bar, inline in header.
-  // Only rendered if TS data is present and at least one panel has a non-zero percentComplete.
+
+  // Overall progress bar only (no per-panel bars)
   var panelPcts = info.targets.map(function(t) {
-    return {
-      pct: (t.ts && t.ts.project && t.ts.project.percentComplete != null)
-            ? t.ts.project.percentComplete : null,
-      name: t.target || ''
-    };
+    return (t.ts && t.ts.project && t.ts.project.percentComplete != null)
+           ? t.ts.project.percentComplete : null;
   });
-  var hasAnyPct = panelPcts.some(function(p) { return p.pct !== null && p.pct > 0; });
+  var validPcts = panelPcts.filter(function(p) { return p !== null; });
+  var hasAnyPct = validPcts.some(function(p) { return p > 0; });
   if (hasAnyPct) {
-    var palette = ['#90CAF9','#A5D6A7','#FFCC80','#EF9A9A','#CE93D8','#80DEEA','#BCAAA4','#B0BEC5'];
-    var manyPanels = panelPcts.length >= 10;
-    var validPcts = panelPcts.filter(function(p) { return p.pct !== null; });
-    var overallPct = validPcts.length
-      ? validPcts.reduce(function(s, p) { return s + p.pct; }, 0) / validPcts.length
-      : 0;
-
+    var overallPct = validPcts.reduce(function(s, p) { return s + p; }, 0) / validPcts.length;
     html += '<div class="targets-project-progress">';
-
-    // Mini vertical bars — per panel
-    html += '<div class="targets-project-progress-bars' + (manyPanels ? ' many-panels' : '') + '">';
-    panelPcts.forEach(function(p, i) {
-      var color = palette[i % palette.length];
-      var fill = p.pct != null ? Math.min(100, Math.max(0, p.pct)) : 0;
-      var tip = 'Panel ' + (i + 1) + (p.name ? ' \u00b7 ' + p.name : '') + ' \u00b7 ' + fill.toFixed(0) + '%';
-      html += '<div class="targets-project-progress-bar" style="--seg-color:' + color + '" title="' + esc(tip) + '">';
-      if (!manyPanels) html += '<span class="targets-project-progress-bar-num">' + (i + 1) + '</span>';
-      html += '<div class="targets-project-progress-fill" style="height:' + fill.toFixed(1) + '%"></div>';
-      html += '</div>';
-    });
-    html += '</div>';
-
-    // Overall horizontal bar — fixed width, always legible regardless of panel count
     html += '<div class="targets-project-progress-overall">';
     html += '<div class="targets-project-progress-overall-track">' +
             '<div class="targets-project-progress-overall-fill" style="width:' + overallPct.toFixed(1) + '%"></div>' +
             '</div>';
     html += '<span class="targets-project-progress-overall-pct">' + overallPct.toFixed(0) + '%</span>';
     html += '</div>';
-
     html += '</div>'; // .targets-project-progress
   }
 
   html += '<div class="targets-project-header-right">';
-  html += '<span class="targets-project-agg">' + totalHours.toFixed(1) + 'h\u00a0\u00b7\u00a0' + totalFrames + '\u00a0frames</span>';
   if (info.targetCount > 1) {
     html += '<button type="button" class="targets-project-view-btn" ' +
       'data-guid="' + esc(info.guid) + '" data-name="' + esc(info.name) + '" aria-label="View project details">Details</button>';
   }
   html += '<button type="button" class="targets-project-collapse-btn" aria-label="Collapse"></button>';
   html += '</div>';
-  html += '</div>';
+  html += '</div>'; // .targets-project-header
 
   // Aggregate across all panels
   var lastImaged = '';
   var totalSessions = 0;
-  var filterMap = {};
   info.targets.forEach(function(t) {
     if (t.lastImaged && (!lastImaged || t.lastImaged > lastImaged)) lastImaged = t.lastImaged;
     totalSessions += t.sessionCount || 0;
-    (t.filters || []).forEach(function(f) {
-      var key = f.filter || 'Unknown';
-      if (!filterMap[key]) filterMap[key] = { filter: key, totalSeconds: 0, acceptedCount: 0 };
-      filterMap[key].totalSeconds += f.totalSeconds || 0;
-      filterMap[key].acceptedCount += f.acceptedCount || 0;
-    });
   });
-  var filterList = Object.values(filterMap).sort(function(a, b) { return b.totalSeconds - a.totalSeconds; });
-  var maxFilterSeconds = filterList.length ? filterList[0].totalSeconds : 1;
 
   html += '<div class="targets-project-body">';
   if (info.isMosaic && info.guid) {
+    // Thumbnail fills all available horizontal space; stat boxes stretch to match height
     html += '<div class="targets-project-thumb-col">';
     html += '<div class="targets-project-thumb-wrap">' +
             '<img class="targets-project-thumb" src="/api/stats/projects/' + encodeURIComponent(info.guid) + '/mosaic-thumb" ' +
-            'alt="Mosaic survey thumbnail" loading="lazy">' +
-            '</div>';
+            'alt="Mosaic survey thumbnail" loading="lazy">';
     if (lastImaged) {
       html += '<div class="targets-project-last-imaged">Last imaged ' + fmtRelativeTime(lastImaged) + '</div>';
     }
+    html += '</div>'; // .targets-project-thumb-wrap
     html += '</div>'; // .targets-project-thumb-col
 
-    // Compact stat boxes
     html += '<div class="targets-project-stat-boxes">';
     html += '<div class="stat-box"><div class="stat-value">' + info.targets.length +
             '</div><div class="stat-label">Panels</div></div>';
@@ -692,26 +658,6 @@ function renderProjectContainer(info) {
     html += '<div class="stat-box"><div class="stat-value">' + totalSessions +
             '</div><div class="stat-label">Sessions</div></div>';
     html += '</div>'; // .targets-project-stat-boxes
-
-    // Filter breakdown panel
-    if (filterList.length > 0) {
-      html += '<div class="targets-project-filter-panel">';
-      html += '<div class="targets-project-filter-label">Filter breakdown</div>';
-      filterList.forEach(function(f) {
-        var hrs = (f.totalSeconds / 3600).toFixed(1);
-        var pct = Math.round((f.totalSeconds / maxFilterSeconds) * 100);
-        var fc = getFilterColor(f.filter);
-        var barColor = fc || 'var(--accent)';
-        html += '<div class="targets-project-filter-row">';
-        html += filterTypePill(f.filter);
-        html += '<div class="targets-project-filter-bar-track">' +
-                '<div class="targets-project-filter-bar-fill" style="width:' + pct + '%;background:' + barColor + '"></div>' +
-                '</div>';
-        html += '<span class="targets-project-filter-val">' + hrs + 'h</span>';
-        html += '</div>';
-      });
-      html += '</div>'; // .targets-project-filter-panel
-    }
   } else {
     // Non-mosaic grouped project — just a stat line
     var statParts = [totalHours.toFixed(1) + 'h', totalFrames + '\u00a0frames'];
