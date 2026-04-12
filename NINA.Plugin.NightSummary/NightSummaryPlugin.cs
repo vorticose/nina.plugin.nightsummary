@@ -605,10 +605,17 @@ namespace NINA.Plugin.NightSummary {
         public void AddAdditionalChart() {
             if (AdditionalCharts.Count >= MaxAdditionalCharts) return;
             AdditionalCharts.Add(new ChartConfig(0, 0, SerializeChartConfigs));
+            RenumberCharts();
         }
 
         public void RemoveAdditionalChart(ChartConfig config) {
             AdditionalCharts.Remove(config);
+            RenumberCharts();
+        }
+
+        private void RenumberCharts() {
+            for (int i = 0; i < AdditionalCharts.Count; i++)
+                AdditionalCharts[i].ChartNumber = i + 2;
         }
 
         private void SerializeChartConfigs() {
@@ -629,6 +636,8 @@ namespace NINA.Plugin.NightSummary {
                     col.Add(new ChartConfig(p, s, SerializeChartConfigs, xAxis));
                 }
             }
+            for (int i = 0; i < col.Count; i++)
+                col[i].ChartNumber = i + 2;
             return col;
         }
 
@@ -895,6 +904,12 @@ namespace NINA.Plugin.NightSummary {
         public int XAxis {
             get => _xAxis;
             set { _xAxis = value; OnPropertyChanged(); _onChanged(); }
+        }
+
+        private int _chartNumber;
+        public int ChartNumber {
+            get => _chartNumber;
+            set { _chartNumber = value; OnPropertyChanged(); }
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
