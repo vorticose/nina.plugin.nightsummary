@@ -652,9 +652,28 @@ function renderProjectContainer(info) {
   html += '</div>';
   html += '</div>';
 
-  html += '<div class="targets-project-grid">';
-  sorted.forEach(function(t) { html += renderTargetCard(t, allTargets.indexOf(t)); });
-  html += '</div>';
+  // Card body — compact mosaic thumbnail + stat line for mosaics,
+  // or just a stat line for non-mosaic grouped projects.
+  html += '<div class="targets-project-body">';
+  if (info.isMosaic && info.guid) {
+    html += '<div class="targets-project-thumb-wrap">' +
+            '<img class="targets-project-thumb" src="/api/stats/projects/' + encodeURIComponent(info.guid) + '/mosaic-thumb" ' +
+            'alt="Mosaic survey thumbnail" loading="lazy">' +
+            '</div>';
+  }
+  // Stat line — panels · hours · frames · last imaged
+  var lastImaged = '';
+  info.targets.forEach(function(t) {
+    if (t.lastImaged && (!lastImaged || t.lastImaged > lastImaged)) lastImaged = t.lastImaged;
+  });
+  var statParts = [];
+  if (info.isMosaic) statParts.push(info.targets.length + ' panels');
+  statParts.push(totalHours.toFixed(1) + 'h');
+  statParts.push(totalFrames + ' frames');
+  if (lastImaged) statParts.push('Last imaged ' + fmtRelativeTime(lastImaged));
+  html += '<div class="targets-project-stat-line">' + statParts.join('\u00a0\u00b7\u00a0') + '</div>';
+  html += '</div>'; // .targets-project-body
+
   html += '</div>';
   return html;
 }
@@ -1548,32 +1567,113 @@ function renderProjectDetailPanel(data) {
   html += '<div class="pdp-panels-section">';
   html += '<div class="pdp-section-title">Panels (' + panels.length + ')</div>';
   html += '<div class="pdp-panels-grid">';
-  panels.forEach(function(panel, i) { html += renderPdpPanelCard(panel, i); });
+  panels.forEach(function(panel, i) {
+    // Enrich with per-panel TS progress data from summary cache
+    var tsTarget = (statsTargetData || []).find(function(t) {
+      return t.target && panel.name && t.target.toLowerCase() === panel.name.toLowerCase();
+    });
+    html += renderPdpPanelCard(panel, i, tsTarget);
+  });
   html += '</div>';
   html += '</div>';
+
+  // Filter coverage matrix — only for mosaics with ≥2 panels
+  if (panels.length >= 2) {
+    var allFilters = [];
+    panels.forEach(function(p) {
+      (p.filters || []).forEach(function(f) {
+        if (allFilters.indexOf(f.filter) < 0) allFilters.push(f.filter);
+      });
+    });
+    if (allFilters.length > 0) {
+      html += '<div class="pdp-matrix-section">';
+      html += '<div class="pdp-section-title">Filter Coverage</div>';
+      html += '<div class="pdp-matrix">';
+      // Header row
+      html += '<div class="pdp-matrix-row pdp-matrix-header">';
+      html += '<div class="pdp-matrix-cell pdp-matrix-corner"></div>';
+      allFilters.forEach(function(f) {
+        html += '<div class="pdp-matrix-cell pdp-matrix-col-hdr">' + filterTypePill(f) + '</div>';
+      });
+      html += '</div>';
+      // Data rows
+      panels.forEach(function(panel, i) {
+        var palette = ['#90CAF9','#A5D6A7','#FFCC80','#EF9A9A','#CE93D8','#80DEEA','#BCAAA4','#B0BEC5'];
+        var color = palette[i % palette.length];
+        html += '<div class="pdp-matrix-row">';
+        html += '<div class="pdp-matrix-cell pdp-matrix-row-hdr" style="--panel-color:' + color + '">' +
+                '<span class="pdp-matrix-panel-num">' + (i + 1) + '</span></div>';
+        allFilters.forEach(function(f) {
+          var match = (panel.filters || []).find(function(pf) { return pf.filter === f; });
+          var hrs = match ? match.totalHours : 0;
+          html += '<div class="pdp-matrix-cell pdp-matrix-data' + (hrs > 0 ? ' has-data' : '') + '" title="' +
+                  esc('Panel ' + (i+1) + ' · ' + f + ' · ' + (hrs > 0 ? hrs.toFixed(1) + 'h' : 'none')) + '">' +
+                  (hrs > 0 ? '<span class="pdp-matrix-hrs">' + hrs.toFixed(1) + 'h</span>' : '<span class="pdp-matrix-empty">\u2013</span>') +
+                  '</div>';
+        });
+        html += '</div>';
+      });
+      html += '</div></div>';
+    }
+  }
 
   html += '</div>';
   return html;
 }
 
-function renderPdpPanelCard(panel, idx) {
+function renderPdpPanelCard(panel, idx, tsTarget) {
   var palette = ['#90CAF9','#A5D6A7','#FFCC80','#EF9A9A','#CE93D8','#80DEEA','#BCAAA4','#B0BEC5'];
   var color = palette[idx % palette.length];
   var totalHrs = (panel.totalIntegrationHours || 0).toFixed(1);
   var frames   = panel.acceptedFrames || 0;
+  var pct = tsTarget && tsTarget.ts && tsTarget.ts.project
+    ? (tsTarget.ts.project.percentComplete || 0) : null;
 
   var html = '<div class="pdp-panel-card" style="--panel-color:' + color + '">';
+  html += '<div class="pdp-panel-header">';
   html += '<div class="pdp-panel-index">Panel ' + (idx + 1) + '</div>';
+  if (pct !== null) {
+    html += '<div class="pdp-panel-pct">' + pct.toFixed(0) + '%</div>';
+  }
+  html += '</div>';
   html += '<div class="pdp-panel-name">' + esc(panel.name || 'Panel ' + (idx + 1)) + '</div>';
+
+  // Progress bar
+  if (pct !== null) {
+    html += '<div class="pdp-panel-progress-track">' +
+            '<div class="pdp-panel-progress-fill" style="width:' + Math.min(100, pct).toFixed(1) + '%;background:' + color + '"></div>' +
+            '</div>';
+  }
+
+  // Stats row
   html += '<div class="pdp-panel-stats">';
   html += '<span class="pdp-panel-stat-val">' + totalHrs + '<span class="unit">h</span></span>';
   html += '<span class="pdp-panel-stat-sep">\u00b7</span>';
   html += '<span class="pdp-panel-stat-val">' + frames + '\u00a0frames</span>';
+  if (panel.sessionCount) {
+    html += '<span class="pdp-panel-stat-sep">\u00b7</span>';
+    html += '<span class="pdp-panel-stat-val">' + panel.sessionCount + '\u00a0sessions</span>';
+  }
   html += '</div>';
+
+  // RA/Dec + FOV
+  if (panel.ra != null && panel.dec != null) {
+    var raH = panel.ra, raM = (raH % 1) * 60, raS = (raM % 1) * 60;
+    var raStr = Math.floor(raH) + 'h ' + Math.floor(raM) + 'm ' + raS.toFixed(0) + 's';
+    var decSign = panel.dec >= 0 ? '+' : '';
+    html += '<div class="pdp-panel-coords">' + raStr + '\u00a0\u00a0' + decSign + panel.dec.toFixed(2) + '\u00b0</div>';
+  }
   if (panel.fovWidthDeg != null && panel.fovHeightDeg != null) {
     html += '<div class="pdp-panel-fov">' +
       panel.fovWidthDeg.toFixed(2) + '\u00b0\u00a0\u00d7\u00a0' + panel.fovHeightDeg.toFixed(2) + '\u00b0</div>';
   }
+
+  // Last imaged
+  if (panel.lastImaged) {
+    html += '<div class="pdp-panel-last-imaged">Last imaged ' + fmtRelativeTime(panel.lastImaged) + '</div>';
+  }
+
+  // Filter pills
   if (panel.filters && panel.filters.length > 0) {
     html += '<div class="pdp-panel-filters">';
     panel.filters.slice(0, 5).forEach(function(f) {
