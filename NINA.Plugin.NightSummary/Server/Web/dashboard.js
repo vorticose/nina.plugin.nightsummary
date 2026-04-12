@@ -4584,10 +4584,9 @@ function openManageProjectsModal() {
     if (hasTargets) {
       targetsHtml = '<div class="manage-project-targets" data-guid="' + esc(p.guid) + '" style="display:none">';
       targets.forEach(function(t) {
-        var removable = t.source === 'assigned';
         targetsHtml += '<div class="manage-project-target">' +
           '<span class="manage-project-target-name">' + esc(t.name) + '</span>' +
-          (removable ? '<button type="button" class="manage-project-target-remove" data-target="' + esc(t.name) + '" data-project="' + esc(p.guid) + '" title="Remove from project">\u00d7</button>' : '') +
+          '<button type="button" class="manage-project-target-remove" data-target="' + esc(t.name) + '" data-project="' + esc(p.guid) + '" data-source="' + t.source + '" title="Remove from project">\u00d7</button>' +
         '</div>';
       });
       targetsHtml += '</div>';

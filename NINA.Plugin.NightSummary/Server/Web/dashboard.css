@@ -2638,28 +2638,25 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 .manage-project-target {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   padding: 4px 10px;
   border-radius: 6px;
 }
 .manage-project-target:hover { background: rgba(255,255,255,0.03); }
 .manage-project-target-name {
-  flex: 1;
   font-size: 12px;
   color: var(--text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   text-transform: capitalize;
 }
 .manage-project-target-remove {
   background: none;
   border: none;
   color: var(--text-quaternary);
-  font-size: 14px;
+  font-size: 13px;
   cursor: pointer;
-  padding: 1px 5px;
+  padding: 0 4px;
   border-radius: 4px;
+  line-height: 1;
   transition: color var(--t-fast), background var(--t-fast);
 }
 .manage-project-target-remove:hover { color: #EF5350; background: rgba(239,83,80,0.1); }
