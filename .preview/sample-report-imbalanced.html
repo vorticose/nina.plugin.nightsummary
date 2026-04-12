@@ -78,7 +78,7 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
 .iq-expand { padding: 0 8px 8px; }
 .metric-chart-container { margin: 0 auto 16px; max-width: 800px; }
 .ns-chart-filter-bar { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 0 auto 8px; }
-.ns-chart-filter-btn { background: var(--surface); color: var(--muted); border: 1px solid var(--border); border-radius: 12px; padding: 3px 12px; font-size: 12px; font-family: inherit; cursor: pointer; transition: all 0.15s; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;}
+.ns-chart-filter-btn { background: var(--surface); color: var(--muted); border: 1px solid var(--border); border-radius: 18px; padding: 5px 18px; font-size: 18px; font-family: inherit; cursor: pointer; transition: all 0.15s; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;}
 .ns-chart-filter-btn:hover { border-color: var(--accent-light); color: var(--text); }
 .ns-chart-filter-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: bold; }
 .ns-chart-svg { width: 100%; }
@@ -200,6 +200,13 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
 <tr><td>Oiii</td><td>1</td><td>300s</td><td>5m</td></tr>
 <tr><td><strong>Total</strong></td><td><strong>38</strong></td><td></td><td><strong>3h 10m</strong></td></tr>
 </table>
+<div title='CV (Coefficient of Variation) measures consistency as a percentage of the mean. Lower values indicate more stable conditions. Star count CV is calculated per target and filter type.' style='cursor:help;'>
+<p style='margin: 12px 0 4px; font-size: 13px; color: var(--accent-light);'><strong>Star Count Consistency</strong></p>
+<table class='star-count-table'>
+<tr><th>Broadband CV</th><th>Narrowband CV</th></tr>
+<tr><td>0%</td><td>0%</td></tr>
+</table>
+</div>
 </div>
 <div class='target-section'>
 <h2>Session Image Quality</h2>
@@ -580,10 +587,40 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
 </svg>
 </div>
 <div class="ns-chart-svg" id="nsc0-svg-Oiii" style="display:none"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" style="width:100%;max-width:800px;display:block;margin:0 auto 16px;font-family:sans-serif">
+<style>circle, .evt-hit { cursor: pointer; }</style>
 <rect width="800" height="300" fill="#1a1a2e" rx="6"/>
-<text x="400" y="126" fill="#f7a87e" font-size="22" text-anchor="middle">&#x26A0;</text>
-<text x="400" y="154" fill="#aaaacc" font-size="12" text-anchor="middle">No HFR data — fewer than 2 images with star detection</text>
-<text x="400" y="172" fill="#aaaacc" font-size="12" text-anchor="middle">No FWHM data — Hocus Focus plugin required</text>
+<line x1="55" y1="255.0" x2="738" y2="255.0" stroke="#2a2a4a" stroke-width="1"/>
+<text x="49" y="259.0" fill="#aaaacc" font-size="11" text-anchor="end">2.2</text>
+<line x1="55" y1="215.8" x2="738" y2="215.8" stroke="#2a2a4a" stroke-width="1"/>
+<text x="49" y="219.8" fill="#aaaacc" font-size="11" text-anchor="end">2.3</text>
+<line x1="55" y1="176.7" x2="738" y2="176.7" stroke="#2a2a4a" stroke-width="1"/>
+<text x="49" y="180.7" fill="#aaaacc" font-size="11" text-anchor="end">2.4</text>
+<line x1="55" y1="137.5" x2="738" y2="137.5" stroke="#2a2a4a" stroke-width="1"/>
+<text x="49" y="141.5" fill="#aaaacc" font-size="11" text-anchor="end">2.5</text>
+<line x1="55" y1="98.3" x2="738" y2="98.3" stroke="#2a2a4a" stroke-width="1"/>
+<text x="49" y="102.3" fill="#aaaacc" font-size="11" text-anchor="end">2.6</text>
+<line x1="55" y1="59.2" x2="738" y2="59.2" stroke="#2a2a4a" stroke-width="1"/>
+<text x="49" y="63.2" fill="#aaaacc" font-size="11" text-anchor="end">2.7</text>
+<line x1="55" y1="20.0" x2="738" y2="20.0" stroke="#2a2a4a" stroke-width="1"/>
+<text x="49" y="24.0" fill="#aaaacc" font-size="11" text-anchor="end">2.8</text>
+<line x1="738" y1="20" x2="738" y2="255" stroke="#555577" stroke-width="1"/>
+<text x="744" y="259.0" fill="#f7a87e" font-size="11" text-anchor="start">2.9</text>
+<text x="744" y="219.8" fill="#f7a87e" font-size="11" text-anchor="start">3.0</text>
+<text x="744" y="180.7" fill="#f7a87e" font-size="11" text-anchor="start">3.1</text>
+<text x="744" y="141.5" fill="#f7a87e" font-size="11" text-anchor="start">3.2</text>
+<text x="744" y="102.3" fill="#f7a87e" font-size="11" text-anchor="start">3.3</text>
+<text x="744" y="63.2" fill="#f7a87e" font-size="11" text-anchor="start">3.4</text>
+<text x="744" y="24.0" fill="#f7a87e" font-size="11" text-anchor="start">3.5</text>
+<text x="790" y="150" fill="#f7a87e" font-size="11" text-anchor="middle" transform="rotate(90,790,150)">FWHM (")</text>
+<line x1="396.5" y1="20" x2="396.5" y2="255" stroke="#2a2a4a" stroke-width="1"/>
+<text x="396.5" y="290" fill="#aaaacc" font-size="11" text-anchor="middle">00:50</text>
+<line x1="55" y1="20" x2="55" y2="255" stroke="#555577" stroke-width="1"/>
+<line x1="55" y1="255" x2="738" y2="255" stroke="#555577" stroke-width="1"/>
+<text x="14" y="150" fill="#aaaacc" font-size="11" text-anchor="middle" transform="rotate(-90,14,150)">HFR (px)</text>
+<polyline points="396.5,137.5" fill="none" stroke="#f7a87e" stroke-width="2" stroke-linejoin="round" stroke-dasharray="6,3"/>
+<circle cx="396.5" cy="137.5" r="3" fill="#ffd4a8"><title>00:50 — 3.2" [Oiii]</title></circle>
+<polyline points="396.5,137.5" fill="none" stroke="#7eb8f7" stroke-width="2" stroke-linejoin="round"/>
+<circle cx="396.5" cy="137.5" r="3" fill="#a8d4ff"><title>00:50 — 2.5 px [Oiii]</title></circle>
 </svg>
 </div>
 </div>

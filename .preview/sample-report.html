@@ -78,7 +78,7 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
 .iq-expand { padding: 0 8px 8px; }
 .metric-chart-container { margin: 0 auto 16px; max-width: 800px; }
 .ns-chart-filter-bar { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 0 auto 8px; }
-.ns-chart-filter-btn { background: var(--surface); color: var(--muted); border: 1px solid var(--border); border-radius: 12px; padding: 3px 12px; font-size: 12px; font-family: inherit; cursor: pointer; transition: all 0.15s; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;}
+.ns-chart-filter-btn { background: var(--surface); color: var(--muted); border: 1px solid var(--border); border-radius: 18px; padding: 5px 18px; font-size: 18px; font-family: inherit; cursor: pointer; transition: all 0.15s; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;}
 .ns-chart-filter-btn:hover { border-color: var(--accent-light); color: var(--text); }
 .ns-chart-filter-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: bold; }
 .ns-chart-svg { width: 100%; }
@@ -204,6 +204,13 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
 <tr><td>B</td><td>10</td><td>300s</td><td>50m</td></tr>
 <tr><td><strong>Total</strong></td><td><strong>40</strong></td><td></td><td><strong>3h 20m</strong></td></tr>
 </table>
+<div title='CV (Coefficient of Variation) measures consistency as a percentage of the mean. Lower values indicate more stable conditions. Star count CV is calculated per target and filter type.' style='cursor:help;'>
+<p style='margin: 12px 0 4px; font-size: 13px; color: var(--accent-light);'><strong>Star Count Consistency</strong></p>
+<table class='star-count-table'>
+<tr><th>Broadband CV</th><th>Narrowband CV</th></tr>
+<tr><td>0%</td><td>—</td></tr>
+</table>
+</div>
 </div>
 <div class='target-section'>
 <h2>Session Image Quality</h2>

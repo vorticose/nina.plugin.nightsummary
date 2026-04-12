@@ -139,8 +139,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var primaryPts   = JoinWithXAxis(primaryRaw, xByTime);
             var secondaryPts = JoinWithXAxis(secondaryRaw, xByTime);
 
-            bool hasPrimary    = primaryPts.Count >= 2;
-            bool hasSecondary  = secondaryPts.Count >= 2;
+            bool hasPrimary    = primaryPts.Count >= 1;
+            bool hasSecondary  = secondaryPts.Count >= 1;
             bool wantSecondary = secondaryMetric > SecNone;
 
             // Both empty → full placeholder
@@ -155,7 +155,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             var leftPts  = swapped ? secondaryPts : primaryPts;
             var rightPts = (!swapped && hasSecondary) ? secondaryPts : new List<(double x, double y, DateTime t)>();
-            bool hasDual = rightPts.Count >= 2;
+            bool hasDual = rightPts.Count >= 1;
 
             string leftColor     = swapped ? ColorSecondary    : ColorPrimary;
             string leftDotColor  = swapped ? ColorSecondaryDot : ColorPrimaryDot;
