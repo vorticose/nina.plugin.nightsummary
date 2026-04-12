@@ -652,11 +652,22 @@ function renderProjectContainer(info) {
   html += '</div>';
   html += '</div>';
 
-  // Card body — thumbnail left, stat boxes right, last imaged below thumb.
+  // Aggregate across all panels
   var lastImaged = '';
+  var totalSessions = 0;
+  var filterMap = {};
   info.targets.forEach(function(t) {
     if (t.lastImaged && (!lastImaged || t.lastImaged > lastImaged)) lastImaged = t.lastImaged;
+    totalSessions += t.sessionCount || 0;
+    (t.filters || []).forEach(function(f) {
+      var key = f.filter || 'Unknown';
+      if (!filterMap[key]) filterMap[key] = { filter: key, totalSeconds: 0, acceptedCount: 0 };
+      filterMap[key].totalSeconds += f.totalSeconds || 0;
+      filterMap[key].acceptedCount += f.acceptedCount || 0;
+    });
   });
+  var filterList = Object.values(filterMap).sort(function(a, b) { return b.totalSeconds - a.totalSeconds; });
+  var maxFilterSeconds = filterList.length ? filterList[0].totalSeconds : 1;
 
   html += '<div class="targets-project-body">';
   if (info.isMosaic && info.guid) {
@@ -670,16 +681,37 @@ function renderProjectContainer(info) {
     }
     html += '</div>'; // .targets-project-thumb-col
 
+    // Compact stat boxes
     html += '<div class="targets-project-stat-boxes">';
-    if (info.isMosaic) {
-      html += '<div class="stat-box"><div class="stat-value">' + info.targets.length +
-              '</div><div class="stat-label">Panels</div></div>';
-    }
+    html += '<div class="stat-box"><div class="stat-value">' + info.targets.length +
+            '</div><div class="stat-label">Panels</div></div>';
     html += '<div class="stat-box"><div class="stat-value">' + totalHours.toFixed(1) +
             '<span class="unit">h</span></div><div class="stat-label">Integration</div></div>';
     html += '<div class="stat-box"><div class="stat-value">' + totalFrames +
             '</div><div class="stat-label">Frames</div></div>';
+    html += '<div class="stat-box"><div class="stat-value">' + totalSessions +
+            '</div><div class="stat-label">Sessions</div></div>';
     html += '</div>'; // .targets-project-stat-boxes
+
+    // Filter breakdown panel
+    if (filterList.length > 0) {
+      html += '<div class="targets-project-filter-panel">';
+      html += '<div class="targets-project-filter-label">Filter breakdown</div>';
+      filterList.forEach(function(f) {
+        var hrs = (f.totalSeconds / 3600).toFixed(1);
+        var pct = Math.round((f.totalSeconds / maxFilterSeconds) * 100);
+        var fc = getFilterColor(f.filter);
+        var barColor = fc || 'var(--accent)';
+        html += '<div class="targets-project-filter-row">';
+        html += filterTypePill(f.filter);
+        html += '<div class="targets-project-filter-bar-track">' +
+                '<div class="targets-project-filter-bar-fill" style="width:' + pct + '%;background:' + barColor + '"></div>' +
+                '</div>';
+        html += '<span class="targets-project-filter-val">' + hrs + 'h</span>';
+        html += '</div>';
+      });
+      html += '</div>'; // .targets-project-filter-panel
+    }
   } else {
     // Non-mosaic grouped project — just a stat line
     var statParts = [totalHours.toFixed(1) + 'h', totalFrames + '\u00a0frames'];
