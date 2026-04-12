@@ -189,11 +189,8 @@
                     <StackPanel Orientation="Horizontal" Margin="0,4">
                         <TextBlock Text="Show Live Stack Images" Width="200" VerticalAlignment="Center" />
                         <CheckBox IsChecked="{Binding ShowLiveStackImages}" VerticalAlignment="Center" />
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                        <TextBlock Width="200" />
                         <TextBlock Text="Requires the Live Stack plugin to be installed and running during imaging."
-                                   FontStyle="Italic" Foreground="Gray" FontSize="11" MaxWidth="400" TextWrapping="Wrap" />
+                                   FontStyle="Italic" Foreground="Gray" FontSize="11" Margin="20,0,0,0" MaxWidth="380" TextWrapping="Wrap" VerticalAlignment="Center" />
                     </StackPanel>
 
                     <!-- Altitude Charts + Moon Curve on one row; whole row disabled at Snapshot -->
@@ -485,8 +482,8 @@
                         </StackPanel>
 
                         <StackPanel Orientation="Horizontal" Margin="0,3">
-                            <TextBlock Text="Secondary Metric" Width="200" VerticalAlignment="Top" Margin="0,4,0,0" />
-                            <ComboBox SelectedIndex="{Binding ChartSecondaryMetric}" MinWidth="160" VerticalAlignment="Top">
+                            <TextBlock Text="Secondary Metric" Width="200" VerticalAlignment="Center" />
+                            <ComboBox SelectedIndex="{Binding ChartSecondaryMetric}" MinWidth="160">
                                 <ComboBoxItem>None</ComboBoxItem>
                                 <ComboBoxItem>HFR</ComboBoxItem>
                                 <ComboBoxItem>FWHM</ComboBoxItem>
@@ -509,13 +506,13 @@
                                 <ComboBoxItem>Seeing FWHM (arcsec)</ComboBoxItem>
                                 <ComboBoxItem>Median ADU</ComboBoxItem>
                             </ComboBox>
-                            <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,2,0,0" MaxWidth="320">
-                                FWHM and Eccentricity require the Hocus Focus plugin. Focuser Temp requires a focuser with a built-in temperature sensor.
-                                Ambient Temp, Humidity, Dew Point, Wind Speed, and Pressure require a device connected as a NINA weather data source (e.g. Pegasus UPB, AAG CloudWatcher).
-                                Sky Quality requires a sky quality meter and Cloud Cover requires a cloud sensor, both connected as NINA weather data sources.
-                                Focuser Position requires a motorized focuser.
-                            </TextBlock>
                         </StackPanel>
+                        <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="0,6,0,0" MaxWidth="500">
+                            FWHM and Eccentricity require the Hocus Focus plugin. Focuser Temp requires a focuser with a built-in temperature sensor.
+                            Ambient Temp, Humidity, Dew Point, Wind Speed, and Pressure require a device connected as a NINA weather data source (e.g. Pegasus UPB, AAG CloudWatcher).
+                            Sky Quality requires a sky quality meter and Cloud Cover requires a cloud sensor, both connected as NINA weather data sources.
+                            Focuser Position requires a motorized focuser.
+                        </TextBlock>
                     </StackPanel>
 
                     <!-- Additional metric charts (N charts, up to MaxAdditionalCharts) -->
