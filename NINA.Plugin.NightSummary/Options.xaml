@@ -83,12 +83,12 @@
 
                     <Separator Margin="0,0,0,14" />
 
-                    <TextBlock Text="Report Content" FontSize="14" FontWeight="Bold" Margin="0,0,0,12" />
+                    <TextBlock Text="Report Content" FontSize="16" FontWeight="Bold" Margin="0,0,0,16" />
 
                     <!-- ══ Target Scheduler ══════════════════════════════════════ -->
                     <Border Margin="0,0,0,20" Padding="0,0,0,0">
                         <StackPanel>
-                            <TextBlock Text="Target Scheduler" FontSize="12" FontWeight="Bold" Foreground="White" Margin="0,0,0,6"/>
+                            <TextBlock Text="Target Scheduler" FontSize="12" FontWeight="Bold" Foreground="White" Margin="0,6,0,6"/>
 
                             <!-- Section-level status when TS is not installed -->
                             <TextBlock Text="Target Scheduler is not installed — these options are unavailable"
