@@ -2660,11 +2660,31 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   cursor: pointer;
   padding: 1px 5px;
   border-radius: 4px;
-  opacity: 0;
-  transition: opacity var(--t-fast), color var(--t-fast), background var(--t-fast);
+  transition: color var(--t-fast), background var(--t-fast);
 }
-.manage-project-target:hover .manage-project-target-remove { opacity: 1; }
 .manage-project-target-remove:hover { color: #EF5350; background: rgba(239,83,80,0.1); }
+.manage-projects-other {
+  margin-top: 6px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  padding-top: 6px;
+}
+.manage-projects-other-header,
+.project-assign-other-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background var(--t-fast);
+}
+.manage-projects-other-header:hover,
+.project-assign-other-header:hover { background: rgba(255,255,255,0.04); }
 .manage-projects-reset-btn {
   color: var(--text-tertiary) !important;
   margin-right: auto;

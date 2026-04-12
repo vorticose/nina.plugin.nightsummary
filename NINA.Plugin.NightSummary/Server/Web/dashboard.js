@@ -4536,9 +4536,23 @@ var _manageProjectsKeyHandler = function(e) {
   if (e.key === 'Escape') closeManageProjectsModal();
 };
 
+// Check which project GUIDs have at least one NS target match
+function getMatchedProjectGuids() {
+  var matched = {};
+  (statsTargetData || []).forEach(function(d) {
+    if (d.ts && d.ts.project && d.ts.project.guid) matched[d.ts.project.guid] = true;
+  });
+  // Also include custom projects that have assignments
+  Object.keys(statsProjectAssignments || {}).forEach(function(k) {
+    matched[statsProjectAssignments[k]] = true;
+  });
+  return matched;
+}
+
 function openManageProjectsModal() {
   closeManageProjectsModal();
   var projects = statsTsProjects || [];
+  var matchedGuids = getMatchedProjectGuids();
 
   // Build target list for each project
   function projectTargetList(p) {
@@ -4558,7 +4572,7 @@ function openManageProjectsModal() {
     return targets;
   }
 
-  var listHtml = projects.map(function(p) {
+  function renderProjectRow(p) {
     var targets = projectTargetList(p);
     var subtitle = p.isCustom
       ? (targets.length > 0 ? targets.length + ' assigned target' + (targets.length > 1 ? 's' : '') : 'No targets assigned')
@@ -4590,12 +4604,35 @@ function openManageProjectsModal() {
       '</div>' +
       targetsHtml +
     '</div>';
-  }).join('');
+  }
+
+  // Split projects into matched (have NS data) and unmatched
+  var matchedProjects = [];
+  var unmatchedProjects = [];
+  projects.forEach(function(p) {
+    if (p.isCustom || matchedGuids[p.guid]) matchedProjects.push(p);
+    else unmatchedProjects.push(p);
+  });
+
+  var matchedHtml = matchedProjects.map(renderProjectRow).join('');
+  var unmatchedHtml = '';
+  if (unmatchedProjects.length > 0) {
+    unmatchedHtml = '<div class="manage-projects-other">' +
+      '<div class="manage-projects-other-header" data-action="toggle-other">' +
+        '<span class="manage-project-chevron">\u25b8</span> Other TS Projects (' + unmatchedProjects.length + ')' +
+      '</div>' +
+      '<div class="manage-projects-other-list" style="display:none">' +
+        unmatchedProjects.map(renderProjectRow).join('') +
+      '</div>' +
+    '</div>';
+  }
+
+  var listContent = matchedHtml + unmatchedHtml;
 
   var html =
     '<div class="manage-projects-modal" role="dialog" aria-label="Manage Projects">' +
       '<h3>Manage Projects</h3>' +
-      '<div class="manage-projects-list">' + (listHtml || '<div class="empty">No projects available</div>') + '</div>' +
+      '<div class="manage-projects-list">' + (listContent || '<div class="empty">No projects available</div>') + '</div>' +
       '<div class="manage-projects-create">' +
         '<input type="text" class="manage-projects-input" placeholder="New project name\u2026" maxlength="80">' +
         '<button type="button" class="manage-projects-add-btn">Create</button>' +
@@ -4619,6 +4656,19 @@ function openManageProjectsModal() {
 
   // Close button
   backdrop.querySelector('[data-action="close"]').addEventListener('click', closeManageProjectsModal);
+
+  // Expand/collapse "Other TS Projects" section
+  var otherHeader = backdrop.querySelector('.manage-projects-other-header');
+  if (otherHeader) {
+    otherHeader.addEventListener('click', function() {
+      var list = backdrop.querySelector('.manage-projects-other-list');
+      var chevron = otherHeader.querySelector('.manage-project-chevron');
+      if (!list) return;
+      var open = list.style.display !== 'none';
+      list.style.display = open ? 'none' : 'block';
+      if (chevron) chevron.textContent = open ? '\u25b8' : '\u25be';
+    });
+  }
 
   // Expand/collapse project target lists
   backdrop.querySelectorAll('.manage-project-item.expandable').forEach(function(item) {
@@ -4722,20 +4772,37 @@ var _projectAssignKeyHandler = function(e) {
 function openProjectAssignPicker(anchorEl, targetName) {
   closeProjectAssignPicker();
   var projects = statsTsProjects || [];
+  var matchedGuids = getMatchedProjectGuids();
   var currentGuid = (statsProjectAssignments || {})[targetName.toLowerCase()] || null;
   // Also check if target is auto-matched to a TS project
   var targetRow = (statsTargetData || []).filter(function(t) { return t.target === targetName; })[0];
   var autoProjectGuid = (targetRow && targetRow.ts && targetRow.ts.project) ? targetRow.ts.project.guid : null;
   var effectiveGuid = currentGuid || autoProjectGuid;
 
-  var options = projects.map(function(p) {
+  function renderOption(p) {
     var cls = 'project-assign-option' + (p.guid === effectiveGuid ? ' selected' : '');
     var tag = p.isCustom ? 'Custom' : (p.isMosaic ? 'Mosaic' : 'TS');
     return '<div class="' + cls + '" data-guid="' + esc(p.guid) + '">' +
       '<span class="project-assign-name">' + esc(p.name) + '</span>' +
       '<span class="project-assign-tag">' + esc(tag) + '</span>' +
     '</div>';
-  }).join('');
+  }
+
+  var matched = [];
+  var unmatched = [];
+  projects.forEach(function(p) {
+    if (p.isCustom || matchedGuids[p.guid]) matched.push(p);
+    else unmatched.push(p);
+  });
+
+  var options = matched.map(renderOption).join('');
+  if (unmatched.length > 0) {
+    options += '<div class="project-assign-other-header" data-action="toggle-other">' +
+      '<span class="manage-project-chevron">\u25b8</span> Other TS Projects</div>' +
+      '<div class="project-assign-other-list" style="display:none">' +
+        unmatched.map(renderOption).join('') +
+      '</div>';
+  }
 
   var html =
     '<div class="project-assign-header">Assign to project</div>' +
@@ -4765,6 +4832,19 @@ function openProjectAssignPicker(anchorEl, targetName) {
     }
     dropdown.classList.add('visible');
   });
+
+  // Toggle "Other TS Projects" expander
+  var otherHdr = dropdown.querySelector('.project-assign-other-header');
+  if (otherHdr) {
+    otherHdr.addEventListener('click', function() {
+      var list = dropdown.querySelector('.project-assign-other-list');
+      var chevron = otherHdr.querySelector('.manage-project-chevron');
+      if (!list) return;
+      var open = list.style.display !== 'none';
+      list.style.display = open ? 'none' : 'block';
+      if (chevron) chevron.textContent = open ? '\u25b8' : '\u25be';
+    });
+  }
 
   // Click handlers
   dropdown.querySelectorAll('.project-assign-option').forEach(function(opt) {
