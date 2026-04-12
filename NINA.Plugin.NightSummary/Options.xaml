@@ -429,8 +429,12 @@
 
                         <!-- Primary Chart -->
                         <TextBlock Text="Primary Chart" FontWeight="SemiBold" Margin="0,10,0,4" />
-                        <StackPanel Orientation="Horizontal">
-                            <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
                                 <StackPanel Orientation="Horizontal" Margin="0,3">
                                     <TextBlock Text="X-Axis" Width="180" VerticalAlignment="Center" />
                                     <ComboBox SelectedIndex="{Binding ChartXAxisMetric}" MinWidth="160">
@@ -510,13 +514,14 @@
                                     </ComboBox>
                                 </StackPanel>
                             </StackPanel>
-                            <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,0,0,0" MaxWidth="300" VerticalAlignment="Center">
+                            <TextBlock Grid.Column="1" TextWrapping="Wrap" Foreground="Gray" FontSize="11"
+                                       Margin="20,0,0,0" MaxWidth="300" VerticalAlignment="Center">
                                 FWHM and Eccentricity require the Hocus Focus plugin. Focuser Temp requires a focuser with a built-in temperature sensor.
                                 Ambient Temp, Humidity, Dew Point, Wind Speed, and Pressure require a device connected as a NINA weather data source (e.g. Pegasus UPB, AAG CloudWatcher).
                                 Sky Quality requires a sky quality meter and Cloud Cover requires a cloud sensor, both connected as NINA weather data sources.
                                 Focuser Position requires a motorized focuser.
                             </TextBlock>
-                        </StackPanel>
+                        </Grid>
 
                         <!-- Additional charts -->
                         <ItemsControl ItemsSource="{Binding AdditionalCharts}" x:Name="AdditionalChartsControl">
