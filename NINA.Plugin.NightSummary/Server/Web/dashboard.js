@@ -1702,14 +1702,23 @@ function loadMosaicThumbnail(panels, wrapOrBackdrop, projectGuid) {
   });
   if (!validPanels.length) return;
 
-  var raDegArr  = validPanels.map(function(p) { return p.ra * 15; });
-  var decDegArr = validPanels.map(function(p) { return p.dec; });
+  // Use only imaged panels (those with FOV data) for center/maxReach calculation.
+  // This prevents unshot mosaic placeholders from pulling the center off the actual target.
+  // Fall back to all valid panels if none have been imaged yet.
+  var imagedPanels = validPanels.filter(function(p) {
+    return p.fovWidthDeg != null && p.fovHeightDeg != null;
+  });
+  var centerPanels = imagedPanels.length ? imagedPanels : validPanels;
+
+  var raDegArr  = centerPanels.map(function(p) { return p.ra * 15; });
+  var decDegArr = centerPanels.map(function(p) { return p.dec; });
 
   var centerDec = decDegArr.reduce(function(s, d) { return s + d; }, 0) / decDegArr.length;
   var centerRA  = raDegArr.reduce(function(s, r) { return s + r; }, 0) / raDegArr.length;
   var cosCenter = Math.cos(centerDec * Math.PI / 180);
 
-  // Find minimum HiPS FOV that contains all panel footprints with 40% padding
+  // Find minimum HiPS FOV that contains all panel footprints with 15% padding.
+  // Use all valid panels for FOV extent so planned-but-unshot panels are still shown.
   var maxReach = 0;
   validPanels.forEach(function(p) {
     var dRA  = (p.ra * 15 - centerRA) * cosCenter;
@@ -1723,7 +1732,7 @@ function loadMosaicThumbnail(panels, wrapOrBackdrop, projectGuid) {
 
   // Fallback for single-panel case where maxReach ≈ halfDiag only
   if (maxReach < 0.5) {
-    var p0 = validPanels[0];
+    var p0 = centerPanels[0];
     maxReach = (p0.fovWidthDeg && p0.fovHeightDeg)
       ? Math.sqrt(p0.fovWidthDeg * p0.fovWidthDeg + p0.fovHeightDeg * p0.fovHeightDeg) / 2
       : 1.0;
