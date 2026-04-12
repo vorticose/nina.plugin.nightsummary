@@ -9,9 +9,6 @@
             <Expander Header="Night Summary Settings" IsExpanded="False">
                 <StackPanel Margin="10,8,0,8">
 
-                    <!-- ══ Report Content ════════════════════════════════════════ -->
-                    <TextBlock Text="Report Content" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
-
                     <StackPanel Orientation="Horizontal" Margin="0,5,0,10">
                         <TextBlock Text="Detail Level" Width="200" VerticalAlignment="Top" Margin="0,4,0,0" />
                         <ComboBox SelectedIndex="{Binding ReportDetailLevel}" MinWidth="160" VerticalAlignment="Top">
@@ -85,6 +82,8 @@
                     </StackPanel>
 
                     <Separator Margin="0,0,0,14" />
+
+                    <TextBlock Text="Report Content" FontSize="14" FontWeight="Bold" Margin="0,0,0,12" />
 
                     <!-- ══ Target Scheduler ══════════════════════════════════════ -->
                     <Border Margin="0,0,0,20" Padding="0,0,0,0">
