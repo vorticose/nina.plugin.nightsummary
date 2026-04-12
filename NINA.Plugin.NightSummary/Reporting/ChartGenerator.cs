@@ -259,7 +259,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine($"<text x=\"{PadLeft + plotW / 2}\" y=\"{Height - 2}\" fill=\"{ColorLabel}\" font-size=\"10\" text-anchor=\"middle\">{GetXAxisAxisLabel(xAxisMetric)}</text>");
             }
 
-            // Event markers (Time x-axis only, drawn behind data lines)
+            // Event markers pass 1: visible dashed lines only (drawn behind data)
+            // Hit areas and labels are emitted in pass 2, after data dots, so they
+            // sit on top in SVG z-order and reliably receive hover events.
+            var activeMarkers = new List<(double xPx, string color, string label, string tip)>();
             if (xAxisMetric == XAxisTime && eventMarkers != null && minTime != DateTime.MinValue) {
                 foreach (var (ts, evtType, desc) in eventMarkers) {
                     double evtSec = (ts - minTime).TotalSeconds;
@@ -273,11 +276,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
                         _              => (ColorUnsafeMarker,  "US")
                     };
                     string tip = $"{label}: {EscapeXml(desc ?? evtType)} @ {ts:HH:mm:ss}";
-                    // Visible dashed line
                     sb.AppendLine($"<line x1=\"{xPx:F1}\" y1=\"{PadTop}\" x2=\"{xPx:F1}\" y2=\"{PadTop + plotH}\" stroke=\"{color}\" stroke-width=\"1\" stroke-dasharray=\"4,3\" opacity=\"0.7\"/>");
-                    // Invisible wider hit area for hover tooltip
-                    sb.AppendLine($"<line class=\"evt-hit\" x1=\"{xPx:F1}\" y1=\"{PadTop}\" x2=\"{xPx:F1}\" y2=\"{PadTop + plotH}\" stroke=\"transparent\" stroke-width=\"8\"><title>{tip}</title></line>");
-                    sb.AppendLine($"<text x=\"{xPx:F1}\" y=\"{PadTop - 4}\" fill=\"{color}\" font-size=\"8\" text-anchor=\"middle\" opacity=\"0.85\">{label}</text>");
+                    activeMarkers.Add((xPx, color, label, tip));
                 }
             }
 
@@ -304,6 +304,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var filter = filterByTime.TryGetValue(p.t, out var f) && !string.IsNullOrEmpty(f) ? $" [{f}]" : "";
                 string tip = FormatTooltipX(p, xAxisMetric, minX) + $" — {p.y.ToString(leftTipFmt)}{leftUnit}{filter}";
                 sb.AppendLine($"<circle cx=\"{ToXPx(p.x):F1}\" cy=\"{ToYL(p.y):F1}\" r=\"3\" fill=\"{leftDotColor}\"><title>{tip}</title></circle>");
+            }
+
+            // Event markers pass 2: hit areas + labels on top of data dots
+            foreach (var (xPx, color, label, tip) in activeMarkers) {
+                sb.AppendLine($"<line x1=\"{xPx:F1}\" y1=\"{PadTop}\" x2=\"{xPx:F1}\" y2=\"{PadTop + plotH}\" stroke=\"transparent\" stroke-width=\"8\" pointer-events=\"all\"><title>{tip}</title></line>");
+                sb.AppendLine($"<text x=\"{xPx:F1}\" y=\"{PadTop - 4}\" fill=\"{color}\" font-size=\"8\" text-anchor=\"middle\" opacity=\"0.85\" pointer-events=\"none\">{label}</text>");
             }
 
             // Warning badge
