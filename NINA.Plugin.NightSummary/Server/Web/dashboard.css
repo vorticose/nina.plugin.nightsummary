@@ -2469,6 +2469,204 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 }
 .ts-override-reset:hover { color: var(--accent); }
 
+/* Manage Projects button in toolbar */
+.targets-manage-projects-btn {
+  background: none;
+  border: 1px solid rgba(255,255,255,0.12);
+  color: var(--text-tertiary);
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color var(--t-fast), border-color var(--t-fast);
+  margin-left: auto;
+}
+.targets-manage-projects-btn:hover {
+  color: var(--text-primary);
+  border-color: rgba(255,255,255,0.25);
+}
+
+/* Assign-to-project button on target cards */
+.target-card-assign-btn {
+  background: none;
+  border: none;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 4px;
+  line-height: 1;
+  opacity: 0.4;
+  transition: opacity var(--t-fast);
+}
+.target-card-assign-btn:hover { opacity: 0.85; }
+
+/* Project assignment dropdown (reuses ts-override-dropdown structure) */
+.project-assign-header {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.9px;
+  color: var(--text-tertiary);
+  padding: 6px 10px 4px;
+  font-weight: 600;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  margin-bottom: 4px;
+}
+.project-assign-list {
+  max-height: 260px;
+  overflow-y: auto;
+}
+.project-assign-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background var(--t-fast), color var(--t-fast);
+  font-weight: 500;
+}
+.project-assign-option:hover {
+  background: rgba(255,255,255,0.06);
+  color: var(--text-primary);
+}
+.project-assign-option.selected {
+  background: rgba(126,184,247,0.08);
+  color: var(--accent);
+}
+.project-assign-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-assign-tag {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-quaternary);
+  flex-shrink: 0;
+}
+.project-assign-footer {
+  border-top: 1px solid rgba(255,255,255,0.06);
+  margin-top: 4px;
+}
+.project-assign-reset {
+  display: block;
+  padding: 6px 10px 7px;
+  font-size: 10px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-weight: 600;
+}
+.project-assign-reset:hover { color: #EF5350; }
+
+/* Manage Projects modal */
+.manage-projects-modal {
+  background: var(--surface);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 14px;
+  padding: 20px;
+  width: 400px;
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.6);
+}
+.manage-projects-modal h3 {
+  margin: 0 0 14px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.manage-projects-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 14px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+.manage-project-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  transition: background var(--t-fast);
+}
+.manage-project-item:hover { background: rgba(255,255,255,0.04); }
+.manage-project-info { flex: 1; min-width: 0; }
+.manage-project-name {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.manage-project-meta {
+  display: block;
+  font-size: 10px;
+  color: var(--text-tertiary);
+  margin-top: 1px;
+}
+.manage-project-delete {
+  background: none;
+  border: none;
+  color: var(--text-quaternary);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: color var(--t-fast), background var(--t-fast);
+}
+.manage-project-delete:hover { color: #EF5350; background: rgba(239,83,80,0.1); }
+.manage-projects-create {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.manage-projects-input {
+  flex: 1;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 6px;
+  padding: 7px 10px;
+  color: var(--text-primary);
+  font-size: 12px;
+  outline: none;
+}
+.manage-projects-input:focus { border-color: var(--accent); }
+.manage-projects-input::placeholder { color: var(--text-quaternary); }
+.manage-projects-add-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--t-fast);
+}
+.manage-projects-add-btn:hover { opacity: 0.85; }
+.manage-projects-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+.manage-projects-footer button {
+  background: rgba(255,255,255,0.08);
+  border: none;
+  color: var(--text-secondary);
+  padding: 7px 16px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--t-fast);
+}
+.manage-projects-footer button:hover { background: rgba(255,255,255,0.14); }
+
 /* TS status banner at the top of the Stats page */
 .ts-status-banner {
   background: rgba(255,183,77,0.08);

@@ -371,6 +371,7 @@ function renderTargetCard(t, index) {
   }
 
   html += '<div class="target-card-header-right">';
+  html += '<button type="button" class="target-card-assign-btn" data-target="' + esc(t.target) + '" title="Assign to project">&#x1F4C1;</button>';
   html += '<button type="button" class="targets-project-collapse-btn" aria-label="Collapse"></button>';
   html += '</div>';
   html += '</div>'; // .target-card-header
@@ -514,10 +515,11 @@ function renderTargetsControlBar(sortKey, groupBy) {
     var cls = 'targets-sort-pill' + (opt.key === sortKey ? ' active' : '');
     html += '<button type="button" class="' + cls + '" data-sort-key="' + opt.key + '">' + esc(opt.label) + '</button>';
   });
-  if (tsAvail) {
+  if (tsAvail || (statsTsProjects && statsTsProjects.some(function(p) { return p.isCustom; }))) {
     var grpCls = 'targets-group-pill' + (groupBy === 'project' ? ' active' : '');
     html += '<button type="button" class="' + grpCls + '" data-action="toggle-group">Group by project</button>';
   }
+  html += '<button type="button" class="targets-manage-projects-btn" data-action="manage-projects">Manage Projects</button>';
   html += '</div>';
   if (tsAvail) {
     var enabledStates = getTargetStatusFilter();
@@ -562,6 +564,12 @@ function initTargetsControlBar() {
     grpBtn.addEventListener('click', function() {
       localStorage.setItem('ns-targets-group', getTargetGroupBy() === 'project' ? 'flat' : 'project');
       renderStatsTabContent('targets');
+    });
+  }
+  var manageBtn = document.querySelector('.targets-manage-projects-btn');
+  if (manageBtn) {
+    manageBtn.addEventListener('click', function() {
+      openManageProjectsModal();
     });
   }
   document.querySelectorAll('.targets-status-chip[data-filter-state]').forEach(function(chip) {
@@ -4293,7 +4301,8 @@ var statsTargetData = null;
 // Phase 3a: Target Scheduler integration state (populated by renderStats on each load)
 var statsTsStatus   = null;   // "available" | "not_installed" | "error" | null
 var statsTsError    = null;   // string or null
-var statsTsProjects = null;   // array of { guid, name, state, isMosaic, targetCount, targets: [{guid,name}] }
+var statsTsProjects = null;   // array of { guid, name, state, isMosaic, isCustom, targetCount, targets: [{guid,name}] }
+var statsProjectAssignments = null; // { "target name (lowercase)": "project-guid" }
 
 function renderStatsTabContent(tabId) {
   var container = document.getElementById('stats-tab-content');
@@ -4363,10 +4372,19 @@ function initTargetCardClicks() {
         card.classList.toggle('collapsed');
       });
     }
+    // Assign-to-project button
+    var assignBtn = card.querySelector('.target-card-assign-btn');
+    if (assignBtn) {
+      assignBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        openProjectAssignPicker(assignBtn, assignBtn.getAttribute('data-target'));
+      });
+    }
     card.addEventListener('click', function(e) {
       if (e.target.closest('.target-stat-expandable')) return;
       if (e.target.closest('.target-card-ts-badge')) return;
       if (e.target.closest('.targets-project-collapse-btn')) return;
+      if (e.target.closest('.target-card-assign-btn')) return;
       var name = card.getAttribute('data-target');
       var sid = card.getAttribute('data-latest-session');
       openTargetDetail(name, sid);
@@ -4506,6 +4524,201 @@ function applyTsTargetLink(sessionTargetName, tsTargetGuid, onDone) {
   });
 }
 
+// ── Manage Projects modal ─────────────────────────────────────────────────
+
+function closeManageProjectsModal() {
+  var bd = document.getElementById('manage-projects-backdrop');
+  if (bd && bd.parentNode) bd.parentNode.removeChild(bd);
+  document.removeEventListener('keydown', _manageProjectsKeyHandler);
+}
+
+var _manageProjectsKeyHandler = function(e) {
+  if (e.key === 'Escape') closeManageProjectsModal();
+};
+
+function openManageProjectsModal() {
+  closeManageProjectsModal();
+  var projects = statsTsProjects || [];
+
+  var listHtml = projects.map(function(p) {
+    var assignedTargets = [];
+    Object.keys(statsProjectAssignments || {}).forEach(function(k) {
+      if (statsProjectAssignments[k] === p.guid) assignedTargets.push(k);
+    });
+    var targetNames = (p.targets || []).map(function(t) { return t.name; });
+    var subtitle = p.isCustom
+      ? (assignedTargets.length > 0 ? assignedTargets.length + ' assigned target' + (assignedTargets.length > 1 ? 's' : '') : 'No targets assigned')
+      : p.targetCount + ' TS target' + (p.targetCount !== 1 ? 's' : '');
+    var typeTag = p.isMosaic ? 'Mosaic' : (p.isCustom ? 'Custom' : (p.targetCount > 1 ? 'Multi' : 'Single'));
+    return '<div class="manage-project-item" data-guid="' + esc(p.guid) + '">' +
+      '<div class="manage-project-info">' +
+        '<span class="manage-project-name">' + esc(p.name) + '</span>' +
+        '<span class="manage-project-meta">' + esc(typeTag) + ' \u00b7 ' + esc(subtitle) + '</span>' +
+      '</div>' +
+      (p.isCustom ? '<button type="button" class="manage-project-delete" data-guid="' + esc(p.guid) + '" title="Delete project">\u00d7</button>' : '') +
+    '</div>';
+  }).join('');
+
+  var html =
+    '<div class="manage-projects-modal" role="dialog" aria-label="Manage Projects">' +
+      '<h3>Manage Projects</h3>' +
+      '<div class="manage-projects-list">' + (listHtml || '<div class="empty">No projects available</div>') + '</div>' +
+      '<div class="manage-projects-create">' +
+        '<input type="text" class="manage-projects-input" placeholder="New project name\u2026" maxlength="80">' +
+        '<button type="button" class="manage-projects-add-btn">Create</button>' +
+      '</div>' +
+      '<div class="manage-projects-footer">' +
+        '<button type="button" data-action="close">Close</button>' +
+      '</div>' +
+    '</div>';
+
+  var backdrop = document.createElement('div');
+  backdrop.id = 'manage-projects-backdrop';
+  backdrop.className = 'ts-link-picker-backdrop';
+  backdrop.innerHTML = html;
+  document.body.appendChild(backdrop);
+
+  backdrop.addEventListener('click', function(e) {
+    if (e.target === backdrop) closeManageProjectsModal();
+  });
+  document.addEventListener('keydown', _manageProjectsKeyHandler);
+
+  // Close button
+  backdrop.querySelector('[data-action="close"]').addEventListener('click', closeManageProjectsModal);
+
+  // Create button
+  var input = backdrop.querySelector('.manage-projects-input');
+  var addBtn = backdrop.querySelector('.manage-projects-add-btn');
+  function doCreate() {
+    var name = input.value.trim();
+    if (!name) return;
+    fetch('/api/stats/projects/custom', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'create', name: name })
+    }).then(function(r) { return r.json(); }).then(function() {
+      closeManageProjectsModal();
+      renderStats();
+      setTimeout(openManageProjectsModal, 600);
+    });
+  }
+  addBtn.addEventListener('click', doCreate);
+  input.addEventListener('keydown', function(e) { if (e.key === 'Enter') doCreate(); });
+
+  // Delete buttons
+  backdrop.querySelectorAll('.manage-project-delete').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var guid = btn.getAttribute('data-guid');
+      if (!confirm('Delete this custom project? Any target assignments will be cleared.')) return;
+      fetch('/api/stats/projects/custom', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete', guid: guid })
+      }).then(function(r) { return r.json(); }).then(function() {
+        closeManageProjectsModal();
+        renderStats();
+        setTimeout(openManageProjectsModal, 600);
+      });
+    });
+  });
+}
+
+// ── Project assignment picker (per target card) ──────────────────────────
+
+function closeProjectAssignPicker() {
+  var dd = document.getElementById('project-assign-dropdown');
+  if (dd && dd.parentNode) dd.parentNode.removeChild(dd);
+  document.removeEventListener('click', _projectAssignOutsideHandler, true);
+  document.removeEventListener('keydown', _projectAssignKeyHandler);
+}
+
+var _projectAssignOutsideHandler = function(e) {
+  var dd = document.getElementById('project-assign-dropdown');
+  if (dd && !dd.contains(e.target)) closeProjectAssignPicker();
+};
+var _projectAssignKeyHandler = function(e) {
+  if (e.key === 'Escape') closeProjectAssignPicker();
+};
+
+function openProjectAssignPicker(anchorEl, targetName) {
+  closeProjectAssignPicker();
+  var projects = statsTsProjects || [];
+  var currentGuid = (statsProjectAssignments || {})[targetName.toLowerCase()] || null;
+  // Also check if target is auto-matched to a TS project
+  var targetRow = (statsTargetData || []).filter(function(t) { return t.target === targetName; })[0];
+  var autoProjectGuid = (targetRow && targetRow.ts && targetRow.ts.project) ? targetRow.ts.project.guid : null;
+  var effectiveGuid = currentGuid || autoProjectGuid;
+
+  var options = projects.map(function(p) {
+    var cls = 'project-assign-option' + (p.guid === effectiveGuid ? ' selected' : '');
+    var tag = p.isCustom ? 'Custom' : (p.isMosaic ? 'Mosaic' : 'TS');
+    return '<div class="' + cls + '" data-guid="' + esc(p.guid) + '">' +
+      '<span class="project-assign-name">' + esc(p.name) + '</span>' +
+      '<span class="project-assign-tag">' + esc(tag) + '</span>' +
+    '</div>';
+  }).join('');
+
+  var html =
+    '<div class="project-assign-header">Assign to project</div>' +
+    '<div class="project-assign-list">' + options + '</div>' +
+    '<div class="project-assign-footer">' +
+      '<div class="project-assign-reset" data-action="clear">Remove from project</div>' +
+    '</div>';
+
+  var dropdown = document.createElement('div');
+  dropdown.id = 'project-assign-dropdown';
+  dropdown.className = 'ts-override-dropdown';
+  dropdown.innerHTML = html;
+  document.body.appendChild(dropdown);
+
+  // Position below the anchor
+  var rect = anchorEl.getBoundingClientRect();
+  dropdown.style.top = (rect.bottom + window.scrollY + 6) + 'px';
+  dropdown.style.left = (rect.left + window.scrollX) + 'px';
+
+  requestAnimationFrame(function() {
+    var dr = dropdown.getBoundingClientRect();
+    if (dr.right > window.innerWidth - 12) {
+      dropdown.style.left = (window.innerWidth - dr.width - 12 + window.scrollX) + 'px';
+    }
+    if (dr.bottom > window.innerHeight - 12) {
+      dropdown.style.top = (rect.top + window.scrollY - dr.height - 6) + 'px';
+    }
+    dropdown.classList.add('visible');
+  });
+
+  // Click handlers
+  dropdown.querySelectorAll('.project-assign-option').forEach(function(opt) {
+    opt.addEventListener('click', function() {
+      var guid = opt.getAttribute('data-guid');
+      closeProjectAssignPicker();
+      fetch('/api/stats/ts/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetName: targetName, projectGuid: guid })
+      }).then(function(r) { return r.json(); }).then(function() {
+        renderStats();
+      });
+    });
+  });
+  dropdown.querySelector('[data-action="clear"]').addEventListener('click', function() {
+    closeProjectAssignPicker();
+    fetch('/api/stats/ts/assign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetName: targetName, projectGuid: '' })
+    }).then(function(r) { return r.json(); }).then(function() {
+      renderStats();
+    });
+  });
+
+  setTimeout(function() {
+    document.addEventListener('click', _projectAssignOutsideHandler, true);
+    document.addEventListener('keydown', _projectAssignKeyHandler);
+  }, 0);
+}
+
 // ── TS Link picker modal ──────────────────────────────────────────────────
 
 function closeTsLinkPicker() {
@@ -4619,6 +4832,7 @@ function renderStats() {
     statsTsStatus   = targetData.tsStatus   || null;
     statsTsError    = targetData.tsError    || null;
     statsTsProjects = targetData.tsProjects || null;
+    statsProjectAssignments = targetData.projectAssignments || {};
 
     // Populate globalFilterTypeMap from plugin settings (case-insensitive)
     globalFilterTypeMap = {};
