@@ -3637,4 +3637,15 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 
   /* ── Equipment grid single column ── */
   .equipment-grid { grid-template-columns: 1fr; }
+
+  /* ── Project progress: wrap to second row on mobile ── */
+  .targets-project-header { flex-wrap: wrap; }
+  .targets-project-progress {
+    order: 3;          /* push below left + right rows */
+    width: 100%;
+    flex: none;
+    padding: 0 0 8px;
+  }
+  .targets-project-progress-overall-track { flex: 1; width: auto; }
+  .targets-project-progress-overall { flex: 1; min-width: 0; }
 }
