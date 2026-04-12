@@ -1905,6 +1905,42 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   gap: 6px;
   flex-wrap: wrap;
 }
+.targets-fov-check {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 20px;
+  background: rgba(230,232,240,0.06);
+  border: 1px solid rgba(230,232,240,0.12);
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
+}
+.targets-fov-check input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.targets-fov-check:hover {
+  background: rgba(230,232,240,0.10);
+  border-color: rgba(230,232,240,0.22);
+  color: var(--text-secondary);
+}
+.targets-fov-check:has(input:checked) {
+  background: rgba(126,184,247,0.10);
+  border-color: rgba(126,184,247,0.28);
+  color: var(--accent);
+}
+.targets-fov-check:has(input:checked):hover {
+  background: rgba(126,184,247,0.16);
+  border-color: rgba(126,184,247,0.40);
+}
 .targets-status-chip {
   height: 28px;
   padding: 0 10px;

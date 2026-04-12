@@ -506,6 +506,10 @@ function renderTargetsControlBar(sortKey, groupBy) {
       var on = enabledTypes.indexOf(opt.key) >= 0;
       html += '<button type="button" class="targets-status-chip' + (on ? ' active' : '') + '" data-filter-type="' + esc(opt.key) + '">' + esc(opt.label) + '</button>';
     });
+    html += '<span class="filter-row-divider"></span>';
+    html += '<label class="target-check targets-fov-check" title="Show panel FOV overlays on mosaic thumbnails">' +
+            '<input type="checkbox" id="targets-filter-fov"' + (showFovOverlay ? ' checked' : '') + '>' +
+            '<span>Show FOV</span></label>';
     html += '</div>';
   }
   html += '</div>';
@@ -566,6 +570,21 @@ function initTargetsControlBar() {
       renderStatsTabContent('targets');
     });
   });
+
+  // Show FOV overlay checkbox — shared setting with sessions tab
+  var targetsFovEl = document.getElementById('targets-filter-fov');
+  if (targetsFovEl) {
+    targetsFovEl.addEventListener('change', function() {
+      showFovOverlay = this.checked;
+      localStorage.setItem('ns-show-fov', showFovOverlay ? 'true' : 'false');
+      document.querySelectorAll('.mosaic-fov-svg').forEach(function(svg) {
+        svg.style.display = showFovOverlay ? '' : 'none';
+      });
+      document.querySelectorAll('.card-thumb-wrap svg').forEach(function(svg) {
+        svg.style.display = showFovOverlay ? '' : 'none';
+      });
+    });
+  }
 }
 
 // Flat-mode filter by state + type; targets with no TS link always pass through
@@ -1834,6 +1853,7 @@ function loadMosaicThumbnail(panels, wrapOrBackdrop, projectGuid) {
     svgContainer.innerHTML = svgMarkup;
     var svgEl = svgContainer.firstChild;
     svgEl.classList.add('mosaic-fov-svg');
+    if (!showFovOverlay) svgEl.style.display = 'none';
     wrap.appendChild(svgEl);
   }
 
@@ -3494,6 +3514,9 @@ function bindListEvents() {
       showFovOverlay = this.checked;
       localStorage.setItem('ns-show-fov', showFovOverlay ? 'true' : 'false');
       document.querySelectorAll('.card-thumb-wrap svg').forEach(function(svg) {
+        svg.style.display = showFovOverlay ? '' : 'none';
+      });
+      document.querySelectorAll('.mosaic-fov-svg').forEach(function(svg) {
         svg.style.display = showFovOverlay ? '' : 'none';
       });
     });
