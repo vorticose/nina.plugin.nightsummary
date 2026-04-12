@@ -1491,7 +1491,7 @@ function openProjectDetail(projectGuid, projectName) {
     var closeBtn = backdrop.querySelector('.pdp-close');
     if (closeBtn) closeBtn.addEventListener('click', closeProjectDetail);
 
-    loadMosaicThumbnail(data.panels || [], backdrop);
+    loadMosaicThumbnail(data.panels || [], backdrop, projectGuid);
   }).catch(function(err) {
     var current = document.getElementById('pdp-backdrop');
     if (!current || current !== backdrop) return;
@@ -1586,10 +1586,11 @@ function renderPdpPanelCard(panel, idx) {
   return html;
 }
 
-// Fetch the combined HiPS survey image and draw per-panel FOV rectangles as an SVG overlay.
+// Fetch the combined HiPS survey image via the server's disk-cached endpoint and draw
+// per-panel FOV rectangles as an SVG overlay.
 // SVG rotation convention: position angle (degrees E of N, CCW) → SVG rotate(-PA) because
 // astronomical images are N-up, E-left which mirrors the x-axis relative to SVG.
-function loadMosaicThumbnail(panels, backdrop) {
+function loadMosaicThumbnail(panels, backdrop, projectGuid) {
   var wrap = backdrop ? backdrop.querySelector('#pdp-thumb-wrap') : null;
   if (!wrap) return;
 
@@ -1627,15 +1628,8 @@ function loadMosaicThumbnail(panels, backdrop) {
   var imgSize  = 1024;
   var scale    = hipsFov / imgSize; // degrees per pixel
 
-  var hipsUrl = 'https://alasky.u-strasbg.fr/hips-image-services/hips2fits?' +
-    'hips=' + encodeURIComponent('CDS/P/DSS2/color') +
-    '&ra='  + centerRA.toFixed(6) +
-    '&dec=' + centerDec.toFixed(6) +
-    '&fov=' + hipsFov.toFixed(4) +
-    '&width='  + imgSize +
-    '&height=' + imgSize +
-    '&format=jpg' +
-    '&projection=TAN';
+  // Image served via server's disk-cached endpoint — server handles HiPS fetch + caching
+  var hipsUrl = '/api/stats/projects/' + encodeURIComponent(projectGuid) + '/mosaic-thumb';
 
   // Build SVG overlay rects + smart-positioned labels (labels rendered last so they sit on top)
   var palette = ['rgba(144,202,249,0.9)','rgba(165,214,167,0.9)','rgba(255,204,128,0.9)',

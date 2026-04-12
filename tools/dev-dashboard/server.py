@@ -209,6 +209,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.serve_file(filepath, "application/json")
             return
 
+        # /api/stats/projects/{guid}/mosaic-thumb — disk-cached HiPS survey image
+        if len(parts) == 6 and parts[1] == "api" and parts[2] == "stats" and parts[3] == "projects" and parts[5] == "mosaic-thumb":
+            import urllib.parse
+            project_guid = urllib.parse.unquote(parts[4])
+            self.serve_mosaic_thumb(project_guid)
+            return
+
         # /api/stats/projects/{guid} — project detail for Phase 3c
         if len(parts) == 5 and parts[1] == "api" and parts[2] == "stats" and parts[3] == "projects":
             import urllib.parse
@@ -642,6 +649,113 @@ class DashboardHandler(BaseHTTPRequestHandler):
             })
         except Exception as e:
             self.send_json(500, {"error": f"project stats: {e}"})
+
+    def serve_mosaic_thumb(self, project_guid):
+        """Serve a disk-cached HiPS survey JPEG for a mosaic project.
+        Computes center RA/Dec/FOV from project panel data, checks the
+        hips-cache/ directory, fetches from the HiPS API if not cached,
+        then serves the JPEG bytes. Cache key = MD5 of the URL params so
+        it auto-invalidates if the mosaic layout changes."""
+        import hashlib, urllib.request, urllib.parse, math
+
+        cache_dir = os.path.join(os.path.dirname(__file__), "hips-cache")
+        os.makedirs(cache_dir, exist_ok=True)
+
+        try:
+            ts_status, ts_projects = self._load_ts_projects()
+            if ts_status != "available" or not ts_projects:
+                self.send_json(404, {"error": "Target Scheduler not available"}); return
+
+            proj = next((p for p in ts_projects
+                         if (p.get("guid") or "").lower() == project_guid.lower()), None)
+            if not proj:
+                self.send_json(404, {"error": "Project not found"}); return
+
+            ts_targets = [t for t in (proj.get("targets") or [])
+                          if t.get("ra") is not None and t.get("dec") is not None]
+            if not ts_targets:
+                self.send_json(404, {"error": "No targets with coordinates"}); return
+
+            # Get FOV from detail.json for the first panel that has camera data
+            sessions_path = os.path.join(self.data_dir, "sessions.json")
+            all_sessions = []
+            if os.path.isfile(sessions_path):
+                with open(sessions_path, "r", encoding="utf-8") as f:
+                    all_sessions = json.load(f)
+            all_sessions_sorted = sorted(all_sessions,
+                key=lambda x: x.get("sessionStart") or "", reverse=True)
+
+            def _get_cam(tgt_name):
+                tgt_lower = tgt_name.lower()
+                for s in all_sessions_sorted:
+                    if tgt_lower in [t.lower() for t in (s.get("targets") or [])]:
+                        detail_path = os.path.join(self.data_dir, "sessions", s["sessionId"], "detail.json")
+                        try:
+                            if os.path.isfile(detail_path):
+                                with open(detail_path, "r", encoding="utf-8") as f:
+                                    ci = json.load(f).get("cameraInfo") or {}
+                                x, y = ci.get("xSize") or 0, ci.get("ySize") or 0
+                                ps, fl = ci.get("pixelSizeMicrons") or 0, ci.get("focalLengthMm") or 0
+                                if x > 0 and y > 0 and ps > 0 and fl > 0:
+                                    scale = (ps / fl) * 206.265
+                                    return (x * scale / 3600.0, y * scale / 3600.0)
+                        except Exception:
+                            pass
+                return (0.0, 0.0)
+
+            # Compute center and FOV — same math as loadMosaicThumbnail in JS
+            ra_degs  = [t["ra"] * 15 for t in ts_targets]
+            dec_degs = [t["dec"] for t in ts_targets]
+            center_ra  = sum(ra_degs)  / len(ra_degs)
+            center_dec = sum(dec_degs) / len(dec_degs)
+            cos_center = math.cos(math.radians(center_dec))
+
+            img_size = 1024
+            max_reach = 0.0
+            for t in ts_targets:
+                d_ra  = (t["ra"] * 15 - center_ra) * cos_center
+                d_dec = t["dec"] - center_dec
+                fov_w, fov_h = _get_cam(t.get("name") or "")
+                half_diag = math.sqrt(fov_w**2 + fov_h**2) / 2 if (fov_w and fov_h) else 0.0
+                max_reach = max(max_reach, math.sqrt(d_ra**2 + d_dec**2) + half_diag)
+
+            if max_reach < 0.5:
+                fov_w, fov_h = _get_cam(ts_targets[0].get("name") or "")
+                max_reach = math.sqrt(fov_w**2 + fov_h**2) / 2 if (fov_w and fov_h) else 1.0
+
+            hips_fov = max_reach * 2 * 1.4
+
+            # Build cache key from URL params
+            param_str = f"{center_ra:.6f}_{center_dec:.6f}_{hips_fov:.4f}_{img_size}"
+            cache_key = hashlib.md5(param_str.encode()).hexdigest()
+            cache_path = os.path.join(cache_dir, f"{cache_key}.jpg")
+
+            if not os.path.isfile(cache_path):
+                hips_url = (
+                    "https://alasky.u-strasbg.fr/hips-image-services/hips2fits"
+                    f"?hips={urllib.parse.quote('CDS/P/DSS2/color')}"
+                    f"&ra={center_ra:.6f}&dec={center_dec:.6f}"
+                    f"&fov={hips_fov:.4f}&width={img_size}&height={img_size}"
+                    f"&format=jpg&projection=TAN"
+                )
+                req = urllib.request.Request(hips_url, headers={"User-Agent": "NightSummary/1.0"})
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    data = resp.read()
+                with open(cache_path, "wb") as f:
+                    f.write(data)
+
+            with open(cache_path, "rb") as f:
+                img_bytes = f.read()
+
+            self.send_response(200)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Content-Length", str(len(img_bytes)))
+            self.send_header("Cache-Control", "public, max-age=86400")
+            self.end_headers()
+            self.wfile.write(img_bytes)
+
+        except Exception as e:
+            self.send_json(500, {"error": f"mosaic-thumb: {e}"})
 
     def serve_target_sessions(self, target_name):
         """Build per-session detail for a target by aggregating the snapshot image files."""
