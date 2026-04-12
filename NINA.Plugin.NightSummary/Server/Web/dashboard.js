@@ -648,7 +648,7 @@ function renderProjectContainer(info) {
     html += '<button type="button" class="targets-project-view-btn" ' +
       'data-guid="' + esc(info.guid) + '" data-name="' + esc(info.name) + '" aria-label="View project details">Details</button>';
   }
-  html += '<button type="button" class="targets-project-collapse-btn" aria-label="Collapse">&#9660;</button>';
+  html += '<button type="button" class="targets-project-collapse-btn" aria-label="Collapse"></button>';
   html += '</div>';
   html += '</div>';
 
