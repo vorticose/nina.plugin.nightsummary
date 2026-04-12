@@ -2066,7 +2066,6 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   gap: 10px;
   overflow: hidden;
 }
-.targets-project-header-left { flex-shrink: 0; }
 
 /* Mini vertical bars */
 .targets-project-progress-bars {
@@ -3643,6 +3642,10 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 
   /* ── Project progress: wrap to second row on mobile ── */
   .targets-project-header { flex-wrap: wrap; }
+  /* Left side: shrink + truncate name to give room to Details/▼ on same row */
+  .targets-project-header-left { flex: 1; min-width: 0; overflow: hidden; }
+  /* Right side: never wrap Details + ▼ */
+  .targets-project-header-right { flex-shrink: 0; }
   /* Hide agg stats (hours · frames) — redundant on mobile, takes too much row-1 space */
   .targets-project-agg { display: none; }
   .targets-project-progress {
