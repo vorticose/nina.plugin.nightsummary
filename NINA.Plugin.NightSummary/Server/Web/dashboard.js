@@ -607,6 +607,27 @@ function renderProjectContainer(info) {
   html += '<button type="button" class="targets-project-collapse-btn" aria-label="Collapse">&#9660;</button>';
   html += '</div>';
   html += '</div>';
+
+  // Progress bar — segmented by panel, one segment per target, only if TS data is present
+  // and at least one target has a non-zero percentComplete
+  var panelPcts = info.targets.map(function(t) {
+    return (t.ts && t.ts.project && t.ts.project.percentComplete != null)
+      ? t.ts.project.percentComplete : null;
+  });
+  var hasAnyPct = panelPcts.some(function(p) { return p !== null && p > 0; });
+  if (hasAnyPct) {
+    var palette = ['#90CAF9','#A5D6A7','#FFCC80','#EF9A9A','#CE93D8','#80DEEA','#BCAAA4','#B0BEC5'];
+    html += '<div class="targets-project-progress" aria-label="Project completion">';
+    panelPcts.forEach(function(pct, i) {
+      var color = palette[i % palette.length];
+      var fill = pct != null ? Math.min(100, Math.max(0, pct)) : 0;
+      html += '<div class="targets-project-progress-seg" style="flex:1">' +
+              '<div class="targets-project-progress-fill" style="width:' + fill.toFixed(1) + '%;background:' + color + '"></div>' +
+              '</div>';
+    });
+    html += '</div>';
+  }
+
   html += '<div class="targets-project-grid">';
   sorted.forEach(function(t) { html += renderTargetCard(t, allTargets.indexOf(t)); });
   html += '</div>';

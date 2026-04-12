@@ -2052,6 +2052,25 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 .targets-project-container.collapsed .targets-project-collapse-btn {
   transform: rotate(-90deg);
 }
+
+/* Project completion bar — segmented by panel, sits flush below header */
+.targets-project-progress {
+  display: flex;
+  height: 5px;
+  background: rgba(255,255,255,0.06);
+  gap: 1px;
+}
+.targets-project-progress-seg {
+  background: rgba(255,255,255,0.06);
+  overflow: hidden;
+  position: relative;
+}
+.targets-project-progress-fill {
+  height: 100%;
+  transition: width 0.4s ease;
+  opacity: 0.75;
+}
+
 .targets-project-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(224px, 1fr));
