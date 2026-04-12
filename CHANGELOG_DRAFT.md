@@ -6,6 +6,10 @@
 **New features**
 - Per-filter selector on metric charts -- click a filter chip above any metric chart to show only one filter's data points. Y-axes auto-rescale to the visible subset so per-filter trends are visible at maximum resolution -- especially useful for mono LRGB rotating workflows where alternating filters would otherwise mask the underlying trend within each filter. Filters with only a single image show a centered dot rather than a "no data" message. Hover tooltips show values at full precision (e.g. 1.72 px instead of 1.7 px). Applies to the primary chart and any additional charts, dark and light modes, and works on historical sessions via "Resend Previous Session". Note: the interactive filter selector requires JavaScript -- when reports are opened in email attachment previews (Gmail, iOS Quick Look) or other script-restricted environments, charts display as a static view showing all filters combined with a note explaining how to open the report in a browser for the full interactive version.
 
+**Bug fixes**
+- Fixed event marker hover tooltips on metric charts not responding -- markers (AutoFocus, Meridian Flip, Safe/Unsafe) now reliably show their tooltip on hover
+- Fixed additional chart settings showing dropdowns in a different order than the primary chart -- all chart configurations now show X-Axis, Primary Metric, Secondary Metric in that order
+
 
 ## v2.10.0
 
