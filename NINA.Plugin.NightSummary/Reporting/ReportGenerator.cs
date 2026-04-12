@@ -3,10 +3,12 @@ using NINA.Plugin.NightSummary.Data;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace NINA.Plugin.NightSummary.Reporting {
@@ -26,6 +28,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// Cleared at the start of each GenerateHtmlReport call.
         /// </summary>
         public List<string> Warnings { get; } = new List<string>();
+
+        // Counter incremented per EmitMetricChart() call to generate unique CSS IDs
+        private int _chartIndex = 0;
 
         // SVG theme colors (set at the start of each report generation)
         private string svgBg, svgBorder, svgMuted, svgDim, svgAccent, svgChartBg, svgChartDark, svgMoonStroke, svgMoonOpacity, svgSunrise;
@@ -197,7 +202,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine("<p><em>No images were recorded during this session.</em></p>");
                 if (detailLevel >= 2) sb.Append(BuildNextNightPreviewSection(data));
                 sb.Append(BuildFooter());
-                AppendChartRendererScript(sb);
+                // AppendChartRendererScript(sb); // JS renderer deactivated — CSS chip selector used instead (dead code, kept for v3 dashboard)
                 sb.AppendLine("</body></html>");
                 return sb.ToString();
             }
@@ -215,7 +220,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             if (detailLevel >= 2) sb.Append(BuildNextNightPreviewSection(data));
             sb.Append(BuildFooter());
 
-            AppendChartRendererScript(sb);
+            // AppendChartRendererScript(sb); // JS renderer deactivated — CSS chip selector used instead (dead code, kept for v3 dashboard)
             sb.AppendLine("</body></html>");
 
             // Replace placeholder with warnings banner if any were collected during generation
@@ -1056,6 +1061,19 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// points, axis metadata, event markers, and the distinct filter list for
         /// the per-filter selector.
         /// </summary>
+        // Sanitize a filter name for use as a CSS ID fragment — replaces every
+        // non-alphanumeric character with an underscore.
+        private static string ChartSafeId(string filter) =>
+            Regex.Replace(filter, "[^a-zA-Z0-9]", "_");
+
+        /// <summary>
+        /// Emits a metric chart with a pure-CSS per-filter chip selector.
+        /// Each visible state is a pre-rendered C# SVG (axes auto-scaled to that
+        /// filter's data), toggled by hidden radio inputs + CSS sibling selectors.
+        /// Works in every HTML viewer including Gmail and iOS Quick Look — no JS
+        /// required. The JS renderer (metric-chart.js) is kept as dead code for
+        /// the future v3 dashboard.
+        /// </summary>
         private void EmitMetricChart(
                 StringBuilder sb,
                 List<ImageRecord> images,
@@ -1063,28 +1081,75 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 int secondary,
                 int xAxis,
                 List<(DateTime timestamp, string eventType, string description)>? markers) {
-            var model = ChartGenerator.BuildChartModel(images, primary, secondary, xAxis, markers);
-            var json  = JsonSerializer.Serialize(model, ChartJsonOptions);
-            // The container is wrapped in a single-quoted HTML attribute, so any
-            // apostrophes inside JSON strings (filter names, descriptions) need to
-            // be escaped. JSON uses double quotes for strings so &apos; is safe.
-            var attr = json.Replace("'", "&#39;");
-            // Pre-render a static SVG as the container's initial content. When the JS
-            // renderer runs (preview window, real browser) it replaces this with the
-            // interactive version. When JS is unavailable (Gmail attachment preview,
-            // iOS Quick Look, clients that strip <script>) the static SVG is displayed instead.
-            var staticSvg = ChartGenerator.GenerateMetricChart(images, primary, secondary, xAxis, markers);
-            // Show a note below the static SVG explaining why filter selection isn't
-            // available and how to access the interactive version. Only shown when there
-            // are multiple filters (otherwise there's nothing to select). JS wipes the
-            // whole container on load so this note never appears in a real browser.
-            var fallbackNote = model.Filters.Count >= 2
-                ? "<div style=\"font-family:sans-serif;font-size:11px;text-align:center;" +
-                  "color:#8888aa;margin:-8px 0 10px\">" +
-                  "&#9432; Per-filter view requires JavaScript &mdash; " +
-                  "open in a browser for the interactive chart</div>"
-                : "";
-            sb.AppendLine($"<div class='metric-chart-container' data-chart='{attr}'>{staticSvg}{fallbackNote}</div>");
+
+            // Use BuildChartModel only for the sorted filter list
+            var filters = ChartGenerator.BuildChartModel(images, primary, secondary, xAxis, markers).Filters;
+
+            // No chip selector when there's only one filter or none
+            if (filters.Count < 2) {
+                var svg = ChartGenerator.GenerateMetricChart(images, primary, secondary, xAxis, markers);
+                sb.AppendLine($"<div class=\"metric-chart-container\"><div class=\"ns-chart-svg\">{svg}</div></div>");
+                return;
+            }
+
+            int ci = _chartIndex++;
+            string pfx = $"nsc{ci}";
+
+            // Pre-render one SVG per visible state: "All filters" + one per filter
+            var allSvg = ChartGenerator.GenerateMetricChart(images, primary, secondary, xAxis, markers);
+            var filterSvgs = filters.ToDictionary(
+                f => f,
+                f => ChartGenerator.GenerateMetricChart(
+                    images.Where(i => i.Filter == f).ToList(),
+                    primary, secondary, xAxis, markers));
+
+            // ── Per-chart CSS ────────────────────────────────────────────────
+            // Active chip: whichever radio is :checked highlights its paired label.
+            // SVG visibility: only the selected state's container is display:block.
+            sb.AppendLine("<style>");
+
+            // Active chip highlight rules
+            var activeSelectors = new[] { $"#{pfx}-all:checked ~ .{pfx}-bar label[for=\"{pfx}-all\"]" }
+                .Concat(filters.Select(f =>
+                    $"#{pfx}-{ChartSafeId(f)}:checked ~ .{pfx}-bar label[for=\"{pfx}-{ChartSafeId(f)}\"]"));
+            sb.AppendLine(string.Join(",\n", activeSelectors));
+            sb.AppendLine("{ background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: bold; }");
+
+            // Hide all per-filter SVG containers by default (shown individually below)
+            sb.AppendLine(string.Join(", ", filters.Select(f => $"#{pfx}-svg-{ChartSafeId(f)}"))
+                + " { display: none; }");
+
+            // Show/hide rules per filter chip
+            foreach (var f in filters) {
+                string fid = ChartSafeId(f);
+                sb.AppendLine($"#{pfx}-{fid}:checked ~ #{pfx}-svg-all {{ display: none; }}");
+                sb.AppendLine($"#{pfx}-{fid}:checked ~ #{pfx}-svg-{fid} {{ display: block; }}");
+            }
+            sb.AppendLine("</style>");
+
+            // ── HTML structure ───────────────────────────────────────────────
+            sb.AppendLine($"<div class=\"metric-chart-container\">");
+
+            // Radio inputs — hidden but still toggled by their paired labels
+            sb.AppendLine($"<input type=\"radio\" name=\"{pfx}\" id=\"{pfx}-all\" checked style=\"display:none\">");
+            foreach (var f in filters)
+                sb.AppendLine($"<input type=\"radio\" name=\"{pfx}\" id=\"{pfx}-{ChartSafeId(f)}\" style=\"display:none\">");
+
+            // Chip bar (labels styled identically to the old JS buttons)
+            sb.Append($"<div class=\"ns-chart-filter-bar {pfx}-bar\">");
+            sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-all\">All</label>");
+            foreach (var f in filters) {
+                var encoded = WebUtility.HtmlEncode(f);
+                sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-{ChartSafeId(f)}\" title=\"{encoded}\">{encoded}</label>");
+            }
+            sb.AppendLine("</div>");
+
+            // SVG containers — "All" visible by default, per-filter hidden
+            sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-all\">{allSvg}</div>");
+            foreach (var f in filters)
+                sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-{ChartSafeId(f)}\" style=\"display:none\">{filterSvgs[f]}</div>");
+
+            sb.AppendLine("</div>"); // metric-chart-container
         }
 
         /// <summary>

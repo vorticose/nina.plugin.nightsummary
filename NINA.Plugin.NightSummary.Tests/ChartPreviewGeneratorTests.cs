@@ -55,9 +55,9 @@ namespace NINA.Plugin.NightSummary.Tests {
             _output.WriteLine($"HTML length: {html.Length} chars");
 
             Assert.True(File.Exists(outPath));
-            Assert.Contains("data-chart=", html);   // JS renderer container present
-            Assert.Contains("NSMetricChart",  html); // JS renderer embedded
-            Assert.Contains("ns-chart-filter-bar", html); // filter bar CSS class present
+            Assert.Contains("ns-chart-filter-bar", html); // CSS chip selector bar present
+            Assert.Contains("ns-chart-filter-btn", html); // chip labels present
+            // JS renderer is dead code — data-chart attribute and NSMetricChart no longer emitted
         }
 
         [Fact]
