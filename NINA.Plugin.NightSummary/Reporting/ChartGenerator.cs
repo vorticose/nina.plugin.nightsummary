@@ -88,6 +88,53 @@ namespace NINA.Plugin.NightSummary.Reporting {
         private static string ColorSafeMarker   => IsLight ? "#059669" : "#34d399";  // green — matches timeline
         private static string ColorUnsafeMarker => IsLight ? "#dc2626" : "#f87171";  // red — matches timeline
 
+        // ── Per-filter chart colors (spectrally motivated, from dashboard.js) ──────
+        // Matches FILTER_TYPE_CHART_COLORS in dashboard.js exactly.
+        private static readonly Dictionary<string, string> FilterChartColors = new(StringComparer.Ordinal) {
+            ["H"] = "#E53935",  // H-alpha  656nm vivid red
+            ["S"] = "#C62828",  // SII      672nm deep crimson
+            ["O"] = "#00ACC1",  // OIII     500nm cyan-teal
+            ["N"] = "#FB8C00",  // NII      658nm amber
+            ["L"] = "#DCE1E8",  // Lum      off-white (chart override)
+            ["R"] = "#FF7043",  // Red BB   warm orange-red
+            ["G"] = "#66BB6A",  // Green BB
+            ["B"] = "#42A5F5",  // Blue BB
+        };
+
+        // Well-known filter names → canonical type code (keys lowercase for O(1) lookup)
+        private static readonly Dictionary<string, string> KnownFilterTypes = new(StringComparer.OrdinalIgnoreCase) {
+            ["ha"]="H",["h"]="H",["h-alpha"]="H",["halpha"]="H",["h_alpha"]="H",["h-a"]="H",["hydrogen"]="H",
+            ["sii"]="S",["s"]="S",["s2"]="S",["s-ii"]="S",["s_ii"]="S",["sulfur"]="S",["sulphur"]="S",
+            ["oiii"]="O",["o"]="O",["o3"]="O",["o-iii"]="O",["o_iii"]="O",["oxygen"]="O",
+            ["nii"]="N",["n2"]="N",["n-ii"]="N",["n_ii"]="N",["nitrogen"]="N",
+            ["l"]="L",["luminance"]="L",["lum"]="L",["none"]="L",
+            ["r"]="R",["red"]="R",
+            ["g"]="G",["green"]="G",
+            ["b"]="B",["blue"]="B",
+        };
+        // First-letter fallback (N intentionally absent — ND filter also starts with N)
+        private static readonly HashSet<char> FirstLetterTypeChars = new() { 'H','S','O','L','R','G','B' };
+        // Categorical fallback palette (same 6-color set as dashboard.js badge renderer)
+        private static readonly string[] CategoricalFallbackColors = {
+            "#4e79a7","#f28e2b","#e15759","#76b7b2","#59a14f","#edc948"
+        };
+
+        /// <summary>
+        /// Returns the spectrally-motivated chart color for a filter name,
+        /// with a categorical fallback for unrecognized filters.
+        /// </summary>
+        public static string GetFilterChartColor(string? filterName) {
+            if (string.IsNullOrEmpty(filterName)) return CategoricalFallbackColors[0];
+            if (KnownFilterTypes.TryGetValue(filterName, out var code) &&
+                FilterChartColors.TryGetValue(code, out var c)) return c;
+            var fl = char.ToUpperInvariant(filterName[0]);
+            if (FirstLetterTypeChars.Contains(fl) && FilterChartColors.TryGetValue(fl.ToString(), out var flc))
+                return flc;
+            // Stable hash → categorical fallback
+            var hash = filterName.Aggregate(0, (acc, ch) => acc * 31 + ch) & 0x7FFFFFFF;
+            return CategoricalFallbackColors[hash % CategoricalFallbackColors.Length];
+        }
+
         /// <summary>
         /// Returns the chart section heading based on configured metrics.
         /// </summary>
@@ -319,6 +366,155 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine($"<text x=\"{bx + 7}\" y=\"{by + 14}\" fill=\"{ColorWarning}\" font-size=\"11\">&#x26A0; {EscapeXml(badgeText)}</text>");
                 if (badgeSubtext != null)
                     sb.AppendLine($"<text x=\"{bx + 7}\" y=\"{by + 27}\" fill=\"{ColorWarning}\" font-size=\"10\" opacity=\"0.8\">{EscapeXml(badgeSubtext)}</text>");
+            }
+
+            sb.AppendLine("</svg>");
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Generates a multi-curve SVG chart where each filter is drawn as its own
+        /// colored line/dot series on a shared axis. Colors are spectrally motivated
+        /// (same palette as the dashboard filter badges). One y-axis only — no secondary
+        /// metric. Intended as the "Colors" chip in the per-filter chip selector.
+        /// </summary>
+        public static string GenerateMultiCurveChart(
+                List<ImageRecord> images,
+                int primaryMetric,
+                int xAxisMetric = XAxisTime,
+                List<(DateTime timestamp, string eventType, string description)>? eventMarkers = null) {
+
+            var ordered = images.OrderBy(i => i.Timestamp).ToList();
+            if (ordered.Count == 0)
+                return GeneratePlaceholderSvg(new List<string> { GetPrimaryNoDataMsg(primaryMetric) });
+
+            // Reuse BuildPointsForMetric — it correctly attributes each point's filter
+            var allPts = BuildPointsForMetric(ordered, primaryMetric, xAxisMetric, isPrimary: true);
+            if (allPts.Count == 0)
+                return GeneratePlaceholderSvg(new List<string> { GetPrimaryNoDataMsg(primaryMetric) });
+
+            // Group by filter in canonical sort order
+            var filterGroups = allPts
+                .GroupBy(p => p.Filter)
+                .OrderBy(g => FilterHelper.SortKey(g.Key))
+                .ThenBy(g => g.Key)
+                .Select(g => (Filter: g.Key, Pts: g.OrderBy(p => p.X).ToList()))
+                .ToList();
+
+            // Shared x range
+            double rawMinX = allPts.Min(p => p.X);
+            double rawMaxX = allPts.Max(p => p.X);
+            bool spx = rawMaxX - rawMinX < (xAxisMetric == XAxisFrameIndex ? 1.0 : 0.001);
+            double minX  = spx ? rawMinX - 1 : rawMinX;
+            double xRange = spx ? 2.0 : Math.Max(rawMaxX - rawMinX, xAxisMetric == XAxisFrameIndex ? 1 : 0.001);
+
+            // Shared y scale
+            var (minL, maxL, stepL) = ComputeNiceScale(allPts.Select(p => p.Y), GetPrimaryMinSpan(primaryMetric));
+            double rangeL = maxL - minL;
+
+            int plotW = Width - PadLeft - PadRight;
+            int plotH = Height - PadTop  - PadBottom;
+
+            double ToXPx(double x) => PadLeft + ((x - minX) / xRange) * plotW;
+            double ToYPx(double y) => PadTop  + plotH - ((y - minL) / rangeL) * plotH;
+
+            // Session start for event marker positioning (Time x-axis only)
+            DateTime sessionStart = xAxisMetric == XAxisTime && ordered.Count > 0
+                ? ordered[0].Timestamp : DateTime.MinValue;
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {Width} {Height}\" style=\"width:100%;max-width:{Width}px;display:block;margin:0 auto 16px;font-family:sans-serif\">");
+            sb.AppendLine("<style>circle { cursor: pointer; }</style>");
+            sb.AppendLine($"<rect width=\"{Width}\" height=\"{Height}\" fill=\"{ColorBackground}\" rx=\"6\"/>");
+
+            // Horizontal grid + left Y labels
+            string leftFmt = GetValueFormat(primaryMetric, true);
+            for (double v = minL; v <= maxL + stepL * 0.001; v += stepL) {
+                double y = ToYPx(v);
+                sb.AppendLine($"<line x1=\"{PadLeft}\" y1=\"{y:F1}\" x2=\"{Width - PadRight}\" y2=\"{y:F1}\" stroke=\"{ColorGrid}\" stroke-width=\"1\"/>");
+                sb.AppendLine($"<text x=\"{PadLeft - 6}\" y=\"{y + 4:F1}\" fill=\"{ColorLabel}\" font-size=\"11\" text-anchor=\"end\">{v.ToString(leftFmt)}</text>");
+            }
+
+            // X axis labels
+            if (spx) {
+                double xPx = PadLeft + plotW / 2.0;
+                string xLbl = FormatXAxisValue(rawMinX, xAxisMetric, sessionStart, rawMinX);
+                sb.AppendLine($"<line x1=\"{xPx:F1}\" y1=\"{PadTop}\" x2=\"{xPx:F1}\" y2=\"{PadTop + plotH}\" stroke=\"{ColorGrid}\" stroke-width=\"1\"/>");
+                sb.AppendLine($"<text x=\"{xPx:F1}\" y=\"{Height - 10}\" fill=\"{ColorLabel}\" font-size=\"11\" text-anchor=\"middle\">{xLbl}</text>");
+            } else {
+                int pointCount = allPts.Count;
+                int xSteps = Math.Max(1, Math.Min(6, pointCount - 1));
+                for (int i = 0; i <= xSteps; i++) {
+                    double xVal = minX + (xRange / xSteps * i);
+                    double xPx  = ToXPx(xVal);
+                    sb.AppendLine($"<line x1=\"{xPx:F1}\" y1=\"{PadTop}\" x2=\"{xPx:F1}\" y2=\"{PadTop + plotH}\" stroke=\"{ColorGrid}\" stroke-width=\"1\"/>");
+                    string xLbl = FormatXAxisValue(xVal, xAxisMetric, sessionStart, minX);
+                    sb.AppendLine($"<text x=\"{xPx:F1}\" y=\"{Height - 10}\" fill=\"{ColorLabel}\" font-size=\"11\" text-anchor=\"middle\">{xLbl}</text>");
+                }
+            }
+
+            // Axes + axis labels
+            sb.AppendLine($"<line x1=\"{PadLeft}\" y1=\"{PadTop}\" x2=\"{PadLeft}\" y2=\"{PadTop + plotH}\" stroke=\"{ColorAxis}\" stroke-width=\"1\"/>");
+            sb.AppendLine($"<line x1=\"{PadLeft}\" y1=\"{PadTop + plotH}\" x2=\"{Width - PadRight}\" y2=\"{PadTop + plotH}\" stroke=\"{ColorAxis}\" stroke-width=\"1\"/>");
+            string leftAxisLabel = GetPrimaryAxisLabel(primaryMetric);
+            sb.AppendLine($"<text x=\"14\" y=\"{Height / 2}\" fill=\"{ColorLabel}\" font-size=\"11\" text-anchor=\"middle\" transform=\"rotate(-90,14,{Height / 2})\">{leftAxisLabel}</text>");
+            if (xAxisMetric != XAxisTime)
+                sb.AppendLine($"<text x=\"{PadLeft + plotW / 2}\" y=\"{Height - 2}\" fill=\"{ColorLabel}\" font-size=\"10\" text-anchor=\"middle\">{GetXAxisAxisLabel(xAxisMetric)}</text>");
+
+            // Event markers
+            if (xAxisMetric == XAxisTime && eventMarkers != null && sessionStart != DateTime.MinValue) {
+                foreach (var (ts, evtType, desc) in eventMarkers) {
+                    double evtSec = (ts - sessionStart).TotalSeconds;
+                    if (evtSec < minX || evtSec > minX + xRange) continue;
+                    double xPx = ToXPx(evtSec);
+                    var (color, label) = evtType switch {
+                        "AutoFocus"    => (ColorAfMarker,     "AF"),
+                        "MeridianFlip" => (ColorFlipMarker,   "MF"),
+                        "RoofOpen"     => (ColorSafeMarker,   "S"),
+                        _              => (ColorUnsafeMarker, "US")
+                    };
+                    sb.AppendLine($"<line x1=\"{xPx:F1}\" y1=\"{PadTop}\" x2=\"{xPx:F1}\" y2=\"{PadTop + plotH}\" stroke=\"{color}\" stroke-width=\"1\" stroke-dasharray=\"4,3\" opacity=\"0.7\"/>");
+                    sb.AppendLine($"<text x=\"{xPx + 3:F1}\" y=\"{PadTop + 12}\" fill=\"{color}\" font-size=\"9\">{label}</text>");
+                }
+            }
+
+            // Per-filter: polyline then dots (drawn front-to-back so earlier filters aren't hidden)
+            string tipFmt  = GetTooltipFormat(primaryMetric, true);
+            string tipUnit = GetTooltipUnit(primaryMetric, true);
+            foreach (var (filter, pts) in filterGroups) {
+                string col = GetFilterChartColor(filter);
+
+                if (pts.Count > 1) {
+                    var poly = string.Join(" ", pts.Select(p => $"{ToXPx(p.X):F1},{ToYPx(p.Y):F1}"));
+                    sb.AppendLine($"<polyline points=\"{poly}\" fill=\"none\" stroke=\"{col}\" stroke-width=\"2\" stroke-linejoin=\"round\"/>");
+                }
+
+                foreach (var p in pts) {
+                    string tipX = FormatTooltipX((p.X, p.Y, p.Timestamp), xAxisMetric, minX);
+                    string tip  = $"{tipX} — {p.Y.ToString(tipFmt)}{tipUnit} [{EscapeXml(filter)}]";
+                    sb.AppendLine($"<circle cx=\"{ToXPx(p.X):F1}\" cy=\"{ToYPx(p.Y):F1}\" r=\"3\" fill=\"{col}\"><title>{tip}</title></circle>");
+                }
+            }
+
+            // Legend — horizontal pill, top-right inside the plot area
+            // Estimate width: each item is swatch(16) + name chars * 7 + gap(12)
+            const int LegSwatchW = 16, LegTextPx = 7, LegItemPad = 12, LegH = 20, LegPad = 6;
+            var itemWidths = filterGroups.Select(g => LegSwatchW + g.Filter.Length * LegTextPx + LegItemPad).ToList();
+            int legW = itemWidths.Sum() + LegPad;
+            legW = Math.Min(legW, plotW - 8); // cap to plot width
+            int legX = PadLeft + plotW - legW - 4;
+            int legY = PadTop + 5;
+            sb.AppendLine($"<rect x=\"{legX}\" y=\"{legY}\" width=\"{legW}\" height=\"{LegH}\" rx=\"3\" fill=\"{ColorBackground}\" stroke=\"{ColorGrid}\" stroke-width=\"1\" opacity=\"0.92\"/>");
+            int ix = legX + LegPad / 2;
+            foreach (var (filter, _) in filterGroups) {
+                string col = GetFilterChartColor(filter);
+                int iw = LegSwatchW + filter.Length * LegTextPx + LegItemPad;
+                if (ix + iw > legX + legW) break; // don't overflow
+                int cy = legY + LegH / 2;
+                sb.AppendLine($"<line x1=\"{ix}\" y1=\"{cy}\" x2=\"{ix + LegSwatchW - 4}\" y2=\"{cy}\" stroke=\"{col}\" stroke-width=\"2\"/>");
+                sb.AppendLine($"<circle cx=\"{ix + (LegSwatchW - 4) / 2}\" cy=\"{cy}\" r=\"3\" fill=\"{col}\"/>");
+                sb.AppendLine($"<text x=\"{ix + LegSwatchW}\" y=\"{cy + 4}\" fill=\"{col}\" font-size=\"10\" font-weight=\"600\">{EscapeXml(filter)}</text>");
+                ix += iw;
             }
 
             sb.AppendLine("</svg>");

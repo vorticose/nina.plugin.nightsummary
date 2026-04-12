@@ -200,13 +200,6 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
 <tr><td>Oiii</td><td>1</td><td>300s</td><td>5m</td></tr>
 <tr><td><strong>Total</strong></td><td><strong>38</strong></td><td></td><td><strong>3h 10m</strong></td></tr>
 </table>
-<div title='CV (Coefficient of Variation) measures consistency as a percentage of the mean. Lower values indicate more stable conditions. Star count CV is calculated per target and filter type.' style='cursor:help;'>
-<p style='margin: 12px 0 4px; font-size: 13px; color: var(--accent-light);'><strong>Star Count Consistency</strong></p>
-<table class='star-count-table'>
-<tr><th>Broadband CV</th><th>Narrowband CV</th></tr>
-<tr><td>0%</td><td>0%</td></tr>
-</table>
-</div>
 </div>
 <div class='target-section'>
 <h2>Session Image Quality</h2>
@@ -238,12 +231,15 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
 <h2>HFR and FWHM Vs. Time</h2>
 <style>
 #nsc0-all:checked ~ .nsc0-bar label[for="nsc0-all"],
+#nsc0-colors:checked ~ .nsc0-bar label[for="nsc0-colors"],
 #nsc0-L:checked ~ .nsc0-bar label[for="nsc0-L"],
 #nsc0-Ha:checked ~ .nsc0-bar label[for="nsc0-Ha"],
 #nsc0-Sii:checked ~ .nsc0-bar label[for="nsc0-Sii"],
 #nsc0-Oiii:checked ~ .nsc0-bar label[for="nsc0-Oiii"]
 { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: bold; }
-#nsc0-svg-L, #nsc0-svg-Ha, #nsc0-svg-Sii, #nsc0-svg-Oiii { display: none; }
+#nsc0-svg-colors, #nsc0-svg-L, #nsc0-svg-Ha, #nsc0-svg-Sii, #nsc0-svg-Oiii { display: none; }
+#nsc0-colors:checked ~ #nsc0-svg-all { display: none; }
+#nsc0-colors:checked ~ #nsc0-svg-colors { display: block !important; }
 #nsc0-L:checked ~ #nsc0-svg-all { display: none; }
 #nsc0-L:checked ~ #nsc0-svg-L { display: block !important; }
 #nsc0-Ha:checked ~ #nsc0-svg-all { display: none; }
@@ -255,11 +251,12 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
 </style>
 <div class="metric-chart-container">
 <input type="radio" name="nsc0" id="nsc0-all" checked style="display:none">
+<input type="radio" name="nsc0" id="nsc0-colors" style="display:none">
 <input type="radio" name="nsc0" id="nsc0-L" style="display:none">
 <input type="radio" name="nsc0" id="nsc0-Ha" style="display:none">
 <input type="radio" name="nsc0" id="nsc0-Sii" style="display:none">
 <input type="radio" name="nsc0" id="nsc0-Oiii" style="display:none">
-<div class="ns-chart-filter-bar nsc0-bar"><label class="ns-chart-filter-btn" for="nsc0-all">All</label><label class="ns-chart-filter-btn" for="nsc0-L" title="L">L</label><label class="ns-chart-filter-btn" for="nsc0-Ha" title="Ha">Ha</label><label class="ns-chart-filter-btn" for="nsc0-Sii" title="Sii">Sii</label><label class="ns-chart-filter-btn" for="nsc0-Oiii" title="Oiii">Oiii</label></div>
+<div class="ns-chart-filter-bar nsc0-bar"><label class="ns-chart-filter-btn" for="nsc0-all">All</label><label class="ns-chart-filter-btn" for="nsc0-colors">Colors</label><label class="ns-chart-filter-btn" for="nsc0-L" title="L">L</label><label class="ns-chart-filter-btn" for="nsc0-Ha" title="Ha">Ha</label><label class="ns-chart-filter-btn" for="nsc0-Sii" title="Sii">Sii</label><label class="ns-chart-filter-btn" for="nsc0-Oiii" title="Oiii">Oiii</label></div>
 <div class="ns-chart-svg" id="nsc0-svg-all"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" style="width:100%;max-width:800px;display:block;margin:0 auto 16px;font-family:sans-serif">
 <style>circle, .evt-hit { cursor: pointer; }</style>
 <rect width="800" height="300" fill="#1a1a2e" rx="6"/>
@@ -380,6 +377,96 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
 <circle cx="714.4" cy="208.3" r="3" fill="#a8d4ff"><title>00:48 — 1.8 px [L]</title></circle>
 <circle cx="722.3" cy="43.5" r="3" fill="#a8d4ff"><title>00:50 — 2.5 px [Oiii]</title></circle>
 <circle cx="738.0" cy="225.7" r="3" fill="#a8d4ff"><title>00:54 — 1.7 px [L]</title></circle>
+</svg>
+</div>
+<div class="ns-chart-svg" id="nsc0-svg-colors" style="display:none"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" style="width:100%;max-width:800px;display:block;margin:0 auto 16px;font-family:sans-serif">
+<style>circle { cursor: pointer; }</style>
+<rect width="800" height="300" fill="#1a1a2e" rx="6"/>
+<line x1="55" y1="255.0" x2="780" y2="255.0" stroke="#2a2a4a" stroke-width="1"/>
+<text x="49" y="259.0" fill="#aaaacc" font-size="11" text-anchor="end">1.6</text>
+<line x1="55" y1="208.0" x2="780" y2="208.0" stroke="#2a2a4a" stroke-width="1"/>
+<text x="49" y="212.0" fill="#aaaacc" font-size="11" text-anchor="end">1.8</text>
+<line x1="55" y1="161.0" x2="780" y2="161.0" stroke="#2a2a4a" stroke-width="1"/>
+<text x="49" y="165.0" fill="#aaaacc" font-size="11" text-anchor="end">2.0</text>
+<line x1="55" y1="114.0" x2="780" y2="114.0" stroke="#2a2a4a" stroke-width="1"/>
+<text x="49" y="118.0" fill="#aaaacc" font-size="11" text-anchor="end">2.2</text>
+<line x1="55" y1="67.0" x2="780" y2="67.0" stroke="#2a2a4a" stroke-width="1"/>
+<text x="49" y="71.0" fill="#aaaacc" font-size="11" text-anchor="end">2.4</text>
+<line x1="55" y1="20.0" x2="780" y2="20.0" stroke="#2a2a4a" stroke-width="1"/>
+<text x="49" y="24.0" fill="#aaaacc" font-size="11" text-anchor="end">2.6</text>
+<line x1="55.0" y1="20" x2="55.0" y2="255" stroke="#2a2a4a" stroke-width="1"/>
+<text x="55.0" y="290" fill="#aaaacc" font-size="11" text-anchor="middle">22:00</text>
+<line x1="175.8" y1="20" x2="175.8" y2="255" stroke="#2a2a4a" stroke-width="1"/>
+<text x="175.8" y="290" fill="#aaaacc" font-size="11" text-anchor="middle">22:29</text>
+<line x1="296.7" y1="20" x2="296.7" y2="255" stroke="#2a2a4a" stroke-width="1"/>
+<text x="296.7" y="290" fill="#aaaacc" font-size="11" text-anchor="middle">22:58</text>
+<line x1="417.5" y1="20" x2="417.5" y2="255" stroke="#2a2a4a" stroke-width="1"/>
+<text x="417.5" y="290" fill="#aaaacc" font-size="11" text-anchor="middle">23:27</text>
+<line x1="538.3" y1="20" x2="538.3" y2="255" stroke="#2a2a4a" stroke-width="1"/>
+<text x="538.3" y="290" fill="#aaaacc" font-size="11" text-anchor="middle">23:56</text>
+<line x1="659.2" y1="20" x2="659.2" y2="255" stroke="#2a2a4a" stroke-width="1"/>
+<text x="659.2" y="290" fill="#aaaacc" font-size="11" text-anchor="middle">00:25</text>
+<line x1="780.0" y1="20" x2="780.0" y2="255" stroke="#2a2a4a" stroke-width="1"/>
+<text x="780.0" y="290" fill="#aaaacc" font-size="11" text-anchor="middle">00:54</text>
+<line x1="55" y1="20" x2="55" y2="255" stroke="#555577" stroke-width="1"/>
+<line x1="55" y1="255" x2="780" y2="255" stroke="#555577" stroke-width="1"/>
+<text x="14" y="150" fill="#aaaacc" font-size="11" text-anchor="middle" transform="rotate(-90,14,150)">HFR (px)</text>
+<line x1="180.0" y1="20" x2="180.0" y2="255" stroke="#a78bfa" stroke-width="1" stroke-dasharray="4,3" opacity="0.7"/>
+<text x="183.0" y="32" fill="#a78bfa" font-size="9">AF</text>
+<polyline points="55.0,214.9 80.0,234.3 105.0,234.9 130.0,187.1 155.0,211.2 180.0,213.8 205.0,186.5 230.0,204.2 255.0,214.7 280.0,235.9 305.0,192.1 330.0,227.7 355.0,188.7 380.0,182.6 405.0,230.1 430.0,181.0 455.0,188.6 480.0,186.0 505.0,202.3 530.0,226.6 555.0,194.9 580.0,230.0 605.0,189.2 630.0,189.5 655.0,190.8 680.0,232.3 705.0,185.7 730.0,214.7 755.0,208.3 780.0,225.7" fill="none" stroke="#DCE1E8" stroke-width="2" stroke-linejoin="round"/>
+<circle cx="55.0" cy="214.9" r="3" fill="#DCE1E8"><title>22:00 — 1.77 px [L]</title></circle>
+<circle cx="80.0" cy="234.3" r="3" fill="#DCE1E8"><title>22:06 — 1.69 px [L]</title></circle>
+<circle cx="105.0" cy="234.9" r="3" fill="#DCE1E8"><title>22:12 — 1.69 px [L]</title></circle>
+<circle cx="130.0" cy="187.1" r="3" fill="#DCE1E8"><title>22:18 — 1.89 px [L]</title></circle>
+<circle cx="155.0" cy="211.2" r="3" fill="#DCE1E8"><title>22:24 — 1.79 px [L]</title></circle>
+<circle cx="180.0" cy="213.8" r="3" fill="#DCE1E8"><title>22:30 — 1.78 px [L]</title></circle>
+<circle cx="205.0" cy="186.5" r="3" fill="#DCE1E8"><title>22:36 — 1.89 px [L]</title></circle>
+<circle cx="230.0" cy="204.2" r="3" fill="#DCE1E8"><title>22:42 — 1.82 px [L]</title></circle>
+<circle cx="255.0" cy="214.7" r="3" fill="#DCE1E8"><title>22:48 — 1.77 px [L]</title></circle>
+<circle cx="280.0" cy="235.9" r="3" fill="#DCE1E8"><title>22:54 — 1.68 px [L]</title></circle>
+<circle cx="305.0" cy="192.1" r="3" fill="#DCE1E8"><title>23:00 — 1.87 px [L]</title></circle>
+<circle cx="330.0" cy="227.7" r="3" fill="#DCE1E8"><title>23:06 — 1.72 px [L]</title></circle>
+<circle cx="355.0" cy="188.7" r="3" fill="#DCE1E8"><title>23:12 — 1.88 px [L]</title></circle>
+<circle cx="380.0" cy="182.6" r="3" fill="#DCE1E8"><title>23:18 — 1.91 px [L]</title></circle>
+<circle cx="405.0" cy="230.1" r="3" fill="#DCE1E8"><title>23:24 — 1.71 px [L]</title></circle>
+<circle cx="430.0" cy="181.0" r="3" fill="#DCE1E8"><title>23:30 — 1.91 px [L]</title></circle>
+<circle cx="455.0" cy="188.6" r="3" fill="#DCE1E8"><title>23:36 — 1.88 px [L]</title></circle>
+<circle cx="480.0" cy="186.0" r="3" fill="#DCE1E8"><title>23:42 — 1.89 px [L]</title></circle>
+<circle cx="505.0" cy="202.3" r="3" fill="#DCE1E8"><title>23:48 — 1.82 px [L]</title></circle>
+<circle cx="530.0" cy="226.6" r="3" fill="#DCE1E8"><title>23:54 — 1.72 px [L]</title></circle>
+<circle cx="555.0" cy="194.9" r="3" fill="#DCE1E8"><title>00:00 — 1.86 px [L]</title></circle>
+<circle cx="580.0" cy="230.0" r="3" fill="#DCE1E8"><title>00:06 — 1.71 px [L]</title></circle>
+<circle cx="605.0" cy="189.2" r="3" fill="#DCE1E8"><title>00:12 — 1.88 px [L]</title></circle>
+<circle cx="630.0" cy="189.5" r="3" fill="#DCE1E8"><title>00:18 — 1.88 px [L]</title></circle>
+<circle cx="655.0" cy="190.8" r="3" fill="#DCE1E8"><title>00:24 — 1.87 px [L]</title></circle>
+<circle cx="680.0" cy="232.3" r="3" fill="#DCE1E8"><title>00:30 — 1.70 px [L]</title></circle>
+<circle cx="705.0" cy="185.7" r="3" fill="#DCE1E8"><title>00:36 — 1.90 px [L]</title></circle>
+<circle cx="730.0" cy="214.7" r="3" fill="#DCE1E8"><title>00:42 — 1.77 px [L]</title></circle>
+<circle cx="755.0" cy="208.3" r="3" fill="#DCE1E8"><title>00:48 — 1.80 px [L]</title></circle>
+<circle cx="780.0" cy="225.7" r="3" fill="#DCE1E8"><title>00:54 — 1.72 px [L]</title></circle>
+<polyline points="555.0,71.6 567.5,67.5 580.0,77.3 592.5,78.0 605.0,50.0" fill="none" stroke="#E53935" stroke-width="2" stroke-linejoin="round"/>
+<circle cx="555.0" cy="71.6" r="3" fill="#E53935"><title>00:00 — 2.38 px [Ha]</title></circle>
+<circle cx="567.5" cy="67.5" r="3" fill="#E53935"><title>00:03 — 2.40 px [Ha]</title></circle>
+<circle cx="580.0" cy="77.3" r="3" fill="#E53935"><title>00:06 — 2.36 px [Ha]</title></circle>
+<circle cx="592.5" cy="78.0" r="3" fill="#E53935"><title>00:09 — 2.35 px [Ha]</title></circle>
+<circle cx="605.0" cy="50.0" r="3" fill="#E53935"><title>00:12 — 2.47 px [Ha]</title></circle>
+<polyline points="680.0,20.0 696.7,20.0" fill="none" stroke="#C62828" stroke-width="2" stroke-linejoin="round"/>
+<circle cx="680.0" cy="20.0" r="3" fill="#C62828"><title>00:30 — 2.60 px [Sii]</title></circle>
+<circle cx="696.7" cy="20.0" r="3" fill="#C62828"><title>00:34 — 2.60 px [Sii]</title></circle>
+<circle cx="763.3" cy="43.5" r="3" fill="#00ACC1"><title>00:50 — 2.50 px [Oiii]</title></circle>
+<rect x="588" y="25" width="188" height="20" rx="3" fill="#1a1a2e" stroke="#2a2a4a" stroke-width="1" opacity="0.92"/>
+<line x1="591" y1="35" x2="603" y2="35" stroke="#DCE1E8" stroke-width="2"/>
+<circle cx="597" cy="35" r="3" fill="#DCE1E8"/>
+<text x="607" y="39" fill="#DCE1E8" font-size="10" font-weight="600">L</text>
+<line x1="626" y1="35" x2="638" y2="35" stroke="#E53935" stroke-width="2"/>
+<circle cx="632" cy="35" r="3" fill="#E53935"/>
+<text x="642" y="39" fill="#E53935" font-size="10" font-weight="600">Ha</text>
+<line x1="668" y1="35" x2="680" y2="35" stroke="#C62828" stroke-width="2"/>
+<circle cx="674" cy="35" r="3" fill="#C62828"/>
+<text x="684" y="39" fill="#C62828" font-size="10" font-weight="600">Sii</text>
+<line x1="717" y1="35" x2="729" y2="35" stroke="#00ACC1" stroke-width="2"/>
+<circle cx="723" cy="35" r="3" fill="#00ACC1"/>
+<text x="733" y="39" fill="#00ACC1" font-size="10" font-weight="600">Oiii</text>
 </svg>
 </div>
 <div class="ns-chart-svg" id="nsc0-svg-L" style="display:none"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" style="width:100%;max-width:800px;display:block;margin:0 auto 16px;font-family:sans-serif">

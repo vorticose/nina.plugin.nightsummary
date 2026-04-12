@@ -1095,8 +1095,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
             int ci = _chartIndex++;
             string pfx = $"nsc{ci}";
 
-            // Pre-render one SVG per visible state: "All filters" + one per filter
-            var allSvg = ChartGenerator.GenerateMetricChart(images, primary, secondary, xAxis, markers);
+            // Pre-render one SVG per visible state: "All", "Colors" (multi-curve), + one per filter
+            var allSvg    = ChartGenerator.GenerateMetricChart(images, primary, secondary, xAxis, markers);
+            var colorsSvg = ChartGenerator.GenerateMultiCurveChart(images, primary, xAxis, markers);
             var filterSvgs = filters.ToDictionary(
                 f => f,
                 f => ChartGenerator.GenerateMetricChart(
@@ -1104,26 +1105,31 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     primary, secondary, xAxis, markers));
 
             // ── Per-chart CSS ────────────────────────────────────────────────
-            // Active chip: whichever radio is :checked highlights its paired label.
-            // SVG visibility: only the selected state's container is display:block.
             sb.AppendLine("<style>");
 
-            // Active chip highlight rules
-            var activeSelectors = new[] { $"#{pfx}-all:checked ~ .{pfx}-bar label[for=\"{pfx}-all\"]" }
+            // Active chip highlight — All, Colors, and each filter chip
+            var activeSelectors = new[] {
+                    $"#{pfx}-all:checked ~ .{pfx}-bar label[for=\"{pfx}-all\"]",
+                    $"#{pfx}-colors:checked ~ .{pfx}-bar label[for=\"{pfx}-colors\"]"
+                }
                 .Concat(filters.Select(f =>
                     $"#{pfx}-{ChartSafeId(f)}:checked ~ .{pfx}-bar label[for=\"{pfx}-{ChartSafeId(f)}\"]"));
             sb.AppendLine(string.Join(",\n", activeSelectors));
             sb.AppendLine("{ background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: bold; }");
 
-            // Hide all per-filter SVG containers by default (shown individually below)
-            sb.AppendLine(string.Join(", ", filters.Select(f => $"#{pfx}-svg-{ChartSafeId(f)}"))
+            // Hide Colors and per-filter SVG containers by default
+            sb.AppendLine($"#{pfx}-svg-colors, " +
+                string.Join(", ", filters.Select(f => $"#{pfx}-svg-{ChartSafeId(f)}"))
                 + " { display: none; }");
 
-            // Show/hide rules per filter chip
+            // Colors chip: hide All, show Colors
+            sb.AppendLine($"#{pfx}-colors:checked ~ #{pfx}-svg-all {{ display: none; }}");
+            sb.AppendLine($"#{pfx}-colors:checked ~ #{pfx}-svg-colors {{ display: block !important; }}");
+
+            // Per-filter chips: hide All, show their SVG
             foreach (var f in filters) {
                 string fid = ChartSafeId(f);
                 sb.AppendLine($"#{pfx}-{fid}:checked ~ #{pfx}-svg-all {{ display: none; }}");
-                // !important needed to override the inline style="display:none" on per-filter containers
                 sb.AppendLine($"#{pfx}-{fid}:checked ~ #{pfx}-svg-{fid} {{ display: block !important; }}");
             }
             sb.AppendLine("</style>");
@@ -1131,22 +1137,25 @@ namespace NINA.Plugin.NightSummary.Reporting {
             // ── HTML structure ───────────────────────────────────────────────
             sb.AppendLine($"<div class=\"metric-chart-container\">");
 
-            // Radio inputs — hidden but still toggled by their paired labels
+            // Radio inputs
             sb.AppendLine($"<input type=\"radio\" name=\"{pfx}\" id=\"{pfx}-all\" checked style=\"display:none\">");
+            sb.AppendLine($"<input type=\"radio\" name=\"{pfx}\" id=\"{pfx}-colors\" style=\"display:none\">");
             foreach (var f in filters)
                 sb.AppendLine($"<input type=\"radio\" name=\"{pfx}\" id=\"{pfx}-{ChartSafeId(f)}\" style=\"display:none\">");
 
-            // Chip bar (labels styled identically to the old JS buttons)
+            // Chip bar: All → Colors → per-filter chips
             sb.Append($"<div class=\"ns-chart-filter-bar {pfx}-bar\">");
             sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-all\">All</label>");
+            sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-colors\">Colors</label>");
             foreach (var f in filters) {
                 var encoded = WebUtility.HtmlEncode(f);
                 sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-{ChartSafeId(f)}\" title=\"{encoded}\">{encoded}</label>");
             }
             sb.AppendLine("</div>");
 
-            // SVG containers — "All" visible by default, per-filter hidden
+            // SVG containers
             sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-all\">{allSvg}</div>");
+            sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-colors\" style=\"display:none\">{colorsSvg}</div>");
             foreach (var f in filters)
                 sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-{ChartSafeId(f)}\" style=\"display:none\">{filterSvgs[f]}</div>");
 

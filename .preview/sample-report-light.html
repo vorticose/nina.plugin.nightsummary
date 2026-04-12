@@ -204,13 +204,6 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
 <tr><td>B</td><td>10</td><td>300s</td><td>50m</td></tr>
 <tr><td><strong>Total</strong></td><td><strong>40</strong></td><td></td><td><strong>3h 20m</strong></td></tr>
 </table>
-<div title='CV (Coefficient of Variation) measures consistency as a percentage of the mean. Lower values indicate more stable conditions. Star count CV is calculated per target and filter type.' style='cursor:help;'>
-<p style='margin: 12px 0 4px; font-size: 13px; color: var(--accent-light);'><strong>Star Count Consistency</strong></p>
-<table class='star-count-table'>
-<tr><th>Broadband CV</th><th>Narrowband CV</th></tr>
-<tr><td>0%</td><td>—</td></tr>
-</table>
-</div>
 </div>
 <div class='target-section'>
 <h2>Session Image Quality</h2>
@@ -242,12 +235,15 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
 <h2>HFR and FWHM Vs. Time</h2>
 <style>
 #nsc0-all:checked ~ .nsc0-bar label[for="nsc0-all"],
+#nsc0-colors:checked ~ .nsc0-bar label[for="nsc0-colors"],
 #nsc0-L:checked ~ .nsc0-bar label[for="nsc0-L"],
 #nsc0-R:checked ~ .nsc0-bar label[for="nsc0-R"],
 #nsc0-G:checked ~ .nsc0-bar label[for="nsc0-G"],
 #nsc0-B:checked ~ .nsc0-bar label[for="nsc0-B"]
 { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: bold; }
-#nsc0-svg-L, #nsc0-svg-R, #nsc0-svg-G, #nsc0-svg-B { display: none; }
+#nsc0-svg-colors, #nsc0-svg-L, #nsc0-svg-R, #nsc0-svg-G, #nsc0-svg-B { display: none; }
+#nsc0-colors:checked ~ #nsc0-svg-all { display: none; }
+#nsc0-colors:checked ~ #nsc0-svg-colors { display: block !important; }
 #nsc0-L:checked ~ #nsc0-svg-all { display: none; }
 #nsc0-L:checked ~ #nsc0-svg-L { display: block !important; }
 #nsc0-R:checked ~ #nsc0-svg-all { display: none; }
@@ -259,11 +255,12 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
 </style>
 <div class="metric-chart-container">
 <input type="radio" name="nsc0" id="nsc0-all" checked style="display:none">
+<input type="radio" name="nsc0" id="nsc0-colors" style="display:none">
 <input type="radio" name="nsc0" id="nsc0-L" style="display:none">
 <input type="radio" name="nsc0" id="nsc0-R" style="display:none">
 <input type="radio" name="nsc0" id="nsc0-G" style="display:none">
 <input type="radio" name="nsc0" id="nsc0-B" style="display:none">
-<div class="ns-chart-filter-bar nsc0-bar"><label class="ns-chart-filter-btn" for="nsc0-all">All</label><label class="ns-chart-filter-btn" for="nsc0-L" title="L">L</label><label class="ns-chart-filter-btn" for="nsc0-R" title="R">R</label><label class="ns-chart-filter-btn" for="nsc0-G" title="G">G</label><label class="ns-chart-filter-btn" for="nsc0-B" title="B">B</label></div>
+<div class="ns-chart-filter-bar nsc0-bar"><label class="ns-chart-filter-btn" for="nsc0-all">All</label><label class="ns-chart-filter-btn" for="nsc0-colors">Colors</label><label class="ns-chart-filter-btn" for="nsc0-L" title="L">L</label><label class="ns-chart-filter-btn" for="nsc0-R" title="R">R</label><label class="ns-chart-filter-btn" for="nsc0-G" title="G">G</label><label class="ns-chart-filter-btn" for="nsc0-B" title="B">B</label></div>
 <div class="ns-chart-svg" id="nsc0-svg-all"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" style="width:100%;max-width:800px;display:block;margin:0 auto 16px;font-family:sans-serif">
 <style>circle, .evt-hit { cursor: pointer; }</style>
 <rect width="800" height="300" fill="#f5f5f5" rx="6"/>
@@ -395,6 +392,103 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
 <circle cx="703.0" cy="127.4" r="3" fill="#1a4f9e"><title>23:51 — 2.3 px [R]</title></circle>
 <circle cx="720.5" cy="113.5" r="3" fill="#1a4f9e"><title>23:54 — 2.4 px [G]</title></circle>
 <circle cx="738.0" cy="56.8" r="3" fill="#1a4f9e"><title>23:57 — 2.6 px [B]</title></circle>
+</svg>
+</div>
+<div class="ns-chart-svg" id="nsc0-svg-colors" style="display:none"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" style="width:100%;max-width:800px;display:block;margin:0 auto 16px;font-family:sans-serif">
+<style>circle { cursor: pointer; }</style>
+<rect width="800" height="300" fill="#f5f5f5" rx="6"/>
+<line x1="55" y1="255.0" x2="780" y2="255.0" stroke="#c8cdd4" stroke-width="1"/>
+<text x="49" y="259.0" fill="#555577" font-size="11" text-anchor="end">1.8</text>
+<line x1="55" y1="208.0" x2="780" y2="208.0" stroke="#c8cdd4" stroke-width="1"/>
+<text x="49" y="212.0" fill="#555577" font-size="11" text-anchor="end">2.0</text>
+<line x1="55" y1="161.0" x2="780" y2="161.0" stroke="#c8cdd4" stroke-width="1"/>
+<text x="49" y="165.0" fill="#555577" font-size="11" text-anchor="end">2.2</text>
+<line x1="55" y1="114.0" x2="780" y2="114.0" stroke="#c8cdd4" stroke-width="1"/>
+<text x="49" y="118.0" fill="#555577" font-size="11" text-anchor="end">2.4</text>
+<line x1="55" y1="67.0" x2="780" y2="67.0" stroke="#c8cdd4" stroke-width="1"/>
+<text x="49" y="71.0" fill="#555577" font-size="11" text-anchor="end">2.6</text>
+<line x1="55" y1="20.0" x2="780" y2="20.0" stroke="#c8cdd4" stroke-width="1"/>
+<text x="49" y="24.0" fill="#555577" font-size="11" text-anchor="end">2.8</text>
+<line x1="55.0" y1="20" x2="55.0" y2="255" stroke="#c8cdd4" stroke-width="1"/>
+<text x="55.0" y="290" fill="#555577" font-size="11" text-anchor="middle">22:00</text>
+<line x1="175.8" y1="20" x2="175.8" y2="255" stroke="#c8cdd4" stroke-width="1"/>
+<text x="175.8" y="290" fill="#555577" font-size="11" text-anchor="middle">22:19</text>
+<line x1="296.7" y1="20" x2="296.7" y2="255" stroke="#c8cdd4" stroke-width="1"/>
+<text x="296.7" y="290" fill="#555577" font-size="11" text-anchor="middle">22:39</text>
+<line x1="417.5" y1="20" x2="417.5" y2="255" stroke="#c8cdd4" stroke-width="1"/>
+<text x="417.5" y="290" fill="#555577" font-size="11" text-anchor="middle">22:58</text>
+<line x1="538.3" y1="20" x2="538.3" y2="255" stroke="#c8cdd4" stroke-width="1"/>
+<text x="538.3" y="290" fill="#555577" font-size="11" text-anchor="middle">23:18</text>
+<line x1="659.2" y1="20" x2="659.2" y2="255" stroke="#c8cdd4" stroke-width="1"/>
+<text x="659.2" y="290" fill="#555577" font-size="11" text-anchor="middle">23:37</text>
+<line x1="780.0" y1="20" x2="780.0" y2="255" stroke="#c8cdd4" stroke-width="1"/>
+<text x="780.0" y="290" fill="#555577" font-size="11" text-anchor="middle">23:57</text>
+<line x1="55" y1="20" x2="55" y2="255" stroke="#666688" stroke-width="1"/>
+<line x1="55" y1="255" x2="780" y2="255" stroke="#666688" stroke-width="1"/>
+<text x="14" y="150" fill="#555577" font-size="11" text-anchor="middle" transform="rotate(-90,14,150)">HFR (px)</text>
+<line x1="129.4" y1="20" x2="129.4" y2="255" stroke="#7c3aed" stroke-width="1" stroke-dasharray="4,3" opacity="0.7"/>
+<text x="132.4" y="32" fill="#7c3aed" font-size="9">AF</text>
+<line x1="612.7" y1="20" x2="612.7" y2="255" stroke="#7c3aed" stroke-width="1" stroke-dasharray="4,3" opacity="0.7"/>
+<text x="615.7" y="32" fill="#7c3aed" font-size="9">AF</text>
+<line x1="426.8" y1="20" x2="426.8" y2="255" stroke="#d97706" stroke-width="1" stroke-dasharray="4,3" opacity="0.7"/>
+<text x="429.8" y="32" fill="#d97706" font-size="9">MF</text>
+<polyline points="55.0,249.1 129.4,247.8 203.7,229.8 278.1,222.5 352.4,235.6 426.8,229.7 501.2,212.7 575.5,201.5 649.9,215.5 724.2,201.6" fill="none" stroke="#DCE1E8" stroke-width="2" stroke-linejoin="round"/>
+<circle cx="55.0" cy="249.1" r="3" fill="#DCE1E8"><title>22:00 — 1.83 px [L]</title></circle>
+<circle cx="129.4" cy="247.8" r="3" fill="#DCE1E8"><title>22:12 — 1.83 px [L]</title></circle>
+<circle cx="203.7" cy="229.8" r="3" fill="#DCE1E8"><title>22:24 — 1.91 px [L]</title></circle>
+<circle cx="278.1" cy="222.5" r="3" fill="#DCE1E8"><title>22:36 — 1.94 px [L]</title></circle>
+<circle cx="352.4" cy="235.6" r="3" fill="#DCE1E8"><title>22:48 — 1.88 px [L]</title></circle>
+<circle cx="426.8" cy="229.7" r="3" fill="#DCE1E8"><title>23:00 — 1.91 px [L]</title></circle>
+<circle cx="501.2" cy="212.7" r="3" fill="#DCE1E8"><title>23:12 — 1.98 px [L]</title></circle>
+<circle cx="575.5" cy="201.5" r="3" fill="#DCE1E8"><title>23:24 — 2.03 px [L]</title></circle>
+<circle cx="649.9" cy="215.5" r="3" fill="#DCE1E8"><title>23:36 — 1.97 px [L]</title></circle>
+<circle cx="724.2" cy="201.6" r="3" fill="#DCE1E8"><title>23:48 — 2.03 px [L]</title></circle>
+<polyline points="73.6,207.2 147.9,209.4 222.3,186.5 296.7,176.1 371.0,174.6 445.4,180.9 519.7,182.9 594.1,171.3 668.5,157.5 742.8,127.4" fill="none" stroke="#FF7043" stroke-width="2" stroke-linejoin="round"/>
+<circle cx="73.6" cy="207.2" r="3" fill="#FF7043"><title>22:03 — 2.00 px [R]</title></circle>
+<circle cx="147.9" cy="209.4" r="3" fill="#FF7043"><title>22:15 — 1.99 px [R]</title></circle>
+<circle cx="222.3" cy="186.5" r="3" fill="#FF7043"><title>22:27 — 2.09 px [R]</title></circle>
+<circle cx="296.7" cy="176.1" r="3" fill="#FF7043"><title>22:39 — 2.14 px [R]</title></circle>
+<circle cx="371.0" cy="174.6" r="3" fill="#FF7043"><title>22:51 — 2.14 px [R]</title></circle>
+<circle cx="445.4" cy="180.9" r="3" fill="#FF7043"><title>23:03 — 2.12 px [R]</title></circle>
+<circle cx="519.7" cy="182.9" r="3" fill="#FF7043"><title>23:15 — 2.11 px [R]</title></circle>
+<circle cx="594.1" cy="171.3" r="3" fill="#FF7043"><title>23:27 — 2.16 px [R]</title></circle>
+<circle cx="668.5" cy="157.5" r="3" fill="#FF7043"><title>23:39 — 2.21 px [R]</title></circle>
+<circle cx="742.8" cy="127.4" r="3" fill="#FF7043"><title>23:51 — 2.34 px [R]</title></circle>
+<polyline points="92.2,176.6 166.5,166.4 240.9,163.6 315.3,175.7 389.6,152.6 464.0,164.4 538.3,136.8 612.7,134.0 687.1,142.1 761.4,113.5" fill="none" stroke="#66BB6A" stroke-width="2" stroke-linejoin="round"/>
+<circle cx="92.2" cy="176.6" r="3" fill="#66BB6A"><title>22:06 — 2.13 px [G]</title></circle>
+<circle cx="166.5" cy="166.4" r="3" fill="#66BB6A"><title>22:18 — 2.18 px [G]</title></circle>
+<circle cx="240.9" cy="163.6" r="3" fill="#66BB6A"><title>22:30 — 2.19 px [G]</title></circle>
+<circle cx="315.3" cy="175.7" r="3" fill="#66BB6A"><title>22:42 — 2.14 px [G]</title></circle>
+<circle cx="389.6" cy="152.6" r="3" fill="#66BB6A"><title>22:54 — 2.24 px [G]</title></circle>
+<circle cx="464.0" cy="164.4" r="3" fill="#66BB6A"><title>23:06 — 2.19 px [G]</title></circle>
+<circle cx="538.3" cy="136.8" r="3" fill="#66BB6A"><title>23:18 — 2.30 px [G]</title></circle>
+<circle cx="612.7" cy="134.0" r="3" fill="#66BB6A"><title>23:30 — 2.31 px [G]</title></circle>
+<circle cx="687.1" cy="142.1" r="3" fill="#66BB6A"><title>23:42 — 2.28 px [G]</title></circle>
+<circle cx="761.4" cy="113.5" r="3" fill="#66BB6A"><title>23:54 — 2.40 px [G]</title></circle>
+<polyline points="110.8,128.3 185.1,142.7 259.5,139.6 333.8,106.4 408.2,112.1 482.6,91.8 556.9,80.1 631.3,73.8 705.6,71.4 780.0,56.8" fill="none" stroke="#42A5F5" stroke-width="2" stroke-linejoin="round"/>
+<circle cx="110.8" cy="128.3" r="3" fill="#42A5F5"><title>22:09 — 2.34 px [B]</title></circle>
+<circle cx="185.1" cy="142.7" r="3" fill="#42A5F5"><title>22:21 — 2.28 px [B]</title></circle>
+<circle cx="259.5" cy="139.6" r="3" fill="#42A5F5"><title>22:33 — 2.29 px [B]</title></circle>
+<circle cx="333.8" cy="106.4" r="3" fill="#42A5F5"><title>22:45 — 2.43 px [B]</title></circle>
+<circle cx="408.2" cy="112.1" r="3" fill="#42A5F5"><title>22:57 — 2.41 px [B]</title></circle>
+<circle cx="482.6" cy="91.8" r="3" fill="#42A5F5"><title>23:09 — 2.49 px [B]</title></circle>
+<circle cx="556.9" cy="80.1" r="3" fill="#42A5F5"><title>23:21 — 2.54 px [B]</title></circle>
+<circle cx="631.3" cy="73.8" r="3" fill="#42A5F5"><title>23:33 — 2.57 px [B]</title></circle>
+<circle cx="705.6" cy="71.4" r="3" fill="#42A5F5"><title>23:45 — 2.58 px [B]</title></circle>
+<circle cx="780.0" cy="56.8" r="3" fill="#42A5F5"><title>23:57 — 2.64 px [B]</title></circle>
+<rect x="630" y="25" width="146" height="20" rx="3" fill="#f5f5f5" stroke="#c8cdd4" stroke-width="1" opacity="0.92"/>
+<line x1="633" y1="35" x2="645" y2="35" stroke="#DCE1E8" stroke-width="2"/>
+<circle cx="639" cy="35" r="3" fill="#DCE1E8"/>
+<text x="649" y="39" fill="#DCE1E8" font-size="10" font-weight="600">L</text>
+<line x1="668" y1="35" x2="680" y2="35" stroke="#FF7043" stroke-width="2"/>
+<circle cx="674" cy="35" r="3" fill="#FF7043"/>
+<text x="684" y="39" fill="#FF7043" font-size="10" font-weight="600">R</text>
+<line x1="703" y1="35" x2="715" y2="35" stroke="#66BB6A" stroke-width="2"/>
+<circle cx="709" cy="35" r="3" fill="#66BB6A"/>
+<text x="719" y="39" fill="#66BB6A" font-size="10" font-weight="600">G</text>
+<line x1="738" y1="35" x2="750" y2="35" stroke="#42A5F5" stroke-width="2"/>
+<circle cx="744" cy="35" r="3" fill="#42A5F5"/>
+<text x="754" y="39" fill="#42A5F5" font-size="10" font-weight="600">B</text>
 </svg>
 </div>
 <div class="ns-chart-svg" id="nsc0-svg-L" style="display:none"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" style="width:100%;max-width:800px;display:block;margin:0 auto 16px;font-family:sans-serif">
