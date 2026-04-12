@@ -1123,7 +1123,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
             foreach (var f in filters) {
                 string fid = ChartSafeId(f);
                 sb.AppendLine($"#{pfx}-{fid}:checked ~ #{pfx}-svg-all {{ display: none; }}");
-                sb.AppendLine($"#{pfx}-{fid}:checked ~ #{pfx}-svg-{fid} {{ display: block; }}");
+                // !important needed to override the inline style="display:none" on per-filter containers
+                sb.AppendLine($"#{pfx}-{fid}:checked ~ #{pfx}-svg-{fid} {{ display: block !important; }}");
             }
             sb.AppendLine("</style>");
 
