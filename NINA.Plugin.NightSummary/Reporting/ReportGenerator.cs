@@ -1167,14 +1167,69 @@ namespace NINA.Plugin.NightSummary.Reporting {
         }
 
         /// <summary>
-        /// Builds the session event timeline as an inline SVG.
-        /// Shows target imaging bands and event markers (autofocus, roof open/close, meridian flip).
+        /// Builds the session event timeline section with a CSS-only toggle
+        /// between the simple flat-bar timeline and the altitude chart view.
+        /// Falls back to simple-only when observer coordinates are unavailable.
         /// </summary>
         private string BuildEventTimelineSection(ReportData data) {
-            var events = data.Events;
-            if (events == null || !events.Any()) return string.Empty;
+            if (!data.Images.Any()) return string.Empty;
 
-            return EventTimelineGenerator.GenerateTimeline(data.Session, data.Images, events);
+            var simpleHtml = EventTimelineGenerator.GenerateTimeline(data.Session, data.Images, data.Events ?? new List<SessionEvent>());
+            if (string.IsNullOrEmpty(simpleHtml)) return string.Empty;
+
+            var altitudeHtml = BuildSessionAltitudeChart(data);
+
+            // No altitude data → just show simple view without toggle
+            if (string.IsNullOrEmpty(altitudeHtml)) {
+                var sb0 = new StringBuilder();
+                sb0.AppendLine("<h2>Session Timeline</h2>");
+                sb0.AppendLine("<div class='timeline-container'>");
+                sb0.AppendLine(simpleHtml);
+                sb0.AppendLine("</div>");
+                return sb0.ToString();
+            }
+
+            // Both views available — emit CSS-only toggle
+            int ci = _chartIndex++;
+            string pfx = $"nsc{ci}";
+
+            var sb = new StringBuilder();
+            sb.AppendLine("<h2>Session Timeline</h2>");
+
+            // Toggle CSS
+            sb.AppendLine("<style>");
+            sb.AppendLine($"#{pfx}-altitude:checked ~ .{pfx}-bar label[for=\"{pfx}-altitude\"],");
+            sb.AppendLine($"#{pfx}-simple:checked ~ .{pfx}-bar label[for=\"{pfx}-simple\"]");
+            sb.AppendLine("{ background: var(--accent); color: var(--bg); border-color: var(--accent); }");
+            sb.AppendLine($"#{pfx}-svg-simple {{ display: none; }}");
+            sb.AppendLine($"#{pfx}-simple:checked ~ #{pfx}-svg-altitude {{ display: none; }}");
+            sb.AppendLine($"#{pfx}-simple:checked ~ #{pfx}-svg-simple {{ display: block !important; }}");
+            sb.AppendLine("</style>");
+
+            sb.AppendLine("<div class='timeline-container'>");
+
+            // Radio inputs
+            sb.AppendLine($"<input type=\"radio\" name=\"{pfx}\" id=\"{pfx}-altitude\" checked style=\"display:none\">");
+            sb.AppendLine($"<input type=\"radio\" name=\"{pfx}\" id=\"{pfx}-simple\" style=\"display:none\">");
+
+            // Chip bar
+            sb.Append($"<div class=\"ns-chart-filter-bar {pfx}-bar\">");
+            sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-altitude\">Altitude</label>");
+            sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-simple\">Simple</label>");
+            sb.AppendLine("</div>");
+
+            // Altitude view (default visible)
+            sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-altitude\">");
+            sb.AppendLine(altitudeHtml);
+            sb.AppendLine("</div>");
+
+            // Simple view (hidden by default)
+            sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-simple\" style=\"display:none\">");
+            sb.AppendLine(simpleHtml);
+            sb.AppendLine("</div>");
+
+            sb.AppendLine("</div>"); // timeline-container
+            return sb.ToString();
         }
 
         internal static string FormatRA(double raHours) {
@@ -1426,11 +1481,40 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     Logger.Warning($"NightSummary: Could not look up coordinates for preview targets: {ex.Message}");
                 }
 
-                // ── Altitude Chart ──
-                sb.AppendLine("<div class='timeline-container'>");
-                sb.AppendLine(BuildPreviewAltitudeChart(targets, colorMap, coordLookup,
-                    data.ObserverLatitude, data.ObserverLongitude, timelineStart, timelineEnd));
-                sb.AppendLine("</div>");
+                // ── Timeline with toggle (Altitude / Simple) ──
+                var altChart = BuildPreviewAltitudeChart(targets, colorMap, coordLookup,
+                    data.ObserverLatitude, data.ObserverLongitude, timelineStart, timelineEnd);
+                var simpleChart = BuildPreviewSimpleTimeline(entries, targets, colorMap, timelineStart, timelineEnd);
+
+                if (!string.IsNullOrEmpty(altChart) && !string.IsNullOrEmpty(simpleChart)) {
+                    int ci = _chartIndex++;
+                    string pfx = $"nsc{ci}";
+
+                    sb.AppendLine("<style>");
+                    sb.AppendLine($"#{pfx}-altitude:checked ~ .{pfx}-bar label[for=\"{pfx}-altitude\"],");
+                    sb.AppendLine($"#{pfx}-simple:checked ~ .{pfx}-bar label[for=\"{pfx}-simple\"]");
+                    sb.AppendLine("{ background: var(--accent); color: var(--bg); border-color: var(--accent); }");
+                    sb.AppendLine($"#{pfx}-svg-simple {{ display: none; }}");
+                    sb.AppendLine($"#{pfx}-simple:checked ~ #{pfx}-svg-altitude {{ display: none; }}");
+                    sb.AppendLine($"#{pfx}-simple:checked ~ #{pfx}-svg-simple {{ display: block !important; }}");
+                    sb.AppendLine("</style>");
+
+                    sb.AppendLine("<div class='timeline-container'>");
+                    sb.AppendLine($"<input type=\"radio\" name=\"{pfx}\" id=\"{pfx}-altitude\" checked style=\"display:none\">");
+                    sb.AppendLine($"<input type=\"radio\" name=\"{pfx}\" id=\"{pfx}-simple\" style=\"display:none\">");
+                    sb.Append($"<div class=\"ns-chart-filter-bar {pfx}-bar\">");
+                    sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-altitude\">Altitude</label>");
+                    sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-simple\">Simple</label>");
+                    sb.AppendLine("</div>");
+                    sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-altitude\">{altChart}</div>");
+                    sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-simple\" style=\"display:none\">{simpleChart}</div>");
+                    sb.AppendLine("</div>");
+                } else {
+                    // Fallback — show whichever is available
+                    sb.AppendLine("<div class='timeline-container'>");
+                    sb.AppendLine(!string.IsNullOrEmpty(altChart) ? altChart : simpleChart);
+                    sb.AppendLine("</div>");
+                }
 
                 // ── Per-target summary list ──
                 sb.AppendLine("<table style='margin-top:12px;'>");
@@ -1617,6 +1701,363 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 }
             }
             return segs;
+        }
+
+        /// <summary>
+        /// Simple flat-bar timeline for the Tonight's Preview section.
+        /// Colored blocks per target, crosshatch for wait/idle periods, time ruler.
+        /// Visual language matches EventTimelineGenerator but driven by TS preview data.
+        /// </summary>
+        private string BuildPreviewSimpleTimeline(
+            List<TsPreviewEntry> allEntries,
+            List<TsPreviewEntry> imagingBlocks,
+            Dictionary<string, string> colorMap,
+            DateTime timelineStart, DateTime timelineEnd) {
+
+            double totalSeconds = (timelineEnd - timelineStart).TotalSeconds;
+            if (totalSeconds <= 0) return string.Empty;
+
+            bool light = SettingsManager.Instance.Current.ReportLightMode;
+            string idleBg     = light ? "#d0d4da" : "#0f0f23";
+            string idleStripe = light ? "#b04040" : "#7a1a1a";
+            string tickColor  = light ? "#888" : "#555";
+            string labelColor = light ? "#666" : "#888";
+            string trackBg    = light ? "#e0e4ea" : "#0f0f23";
+
+            const int svgWidth   = 760;
+            const int trackHeight = 24;
+            const int topPad     = 10;
+            const int leftPad    = 8;
+            const int rightPad   = 8;
+            const int barAreaW   = svgWidth - leftPad - rightPad;
+            const int legendRowH = 20;
+
+            double TimeToX(DateTime t) =>
+                leftPad + (t - timelineStart).TotalSeconds / totalSeconds * barAreaW;
+
+            var uniqueTargets = imagingBlocks.Select(t => t.Name).Distinct().ToList();
+
+            int trackY   = topPad;
+            int rulerH   = 28;
+            int legendTop = trackY + trackHeight + rulerH + 8;
+            int legendHeight = 18 + uniqueTargets.Count * legendRowH;
+            int svgHeight = legendTop + legendHeight + 10;
+
+            string legendText = light ? "#1a1a2e" : "#e0e0e0";
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"<svg viewBox='0 0 {svgWidth} {svgHeight}' xmlns='http://www.w3.org/2000/svg' style='width:100%;font-family:Arial,sans-serif;font-size:11px;'>");
+
+            // Idle crosshatch pattern
+            sb.AppendLine("<defs>");
+            sb.AppendLine("  <pattern id='ns-idle-pv' patternUnits='userSpaceOnUse' width='8' height='8' patternTransform='rotate(45)'>");
+            sb.AppendLine($"    <rect width='8' height='8' fill='{idleBg}'/>");
+            sb.AppendLine($"    <line x1='0' y1='0' x2='0' y2='8' stroke='{idleStripe}' stroke-width='3'/>");
+            sb.AppendLine("  </pattern>");
+            sb.AppendLine("</defs>");
+
+            // Solid background track
+            sb.AppendLine($"<rect x='{leftPad}' y='{trackY}' width='{barAreaW}' height='{trackHeight}' rx='4' fill='{trackBg}' />");
+
+            // Crosshatch idle/wait gaps
+            var cursor = timelineStart;
+            foreach (var block in imagingBlocks) {
+                var bStart = block.StartTime < timelineStart ? timelineStart : block.StartTime;
+                if (bStart > cursor) {
+                    double gx1 = TimeToX(cursor), gx2 = TimeToX(bStart);
+                    sb.AppendLine($"<rect x='{gx1:F1}' y='{trackY}' width='{(gx2 - gx1):F1}' height='{trackHeight}' fill='url(#ns-idle-pv)' />");
+                }
+                if (block.EndTime > cursor) cursor = block.EndTime;
+            }
+            if (cursor < timelineEnd) {
+                double gx1 = TimeToX(cursor), gx2 = TimeToX(timelineEnd);
+                sb.AppendLine($"<rect x='{gx1:F1}' y='{trackY}' width='{(gx2 - gx1):F1}' height='{trackHeight}' fill='url(#ns-idle-pv)' />");
+            }
+
+            // Colored imaging bands
+            foreach (var block in imagingBlocks) {
+                var color = colorMap[block.Name];
+                var bStart = block.StartTime < timelineStart ? timelineStart : block.StartTime;
+                var bEnd   = block.EndTime   > timelineEnd   ? timelineEnd   : block.EndTime;
+                if (bStart >= bEnd) continue;
+                double x1 = TimeToX(bStart), x2 = TimeToX(bEnd);
+                double w = Math.Max(x2 - x1, 2);
+                sb.AppendLine($"<g><title>{block.Name}&#10;{bStart:HH:mm} – {bEnd:HH:mm}</title>");
+                sb.AppendLine($"<rect x='{x1:F1}' y='{trackY}' width='{w:F1}' height='{trackHeight}' fill='{color}' opacity='0.85'/>");
+                sb.AppendLine("</g>");
+            }
+
+            // Ruler-style time axis
+            int rulerY     = trackY + trackHeight;
+            int tickH      = 6;
+            int tickLabelY = rulerY + 20;
+            sb.AppendLine($"<line x1='{leftPad}' y1='{rulerY}' x2='{svgWidth - rightPad}' y2='{rulerY}' stroke='#444' stroke-width='1'/>");
+
+            double durationHours = totalSeconds / 3600.0;
+            int tickIntervalMins = durationHours < 2 ? 15 : durationHours < 5 ? 30 : 60;
+            var firstTick = new DateTime(timelineStart.Year, timelineStart.Month, timelineStart.Day, timelineStart.Hour, 0, 0);
+            while (firstTick <= timelineStart) firstTick = firstTick.AddMinutes(tickIntervalMins);
+            var tick = firstTick;
+            while (tick < timelineEnd) {
+                double tx = TimeToX(tick);
+                if (tx - leftPad > 40 && (svgWidth - rightPad) - tx > 40) {
+                    sb.AppendLine($"<line x1='{tx:F1}' y1='{rulerY}' x2='{tx:F1}' y2='{rulerY + tickH}' stroke='{tickColor}' stroke-width='1'/>");
+                    sb.AppendLine($"<text x='{tx:F1}' y='{tickLabelY}' fill='{labelColor}' text-anchor='middle'>{tick:HH:mm}</text>");
+                }
+                tick = tick.AddMinutes(tickIntervalMins);
+            }
+            sb.AppendLine($"<text x='{leftPad}' y='{tickLabelY}' fill='{labelColor}'>{timelineStart:HH:mm}</text>");
+            sb.AppendLine($"<text x='{svgWidth - rightPad}' y='{tickLabelY}' fill='{labelColor}' text-anchor='end'>{timelineEnd:HH:mm}</text>");
+
+            // Legend
+            int ly = legendTop;
+            sb.AppendLine($"<text x='{leftPad}' y='{ly + 12}' fill='#aaa' font-weight='bold'>Targets</text>");
+            ly += 18;
+            foreach (var name in uniqueTargets) {
+                var color = colorMap[name];
+                sb.AppendLine($"<rect x='{leftPad}' y='{ly}' width='14' height='12' fill='{color}' rx='2'/>");
+                sb.AppendLine($"<text x='{leftPad + 18}' y='{ly + 10}' fill='{legendText}'>{name}</text>");
+                ly += legendRowH;
+            }
+
+            sb.AppendLine("</svg>");
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Multi-target altitude chart for the Session Timeline section.
+        /// Same visual as the preview altitude chart, plus event markers (AF, MF, S, US)
+        /// as vertical dashed lines with labels, and crosshatch idle patterns.
+        /// </summary>
+        private string BuildSessionAltitudeChart(ReportData data) {
+            var images = data.Images;
+            if (!images.Any()) return string.Empty;
+            if (data.ObserverLatitude == 0 && data.ObserverLongitude == 0) return string.Empty;
+
+            var session = data.Session;
+            var sessionStart = session.SessionStart;
+            var sessionEnd   = session.SessionEnd;
+            double totalSeconds = (sessionEnd - sessionStart).TotalSeconds;
+            if (totalSeconds <= 0) return string.Empty;
+
+            bool light = SettingsManager.Instance.Current.ReportLightMode;
+
+            // Event marker colors (match ChartGenerator and EventTimelineGenerator)
+            string colorAF   = light ? "#7c3aed" : "#a78bfa";
+            string colorFlip = light ? "#d97706" : "#fbbf24";
+            string colorSafe = light ? "#059669" : "#34d399";
+            string colorUnsafe = light ? "#dc2626" : "#f87171";
+
+            // Idle crosshatch colors (match EventTimelineGenerator)
+            string idleBg     = light ? "#d0d4da" : "#0f0f23";
+            string idleStripe = light ? "#b04040" : "#7a1a1a";
+
+            // Build target list in chronological order and assign colors
+            var targets = images
+                .GroupBy(i => i.TargetName)
+                .OrderBy(g => g.Min(i => i.Timestamp))
+                .Select((g, idx) => (Name: g.Key, Color: PreviewColors[idx % PreviewColors.Length], Images: g.ToList()))
+                .ToList();
+
+            var colorMap = targets.ToDictionary(t => t.Name, t => t.Color);
+
+            // Build imaging blocks (same gap-merge logic as EventTimelineGenerator)
+            static DateTime EstimatedStart(ImageRecord r) =>
+                r.Timestamp.AddSeconds(-(r.ExposureDuration > 0 ? r.ExposureDuration : 60));
+
+            var allBlocks = new List<(string Name, string Color, DateTime Start, DateTime End)>();
+            foreach (var target in targets) {
+                var sorted = target.Images.OrderBy(i => i.Timestamp).ToList();
+                if (!sorted.Any()) continue;
+                var blockStart = EstimatedStart(sorted[0]);
+                var blockEnd   = sorted[0].Timestamp;
+                for (int i = 1; i <= sorted.Count; i++) {
+                    if (i < sorted.Count) {
+                        var gap = (EstimatedStart(sorted[i]) - blockEnd).TotalMinutes;
+                        if (gap <= 15) { blockEnd = sorted[i].Timestamp; continue; }
+                    }
+                    allBlocks.Add((target.Name, target.Color, blockStart, blockEnd));
+                    if (i < sorted.Count) {
+                        blockStart = EstimatedStart(sorted[i]);
+                        blockEnd   = sorted[i].Timestamp;
+                    }
+                }
+            }
+            allBlocks.Sort((a, b) => a.Start.CompareTo(b.Start));
+
+            // Look up RA/Dec from first image per target with valid coords
+            var coordLookup = new Dictionary<string, (double Ra, double Dec)>(StringComparer.OrdinalIgnoreCase);
+            foreach (var target in targets) {
+                var withCoords = target.Images.FirstOrDefault(i => i.RaHours != 0 || i.DecDegrees != 0);
+                if (withCoords != null)
+                    coordLookup[target.Name] = (withCoords.RaHours, withCoords.DecDegrees);
+            }
+
+            // SVG layout — identical to preview altitude chart
+            const int svgW = 760, padL = 38, padR = 10, padT = 20, padB = 28;
+            int plotW = svgW - padL - padR;
+            int plotH = 200;
+            int svgH  = padT + plotH + padB;
+            const double maxAlt = 90.0;
+            double totalMin = (sessionEnd - sessionStart).TotalMinutes;
+
+            double X(DateTime t) => padL + (t - sessionStart).TotalMinutes / totalMin * plotW;
+            double Y(double alt)  => padT + plotH - alt / maxAlt * plotH;
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"<svg viewBox='0 0 {svgW} {svgH}' xmlns='http://www.w3.org/2000/svg' style='width:100%;font-family:Arial,sans-serif;font-size:10px;'>");
+
+            // Idle crosshatch pattern definition
+            sb.AppendLine("<defs>");
+            sb.AppendLine("  <pattern id='ns-idle-alt' patternUnits='userSpaceOnUse' width='8' height='8' patternTransform='rotate(45)'>");
+            sb.AppendLine($"    <rect width='8' height='8' fill='{idleBg}'/>");
+            sb.AppendLine($"    <line x1='0' y1='0' x2='0' y2='8' stroke='{idleStripe}' stroke-width='3'/>");
+            sb.AppendLine("  </pattern>");
+            sb.AppendLine("</defs>");
+
+            // Background
+            sb.AppendLine($"<rect x='{padL}' y='{padT}' width='{plotW}' height='{plotH}' fill='{svgChartBg}' rx='4'/>");
+            sb.AppendLine($"<rect x='{padL}' y='{padT}' width='{plotW}' height='{plotH}' fill='none' stroke='{svgBorder}' stroke-width='1' rx='4'/>");
+
+            // Grid lines and altitude axis labels
+            foreach (var gridAlt in new[] { 30.0, 60.0 }) {
+                double gy = Y(gridAlt);
+                sb.AppendLine($"<line x1='{padL}' y1='{gy:F1}' x2='{padL + plotW}' y2='{gy:F1}' stroke='{svgBorder}' stroke-width='1'/>");
+                sb.AppendLine($"<text x='{padL - 4}' y='{gy + 4:F1}' text-anchor='end' fill='{svgMuted}'>{gridAlt:F0}°</text>");
+            }
+            sb.AppendLine($"<text x='{padL - 4}' y='{padT + 4}' text-anchor='end' fill='{svgMuted}'>90°</text>");
+            sb.AppendLine($"<text x='{padL - 4}' y='{padT + plotH + 4}' text-anchor='end' fill='{svgMuted}'>0°</text>");
+
+            // Idle crosshatch in gaps between imaging blocks
+            var cursor = sessionStart;
+            foreach (var block in allBlocks) {
+                if (block.Start > cursor) {
+                    double gx1 = X(cursor), gx2 = X(block.Start);
+                    sb.AppendLine($"<rect x='{gx1:F1}' y='{padT}' width='{(gx2 - gx1):F1}' height='{plotH}' fill='url(#ns-idle-alt)' opacity='0.4'/>");
+                }
+                if (block.End > cursor) cursor = block.End;
+            }
+            if (cursor < sessionEnd) {
+                double gx1 = X(cursor), gx2 = X(sessionEnd);
+                sb.AppendLine($"<rect x='{gx1:F1}' y='{padT}' width='{(gx2 - gx1):F1}' height='{plotH}' fill='url(#ns-idle-alt)' opacity='0.4'/>");
+            }
+
+            // Per-target imaging window shading — one vertical band per block
+            foreach (var block in allBlocks) {
+                var wStart = block.Start < sessionStart ? sessionStart : block.Start;
+                var wEnd   = block.End   > sessionEnd   ? sessionEnd   : block.End;
+                if (wStart >= wEnd) continue;
+                double bx1 = X(wStart), bx2 = X(wEnd);
+                sb.AppendLine($"<g><title>{block.Name}&#10;{wStart:HH:mm} – {wEnd:HH:mm}</title>");
+                sb.AppendLine($"<rect x='{bx1:F1}' y='{padT}' width='{(bx2 - bx1):F1}' height='{plotH}' fill='{block.Color}' opacity='0.15'/>");
+                sb.AppendLine($"<line x1='{bx1:F1}' y1='{padT}' x2='{bx1:F1}' y2='{padT + plotH}' stroke='{block.Color}' stroke-width='1' opacity='0.5'/>");
+                sb.AppendLine($"<line x1='{bx2:F1}' y1='{padT}' x2='{bx2:F1}' y2='{padT + plotH}' stroke='{block.Color}' stroke-width='1' opacity='0.5'/>");
+                sb.AppendLine("</g>");
+            }
+
+            // Moon altitude curve
+            if (SettingsManager.Instance.Current.ShowMoonCurve) {
+                var moonPts  = AltitudeCalculator.GetMoonAltitudeCurve(data.ObserverLatitude, data.ObserverLongitude, sessionStart, sessionEnd, stepMinutes: 5);
+                var moonSegs = BuildAltSegments(moonPts, maxAlt);
+                foreach (var seg in moonSegs) {
+                    if (seg.Count < 2) continue;
+                    var pts = new StringBuilder();
+                    foreach (var (t, alt) in seg) pts.Append($"{X(t):F1},{Y(alt):F1} ");
+                    sb.AppendLine("<g><title>Moon</title>");
+                    sb.AppendLine($"<polyline points='{pts}' fill='none' stroke='transparent' stroke-width='12'/>");
+                    sb.AppendLine($"<polyline points='{pts}' fill='none' stroke='{svgMoonStroke}' stroke-width='1.5' stroke-dasharray='5,4' opacity='{svgMoonOpacity}'/>");
+                    sb.AppendLine("</g>");
+                }
+            }
+
+            // Per-target altitude curves
+            foreach (var target in targets) {
+                if (!coordLookup.TryGetValue(target.Name, out var coords)) continue;
+                var altPts = AltitudeCalculator.GetAltitudeCurve(coords.Ra, coords.Dec,
+                    data.ObserverLatitude, data.ObserverLongitude,
+                    sessionStart, sessionEnd, stepMinutes: 5);
+                var segs = BuildAltSegments(altPts, maxAlt);
+                sb.AppendLine($"<g><title>{target.Name}</title>");
+                foreach (var seg in segs) {
+                    if (seg.Count < 2) continue;
+                    var pts = new StringBuilder();
+                    foreach (var (t, alt) in seg) pts.Append($"{X(t):F1},{Y(alt):F1} ");
+                    sb.AppendLine($"<polyline points='{pts}' fill='none' stroke='transparent' stroke-width='10'/>");
+                    sb.AppendLine($"<polyline points='{pts}' fill='none' stroke='{target.Color}' stroke-width='2'/>");
+                }
+                sb.AppendLine("</g>");
+            }
+
+            // Event markers — vertical dashed lines with labels at top + tooltips
+            var events = data.Events;
+            if (events != null) {
+                foreach (var evt in events) {
+                    if (evt.Timestamp < sessionStart || evt.Timestamp > sessionEnd) continue;
+                    double mx = X(evt.Timestamp);
+                    if (mx < padL || mx > padL + plotW) continue;
+                    var (color, label) = evt.EventType switch {
+                        "AutoFocus"    => (colorAF,     "AF"),
+                        "MeridianFlip" => (colorFlip,   "MF"),
+                        "RoofOpen"     => (colorSafe,   "S"),
+                        _              => (colorUnsafe,  "US")
+                    };
+                    string tipLabel = evt.EventType switch {
+                        "RoofOpen"   => "Safety monitor: safe",
+                        "RoofClosed" => "Safety monitor: unsafe",
+                        _            => evt.Description ?? evt.EventType
+                    };
+                    string tip = $"{label}: {tipLabel} @ {evt.Timestamp:HH:mm:ss}";
+                    sb.AppendLine($"<g><title>{tip}</title>");
+                    sb.AppendLine($"<line x1='{mx:F1}' y1='{padT}' x2='{mx:F1}' y2='{padT + plotH}' stroke='{color}' stroke-width='1' stroke-dasharray='4,3' opacity='0.7'/>");
+                    sb.AppendLine($"<line x1='{mx:F1}' y1='{padT}' x2='{mx:F1}' y2='{padT + plotH}' stroke='transparent' stroke-width='8'/>");
+                    sb.AppendLine($"<text x='{mx:F1}' y='{padT - 4}' fill='{color}' font-size='8' text-anchor='middle' opacity='0.85'>{label}</text>");
+                    sb.AppendLine("</g>");
+                }
+            }
+
+            // Time axis labels — edge labels + adaptive ticks
+            int timeLabelY = padT + plotH + 18;
+            sb.AppendLine($"<text x='{padL}' y='{timeLabelY}' text-anchor='start' fill='{svgMuted}'>{sessionStart:HH:mm}</text>");
+            sb.AppendLine($"<text x='{padL + plotW}' y='{timeLabelY}' text-anchor='end' fill='{svgMuted}'>{sessionEnd:HH:mm}</text>");
+            double durationHours = totalSeconds / 3600.0;
+            int tickIntervalHrs = durationHours < 4 ? 1 : 2;
+            var firstTick = new DateTime(sessionStart.Year, sessionStart.Month, sessionStart.Day, sessionStart.Hour, 0, 0).AddHours(tickIntervalHrs);
+            if (firstTick <= sessionStart) firstTick = firstTick.AddHours(tickIntervalHrs);
+            for (var tick = firstTick; tick < sessionEnd; tick = tick.AddHours(tickIntervalHrs)) {
+                double tx = X(tick);
+                if (tx - padL > 30 && (padL + plotW) - tx > 30)
+                    sb.AppendLine($"<text x='{tx:F1}' y='{timeLabelY}' text-anchor='middle' fill='{svgMuted}'>{tick:HH:mm}</text>");
+            }
+
+            sb.AppendLine("</svg>");
+
+            // Legend — target color chips + event marker legend
+            sb.AppendLine("<div style='margin-top:8px;display:flex;flex-wrap:wrap;gap:12px;'>");
+            foreach (var target in targets) {
+                sb.AppendLine($"<span style='display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);'>" +
+                              $"<span style='display:inline-block;width:16px;height:3px;background:{target.Color};border-radius:2px;flex-shrink:0;'></span>" +
+                              $"{target.Name}</span>");
+            }
+            // Event type legend chips
+            if (events != null) {
+                var eventTypes = events
+                    .Where(e => e.Timestamp >= sessionStart && e.Timestamp <= sessionEnd)
+                    .Select(e => e.EventType).Distinct().ToList();
+                foreach (var evtType in eventTypes) {
+                    var (c, lbl) = evtType switch {
+                        "AutoFocus"    => (colorAF,     "AutoFocus"),
+                        "MeridianFlip" => (colorFlip,   "Meridian Flip"),
+                        "RoofOpen"     => (colorSafe,   "Safe"),
+                        _              => (colorUnsafe,  "Unsafe")
+                    };
+                    sb.AppendLine($"<span style='display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);'>" +
+                                  $"<span style='display:inline-block;width:16px;border-top:2px dashed {c};flex-shrink:0;'></span>" +
+                                  $"{lbl}</span>");
+                }
+            }
+            sb.AppendLine("</div>");
+
+            return sb.ToString();
         }
 
         private string BuildFooter() {

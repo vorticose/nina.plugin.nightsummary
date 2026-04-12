@@ -78,9 +78,9 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
 .iq-expand { padding: 0 8px 8px; }
 .metric-chart-container { margin: 0 auto 16px; max-width: 800px; }
 .ns-chart-filter-bar { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 0 auto 8px; }
-.ns-chart-filter-btn { background: var(--surface); color: var(--muted); border: 1px solid var(--border); border-radius: 18px; padding: 5px 18px; font-size: 18px; font-family: inherit; cursor: pointer; transition: all 0.15s; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;}
+.ns-chart-filter-btn { background: var(--surface); color: var(--muted); border: 1px solid var(--border); border-radius: 18px; padding: 5px 18px; font-size: 18px; font-family: inherit; font-weight: bold; cursor: pointer; transition: all 0.15s; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;}
 .ns-chart-filter-btn:hover { border-color: var(--accent-light); color: var(--text); }
-.ns-chart-filter-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: bold; }
+.ns-chart-filter-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
 .ns-chart-svg { width: 100%; }
 </style></head><body>
 <div style='display:flex; align-items:center; gap:14px; border-bottom:2px solid var(--accent); padding-bottom:10px; margin-bottom:8px;'>
@@ -93,8 +93,74 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
 <p><strong>Profile:</strong> Test Profile</p>
 
 <h2>Session Timeline</h2>
-<div class='timeline-container' style='position:relative;'>
-<div id='ns-tooltip' style='display:none;position:fixed;background:#1e1e2e;color:#e0e0e0;padding:6px 10px;border-radius:6px;font-size:12px;font-family:Arial,sans-serif;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,0.6);z-index:9999;white-space:nowrap;'></div>
+<style>
+#nsc0-altitude:checked ~ .nsc0-bar label[for="nsc0-altitude"],
+#nsc0-simple:checked ~ .nsc0-bar label[for="nsc0-simple"]
+{ background: var(--accent); color: var(--bg); border-color: var(--accent); }
+#nsc0-svg-simple { display: none; }
+#nsc0-simple:checked ~ #nsc0-svg-altitude { display: none; }
+#nsc0-simple:checked ~ #nsc0-svg-simple { display: block !important; }
+</style>
+<div class='timeline-container'>
+<input type="radio" name="nsc0" id="nsc0-altitude" checked style="display:none">
+<input type="radio" name="nsc0" id="nsc0-simple" style="display:none">
+<div class="ns-chart-filter-bar nsc0-bar"><label class="ns-chart-filter-btn" for="nsc0-altitude">Altitude</label><label class="ns-chart-filter-btn" for="nsc0-simple">Simple</label></div>
+<div class="ns-chart-svg" id="nsc0-svg-altitude">
+<svg viewBox='0 0 760 248' xmlns='http://www.w3.org/2000/svg' style='width:100%;font-family:Arial,sans-serif;font-size:10px;'>
+<defs>
+  <pattern id='ns-idle-alt' patternUnits='userSpaceOnUse' width='8' height='8' patternTransform='rotate(45)'>
+    <rect width='8' height='8' fill='#0f0f23'/>
+    <line x1='0' y1='0' x2='0' y2='8' stroke='#7a1a1a' stroke-width='3'/>
+  </pattern>
+</defs>
+<rect x='38' y='20' width='712' height='200' fill='#0d1117' rx='4'/>
+<rect x='38' y='20' width='712' height='200' fill='none' stroke='#2d2d5e' stroke-width='1' rx='4'/>
+<line x1='38' y1='153.3' x2='750' y2='153.3' stroke='#2d2d5e' stroke-width='1'/>
+<text x='34' y='157.3' text-anchor='end' fill='#888'>30°</text>
+<line x1='38' y1='86.7' x2='750' y2='86.7' stroke='#2d2d5e' stroke-width='1'/>
+<text x='34' y='90.7' text-anchor='end' fill='#888'>60°</text>
+<text x='34' y='24' text-anchor='end' fill='#888'>90°</text>
+<text x='34' y='224' text-anchor='end' fill='#888'>0°</text>
+<rect x='38.0' y='20' width='108.8' height='200' fill='url(#ns-idle-alt)' opacity='0.4'/>
+<rect x='388.1' y='20' width='361.9' height='200' fill='url(#ns-idle-alt)' opacity='0.4'/>
+<g><title>NGC 7000&#10;21:55 – 23:57</title>
+<rect x='146.8' y='20' width='241.3' height='200' fill='#4e79a7' opacity='0.15'/>
+<line x1='146.8' y1='20' x2='146.8' y2='220' stroke='#4e79a7' stroke-width='1' opacity='0.5'/>
+<line x1='388.1' y1='20' x2='388.1' y2='220' stroke='#4e79a7' stroke-width='1' opacity='0.5'/>
+</g>
+<g><title>Moon</title>
+<polyline points='38.0,170.0 47.9,168.0 57.8,166.0 67.7,164.0 77.6,162.0 87.4,160.0 97.3,157.9 107.2,155.9 117.1,153.9 127.0,151.9 136.9,149.9 146.8,147.9 156.7,145.9 166.6,143.9 176.4,141.9 186.3,139.9 196.2,137.9 206.1,135.9 216.0,133.9 225.9,131.9 235.8,130.0 245.7,128.0 255.6,126.1 265.4,124.1 275.3,122.2 285.2,120.3 295.1,118.4 305.0,116.5 314.9,114.6 324.8,112.8 334.7,111.0 344.6,109.1 354.4,107.3 364.3,105.6 374.2,103.8 384.1,102.1 394.0,100.4 403.9,98.7 413.8,97.1 423.7,95.4 433.6,93.9 443.4,92.3 453.3,90.8 463.2,89.4 473.1,88.0 483.0,86.6 492.9,85.4 502.8,84.1 512.7,82.9 522.6,81.8 532.4,80.8 542.3,79.8 552.2,78.9 562.1,78.1 572.0,77.3 581.9,76.7 591.8,76.1 601.7,75.6 611.6,75.3 621.4,75.0 631.3,74.8 641.2,74.7 651.1,74.7 661.0,74.9 670.9,75.1 680.8,75.4 690.7,75.8 700.6,76.3 710.4,76.9 720.3,77.6 730.2,78.3 740.1,79.2 750.0,80.1 ' fill='none' stroke='transparent' stroke-width='12'/>
+<polyline points='38.0,170.0 47.9,168.0 57.8,166.0 67.7,164.0 77.6,162.0 87.4,160.0 97.3,157.9 107.2,155.9 117.1,153.9 127.0,151.9 136.9,149.9 146.8,147.9 156.7,145.9 166.6,143.9 176.4,141.9 186.3,139.9 196.2,137.9 206.1,135.9 216.0,133.9 225.9,131.9 235.8,130.0 245.7,128.0 255.6,126.1 265.4,124.1 275.3,122.2 285.2,120.3 295.1,118.4 305.0,116.5 314.9,114.6 324.8,112.8 334.7,111.0 344.6,109.1 354.4,107.3 364.3,105.6 374.2,103.8 384.1,102.1 394.0,100.4 403.9,98.7 413.8,97.1 423.7,95.4 433.6,93.9 443.4,92.3 453.3,90.8 463.2,89.4 473.1,88.0 483.0,86.6 492.9,85.4 502.8,84.1 512.7,82.9 522.6,81.8 532.4,80.8 542.3,79.8 552.2,78.9 562.1,78.1 572.0,77.3 581.9,76.7 591.8,76.1 601.7,75.6 611.6,75.3 621.4,75.0 631.3,74.8 641.2,74.7 651.1,74.7 661.0,74.9 670.9,75.1 680.8,75.4 690.7,75.8 700.6,76.3 710.4,76.9 720.3,77.6 730.2,78.3 740.1,79.2 750.0,80.1 ' fill='none' stroke='#c0c0c0' stroke-width='1.5' stroke-dasharray='5,4' opacity='0.45'/>
+</g>
+<g><title>AF: AF @ L @ 22:12:00</title>
+<line x1='180.4' y1='20' x2='180.4' y2='220' stroke='#a78bfa' stroke-width='1' stroke-dasharray='4,3' opacity='0.7'/>
+<line x1='180.4' y1='20' x2='180.4' y2='220' stroke='transparent' stroke-width='8'/>
+<text x='180.4' y='16' fill='#a78bfa' font-size='8' text-anchor='middle' opacity='0.85'>AF</text>
+</g>
+<g><title>MF: Meridian flip @ 23:00:00</title>
+<line x1='275.3' y1='20' x2='275.3' y2='220' stroke='#fbbf24' stroke-width='1' stroke-dasharray='4,3' opacity='0.7'/>
+<line x1='275.3' y1='20' x2='275.3' y2='220' stroke='transparent' stroke-width='8'/>
+<text x='275.3' y='16' fill='#fbbf24' font-size='8' text-anchor='middle' opacity='0.85'>MF</text>
+</g>
+<g><title>AF: AF @ R @ 23:30:00</title>
+<line x1='334.7' y1='20' x2='334.7' y2='220' stroke='#a78bfa' stroke-width='1' stroke-dasharray='4,3' opacity='0.7'/>
+<line x1='334.7' y1='20' x2='334.7' y2='220' stroke='transparent' stroke-width='8'/>
+<text x='334.7' y='16' fill='#a78bfa' font-size='8' text-anchor='middle' opacity='0.85'>AF</text>
+</g>
+<text x='38' y='238' text-anchor='start' fill='#888'>21:00</text>
+<text x='750' y='238' text-anchor='end' fill='#888'>03:00</text>
+<text x='275.3' y='238' text-anchor='middle' fill='#888'>23:00</text>
+<text x='512.7' y='238' text-anchor='middle' fill='#888'>01:00</text>
+</svg>
+<div style='margin-top:8px;display:flex;flex-wrap:wrap;gap:12px;'>
+<span style='display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);'><span style='display:inline-block;width:16px;height:3px;background:#4e79a7;border-radius:2px;flex-shrink:0;'></span>NGC 7000</span>
+<span style='display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);'><span style='display:inline-block;width:16px;border-top:2px dashed #a78bfa;flex-shrink:0;'></span>AutoFocus</span>
+<span style='display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);'><span style='display:inline-block;width:16px;border-top:2px dashed #fbbf24;flex-shrink:0;'></span>Meridian Flip</span>
+</div>
+
+</div>
+<div class="ns-chart-svg" id="nsc0-svg-simple" style="display:none">
+<div class='ns-tl-tip' style='display:none;position:fixed;background:#1e1e2e;color:#e0e0e0;padding:6px 10px;border-radius:6px;font-size:12px;font-family:Arial,sans-serif;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,0.6);z-index:9999;white-space:nowrap;'></div>
 <svg viewBox='0 0 760 182' xmlns='http://www.w3.org/2000/svg' style='width:100%;font-family:Arial,sans-serif;font-size:11px;'>
 <defs>
   <pattern id='ns-idle' patternUnits='userSpaceOnUse' width='8' height='8' patternTransform='rotate(45)'>
@@ -133,10 +199,11 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
 </svg>
 <script>
 (function() {
-  var tip = document.getElementById('ns-tooltip');
+  var root = document.currentScript.parentElement;
+  var tip = root.querySelector('.ns-tl-tip');
   if (!tip) return;
   var markers = [{x:156.8,tip:'22:12 — AF @ L'},{x:256.0,tip:'23:00 — Meridian flip'},{x:318.0,tip:'23:30 — AF @ R'}];
-  document.querySelectorAll('[data-tip]').forEach(function(el) {
+  root.querySelectorAll('[data-tip]').forEach(function(el) {
     el.addEventListener('mousemove', function(e) {
       tip.textContent = el.getAttribute('data-tip');
       tip.style.display = 'block';
@@ -147,11 +214,10 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
       tip.style.display = 'none';
     });
   });
-  var container = document.querySelector('.timeline-container');
-  if (container) {
-    var svg = container.querySelector('svg');
-    container.addEventListener('click', function(e) {
-      if (!svg || markers.length === 0) return;
+  var svg = root.querySelector('svg');
+  if (svg) {
+    root.addEventListener('click', function(e) {
+      if (markers.length === 0) return;
       var rect = svg.getBoundingClientRect();
       var svgW = 760;
       var scaleX = rect.width / svgW;
@@ -180,6 +246,8 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
   }
 })();
 </script>
+
+</div>
 </div>
 <h2>Session Overview</h2>
 <div style='display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:10px 0;'>
@@ -204,13 +272,6 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
 <tr><td>B</td><td>10</td><td>300s</td><td>50m</td></tr>
 <tr><td><strong>Total</strong></td><td><strong>40</strong></td><td></td><td><strong>3h 20m</strong></td></tr>
 </table>
-<div title='CV (Coefficient of Variation) measures consistency as a percentage of the mean. Lower values indicate more stable conditions. Star count CV is calculated per target and filter type.' style='cursor:help;'>
-<p style='margin: 12px 0 4px; font-size: 13px; color: var(--accent-light);'><strong>Star Count Consistency</strong></p>
-<table class='star-count-table'>
-<tr><th>Broadband CV</th><th>Narrowband CV</th></tr>
-<tr><td>0%</td><td>—</td></tr>
-</table>
-</div>
 </div>
 <div class='target-section'>
 <h2>Session Image Quality</h2>
@@ -241,30 +302,30 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
 </div>
 <h2>HFR and FWHM Vs. Time</h2>
 <style>
-#nsc0-all:checked ~ .nsc0-bar label[for="nsc0-all"],
-#nsc0-L:checked ~ .nsc0-bar label[for="nsc0-L"],
-#nsc0-R:checked ~ .nsc0-bar label[for="nsc0-R"],
-#nsc0-G:checked ~ .nsc0-bar label[for="nsc0-G"],
-#nsc0-B:checked ~ .nsc0-bar label[for="nsc0-B"]
-{ background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: bold; }
-#nsc0-svg-L, #nsc0-svg-R, #nsc0-svg-G, #nsc0-svg-B { display: none; }
-#nsc0-L:checked ~ #nsc0-svg-all { display: none; }
-#nsc0-L:checked ~ #nsc0-svg-L { display: block !important; }
-#nsc0-R:checked ~ #nsc0-svg-all { display: none; }
-#nsc0-R:checked ~ #nsc0-svg-R { display: block !important; }
-#nsc0-G:checked ~ #nsc0-svg-all { display: none; }
-#nsc0-G:checked ~ #nsc0-svg-G { display: block !important; }
-#nsc0-B:checked ~ #nsc0-svg-all { display: none; }
-#nsc0-B:checked ~ #nsc0-svg-B { display: block !important; }
+#nsc1-all:checked ~ .nsc1-bar label[for="nsc1-all"],
+#nsc1-L:checked ~ .nsc1-bar label[for="nsc1-L"],
+#nsc1-R:checked ~ .nsc1-bar label[for="nsc1-R"],
+#nsc1-G:checked ~ .nsc1-bar label[for="nsc1-G"],
+#nsc1-B:checked ~ .nsc1-bar label[for="nsc1-B"]
+{ background: var(--accent); color: var(--bg); border-color: var(--accent); }
+#nsc1-svg-L, #nsc1-svg-R, #nsc1-svg-G, #nsc1-svg-B { display: none; }
+#nsc1-L:checked ~ #nsc1-svg-all { display: none; }
+#nsc1-L:checked ~ #nsc1-svg-L { display: block !important; }
+#nsc1-R:checked ~ #nsc1-svg-all { display: none; }
+#nsc1-R:checked ~ #nsc1-svg-R { display: block !important; }
+#nsc1-G:checked ~ #nsc1-svg-all { display: none; }
+#nsc1-G:checked ~ #nsc1-svg-G { display: block !important; }
+#nsc1-B:checked ~ #nsc1-svg-all { display: none; }
+#nsc1-B:checked ~ #nsc1-svg-B { display: block !important; }
 </style>
 <div class="metric-chart-container">
-<input type="radio" name="nsc0" id="nsc0-all" checked style="display:none">
-<input type="radio" name="nsc0" id="nsc0-L" style="display:none">
-<input type="radio" name="nsc0" id="nsc0-R" style="display:none">
-<input type="radio" name="nsc0" id="nsc0-G" style="display:none">
-<input type="radio" name="nsc0" id="nsc0-B" style="display:none">
-<div class="ns-chart-filter-bar nsc0-bar"><label class="ns-chart-filter-btn" for="nsc0-all">All</label><label class="ns-chart-filter-btn" for="nsc0-L" title="L">L</label><label class="ns-chart-filter-btn" for="nsc0-R" title="R">R</label><label class="ns-chart-filter-btn" for="nsc0-G" title="G">G</label><label class="ns-chart-filter-btn" for="nsc0-B" title="B">B</label></div>
-<div class="ns-chart-svg" id="nsc0-svg-all"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" style="width:100%;max-width:800px;display:block;margin:0 auto 16px;font-family:sans-serif">
+<input type="radio" name="nsc1" id="nsc1-all" checked style="display:none">
+<input type="radio" name="nsc1" id="nsc1-L" style="display:none">
+<input type="radio" name="nsc1" id="nsc1-R" style="display:none">
+<input type="radio" name="nsc1" id="nsc1-G" style="display:none">
+<input type="radio" name="nsc1" id="nsc1-B" style="display:none">
+<div class="ns-chart-filter-bar nsc1-bar"><label class="ns-chart-filter-btn" for="nsc1-all">All</label><label class="ns-chart-filter-btn" for="nsc1-L" title="L">L</label><label class="ns-chart-filter-btn" for="nsc1-R" title="R">R</label><label class="ns-chart-filter-btn" for="nsc1-G" title="G">G</label><label class="ns-chart-filter-btn" for="nsc1-B" title="B">B</label></div>
+<div class="ns-chart-svg" id="nsc1-svg-all"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" style="width:100%;max-width:800px;display:block;margin:0 auto 16px;font-family:sans-serif">
 <style>circle, .evt-hit { cursor: pointer; }</style>
 <rect width="800" height="300" fill="#1a1a2e" rx="6"/>
 <line x1="55" y1="255.0" x2="738" y2="255.0" stroke="#2a2a4a" stroke-width="1"/>
@@ -305,14 +366,8 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
 <line x1="55" y1="255" x2="738" y2="255" stroke="#555577" stroke-width="1"/>
 <text x="14" y="150" fill="#aaaacc" font-size="11" text-anchor="middle" transform="rotate(-90,14,150)">HFR (px)</text>
 <line x1="125.1" y1="20" x2="125.1" y2="255" stroke="#a78bfa" stroke-width="1" stroke-dasharray="4,3" opacity="0.7"/>
-<line class="evt-hit" x1="125.1" y1="20" x2="125.1" y2="255" stroke="transparent" stroke-width="8"><title>AF: AF @ L @ 22:12:00</title></line>
-<text x="125.1" y="16" fill="#a78bfa" font-size="8" text-anchor="middle" opacity="0.85">AF</text>
 <line x1="580.4" y1="20" x2="580.4" y2="255" stroke="#a78bfa" stroke-width="1" stroke-dasharray="4,3" opacity="0.7"/>
-<line class="evt-hit" x1="580.4" y1="20" x2="580.4" y2="255" stroke="transparent" stroke-width="8"><title>AF: AF @ R @ 23:30:00</title></line>
-<text x="580.4" y="16" fill="#a78bfa" font-size="8" text-anchor="middle" opacity="0.85">AF</text>
 <line x1="405.3" y1="20" x2="405.3" y2="255" stroke="#fbbf24" stroke-width="1" stroke-dasharray="4,3" opacity="0.7"/>
-<line class="evt-hit" x1="405.3" y1="20" x2="405.3" y2="255" stroke="transparent" stroke-width="8"><title>MF: Meridian flip @ 23:00:00</title></line>
-<text x="405.3" y="16" fill="#fbbf24" font-size="8" text-anchor="middle" opacity="0.85">MF</text>
 <polyline points="55.0,239.9 72.5,168.8 90.0,137.2 107.5,96.7 125.1,231.0 142.6,155.9 160.1,131.0 177.6,95.4 195.1,221.2 212.6,159.9 230.1,127.7 247.6,85.6 265.2,229.1 282.7,141.1 300.2,134.5 317.7,73.4 335.2,206.3 352.7,150.6 370.2,118.3 387.7,66.8 405.3,219.4 422.8,147.6 440.3,114.8 457.8,68.4 475.3,214.8 492.8,144.5 510.3,120.2 527.8,63.2 545.4,209.3 562.9,129.6 580.4,106.9 597.9,55.6 615.4,184.9 632.9,118.4 650.4,101.0 667.9,61.2 685.5,187.0 703.0,112.4 720.5,100.1 738.0,44.7" fill="none" stroke="#f7a87e" stroke-width="2" stroke-linejoin="round" stroke-dasharray="6,3"/>
 <circle cx="55.0" cy="239.9" r="3" fill="#ffd4a8"><title>22:00 — 2.7" [L]</title></circle>
 <circle cx="72.5" cy="168.8" r="3" fill="#ffd4a8"><title>22:03 — 3.0" [R]</title></circle>
@@ -395,9 +450,15 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
 <circle cx="703.0" cy="127.4" r="3" fill="#a8d4ff"><title>23:51 — 2.3 px [R]</title></circle>
 <circle cx="720.5" cy="113.5" r="3" fill="#a8d4ff"><title>23:54 — 2.4 px [G]</title></circle>
 <circle cx="738.0" cy="56.8" r="3" fill="#a8d4ff"><title>23:57 — 2.6 px [B]</title></circle>
+<line x1="125.1" y1="20" x2="125.1" y2="255" stroke="transparent" stroke-width="8" pointer-events="all"><title>AF: AF @ L @ 22:12:00</title></line>
+<text x="125.1" y="16" fill="#a78bfa" font-size="8" text-anchor="middle" opacity="0.85" pointer-events="none">AF</text>
+<line x1="580.4" y1="20" x2="580.4" y2="255" stroke="transparent" stroke-width="8" pointer-events="all"><title>AF: AF @ R @ 23:30:00</title></line>
+<text x="580.4" y="16" fill="#a78bfa" font-size="8" text-anchor="middle" opacity="0.85" pointer-events="none">AF</text>
+<line x1="405.3" y1="20" x2="405.3" y2="255" stroke="transparent" stroke-width="8" pointer-events="all"><title>MF: Meridian flip @ 23:00:00</title></line>
+<text x="405.3" y="16" fill="#fbbf24" font-size="8" text-anchor="middle" opacity="0.85" pointer-events="none">MF</text>
 </svg>
 </div>
-<div class="ns-chart-svg" id="nsc0-svg-L" style="display:none"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" style="width:100%;max-width:800px;display:block;margin:0 auto 16px;font-family:sans-serif">
+<div class="ns-chart-svg" id="nsc1-svg-L" style="display:none"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" style="width:100%;max-width:800px;display:block;margin:0 auto 16px;font-family:sans-serif">
 <style>circle, .evt-hit { cursor: pointer; }</style>
 <rect width="800" height="300" fill="#1a1a2e" rx="6"/>
 <line x1="55" y1="255.0" x2="738" y2="255.0" stroke="#2a2a4a" stroke-width="1"/>
@@ -441,14 +502,8 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
 <line x1="55" y1="255" x2="738" y2="255" stroke="#555577" stroke-width="1"/>
 <text x="14" y="150" fill="#aaaacc" font-size="11" text-anchor="middle" transform="rotate(-90,14,150)">HFR (px)</text>
 <line x1="130.9" y1="20" x2="130.9" y2="255" stroke="#a78bfa" stroke-width="1" stroke-dasharray="4,3" opacity="0.7"/>
-<line class="evt-hit" x1="130.9" y1="20" x2="130.9" y2="255" stroke="transparent" stroke-width="8"><title>AF: AF @ L @ 22:12:00</title></line>
-<text x="130.9" y="16" fill="#a78bfa" font-size="8" text-anchor="middle" opacity="0.85">AF</text>
 <line x1="624.2" y1="20" x2="624.2" y2="255" stroke="#a78bfa" stroke-width="1" stroke-dasharray="4,3" opacity="0.7"/>
-<line class="evt-hit" x1="624.2" y1="20" x2="624.2" y2="255" stroke="transparent" stroke-width="8"><title>AF: AF @ R @ 23:30:00</title></line>
-<text x="624.2" y="16" fill="#a78bfa" font-size="8" text-anchor="middle" opacity="0.85">AF</text>
 <line x1="434.4" y1="20" x2="434.4" y2="255" stroke="#fbbf24" stroke-width="1" stroke-dasharray="4,3" opacity="0.7"/>
-<line class="evt-hit" x1="434.4" y1="20" x2="434.4" y2="255" stroke="transparent" stroke-width="8"><title>MF: Meridian flip @ 23:00:00</title></line>
-<text x="434.4" y="16" fill="#fbbf24" font-size="8" text-anchor="middle" opacity="0.85">MF</text>
 <polyline points="55.0,190.7 130.9,175.9 206.8,159.4 282.7,172.6 358.6,134.7 434.4,156.6 510.3,148.9 586.2,139.7 662.1,99.1 738.0,102.6" fill="none" stroke="#f7a87e" stroke-width="2" stroke-linejoin="round" stroke-dasharray="6,3"/>
 <circle cx="55.0" cy="190.7" r="3" fill="#ffd4a8"><title>22:00 — 2.7" [L]</title></circle>
 <circle cx="130.9" cy="175.9" r="3" fill="#ffd4a8"><title>22:12 — 2.7" [L]</title></circle>
@@ -471,9 +526,15 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
 <circle cx="586.2" cy="87.6" r="3" fill="#a8d4ff"><title>23:24 — 2.0 px [L]</title></circle>
 <circle cx="662.1" cy="110.9" r="3" fill="#a8d4ff"><title>23:36 — 2.0 px [L]</title></circle>
 <circle cx="738.0" cy="87.6" r="3" fill="#a8d4ff"><title>23:48 — 2.0 px [L]</title></circle>
+<line x1="130.9" y1="20" x2="130.9" y2="255" stroke="transparent" stroke-width="8" pointer-events="all"><title>AF: AF @ L @ 22:12:00</title></line>
+<text x="130.9" y="16" fill="#a78bfa" font-size="8" text-anchor="middle" opacity="0.85" pointer-events="none">AF</text>
+<line x1="624.2" y1="20" x2="624.2" y2="255" stroke="transparent" stroke-width="8" pointer-events="all"><title>AF: AF @ R @ 23:30:00</title></line>
+<text x="624.2" y="16" fill="#a78bfa" font-size="8" text-anchor="middle" opacity="0.85" pointer-events="none">AF</text>
+<line x1="434.4" y1="20" x2="434.4" y2="255" stroke="transparent" stroke-width="8" pointer-events="all"><title>MF: Meridian flip @ 23:00:00</title></line>
+<text x="434.4" y="16" fill="#fbbf24" font-size="8" text-anchor="middle" opacity="0.85" pointer-events="none">MF</text>
 </svg>
 </div>
-<div class="ns-chart-svg" id="nsc0-svg-R" style="display:none"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" style="width:100%;max-width:800px;display:block;margin:0 auto 16px;font-family:sans-serif">
+<div class="ns-chart-svg" id="nsc1-svg-R" style="display:none"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" style="width:100%;max-width:800px;display:block;margin:0 auto 16px;font-family:sans-serif">
 <style>circle, .evt-hit { cursor: pointer; }</style>
 <rect width="800" height="300" fill="#1a1a2e" rx="6"/>
 <line x1="55" y1="255.0" x2="738" y2="255.0" stroke="#2a2a4a" stroke-width="1"/>
@@ -517,14 +578,8 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
 <line x1="55" y1="255" x2="738" y2="255" stroke="#555577" stroke-width="1"/>
 <text x="14" y="150" fill="#aaaacc" font-size="11" text-anchor="middle" transform="rotate(-90,14,150)">HFR (px)</text>
 <line x1="111.9" y1="20" x2="111.9" y2="255" stroke="#a78bfa" stroke-width="1" stroke-dasharray="4,3" opacity="0.7"/>
-<line class="evt-hit" x1="111.9" y1="20" x2="111.9" y2="255" stroke="transparent" stroke-width="8"><title>AF: AF @ L @ 22:12:00</title></line>
-<text x="111.9" y="16" fill="#a78bfa" font-size="8" text-anchor="middle" opacity="0.85">AF</text>
 <line x1="605.2" y1="20" x2="605.2" y2="255" stroke="#a78bfa" stroke-width="1" stroke-dasharray="4,3" opacity="0.7"/>
-<line class="evt-hit" x1="605.2" y1="20" x2="605.2" y2="255" stroke="transparent" stroke-width="8"><title>AF: AF @ R @ 23:30:00</title></line>
-<text x="605.2" y="16" fill="#a78bfa" font-size="8" text-anchor="middle" opacity="0.85">AF</text>
 <line x1="415.5" y1="20" x2="415.5" y2="255" stroke="#fbbf24" stroke-width="1" stroke-dasharray="4,3" opacity="0.7"/>
-<line class="evt-hit" x1="415.5" y1="20" x2="415.5" y2="255" stroke="transparent" stroke-width="8"><title>MF: Meridian flip @ 23:00:00</title></line>
-<text x="415.5" y="16" fill="#fbbf24" font-size="8" text-anchor="middle" opacity="0.85">MF</text>
 <polyline points="55.0,189.7 130.9,168.1 206.8,174.8 282.7,143.4 358.6,159.3 434.4,154.4 510.3,149.1 586.2,124.3 662.1,105.7 738.0,95.7" fill="none" stroke="#f7a87e" stroke-width="2" stroke-linejoin="round" stroke-dasharray="6,3"/>
 <circle cx="55.0" cy="189.7" r="3" fill="#ffd4a8"><title>22:03 — 3.0" [R]</title></circle>
 <circle cx="130.9" cy="168.1" r="3" fill="#ffd4a8"><title>22:15 — 3.0" [R]</title></circle>
@@ -547,9 +602,15 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
 <circle cx="586.2" cy="154.6" r="3" fill="#a8d4ff"><title>23:27 — 2.2 px [R]</title></circle>
 <circle cx="662.1" cy="131.7" r="3" fill="#a8d4ff"><title>23:39 — 2.2 px [R]</title></circle>
 <circle cx="738.0" cy="81.5" r="3" fill="#a8d4ff"><title>23:51 — 2.3 px [R]</title></circle>
+<line x1="111.9" y1="20" x2="111.9" y2="255" stroke="transparent" stroke-width="8" pointer-events="all"><title>AF: AF @ L @ 22:12:00</title></line>
+<text x="111.9" y="16" fill="#a78bfa" font-size="8" text-anchor="middle" opacity="0.85" pointer-events="none">AF</text>
+<line x1="605.2" y1="20" x2="605.2" y2="255" stroke="transparent" stroke-width="8" pointer-events="all"><title>AF: AF @ R @ 23:30:00</title></line>
+<text x="605.2" y="16" fill="#a78bfa" font-size="8" text-anchor="middle" opacity="0.85" pointer-events="none">AF</text>
+<line x1="415.5" y1="20" x2="415.5" y2="255" stroke="transparent" stroke-width="8" pointer-events="all"><title>MF: Meridian flip @ 23:00:00</title></line>
+<text x="415.5" y="16" fill="#fbbf24" font-size="8" text-anchor="middle" opacity="0.85" pointer-events="none">MF</text>
 </svg>
 </div>
-<div class="ns-chart-svg" id="nsc0-svg-G" style="display:none"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" style="width:100%;max-width:800px;display:block;margin:0 auto 16px;font-family:sans-serif">
+<div class="ns-chart-svg" id="nsc1-svg-G" style="display:none"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" style="width:100%;max-width:800px;display:block;margin:0 auto 16px;font-family:sans-serif">
 <style>circle, .evt-hit { cursor: pointer; }</style>
 <rect width="800" height="300" fill="#1a1a2e" rx="6"/>
 <line x1="55" y1="255.0" x2="738" y2="255.0" stroke="#2a2a4a" stroke-width="1"/>
@@ -593,14 +654,8 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
 <line x1="55" y1="255" x2="738" y2="255" stroke="#555577" stroke-width="1"/>
 <text x="14" y="150" fill="#aaaacc" font-size="11" text-anchor="middle" transform="rotate(-90,14,150)">HFR (px)</text>
 <line x1="92.9" y1="20" x2="92.9" y2="255" stroke="#a78bfa" stroke-width="1" stroke-dasharray="4,3" opacity="0.7"/>
-<line class="evt-hit" x1="92.9" y1="20" x2="92.9" y2="255" stroke="transparent" stroke-width="8"><title>AF: AF @ L @ 22:12:00</title></line>
-<text x="92.9" y="16" fill="#a78bfa" font-size="8" text-anchor="middle" opacity="0.85">AF</text>
 <line x1="586.2" y1="20" x2="586.2" y2="255" stroke="#a78bfa" stroke-width="1" stroke-dasharray="4,3" opacity="0.7"/>
-<line class="evt-hit" x1="586.2" y1="20" x2="586.2" y2="255" stroke="transparent" stroke-width="8"><title>AF: AF @ R @ 23:30:00</title></line>
-<text x="586.2" y="16" fill="#a78bfa" font-size="8" text-anchor="middle" opacity="0.85">AF</text>
 <line x1="396.5" y1="20" x2="396.5" y2="255" stroke="#fbbf24" stroke-width="1" stroke-dasharray="4,3" opacity="0.7"/>
-<line class="evt-hit" x1="396.5" y1="20" x2="396.5" y2="255" stroke="transparent" stroke-width="8"><title>MF: Meridian flip @ 23:00:00</title></line>
-<text x="396.5" y="16" fill="#fbbf24" font-size="8" text-anchor="middle" opacity="0.85">MF</text>
 <polyline points="55.0,176.2 130.9,165.8 206.8,160.4 282.7,171.7 358.6,144.7 434.4,138.9 510.3,147.9 586.2,125.7 662.1,115.9 738.0,114.4" fill="none" stroke="#f7a87e" stroke-width="2" stroke-linejoin="round" stroke-dasharray="6,3"/>
 <circle cx="55.0" cy="176.2" r="3" fill="#ffd4a8"><title>22:06 — 3.1" [G]</title></circle>
 <circle cx="130.9" cy="165.8" r="3" fill="#ffd4a8"><title>22:18 — 3.1" [G]</title></circle>
@@ -623,9 +678,15 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
 <circle cx="586.2" cy="131.7" r="3" fill="#a8d4ff"><title>23:30 — 2.3 px [G]</title></circle>
 <circle cx="662.1" cy="145.1" r="3" fill="#a8d4ff"><title>23:42 — 2.3 px [G]</title></circle>
 <circle cx="738.0" cy="97.5" r="3" fill="#a8d4ff"><title>23:54 — 2.4 px [G]</title></circle>
+<line x1="92.9" y1="20" x2="92.9" y2="255" stroke="transparent" stroke-width="8" pointer-events="all"><title>AF: AF @ L @ 22:12:00</title></line>
+<text x="92.9" y="16" fill="#a78bfa" font-size="8" text-anchor="middle" opacity="0.85" pointer-events="none">AF</text>
+<line x1="586.2" y1="20" x2="586.2" y2="255" stroke="transparent" stroke-width="8" pointer-events="all"><title>AF: AF @ R @ 23:30:00</title></line>
+<text x="586.2" y="16" fill="#a78bfa" font-size="8" text-anchor="middle" opacity="0.85" pointer-events="none">AF</text>
+<line x1="396.5" y1="20" x2="396.5" y2="255" stroke="transparent" stroke-width="8" pointer-events="all"><title>MF: Meridian flip @ 23:00:00</title></line>
+<text x="396.5" y="16" fill="#fbbf24" font-size="8" text-anchor="middle" opacity="0.85" pointer-events="none">MF</text>
 </svg>
 </div>
-<div class="ns-chart-svg" id="nsc0-svg-B" style="display:none"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" style="width:100%;max-width:800px;display:block;margin:0 auto 16px;font-family:sans-serif">
+<div class="ns-chart-svg" id="nsc1-svg-B" style="display:none"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" style="width:100%;max-width:800px;display:block;margin:0 auto 16px;font-family:sans-serif">
 <style>circle, .evt-hit { cursor: pointer; }</style>
 <rect width="800" height="300" fill="#1a1a2e" rx="6"/>
 <line x1="55" y1="255.0" x2="738" y2="255.0" stroke="#2a2a4a" stroke-width="1"/>
@@ -669,14 +730,8 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
 <line x1="55" y1="255" x2="738" y2="255" stroke="#555577" stroke-width="1"/>
 <text x="14" y="150" fill="#aaaacc" font-size="11" text-anchor="middle" transform="rotate(-90,14,150)">HFR (px)</text>
 <line x1="74.0" y1="20" x2="74.0" y2="255" stroke="#a78bfa" stroke-width="1" stroke-dasharray="4,3" opacity="0.7"/>
-<line class="evt-hit" x1="74.0" y1="20" x2="74.0" y2="255" stroke="transparent" stroke-width="8"><title>AF: AF @ L @ 22:12:00</title></line>
-<text x="74.0" y="16" fill="#a78bfa" font-size="8" text-anchor="middle" opacity="0.85">AF</text>
 <line x1="567.2" y1="20" x2="567.2" y2="255" stroke="#a78bfa" stroke-width="1" stroke-dasharray="4,3" opacity="0.7"/>
-<line class="evt-hit" x1="567.2" y1="20" x2="567.2" y2="255" stroke="transparent" stroke-width="8"><title>AF: AF @ R @ 23:30:00</title></line>
-<text x="567.2" y="16" fill="#a78bfa" font-size="8" text-anchor="middle" opacity="0.85">AF</text>
 <line x1="377.5" y1="20" x2="377.5" y2="255" stroke="#fbbf24" stroke-width="1" stroke-dasharray="4,3" opacity="0.7"/>
-<line class="evt-hit" x1="377.5" y1="20" x2="377.5" y2="255" stroke="transparent" stroke-width="8"><title>MF: Meridian flip @ 23:00:00</title></line>
-<text x="377.5" y="16" fill="#fbbf24" font-size="8" text-anchor="middle" opacity="0.85">MF</text>
 <polyline points="55.0,187.1 130.9,184.9 206.8,168.5 282.7,148.2 358.6,137.2 434.4,139.9 510.3,131.2 586.2,118.4 662.1,127.8 738.0,100.3" fill="none" stroke="#f7a87e" stroke-width="2" stroke-linejoin="round" stroke-dasharray="6,3"/>
 <circle cx="55.0" cy="187.1" r="3" fill="#ffd4a8"><title>22:09 — 3.3" [B]</title></circle>
 <circle cx="130.9" cy="184.9" r="3" fill="#ffd4a8"><title>22:21 — 3.3" [B]</title></circle>
@@ -699,6 +754,12 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
 <circle cx="586.2" cy="109.7" r="3" fill="#a8d4ff"><title>23:33 — 2.6 px [B]</title></circle>
 <circle cx="662.1" cy="105.6" r="3" fill="#a8d4ff"><title>23:45 — 2.6 px [B]</title></circle>
 <circle cx="738.0" cy="81.3" r="3" fill="#a8d4ff"><title>23:57 — 2.6 px [B]</title></circle>
+<line x1="74.0" y1="20" x2="74.0" y2="255" stroke="transparent" stroke-width="8" pointer-events="all"><title>AF: AF @ L @ 22:12:00</title></line>
+<text x="74.0" y="16" fill="#a78bfa" font-size="8" text-anchor="middle" opacity="0.85" pointer-events="none">AF</text>
+<line x1="567.2" y1="20" x2="567.2" y2="255" stroke="transparent" stroke-width="8" pointer-events="all"><title>AF: AF @ R @ 23:30:00</title></line>
+<text x="567.2" y="16" fill="#a78bfa" font-size="8" text-anchor="middle" opacity="0.85" pointer-events="none">AF</text>
+<line x1="377.5" y1="20" x2="377.5" y2="255" stroke="transparent" stroke-width="8" pointer-events="all"><title>MF: Meridian flip @ 23:00:00</title></line>
+<text x="377.5" y="16" fill="#fbbf24" font-size="8" text-anchor="middle" opacity="0.85" pointer-events="none">MF</text>
 </svg>
 </div>
 </div>
