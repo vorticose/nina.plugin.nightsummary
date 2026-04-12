@@ -635,7 +635,7 @@ function renderProjectContainer(info) {
   if (info.isMosaic && info.guid) {
     // Thumbnail fills all available horizontal space; stat boxes stretch to match height
     html += '<div class="targets-project-thumb-col">';
-    html += '<div class="targets-project-thumb-wrap">' +
+    html += '<div class="targets-project-thumb-wrap" data-guid="' + esc(info.guid) + '">' +
             '<img class="targets-project-thumb" src="/api/stats/projects/' + encodeURIComponent(info.guid) + '/mosaic-thumb" ' +
             'alt="Mosaic survey thumbnail" loading="lazy">';
     if (lastImaged) {
@@ -764,14 +764,6 @@ function renderGroupedTargets(targets, sortKey) {
 }
 
 function initProjectContainers() {
-  // Collapse button click
-  document.querySelectorAll('.targets-project-collapse-btn').forEach(function(btn) {
-    btn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      var c = btn.closest('.targets-project-container');
-      if (c) c.classList.toggle('collapsed');
-    });
-  });
   // Collapse button toggles collapse
   document.querySelectorAll('.targets-project-collapse-btn').forEach(function(btn) {
     btn.addEventListener('click', function(e) {
@@ -790,6 +782,22 @@ function initProjectContainers() {
       if (e.target.closest('.targets-project-collapse-btn')) return;
       openProjectDetail(guid, name ? name.textContent : guid);
     });
+  });
+  // Load FOV overlays on card thumbnails
+  loadCardMosaicOverlays();
+}
+
+function loadCardMosaicOverlays() {
+  document.querySelectorAll('.targets-project-thumb-wrap[data-guid]').forEach(function(wrap) {
+    var guid = wrap.getAttribute('data-guid');
+    if (!guid) return;
+    fetch('/api/stats/projects/' + encodeURIComponent(guid))
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(data) {
+        if (!data || !data.panels || !data.panels.length) return;
+        loadMosaicThumbnail(data.panels, wrap, guid);
+      })
+      .catch(function() {});
   });
 }
 
@@ -1681,8 +1689,12 @@ function renderPdpPanelCard(panel, idx, tsTarget) {
 // per-panel FOV rectangles as an SVG overlay.
 // SVG rotation convention: position angle (degrees E of N, CCW) → SVG rotate(-PA) because
 // astronomical images are N-up, E-left which mirrors the x-axis relative to SVG.
-function loadMosaicThumbnail(panels, backdrop, projectGuid) {
-  var wrap = backdrop ? backdrop.querySelector('#pdp-thumb-wrap') : null;
+function loadMosaicThumbnail(panels, wrapOrBackdrop, projectGuid) {
+  // Accept either a direct wrap element or a backdrop containing #pdp-thumb-wrap
+  var wrap = (wrapOrBackdrop && (wrapOrBackdrop.id === 'pdp-thumb-wrap' ||
+              wrapOrBackdrop.classList.contains('targets-project-thumb-wrap')))
+    ? wrapOrBackdrop
+    : (wrapOrBackdrop ? wrapOrBackdrop.querySelector('#pdp-thumb-wrap') : null);
   if (!wrap) return;
 
   var validPanels = panels.filter(function(p) { return p.ra != null && p.dec != null; });
@@ -1798,25 +1810,46 @@ function loadMosaicThumbnail(panels, backdrop, projectGuid) {
     ' style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none">' +
     svgRects + svgLabels + '</svg>';
 
-  var img = new Image();
-  img.className = 'pdp-mosaic-img';
-  img.alt = 'Mosaic survey + FOV overlay';
-  img.onload = function() {
-    var placeholder = wrap.querySelector('.pdp-mosaic-placeholder');
-    if (placeholder) placeholder.style.display = 'none';
-    wrap.insertBefore(img, wrap.firstChild);
+  function injectSvg() {
+    // Remove any prior overlay so re-renders don't stack
+    var old = wrap.querySelector('.mosaic-fov-svg');
+    if (old) old.parentNode.removeChild(old);
     var svgContainer = document.createElement('div');
     svgContainer.innerHTML = svgMarkup;
-    wrap.appendChild(svgContainer.firstChild);
-  };
-  img.onerror = function() {
-    var placeholder = wrap.querySelector('.pdp-mosaic-placeholder');
-    if (placeholder) {
-      placeholder.textContent = 'Survey image unavailable';
-      placeholder.style.fontSize = '13px';
+    var svgEl = svgContainer.firstChild;
+    svgEl.classList.add('mosaic-fov-svg');
+    wrap.appendChild(svgEl);
+  }
+
+  // If the wrap already has a loaded image (card thumbnail), inject SVG immediately.
+  // Otherwise (detail panel), create + insert the image first.
+  var existingImg = wrap.querySelector('img');
+  if (existingImg) {
+    if (existingImg.complete && existingImg.naturalWidth > 0) {
+      injectSvg();
+    } else {
+      existingImg.addEventListener('load', injectSvg);
+      existingImg.addEventListener('error', function() {}); // silently ignore
     }
-  };
-  img.src = hipsUrl;
+  } else {
+    var img = new Image();
+    img.className = 'pdp-mosaic-img';
+    img.alt = 'Mosaic survey + FOV overlay';
+    img.onload = function() {
+      var placeholder = wrap.querySelector('.pdp-mosaic-placeholder');
+      if (placeholder) placeholder.style.display = 'none';
+      wrap.insertBefore(img, wrap.firstChild);
+      injectSvg();
+    };
+    img.onerror = function() {
+      var placeholder = wrap.querySelector('.pdp-mosaic-placeholder');
+      if (placeholder) {
+        placeholder.textContent = 'Survey image unavailable';
+        placeholder.style.fontSize = '13px';
+      }
+    };
+    img.src = hipsUrl;
+  }
 }
 
 function loadTargetThumbnails() {
