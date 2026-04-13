@@ -121,6 +121,10 @@ CREATE TABLE IF NOT EXISTS Images (
     DewPoint REAL,
     WindSpeed REAL,
     Pressure REAL,
+    SkyBrightness REAL,
+    SkyTemperature REAL,
+    WindDirection REAL,
+    WindGust REAL,
     GradingStatus INTEGER DEFAULT -1,
     RejectReason TEXT,
     ImageType TEXT,
@@ -400,6 +404,10 @@ foreach ($target in $targets) {
             $dewPt      = [math]::Round($ambTemp - 12.0 + $hourFrac * 0.3 + (Rnd -0.5 0.5), 1)
             $windSpd    = [math]::Round(3.0 + (Rnd -1.5 1.5), 1)
             $pressure   = [math]::Round($basePressure + (Rnd -0.5 0.5), 1)
+            $skyBright  = [math]::Round(0.02 + $hourFrac * 0.005 + (Rnd -0.005 0.005), 4)  # Lux, dark site
+            $skyTemp    = [math]::Round(-25.0 + $hourFrac * 0.3 + (Rnd -1.0 1.0), 1)       # IR sky temp C
+            $windDir    = [math]::Round(220 + $hourFrac * 2.0 + (Rnd -10 10), 0)            # degrees
+            $windGust   = [math]::Round($windSpd * 1.5 + (Rnd -0.5 1.0), 1)                # m/s
 
             # Image statistics (16-bit mono)
             $statMedian   = [math]::Round($target.BaseMedian + (Rnd -80 80), 1)
@@ -434,6 +442,7 @@ INSERT INTO Images (
     Gain, Offset, Binning, CameraTemp, CoolerSetpoint,
     FocuserPosition, RotatorPosition, PositionAngle,
     Humidity, DewPoint, WindSpeed, Pressure,
+    SkyBrightness, SkyTemperature, WindDirection, WindGust,
     GradingStatus, RejectReason,
     ImageType, Altitude, Azimuth, Airmass, SideOfPier, ReadoutMode,
     SkyQuality, CloudCover, SeeingFWHM,
@@ -445,6 +454,7 @@ INSERT INTO Images (
     @gain, 50, 1, -10.0, -10.0,
     @focPos, NULL, @pa,
     @humidity, @dewPt, @wind, @pressure,
+    @skyBright, @skyTemp, @windDir, @windGust,
     @gradingStatus, @rejectReason,
     'LIGHT', @alt, @az, @airmass, @pier, 'Mode 0 (High Gain)',
     @skyQ, @cloud, @seeingFwhm,
@@ -473,6 +483,10 @@ INSERT INTO Images (
                 "@dewPt"         = $dewPt
                 "@wind"          = $windSpd
                 "@pressure"      = $pressure
+                "@skyBright"     = $skyBright
+                "@skyTemp"       = $skyTemp
+                "@windDir"       = $windDir
+                "@windGust"      = $windGust
                 "@gradingStatus" = $gradingStatus
                 "@rejectReason"  = if ($rejectReason) { $rejectReason } else { [DBNull]::Value }
                 "@alt"           = $altitude
@@ -721,12 +735,16 @@ INSERT INTO Images (
     SessionId, Timestamp, TargetName, Filter, ExposureDuration,
     HFR, FWHM, Eccentricity, StarCount, GuidingRMSTotal, GuidingScale, Accepted,
     RaHours, DecDegrees, Gain, Offset, Binning, CameraTemp, CoolerSetpoint,
+    Humidity, DewPoint, WindSpeed, Pressure,
+    SkyBrightness, SkyTemperature, WindDirection, WindGust,
     GradingStatus, ImageType, Altitude, Azimuth, Airmass, SideOfPier, ReadoutMode,
     StatMedian, StatMean, StatStDev, StatMAD, StatMin, StatMax, StatBitDepth
 ) VALUES (
     @sid, @ts, @target, @filter, @exp,
     @hfr, @fwhm, @ecc, @stars, @rms, 1.32, 1,
     @ra, @dec, 100, 50, 1, -10.0, -10.0,
+    @humidity, @dewPt, @wind, @pressure,
+    @skyBright, @skyTemp, @windDir, @windGust,
     1, 'LIGHT', @alt, @az, @airmass, @pier, 'Mode 0 (High Gain)',
     @statMedian, @statMean, @statStDev, @statMAD, @statMin, @statMax, 16
 )
@@ -739,6 +757,14 @@ INSERT INTO Images (
                     "@alt"    = $hAltaz.Alt; "@az" = $hAltaz.Az
                     "@airmass" = if ($hAirmass) { $hAirmass } else { [DBNull]::Value }
                     "@pier"   = $hAltaz.Pier
+                    "@humidity" = [math]::Round(55 + (Rnd -5 5), 1)
+                    "@dewPt"    = [math]::Round(3.0 + (Rnd -1 1), 1)
+                    "@wind"     = [math]::Round(3.0 + (Rnd -1.5 1.5), 1)
+                    "@pressure" = [math]::Round(1013 + (Rnd -2 2), 1)
+                    "@skyBright"  = [math]::Round(0.02 + (Rnd -0.005 0.005), 4)
+                    "@skyTemp"    = [math]::Round(-25.0 + (Rnd -2 2), 1)
+                    "@windDir"    = [math]::Round(220 + (Rnd -15 15), 0)
+                    "@windGust"   = [math]::Round(4.5 + (Rnd -1 1), 1)
                     "@statMedian" = [math]::Round($target.BaseMedian + (Rnd -80 80), 1)
                     "@statMean"   = [math]::Round($target.BaseMedian * 1.02 + (Rnd -20 20), 1)
                     "@statStDev"  = [math]::Round(85 + (Rnd -15 15), 1)

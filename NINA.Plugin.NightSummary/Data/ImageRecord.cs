@@ -55,10 +55,14 @@ namespace NINA.Plugin.NightSummary.Data {
         public double? PositionAngle   { get; set; }  // sky position angle from plate solve (degrees E of N)
 
         // Extended weather data; null = weather device not connected
-        public double? Humidity { get; set; }   // relative humidity %
-        public double? DewPoint { get; set; }   // dew point °C
-        public double? WindSpeed { get; set; }  // wind speed m/s
-        public double? Pressure  { get; set; }  // atmospheric pressure hPa
+        public double? Humidity       { get; set; }  // relative humidity %
+        public double? DewPoint       { get; set; }  // dew point °C
+        public double? WindSpeed      { get; set; }  // wind speed m/s
+        public double? Pressure       { get; set; }  // atmospheric pressure hPa
+        public double? SkyBrightness  { get; set; }  // sky brightness (Lux) from ASCOM ObservingConditions
+        public double? SkyTemperature { get; set; }  // infrared sky temperature °C (cloud detection)
+        public double? WindDirection  { get; set; }  // wind direction degrees (0-360)
+        public double? WindGust       { get; set; }  // peak 3-second wind gust m/s
 
         // Target Scheduler grading; -1 = no TS match or TS not installed
         public int    GradingStatus { get; set; }

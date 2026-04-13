@@ -562,28 +562,37 @@ namespace NINA.Plugin.NightSummary {
         public const int MaxAdditionalCharts = 4;
 
         private static readonly List<string> _primaryMetricNames = new List<string> {
-            "HFR", "FWHM", "Guiding RMS", "Focuser Temp (°C)", "Ambient Temp (°C)",
-            "Eccentricity", "Altitude (°)", "Airmass", "Humidity (%)", "Focuser Position (steps)",
-            "Sky Quality (mag/arcsec²)", "Cloud Cover (%)", "Camera Temp (°C)", "Dew Point (°C)",
-            "Wind Speed (m/s)", "Pressure (hPa)", "Star Count", "Azimuth (°)", "Seeing FWHM (arcsec)",
-            "Median ADU"
+            "HFR", "FWHM", "Guiding RMS", "Star Count", "Eccentricity",
+            "Altitude (°)", "Airmass", "Focuser Temp (°C)", "Ambient Temp (°C)",
+            "Focuser Position (steps)", "Camera Temp (°C)", "Cooler Setpoint (°C)",
+            "Humidity (%)", "Dew Point (°C)", "Sky Quality (mag/arcsec²)", "Cloud Cover (%)",
+            "Sky Temp (°C)", "Median ADU", "Mean ADU", "Wind Speed (m/s)", "Wind Gust (m/s)",
+            "Pressure (hPa)", "Seeing FWHM (arcsec)", "Std Deviation (ADU)", "MAD (ADU)",
+            "Exposure (s)", "Gain", "Azimuth (°)", "Wind Direction (°)", "Sky Brightness (Lux)",
+            "Rotator Position (°)", "Position Angle (°)", "Offset", "Min ADU", "Max ADU"
         };
 
         private static readonly List<string> _secondaryMetricNames = new List<string> {
-            "None", "HFR", "FWHM", "Guiding RMS", "Focuser Temp (°C)", "Ambient Temp (°C)",
-            "Eccentricity", "Altitude (°)", "Airmass", "Humidity (%)", "Focuser Position (steps)",
-            "Sky Quality (mag/arcsec²)", "Cloud Cover (%)", "Camera Temp (°C)", "Dew Point (°C)",
-            "Wind Speed (m/s)", "Pressure (hPa)", "Star Count", "Azimuth (°)", "Seeing FWHM (arcsec)",
-            "Median ADU"
+            "None", "HFR", "FWHM", "Guiding RMS", "Star Count", "Eccentricity",
+            "Altitude (°)", "Airmass", "Focuser Temp (°C)", "Ambient Temp (°C)",
+            "Focuser Position (steps)", "Camera Temp (°C)", "Cooler Setpoint (°C)",
+            "Humidity (%)", "Dew Point (°C)", "Sky Quality (mag/arcsec²)", "Cloud Cover (%)",
+            "Sky Temp (°C)", "Median ADU", "Mean ADU", "Wind Speed (m/s)", "Wind Gust (m/s)",
+            "Pressure (hPa)", "Seeing FWHM (arcsec)", "Std Deviation (ADU)", "MAD (ADU)",
+            "Exposure (s)", "Gain", "Azimuth (°)", "Wind Direction (°)", "Sky Brightness (Lux)",
+            "Rotator Position (°)", "Position Angle (°)", "Offset", "Min ADU", "Max ADU"
         };
 
         private static readonly List<string> _xAxisMetricNames = new List<string> {
             "Time", "Frame Index",
-            "HFR", "FWHM", "Guiding RMS", "Focuser Temp (°C)", "Ambient Temp (°C)",
-            "Eccentricity", "Altitude (°)", "Airmass", "Humidity (%)", "Focuser Position (steps)",
-            "Sky Quality (mag/arcsec²)", "Cloud Cover (%)", "Camera Temp (°C)", "Dew Point (°C)",
-            "Wind Speed (m/s)", "Pressure (hPa)", "Star Count", "Azimuth (°)", "Seeing FWHM (arcsec)",
-            "Median ADU"
+            "HFR", "FWHM", "Guiding RMS", "Star Count", "Eccentricity",
+            "Altitude (°)", "Airmass", "Focuser Temp (°C)", "Ambient Temp (°C)",
+            "Focuser Position (steps)", "Camera Temp (°C)", "Cooler Setpoint (°C)",
+            "Humidity (%)", "Dew Point (°C)", "Sky Quality (mag/arcsec²)", "Cloud Cover (%)",
+            "Sky Temp (°C)", "Median ADU", "Mean ADU", "Wind Speed (m/s)", "Wind Gust (m/s)",
+            "Pressure (hPa)", "Seeing FWHM (arcsec)", "Std Deviation (ADU)", "MAD (ADU)",
+            "Exposure (s)", "Gain", "Azimuth (°)", "Wind Direction (°)", "Sky Brightness (Lux)",
+            "Rotator Position (°)", "Position Angle (°)", "Offset", "Min ADU", "Max ADU"
         };
 
         public IReadOnlyList<string> PrimaryMetricNames  => _primaryMetricNames;

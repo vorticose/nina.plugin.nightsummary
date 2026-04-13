@@ -234,6 +234,48 @@ namespace NINA.Plugin.NightSummary.Tests {
             Assert.Null(r.StatBitDepth);
         }
 
+        // ── ASCOM weather round-trip ──────────────────────────────────────────
+
+        [Fact]
+        public void AscomWeather_ArePersistedAndRetrieved() {
+            var sessionId = Guid.NewGuid().ToString();
+            CreateTestSession(sessionId);
+
+            var image = TestDataFactory.MakeImage(sessionId);
+            image.SkyBrightness  = 0.025;
+            image.SkyTemperature = -22.5;
+            image.WindDirection  = 215.0;
+            image.WindGust       = 6.3;
+            _db.SaveImageRecord(image);
+
+            var images = _db.GetImagesForSession(sessionId);
+
+            Assert.Single(images);
+            var r = images[0];
+            Assert.Equal(0.025, r.SkyBrightness!.Value, precision: 3);
+            Assert.Equal(-22.5, r.SkyTemperature!.Value, precision: 1);
+            Assert.Equal(215.0, r.WindDirection!.Value, precision: 1);
+            Assert.Equal(6.3,   r.WindGust!.Value, precision: 1);
+        }
+
+        [Fact]
+        public void AscomWeather_Null_AreStoredAsNull() {
+            var sessionId = Guid.NewGuid().ToString();
+            CreateTestSession(sessionId);
+
+            var image = TestDataFactory.MakeImage(sessionId);
+            _db.SaveImageRecord(image);
+
+            var images = _db.GetImagesForSession(sessionId);
+
+            Assert.Single(images);
+            var r = images[0];
+            Assert.Null(r.SkyBrightness);
+            Assert.Null(r.SkyTemperature);
+            Assert.Null(r.WindDirection);
+            Assert.Null(r.WindGust);
+        }
+
         // ── DeleteSession ─────────────────────────────────────────────────────
 
         [Fact]

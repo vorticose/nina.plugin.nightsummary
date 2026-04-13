@@ -472,23 +472,38 @@
                                         <ComboBoxItem>HFR</ComboBoxItem>
                                         <ComboBoxItem>FWHM</ComboBoxItem>
                                         <ComboBoxItem>Guiding RMS</ComboBoxItem>
-                                        <ComboBoxItem>Focuser Temp (°C)</ComboBoxItem>
-                                        <ComboBoxItem>Ambient Temp (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Star Count</ComboBoxItem>
                                         <ComboBoxItem>Eccentricity</ComboBoxItem>
                                         <ComboBoxItem>Altitude (°)</ComboBoxItem>
                                         <ComboBoxItem>Airmass</ComboBoxItem>
-                                        <ComboBoxItem>Humidity (%)</ComboBoxItem>
+                                        <ComboBoxItem>Focuser Temp (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Ambient Temp (°C)</ComboBoxItem>
                                         <ComboBoxItem>Focuser Position (steps)</ComboBoxItem>
+                                        <ComboBoxItem>Camera Temp (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Cooler Setpoint (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Humidity (%)</ComboBoxItem>
+                                        <ComboBoxItem>Dew Point (°C)</ComboBoxItem>
                                         <ComboBoxItem>Sky Quality (mag/arcsec²)</ComboBoxItem>
                                         <ComboBoxItem>Cloud Cover (%)</ComboBoxItem>
-                                        <ComboBoxItem>Camera Temp (°C)</ComboBoxItem>
-                                        <ComboBoxItem>Dew Point (°C)</ComboBoxItem>
-                                        <ComboBoxItem>Wind Speed (m/s)</ComboBoxItem>
-                                        <ComboBoxItem>Pressure (hPa)</ComboBoxItem>
-                                        <ComboBoxItem>Star Count</ComboBoxItem>
-                                        <ComboBoxItem>Azimuth (°)</ComboBoxItem>
-                                        <ComboBoxItem>Seeing FWHM (arcsec)</ComboBoxItem>
+                                        <ComboBoxItem>Sky Temp (°C)</ComboBoxItem>
                                         <ComboBoxItem>Median ADU</ComboBoxItem>
+                                        <ComboBoxItem>Mean ADU</ComboBoxItem>
+                                        <ComboBoxItem>Wind Speed (m/s)</ComboBoxItem>
+                                        <ComboBoxItem>Wind Gust (m/s)</ComboBoxItem>
+                                        <ComboBoxItem>Pressure (hPa)</ComboBoxItem>
+                                        <ComboBoxItem>Seeing FWHM (arcsec)</ComboBoxItem>
+                                        <ComboBoxItem>Std Deviation (ADU)</ComboBoxItem>
+                                        <ComboBoxItem>MAD (ADU)</ComboBoxItem>
+                                        <ComboBoxItem>Exposure (s)</ComboBoxItem>
+                                        <ComboBoxItem>Gain</ComboBoxItem>
+                                        <ComboBoxItem>Azimuth (°)</ComboBoxItem>
+                                        <ComboBoxItem>Wind Direction (°)</ComboBoxItem>
+                                        <ComboBoxItem>Sky Brightness (Lux)</ComboBoxItem>
+                                        <ComboBoxItem>Rotator Position (°)</ComboBoxItem>
+                                        <ComboBoxItem>Position Angle (°)</ComboBoxItem>
+                                        <ComboBoxItem>Offset</ComboBoxItem>
+                                        <ComboBoxItem>Min ADU</ComboBoxItem>
+                                        <ComboBoxItem>Max ADU</ComboBoxItem>
                                     </ComboBox>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,3">
@@ -497,23 +512,38 @@
                                         <ComboBoxItem>HFR</ComboBoxItem>
                                         <ComboBoxItem>FWHM</ComboBoxItem>
                                         <ComboBoxItem>Guiding RMS</ComboBoxItem>
-                                        <ComboBoxItem>Focuser Temp (°C)</ComboBoxItem>
-                                        <ComboBoxItem>Ambient Temp (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Star Count</ComboBoxItem>
                                         <ComboBoxItem>Eccentricity</ComboBoxItem>
                                         <ComboBoxItem>Altitude (°)</ComboBoxItem>
                                         <ComboBoxItem>Airmass</ComboBoxItem>
-                                        <ComboBoxItem>Humidity (%)</ComboBoxItem>
+                                        <ComboBoxItem>Focuser Temp (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Ambient Temp (°C)</ComboBoxItem>
                                         <ComboBoxItem>Focuser Position (steps)</ComboBoxItem>
+                                        <ComboBoxItem>Camera Temp (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Cooler Setpoint (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Humidity (%)</ComboBoxItem>
+                                        <ComboBoxItem>Dew Point (°C)</ComboBoxItem>
                                         <ComboBoxItem>Sky Quality (mag/arcsec²)</ComboBoxItem>
                                         <ComboBoxItem>Cloud Cover (%)</ComboBoxItem>
-                                        <ComboBoxItem>Camera Temp (°C)</ComboBoxItem>
-                                        <ComboBoxItem>Dew Point (°C)</ComboBoxItem>
-                                        <ComboBoxItem>Wind Speed (m/s)</ComboBoxItem>
-                                        <ComboBoxItem>Pressure (hPa)</ComboBoxItem>
-                                        <ComboBoxItem>Star Count</ComboBoxItem>
-                                        <ComboBoxItem>Azimuth (°)</ComboBoxItem>
-                                        <ComboBoxItem>Seeing FWHM (arcsec)</ComboBoxItem>
+                                        <ComboBoxItem>Sky Temp (°C)</ComboBoxItem>
                                         <ComboBoxItem>Median ADU</ComboBoxItem>
+                                        <ComboBoxItem>Mean ADU</ComboBoxItem>
+                                        <ComboBoxItem>Wind Speed (m/s)</ComboBoxItem>
+                                        <ComboBoxItem>Wind Gust (m/s)</ComboBoxItem>
+                                        <ComboBoxItem>Pressure (hPa)</ComboBoxItem>
+                                        <ComboBoxItem>Seeing FWHM (arcsec)</ComboBoxItem>
+                                        <ComboBoxItem>Std Deviation (ADU)</ComboBoxItem>
+                                        <ComboBoxItem>MAD (ADU)</ComboBoxItem>
+                                        <ComboBoxItem>Exposure (s)</ComboBoxItem>
+                                        <ComboBoxItem>Gain</ComboBoxItem>
+                                        <ComboBoxItem>Azimuth (°)</ComboBoxItem>
+                                        <ComboBoxItem>Wind Direction (°)</ComboBoxItem>
+                                        <ComboBoxItem>Sky Brightness (Lux)</ComboBoxItem>
+                                        <ComboBoxItem>Rotator Position (°)</ComboBoxItem>
+                                        <ComboBoxItem>Position Angle (°)</ComboBoxItem>
+                                        <ComboBoxItem>Offset</ComboBoxItem>
+                                        <ComboBoxItem>Min ADU</ComboBoxItem>
+                                        <ComboBoxItem>Max ADU</ComboBoxItem>
                                     </ComboBox>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,3">
@@ -523,23 +553,38 @@
                                         <ComboBoxItem>HFR</ComboBoxItem>
                                         <ComboBoxItem>FWHM</ComboBoxItem>
                                         <ComboBoxItem>Guiding RMS</ComboBoxItem>
-                                        <ComboBoxItem>Focuser Temp (°C)</ComboBoxItem>
-                                        <ComboBoxItem>Ambient Temp (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Star Count</ComboBoxItem>
                                         <ComboBoxItem>Eccentricity</ComboBoxItem>
                                         <ComboBoxItem>Altitude (°)</ComboBoxItem>
                                         <ComboBoxItem>Airmass</ComboBoxItem>
-                                        <ComboBoxItem>Humidity (%)</ComboBoxItem>
+                                        <ComboBoxItem>Focuser Temp (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Ambient Temp (°C)</ComboBoxItem>
                                         <ComboBoxItem>Focuser Position (steps)</ComboBoxItem>
+                                        <ComboBoxItem>Camera Temp (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Cooler Setpoint (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Humidity (%)</ComboBoxItem>
+                                        <ComboBoxItem>Dew Point (°C)</ComboBoxItem>
                                         <ComboBoxItem>Sky Quality (mag/arcsec²)</ComboBoxItem>
                                         <ComboBoxItem>Cloud Cover (%)</ComboBoxItem>
-                                        <ComboBoxItem>Camera Temp (°C)</ComboBoxItem>
-                                        <ComboBoxItem>Dew Point (°C)</ComboBoxItem>
-                                        <ComboBoxItem>Wind Speed (m/s)</ComboBoxItem>
-                                        <ComboBoxItem>Pressure (hPa)</ComboBoxItem>
-                                        <ComboBoxItem>Star Count</ComboBoxItem>
-                                        <ComboBoxItem>Azimuth (°)</ComboBoxItem>
-                                        <ComboBoxItem>Seeing FWHM (arcsec)</ComboBoxItem>
+                                        <ComboBoxItem>Sky Temp (°C)</ComboBoxItem>
                                         <ComboBoxItem>Median ADU</ComboBoxItem>
+                                        <ComboBoxItem>Mean ADU</ComboBoxItem>
+                                        <ComboBoxItem>Wind Speed (m/s)</ComboBoxItem>
+                                        <ComboBoxItem>Wind Gust (m/s)</ComboBoxItem>
+                                        <ComboBoxItem>Pressure (hPa)</ComboBoxItem>
+                                        <ComboBoxItem>Seeing FWHM (arcsec)</ComboBoxItem>
+                                        <ComboBoxItem>Std Deviation (ADU)</ComboBoxItem>
+                                        <ComboBoxItem>MAD (ADU)</ComboBoxItem>
+                                        <ComboBoxItem>Exposure (s)</ComboBoxItem>
+                                        <ComboBoxItem>Gain</ComboBoxItem>
+                                        <ComboBoxItem>Azimuth (°)</ComboBoxItem>
+                                        <ComboBoxItem>Wind Direction (°)</ComboBoxItem>
+                                        <ComboBoxItem>Sky Brightness (Lux)</ComboBoxItem>
+                                        <ComboBoxItem>Rotator Position (°)</ComboBoxItem>
+                                        <ComboBoxItem>Position Angle (°)</ComboBoxItem>
+                                        <ComboBoxItem>Offset</ComboBoxItem>
+                                        <ComboBoxItem>Min ADU</ComboBoxItem>
+                                        <ComboBoxItem>Max ADU</ComboBoxItem>
                                     </ComboBox>
                                 </StackPanel>
                             </StackPanel>
@@ -547,8 +592,9 @@
                                        Margin="20,0,0,0" MaxWidth="300" VerticalAlignment="Center">
                                 FWHM and Eccentricity require the Hocus Focus plugin. Focuser Temp requires a focuser with a built-in temperature sensor.
                                 Ambient Temp, Humidity, Dew Point, Wind Speed, and Pressure require a device connected as a NINA weather data source (e.g. Pegasus UPB, AAG CloudWatcher).
-                                Sky Quality requires a sky quality meter and Cloud Cover requires a cloud sensor, both connected as NINA weather data sources.
-                                Focuser Position requires a motorized focuser.
+                                Sky Quality, Cloud Cover, Sky Temp, Sky Brightness, Wind Direction, and Wind Gust require an ASCOM ObservingConditions device with the corresponding sensor.
+                                Focuser Position requires a motorized focuser. Rotator Position requires a connected rotator. Cooler Setpoint requires a cooled camera.
+                                Image statistics (Median, Mean, StDev, MAD, Min, Max ADU) are captured automatically from each saved image.
                             </TextBlock>
                         </Grid>
 

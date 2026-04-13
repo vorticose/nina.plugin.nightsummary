@@ -185,6 +185,10 @@ namespace NINA.Plugin.NightSummary.Session {
                     DewPoint         = NullIfNaN(e.MetaData?.WeatherData?.DewPoint),
                     WindSpeed        = NullIfNaN(e.MetaData?.WeatherData?.WindSpeed),
                     Pressure         = NullIfNaN(e.MetaData?.WeatherData?.Pressure),
+                    SkyBrightness    = NullIfNaN(e.MetaData?.WeatherData?.SkyBrightness),
+                    SkyTemperature   = NullIfNaN(e.MetaData?.WeatherData?.SkyTemperature),
+                    WindDirection    = NullIfNaN(e.MetaData?.WeatherData?.WindDirection),
+                    WindGust         = NullIfNaN(e.MetaData?.WeatherData?.WindGust),
                     // TS grading fields — populated at session end via UpdateImageGradingFromTs
                     GradingStatus    = -1,
                     // Frame type
