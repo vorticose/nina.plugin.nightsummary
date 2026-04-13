@@ -1407,6 +1407,7 @@ function closeTargetDetail() {
   if (!backdrop) return;
   backdrop.classList.add('tdp-hiding');
   setTimeout(function() { if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop); }, 160);
+  document.body.style.overflow = '';
   if (_tdpKeyHandler) {
     document.removeEventListener('keydown', _tdpKeyHandler);
     _tdpKeyHandler = null;
@@ -1540,6 +1541,7 @@ function openTargetDetail(targetName, latestSessionId) {
   backdrop.className = 'tdp-backdrop';
   backdrop.innerHTML = '<div class="tdp-modal" style="padding:40px;text-align:center;color:var(--text-tertiary);">Loading \u2026</div>';
   document.body.appendChild(backdrop);
+  document.body.style.overflow = 'hidden';
 
   // Tentative close on backdrop click while loading
   var loadClickHandler = function(e) { if (e.target === backdrop) closeTargetDetail(); };
@@ -1593,6 +1595,7 @@ function closeProjectDetail() {
   if (!backdrop) return;
   backdrop.classList.add('pdp-hiding');
   setTimeout(function() { if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop); }, 160);
+  document.body.style.overflow = '';
   if (_pdpKeyHandler) {
     document.removeEventListener('keydown', _pdpKeyHandler);
     _pdpKeyHandler = null;
@@ -1608,6 +1611,7 @@ function openProjectDetail(projectGuid, projectName) {
   backdrop.className = 'pdp-backdrop';
   backdrop.innerHTML = '<div class="pdp-modal pdp-modal--loading"><span style="color:var(--text-tertiary)">Loading \u2026</span></div>';
   document.body.appendChild(backdrop);
+  document.body.style.overflow = 'hidden';
 
   var loadClickHandler = function(e) { if (e.target === backdrop) closeProjectDetail(); };
   backdrop.addEventListener('click', loadClickHandler);
@@ -4536,6 +4540,7 @@ function closeManageProjectsModal() {
   var bd = document.getElementById('manage-projects-backdrop');
   if (bd && bd.parentNode) bd.parentNode.removeChild(bd);
   document.removeEventListener('keydown', _manageProjectsKeyHandler);
+  document.body.style.overflow = '';
 }
 
 var _manageProjectsKeyHandler = function(e) {
@@ -4653,6 +4658,7 @@ function openManageProjectsModal() {
   backdrop.className = 'ts-link-picker-backdrop';
   backdrop.innerHTML = html;
   document.body.appendChild(backdrop);
+  document.body.style.overflow = 'hidden';
 
   backdrop.addEventListener('click', function(e) {
     if (e.target === backdrop) closeManageProjectsModal();
@@ -4888,6 +4894,7 @@ function closeTsLinkPicker() {
   var bd = document.getElementById('ts-link-picker-backdrop');
   if (bd && bd.parentNode) bd.parentNode.removeChild(bd);
   document.removeEventListener('keydown', _tsLinkPickerKeyHandler);
+  document.body.style.overflow = '';
 }
 
 var _tsLinkPickerKeyHandler = function(e) {
@@ -4949,6 +4956,7 @@ function openTsLinkPicker(sessionTargetName) {
   backdrop.className = 'ts-link-picker-backdrop';
   backdrop.innerHTML = html;
   document.body.appendChild(backdrop);
+  document.body.style.overflow = 'hidden';
 
   backdrop.addEventListener('click', function(e) {
     if (e.target === backdrop) closeTsLinkPicker();
