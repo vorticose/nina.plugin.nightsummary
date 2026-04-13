@@ -466,123 +466,123 @@
                             <StackPanel Grid.Column="0">
                                 <StackPanel Orientation="Horizontal" Margin="0,3">
                                     <TextBlock Text="X-Axis" Width="180" VerticalAlignment="Center" />
-                                    <ComboBox SelectedIndex="{Binding ChartXAxisMetric}" MinWidth="160">
+                                    <ComboBox SelectedIndex="{Binding ChartXAxisMetric}" MinWidth="160" HorizontalContentAlignment="Left">
                                         <ComboBoxItem>Time</ComboBoxItem>
                                         <ComboBoxItem>Frame Index</ComboBoxItem>
                                         <ComboBoxItem>HFR</ComboBoxItem>
                                         <ComboBoxItem>FWHM</ComboBoxItem>
                                         <ComboBoxItem>Guiding RMS</ComboBoxItem>
-                                        <ComboBoxItem>Star Count</ComboBoxItem>
                                         <ComboBoxItem>Eccentricity</ComboBoxItem>
-                                        <ComboBoxItem>Altitude (°)</ComboBoxItem>
-                                        <ComboBoxItem>Airmass</ComboBoxItem>
+                                        <ComboBoxItem>Star Count</ComboBoxItem>
                                         <ComboBoxItem>Focuser Temp (°C)</ComboBoxItem>
                                         <ComboBoxItem>Ambient Temp (°C)</ComboBoxItem>
-                                        <ComboBoxItem>Focuser Position (steps)</ComboBoxItem>
                                         <ComboBoxItem>Camera Temp (°C)</ComboBoxItem>
                                         <ComboBoxItem>Cooler Setpoint (°C)</ComboBoxItem>
-                                        <ComboBoxItem>Humidity (%)</ComboBoxItem>
-                                        <ComboBoxItem>Dew Point (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Altitude (°)</ComboBoxItem>
+                                        <ComboBoxItem>Azimuth (°)</ComboBoxItem>
+                                        <ComboBoxItem>Airmass</ComboBoxItem>
+                                        <ComboBoxItem>Position Angle (°)</ComboBoxItem>
+                                        <ComboBoxItem>Rotator Position (°)</ComboBoxItem>
+                                        <ComboBoxItem>Focuser Position (steps)</ComboBoxItem>
+                                        <ComboBoxItem>Seeing FWHM (arcsec)</ComboBoxItem>
                                         <ComboBoxItem>Sky Quality (mag/arcsec²)</ComboBoxItem>
+                                        <ComboBoxItem>Sky Brightness (Lux)</ComboBoxItem>
                                         <ComboBoxItem>Cloud Cover (%)</ComboBoxItem>
                                         <ComboBoxItem>Sky Temp (°C)</ComboBoxItem>
-                                        <ComboBoxItem>Median ADU</ComboBoxItem>
-                                        <ComboBoxItem>Mean ADU</ComboBoxItem>
+                                        <ComboBoxItem>Humidity (%)</ComboBoxItem>
+                                        <ComboBoxItem>Dew Point (°C)</ComboBoxItem>
                                         <ComboBoxItem>Wind Speed (m/s)</ComboBoxItem>
                                         <ComboBoxItem>Wind Gust (m/s)</ComboBoxItem>
+                                        <ComboBoxItem>Wind Direction (°)</ComboBoxItem>
                                         <ComboBoxItem>Pressure (hPa)</ComboBoxItem>
-                                        <ComboBoxItem>Seeing FWHM (arcsec)</ComboBoxItem>
-                                        <ComboBoxItem>Std Deviation (ADU)</ComboBoxItem>
-                                        <ComboBoxItem>MAD (ADU)</ComboBoxItem>
                                         <ComboBoxItem>Exposure (s)</ComboBoxItem>
                                         <ComboBoxItem>Gain</ComboBoxItem>
-                                        <ComboBoxItem>Azimuth (°)</ComboBoxItem>
-                                        <ComboBoxItem>Wind Direction (°)</ComboBoxItem>
-                                        <ComboBoxItem>Sky Brightness (Lux)</ComboBoxItem>
-                                        <ComboBoxItem>Rotator Position (°)</ComboBoxItem>
-                                        <ComboBoxItem>Position Angle (°)</ComboBoxItem>
                                         <ComboBoxItem>Offset</ComboBoxItem>
+                                        <ComboBoxItem>Median ADU</ComboBoxItem>
+                                        <ComboBoxItem>Mean ADU</ComboBoxItem>
+                                        <ComboBoxItem>Std Deviation (ADU)</ComboBoxItem>
+                                        <ComboBoxItem>MAD (ADU)</ComboBoxItem>
                                         <ComboBoxItem>Min ADU</ComboBoxItem>
                                         <ComboBoxItem>Max ADU</ComboBoxItem>
                                     </ComboBox>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,3">
                                     <TextBlock Text="Primary Metric" Width="180" VerticalAlignment="Center" />
-                                    <ComboBox SelectedIndex="{Binding ChartPrimaryMetric}" MinWidth="160">
+                                    <ComboBox SelectedIndex="{Binding ChartPrimaryMetric}" MinWidth="160" HorizontalContentAlignment="Left">
                                         <ComboBoxItem>HFR</ComboBoxItem>
                                         <ComboBoxItem>FWHM</ComboBoxItem>
                                         <ComboBoxItem>Guiding RMS</ComboBoxItem>
-                                        <ComboBoxItem>Star Count</ComboBoxItem>
                                         <ComboBoxItem>Eccentricity</ComboBoxItem>
-                                        <ComboBoxItem>Altitude (°)</ComboBoxItem>
-                                        <ComboBoxItem>Airmass</ComboBoxItem>
+                                        <ComboBoxItem>Star Count</ComboBoxItem>
                                         <ComboBoxItem>Focuser Temp (°C)</ComboBoxItem>
                                         <ComboBoxItem>Ambient Temp (°C)</ComboBoxItem>
-                                        <ComboBoxItem>Focuser Position (steps)</ComboBoxItem>
                                         <ComboBoxItem>Camera Temp (°C)</ComboBoxItem>
                                         <ComboBoxItem>Cooler Setpoint (°C)</ComboBoxItem>
-                                        <ComboBoxItem>Humidity (%)</ComboBoxItem>
-                                        <ComboBoxItem>Dew Point (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Altitude (°)</ComboBoxItem>
+                                        <ComboBoxItem>Azimuth (°)</ComboBoxItem>
+                                        <ComboBoxItem>Airmass</ComboBoxItem>
+                                        <ComboBoxItem>Position Angle (°)</ComboBoxItem>
+                                        <ComboBoxItem>Rotator Position (°)</ComboBoxItem>
+                                        <ComboBoxItem>Focuser Position (steps)</ComboBoxItem>
+                                        <ComboBoxItem>Seeing FWHM (arcsec)</ComboBoxItem>
                                         <ComboBoxItem>Sky Quality (mag/arcsec²)</ComboBoxItem>
+                                        <ComboBoxItem>Sky Brightness (Lux)</ComboBoxItem>
                                         <ComboBoxItem>Cloud Cover (%)</ComboBoxItem>
                                         <ComboBoxItem>Sky Temp (°C)</ComboBoxItem>
-                                        <ComboBoxItem>Median ADU</ComboBoxItem>
-                                        <ComboBoxItem>Mean ADU</ComboBoxItem>
+                                        <ComboBoxItem>Humidity (%)</ComboBoxItem>
+                                        <ComboBoxItem>Dew Point (°C)</ComboBoxItem>
                                         <ComboBoxItem>Wind Speed (m/s)</ComboBoxItem>
                                         <ComboBoxItem>Wind Gust (m/s)</ComboBoxItem>
+                                        <ComboBoxItem>Wind Direction (°)</ComboBoxItem>
                                         <ComboBoxItem>Pressure (hPa)</ComboBoxItem>
-                                        <ComboBoxItem>Seeing FWHM (arcsec)</ComboBoxItem>
-                                        <ComboBoxItem>Std Deviation (ADU)</ComboBoxItem>
-                                        <ComboBoxItem>MAD (ADU)</ComboBoxItem>
                                         <ComboBoxItem>Exposure (s)</ComboBoxItem>
                                         <ComboBoxItem>Gain</ComboBoxItem>
-                                        <ComboBoxItem>Azimuth (°)</ComboBoxItem>
-                                        <ComboBoxItem>Wind Direction (°)</ComboBoxItem>
-                                        <ComboBoxItem>Sky Brightness (Lux)</ComboBoxItem>
-                                        <ComboBoxItem>Rotator Position (°)</ComboBoxItem>
-                                        <ComboBoxItem>Position Angle (°)</ComboBoxItem>
                                         <ComboBoxItem>Offset</ComboBoxItem>
+                                        <ComboBoxItem>Median ADU</ComboBoxItem>
+                                        <ComboBoxItem>Mean ADU</ComboBoxItem>
+                                        <ComboBoxItem>Std Deviation (ADU)</ComboBoxItem>
+                                        <ComboBoxItem>MAD (ADU)</ComboBoxItem>
                                         <ComboBoxItem>Min ADU</ComboBoxItem>
                                         <ComboBoxItem>Max ADU</ComboBoxItem>
                                     </ComboBox>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,3">
                                     <TextBlock Text="Secondary Metric" Width="180" VerticalAlignment="Center" />
-                                    <ComboBox SelectedIndex="{Binding ChartSecondaryMetric}" MinWidth="160">
+                                    <ComboBox SelectedIndex="{Binding ChartSecondaryMetric}" MinWidth="160" HorizontalContentAlignment="Left">
                                         <ComboBoxItem>None</ComboBoxItem>
                                         <ComboBoxItem>HFR</ComboBoxItem>
                                         <ComboBoxItem>FWHM</ComboBoxItem>
                                         <ComboBoxItem>Guiding RMS</ComboBoxItem>
-                                        <ComboBoxItem>Star Count</ComboBoxItem>
                                         <ComboBoxItem>Eccentricity</ComboBoxItem>
-                                        <ComboBoxItem>Altitude (°)</ComboBoxItem>
-                                        <ComboBoxItem>Airmass</ComboBoxItem>
+                                        <ComboBoxItem>Star Count</ComboBoxItem>
                                         <ComboBoxItem>Focuser Temp (°C)</ComboBoxItem>
                                         <ComboBoxItem>Ambient Temp (°C)</ComboBoxItem>
-                                        <ComboBoxItem>Focuser Position (steps)</ComboBoxItem>
                                         <ComboBoxItem>Camera Temp (°C)</ComboBoxItem>
                                         <ComboBoxItem>Cooler Setpoint (°C)</ComboBoxItem>
-                                        <ComboBoxItem>Humidity (%)</ComboBoxItem>
-                                        <ComboBoxItem>Dew Point (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Altitude (°)</ComboBoxItem>
+                                        <ComboBoxItem>Azimuth (°)</ComboBoxItem>
+                                        <ComboBoxItem>Airmass</ComboBoxItem>
+                                        <ComboBoxItem>Position Angle (°)</ComboBoxItem>
+                                        <ComboBoxItem>Rotator Position (°)</ComboBoxItem>
+                                        <ComboBoxItem>Focuser Position (steps)</ComboBoxItem>
+                                        <ComboBoxItem>Seeing FWHM (arcsec)</ComboBoxItem>
                                         <ComboBoxItem>Sky Quality (mag/arcsec²)</ComboBoxItem>
+                                        <ComboBoxItem>Sky Brightness (Lux)</ComboBoxItem>
                                         <ComboBoxItem>Cloud Cover (%)</ComboBoxItem>
                                         <ComboBoxItem>Sky Temp (°C)</ComboBoxItem>
-                                        <ComboBoxItem>Median ADU</ComboBoxItem>
-                                        <ComboBoxItem>Mean ADU</ComboBoxItem>
+                                        <ComboBoxItem>Humidity (%)</ComboBoxItem>
+                                        <ComboBoxItem>Dew Point (°C)</ComboBoxItem>
                                         <ComboBoxItem>Wind Speed (m/s)</ComboBoxItem>
                                         <ComboBoxItem>Wind Gust (m/s)</ComboBoxItem>
+                                        <ComboBoxItem>Wind Direction (°)</ComboBoxItem>
                                         <ComboBoxItem>Pressure (hPa)</ComboBoxItem>
-                                        <ComboBoxItem>Seeing FWHM (arcsec)</ComboBoxItem>
-                                        <ComboBoxItem>Std Deviation (ADU)</ComboBoxItem>
-                                        <ComboBoxItem>MAD (ADU)</ComboBoxItem>
                                         <ComboBoxItem>Exposure (s)</ComboBoxItem>
                                         <ComboBoxItem>Gain</ComboBoxItem>
-                                        <ComboBoxItem>Azimuth (°)</ComboBoxItem>
-                                        <ComboBoxItem>Wind Direction (°)</ComboBoxItem>
-                                        <ComboBoxItem>Sky Brightness (Lux)</ComboBoxItem>
-                                        <ComboBoxItem>Rotator Position (°)</ComboBoxItem>
-                                        <ComboBoxItem>Position Angle (°)</ComboBoxItem>
                                         <ComboBoxItem>Offset</ComboBoxItem>
+                                        <ComboBoxItem>Median ADU</ComboBoxItem>
+                                        <ComboBoxItem>Mean ADU</ComboBoxItem>
+                                        <ComboBoxItem>Std Deviation (ADU)</ComboBoxItem>
+                                        <ComboBoxItem>MAD (ADU)</ComboBoxItem>
                                         <ComboBoxItem>Min ADU</ComboBoxItem>
                                         <ComboBoxItem>Max ADU</ComboBoxItem>
                                     </ComboBox>
