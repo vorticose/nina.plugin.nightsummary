@@ -4678,6 +4678,10 @@ function openManageProjectsModal() {
       var open = list.style.display !== 'none';
       list.style.display = open ? 'none' : 'block';
       if (chevron) chevron.textContent = open ? '\u25b8' : '\u25be';
+      if (!open) {
+        var scrollParent = otherHeader.closest('.manage-projects-list');
+        if (scrollParent) setTimeout(function() { scrollParent.scrollTop = scrollParent.scrollHeight; }, 50);
+      }
     });
   }
 
@@ -4692,6 +4696,10 @@ function openManageProjectsModal() {
       var open = targetList.style.display !== 'none';
       targetList.style.display = open ? 'none' : 'block';
       if (chevron) chevron.textContent = open ? '\u25b8' : '\u25be';
+      if (!open) {
+        var scrollParent = item.closest('.manage-projects-list');
+        if (scrollParent) setTimeout(function() { targetList.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, 50);
+      }
     });
   });
 
