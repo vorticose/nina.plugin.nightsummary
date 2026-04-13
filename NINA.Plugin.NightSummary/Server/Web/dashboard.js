@@ -4324,6 +4324,13 @@ function renderStatsTabContent(tabId) {
       container.innerHTML = '<div class="empty">No target data available yet.</div>';
       return;
     }
+    // Preserve scroll positions of sort/filter bars across re-render
+    var prevSortScroll = 0, prevFilterScroll = 0;
+    var prevSortBar = container.querySelector('.targets-sort-bar');
+    var prevFilterRow = container.querySelector('.targets-filter-row');
+    if (prevSortBar) prevSortScroll = prevSortBar.scrollLeft;
+    if (prevFilterRow) prevFilterScroll = prevFilterRow.scrollLeft;
+
     var sortKey = getTargetSortKey();
     var groupBy = getTargetGroupBy();
     var tsAvail = statsTsStatus === 'available';
@@ -4343,6 +4350,12 @@ function renderStatsTabContent(tabId) {
       }
     }
     container.innerHTML = html;
+    // Restore sort/filter bar scroll positions
+    var newSortBar = container.querySelector('.targets-sort-bar');
+    var newFilterRow = container.querySelector('.targets-filter-row');
+    if (newSortBar && prevSortScroll) newSortBar.scrollLeft = prevSortScroll;
+    if (newFilterRow && prevFilterScroll) newFilterRow.scrollLeft = prevFilterScroll;
+
     loadTargetThumbnails();
     initTargetsControlBar();
     initTargetCardClicks();
