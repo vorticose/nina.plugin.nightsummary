@@ -4795,6 +4795,7 @@ function closeProjectAssignPicker() {
   var dd = document.getElementById('project-assign-dropdown');
   if (dd && dd.parentNode) dd.parentNode.removeChild(dd);
   document.removeEventListener('keydown', _projectAssignKeyHandler);
+  document.body.style.overflow = '';
 }
 
 var _projectAssignOutsideHandler = function(e) {
@@ -4847,13 +4848,17 @@ function openProjectAssignPicker(anchorEl, targetName) {
       '<div class="project-assign-reset" data-action="clear">Remove from project</div>' +
     '</div>';
 
-  // Transparent fixed backdrop to block background scroll on mobile
+  // Measure anchor position before locking scroll
+  var rect = anchorEl.getBoundingClientRect();
+
+  // Transparent fixed backdrop to block background scroll
   var backdrop = document.createElement('div');
   backdrop.id = 'project-assign-backdrop';
   backdrop.style.cssText = 'position:fixed;inset:0;z-index:1099;';
   backdrop.addEventListener('click', function() { closeProjectAssignPicker(); });
   backdrop.addEventListener('touchmove', function(e) { e.preventDefault(); }, { passive: false });
   document.body.appendChild(backdrop);
+  document.body.style.overflow = 'hidden';
 
   var dropdown = document.createElement('div');
   dropdown.id = 'project-assign-dropdown';
@@ -4863,7 +4868,6 @@ function openProjectAssignPicker(anchorEl, targetName) {
 
   // Position below the anchor using fixed positioning (viewport-relative)
   dropdown.style.position = 'fixed';
-  var rect = anchorEl.getBoundingClientRect();
   dropdown.style.top = (rect.bottom + 6) + 'px';
   dropdown.style.left = rect.left + 'px';
 
