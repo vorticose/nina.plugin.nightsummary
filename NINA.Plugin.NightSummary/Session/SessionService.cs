@@ -284,6 +284,8 @@ namespace NINA.Plugin.NightSummary.Session {
                 var history      = BuildSessionHistory(testDb, images, session.SessionId);
                 var (fovW, fovH) = ComputeCameraFov(session);
                 var (lat, lon)   = GetObserverCoords();
+                // Fallback for test reports when no profile location is configured
+                if (lat == 0 && lon == 0) { lat = 32.9; lon = -105.5; }
 
                 // Always re-parse timing events from logs to pick up parser improvements.
                 // Falls back to cached DB data only if the log file is no longer available.
@@ -296,6 +298,10 @@ namespace NINA.Plugin.NightSummary.Session {
                     }
                 } catch (Exception ex) {
                     Logger.Warning($"NightSummary: Log re-parse failed, using cached data — {ex.Message}");
+                    timingEvents = null;  // fall through to DB lookup below
+                }
+                // If log parsing returned nothing (no log file, or empty), use cached DB data
+                if (timingEvents == null || !timingEvents.Any()) {
                     timingEvents = testDb.GetTimingEventsForSession(session.SessionId);
                 }
 
@@ -874,6 +880,9 @@ namespace NINA.Plugin.NightSummary.Session {
                 }
             } catch (Exception ex) {
                 Logger.Warning($"NightSummary: Log re-parse failed, using cached data — {ex.Message}");
+                timingEvents = null;
+            }
+            if (timingEvents == null || !timingEvents.Any()) {
                 timingEvents = db.GetTimingEventsForSession(session.SessionId);
             }
 

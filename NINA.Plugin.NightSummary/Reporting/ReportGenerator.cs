@@ -189,6 +189,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine(".ns-chart-filter-btn:hover { border-color: var(--accent-light); color: var(--text); }");
             sb.AppendLine(".ns-chart-filter-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }");
             sb.AppendLine(".ns-chart-svg { width: 100%; }");
+            sb.AppendLine("svg g:has(> title), svg circle:has(> title), svg line:has(> title), svg [data-tip] { cursor: pointer; }");
             sb.AppendLine("</style></head><body>");
 
             sb.Append(BuildHeader(data));
@@ -1196,21 +1197,29 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var sb = new StringBuilder();
             sb.AppendLine("<h2>Session Timeline</h2>");
 
+            // Which view is default?
+            bool altDefault = SettingsManager.Instance.Current.TimelineAltitudeDefault;
+            string altChecked = altDefault ? " checked" : "";
+            string simChecked = altDefault ? "" : " checked";
+            string hiddenView = altDefault ? "simple" : "altitude";
+
             // Toggle CSS
             sb.AppendLine("<style>");
             sb.AppendLine($"#{pfx}-altitude:checked ~ .{pfx}-bar label[for=\"{pfx}-altitude\"],");
             sb.AppendLine($"#{pfx}-simple:checked ~ .{pfx}-bar label[for=\"{pfx}-simple\"]");
             sb.AppendLine("{ background: var(--accent); color: var(--bg); border-color: var(--accent); }");
-            sb.AppendLine($"#{pfx}-svg-simple {{ display: none; }}");
+            sb.AppendLine($"#{pfx}-svg-{hiddenView} {{ display: none; }}");
             sb.AppendLine($"#{pfx}-simple:checked ~ #{pfx}-svg-altitude {{ display: none; }}");
             sb.AppendLine($"#{pfx}-simple:checked ~ #{pfx}-svg-simple {{ display: block !important; }}");
+            sb.AppendLine($"#{pfx}-altitude:checked ~ #{pfx}-svg-simple {{ display: none; }}");
+            sb.AppendLine($"#{pfx}-altitude:checked ~ #{pfx}-svg-altitude {{ display: block !important; }}");
             sb.AppendLine("</style>");
 
             sb.AppendLine("<div class='timeline-container'>");
 
             // Radio inputs
-            sb.AppendLine($"<input type=\"radio\" name=\"{pfx}\" id=\"{pfx}-altitude\" checked style=\"display:none\">");
-            sb.AppendLine($"<input type=\"radio\" name=\"{pfx}\" id=\"{pfx}-simple\" style=\"display:none\">");
+            sb.AppendLine($"<input type=\"radio\" name=\"{pfx}\" id=\"{pfx}-altitude\"{altChecked} style=\"display:none\">");
+            sb.AppendLine($"<input type=\"radio\" name=\"{pfx}\" id=\"{pfx}-simple\"{simChecked} style=\"display:none\">");
 
             // Chip bar
             sb.Append($"<div class=\"ns-chart-filter-bar {pfx}-bar\">");
@@ -1218,13 +1227,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-simple\">Simple</label>");
             sb.AppendLine("</div>");
 
-            // Altitude view (default visible)
-            sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-altitude\">");
+            // Altitude view
+            sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-altitude\"{(altDefault ? "" : " style=\"display:none\"")}>");
             sb.AppendLine(altitudeHtml);
             sb.AppendLine("</div>");
 
-            // Simple view (hidden by default)
-            sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-simple\" style=\"display:none\">");
+            // Simple view
+            sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-simple\"{(altDefault ? " style=\"display:none\"" : "")}>");
             sb.AppendLine(simpleHtml);
             sb.AppendLine("</div>");
 
@@ -1489,25 +1498,31 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 if (!string.IsNullOrEmpty(altChart) && !string.IsNullOrEmpty(simpleChart)) {
                     int ci = _chartIndex++;
                     string pfx = $"nsc{ci}";
+                    bool pvAltDefault = SettingsManager.Instance.Current.PreviewAltitudeDefault;
+                    string pvAltChecked = pvAltDefault ? " checked" : "";
+                    string pvSimChecked = pvAltDefault ? "" : " checked";
+                    string pvHidden = pvAltDefault ? "simple" : "altitude";
 
                     sb.AppendLine("<style>");
                     sb.AppendLine($"#{pfx}-altitude:checked ~ .{pfx}-bar label[for=\"{pfx}-altitude\"],");
                     sb.AppendLine($"#{pfx}-simple:checked ~ .{pfx}-bar label[for=\"{pfx}-simple\"]");
                     sb.AppendLine("{ background: var(--accent); color: var(--bg); border-color: var(--accent); }");
-                    sb.AppendLine($"#{pfx}-svg-simple {{ display: none; }}");
+                    sb.AppendLine($"#{pfx}-svg-{pvHidden} {{ display: none; }}");
                     sb.AppendLine($"#{pfx}-simple:checked ~ #{pfx}-svg-altitude {{ display: none; }}");
                     sb.AppendLine($"#{pfx}-simple:checked ~ #{pfx}-svg-simple {{ display: block !important; }}");
+                    sb.AppendLine($"#{pfx}-altitude:checked ~ #{pfx}-svg-simple {{ display: none; }}");
+                    sb.AppendLine($"#{pfx}-altitude:checked ~ #{pfx}-svg-altitude {{ display: block !important; }}");
                     sb.AppendLine("</style>");
 
                     sb.AppendLine("<div class='timeline-container'>");
-                    sb.AppendLine($"<input type=\"radio\" name=\"{pfx}\" id=\"{pfx}-altitude\" checked style=\"display:none\">");
-                    sb.AppendLine($"<input type=\"radio\" name=\"{pfx}\" id=\"{pfx}-simple\" style=\"display:none\">");
+                    sb.AppendLine($"<input type=\"radio\" name=\"{pfx}\" id=\"{pfx}-altitude\"{pvAltChecked} style=\"display:none\">");
+                    sb.AppendLine($"<input type=\"radio\" name=\"{pfx}\" id=\"{pfx}-simple\"{pvSimChecked} style=\"display:none\">");
                     sb.Append($"<div class=\"ns-chart-filter-bar {pfx}-bar\">");
                     sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-altitude\">Altitude</label>");
                     sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-simple\">Simple</label>");
                     sb.AppendLine("</div>");
-                    sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-altitude\">{altChart}</div>");
-                    sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-simple\" style=\"display:none\">{simpleChart}</div>");
+                    sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-altitude\"{(pvAltDefault ? "" : " style=\"display:none\"")}>{altChart}</div>");
+                    sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-simple\"{(pvAltDefault ? " style=\"display:none\"" : "")}>{simpleChart}</div>");
                     sb.AppendLine("</div>");
                 } else {
                     // Fallback — show whichever is available

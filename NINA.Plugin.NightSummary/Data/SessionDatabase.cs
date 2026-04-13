@@ -386,15 +386,22 @@ namespace NINA.Plugin.NightSummary.Data {
         /// </summary>
         private static void SeedTestDatabaseIfMissing(string pluginDataPath) {
             try {
-                var testDbPath = Path.Combine(pluginDataPath, "test", "nightsummary.sqlite");
-                if (File.Exists(testDbPath)) return;
-
+                var testDir    = Path.Combine(pluginDataPath, "test");
+                var testDbPath = Path.Combine(testDir, "nightsummary.sqlite");
+                var versionFile = Path.Combine(testDir, "demo.version");
                 var pluginDir  = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
                 var bundled    = Path.Combine(pluginDir, "Assets", "demo-nightsummary.sqlite");
                 if (!File.Exists(bundled)) return;
 
-                Directory.CreateDirectory(Path.GetDirectoryName(testDbPath));
-                File.Copy(bundled, testDbPath);
+                var currentVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "";
+                var existingVersion = File.Exists(versionFile) ? File.ReadAllText(versionFile).Trim() : "";
+
+                if (File.Exists(testDbPath) && currentVersion == existingVersion) return;
+
+                Directory.CreateDirectory(testDir);
+                File.Copy(bundled, testDbPath, overwrite: true);
+                File.WriteAllText(versionFile, currentVersion);
+                Logger.Info($"NightSummary: Demo database updated to version {currentVersion}");
             } catch { /* non-fatal — user can always run the seed script manually */ }
         }
 

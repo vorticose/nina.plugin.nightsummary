@@ -439,7 +439,9 @@ namespace NINA.Plugin.NightSummary {
                 S.ShowChartFlipMarkers  = true;
                 S.ShowChartRoofMarkers  = false;
                 S.ShowPerTargetIQ       = true;
-                S.ShowNextNightPreview  = true;
+                S.ShowNextNightPreview    = true;
+                S.PreviewAltitudeDefault  = true;
+                S.TimelineAltitudeDefault = true;
                 SaveSettings();
                 RaisePropertyChanged();
                 RaisePropertyChanged(nameof(ShowOverheadBreakdown));
@@ -457,6 +459,8 @@ namespace NINA.Plugin.NightSummary {
                 RaisePropertyChanged(nameof(ShowChartRoofMarkers));
                 RaisePropertyChanged(nameof(ShowPerTargetIQ));
                 RaisePropertyChanged(nameof(ShowNextNightPreview));
+                RaisePropertyChanged(nameof(PreviewAltitudeDefault));
+                RaisePropertyChanged(nameof(TimelineAltitudeDefault));
             }
         }
 
@@ -644,6 +648,16 @@ namespace NINA.Plugin.NightSummary {
         public bool ShowNextNightPreview {
             get => S.ShowNextNightPreview && IsTsInstalled && IsTsApiEnabled;
             set { S.ShowNextNightPreview = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
+        public bool PreviewAltitudeDefault {
+            get => S.PreviewAltitudeDefault;
+            set { S.PreviewAltitudeDefault = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
+        public bool TimelineAltitudeDefault {
+            get => S.TimelineAltitudeDefault;
+            set { S.TimelineAltitudeDefault = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public bool IsTsInstalled => TargetSchedulerDatabase.IsPluginInstalled;

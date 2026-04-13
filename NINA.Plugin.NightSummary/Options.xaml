@@ -147,6 +147,20 @@
                                 </StackPanel.Style>
                                 <TextBlock Text="Show Tonight's Preview" Width="200" VerticalAlignment="Center" />
                                 <CheckBox IsChecked="{Binding ShowNextNightPreview}" VerticalAlignment="Center" />
+                                <StackPanel Orientation="Horizontal" Margin="20,0,0,0">
+                                    <StackPanel.Style>
+                                        <Style TargetType="StackPanel">
+                                            <Setter Property="IsEnabled" Value="True"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding ShowNextNightPreview}" Value="False">
+                                                    <Setter Property="IsEnabled" Value="False"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </StackPanel.Style>
+                                    <TextBlock Text="Default to Altitude View" Width="140" VerticalAlignment="Center" />
+                                    <CheckBox IsChecked="{Binding PreviewAltitudeDefault}" VerticalAlignment="Center" />
+                                </StackPanel>
                                 <TextBlock TextWrapping="Wrap" FontSize="11" FontStyle="Italic" Margin="8,0,0,0" VerticalAlignment="Top" MaxWidth="380">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
@@ -174,6 +188,22 @@
                         </StackPanel>
                     </Border>
                     <!-- ══════════════════════════════════════════════════════════ -->
+
+                    <!-- Session Timeline: altitude view default; disabled at Snapshot -->
+                    <StackPanel Orientation="Horizontal" Margin="0,4">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="IsEnabled" Value="True"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ReportDetailLevel}" Value="0">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <TextBlock Text="Timeline Default Altitude View" Width="200" VerticalAlignment="Center" />
+                        <CheckBox IsChecked="{Binding TimelineAltitudeDefault}" VerticalAlignment="Center" />
+                    </StackPanel>
 
                     <StackPanel Orientation="Horizontal" Margin="0,4">
                         <TextBlock Text="Show Yield and Overhead Analysis" Width="200" VerticalAlignment="Center" />
