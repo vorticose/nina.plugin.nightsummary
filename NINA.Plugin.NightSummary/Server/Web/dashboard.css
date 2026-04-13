@@ -1747,6 +1747,13 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 }
 
 /* ── Stats tab bar ── */
+.stats-tab-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  gap: 10px;
+}
 .stats-tabs {
   display: inline-flex;
   position: relative;
@@ -1754,7 +1761,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   border: 1px solid rgba(230,232,240,0.10);
   border-radius: 6px;
   padding: 3px;
-  margin-bottom: 14px;
+  margin-bottom: 0;
   box-shadow:
     inset 0 2px 6px rgba(0,0,0,0.35),
     inset 0 0 0 1px rgba(0,0,0,0.2),
@@ -2479,7 +2486,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   border-radius: 6px;
   cursor: pointer;
   transition: color var(--t-fast), border-color var(--t-fast);
-  margin-left: auto;
+  flex-shrink: 0;
 }
 .targets-manage-projects-btn:hover {
   color: var(--text-primary);
@@ -3923,7 +3930,6 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   .targets-filter-row::-webkit-scrollbar { display: none; }
   .targets-sort-pill { height: 28px; padding: 0 9px; font-size: 11px; white-space: nowrap; flex-shrink: 0; }
   .targets-group-pill { height: 28px; padding: 0 9px; font-size: 11px; white-space: nowrap; flex-shrink: 0; margin-left: 0; }
-  .targets-manage-projects-btn { font-size: 10px; padding: 3px 8px; white-space: nowrap; flex-shrink: 0; margin-left: 0; }
   .targets-sort-label { flex-shrink: 0; }
   .targets-status-chip { height: 26px; padding: 0 8px; font-size: 11px; white-space: nowrap; flex-shrink: 0; }
   .targets-fov-check { flex-shrink: 0; }

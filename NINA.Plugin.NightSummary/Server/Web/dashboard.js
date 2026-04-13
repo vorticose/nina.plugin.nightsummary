@@ -511,15 +511,15 @@ function renderTargetsControlBar(sortKey, groupBy) {
   var tsAvail = statsTsStatus === 'available';
   var html = '<div class="targets-control-bar">';
   html += '<div class="targets-sort-bar"><span class="targets-sort-label">Sort</span>';
-  TARGET_SORT_OPTIONS.forEach(function(opt) {
-    var cls = 'targets-sort-pill' + (opt.key === sortKey ? ' active' : '');
-    html += '<button type="button" class="' + cls + '" data-sort-key="' + opt.key + '">' + esc(opt.label) + '</button>';
-  });
+  // Group by project first — commonly used
   if (tsAvail || (statsTsProjects && statsTsProjects.some(function(p) { return p.isCustom; }))) {
     var grpCls = 'targets-group-pill' + (groupBy === 'project' ? ' active' : '');
     html += '<button type="button" class="' + grpCls + '" data-action="toggle-group">Group by project</button>';
   }
-  html += '<button type="button" class="targets-manage-projects-btn" data-action="manage-projects">Manage Projects</button>';
+  TARGET_SORT_OPTIONS.forEach(function(opt) {
+    var cls = 'targets-sort-pill' + (opt.key === sortKey ? ' active' : '');
+    html += '<button type="button" class="' + cls + '" data-sort-key="' + opt.key + '">' + esc(opt.label) + '</button>';
+  });
   html += '</div>';
   if (tsAvail) {
     var enabledStates = getTargetStatusFilter();
@@ -564,12 +564,6 @@ function initTargetsControlBar() {
     grpBtn.addEventListener('click', function() {
       localStorage.setItem('ns-targets-group', getTargetGroupBy() === 'project' ? 'flat' : 'project');
       renderStatsTabContent('targets');
-    });
-  }
-  var manageBtn = document.querySelector('.targets-manage-projects-btn');
-  if (manageBtn) {
-    manageBtn.addEventListener('click', function() {
-      openManageProjectsModal();
     });
   }
   document.querySelectorAll('.targets-status-chip[data-filter-state]').forEach(function(chip) {
@@ -5038,12 +5032,22 @@ function renderStats() {
     var activeTab = localStorage.getItem('ns-stats-tab') || 'targets';
     if (!tabs.some(function(t) { return t.id === activeTab; })) activeTab = 'targets';
 
+    html += '<div class="stats-tab-row">';
     html += renderTabBar(tabs, activeTab);
+    html += '<button type="button" class="targets-manage-projects-btn" data-action="manage-projects">Manage Projects</button>';
+    html += '</div>';
     html += '<div id="stats-tab-content"></div>';
 
     el.innerHTML = html;
 
     initTabBar(renderStatsTabContent);
+
+    // Manage Projects button — lives in the tab row, not the targets control bar
+    var manageBtn = el.querySelector('.targets-manage-projects-btn');
+    if (manageBtn) {
+      manageBtn.addEventListener('click', function() { openManageProjectsModal(); });
+    }
+
     renderStatsTabContent(activeTab);
   }).catch(function(err) {
     logError('Failed to load stats:', err.message);
