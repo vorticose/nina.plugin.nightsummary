@@ -3902,10 +3902,31 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   .stats-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   /* Target cards — single column on mobile */
   .target-grid { grid-template-columns: 1fr; gap: 10px; }
-  .targets-sort-bar { gap: 5px; }
-  .targets-sort-pill { height: 30px; padding: 0 10px; font-size: 11px; }
-  .targets-group-pill { height: 30px; padding: 0 10px; font-size: 11px; }
-  .targets-status-chip { height: 26px; padding: 0 8px; font-size: 11px; }
+  .targets-control-bar { gap: 6px; }
+  .targets-sort-bar {
+    gap: 5px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+  .targets-sort-bar::-webkit-scrollbar { display: none; }
+  .targets-sort-pill { height: 28px; padding: 0 9px; font-size: 11px; white-space: nowrap; flex-shrink: 0; }
+  .targets-group-pill { height: 28px; padding: 0 9px; font-size: 11px; white-space: nowrap; flex-shrink: 0; margin-left: 0; }
+  .targets-manage-projects-btn { font-size: 10px; padding: 3px 8px; white-space: nowrap; flex-shrink: 0; margin-left: 0; }
+  .targets-sort-label { flex-shrink: 0; }
+  .targets-filter-row {
+    gap: 5px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+  .targets-filter-row::-webkit-scrollbar { display: none; }
+  .targets-status-chip { height: 26px; padding: 0 8px; font-size: 11px; white-space: nowrap; flex-shrink: 0; }
+  .targets-fov-check { flex-shrink: 0; }
   .targets-project-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 10px; }
   .targets-project-name { font-size: 13px; }
   /* ── Mobile thumbnail zoom preview ── */
