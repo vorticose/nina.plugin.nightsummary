@@ -625,6 +625,18 @@ function initTargetsControlBar() {
       });
     });
   }
+
+  // Scroll fade: remove right-edge mask when scrolled to end
+  ['.targets-sort-bar', '.targets-filter-row'].forEach(function(sel) {
+    var el = document.querySelector(sel);
+    if (!el) return;
+    function updateFade() {
+      var atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 4;
+      el.classList.toggle('scrolled-end', atEnd);
+    }
+    el.addEventListener('scroll', updateFade, { passive: true });
+    updateFade();
+  });
 }
 
 // Flat-mode filter by state + type; targets with no TS link always pass through
