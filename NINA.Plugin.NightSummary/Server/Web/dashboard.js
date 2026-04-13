@@ -1542,6 +1542,7 @@ function openTargetDetail(targetName, latestSessionId) {
   backdrop.innerHTML = '<div class="tdp-modal" style="padding:40px;text-align:center;color:var(--text-tertiary);">Loading \u2026</div>';
   document.body.appendChild(backdrop);
   document.body.style.overflow = 'hidden';
+  backdrop.addEventListener('touchmove', function(e) { if (e.target === backdrop) e.preventDefault(); }, { passive: false });
 
   // Tentative close on backdrop click while loading
   var loadClickHandler = function(e) { if (e.target === backdrop) closeTargetDetail(); };
@@ -1612,6 +1613,7 @@ function openProjectDetail(projectGuid, projectName) {
   backdrop.innerHTML = '<div class="pdp-modal pdp-modal--loading"><span style="color:var(--text-tertiary)">Loading \u2026</span></div>';
   document.body.appendChild(backdrop);
   document.body.style.overflow = 'hidden';
+  backdrop.addEventListener('touchmove', function(e) { if (e.target === backdrop) e.preventDefault(); }, { passive: false });
 
   var loadClickHandler = function(e) { if (e.target === backdrop) closeProjectDetail(); };
   backdrop.addEventListener('click', loadClickHandler);
@@ -4672,6 +4674,7 @@ function openManageProjectsModal() {
   backdrop.innerHTML = html;
   document.body.appendChild(backdrop);
   document.body.style.overflow = 'hidden';
+  backdrop.addEventListener('touchmove', function(e) { if (e.target === backdrop) e.preventDefault(); }, { passive: false });
 
   backdrop.addEventListener('click', function(e) {
     if (e.target === backdrop) closeManageProjectsModal();
@@ -4787,9 +4790,10 @@ function openManageProjectsModal() {
 // ── Project assignment picker (per target card) ──────────────────────────
 
 function closeProjectAssignPicker() {
+  var bd = document.getElementById('project-assign-backdrop');
+  if (bd && bd.parentNode) bd.parentNode.removeChild(bd);
   var dd = document.getElementById('project-assign-dropdown');
   if (dd && dd.parentNode) dd.parentNode.removeChild(dd);
-  document.removeEventListener('click', _projectAssignOutsideHandler, true);
   document.removeEventListener('keydown', _projectAssignKeyHandler);
 }
 
@@ -4843,24 +4847,33 @@ function openProjectAssignPicker(anchorEl, targetName) {
       '<div class="project-assign-reset" data-action="clear">Remove from project</div>' +
     '</div>';
 
+  // Transparent fixed backdrop to block background scroll on mobile
+  var backdrop = document.createElement('div');
+  backdrop.id = 'project-assign-backdrop';
+  backdrop.style.cssText = 'position:fixed;inset:0;z-index:1099;';
+  backdrop.addEventListener('click', function() { closeProjectAssignPicker(); });
+  backdrop.addEventListener('touchmove', function(e) { e.preventDefault(); }, { passive: false });
+  document.body.appendChild(backdrop);
+
   var dropdown = document.createElement('div');
   dropdown.id = 'project-assign-dropdown';
   dropdown.className = 'ts-override-dropdown';
   dropdown.innerHTML = html;
   document.body.appendChild(dropdown);
 
-  // Position below the anchor
+  // Position below the anchor using fixed positioning (viewport-relative)
+  dropdown.style.position = 'fixed';
   var rect = anchorEl.getBoundingClientRect();
-  dropdown.style.top = (rect.bottom + window.scrollY + 6) + 'px';
-  dropdown.style.left = (rect.left + window.scrollX) + 'px';
+  dropdown.style.top = (rect.bottom + 6) + 'px';
+  dropdown.style.left = rect.left + 'px';
 
   requestAnimationFrame(function() {
     var dr = dropdown.getBoundingClientRect();
     if (dr.right > window.innerWidth - 12) {
-      dropdown.style.left = (window.innerWidth - dr.width - 12 + window.scrollX) + 'px';
+      dropdown.style.left = (window.innerWidth - dr.width - 12) + 'px';
     }
     if (dr.bottom > window.innerHeight - 12) {
-      dropdown.style.top = (rect.top + window.scrollY - dr.height - 6) + 'px';
+      dropdown.style.top = (rect.top - dr.height - 6) + 'px';
     }
     dropdown.classList.add('visible');
   });
@@ -4978,6 +4991,7 @@ function openTsLinkPicker(sessionTargetName) {
   backdrop.innerHTML = html;
   document.body.appendChild(backdrop);
   document.body.style.overflow = 'hidden';
+  backdrop.addEventListener('touchmove', function(e) { if (e.target === backdrop) e.preventDefault(); }, { passive: false });
 
   backdrop.addEventListener('click', function(e) {
     if (e.target === backdrop) closeTsLinkPicker();
