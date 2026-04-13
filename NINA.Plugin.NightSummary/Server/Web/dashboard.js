@@ -4892,6 +4892,10 @@ function openProjectAssignPicker(anchorEl, targetName) {
       var open = list.style.display !== 'none';
       list.style.display = open ? 'none' : 'block';
       if (chevron) chevron.textContent = open ? '\u25b8' : '\u25be';
+      if (!open) {
+        var scrollParent = otherHdr.closest('.project-assign-list');
+        if (scrollParent) setTimeout(function() { scrollParent.scrollTop = scrollParent.scrollHeight; }, 50);
+      }
     });
   }
 
