@@ -38,7 +38,12 @@
                         <TextBlock Width="200" />
                         <ComboBox ItemsSource="{Binding AvailableSessions}"
                                   SelectedItem="{Binding SelectedSession}"
-                                  MinWidth="300">
+                                  MinWidth="300" HorizontalContentAlignment="Left">
+                            <ComboBox.ItemContainerStyle>
+                                <Style TargetType="ComboBoxItem">
+                                    <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                                </Style>
+                            </ComboBox.ItemContainerStyle>
                             <ComboBox.ItemTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding DisplayLabel}" TextWrapping="NoWrap" TextTrimming="None" />
