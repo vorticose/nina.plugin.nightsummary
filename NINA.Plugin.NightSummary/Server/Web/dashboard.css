@@ -3553,17 +3553,23 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   border-bottom: 1px solid rgba(255,255,255,0.08);
 }
 .pdp-kpi-row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
   gap: 8px;
 }
 .pdp-kpi {
   background: var(--surface-well);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 6px;
-  padding: 8px 14px;
+  padding: 8px 10px;
   text-align: center;
-  min-width: 80px;
+}
+.pdp-kpi.target-stat-expandable {
+  cursor: pointer;
+}
+.pdp-kpi.target-stat-expandable:hover {
+  border-color: rgba(255,255,255,0.18);
+  background: var(--surface-hover, rgba(255,255,255,0.06));
 }
 .pdp-kpi-val {
   font-size: 17px;
@@ -3755,7 +3761,8 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   color: var(--text-secondary);
   display: flex;
   align-items: center;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 4px 6px;
   margin-bottom: 4px;
   font-variant-numeric: tabular-nums;
 }

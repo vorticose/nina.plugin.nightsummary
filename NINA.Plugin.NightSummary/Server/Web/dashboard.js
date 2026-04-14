@@ -1706,6 +1706,7 @@ function closeProjectDetail() {
   backdrop.classList.add('pdp-hiding');
   setTimeout(function() { if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop); }, 160);
   document.body.style.overflow = '';
+  tdpKpiFilters = null;
   if (_pdpKeyHandler) {
     document.removeEventListener('keydown', _pdpKeyHandler);
     _pdpKeyHandler = null;
@@ -1742,8 +1743,11 @@ function openProjectDetail(projectGuid, projectName) {
     var pdpImagedPanels = (data.panels || []).filter(function(p) {
       return (p.sessionCount || 0) > 0 || (p.acceptedFrames || 0) > 0;
     });
-    if (!(data.project || {}).isMosaic && pdpImagedPanels.length >= 2) {
+    var pdpIsMosaic = !!(data.project || {}).isMosaic;
+    if (!pdpIsMosaic && pdpImagedPanels.length >= 2) {
       loadPdpMultiThumbs(backdrop, pdpImagedPanels);
+    } else if (!pdpIsMosaic && pdpImagedPanels.length === 1) {
+      loadPdpSingleThumb(backdrop, pdpImagedPanels[0]);
     } else {
       loadMosaicThumbnail(data.panels || [], backdrop, projectGuid);
     }
@@ -1815,12 +1819,26 @@ function renderProjectDetailPanel(data) {
   html += '</div>';
 
   // ── 3. KPI stats section ─────────────────────────────────────────────────
+  // Aggregate per-filter totals across all panels for hover breakdown popup.
+  var pdpKpiAgg = {};
+  panels.forEach(function(panel) {
+    (panel.filters || []).forEach(function(f) {
+      var name = f.filter || 'Unknown';
+      if (!pdpKpiAgg[name]) pdpKpiAgg[name] = { filter: name, totalSeconds: 0, acceptedCount: 0 };
+      pdpKpiAgg[name].totalSeconds  += (f.totalHours || 0) * 3600;
+      pdpKpiAgg[name].acceptedCount += f.acceptedFrames || 0;
+    });
+  });
+  tdpKpiFilters = Object.keys(pdpKpiAgg).map(function(k) { return pdpKpiAgg[k]; });
+
   html += '<div class="pdp-stats-section">';
   html += '<div class="pdp-kpi-row">';
-  html += '<div class="pdp-kpi"><div class="pdp-kpi-val">' + (agg.totalIntegrationHours || 0).toFixed(1) +
-    '<span class="unit">h</span></div><div class="pdp-kpi-label">Total</div></div>';
-  html += '<div class="pdp-kpi"><div class="pdp-kpi-val">' + (agg.acceptedFrames || 0) +
-    '</div><div class="pdp-kpi-label">Frames</div></div>';
+  html += '<div class="pdp-kpi target-stat-expandable" data-stat-type="integration" data-stat-source="tdp">' +
+    '<div class="pdp-kpi-val">' + (agg.totalIntegrationHours || 0).toFixed(1) + '<span class="unit">h</span></div>' +
+    '<div class="pdp-kpi-label">Integration</div></div>';
+  html += '<div class="pdp-kpi target-stat-expandable" data-stat-type="frames" data-stat-source="tdp">' +
+    '<div class="pdp-kpi-val">' + (agg.acceptedFrames || 0) + '</div>' +
+    '<div class="pdp-kpi-label">Frames</div></div>';
   html += '<div class="pdp-kpi"><div class="pdp-kpi-val">' + (agg.sessionCount || 0) +
     '</div><div class="pdp-kpi-label">Sessions</div></div>';
   html += '<div class="pdp-kpi"><div class="pdp-kpi-val">' + panels.length +
@@ -2003,6 +2021,46 @@ function loadPdpMultiThumbs(backdrop, imagedPanels) {
   });
 }
 
+function loadPdpSingleThumb(backdrop, panel) {
+  var wrap = backdrop.querySelector('#pdp-thumb-wrap');
+  if (!wrap) return;
+  var targetName = panel.name;
+  var sid = panel.latestSessionId;
+  if (!sid) return;
+
+  function applyThumb(thumbs) {
+    if (!Array.isArray(thumbs)) return;
+    var lower = (targetName || '').toLowerCase();
+    var match = null;
+    for (var i = 0; i < thumbs.length; i++) {
+      var t = thumbs[i];
+      if (t.target === targetName || (t.target || '').toLowerCase() === lower) {
+        match = t; break;
+      }
+    }
+    if (match && match.dataUri) {
+      var placeholder = wrap.querySelector('.pdp-mosaic-placeholder');
+      if (placeholder) placeholder.remove();
+      var existingImg = wrap.querySelector('img');
+      if (existingImg) existingImg.remove();
+      var img = document.createElement('img');
+      img.className = 'pdp-mosaic-img';
+      img.src = match.dataUri;
+      img.alt = targetName || '';
+      wrap.insertBefore(img, wrap.firstChild);
+    }
+  }
+
+  if (thumbnailCache[sid]) {
+    applyThumb(thumbnailCache[sid]);
+  } else {
+    api('/api/sessions/' + encodeURIComponent(sid) + '/thumbnails').then(function(thumbs) {
+      if (Array.isArray(thumbs) && thumbs.length > 0) thumbnailCache[sid] = thumbs;
+      applyThumb(thumbs);
+    }).catch(function() { /* leave placeholder */ });
+  }
+}
+
 function renderPdpPanelCard(panel, idx, tsTarget) {
   var palette = ['#90CAF9','#A5D6A7','#FFCC80','#EF9A9A','#CE93D8','#80DEEA','#BCAAA4','#B0BEC5'];
   var color = palette[idx % palette.length];
@@ -2031,10 +2089,10 @@ function renderPdpPanelCard(panel, idx, tsTarget) {
   html += '<div class="pdp-panel-stats">';
   html += '<span class="pdp-panel-stat-val">' + totalHrs + '<span class="unit">h</span></span>';
   html += '<span class="pdp-panel-stat-sep">\u00b7</span>';
-  html += '<span class="pdp-panel-stat-val">' + frames + '\u00a0frames</span>';
+  html += '<span class="pdp-panel-stat-val">' + frames + '\u00a0' + (frames === 1 ? 'frame' : 'frames') + '</span>';
   if (panel.sessionCount) {
     html += '<span class="pdp-panel-stat-sep">\u00b7</span>';
-    html += '<span class="pdp-panel-stat-val">' + panel.sessionCount + '\u00a0sessions</span>';
+    html += '<span class="pdp-panel-stat-val">' + panel.sessionCount + '\u00a0' + (panel.sessionCount === 1 ? 'session' : 'sessions') + '</span>';
   }
   html += '</div>';
 
