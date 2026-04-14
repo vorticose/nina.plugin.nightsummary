@@ -11,7 +11,12 @@
 
                     <StackPanel Orientation="Horizontal" Margin="0,5,0,10">
                         <TextBlock Text="Detail Level" Width="200" VerticalAlignment="Top" Margin="0,4,0,0" />
-                        <ComboBox SelectedIndex="{Binding ReportDetailLevel}" MinWidth="160" VerticalAlignment="Top">
+                        <ComboBox SelectedIndex="{Binding ReportDetailLevel}" MinWidth="160" VerticalAlignment="Top" HorizontalContentAlignment="Left">
+                            <ComboBox.ItemContainerStyle>
+                                <Style TargetType="ComboBoxItem">
+                                    <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                                </Style>
+                            </ComboBox.ItemContainerStyle>
                             <ComboBoxItem>Snapshot</ComboBoxItem>
                             <ComboBoxItem>Standard</ComboBoxItem>
                             <ComboBoxItem>Full</ComboBoxItem>
