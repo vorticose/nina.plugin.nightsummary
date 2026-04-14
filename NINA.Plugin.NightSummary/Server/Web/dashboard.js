@@ -4989,7 +4989,61 @@ function openManageProjectsModal() {
     });
   });
 
-  // Remove target from project
+  // Helper: update a project row's subtitle and ↺ button in-place after an exclusion change.
+  function updateProjectRowMeta(projectGuid) {
+    var item = backdrop.querySelector('.manage-project-item[data-guid="' + projectGuid + '"]');
+    if (!item) return;
+    var metaEl = item.querySelector('.manage-project-meta');
+    if (!metaEl) return;
+    var proj = (statsTsProjects || []).find(function(p) { return p.guid === projectGuid; });
+    if (!proj) return;
+
+    var excludedCount = ((statsTargetExclusions || {})[projectGuid] || []).length;
+    var typeTag = proj.isMosaic ? 'Mosaic' : (proj.isCustom ? 'Custom' : (proj.targetCount > 1 ? 'Multi' : 'Single'));
+    var subtitle;
+    if (proj.isCustom) {
+      var assignedCount = 0;
+      Object.keys(statsProjectAssignments || {}).forEach(function(k) {
+        if ((statsProjectAssignments || {})[k] === projectGuid) assignedCount++;
+      });
+      subtitle = assignedCount > 0
+        ? assignedCount + ' assigned target' + (assignedCount !== 1 ? 's' : '')
+        : 'No targets assigned';
+    } else {
+      var visible = proj.targetCount - excludedCount;
+      subtitle = visible + ' TS target' + (visible !== 1 ? 's' : '');
+      if (excludedCount > 0) subtitle += ' \u00b7 ' + excludedCount + ' hidden';
+    }
+    metaEl.textContent = typeTag + ' \u00b7 ' + subtitle;
+
+    // Show/hide ↺ button
+    var existingReset = item.querySelector('.manage-project-proj-reset');
+    if (!proj.isCustom && excludedCount > 0 && !existingReset) {
+      var rb = document.createElement('button');
+      rb.type = 'button';
+      rb.className = 'manage-project-proj-reset';
+      rb.setAttribute('data-guid', projectGuid);
+      rb.title = 'Restore hidden targets for this project';
+      rb.textContent = '\u21ba';
+      rb.addEventListener('click', function(e) {
+        e.stopPropagation();
+        fetch('/api/stats/projects/' + encodeURIComponent(projectGuid) + '/reset', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({})
+        }).then(function(r) { return r.json(); }).then(function() {
+          closeManageProjectsModal();
+          renderStats();
+          setTimeout(openManageProjectsModal, 600);
+        });
+      });
+      var deleteBtn = item.querySelector('.manage-project-delete');
+      if (deleteBtn) item.insertBefore(rb, deleteBtn);
+      else item.appendChild(rb);
+    } else if (excludedCount === 0 && existingReset) {
+      existingReset.remove();
+    }
+  }
+
+  // Remove target from project — in-place, no modal close/reopen
   backdrop.querySelectorAll('.manage-project-target-remove').forEach(function(btn) {
     btn.addEventListener('click', function(e) {
       e.stopPropagation();
@@ -4997,21 +5051,36 @@ function openManageProjectsModal() {
       var projectGuid = btn.getAttribute('data-project');
       var source      = btn.getAttribute('data-source');
       var url, body;
+
+      // Update in-memory state immediately so subtitle is right
       if (source === 'ts') {
+        if (!statsTargetExclusions) statsTargetExclusions = {};
+        var list = statsTargetExclusions[projectGuid] || [];
+        var key = targetName.toLowerCase();
+        if (list.indexOf(key) < 0) list.push(key);
+        statsTargetExclusions[projectGuid] = list;
         url  = '/api/stats/ts/exclude';
         body = { targetName: targetName, projectGuid: projectGuid, exclude: true };
       } else {
+        if (statsProjectAssignments) delete statsProjectAssignments[targetName.toLowerCase()];
         url  = '/api/stats/ts/assign';
         body = { targetName: targetName, projectGuid: '' };
       }
+
+      // Remove target row from DOM
+      var row = btn.closest('.manage-project-target');
+      if (row) row.remove();
+
+      // Update subtitle + ↺ button
+      updateProjectRowMeta(projectGuid);
+
+      // Persist and refresh stats in background
       fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       }).then(function(r) { return r.json(); }).then(function() {
-        closeManageProjectsModal();
         renderStats();
-        setTimeout(openManageProjectsModal, 600);
       });
     });
   });
