@@ -4953,43 +4953,9 @@ function openManageProjectsModal() {
   // Close button
   backdrop.querySelector('[data-action="close"]').addEventListener('click', closeManageProjectsModal);
 
-  // Expand/collapse "Other TS Projects" section
-  var otherHeader = backdrop.querySelector('.manage-projects-other-header');
-  if (otherHeader) {
-    otherHeader.addEventListener('click', function() {
-      var list = backdrop.querySelector('.manage-projects-other-list');
-      var chevron = otherHeader.querySelector('.manage-project-chevron');
-      if (!list) return;
-      var open = list.style.display !== 'none';
-      list.style.display = open ? 'none' : 'block';
-      if (chevron) chevron.textContent = open ? '\u25b8' : '\u25be';
-      if (!open) {
-        var scrollParent = otherHeader.closest('.manage-projects-list');
-        if (scrollParent) setTimeout(function() { scrollParent.scrollTop = scrollParent.scrollHeight; }, 50);
-      }
-    });
-  }
+  // ── In-place helpers ─────────────────────────────────────────────────────
 
-  // Expand/collapse project target lists
-  backdrop.querySelectorAll('.manage-project-item.expandable').forEach(function(item) {
-    item.addEventListener('click', function(e) {
-      if (e.target.closest('.manage-project-delete')) return;
-      if (e.target.closest('.manage-project-proj-reset')) return;
-      var guid = item.getAttribute('data-guid');
-      var targetList = backdrop.querySelector('.manage-project-targets[data-guid="' + guid + '"]');
-      var chevron = item.querySelector('.manage-project-chevron');
-      if (!targetList) return;
-      var open = targetList.style.display !== 'none';
-      targetList.style.display = open ? 'none' : 'block';
-      if (chevron) chevron.textContent = open ? '\u25b8' : '\u25be';
-      if (!open) {
-        var scrollParent = item.closest('.manage-projects-list');
-        if (scrollParent) setTimeout(function() { targetList.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, 50);
-      }
-    });
-  });
-
-  // Helper: update a project row's subtitle and ↺ button in-place after an exclusion change.
+  // Update a project row's subtitle and ↺ button in-place after an exclusion change.
   function updateProjectRowMeta(projectGuid) {
     var item = backdrop.querySelector('.manage-project-item[data-guid="' + projectGuid + '"]');
     if (!item) return;
@@ -5016,7 +4982,6 @@ function openManageProjectsModal() {
     }
     metaEl.textContent = typeTag + ' \u00b7 ' + subtitle;
 
-    // Show/hide ↺ button
     var existingReset = item.querySelector('.manage-project-proj-reset');
     if (!proj.isCustom && excludedCount > 0 && !existingReset) {
       var rb = document.createElement('button');
@@ -5025,16 +4990,7 @@ function openManageProjectsModal() {
       rb.setAttribute('data-guid', projectGuid);
       rb.title = 'Restore hidden targets for this project';
       rb.textContent = '\u21ba';
-      rb.addEventListener('click', function(e) {
-        e.stopPropagation();
-        fetch('/api/stats/projects/' + encodeURIComponent(projectGuid) + '/reset', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({})
-        }).then(function(r) { return r.json(); }).then(function() {
-          closeManageProjectsModal();
-          renderStats();
-          setTimeout(openManageProjectsModal, 600);
-        });
-      });
+      rb.addEventListener('click', function(e) { e.stopPropagation(); handleProjectReset(projectGuid); });
       var deleteBtn = item.querySelector('.manage-project-delete');
       if (deleteBtn) item.insertBefore(rb, deleteBtn);
       else item.appendChild(rb);
@@ -5043,45 +4999,161 @@ function openManageProjectsModal() {
     }
   }
 
-  // Remove target from project — in-place, no modal close/reopen
-  backdrop.querySelectorAll('.manage-project-target-remove').forEach(function(btn) {
-    btn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      var targetName  = btn.getAttribute('data-target');
-      var projectGuid = btn.getAttribute('data-project');
-      var source      = btn.getAttribute('data-source');
-      var url, body;
+  // Remove a target row in-place and persist.
+  function handleTargetRemove(btn) {
+    var targetName  = btn.getAttribute('data-target');
+    var projectGuid = btn.getAttribute('data-project');
+    var source      = btn.getAttribute('data-source');
+    var url, body;
+    if (source === 'ts') {
+      if (!statsTargetExclusions) statsTargetExclusions = {};
+      var list = statsTargetExclusions[projectGuid] || [];
+      var key = targetName.toLowerCase();
+      if (list.indexOf(key) < 0) list.push(key);
+      statsTargetExclusions[projectGuid] = list;
+      url  = '/api/stats/ts/exclude';
+      body = { targetName: targetName, projectGuid: projectGuid, exclude: true };
+    } else {
+      if (statsProjectAssignments) delete statsProjectAssignments[targetName.toLowerCase()];
+      url  = '/api/stats/ts/assign';
+      body = { targetName: targetName, projectGuid: '' };
+    }
+    var row = btn.closest('.manage-project-target');
+    if (row) row.remove();
+    updateProjectRowMeta(projectGuid);
+    fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  }
 
-      // Update in-memory state immediately so subtitle is right
-      if (source === 'ts') {
-        if (!statsTargetExclusions) statsTargetExclusions = {};
-        var list = statsTargetExclusions[projectGuid] || [];
-        var key = targetName.toLowerCase();
-        if (list.indexOf(key) < 0) list.push(key);
-        statsTargetExclusions[projectGuid] = list;
-        url  = '/api/stats/ts/exclude';
-        body = { targetName: targetName, projectGuid: projectGuid, exclude: true };
-      } else {
-        if (statsProjectAssignments) delete statsProjectAssignments[targetName.toLowerCase()];
-        url  = '/api/stats/ts/assign';
-        body = { targetName: targetName, projectGuid: '' };
-      }
+  // Restore all hidden targets for one project in-place.
+  function handleProjectReset(projectGuid) {
+    var proj = (statsTsProjects || []).find(function(p) { return p.guid === projectGuid; });
+    if (!proj) return;
+    var excluded = ((statsTargetExclusions || {})[projectGuid] || []).slice();
+    var toRestore = (proj.targets || []).filter(function(t) {
+      return excluded.indexOf((t.name || '').toLowerCase()) >= 0;
+    });
+    var targetList = backdrop.querySelector('.manage-project-targets[data-guid="' + projectGuid + '"]');
+    toRestore.forEach(function(t) {
+      var row = document.createElement('div');
+      row.className = 'manage-project-target';
+      var nameSpan = document.createElement('span');
+      nameSpan.className = 'manage-project-target-name';
+      nameSpan.textContent = t.name || '';
+      var removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'manage-project-target-remove';
+      removeBtn.setAttribute('data-target', t.name || '');
+      removeBtn.setAttribute('data-project', projectGuid);
+      removeBtn.setAttribute('data-source', 'ts');
+      removeBtn.title = 'Remove from project';
+      removeBtn.textContent = '\u00d7';
+      removeBtn.addEventListener('click', function(e) { e.stopPropagation(); handleTargetRemove(removeBtn); });
+      row.appendChild(nameSpan);
+      row.appendChild(removeBtn);
+      if (targetList) targetList.appendChild(row);
+    });
+    if (statsTargetExclusions) delete statsTargetExclusions[projectGuid];
+    updateProjectRowMeta(projectGuid);
+    fetch('/api/stats/projects/' + encodeURIComponent(projectGuid) + '/reset', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({})
+    });
+  }
 
-      // Remove target row from DOM
-      var row = btn.closest('.manage-project-target');
-      if (row) row.remove();
+  // Rebuild the project list in-place (for structural changes: create, delete, global reset).
+  function rebuildList() {
+    var listEl = backdrop.querySelector('.manage-projects-list');
+    if (!listEl) return;
+    var curProjects = statsTsProjects || [];
+    var curMatched = getMatchedProjectGuids();
+    var matchedP = [], unmatchedP = [];
+    curProjects.forEach(function(p) {
+      if (p.isCustom || curMatched[p.guid]) matchedP.push(p);
+      else unmatchedP.push(p);
+    });
+    var html = matchedP.map(renderProjectRow).join('');
+    if (unmatchedP.length > 0) {
+      html += '<div class="manage-projects-other">' +
+        '<div class="manage-projects-other-header" data-action="toggle-other">' +
+          '<span class="manage-project-chevron">\u25b8</span> Other TS Projects (' + unmatchedP.length + ')' +
+        '</div>' +
+        '<div class="manage-projects-other-list" style="display:none">' +
+          unmatchedP.map(renderProjectRow).join('') +
+        '</div>' +
+      '</div>';
+    }
+    listEl.innerHTML = html || '<div class="empty">No projects available</div>';
+    wireListHandlers(listEl);
+  }
 
-      // Update subtitle + ↺ button
-      updateProjectRowMeta(projectGuid);
-
-      // Persist in background — no full re-render needed; in-memory state already updated
-      fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+  // Wire all dynamic handlers inside the list element.
+  function wireListHandlers(listEl) {
+    // Expand/collapse project rows
+    listEl.querySelectorAll('.manage-project-item.expandable').forEach(function(item) {
+      item.addEventListener('click', function(e) {
+        if (e.target.closest('.manage-project-delete')) return;
+        if (e.target.closest('.manage-project-proj-reset')) return;
+        var guid = item.getAttribute('data-guid');
+        var targetListEl = listEl.querySelector('.manage-project-targets[data-guid="' + guid + '"]');
+        var chevron = item.querySelector('.manage-project-chevron');
+        if (!targetListEl) return;
+        var open = targetListEl.style.display === 'none' || targetListEl.style.display === '';
+        targetListEl.style.display = open ? 'block' : 'none';
+        if (chevron) chevron.textContent = open ? '\u25b8' : '\u25be';
+        if (!open) {
+          var scrollParent = item.closest('.manage-projects-list');
+          if (scrollParent) setTimeout(function() { targetListEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, 50);
+        }
       });
     });
-  });
+
+    // Other TS Projects toggle
+    var otherHeader = listEl.querySelector('.manage-projects-other-header');
+    if (otherHeader) {
+      otherHeader.addEventListener('click', function() {
+        var otherList = listEl.querySelector('.manage-projects-other-list');
+        var chevron = otherHeader.querySelector('.manage-project-chevron');
+        if (!otherList) return;
+        var open = otherList.style.display === 'none' || otherList.style.display === '';
+        otherList.style.display = open ? 'block' : 'none';
+        if (chevron) chevron.textContent = open ? '\u25b8' : '\u25be';
+        if (!open) setTimeout(function() { otherList.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, 50);
+      });
+    }
+
+    // Remove target buttons
+    listEl.querySelectorAll('.manage-project-target-remove').forEach(function(btn) {
+      btn.addEventListener('click', function(e) { e.stopPropagation(); handleTargetRemove(btn); });
+    });
+
+    // Per-project reset buttons (those initially rendered with exclusions)
+    listEl.querySelectorAll('.manage-project-proj-reset').forEach(function(btn) {
+      btn.addEventListener('click', function(e) { e.stopPropagation(); handleProjectReset(btn.getAttribute('data-guid')); });
+    });
+
+    // Delete custom project buttons
+    listEl.querySelectorAll('.manage-project-delete').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var guid = btn.getAttribute('data-guid');
+        if (!confirm('Delete this custom project? Any target assignments will be cleared.')) return;
+        fetch('/api/stats/projects/custom', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete', guid: guid })
+        }).then(function(r) { return r.json(); }).then(function() {
+          // Remove from memory and rebuild list
+          if (statsTsProjects) statsTsProjects = statsTsProjects.filter(function(p) { return p.guid !== guid; });
+          Object.keys(statsProjectAssignments || {}).forEach(function(k) {
+            if (statsProjectAssignments[k] === guid) delete statsProjectAssignments[k];
+          });
+          rebuildList();
+        });
+      });
+    });
+  }
+
+  // ── Wire initial list ─────────────────────────────────────────────────────
+  wireListHandlers(backdrop.querySelector('.manage-projects-list'));
 
   // Create button
   var input = backdrop.querySelector('.manage-projects-input');
@@ -5089,53 +5161,23 @@ function openManageProjectsModal() {
   function doCreate() {
     var name = input.value.trim();
     if (!name) return;
+    addBtn.disabled = true;
     fetch('/api/stats/projects/custom', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'create', name: name })
-    }).then(function(r) { return r.json(); }).then(function() {
-      closeManageProjectsModal();
-      renderStats();
-      setTimeout(openManageProjectsModal, 600);
-    });
+    }).then(function(r) { return r.json(); }).then(function(d) {
+      if (d.guid && d.name) {
+        if (!statsTsProjects) statsTsProjects = [];
+        statsTsProjects.push({ guid: d.guid, name: d.name, state: 'Active', isMosaic: false, isCustom: true, targetCount: 0, targets: [] });
+      }
+      input.value = '';
+      addBtn.disabled = false;
+      rebuildList();
+    }).catch(function() { addBtn.disabled = false; });
   }
   addBtn.addEventListener('click', doCreate);
   input.addEventListener('keydown', function(e) { if (e.key === 'Enter') doCreate(); });
-
-  // Per-project reset (restore hidden targets for one project)
-  backdrop.querySelectorAll('.manage-project-proj-reset').forEach(function(btn) {
-    btn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      var guid = btn.getAttribute('data-guid');
-      fetch('/api/stats/projects/' + encodeURIComponent(guid) + '/reset', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
-      }).then(function(r) { return r.json(); }).then(function() {
-        closeManageProjectsModal();
-        renderStats();
-        setTimeout(openManageProjectsModal, 600);
-      });
-    });
-  });
-
-  // Delete buttons
-  backdrop.querySelectorAll('.manage-project-delete').forEach(function(btn) {
-    btn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      var guid = btn.getAttribute('data-guid');
-      if (!confirm('Delete this custom project? Any target assignments will be cleared.')) return;
-      fetch('/api/stats/projects/custom', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'delete', guid: guid })
-      }).then(function(r) { return r.json(); }).then(function() {
-        closeManageProjectsModal();
-        renderStats();
-        setTimeout(openManageProjectsModal, 600);
-      });
-    });
-  });
 
   // Reset to TS button
   backdrop.querySelector('[data-action="reset"]').addEventListener('click', function() {
@@ -5145,8 +5187,10 @@ function openManageProjectsModal() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({})
     }).then(function(r) { return r.json(); }).then(function() {
-      closeManageProjectsModal();
-      renderStats();
+      if (statsTsProjects) statsTsProjects = statsTsProjects.filter(function(p) { return !p.isCustom; });
+      statsProjectAssignments = {};
+      statsTargetExclusions   = {};
+      rebuildList();
     });
   });
 }
