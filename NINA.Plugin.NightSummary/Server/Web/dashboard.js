@@ -5074,13 +5074,11 @@ function openManageProjectsModal() {
       // Update subtitle + ↺ button
       updateProjectRowMeta(projectGuid);
 
-      // Persist and refresh stats in background
+      // Persist in background — no full re-render needed; in-memory state already updated
       fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
-      }).then(function(r) { return r.json(); }).then(function() {
-        renderStats();
       });
     });
   });
