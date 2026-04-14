@@ -436,6 +436,15 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 .ThenBy(f => f)
                 .ToList();
 
+            // Targets in chronological order of first appearance
+            var seenTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var targets     = new List<string>();
+            foreach (var img in ordered) {
+                if (!string.IsNullOrWhiteSpace(img.TargetName) && seenTargets.Add(img.TargetName!))
+                    targets.Add(img.TargetName!);
+            }
+            model.Targets = targets;
+
             return model;
         }
 
@@ -478,6 +487,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     X         = x,
                     Y         = y.Value,
                     Filter    = img.Filter ?? "",
+                    Target    = img.TargetName ?? "",
                     Timestamp = img.Timestamp
                 });
             }
