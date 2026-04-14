@@ -467,6 +467,11 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,3">
                                     <TextBlock Text="X-Axis" Width="180" VerticalAlignment="Center" />
                                     <ComboBox SelectedIndex="{Binding ChartXAxisMetric}" MinWidth="160" HorizontalContentAlignment="Left">
+                                        <ComboBox.ItemContainerStyle>
+                                            <Style TargetType="ComboBoxItem">
+                                                <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                                            </Style>
+                                        </ComboBox.ItemContainerStyle>
                                         <ComboBoxItem>Time</ComboBoxItem>
                                         <ComboBoxItem>Frame Index</ComboBoxItem>
                                         <ComboBoxItem>HFR</ComboBoxItem>
@@ -509,6 +514,11 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,3">
                                     <TextBlock Text="Primary Metric" Width="180" VerticalAlignment="Center" />
                                     <ComboBox SelectedIndex="{Binding ChartPrimaryMetric}" MinWidth="160" HorizontalContentAlignment="Left">
+                                        <ComboBox.ItemContainerStyle>
+                                            <Style TargetType="ComboBoxItem">
+                                                <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                                            </Style>
+                                        </ComboBox.ItemContainerStyle>
                                         <ComboBoxItem>HFR</ComboBoxItem>
                                         <ComboBoxItem>FWHM</ComboBoxItem>
                                         <ComboBoxItem>Guiding RMS</ComboBoxItem>
@@ -549,6 +559,11 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,3">
                                     <TextBlock Text="Secondary Metric" Width="180" VerticalAlignment="Center" />
                                     <ComboBox SelectedIndex="{Binding ChartSecondaryMetric}" MinWidth="160" HorizontalContentAlignment="Left">
+                                        <ComboBox.ItemContainerStyle>
+                                            <Style TargetType="ComboBoxItem">
+                                                <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                                            </Style>
+                                        </ComboBox.ItemContainerStyle>
                                         <ComboBoxItem>None</ComboBoxItem>
                                         <ComboBoxItem>HFR</ComboBoxItem>
                                         <ComboBoxItem>FWHM</ComboBoxItem>
