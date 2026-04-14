@@ -624,20 +624,38 @@
                                             <TextBlock Text="X-Axis" Width="180" VerticalAlignment="Center" />
                                             <ComboBox SelectedIndex="{Binding XAxis, Mode=TwoWay}"
                                                       ItemsSource="{Binding DataContext.XAxisMetricNames, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                      MinWidth="160" />
+                                                      MinWidth="160" HorizontalContentAlignment="Left">
+                                                <ComboBox.ItemContainerStyle>
+                                                    <Style TargetType="ComboBoxItem">
+                                                        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                                                    </Style>
+                                                </ComboBox.ItemContainerStyle>
+                                            </ComboBox>
                                         </StackPanel>
                                         <StackPanel Orientation="Horizontal" Margin="0,2">
                                             <TextBlock Text="Primary Metric" Width="180" VerticalAlignment="Center" />
                                             <ComboBox SelectedIndex="{Binding Primary, Mode=TwoWay}"
                                                       ItemsSource="{Binding DataContext.PrimaryMetricNames, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                      MinWidth="160" />
+                                                      MinWidth="160" HorizontalContentAlignment="Left">
+                                                <ComboBox.ItemContainerStyle>
+                                                    <Style TargetType="ComboBoxItem">
+                                                        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                                                    </Style>
+                                                </ComboBox.ItemContainerStyle>
+                                            </ComboBox>
                                             <Button Content="✕" Click="RemoveChart_Click" Margin="8,0,0,0" MinWidth="30" ToolTip="Remove this chart" />
                                         </StackPanel>
                                         <StackPanel Orientation="Horizontal" Margin="0,2">
                                             <TextBlock Text="Secondary Metric" Width="180" VerticalAlignment="Center" />
                                             <ComboBox SelectedIndex="{Binding Secondary, Mode=TwoWay}"
                                                       ItemsSource="{Binding DataContext.SecondaryMetricNames, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                      MinWidth="160" />
+                                                      MinWidth="160" HorizontalContentAlignment="Left">
+                                                <ComboBox.ItemContainerStyle>
+                                                    <Style TargetType="ComboBoxItem">
+                                                        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                                                    </Style>
+                                                </ComboBox.ItemContainerStyle>
+                                            </ComboBox>
                                         </StackPanel>
                                     </StackPanel>
                                 </DataTemplate>
