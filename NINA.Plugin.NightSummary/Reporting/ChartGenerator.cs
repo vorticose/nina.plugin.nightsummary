@@ -176,6 +176,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             // Both empty → full placeholder
             if (!hasPrimary && !hasSecondary) {
+                // No images at all: the selection (target/filter combo) has no data,
+                // not a metric-specific gap — use a neutral message.
+                if (images.Count == 0)
+                    return GeneratePlaceholderSvg(new List<string> { "No images for this selection" });
                 var msgs = new List<string> { GetPrimaryNoDataMsg(primaryMetric) };
                 if (wantSecondary) msgs.Add(GetSecondaryNoDataMsg(secondaryMetric));
                 return GeneratePlaceholderSvg(msgs);
