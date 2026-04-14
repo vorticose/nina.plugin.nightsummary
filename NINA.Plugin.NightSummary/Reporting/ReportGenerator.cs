@@ -1202,8 +1202,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var filters = model.Filters;
             var targets = model.Targets;
 
-            bool hasFilters = filters.Count >= 2;
-            bool hasTargets = targets.Count >= 2;
+            var settings    = SettingsManager.Instance.Current;
+            bool hasFilters = filters.Count >= 2 && settings.ShowChartFilterChips;
+            bool hasTargets = targets.Count >= 2 && settings.ShowChartTargetChips;
 
             // No chip selectors needed — emit a single SVG
             if (!hasFilters && !hasTargets) {
