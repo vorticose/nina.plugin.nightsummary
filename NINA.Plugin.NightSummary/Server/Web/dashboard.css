@@ -2630,6 +2630,17 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   transition: color var(--t-fast), background var(--t-fast);
 }
 .manage-project-delete:hover { color: #EF5350; background: rgba(239,83,80,0.1); }
+.manage-project-proj-reset {
+  background: none;
+  border: none;
+  color: var(--text-quaternary);
+  font-size: 15px;
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: 4px;
+  transition: color var(--t-fast), background var(--t-fast);
+}
+.manage-project-proj-reset:hover { color: var(--accent); background: rgba(92,164,255,0.1); }
 .manage-project-item.expandable { cursor: pointer; }
 .manage-project-chevron {
   font-size: 10px;
@@ -3130,7 +3141,8 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   border-radius: 14px;
   width: min(960px, 94vw);
   max-height: 90vh;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   position: relative;
   box-shadow:
     0 20px 60px rgba(0,0,0,0.75),
@@ -3142,44 +3154,20 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   to { opacity: 1; transform: scale(1) translateY(0); }
 }
 
-.tdp-header {
-  padding: 22px 28px 18px;
+/* New TDP layout sections */
+.tdp-title-section {
+  padding: 22px 28px 14px;
   border-bottom: 1px solid rgba(255,255,255,0.08);
-  display: flex;
-  gap: 20px;
-  align-items: flex-start;
 }
-.tdp-header-thumb {
-  width: 200px;
-  height: 200px;
-  border-radius: 10px;
-  background: var(--surface-well);
-  flex-shrink: 0;
-  position: relative;
-  overflow: hidden;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.10),
-    0 4px 12px rgba(0,0,0,0.5);
-}
-.tdp-header-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-.tdp-header-thumb .tdp-thumb-placeholder {
-  width: 100%;
-  height: 100%;
+.tdp-title-row {
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-size: 64px;
-  font-weight: 700;
-  color: var(--text-quaternary);
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
 }
-.tdp-header-main { flex: 1; min-width: 0; }
-.tdp-header h2 {
-  margin: 0 0 6px;
+.tdp-title-row h2 {
+  margin: 0;
   font-size: 22px;
   font-weight: 700;
   color: var(--text-primary);
@@ -3187,12 +3175,63 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 .tdp-daterange {
   color: var(--text-tertiary);
   font-size: 12px;
-  margin-bottom: 14px;
 }
-.tdp-header-stats {
+.tdp-type-pill {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  padding: 3px 8px;
+  border-radius: 9px;
+  background: rgba(144,164,174,0.12);
+  border: 1px solid rgba(144,164,174,0.32);
+  color: #B0BEC5;
+}
+.tdp-hero {
+  width: 100%;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.tdp-hero-wrap {
+  aspect-ratio: 1 / 1;
+  max-height: 55vh;
+  margin: 0 auto;
+  background: var(--surface-well);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tdp-hero-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.tdp-hero-wrap .tdp-thumb-placeholder {
+  font-size: 64px;
+  font-weight: 700;
+  color: var(--text-quaternary);
+}
+.tdp-stats-section {
+  padding: 16px 28px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.tdp-stats-section .tdp-header-stats {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 8px;
+}
+.tdp-progress-section {
+  padding: 16px 28px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.tdp-ts-actions {
+  padding: 10px 28px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 .tdp-kpi {
   background: var(--surface-well);
@@ -3394,18 +3433,9 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 /* Mobile adjustments */
 @media (max-width: 600px) {
   .tdp-modal { width: 96vw; max-height: 92vh; border-radius: 10px; }
-  .tdp-header {
-    padding: 16px 18px 14px;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 14px;
-  }
-  /* Full square thumbnail on mobile — don't crop the HiPS2FITS square image */
-  .tdp-header-thumb { width: 100%; height: auto; aspect-ratio: 1 / 1; }
-  /* Ensure the main column stretches to full width in column flex layout */
-  .tdp-header-main { width: 100%; }
-  .tdp-header h2 { font-size: 18px; }
-  .tdp-header-stats { grid-template-columns: repeat(2, 1fr); }
+  .tdp-title-row h2 { font-size: 18px; }
+  .tdp-stats-section .tdp-header-stats { grid-template-columns: repeat(2, 1fr); }
+  .tdp-hero-wrap { max-height: 90vw; }
   .tdp-body { padding: 14px 16px 18px; }
   .tdp-table { font-size: 11px; }
   .tdp-table th, .tdp-table td { padding: 5px 4px; }
@@ -3450,7 +3480,8 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   border-radius: 14px;
   width: min(1060px, 94vw);
   max-height: 90vh;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   position: relative;
   box-shadow:
     0 20px 60px rgba(0,0,0,0.75),
@@ -3494,14 +3525,14 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 }
 
 .pdp-header {
-  padding: 22px 60px 18px 28px;
+  padding: 20px 60px 16px 28px;
   border-bottom: 1px solid rgba(255,255,255,0.08);
 }
 .pdp-header-title-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 14px;
+  margin-bottom: 6px;
   flex-wrap: wrap;
 }
 /* Reuse .target-card-ts-badge inside header but reset absolute positioning */
@@ -3511,6 +3542,15 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   font-size: 22px;
   font-weight: 700;
   color: var(--text-primary);
+}
+.pdp-daterange {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  margin-top: 6px;
+}
+.pdp-stats-section {
+  padding: 16px 28px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
 }
 .pdp-kpi-row {
   display: flex;
@@ -3548,24 +3588,73 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   line-height: 1.5;
 }
 
-/* Mosaic thumbnail section */
-.pdp-mosaic-section {
-  padding: 20px 28px;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
-  display: flex;
-  justify-content: center;
+/* ── Multi-project thumbnail grid ──────────────────────────────────────── */
+.pdp-multi-thumb-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  max-height: 55vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.18) transparent;
 }
-.pdp-mosaic-thumb-wrap {
-  width: 100%;
-  max-width: 580px;
+.pdp-multi-thumb-cell {
   aspect-ratio: 1 / 1;
   background: var(--surface-well);
-  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.pdp-multi-thumb-cell img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.pdp-cell-placeholder {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-quaternary);
+}
+.pdp-cell-label {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 5px 6px 4px;
+  background: linear-gradient(transparent, rgba(0,0,0,0.68));
+  color: rgba(255,255,255,0.88);
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* Mosaic thumbnail section */
+.pdp-ts-progress-section {
+  padding: 20px 28px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.pdp-mosaic-section {
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.pdp-mosaic-thumb-wrap {
+  aspect-ratio: 1 / 1;
+  max-height: 55vh;
+  margin: 0 auto;
+  background: var(--surface-well);
+  border-radius: 0;
   overflow: hidden;
   position: relative;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.10),
-    0 4px 12px rgba(0,0,0,0.5);
+  box-shadow: none;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3739,7 +3828,9 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 @media (max-width: 640px) {
   .pdp-modal { width: 96vw; border-radius: 10px; }
   .pdp-header { padding: 16px 50px 14px 16px; }
-  .pdp-mosaic-section { padding: 14px 16px; }
+  .pdp-mosaic-thumb-wrap { max-height: 90vw; }
+  .pdp-multi-thumb-grid { max-height: 90vw; }
+  .pdp-stats-section { padding: 12px 16px; }
   .pdp-panels-section { padding: 14px 16px 18px; }
   .pdp-panels-grid { grid-template-columns: repeat(2, 1fr); }
   .pdp-title { font-size: 18px; }

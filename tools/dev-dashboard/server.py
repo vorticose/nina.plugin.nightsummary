@@ -160,11 +160,20 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if path == "/api/stats/ts/assign" and method == "POST":
             self.handle_ts_assign()
             return
+        if path == "/api/stats/ts/exclude" and method == "POST":
+            self.handle_ts_exclude()
+            return
         if path == "/api/stats/projects/custom" and method == "POST":
             self.handle_custom_project()
             return
         if path == "/api/stats/projects/reset" and method == "POST":
             self.handle_projects_reset()
+            return
+        # Per-project reset: /api/stats/projects/{guid}/reset
+        if (len(parts) == 6 and parts[1] == "api" and parts[2] == "stats"
+                and parts[3] == "projects" and parts[5] == "reset" and method == "POST"):
+            import urllib.parse
+            self.handle_project_reset(urllib.parse.unquote(parts[4]))
             return
 
         # Per-session endpoints: /api/sessions/{id}/...
@@ -289,10 +298,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
             ts_status, ts_projects = self._load_ts_projects()
             meta = self._load_ts_meta()
-            status_overrides    = meta.get("statusOverrides", {}) or {}
-            manual_links        = meta.get("targetLinks", {}) or {}
-            project_assignments = meta.get("projectAssignments", {}) or {}
-            custom_projects     = meta.get("customProjects", {}) or {}
+            status_overrides    = meta.get("statusOverrides",   {}) or {}
+            manual_links        = meta.get("targetLinks",       {}) or {}
+            project_assignments = meta.get("projectAssignments",{}) or {}
+            custom_projects     = meta.get("customProjects",    {}) or {}
+            target_exclusions   = meta.get("targetExclusions",  {}) or {}
 
             # Build lookups: lowercase-name → (project, target), guid → (project, target)
             ts_by_name = {}
@@ -499,6 +509,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 "tsError":            None,
                 "tsProjects":         ts_projects_summary or None,
                 "projectAssignments": project_assignments,
+                "targetExclusions":   target_exclusions,
             })
         except Exception as e:
             self.send_json(500, {"error": f"ts merge failed: {e}"})
@@ -565,6 +576,33 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self._save_ts_meta(meta)
         self.send_json(200, {"ok": True, "targetName": target_name, "projectGuid": project_guid})
 
+    def handle_ts_exclude(self):
+        """Exclude (or restore) a TS-native target from a project's dashboard display."""
+        body = self._read_post_body()
+        target_name  = body.get("targetName")
+        project_guid = body.get("projectGuid")
+        exclude      = body.get("exclude", True)
+        if not target_name or not project_guid:
+            self.send_json(400, {"error": "targetName and projectGuid required"})
+            return
+        meta = self._load_ts_meta()
+        exclusions = meta.setdefault("targetExclusions", {})
+        key = target_name.lower()
+        proj_list = exclusions.get(project_guid, [])
+        if exclude:
+            if key not in proj_list:
+                proj_list.append(key)
+            exclusions[project_guid] = proj_list
+        else:
+            if key in proj_list:
+                proj_list.remove(key)
+            if not proj_list:
+                exclusions.pop(project_guid, None)
+            else:
+                exclusions[project_guid] = proj_list
+        self._save_ts_meta(meta)
+        self.send_json(200, {"ok": True, "targetName": target_name, "projectGuid": project_guid, "excluded": exclude})
+
     def handle_custom_project(self):
         """Create, update, or delete a custom project."""
         body = self._read_post_body()
@@ -615,8 +653,21 @@ class DashboardHandler(BaseHTTPRequestHandler):
         meta = self._load_ts_meta()
         meta["customProjects"] = {}
         meta["projectAssignments"] = {}
+        meta["targetExclusions"] = {}
         self._save_ts_meta(meta)
         self.send_json(200, {"ok": True, "reset": True})
+
+    def handle_project_reset(self, project_guid):
+        """Reset only the target exclusions for a single project."""
+        if not project_guid:
+            self.send_json(400, {"error": "projectGuid required"})
+            return
+        meta = self._load_ts_meta()
+        exclusions = meta.get("targetExclusions") or {}
+        exclusions.pop(project_guid, None)
+        meta["targetExclusions"] = exclusions
+        self._save_ts_meta(meta)
+        self.send_json(200, {"ok": True, "projectGuid": project_guid})
 
     def serve_project_stats(self, project_guid):
         """Return project detail for Phase 3c panel. Mirrors HandleGetProjectStats in DashboardServer.cs."""
@@ -633,7 +684,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 return
 
             meta = self._load_ts_meta()
-            status_overrides = meta.get("statusOverrides", {}) or {}
+            status_overrides  = meta.get("statusOverrides",  {}) or {}
+            target_exclusions = (meta.get("targetExclusions", {}) or {}).get(proj.get("guid", ""), [])
 
             # Effective state
             raw_state = proj.get("state") or "Draft"
@@ -707,10 +759,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
             agg_seconds = 0.0
             agg_sessions = 0
             agg_last_imaged = None
+            agg_first_imaged = None
 
             for tgt in proj.get("targets", []):
                 tgt_name = tgt.get("name") or ""
                 tgt_lower = tgt_name.lower()
+                if tgt_lower in target_exclusions:
+                    continue
 
                 # Find sessions containing this target (ordered newest-first)
                 tgt_session_ids = [
@@ -718,11 +773,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         key=lambda x: x.get("sessionStart") or "", reverse=True)
                     if tgt_lower in [t.lower() for t in (s.get("targets") or [])]
                 ]
+                latest_sid = tgt_session_ids[0] if tgt_session_ids else None
 
                 total_sec = 0.0
                 total_frames = 0
                 sess_count = 0
                 last_imaged = None
+                first_imaged = None
                 filters_agg = {}
                 best_cam = None  # camera data from the most-recent session with valid info
 
@@ -750,6 +807,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     if s_start:
                         if last_imaged is None or s_start > last_imaged:
                             last_imaged = s_start
+                        if first_imaged is None or s_start < first_imaged:
+                            first_imaged = s_start
 
                     for i in matching:
                         if not i.get("accepted"):
@@ -764,6 +823,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 agg_sessions += sess_count
                 if last_imaged and (agg_last_imaged is None or last_imaged > agg_last_imaged):
                     agg_last_imaged = last_imaged
+                if first_imaged and (agg_first_imaged is None or first_imaged < agg_first_imaged):
+                    agg_first_imaged = first_imaged
 
                 filters_out = sorted([
                     {
@@ -786,7 +847,20 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     "acceptedFrames": total_frames,
                     "sessionCount": sess_count,
                     "lastImaged": last_imaged,
+                    "firstImaged": first_imaged,
+                    "latestSessionId": latest_sid,
                     "filters": filters_out,
+                    "tsGoals": [
+                        {
+                            "filter":       e.get("filter"),
+                            "templateName": e.get("templateName"),
+                            "exposureSec":  e.get("exposureSec"),
+                            "desired":  int(e.get("desired")  or 0),
+                            "accepted": int(e.get("accepted") or 0),
+                            "acquired": int(e.get("acquired") or 0),
+                        }
+                        for e in tgt.get("exposurePlans", [])
+                    ],
                 }
                 if best_cam:
                     panel.update(best_cam)
@@ -817,6 +891,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     "acceptedFrames":        agg_frames,
                     "sessionCount":          agg_sessions,
                     "lastImaged":            agg_last_imaged,
+                    "firstImaged":           agg_first_imaged,
+                    "panelCount":            len(panels),
                 },
             })
         except Exception as e:

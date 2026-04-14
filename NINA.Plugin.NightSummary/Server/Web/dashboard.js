@@ -1223,27 +1223,134 @@ function renderTargetDetailPanel(data, targetName, ts) {
       '</tr>' + subRows;
   }).join('');
 
-  // Phase 3a: project section (rendered if target is linked to a TS project, or an
-  // "unlinked" CTA if TS is available but no match was found).
-  var projectSectionHtml = renderTsProjectSection(ts, targetName);
+  // ── Title row pills ──────────────────────────────────────────────────────
+  var titlePills = '';
+  if (ts && ts.project) {
+    var proj = ts.project;
+    titlePills += '<span class="tdp-project-state-pill" data-state="' + esc(proj.state || 'Draft') +
+      '" data-project-guid="' + esc(proj.guid || '') + '" title="Click to override status">' +
+      esc(proj.state || 'Draft') +
+      (proj.stateSource === 'override' ? ' \u00b7' : '') +
+      '</span>';
+    if (proj.isMosaic) {
+      titlePills += '<span class="tdp-type-pill">Mosaic Panel</span>';
+    }
+  }
+
+  // ── TS Progress bars ─────────────────────────────────────────────────────
+  var tdpProgressHtml = '';
+  if (statsTsStatus === 'available' && ts && ts.project) {
+    var tsproj = ts.project;
+    var tsgoals = ts.goals || [];
+
+    var STACK_ORDER = ['L', 'R', 'G', 'B', 'H', 'S', 'O', 'N'];
+    var sortedGoals = tsgoals.slice().sort(function(a, b) {
+      var ai = STACK_ORDER.indexOf(resolveFilterType(a.filter) || '');
+      var bi = STACK_ORDER.indexOf(resolveFilterType(b.filter) || '');
+      if (ai < 0) ai = STACK_ORDER.length;
+      if (bi < 0) bi = STACK_ORDER.length;
+      if (ai !== bi) return ai - bi;
+      return (b.exposureSec || 0) - (a.exposureSec || 0);
+    });
+
+    function extractExposureFromTemplate(name) {
+      if (!name) return 0;
+      var m = String(name).match(/(\d+)\s*s\b/i);
+      return m ? parseInt(m[1], 10) : 0;
+    }
+
+    var goalRows = sortedGoals.map(function(g) {
+      var pct = g.percentComplete;
+      var over = pct != null && g.accepted > g.desired;
+      var widthPct = pct != null ? Math.min(100, pct) : 0;
+      var filterType = resolveFilterType(g.filter);
+      var fillColor = (filterType && FILTER_TYPE_CHART_COLORS[filterType]) || '#66BB6A';
+      var expSec = (g.exposureSec && g.exposureSec > 0)
+        ? g.exposureSec
+        : extractExposureFromTemplate(g.templateName);
+      var labelText = expSec > 0 ? (expSec + 's') : (g.templateName || '');
+      var labelHtml = labelText
+        ? '<span class="tdp-progress-row-label-text">' + esc(labelText) + '</span>'
+        : '';
+      var tmplAttr = g.templateName ? ' data-template="' + esc(g.templateName) + '"' : '';
+      return '<div class="tdp-progress-row">' +
+        '<div class="tdp-progress-row-label"' + tmplAttr + '>' +
+          filterTypePill(g.filter) + labelHtml +
+        '</div>' +
+        '<div class="tdp-progress-bar-wrap' + (over ? ' over' : '') + '" style="--fill-color:' + fillColor + '"' + tmplAttr + '>' +
+          '<div class="tdp-progress-bar-fill" style="width:' + widthPct + '%"></div>' +
+        '</div>' +
+        '<div class="tdp-progress-row-count">' +
+          g.accepted + ' <span class="unit">/ ' + g.desired + '</span>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    var overallRow = '';
+    if (tsproj.percentComplete != null) {
+      var overallPct = tsproj.percentComplete;
+      overallRow = '<div class="tdp-overall-separator"></div>' +
+        '<div class="tdp-progress-row tdp-progress-row-overall">' +
+          '<div class="tdp-progress-row-label"><span class="tdp-progress-row-label-text tdp-overall-label">Overall</span></div>' +
+          '<div class="tdp-progress-bar-wrap tdp-overall-bar-wrap' + (overallPct > 100 ? ' over' : '') + '">' +
+            '<div class="tdp-progress-bar-fill tdp-overall-bar-fill" style="width:' + Math.min(overallPct, 100).toFixed(1) + '%"></div>' +
+          '</div>' +
+          '<strong class="tdp-progress-row-count tdp-overall-count">' + overallPct.toFixed(1) + '%</strong>' +
+        '</div>';
+    }
+
+    if (goalRows || overallRow) {
+      tdpProgressHtml = '<div class="tdp-progress-section">' +
+        '<div class="tdp-project-progress-grid">' + goalRows + overallRow + '</div>' +
+      '</div>';
+    }
+  }
+
+  // ── TS Actions row ───────────────────────────────────────────────────────
+  var tdpActionsHtml = '';
+  if (statsTsStatus === 'available') {
+    if (!ts || !ts.project) {
+      tdpActionsHtml = '<div class="tdp-ts-actions">' +
+        '<button type="button" class="tdp-project-action-btn" data-action="link-ts">Link to TS target\u2026</button>' +
+      '</div>';
+    } else {
+      tdpActionsHtml = '<div class="tdp-ts-actions">' +
+        '<button type="button" class="tdp-project-action-btn" data-action="link-ts">Change TS link\u2026</button>' +
+        (ts.matchedBy === 'manual'
+          ? '<button type="button" class="tdp-project-action-btn" data-action="unlink-ts">Clear manual link</button>'
+          : '') +
+      '</div>';
+    }
+  }
 
   // Chart is injected after the panel is in the DOM (so we can measure width).
   // sessions data is stashed on the wrapper via a data attribute handled in JS.
   return '' +
     '<div class="tdp-modal" role="dialog" aria-label="Target detail">' +
       '<button class="tdp-close" aria-label="Close">\u2715</button>' +
-      '<div class="tdp-header">' +
-        '<div class="tdp-header-thumb" id="tdp-header-thumb">' +
+
+      '<div class="tdp-title-section">' +
+        '<div class="tdp-title-row">' +
+          '<h2>' + esc(targetName) + '</h2>' +
+          titlePills +
+        '</div>' +
+        '<div class="tdp-daterange">' + esc(dateRange) + '</div>' +
+      '</div>' +
+
+      '<div class="tdp-hero">' +
+        '<div class="tdp-hero-wrap" id="tdp-hero-wrap">' +
           '<div class="tdp-thumb-placeholder">' + esc(initial) + '</div>' +
         '</div>' +
-        '<div class="tdp-header-main">' +
-          '<h2>' + esc(targetName) + '</h2>' +
-          '<div class="tdp-daterange">' + esc(dateRange) + '</div>' +
-          headerStats +
-        '</div>' +
       '</div>' +
+
+      '<div class="tdp-stats-section">' +
+        headerStats +
+      '</div>' +
+
+      tdpProgressHtml +
+      tdpActionsHtml +
+
       '<div class="tdp-body">' +
-        projectSectionHtml +
         '<div class="tdp-section-title">Integration Over Time</div>' +
         '<div class="tdp-chart-wrap">' +
           '<div class="tdp-chart-svg"></div>' +
@@ -1405,6 +1512,7 @@ var _tdpResizeDebounce = null;
 function closeTargetDetail() {
   var backdrop = document.getElementById('tdp-backdrop');
   if (!backdrop) return;
+  backdrop.id = '';
   backdrop.classList.add('tdp-hiding');
   setTimeout(function() { if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop); }, 160);
   document.body.style.overflow = '';
@@ -1489,7 +1597,7 @@ function bindTargetDetailEvents(backdrop, targetName) {
 // (case-insensitive target match). Reuses thumbnailCache.
 function loadTargetDetailThumb(targetName, latestSessionId) {
   if (!latestSessionId) return;
-  var thumbEl = document.getElementById('tdp-header-thumb');
+  var thumbEl = document.getElementById('tdp-hero-wrap');
   if (!thumbEl) return;
 
   function apply(thumbs) {
@@ -1594,6 +1702,7 @@ var _pdpKeyHandler = null;
 function closeProjectDetail() {
   var backdrop = document.getElementById('pdp-backdrop');
   if (!backdrop) return;
+  backdrop.id = '';
   backdrop.classList.add('pdp-hiding');
   setTimeout(function() { if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop); }, 160);
   document.body.style.overflow = '';
@@ -1630,7 +1739,14 @@ function openProjectDetail(projectGuid, projectName) {
     var closeBtn = backdrop.querySelector('.pdp-close');
     if (closeBtn) closeBtn.addEventListener('click', closeProjectDetail);
 
-    loadMosaicThumbnail(data.panels || [], backdrop, projectGuid);
+    var pdpImagedPanels = (data.panels || []).filter(function(p) {
+      return (p.sessionCount || 0) > 0 || (p.acceptedFrames || 0) > 0;
+    });
+    if (!(data.project || {}).isMosaic && pdpImagedPanels.length >= 2) {
+      loadPdpMultiThumbs(backdrop, pdpImagedPanels);
+    } else {
+      loadMosaicThumbnail(data.panels || [], backdrop, projectGuid);
+    }
   }).catch(function(err) {
     var current = document.getElementById('pdp-backdrop');
     if (!current || current !== backdrop) return;
@@ -1651,7 +1767,7 @@ function renderProjectDetailPanel(data) {
   var html = '<div class="pdp-modal">';
   html += '<button type="button" class="pdp-close" aria-label="Close">\u2715</button>';
 
-  // Header
+  // ── 1. Header: title + date only ─────────────────────────────────────────
   html += '<div class="pdp-header">';
   html += '<div class="pdp-header-title-row">';
   html += '<h2 class="pdp-title">' + esc(proj.name || 'Project') + '</h2>';
@@ -1659,7 +1775,47 @@ function renderProjectDetailPanel(data) {
   if (proj.isMosaic) html += '<span class="targets-project-mosaic-badge">Mosaic</span>';
   html += '</div>';
 
-  // Aggregate KPIs
+  // Date row
+  var pdpDateHtml = '';
+  if (agg.firstImaged && agg.lastImaged) {
+    pdpDateHtml = 'First captured ' + esc(fmtRelativeTime(agg.firstImaged)) + ' \u00b7 Last imaged ' + esc(fmtRelativeTime(agg.lastImaged));
+  } else if (agg.lastImaged) {
+    pdpDateHtml = 'Last imaged ' + esc(fmtRelativeTime(agg.lastImaged));
+  }
+  if (pdpDateHtml) {
+    html += '<div class="pdp-daterange">' + pdpDateHtml + '</div>';
+  }
+
+  if (proj.description) {
+    html += '<div class="pdp-description">' + esc(proj.description) + '</div>';
+  }
+  html += '</div>'; // end pdp-header
+
+  // ── 2. Hero thumbnail(s) — multi-project gets a grid, everything else single wrap ─
+  var imagedPanels = panels.filter(function(p) {
+    return (p.sessionCount || 0) > 0 || (p.acceptedFrames || 0) > 0;
+  });
+  var isMultiGrid = !proj.isMosaic && imagedPanels.length >= 2;
+
+  html += '<div class="pdp-mosaic-section">';
+  if (isMultiGrid) {
+    html += '<div class="pdp-multi-thumb-grid" data-count="' + imagedPanels.length + '">';
+    imagedPanels.forEach(function(p, i) {
+      html += '<div class="pdp-multi-thumb-cell" id="pdp-panel-thumb-' + i + '">';
+      html += '<div class="pdp-cell-placeholder">' + esc((p.name || '').charAt(0).toUpperCase()) + '</div>';
+      html += '<div class="pdp-cell-label">' + esc(p.name || '') + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+  } else {
+    html += '<div class="pdp-mosaic-thumb-wrap" id="pdp-thumb-wrap">';
+    html += '<div class="pdp-mosaic-placeholder">\u2606</div>';
+    html += '</div>';
+  }
+  html += '</div>';
+
+  // ── 3. KPI stats section ─────────────────────────────────────────────────
+  html += '<div class="pdp-stats-section">';
   html += '<div class="pdp-kpi-row">';
   html += '<div class="pdp-kpi"><div class="pdp-kpi-val">' + (agg.totalIntegrationHours || 0).toFixed(1) +
     '<span class="unit">h</span></div><div class="pdp-kpi-label">Total</div></div>';
@@ -1670,20 +1826,85 @@ function renderProjectDetailPanel(data) {
   html += '<div class="pdp-kpi"><div class="pdp-kpi-val">' + panels.length +
     '</div><div class="pdp-kpi-label">Panels</div></div>';
   html += '</div>';
+  html += '</div>'; // end pdp-stats-section
 
-  if (proj.description) {
-    html += '<div class="pdp-description">' + esc(proj.description) + '</div>';
+  // ── 4. Cumulative TS progress bars — aggregate goals across all panels ────
+  // Prefer tsGoals embedded in the project API response (works even for unimaged targets).
+  // Fall back to statsTargetData lookup for older API responses.
+  var cumulativeGoalsMap = {};
+  panels.forEach(function(panel) {
+    var goals = null;
+    if (panel.tsGoals && panel.tsGoals.length) {
+      goals = panel.tsGoals;
+    } else {
+      var tsTarget = (statsTargetData || []).find(function(t) {
+        return t.target && panel.name && t.target.toLowerCase() === panel.name.toLowerCase();
+      });
+      if (tsTarget && tsTarget.ts && tsTarget.ts.goals) goals = tsTarget.ts.goals;
+    }
+    if (!goals || !goals.length) return;
+    goals.forEach(function(g) {
+      var key = (g.filter || '') + '|' + (g.exposureSec || 0);
+      if (!cumulativeGoalsMap[key]) {
+        cumulativeGoalsMap[key] = {
+          filter: g.filter, exposureSec: g.exposureSec, templateName: g.templateName,
+          accepted: 0, desired: 0
+        };
+      }
+      // Grading-pending fallback: use acquired when accepted=0 but acquired>0
+      var effective = (g.accepted || 0) > 0 ? (g.accepted || 0) : (g.acquired || 0);
+      cumulativeGoalsMap[key].accepted += effective;
+      cumulativeGoalsMap[key].desired  += (g.desired  || 0);
+    });
+  });
+  var PDP_STACK = ['L', 'R', 'G', 'B', 'H', 'S', 'O', 'N'];
+  var cumulativeGoals = Object.keys(cumulativeGoalsMap).map(function(k) {
+    return cumulativeGoalsMap[k];
+  }).sort(function(a, b) {
+    var ai = PDP_STACK.indexOf(resolveFilterType(a.filter) || ''); if (ai < 0) ai = PDP_STACK.length;
+    var bi = PDP_STACK.indexOf(resolveFilterType(b.filter) || ''); if (bi < 0) bi = PDP_STACK.length;
+    if (ai !== bi) return ai - bi;
+    return (b.exposureSec || 0) - (a.exposureSec || 0);
+  });
+
+  if (cumulativeGoals.length > 0) {
+    var pdpTotalAcc = 0, pdpTotalDes = 0;
+    var pdpProgressRows = cumulativeGoals.map(function(g) {
+      pdpTotalAcc += g.accepted;
+      pdpTotalDes += g.desired;
+      var pct = g.desired > 0 ? g.accepted / g.desired * 100 : 0;
+      var over = g.accepted > g.desired;
+      var filterType = resolveFilterType(g.filter);
+      var fillColor = (filterType && FILTER_TYPE_CHART_COLORS[filterType]) || '#66BB6A';
+      var expSec = g.exposureSec && g.exposureSec > 0 ? g.exposureSec : 0;
+      var labelText = expSec > 0 ? (expSec + 's') : (g.templateName || '');
+      var labelHtml = labelText ? '<span class="tdp-progress-row-label-text">' + esc(labelText) + '</span>' : '';
+      return '<div class="tdp-progress-row">' +
+        '<div class="tdp-progress-row-label">' + filterTypePill(g.filter) + labelHtml + '</div>' +
+        '<div class="tdp-progress-bar-wrap' + (over ? ' over' : '') + '" style="--fill-color:' + fillColor + '">' +
+          '<div class="tdp-progress-bar-fill" style="width:' + Math.min(100, pct).toFixed(1) + '%"></div>' +
+        '</div>' +
+        '<div class="tdp-progress-row-count">' + g.accepted + ' <span class="unit">/ ' + g.desired + '</span></div>' +
+      '</div>';
+    }).join('');
+    var pdpOverallPct = pdpTotalDes > 0 ? pdpTotalAcc / pdpTotalDes * 100 : null;
+    var pdpOverallRow = pdpOverallPct !== null
+      ? '<div class="tdp-overall-separator"></div>' +
+        '<div class="tdp-progress-row tdp-progress-row-overall">' +
+          '<div class="tdp-progress-row-label"><span class="tdp-progress-row-label-text tdp-overall-label">Overall</span></div>' +
+          '<div class="tdp-progress-bar-wrap tdp-overall-bar-wrap' + (pdpOverallPct > 100 ? ' over' : '') + '">' +
+            '<div class="tdp-progress-bar-fill tdp-overall-bar-fill" style="width:' + Math.min(pdpOverallPct, 100).toFixed(1) + '%"></div>' +
+          '</div>' +
+          '<strong class="tdp-progress-row-count tdp-overall-count">' + pdpOverallPct.toFixed(1) + '%</strong>' +
+        '</div>'
+      : '';
+    html += '<div class="pdp-ts-progress-section">';
+    html += '<div class="pdp-section-title">TS Progress</div>';
+    html += '<div class="tdp-project-progress-grid">' + pdpProgressRows + pdpOverallRow + '</div>';
+    html += '</div>';
   }
-  html += '</div>'; // end pdp-header
 
-  // Mosaic thumbnail + FOV overlay
-  html += '<div class="pdp-mosaic-section">';
-  html += '<div class="pdp-mosaic-thumb-wrap" id="pdp-thumb-wrap">';
-  html += '<div class="pdp-mosaic-placeholder">\u2606</div>';
-  html += '</div>';
-  html += '</div>';
-
-  // Per-panel cards
+  // ── 5. Per-panel cards ────────────────────────────────────────────────────
   html += '<div class="pdp-panels-section">';
   html += '<div class="pdp-section-title">Panels (' + panels.length + ')</div>';
   html += '<div class="pdp-panels-grid">';
@@ -1697,7 +1918,7 @@ function renderProjectDetailPanel(data) {
   html += '</div>';
   html += '</div>';
 
-  // Filter coverage matrix — only for mosaics with ≥2 panels
+  // ── 6. Filter coverage matrix — only for mosaics with ≥2 panels ──────────
   if (panels.length >= 2) {
     var allFilters = [];
     panels.forEach(function(p) {
@@ -1727,7 +1948,7 @@ function renderProjectDetailPanel(data) {
           var match = (panel.filters || []).find(function(pf) { return pf.filter === f; });
           var hrs = match ? match.totalHours : 0;
           html += '<div class="pdp-matrix-cell pdp-matrix-data' + (hrs > 0 ? ' has-data' : '') + '" title="' +
-                  esc('Panel ' + (i+1) + ' · ' + f + ' · ' + (hrs > 0 ? hrs.toFixed(1) + 'h' : 'none')) + '">' +
+                  esc('Panel ' + (i+1) + ' \u00b7 ' + f + ' \u00b7 ' + (hrs > 0 ? hrs.toFixed(1) + 'h' : 'none')) + '">' +
                   (hrs > 0 ? '<span class="pdp-matrix-hrs">' + hrs.toFixed(1) + 'h</span>' : '<span class="pdp-matrix-empty">\u2013</span>') +
                   '</div>';
         });
@@ -1739,6 +1960,47 @@ function renderProjectDetailPanel(data) {
 
   html += '</div>';
   return html;
+}
+
+// Load session thumbnails for multi-project grid cells.
+// Each imaged panel gets its own cell; we fetch the best thumbnail per target.
+function loadPdpMultiThumbs(backdrop, imagedPanels) {
+  imagedPanels.forEach(function(panel, i) {
+    var cell = backdrop.querySelector('#pdp-panel-thumb-' + i);
+    if (!cell) return;
+    var targetName = panel.name;
+    var sid = panel.latestSessionId;
+    if (!sid) return;
+
+    function applyThumb(thumbs) {
+      if (!Array.isArray(thumbs)) return;
+      var lower = (targetName || '').toLowerCase();
+      var match = null;
+      for (var j = 0; j < thumbs.length; j++) {
+        var t = thumbs[j];
+        if (t.target === targetName || (t.target || '').toLowerCase() === lower) {
+          match = t; break;
+        }
+      }
+      if (match && match.dataUri) {
+        var placeholder = cell.querySelector('.pdp-cell-placeholder');
+        if (placeholder) placeholder.remove();
+        var img = document.createElement('img');
+        img.src = match.dataUri;
+        img.alt = esc(targetName);
+        cell.insertBefore(img, cell.firstChild);
+      }
+    }
+
+    if (thumbnailCache[sid]) {
+      applyThumb(thumbnailCache[sid]);
+    } else {
+      api('/api/sessions/' + encodeURIComponent(sid) + '/thumbnails').then(function(thumbs) {
+        if (Array.isArray(thumbs) && thumbs.length > 0) thumbnailCache[sid] = thumbs;
+        applyThumb(thumbs);
+      }).catch(function() { /* leave placeholder */ });
+    }
+  });
 }
 
 function renderPdpPanelCard(panel, idx, tsTarget) {
@@ -4315,6 +4577,7 @@ var statsTsStatus   = null;   // "available" | "not_installed" | "error" | null
 var statsTsError    = null;   // string or null
 var statsTsProjects = null;   // array of { guid, name, state, isMosaic, isCustom, targetCount, targets: [{guid,name}] }
 var statsProjectAssignments = null; // { "target name (lowercase)": "project-guid" }
+var statsTargetExclusions  = null; // { "project-guid": ["target name (lowercase)", ...] }
 
 function renderStatsTabContent(tabId) {
   var container = document.getElementById('stats-tab-content');
@@ -4586,7 +4849,11 @@ function openManageProjectsModal() {
     // TS targets from the project itself (custom project targets are all assigned)
     var srcForBuiltin = p.isCustom ? 'assigned' : 'ts';
     if (p.targets) {
-      p.targets.forEach(function(t) { targets.push({ name: t.name, source: srcForBuiltin }); });
+      var projExclusions = (!p.isCustom && statsTargetExclusions) ? (statsTargetExclusions[p.guid] || []) : [];
+      p.targets.forEach(function(t) {
+        if (projExclusions.indexOf((t.name || '').toLowerCase()) >= 0) return;
+        targets.push({ name: t.name, source: srcForBuiltin });
+      });
     }
     // Manually assigned targets (only add if not already listed from p.targets)
     Object.keys(statsProjectAssignments || {}).forEach(function(k) {
@@ -4605,6 +4872,7 @@ function openManageProjectsModal() {
       : p.targetCount + ' TS target' + (p.targetCount !== 1 ? 's' : '');
     var typeTag = p.isMosaic ? 'Mosaic' : (p.isCustom ? 'Custom' : (p.targetCount > 1 ? 'Multi' : 'Single'));
     var hasTargets = targets.length > 0;
+    var hasExclusions = !p.isCustom && statsTargetExclusions && (statsTargetExclusions[p.guid] || []).length > 0;
 
     var targetsHtml = '';
     if (hasTargets) {
@@ -4625,6 +4893,7 @@ function openManageProjectsModal() {
           '<span class="manage-project-name">' + esc(p.name) + '</span>' +
           '<span class="manage-project-meta">' + esc(typeTag) + ' \u00b7 ' + esc(subtitle) + '</span>' +
         '</div>' +
+        (hasExclusions ? '<button type="button" class="manage-project-proj-reset" data-guid="' + esc(p.guid) + '" title="Restore hidden targets for this project">\u21ba</button>' : '') +
         (p.isCustom ? '<button type="button" class="manage-project-delete" data-guid="' + esc(p.guid) + '" title="Delete project">\u00d7</button>' : '') +
       '</div>' +
       targetsHtml +
@@ -4705,6 +4974,7 @@ function openManageProjectsModal() {
   backdrop.querySelectorAll('.manage-project-item.expandable').forEach(function(item) {
     item.addEventListener('click', function(e) {
       if (e.target.closest('.manage-project-delete')) return;
+      if (e.target.closest('.manage-project-proj-reset')) return;
       var guid = item.getAttribute('data-guid');
       var targetList = backdrop.querySelector('.manage-project-targets[data-guid="' + guid + '"]');
       var chevron = item.querySelector('.manage-project-chevron');
@@ -4723,11 +4993,21 @@ function openManageProjectsModal() {
   backdrop.querySelectorAll('.manage-project-target-remove').forEach(function(btn) {
     btn.addEventListener('click', function(e) {
       e.stopPropagation();
-      var targetName = btn.getAttribute('data-target');
-      fetch('/api/stats/ts/assign', {
+      var targetName  = btn.getAttribute('data-target');
+      var projectGuid = btn.getAttribute('data-project');
+      var source      = btn.getAttribute('data-source');
+      var url, body;
+      if (source === 'ts') {
+        url  = '/api/stats/ts/exclude';
+        body = { targetName: targetName, projectGuid: projectGuid, exclude: true };
+      } else {
+        url  = '/api/stats/ts/assign';
+        body = { targetName: targetName, projectGuid: '' };
+      }
+      fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetName: targetName, projectGuid: '' })
+        body: JSON.stringify(body)
       }).then(function(r) { return r.json(); }).then(function() {
         closeManageProjectsModal();
         renderStats();
@@ -4754,6 +5034,23 @@ function openManageProjectsModal() {
   }
   addBtn.addEventListener('click', doCreate);
   input.addEventListener('keydown', function(e) { if (e.key === 'Enter') doCreate(); });
+
+  // Per-project reset (restore hidden targets for one project)
+  backdrop.querySelectorAll('.manage-project-proj-reset').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var guid = btn.getAttribute('data-guid');
+      fetch('/api/stats/projects/' + encodeURIComponent(guid) + '/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      }).then(function(r) { return r.json(); }).then(function() {
+        closeManageProjectsModal();
+        renderStats();
+        setTimeout(openManageProjectsModal, 600);
+      });
+    });
+  });
 
   // Delete buttons
   backdrop.querySelectorAll('.manage-project-delete').forEach(function(btn) {
@@ -5047,6 +5344,7 @@ function renderStats() {
     statsTsError    = targetData.tsError    || null;
     statsTsProjects = targetData.tsProjects || null;
     statsProjectAssignments = targetData.projectAssignments || {};
+    statsTargetExclusions  = targetData.targetExclusions  || {};
 
     // Populate globalFilterTypeMap from plugin settings (case-insensitive)
     globalFilterTypeMap = {};

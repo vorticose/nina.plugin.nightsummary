@@ -303,6 +303,16 @@ namespace NINA.Plugin.NightSummary.Server {
                         await HandleTsStatusOverride(req, res, done);
                     } else if (path == "/api/stats/ts/link") {
                         await HandleTsTargetLink(req, res, done);
+                    } else if (path == "/api/stats/ts/assign") {
+                        await HandleTsAssign(req, res, done);
+                    } else if (path == "/api/stats/ts/exclude") {
+                        await HandleTsExclude(req, res, done);
+                    } else if (path == "/api/stats/projects/reset") {
+                        await HandleProjectsReset(req, res, done);
+                    } else if (path.StartsWith("/api/stats/projects/") && path.EndsWith("/reset")) {
+                        var pguid = WebUtility.UrlDecode(path.Substring("/api/stats/projects/".Length,
+                            path.Length - "/api/stats/projects/".Length - "/reset".Length));
+                        await HandleProjectReset(req, res, pguid, done);
                     } else {
                         await WriteJson(res, 404, new { error = "Not found" });
                         done?.Invoke(404, null);
@@ -869,8 +879,10 @@ namespace NINA.Plugin.NightSummary.Server {
         }
 
         // Typed wrappers for the TS overrides + manual links JSON blobs.
-        private const string TsStatusOverridesKey = "ts.statusOverrides";
-        private const string TsTargetLinksKey     = "ts.targetLinks";
+        private const string TsStatusOverridesKey    = "ts.statusOverrides";
+        private const string TsTargetLinksKey        = "ts.targetLinks";
+        private const string TsProjectAssignmentsKey = "ts.projectAssignments";
+        private const string TsTargetExclusionsKey   = "ts.targetExclusions";
 
         private Dictionary<string, string> GetTsStatusOverrides() {
             var raw = GetDashboardMeta(TsStatusOverridesKey);
@@ -902,6 +914,46 @@ namespace NINA.Plugin.NightSummary.Server {
             if (string.IsNullOrEmpty(tsTargetGuidOrNull)) map.Remove(sessionTargetNameLower);
             else map[sessionTargetNameLower] = tsTargetGuidOrNull;
             SetDashboardMeta(TsTargetLinksKey, JsonSerializer.Serialize(map));
+        }
+
+        private Dictionary<string, string> GetProjectAssignments() {
+            var raw = GetDashboardMeta(TsProjectAssignmentsKey);
+            if (string.IsNullOrEmpty(raw)) return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            try {
+                return JsonSerializer.Deserialize<Dictionary<string, string>>(raw)
+                    ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            } catch { return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase); }
+        }
+
+        private void SetProjectAssignment(string targetNameLower, string projectGuidOrEmpty) {
+            if (string.IsNullOrEmpty(targetNameLower)) return;
+            var map = GetProjectAssignments();
+            if (string.IsNullOrEmpty(projectGuidOrEmpty)) map.Remove(targetNameLower);
+            else map[targetNameLower] = projectGuidOrEmpty;
+            SetDashboardMeta(TsProjectAssignmentsKey, JsonSerializer.Serialize(map));
+        }
+
+        private Dictionary<string, List<string>> GetTargetExclusions() {
+            var raw = GetDashboardMeta(TsTargetExclusionsKey);
+            if (string.IsNullOrEmpty(raw)) return new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            try {
+                return JsonSerializer.Deserialize<Dictionary<string, List<string>>>(raw)
+                    ?? new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            } catch { return new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase); }
+        }
+
+        private void SetTargetExclusion(string projectGuid, string targetNameLower, bool exclude) {
+            if (string.IsNullOrEmpty(projectGuid) || string.IsNullOrEmpty(targetNameLower)) return;
+            var map = GetTargetExclusions();
+            if (!map.ContainsKey(projectGuid)) map[projectGuid] = new List<string>();
+            if (exclude) {
+                if (!map[projectGuid].Contains(targetNameLower, StringComparer.OrdinalIgnoreCase))
+                    map[projectGuid].Add(targetNameLower);
+            } else {
+                map[projectGuid].RemoveAll(x => string.Equals(x, targetNameLower, StringComparison.OrdinalIgnoreCase));
+                if (map[projectGuid].Count == 0) map.Remove(projectGuid);
+            }
+            SetDashboardMeta(TsTargetExclusionsKey, JsonSerializer.Serialize(map));
         }
 
         private string GetCachedChartJson(string sessionId) {
@@ -1327,6 +1379,8 @@ namespace NINA.Plugin.NightSummary.Server {
                 tsStatus,
                 tsError,
                 tsProjects = tsProjectsSummary,
+                projectAssignments = GetProjectAssignments(),
+                targetExclusions   = GetTargetExclusions(),
             });
             done?.Invoke(200, $"{result.Count} targets (ts: {tsStatus})");
         }
@@ -1484,6 +1538,11 @@ namespace NINA.Plugin.NightSummary.Server {
                 }
             }
 
+            // Load exclusions for this project
+            var projectExclusions = GetTargetExclusions();
+            var exclusionsForProj = projectExclusions.TryGetValue(proj.Guid ?? "", out var excList)
+                ? excList : new List<string>();
+
             // Build per-panel data
             var db2 = File.Exists(dbPath) ? new SessionDatabase(dbPath) : null;
             var panels = new List<object>();
@@ -1491,8 +1550,10 @@ namespace NINA.Plugin.NightSummary.Server {
             double aggSeconds = 0;
             int aggSessions = 0;
             DateTime? aggLastImaged = null;
+            DateTime? aggFirstImaged = null;
 
             foreach (var tgt in proj.Targets) {
+                if (exclusionsForProj.Any(x => string.Equals(x, tgt.Name, StringComparison.OrdinalIgnoreCase))) continue;
                 // Aggregate stats from NS DB (if available)
                 List<TargetSessionDetail> tgtSessions = db2 != null
                     ? db2.GetSessionsForTarget(tgt.Name)
@@ -1504,12 +1565,17 @@ namespace NINA.Plugin.NightSummary.Server {
                 DateTime? lastImg  = tgtSessions.Count > 0
                     ? tgtSessions.Max(s => s.SessionStart) as DateTime?
                     : null;
+                DateTime? firstImg = tgtSessions.Count > 0
+                    ? tgtSessions.Min(s => s.SessionStart) as DateTime?
+                    : null;
 
                 aggFrames   += totFrames;
                 aggSeconds  += totalSec;
                 aggSessions += sessCount;
-                if (lastImg.HasValue && (aggLastImaged == null || lastImg.Value > aggLastImaged.Value))
-                    aggLastImaged = lastImg;
+                if (lastImg.HasValue  && (aggLastImaged  == null || lastImg.Value  > aggLastImaged.Value))
+                    aggLastImaged  = lastImg;
+                if (firstImg.HasValue && (aggFirstImaged == null || firstImg.Value < aggFirstImaged.Value))
+                    aggFirstImaged = firstImg;
 
                 // Camera data: use the most recent session for this target that has valid camera fields
                 SessionRecord bestSession = null;
@@ -1555,7 +1621,10 @@ namespace NINA.Plugin.NightSummary.Server {
                     totalIntegrationHours = Math.Round(totalSec / 3600.0, 2),
                     acceptedFrames   = totFrames,
                     sessionCount     = sessCount,
-                    lastImaged       = lastImg.HasValue ? lastImg.Value.ToString("o") : (string)null,
+                    lastImaged         = lastImg.HasValue ? lastImg.Value.ToString("o") : (string)null,
+                    latestSessionId    = tgtSessions.Count > 0
+                        ? tgtSessions.OrderByDescending(s => s.SessionStart).First().SessionId
+                        : (string)null,
                     camXSize,
                     camYSize,
                     pixelSizeMicrons,
@@ -1572,6 +1641,14 @@ namespace NINA.Plugin.NightSummary.Server {
                         })
                         .OrderByDescending(f => f.totalHours)
                         .ToList(),
+                    tsGoals          = tgt.ExposurePlans.Select(ep => new {
+                        filter       = ep.Filter,
+                        templateName = ep.TemplateName,
+                        exposureSec  = ep.ExposureSec,
+                        desired      = ep.Desired,
+                        accepted     = ep.Accepted,
+                        acquired     = ep.Acquired,
+                    }).ToList(),
                 });
             }
 
@@ -1602,7 +1679,9 @@ namespace NINA.Plugin.NightSummary.Server {
                     totalIntegrationHours = Math.Round(aggSeconds / 3600.0, 2),
                     acceptedFrames        = aggFrames,
                     sessionCount          = aggSessions,
-                    lastImaged            = aggLastImaged.HasValue ? aggLastImaged.Value.ToString("o") : (string)null,
+                    lastImaged            = aggLastImaged.HasValue  ? aggLastImaged.Value.ToString("o")  : (string)null,
+                    firstImaged           = aggFirstImaged.HasValue ? aggFirstImaged.Value.ToString("o") : (string)null,
+                    panelCount            = panels.Count,
                 },
             };
 
@@ -1779,6 +1858,83 @@ namespace NINA.Plugin.NightSummary.Server {
                 SetTsTargetLink(sessionTargetName.ToLowerInvariant(), tsTargetGuid);
                 await WriteJson(res, 200, new { ok = true, sessionTargetName, tsTargetGuid });
                 done?.Invoke(200, $"ts link '{sessionTargetName}' -> {tsTargetGuid ?? "(cleared)"}");
+            } catch (Exception ex) {
+                await WriteJson(res, 500, new { error = ex.Message });
+                done?.Invoke(500, ex.Message);
+            }
+        }
+
+        private async Task HandleTsAssign(HttpListenerRequest req, HttpListenerResponse res, Action<int, string> done) {
+            try {
+                string body;
+                using (var reader = new StreamReader(req.InputStream, req.ContentEncoding)) body = await reader.ReadToEndAsync();
+                using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                var root = doc.RootElement;
+                var targetName  = root.TryGetProperty("targetName",  out var tn) && tn.ValueKind == JsonValueKind.String ? tn.GetString() : null;
+                var projectGuid = root.TryGetProperty("projectGuid", out var pg) && pg.ValueKind == JsonValueKind.String ? pg.GetString() : null;
+                if (string.IsNullOrEmpty(targetName)) {
+                    await WriteJson(res, 400, new { error = "targetName required" });
+                    done?.Invoke(400, "missing targetName");
+                    return;
+                }
+                SetProjectAssignment(targetName.ToLowerInvariant(), projectGuid);
+                await WriteJson(res, 200, new { ok = true, targetName, projectGuid });
+                done?.Invoke(200, $"ts assign '{targetName}' -> {projectGuid ?? "(cleared)"}");
+            } catch (Exception ex) {
+                await WriteJson(res, 500, new { error = ex.Message });
+                done?.Invoke(500, ex.Message);
+            }
+        }
+
+        private async Task HandleTsExclude(HttpListenerRequest req, HttpListenerResponse res, Action<int, string> done) {
+            try {
+                string body;
+                using (var reader = new StreamReader(req.InputStream, req.ContentEncoding)) body = await reader.ReadToEndAsync();
+                using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                var root = doc.RootElement;
+                var targetName  = root.TryGetProperty("targetName",  out var tn) && tn.ValueKind == JsonValueKind.String ? tn.GetString() : null;
+                var projectGuid = root.TryGetProperty("projectGuid", out var pg) && pg.ValueKind == JsonValueKind.String ? pg.GetString() : null;
+                var exclude     = !root.TryGetProperty("exclude", out var ex2) || ex2.ValueKind != JsonValueKind.False;
+                if (string.IsNullOrEmpty(targetName) || string.IsNullOrEmpty(projectGuid)) {
+                    await WriteJson(res, 400, new { error = "targetName and projectGuid required" });
+                    done?.Invoke(400, "missing fields");
+                    return;
+                }
+                SetTargetExclusion(projectGuid, targetName.ToLowerInvariant(), exclude);
+                await WriteJson(res, 200, new { ok = true, targetName, projectGuid, excluded = exclude });
+                done?.Invoke(200, $"ts exclude '{targetName}' from {projectGuid}: {exclude}");
+            } catch (Exception ex) {
+                await WriteJson(res, 500, new { error = ex.Message });
+                done?.Invoke(500, ex.Message);
+            }
+        }
+
+        private async Task HandleProjectsReset(HttpListenerRequest req, HttpListenerResponse res, Action<int, string> done) {
+            try {
+                SetDashboardMeta(TsProjectAssignmentsKey, null);
+                SetDashboardMeta(TsTargetExclusionsKey,   null);
+                // Custom projects key cleared too for full reset
+                SetDashboardMeta("ts.customProjects", null);
+                await WriteJson(res, 200, new { ok = true, reset = true });
+                done?.Invoke(200, "projects reset");
+            } catch (Exception ex) {
+                await WriteJson(res, 500, new { error = ex.Message });
+                done?.Invoke(500, ex.Message);
+            }
+        }
+
+        private async Task HandleProjectReset(HttpListenerRequest req, HttpListenerResponse res, string projectGuid, Action<int, string> done) {
+            try {
+                if (string.IsNullOrEmpty(projectGuid)) {
+                    await WriteJson(res, 400, new { error = "projectGuid required" });
+                    done?.Invoke(400, "missing guid");
+                    return;
+                }
+                var map = GetTargetExclusions();
+                map.Remove(projectGuid);
+                SetDashboardMeta(TsTargetExclusionsKey, JsonSerializer.Serialize(map));
+                await WriteJson(res, 200, new { ok = true, projectGuid });
+                done?.Invoke(200, $"project reset {projectGuid}");
             } catch (Exception ex) {
                 await WriteJson(res, 500, new { error = ex.Message });
                 done?.Invoke(500, ex.Message);
