@@ -105,6 +105,11 @@ namespace NINA.Plugin.NightSummary.Session {
             this.collector       = new SessionCollector(imageSaveMediator, sequenceMediator, database);
             this.eventCollector  = new SessionEventCollector(database, safetyMonitorMediator, focuserMediator, telescopeMediator);
             this.reportGenerator = new ReportGenerator();
+
+            // Listen for sequence stop/cancel to finalize orphaned sessions
+            if (sequenceMediator != null)
+                sequenceMediator.SequenceFinished += OnSequenceFinished;
+
             Logger.Info($"NightSummary: SessionService created — messageBroker={messageBroker != null}");
         }
 
@@ -217,6 +222,28 @@ namespace NINA.Plugin.NightSummary.Session {
                     Logger.Error($"NightSummary: Unhandled error in report generation. {ex.Message}");
                 }
             });
+        }
+
+        /// <summary>
+        /// Called when NINA's sequence finishes (normal completion, manual stop, or error).
+        /// If a session is still active (End instruction never ran), finalize the session
+        /// record and clean up listeners — but do NOT generate or deliver a report.
+        /// The user can always resend via "Resend Previous Session" if they want the report.
+        /// </summary>
+        private Task OnSequenceFinished(object sender, EventArgs e) {
+            var sessionId = collector.GetCurrentSessionId();
+            if (sessionId == null) return Task.CompletedTask;
+
+            Logger.Info($"NightSummary: Sequence finished with active session {sessionId} — finalizing without report");
+            try {
+                collector.EndSession();
+                eventCollector.EndSession();
+                liveStackCapture?.StopAndCollect();
+                liveStackCapture = null;
+            } catch (Exception ex) {
+                Logger.Error($"NightSummary: Error during graceful session cleanup: {ex.Message}");
+            }
+            return Task.CompletedTask;
         }
 
         private async Task GenerateAndSendAsync(ReportData reportData) {
