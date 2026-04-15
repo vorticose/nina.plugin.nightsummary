@@ -320,7 +320,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             if (rejectedCount > 0)
                 qualityNotes.Append($"<div style='font-size:12px; font-weight:bold; color:var(--skip-color); margin-bottom:2px;'>{rejectedCount} rejected</div>");
             var imageBreakdownWithNotes = qualityNotes.Length > 0
-                ? $"<div style='margin-bottom:8px;'>{qualityNotes}</div>{imageBreakdown}"
+                ? $"<div style='margin-top:8px; margin-bottom:6px;'>{qualityNotes}</div>{imageBreakdown}"
                 : imageBreakdown.ToString();
             sb.AppendLine($"<div class='stat-box'><details class='stat-breakdown'><summary><div class='stat-value'>{data.Images.Count}</div><div class='stat-label'>Total Images</div></summary>{imageBreakdownWithNotes}</details></div>");
             sb.AppendLine($"<div class='stat-box'><details class='stat-breakdown'><summary><div class='stat-value'>{TimeSpan.FromSeconds(totalExposureSec).TotalHours:F1}h</div><div class='stat-label'>Total Exposure</div></summary>{expBreakdown}</details></div>");
@@ -723,33 +723,40 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 foreach (var filterGroup in filterGroups) {
                     var totalTime     = TimeSpan.FromSeconds(filterGroup.Sum(i => i.ExposureDuration));
                     var rejectedCount = filterGroup.Count(i => !i.Accepted);
-                    if (hasRejections)
-                        sb.AppendLine($"<tr><td>{filterGroup.Key.Filter}</td><td>{filterGroup.Count()}</td><td>{(rejectedCount > 0 ? rejectedCount.ToString() : "—")}</td><td>{filterGroup.Key.ExposureDuration:F0}s</td><td>{FormatDuration(totalTime.TotalSeconds)}</td></tr>");
-                    else
+                    if (hasRejections) {
+                        string rejectedCell;
+                        if (rejectedCount > 0) {
+                            var reasons = filterGroup
+                                .Where(i => !i.Accepted && !string.IsNullOrEmpty(i.RejectReason))
+                                .GroupBy(i => i.RejectReason)
+                                .OrderByDescending(g => g.Count())
+                                .Select(g => $"{System.Net.WebUtility.HtmlEncode(g.Key)}: {g.Count()}");
+                            var tooltip = string.Join("&#10;", reasons);
+                            var tdStyle = !string.IsNullOrEmpty(tooltip) ? $" title='{tooltip}' style='cursor:help;'" : "";
+                            rejectedCell = $"<td{tdStyle}>{rejectedCount}</td>";
+                        } else {
+                            rejectedCell = "<td>—</td>";
+                        }
+                        sb.AppendLine($"<tr><td>{filterGroup.Key.Filter}</td><td>{filterGroup.Count()}</td>{rejectedCell}<td>{filterGroup.Key.ExposureDuration:F0}s</td><td>{FormatDuration(totalTime.TotalSeconds)}</td></tr>");
+                    } else {
                         sb.AppendLine($"<tr><td>{filterGroup.Key.Filter}</td><td>{filterGroup.Count()}</td><td>{filterGroup.Key.ExposureDuration:F0}s</td><td>{FormatDuration(totalTime.TotalSeconds)}</td></tr>");
+                    }
                 }
                 var targetTotal         = TimeSpan.FromSeconds(target.Sum(i => i.ExposureDuration));
                 var targetRejectedTotal = target.Count(i => !i.Accepted);
-                if (hasRejections)
-                    sb.AppendLine($"<tr><td><strong>Total</strong></td><td><strong>{target.Count()}</strong></td><td><strong>{targetRejectedTotal}</strong></td><td></td><td><strong>{FormatDuration(targetTotal.TotalSeconds)}</strong></td></tr>");
-                else
+                if (hasRejections) {
+                    var allReasons = target
+                        .Where(i => !i.Accepted && !string.IsNullOrEmpty(i.RejectReason))
+                        .GroupBy(i => i.RejectReason)
+                        .OrderByDescending(g => g.Count())
+                        .Select(g => $"{System.Net.WebUtility.HtmlEncode(g.Key)}: {g.Count()}");
+                    var totalTooltip = string.Join("&#10;", allReasons);
+                    var totalTdStyle = !string.IsNullOrEmpty(totalTooltip) ? $" title='{totalTooltip}' style='cursor:help;'" : "";
+                    sb.AppendLine($"<tr><td><strong>Total</strong></td><td><strong>{target.Count()}</strong></td><td{totalTdStyle}><strong>{targetRejectedTotal}</strong></td><td></td><td><strong>{FormatDuration(targetTotal.TotalSeconds)}</strong></td></tr>");
+                } else {
                     sb.AppendLine($"<tr><td><strong>Total</strong></td><td><strong>{target.Count()}</strong></td><td></td><td><strong>{FormatDuration(targetTotal.TotalSeconds)}</strong></td></tr>");
-                sb.AppendLine("</table>");
-
-                // TS rejection reason breakdown (shown only when TS-graded rejections exist)
-                var tsRejections = target
-                    .Where(i => !i.Accepted && !string.IsNullOrEmpty(i.RejectReason))
-                    .GroupBy(i => i.RejectReason)
-                    .OrderByDescending(g => g.Count())
-                    .ToList();
-                if (tsRejections.Any()) {
-                    sb.AppendLine("<p style='margin:8px 0 4px; font-size:12px; color:var(--muted);'><strong>Rejection reasons (Target Scheduler)</strong></p>");
-                    sb.AppendLine("<table class='star-count-table'>");
-                    sb.AppendLine("<tr><th>Reason</th><th>Count</th></tr>");
-                    foreach (var g in tsRejections)
-                        sb.AppendLine($"<tr><td>{System.Web.HttpUtility.HtmlEncode(g.Key)}</td><td>{g.Count()}</td></tr>");
-                    sb.AppendLine("</table>");
                 }
+                sb.AppendLine("</table>");
 
                 if (detailLevel >= 1 && SettingsManager.Instance.Current.ShowStarCountCV) {
                     // Star count CV

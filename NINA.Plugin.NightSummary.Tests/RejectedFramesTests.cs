@@ -219,21 +219,23 @@ namespace NINA.Plugin.NightSummary.Tests {
             Assert.Contains("—", html);
         }
 
-        // ── Report: TS rejection reasons ─────────────────────────────────────
+        // ── Report: TS rejection reason tooltips ─────────────────────────────
 
         [Fact]
-        public async Task RejectReasonTable_NoTsRejections_NotRendered() {
+        public async Task FilterTable_NoTsReasons_NoTooltip() {
             var data = TestDataFactory.MakeReportData(imageCount: 5);
             data.Images[0].Accepted = false;
             // RejectReason is null — manual rejection, no TS reason
 
             var html = await _gen.GenerateHtmlReport(data);
 
-            Assert.DoesNotContain("Rejection reasons", html);
+            // Rejected column appears but no tooltip since no TS reason
+            Assert.Contains("<th>Rejected</th>", html);
+            Assert.DoesNotContain("cursor:help", html);
         }
 
         [Fact]
-        public async Task RejectReasonTable_TsRejections_RendersReasonTable() {
+        public async Task FilterTable_TsRejections_ShowsTooltipWithReasons() {
             var data = TestDataFactory.MakeReportData(imageCount: 5);
             data.Images[0].Accepted     = false;
             data.Images[0].RejectReason = "HFR too high";
@@ -244,19 +246,20 @@ namespace NINA.Plugin.NightSummary.Tests {
 
             var html = await _gen.GenerateHtmlReport(data);
 
-            Assert.Contains("Rejection reasons (Target Scheduler)", html);
+            Assert.Contains("cursor:help", html);
             Assert.Contains("HFR too high", html);
             Assert.Contains("Guiding RMS", html);
         }
 
         [Fact]
-        public async Task RejectReasonTable_HtmlEncoded() {
+        public async Task FilterTable_TsReason_HtmlEncodedInTooltip() {
             var data = TestDataFactory.MakeReportData(imageCount: 3);
             data.Images[0].Accepted     = false;
             data.Images[0].RejectReason = "Star count < threshold";
 
             var html = await _gen.GenerateHtmlReport(data);
 
+            // Special chars must be encoded in the title attribute
             Assert.Contains("Star count &lt; threshold", html);
         }
     }
