@@ -3825,13 +3825,10 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   color: var(--text-secondary);
 }
 .pdp-target-subrow td {
-  padding: 2px 8px !important;
+  padding: 3px 8px 3px 24px !important;
   border-top: none !important;
-}
-.pdp-target-subrow-name {
   font-size: 11px;
   color: var(--text-secondary);
-  padding-left: 12px !important;
 }
 
 /* Filter coverage matrix */
