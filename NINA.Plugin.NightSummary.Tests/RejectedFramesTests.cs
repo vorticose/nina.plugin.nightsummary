@@ -140,23 +140,23 @@ namespace NINA.Plugin.NightSummary.Tests {
         // ── Report: overview stats ───────────────────────────────────────────
 
         [Fact]
-        public async Task Overview_NoRejections_NoRejectedBadge() {
+        public async Task Overview_NoRejections_NoRejectedNote() {
             var data = TestDataFactory.MakeReportData(imageCount: 5);
 
             var html = await _gen.GenerateHtmlReport(data);
 
-            Assert.DoesNotContain("rejected)", html);
+            Assert.DoesNotContain("rejected", html);
         }
 
         [Fact]
-        public async Task Overview_WithRejections_ShowsRejectedBadge() {
+        public async Task Overview_WithRejections_ShowsRejectedNote() {
             var data = TestDataFactory.MakeReportData(imageCount: 5);
             data.Images[0].Accepted = false;
             data.Images[1].Accepted = false;
 
             var html = await _gen.GenerateHtmlReport(data);
 
-            Assert.Contains("2 rejected", html);
+            Assert.Contains("2 images rejected", html);
         }
 
         [Fact]
@@ -166,8 +166,8 @@ namespace NINA.Plugin.NightSummary.Tests {
 
             var html = await _gen.GenerateHtmlReport(data);
 
-            Assert.Contains("3 aborted", html);
-            Assert.Contains("1 rejected", html);
+            Assert.Contains("3 exposures aborted mid-shot", html);
+            Assert.Contains("1 image rejected", html);
         }
 
         // ── Report: filter table ──────────────────────────────────────────────

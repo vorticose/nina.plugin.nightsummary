@@ -314,12 +314,15 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("<h2>Session Overview</h2>");
             sb.AppendLine($"<div style='display:grid; grid-template-columns:repeat({gridCols},1fr); gap:10px; margin:10px 0;'>");
             var rejectedCount = data.Images.Count(i => !i.Accepted);
-            var imagesValue = new System.Text.StringBuilder($"{data.Images.Count}");
+            var qualityNotes = new System.Text.StringBuilder();
             if (data.SkippedExposures > 0)
-                imagesValue.Append($" <span style='font-size:60%; color:var(--skip-color);'>({data.SkippedExposures} aborted)</span>");
+                qualityNotes.Append($"<div style='font-size:11px; color:var(--skip-color); margin-bottom:4px;'>{data.SkippedExposures} exposure{(data.SkippedExposures == 1 ? "" : "s")} aborted mid-shot</div>");
             if (rejectedCount > 0)
-                imagesValue.Append($" <span style='font-size:60%; color:var(--skip-color);'>({rejectedCount} rejected)</span>");
-            sb.AppendLine($"<div class='stat-box'><details class='stat-breakdown'><summary><div class='stat-value'>{imagesValue}</div><div class='stat-label'>Total Images</div></summary>{imageBreakdown}</details></div>");
+                qualityNotes.Append($"<div style='font-size:11px; color:var(--skip-color); margin-bottom:4px;'>{rejectedCount} image{(rejectedCount == 1 ? "" : "s")} rejected</div>");
+            var imageBreakdownWithNotes = qualityNotes.Length > 0
+                ? qualityNotes.ToString() + imageBreakdown
+                : imageBreakdown.ToString();
+            sb.AppendLine($"<div class='stat-box'><details class='stat-breakdown'><summary><div class='stat-value'>{data.Images.Count}</div><div class='stat-label'>Total Images</div></summary>{imageBreakdownWithNotes}</details></div>");
             sb.AppendLine($"<div class='stat-box'><details class='stat-breakdown'><summary><div class='stat-value'>{TimeSpan.FromSeconds(totalExposureSec).TotalHours:F1}h</div><div class='stat-label'>Total Exposure</div></summary>{expBreakdown}</details></div>");
             sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{targetCount}</div><div class='stat-label'>Targets</div></div>");
             if (detailLevel >= 1 && hfrImages.Any())
