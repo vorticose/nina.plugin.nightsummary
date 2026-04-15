@@ -3824,11 +3824,11 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   text-align: center;
   color: var(--text-secondary);
 }
-.pdp-target-subrow td {
-  padding: 3px 8px 3px 24px !important;
-  border-top: none !important;
-  font-size: 11px;
-  color: var(--text-secondary);
+.pdp-target-subrow-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 0;
 }
 
 /* Filter coverage matrix */

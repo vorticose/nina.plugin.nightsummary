@@ -2247,8 +2247,10 @@ function buildPdpSessionTable(sessions, showTargetCol) {
       var targets = s.targets || [];
       targetCell = '<td class="pdp-session-targets">' + targets.length + '</td>';
       targetSubRows = targets.map(function(t) {
-        return '<tr class="pdp-target-subrow" data-for="' + idx + '" style="display:none">' +
-          '<td class="pdp-target-subrow-name" colspan="8">' + esc(t) + '</td>' +
+        return '<tr class="pdp-target-subrow tdp-filter-subrow" data-for="' + idx + '" style="display:none">' +
+          '<td></td>' +
+          '<td class="pdp-target-subrow-name">' + esc(t) + '</td>' +
+          '<td></td><td></td><td></td><td></td><td></td><td></td>' +
         '</tr>';
       }).join('');
     }
