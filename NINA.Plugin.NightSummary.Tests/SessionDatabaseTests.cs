@@ -412,5 +412,58 @@ namespace NINA.Plugin.NightSummary.Tests {
             Assert.True(cumulative.ContainsKey("M31"));
             Assert.Equal(3000.0, cumulative["M31"], precision: 0);
         }
+
+        // ── GetAllImagesInRange ──────────────────────────────────────────────
+
+        [Fact]
+        public void GetAllImagesInRange_ReturnsImagesWithinDateRange() {
+            var jan15 = new DateTime(2025, 1, 15, 21, 0, 0);
+            var jan20 = new DateTime(2025, 1, 20, 21, 0, 0);
+            var feb10 = new DateTime(2025, 2, 10, 21, 0, 0);
+
+            var s1 = CreateTestSession(start: jan15);
+            var s2 = CreateTestSession(start: jan20);
+            var s3 = CreateTestSession(start: feb10);
+
+            _db.SaveImageRecord(TestDataFactory.MakeImage(s1.SessionId, target: "M31"));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(s1.SessionId, target: "M31"));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(s2.SessionId, target: "M42"));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(s3.SessionId, target: "NGC7000"));
+
+            var images = _db.GetAllImagesInRange(
+                new DateTime(2025, 1, 1), new DateTime(2025, 1, 31));
+
+            Assert.Equal(3, images.Count);
+            Assert.Contains(images, i => i.TargetName == "M31");
+            Assert.Contains(images, i => i.TargetName == "M42");
+            Assert.DoesNotContain(images, i => i.TargetName == "NGC7000");
+        }
+
+        [Fact]
+        public void GetAllImagesInRange_EmptyRange_ReturnsEmpty() {
+            var s = CreateTestSession(start: new DateTime(2025, 3, 1, 21, 0, 0));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(s.SessionId));
+
+            var images = _db.GetAllImagesInRange(
+                new DateTime(2025, 1, 1), new DateTime(2025, 1, 31));
+
+            Assert.Empty(images);
+        }
+
+        [Fact]
+        public void GetAllImagesInRange_OrderedByTimestamp() {
+            var s = CreateTestSession(start: new DateTime(2025, 1, 15, 21, 0, 0));
+            var t1 = new DateTime(2025, 1, 15, 23, 0, 0);
+            var t2 = new DateTime(2025, 1, 15, 22, 0, 0);
+            _db.SaveImageRecord(TestDataFactory.MakeImage(s.SessionId, target: "M42", timestamp: t1));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(s.SessionId, target: "M31", timestamp: t2));
+
+            var images = _db.GetAllImagesInRange(
+                new DateTime(2025, 1, 1), new DateTime(2025, 1, 31));
+
+            Assert.Equal(2, images.Count);
+            Assert.Equal("M31", images[0].TargetName); // 22:00 before 23:00
+            Assert.Equal("M42", images[1].TargetName);
+        }
     }
 }

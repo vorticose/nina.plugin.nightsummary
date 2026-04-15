@@ -810,65 +810,91 @@ namespace NINA.Plugin.NightSummary.Data {
                 using (var cmd = new SQLiteCommand(sql, conn)) {
                     cmd.Parameters.AddWithValue("@SessionId", sessionId);
                     using (var reader = cmd.ExecuteReader()) {
-                        while (reader.Read()) {
-                            images.Add(new ImageRecord {
-                                Id = Convert.ToInt32(reader["Id"]),
-                                SessionId = reader["SessionId"] == DBNull.Value ? "" : reader["SessionId"].ToString(),
-                                Timestamp = reader["Timestamp"] == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["Timestamp"].ToString()),
-                                TargetName = reader["TargetName"] == DBNull.Value ? "" : reader["TargetName"].ToString(),
-                                Filter = reader["Filter"] == DBNull.Value ? "" : reader["Filter"].ToString(),
-                                ExposureDuration = reader["ExposureDuration"] == DBNull.Value ? 0 : Convert.ToDouble(reader["ExposureDuration"]),
-                                HFR = reader["HFR"] == DBNull.Value ? 0 : Convert.ToDouble(reader["HFR"]),
-                                FWHM = reader["FWHM"] == DBNull.Value ? 0 : Convert.ToDouble(reader["FWHM"]),
-                                Eccentricity = reader["Eccentricity"] == DBNull.Value ? 0 : Convert.ToDouble(reader["Eccentricity"]),
-                                StarCount = reader["StarCount"] == DBNull.Value ? 0 : Convert.ToInt32(reader["StarCount"]),
-                                GuidingRMSTotal = reader["GuidingRMSTotal"] == DBNull.Value ? 0 : Convert.ToDouble(reader["GuidingRMSTotal"]),
-                                GuidingScale = reader["GuidingScale"] == DBNull.Value ? 1 : Convert.ToDouble(reader["GuidingScale"]),
-                                Accepted = reader["Accepted"] == DBNull.Value ? false : Convert.ToInt32(reader["Accepted"]) == 1,
-                                RaHours    = reader["RaHours"]    == DBNull.Value ? 0 : Convert.ToDouble(reader["RaHours"]),
-                                DecDegrees = reader["DecDegrees"] == DBNull.Value ? 0 : Convert.ToDouble(reader["DecDegrees"]),
-                                FocuserTemp     = reader["FocuserTemp"]     == DBNull.Value ? (double?)null : Convert.ToDouble(reader["FocuserTemp"]),
-                                AmbientTemp     = reader["AmbientTemp"]     == DBNull.Value ? (double?)null : Convert.ToDouble(reader["AmbientTemp"]),
-                                Gain            = reader["Gain"]            == DBNull.Value ? -1 : Convert.ToInt32(reader["Gain"]),
-                                Offset          = reader["Offset"]          == DBNull.Value ? -1 : Convert.ToInt32(reader["Offset"]),
-                                Binning         = reader["Binning"]         == DBNull.Value ? 0  : Convert.ToInt32(reader["Binning"]),
-                                CameraTemp      = reader["CameraTemp"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["CameraTemp"]),
-                                CoolerSetpoint  = reader["CoolerSetpoint"]  == DBNull.Value ? (double?)null : Convert.ToDouble(reader["CoolerSetpoint"]),
-                                FocuserPosition = reader["FocuserPosition"] == DBNull.Value ? (int?)null    : Convert.ToInt32(reader["FocuserPosition"]),
-                                RotatorPosition = reader["RotatorPosition"] == DBNull.Value ? (double?)null : Convert.ToDouble(reader["RotatorPosition"]),
-                                PositionAngle   = reader["PositionAngle"]   == DBNull.Value ? (double?)null : Convert.ToDouble(reader["PositionAngle"]),
-                                Humidity        = reader["Humidity"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["Humidity"]),
-                                DewPoint        = reader["DewPoint"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["DewPoint"]),
-                                WindSpeed       = reader["WindSpeed"]       == DBNull.Value ? (double?)null : Convert.ToDouble(reader["WindSpeed"]),
-                                Pressure        = reader["Pressure"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["Pressure"]),
-                                SkyBrightness   = reader["SkyBrightness"]   == DBNull.Value ? (double?)null : Convert.ToDouble(reader["SkyBrightness"]),
-                                SkyTemperature  = reader["SkyTemperature"]  == DBNull.Value ? (double?)null : Convert.ToDouble(reader["SkyTemperature"]),
-                                WindDirection   = reader["WindDirection"]   == DBNull.Value ? (double?)null : Convert.ToDouble(reader["WindDirection"]),
-                                WindGust        = reader["WindGust"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["WindGust"]),
-                                GradingStatus   = reader["GradingStatus"]   == DBNull.Value ? -1 : Convert.ToInt32(reader["GradingStatus"]),
-                                RejectReason    = reader["RejectReason"]    == DBNull.Value ? null : reader["RejectReason"].ToString(),
-                                ImageType       = reader["ImageType"]       == DBNull.Value ? null : reader["ImageType"].ToString(),
-                                Altitude        = reader["Altitude"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["Altitude"]),
-                                Azimuth         = reader["Azimuth"]         == DBNull.Value ? (double?)null : Convert.ToDouble(reader["Azimuth"]),
-                                Airmass         = reader["Airmass"]         == DBNull.Value ? (double?)null : Convert.ToDouble(reader["Airmass"]),
-                                SideOfPier      = reader["SideOfPier"]      == DBNull.Value ? null : reader["SideOfPier"].ToString(),
-                                ReadoutMode     = reader["ReadoutMode"]     == DBNull.Value ? null : reader["ReadoutMode"].ToString(),
-                                SkyQuality      = reader["SkyQuality"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["SkyQuality"]),
-                                CloudCover      = reader["CloudCover"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["CloudCover"]),
-                                SeeingFWHM      = reader["SeeingFWHM"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["SeeingFWHM"]),
-                                StatMedian      = reader["StatMedian"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["StatMedian"]),
-                                StatMean        = reader["StatMean"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["StatMean"]),
-                                StatStDev       = reader["StatStDev"]       == DBNull.Value ? (double?)null : Convert.ToDouble(reader["StatStDev"]),
-                                StatMAD         = reader["StatMAD"]         == DBNull.Value ? (double?)null : Convert.ToDouble(reader["StatMAD"]),
-                                StatMin         = reader["StatMin"]         == DBNull.Value ? (int?)null    : Convert.ToInt32(reader["StatMin"]),
-                                StatMax         = reader["StatMax"]         == DBNull.Value ? (int?)null    : Convert.ToInt32(reader["StatMax"]),
-                                StatBitDepth    = reader["StatBitDepth"]    == DBNull.Value ? (int?)null    : Convert.ToInt32(reader["StatBitDepth"])
-                            });
-                        }
+                        while (reader.Read()) images.Add(ReadImageRecord(reader));
                     }
                 }
             }
             return images;
+        }
+
+        /// <summary>
+        /// Returns all images whose session starts within [from, to], ordered by timestamp.
+        /// Used by multi-night report generation to load the full image set for a date range.
+        /// </summary>
+        public List<ImageRecord> GetAllImagesInRange(DateTime from, DateTime to) {
+            var images = new List<ImageRecord>();
+            using (var conn = new SQLiteConnection(connectionString)) {
+                conn.Open();
+                string sql = @"
+                    SELECT i.* FROM Images i
+                    JOIN Sessions s ON s.SessionId = i.SessionId
+                    WHERE s.SessionStart >= @From AND s.SessionStart <= @To
+                    ORDER BY i.Timestamp";
+                using (var cmd = new SQLiteCommand(sql, conn)) {
+                    cmd.Parameters.AddWithValue("@From", from.ToString("o"));
+                    cmd.Parameters.AddWithValue("@To",   to.Date.AddDays(1).AddSeconds(-1).ToString("o"));
+                    using (var reader = cmd.ExecuteReader()) {
+                        while (reader.Read()) images.Add(ReadImageRecord(reader));
+                    }
+                }
+            }
+            return images;
+        }
+
+        private static ImageRecord ReadImageRecord(SQLiteDataReader reader) {
+            return new ImageRecord {
+                Id = Convert.ToInt32(reader["Id"]),
+                SessionId = reader["SessionId"] == DBNull.Value ? "" : reader["SessionId"].ToString(),
+                Timestamp = reader["Timestamp"] == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["Timestamp"].ToString()),
+                TargetName = reader["TargetName"] == DBNull.Value ? "" : reader["TargetName"].ToString(),
+                Filter = reader["Filter"] == DBNull.Value ? "" : reader["Filter"].ToString(),
+                ExposureDuration = reader["ExposureDuration"] == DBNull.Value ? 0 : Convert.ToDouble(reader["ExposureDuration"]),
+                HFR = reader["HFR"] == DBNull.Value ? 0 : Convert.ToDouble(reader["HFR"]),
+                FWHM = reader["FWHM"] == DBNull.Value ? 0 : Convert.ToDouble(reader["FWHM"]),
+                Eccentricity = reader["Eccentricity"] == DBNull.Value ? 0 : Convert.ToDouble(reader["Eccentricity"]),
+                StarCount = reader["StarCount"] == DBNull.Value ? 0 : Convert.ToInt32(reader["StarCount"]),
+                GuidingRMSTotal = reader["GuidingRMSTotal"] == DBNull.Value ? 0 : Convert.ToDouble(reader["GuidingRMSTotal"]),
+                GuidingScale = reader["GuidingScale"] == DBNull.Value ? 1 : Convert.ToDouble(reader["GuidingScale"]),
+                Accepted = reader["Accepted"] == DBNull.Value ? false : Convert.ToInt32(reader["Accepted"]) == 1,
+                RaHours    = reader["RaHours"]    == DBNull.Value ? 0 : Convert.ToDouble(reader["RaHours"]),
+                DecDegrees = reader["DecDegrees"] == DBNull.Value ? 0 : Convert.ToDouble(reader["DecDegrees"]),
+                FocuserTemp     = reader["FocuserTemp"]     == DBNull.Value ? (double?)null : Convert.ToDouble(reader["FocuserTemp"]),
+                AmbientTemp     = reader["AmbientTemp"]     == DBNull.Value ? (double?)null : Convert.ToDouble(reader["AmbientTemp"]),
+                Gain            = reader["Gain"]            == DBNull.Value ? -1 : Convert.ToInt32(reader["Gain"]),
+                Offset          = reader["Offset"]          == DBNull.Value ? -1 : Convert.ToInt32(reader["Offset"]),
+                Binning         = reader["Binning"]         == DBNull.Value ? 0  : Convert.ToInt32(reader["Binning"]),
+                CameraTemp      = reader["CameraTemp"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["CameraTemp"]),
+                CoolerSetpoint  = reader["CoolerSetpoint"]  == DBNull.Value ? (double?)null : Convert.ToDouble(reader["CoolerSetpoint"]),
+                FocuserPosition = reader["FocuserPosition"] == DBNull.Value ? (int?)null    : Convert.ToInt32(reader["FocuserPosition"]),
+                RotatorPosition = reader["RotatorPosition"] == DBNull.Value ? (double?)null : Convert.ToDouble(reader["RotatorPosition"]),
+                PositionAngle   = reader["PositionAngle"]   == DBNull.Value ? (double?)null : Convert.ToDouble(reader["PositionAngle"]),
+                Humidity        = reader["Humidity"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["Humidity"]),
+                DewPoint        = reader["DewPoint"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["DewPoint"]),
+                WindSpeed       = reader["WindSpeed"]       == DBNull.Value ? (double?)null : Convert.ToDouble(reader["WindSpeed"]),
+                Pressure        = reader["Pressure"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["Pressure"]),
+                SkyBrightness   = reader["SkyBrightness"]   == DBNull.Value ? (double?)null : Convert.ToDouble(reader["SkyBrightness"]),
+                SkyTemperature  = reader["SkyTemperature"]  == DBNull.Value ? (double?)null : Convert.ToDouble(reader["SkyTemperature"]),
+                WindDirection   = reader["WindDirection"]   == DBNull.Value ? (double?)null : Convert.ToDouble(reader["WindDirection"]),
+                WindGust        = reader["WindGust"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["WindGust"]),
+                GradingStatus   = reader["GradingStatus"]   == DBNull.Value ? -1 : Convert.ToInt32(reader["GradingStatus"]),
+                RejectReason    = reader["RejectReason"]    == DBNull.Value ? null : reader["RejectReason"].ToString(),
+                ImageType       = reader["ImageType"]       == DBNull.Value ? null : reader["ImageType"].ToString(),
+                Altitude        = reader["Altitude"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["Altitude"]),
+                Azimuth         = reader["Azimuth"]         == DBNull.Value ? (double?)null : Convert.ToDouble(reader["Azimuth"]),
+                Airmass         = reader["Airmass"]         == DBNull.Value ? (double?)null : Convert.ToDouble(reader["Airmass"]),
+                SideOfPier      = reader["SideOfPier"]      == DBNull.Value ? null : reader["SideOfPier"].ToString(),
+                ReadoutMode     = reader["ReadoutMode"]     == DBNull.Value ? null : reader["ReadoutMode"].ToString(),
+                SkyQuality      = reader["SkyQuality"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["SkyQuality"]),
+                CloudCover      = reader["CloudCover"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["CloudCover"]),
+                SeeingFWHM      = reader["SeeingFWHM"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["SeeingFWHM"]),
+                StatMedian      = reader["StatMedian"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["StatMedian"]),
+                StatMean        = reader["StatMean"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["StatMean"]),
+                StatStDev       = reader["StatStDev"]       == DBNull.Value ? (double?)null : Convert.ToDouble(reader["StatStDev"]),
+                StatMAD         = reader["StatMAD"]         == DBNull.Value ? (double?)null : Convert.ToDouble(reader["StatMAD"]),
+                StatMin         = reader["StatMin"]         == DBNull.Value ? (int?)null    : Convert.ToInt32(reader["StatMin"]),
+                StatMax         = reader["StatMax"]         == DBNull.Value ? (int?)null    : Convert.ToInt32(reader["StatMax"]),
+                StatBitDepth    = reader["StatBitDepth"]    == DBNull.Value ? (int?)null    : Convert.ToInt32(reader["StatBitDepth"])
+            };
         }
 
         /// <summary>
