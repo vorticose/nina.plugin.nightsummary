@@ -3833,9 +3833,14 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   text-overflow: ellipsis;
 }
 .pdp-subrow-integration {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  position: relative;
+}
+.pdp-subrow-integration .filter-type-dot {
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-right: 4px;
 }
 
 /* Filter coverage matrix */
