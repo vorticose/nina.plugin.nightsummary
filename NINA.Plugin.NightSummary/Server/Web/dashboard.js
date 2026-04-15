@@ -2210,49 +2210,55 @@ function renderPdpChart(backdrop, sessions) {
 
 function buildPdpSessionTable(sessions, showTargetCol) {
   var rows = sessions.map(function(s, idx) {
-    // Per-filter sub-rows
-    var subRows = (s.filters || [])
-      .slice()
-      .sort(function(a, b) {
-        var ta = resolveFilterType(a.filter) || 'Z';
-        var tb = resolveFilterType(b.filter) || 'Z';
-        var ia = TDP_FILTER_STACK_ORDER.indexOf(ta); if (ia === -1) ia = 99;
-        var ib = TDP_FILTER_STACK_ORDER.indexOf(tb); if (ib === -1) ib = 99;
-        return ia - ib;
-      })
-      .map(function(f) {
-        var fHFR = f.avgHFR != null ? f.avgHFR.toFixed(2) : '--';
-        var fGuide = f.avgGuidingRMS != null ? f.avgGuidingRMS.toFixed(2) + '"' : '--';
-        var fMin = Math.round((f.integrationSeconds || 0) / 60);
-        return '<tr class="tdp-filter-subrow" data-for="' + idx + '" style="display:none">' +
+    // Sort filters for sub-rows
+    var sortedFilters = (s.filters || []).slice().sort(function(a, b) {
+      var ta = resolveFilterType(a.filter) || 'Z';
+      var tb = resolveFilterType(b.filter) || 'Z';
+      var ia = TDP_FILTER_STACK_ORDER.indexOf(ta); if (ia === -1) ia = 99;
+      var ib = TDP_FILTER_STACK_ORDER.indexOf(tb); if (ib === -1) ib = 99;
+      return ia - ib;
+    });
+    var targets = showTargetCol ? (s.targets || []) : [];
+
+    // Build sub-rows: target names fill the Targets cell on filter rows
+    var subRows = sortedFilters.map(function(f, fi) {
+      var fHFR = f.avgHFR != null ? f.avgHFR.toFixed(2) : '--';
+      var fGuide = f.avgGuidingRMS != null ? f.avgGuidingRMS.toFixed(2) + '"' : '--';
+      var fMin = Math.round((f.integrationSeconds || 0) / 60);
+      var tgtCell = '';
+      if (showTargetCol) {
+        var tgtName = fi < targets.length ? targets[fi] : '';
+        tgtCell = '<td class="pdp-target-subrow-name">' + esc(tgtName) + '</td>';
+      }
+      return '<tr class="tdp-filter-subrow" data-for="' + idx + '" style="display:none">' +
+        '<td></td>' +
+        tgtCell +
+        '<td class="pdp-subrow-integration">' + filterTypePill(f.filter) + '<span>' + esc(tdpFmtDuration(fMin)) + '</span></td>' +
+        '<td>' + (f.frames || 0) + '</td>' +
+        '<td>' + esc(fHFR) + '</td>' +
+        '<td>' + esc(fGuide) + '</td>' +
+        '<td></td>' +
+        '<td></td>' +
+      '</tr>';
+    }).join('');
+    // Extra target names if more targets than filters
+    if (showTargetCol && targets.length > sortedFilters.length) {
+      for (var ti = sortedFilters.length; ti < targets.length; ti++) {
+        subRows += '<tr class="tdp-filter-subrow" data-for="' + idx + '" style="display:none">' +
           '<td></td>' +
-          (showTargetCol ? '<td></td>' : '') +
-          '<td class="pdp-subrow-integration">' + filterTypePill(f.filter) + '<span>' + esc(tdpFmtDuration(fMin)) + '</span></td>' +
-          '<td>' + (f.frames || 0) + '</td>' +
-          '<td>' + esc(fHFR) + '</td>' +
-          '<td>' + esc(fGuide) + '</td>' +
-          '<td></td>' +
-          '<td></td>' +
+          '<td class="pdp-target-subrow-name">' + esc(targets[ti]) + '</td>' +
+          '<td></td><td></td><td></td><td></td><td></td><td></td>' +
         '</tr>';
-      }).join('');
+      }
+    }
 
     var sHFR = s.avgHFR != null ? s.avgHFR.toFixed(2) : '--';
     var sGuide = s.avgGuidingRMS != null ? s.avgGuidingRMS.toFixed(2) + '"' : '--';
     var sessionDurMin = Math.round((s.integrationSeconds || 0) / 60);
 
-    // Target column — show count; individual names appear as sub-rows on expand
     var targetCell = '';
-    var targetSubRows = '';
     if (showTargetCol) {
-      var targets = s.targets || [];
       targetCell = '<td class="pdp-session-targets">' + targets.length + '</td>';
-      targetSubRows = targets.map(function(t) {
-        return '<tr class="pdp-target-subrow tdp-filter-subrow" data-for="' + idx + '" style="display:none">' +
-          '<td></td>' +
-          '<td class="pdp-target-subrow-name">' + esc(t) + '</td>' +
-          '<td></td><td></td><td></td><td></td><td></td><td></td>' +
-        '</tr>';
-      }).join('');
     }
 
     return '<tr class="tdp-session-row" data-idx="' + idx + '" data-session-id="' + esc(s.sessionId || '') + '">' +
@@ -2265,7 +2271,7 @@ function buildPdpSessionTable(sessions, showTargetCol) {
         '<td>' + esc(sGuide) + '</td>' +
         '<td>' + esc(s.moonPhase || '--') + '</td>' +
         '<td><span class="tdp-row-link" data-session-id="' + esc(s.sessionId || '') + '">View</span></td>' +
-      '</tr>' + targetSubRows + subRows;
+      '</tr>' + subRows;
   }).join('');
 
   var colgroup = showTargetCol
@@ -2288,12 +2294,10 @@ function bindPdpSessionTableEvents(backdrop) {
     row.addEventListener('click', function(e) {
       if (e.target.classList.contains('tdp-row-link')) return;
       var idx = row.getAttribute('data-idx');
-      var filterSubs = backdrop.querySelectorAll('.pdp-session-table tr.tdp-filter-subrow[data-for="' + idx + '"]');
-      var targetSubs = backdrop.querySelectorAll('.pdp-session-table tr.pdp-target-subrow[data-for="' + idx + '"]');
-      if (!filterSubs.length && !targetSubs.length) return;
+      var subs = backdrop.querySelectorAll('.pdp-session-table tr.tdp-filter-subrow[data-for="' + idx + '"]');
+      if (!subs.length) return;
       var isOpen = row.classList.toggle('tdp-expanded');
-      filterSubs.forEach(function(sub) { sub.style.display = isOpen ? '' : 'none'; });
-      targetSubs.forEach(function(sub) { sub.style.display = isOpen ? '' : 'none'; });
+      subs.forEach(function(sub) { sub.style.display = isOpen ? '' : 'none'; });
     });
   });
   // View report link
