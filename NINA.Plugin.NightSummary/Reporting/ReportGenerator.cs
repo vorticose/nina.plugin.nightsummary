@@ -2441,11 +2441,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     sb.AppendLine("<div class='ts-target-header'>");
                     sb.Append(thumbHtml);
                     if (showAltChart) {
-                        // Transit altitude trend: one mini chart showing peak altitude across sessions
-                        var transitTrend = BuildTransitAltitudeTrend(target.Key, data.Sessions, data.AllImages,
-                            raH, decD, data.ObserverLatitude, data.ObserverLongitude);
-                        if (!string.IsNullOrEmpty(transitTrend))
-                            sb.Append($"<div style='flex:1; min-width:0;'>{transitTrend}</div>");
+                        // Meridian transit time chart: shows when target crosses meridian each session night
+                        var transitChart = BuildMeridianTransitChart(target.Key, data.Sessions, data.AllImages,
+                            raH, data.ObserverLongitude);
+                        if (!string.IsNullOrEmpty(transitChart))
+                            sb.Append($"<div style='flex:1; min-width:0; margin-top:-20px;'>{transitChart}</div>");
                     }
                     sb.AppendLine("</div>");
                 } else if (!string.IsNullOrEmpty(thumbHtml)) {
@@ -2502,14 +2502,16 @@ namespace NINA.Plugin.NightSummary.Reporting {
         }
 
         /// <summary>
-        /// Builds a small SVG chart showing the transit (peak) altitude of a target
-        /// on each session date. Helps visualize seasonal observability trends.
+        /// Builds an SVG chart showing the meridian transit time of a target on each
+        /// session date. The ~4 min/night sidereal drift is clearly visible, showing
+        /// whether the target is moving into or out of the imaging window.
+        /// Sized to match the 200px thumbnail height and fill remaining flex space.
         /// </summary>
-        private string BuildTransitAltitudeTrend(string targetName, List<SessionRecord> sessions,
-            List<ImageRecord> allImages, double raH, double decD, double lat, double lon) {
+        private string BuildMeridianTransitChart(string targetName, List<SessionRecord> sessions,
+            List<ImageRecord> allImages, double raH, double lon) {
 
-            // Collect peak altitude for each session that imaged this target
-            var sessionDates = allImages
+            // Find sessions that imaged this target
+            var sessionList = allImages
                 .Where(i => string.Equals(i.TargetName, targetName, StringComparison.OrdinalIgnoreCase))
                 .Select(i => i.SessionId)
                 .Distinct()
@@ -2518,77 +2520,111 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 .OrderBy(s => s.SessionStart)
                 .ToList();
 
-            if (sessionDates.Count < 2) return "";
+            if (sessionList.Count < 2) return "";
 
-            var points = new List<(DateTime date, double peakAlt)>();
-            foreach (var session in sessionDates) {
-                // Calculate peak altitude during that session's imaging window
-                var peakAlt = AltitudeCalculator.GetPeakAltitude(raH, decD, lat, lon,
-                    session.SessionStart, session.SessionEnd > session.SessionStart ? session.SessionEnd : session.SessionStart.AddHours(6));
-                points.Add((session.SessionStart, peakAlt));
+            // Calculate meridian transit time for each session date
+            var points = new List<(DateTime date, DateTime transit)>();
+            foreach (var session in sessionList) {
+                var transitTime = AltitudeCalculator.GetMeridianTransitTime(raH, lon, session.SessionStart);
+                if (transitTime.HasValue)
+                    points.Add((session.SessionStart, transitTime.Value));
             }
 
-            // SVG dimensions
-            const int w = 460, h = 140, pad = 40, padRight = 16, padTop = 20, padBot = 28;
-            int plotW = w - pad - padRight;
-            int plotH = h - padTop - padBot;
+            if (points.Count < 2) return "";
 
-            double minAlt = Math.Max(0, points.Min(p => p.peakAlt) - 5);
-            double maxAlt = Math.Min(90, points.Max(p => p.peakAlt) + 5);
-            if (maxAlt - minAlt < 10) { minAlt = Math.Max(0, maxAlt - 15); maxAlt = minAlt + 15; }
+            // SVG dimensions — match single-session altitude chart sizing
+            const int svgW = 500;
+            const int padL = 52, padR = 10, padT = 24, padB = 28;
+            const int plotH = 200;  // match thumbnail height
+            int plotW = svgW - padL - padR;
+            int svgH = plotH + padT + padB;
 
+            // X range: session dates
             var firstDate = points.First().date;
             var lastDate = points.Last().date;
             double dateRange = Math.Max(1, (lastDate - firstDate).TotalDays);
 
-            double MapX(DateTime d) => pad + (d - firstDate).TotalDays / dateRange * plotW;
-            double MapY(double alt) => padTop + plotH - (alt - minAlt) / (maxAlt - minAlt) * plotH;
-
-            var svg = new StringBuilder();
-            svg.AppendLine($"<svg viewBox='0 0 {w} {h}' xmlns='http://www.w3.org/2000/svg' style='width:100%; max-width:{w}px;'>");
-            svg.AppendLine($"<rect width='{w}' height='{h}' rx='6' fill='{svgChartBg}' stroke='{svgBorder}' stroke-width='1'/>");
-
-            // Y-axis labels and grid
-            int ySteps = 3;
-            for (int i = 0; i <= ySteps; i++) {
-                double alt = minAlt + (maxAlt - minAlt) * i / ySteps;
-                double y = MapY(alt);
-                svg.AppendLine($"<line x1='{pad}' y1='{y:F1}' x2='{pad + plotW}' y2='{y:F1}' stroke='{svgBorder}' stroke-width='0.5'/>");
-                svg.AppendLine($"<text x='{pad - 4}' y='{y + 4:F1}' text-anchor='end' fill='{svgMuted}' font-size='10'>{alt:F0}°</text>");
+            // Y range: transit times as hours-of-day
+            // Normalize to evening hours: treat times before noon as +24h (next day early morning)
+            double ToEveningHour(DateTime t) {
+                double h = t.Hour + t.Minute / 60.0;
+                return h < 12 ? h + 24.0 : h;
             }
 
-            // X-axis date labels
+            var transitHours = points.Select(p => ToEveningHour(p.transit)).ToList();
+            double minH = transitHours.Min() - 0.5;
+            double maxH = transitHours.Max() + 0.5;
+            // Ensure at least 2h range for readability
+            if (maxH - minH < 2.0) {
+                var mid = (maxH + minH) / 2.0;
+                minH = mid - 1.0; maxH = mid + 1.0;
+            }
+
+            // Y inverted: earlier times at top (more intuitive — "higher" = earlier in evening)
+            double MapX(DateTime d) => padL + (d - firstDate).TotalDays / dateRange * plotW;
+            double MapY(double evH) => padT + (evH - minH) / (maxH - minH) * plotH;
+
+            string FormatHour(double evH) {
+                int h24 = ((int)evH) % 24;
+                int min = (int)((evH - (int)evH) * 60);
+                return $"{h24:D2}:{min:D2}";
+            }
+
+            var svg = new StringBuilder();
+            svg.AppendLine($"<svg viewBox='0 0 {svgW} {svgH}' xmlns='http://www.w3.org/2000/svg' style='width:100%; font-family:Arial,sans-serif; font-size:10px;'>");
+            // Background
+            svg.AppendLine($"<rect x='{padL}' y='{padT}' width='{plotW}' height='{plotH}' fill='{svgChartBg}' rx='4'/>");
+            svg.AppendLine($"<rect x='{padL}' y='{padT}' width='{plotW}' height='{plotH}' fill='none' stroke='{svgBorder}' stroke-width='1' rx='4'/>");
+
+            // Y-axis: time labels and grid lines at whole hours
+            int startHour = (int)Math.Ceiling(minH);
+            int endHour = (int)Math.Floor(maxH);
+            for (int h = startHour; h <= endHour; h++) {
+                double y = MapY(h);
+                svg.AppendLine($"<line x1='{padL}' y1='{y:F1}' x2='{padL + plotW}' y2='{y:F1}' stroke='{svgBorder}' stroke-width='0.5'/>");
+                svg.AppendLine($"<text x='{padL - 4}' y='{y + 4:F1}' text-anchor='end' fill='{svgMuted}' font-size='10'>{FormatHour(h)}</text>");
+            }
+
+            // X-axis: date labels
             if (points.Count <= 7) {
                 foreach (var p in points) {
                     double x = MapX(p.date);
-                    svg.AppendLine($"<text x='{x:F1}' y='{h - 4}' text-anchor='middle' fill='{svgMuted}' font-size='9'>{p.date:MMM d}</text>");
+                    svg.AppendLine($"<text x='{x:F1}' y='{svgH - 4}' text-anchor='middle' fill='{svgMuted}' font-size='9'>{p.date:MMM d}</text>");
                 }
             } else {
-                // Show first, last, and a middle date
-                svg.AppendLine($"<text x='{MapX(firstDate):F1}' y='{h - 4}' text-anchor='start' fill='{svgMuted}' font-size='9'>{firstDate:MMM d}</text>");
-                svg.AppendLine($"<text x='{MapX(lastDate):F1}' y='{h - 4}' text-anchor='end' fill='{svgMuted}' font-size='9'>{lastDate:MMM d}</text>");
-                var midPoint = points[points.Count / 2];
-                svg.AppendLine($"<text x='{MapX(midPoint.date):F1}' y='{h - 4}' text-anchor='middle' fill='{svgMuted}' font-size='9'>{midPoint.date:MMM d}</text>");
+                // Adaptive: show ~5 evenly spaced labels
+                int step = Math.Max(1, points.Count / 5);
+                for (int i = 0; i < points.Count; i += step) {
+                    double x = MapX(points[i].date);
+                    string anchor = i == 0 ? "start" : (i + step >= points.Count ? "end" : "middle");
+                    svg.AppendLine($"<text x='{x:F1}' y='{svgH - 4}' text-anchor='{anchor}' fill='{svgMuted}' font-size='9'>{points[i].date:MMM d}</text>");
+                }
+                // Always show last date
+                if (points.Count % step != 1) {
+                    double x = MapX(lastDate);
+                    svg.AppendLine($"<text x='{x:F1}' y='{svgH - 4}' text-anchor='end' fill='{svgMuted}' font-size='9'>{lastDate:MMM d}</text>");
+                }
             }
 
             // Line connecting points
             var pathParts = new List<string>();
             for (int i = 0; i < points.Count; i++) {
                 var x = MapX(points[i].date);
-                var y = MapY(points[i].peakAlt);
+                var y = MapY(transitHours[i]);
                 pathParts.Add($"{(i == 0 ? "M" : "L")}{x:F1},{y:F1}");
             }
             svg.AppendLine($"<path d='{string.Join(" ", pathParts)}' fill='none' stroke='{svgAccent}' stroke-width='2'/>");
 
             // Dots with tooltips
-            foreach (var p in points) {
-                var x = MapX(p.date);
-                var y = MapY(p.peakAlt);
-                svg.AppendLine($"<circle cx='{x:F1}' cy='{y:F1}' r='3.5' fill='{svgAccent}'><title>{p.date:MMM d}: {p.peakAlt:F1}° peak altitude</title></circle>");
+            for (int i = 0; i < points.Count; i++) {
+                var x = MapX(points[i].date);
+                var y = MapY(transitHours[i]);
+                svg.AppendLine($"<circle cx='{x:F1}' cy='{y:F1}' r='3.5' fill='{svgAccent}'>" +
+                    $"<title>{points[i].date:MMM d}: meridian transit at {points[i].transit:HH:mm}</title></circle>");
             }
 
             // Title
-            svg.AppendLine($"<text x='{w / 2}' y='14' text-anchor='middle' fill='{svgMuted}' font-size='11' font-weight='bold'>Transit Altitude Trend</text>");
+            svg.AppendLine($"<text x='{svgW / 2}' y='16' text-anchor='middle' fill='{svgMuted}' font-size='11' font-weight='bold'>Meridian Transit Time</text>");
 
             svg.AppendLine("</svg>");
             return svg.ToString();

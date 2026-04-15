@@ -197,6 +197,44 @@ namespace NINA.Plugin.NightSummary.Reporting {
             return Math.Acos(Math.Max(-1.0, Math.Min(1.0, cos))) * 180.0 / Math.PI;
         }
 
+        /// <summary>
+        /// Returns the local time when a target crosses the meridian (HA=0) on the night
+        /// containing the given session start. Searches from noon before the session to
+        /// noon after, returning the crossing closest to midnight.
+        /// Returns null if no crossing is found (circumpolar/never-rises edge cases).
+        /// </summary>
+        public static DateTime? GetMeridianTransitTime(double raHours, double lonDeg, DateTime sessionStart) {
+            // Start searching from local noon before the session
+            var noon = sessionStart.Hour >= 12
+                ? sessionStart.Date.AddHours(12)
+                : sessionStart.Date.AddHours(-12);
+
+            // Target transits when LST = RA. Step through the night at 1-minute resolution.
+            double targetRaDeg = raHours * 15.0;
+            double? bestTime = null;
+            double bestHa = 360;
+
+            for (int m = 0; m <= 24 * 60; m++) {
+                var t = noon.AddMinutes(m);
+                var utc = t.Kind == DateTimeKind.Utc ? t : t.ToUniversalTime();
+                double jd = ToJulianDate(utc);
+                double gmstDeg = GreenwichMeanSiderealTime(jd);
+                double lstDeg = ((gmstDeg + lonDeg) % 360 + 360) % 360;
+                double ha = Math.Abs(((lstDeg - targetRaDeg + 180) % 360 + 360) % 360 - 180);
+
+                if (ha < bestHa) {
+                    bestHa = ha;
+                    bestTime = m;
+                }
+            }
+
+            // 1-minute resolution means bestHa should be < 0.5° for a valid crossing
+            if (bestTime.HasValue && bestHa < 1.0)
+                return noon.AddMinutes(bestTime.Value);
+
+            return null;
+        }
+
         private static double ToJulianDate(DateTime utc) {
             var j2000 = new DateTime(2000, 1, 1, 12, 0, 0, DateTimeKind.Utc);
             return 2451545.0 + (utc - j2000).TotalDays;

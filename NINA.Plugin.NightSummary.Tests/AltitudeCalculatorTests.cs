@@ -243,5 +243,46 @@ namespace NINA.Plugin.NightSummary.Tests {
             var peak = AltitudeCalculator.GetPeakAltitude(3.0, -70.0, Lat, Lon, start, end);
             Assert.True(peak < 0); // Below horizon
         }
+
+        // ── GetMeridianTransitTime ─────────────────────────────────────────
+
+        [Fact]
+        public void GetMeridianTransitTime_ReturnsTimeOnSessionNight() {
+            // Vega (RA ~18.6h) in mid-July should transit in the evening
+            var sessionStart = new DateTime(2025, 7, 15, 21, 0, 0);
+            var transit = AltitudeCalculator.GetMeridianTransitTime(18.6, Lon, sessionStart);
+            Assert.NotNull(transit);
+            // Transit should be somewhere in the evening/night (between 18:00 and 06:00 next day)
+            var hour = transit.Value.Hour;
+            Assert.True(hour >= 18 || hour < 6, $"Transit at {transit.Value:HH:mm} not in expected evening/night range");
+        }
+
+        [Fact]
+        public void GetMeridianTransitTime_DriftsEarlierEachNight() {
+            // Same target on consecutive nights should transit ~4min earlier
+            var night1 = new DateTime(2025, 7, 15, 21, 0, 0);
+            var night2 = new DateTime(2025, 7, 16, 21, 0, 0);
+            var t1 = AltitudeCalculator.GetMeridianTransitTime(18.6, Lon, night1);
+            var t2 = AltitudeCalculator.GetMeridianTransitTime(18.6, Lon, night2);
+            Assert.NotNull(t1);
+            Assert.NotNull(t2);
+            // t2 should be ~3-5 min earlier in clock time (sidereal drift)
+            // Compare time-of-day only (both are on different calendar days)
+            var tod1 = t1.Value.TimeOfDay;
+            var tod2 = t2.Value.TimeOfDay;
+            // Handle midnight crossing: normalize to evening hours
+            if (tod1.TotalHours < 12) tod1 = tod1.Add(TimeSpan.FromHours(24));
+            if (tod2.TotalHours < 12) tod2 = tod2.Add(TimeSpan.FromHours(24));
+            var driftMinutes = (tod1 - tod2).TotalMinutes;
+            Assert.InRange(driftMinutes, 2.0, 6.0); // ~3.94 min/night expected
+        }
+
+        [Fact]
+        public void GetMeridianTransitTime_ReturnsNonNull_ForTypicalTarget() {
+            // Orion (RA ~5.5h) in January should have a valid transit
+            var sessionStart = new DateTime(2025, 1, 15, 21, 0, 0);
+            var transit = AltitudeCalculator.GetMeridianTransitTime(5.5, Lon, sessionStart);
+            Assert.NotNull(transit);
+        }
     }
 }
