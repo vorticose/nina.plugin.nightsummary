@@ -3385,7 +3385,11 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   font-size: 11px;
   color: var(--text-secondary);
   padding: 5px 10px;
-  border-bottom: 1px solid rgba(255,255,255,0.04);
+  border-bottom: none;
+}
+.tdp-table tr.tdp-filter-subrow + tr.tdp-session-row td,
+.tdp-table tr.tdp-filter-subrow:last-child td {
+  border-top: 1px solid rgba(255,255,255,0.08);
 }
 .tdp-table tr.tdp-filter-subrow td:first-child {
   padding-left: 26px;
