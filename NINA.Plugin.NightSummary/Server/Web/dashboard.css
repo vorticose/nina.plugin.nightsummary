@@ -3828,7 +3828,6 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 0;
 }
 
 /* Filter coverage matrix */

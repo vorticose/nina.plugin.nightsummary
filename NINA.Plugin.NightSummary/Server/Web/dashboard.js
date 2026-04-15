@@ -2268,7 +2268,12 @@ function buildPdpSessionTable(sessions, showTargetCol) {
       '</tr>' + targetSubRows + subRows;
   }).join('');
 
+  var colgroup = showTargetCol
+    ? '<colgroup><col style="width:14%"><col style="width:auto"><col style="width:10%"><col style="width:8%"><col style="width:8%"><col style="width:8%"><col style="width:8%"><col style="width:5%"></colgroup>'
+    : '';
+
   return '<table class="tdp-table pdp-session-table">' +
+    colgroup +
     '<thead><tr>' +
       '<th>Date</th>' +
       (showTargetCol ? '<th>Targets</th>' : '') +
