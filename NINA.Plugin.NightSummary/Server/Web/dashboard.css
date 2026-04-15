@@ -3377,6 +3377,9 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 .tdp-table tr.tdp-session-row.tdp-expanded td:first-child::before {
   transform: rotate(90deg);
 }
+.tdp-table tr.tdp-session-row.tdp-expanded td {
+  background: rgba(255,255,255,0.03);
+}
 .tdp-table tr.tdp-filter-subrow td {
   background: rgba(255,255,255,0.03);
   font-size: 11px;
@@ -3828,6 +3831,9 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.pdp-subrow-pill-cell {
+  text-align: right;
 }
 
 /* Filter coverage matrix */

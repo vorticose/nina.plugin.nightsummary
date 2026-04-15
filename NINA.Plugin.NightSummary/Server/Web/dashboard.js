@@ -1196,8 +1196,8 @@ function renderTargetDetailPanel(data, targetName, ts) {
         var fGuide = f.avgGuidingRMS != null ? f.avgGuidingRMS.toFixed(2) + '"' : '--';
         var fMin = Math.round((f.integrationSeconds || 0) / 60);
         return '<tr class="tdp-filter-subrow" data-for="' + idx + '" style="display:none">' +
-          '<td></td>' +
-          '<td>' + filterTypePill(f.filter) + ' ' + esc(tdpFmtDuration(fMin)) + '</td>' +
+          '<td class="pdp-subrow-pill-cell">' + filterTypePill(f.filter) + '</td>' +
+          '<td>' + esc(tdpFmtDuration(fMin)) + '</td>' +
           '<td>' + (f.frames || 0) + '</td>' +
           '<td>' + esc(fHFR) + '</td>' +
           '<td>' + esc(fGuide) + '</td>' +
@@ -2224,10 +2224,12 @@ function buildPdpSessionTable(sessions, showTargetCol) {
         var fHFR = f.avgHFR != null ? f.avgHFR.toFixed(2) : '--';
         var fGuide = f.avgGuidingRMS != null ? f.avgGuidingRMS.toFixed(2) + '"' : '--';
         var fMin = Math.round((f.integrationSeconds || 0) / 60);
+        var pillCell = showTargetCol
+          ? '<td></td><td class="pdp-subrow-pill-cell">' + filterTypePill(f.filter) + '</td>'
+          : '<td class="pdp-subrow-pill-cell">' + filterTypePill(f.filter) + '</td>';
         return '<tr class="tdp-filter-subrow" data-for="' + idx + '" style="display:none">' +
-          '<td></td>' +
-          (showTargetCol ? '<td></td>' : '') +
-          '<td>' + filterTypePill(f.filter) + ' ' + esc(tdpFmtDuration(fMin)) + '</td>' +
+          pillCell +
+          '<td>' + esc(tdpFmtDuration(fMin)) + '</td>' +
           '<td>' + (f.frames || 0) + '</td>' +
           '<td>' + esc(fHFR) + '</td>' +
           '<td>' + esc(fGuide) + '</td>' +
