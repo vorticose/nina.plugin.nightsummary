@@ -3377,11 +3377,13 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 .tdp-table tr.tdp-session-row.tdp-expanded td:first-child::before {
   transform: rotate(90deg);
 }
-.tdp-table tr.tdp-session-row.tdp-expanded td {
+.tdp-table tr.tdp-session-row.tdp-expanded {
+  background: rgba(255,255,255,0.03);
+}
+.tdp-table tr.tdp-filter-subrow {
   background: rgba(255,255,255,0.03);
 }
 .tdp-table tr.tdp-filter-subrow td {
-  background: rgba(255,255,255,0.03);
   font-size: 11px;
   color: var(--text-secondary);
   padding: 5px 10px;
