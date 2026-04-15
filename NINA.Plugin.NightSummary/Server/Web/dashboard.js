@@ -1358,7 +1358,7 @@ function renderTargetDetailPanel(data, targetName, ts) {
         '</div>' +
         '<div class="tdp-section-title">Session History</div>' +
         '<table class="tdp-table">' +
-          '<thead><tr><th>Date</th><th>Duration</th><th>Frames</th><th>HFR</th><th>Guide</th><th>Moon</th><th></th></tr></thead>' +
+          '<thead><tr><th>Date</th><th>Integration</th><th>Frames</th><th>HFR</th><th>Guide</th><th>Moon</th><th></th></tr></thead>' +
           '<tbody>' + rows + '</tbody>' +
         '</table>' +
       '</div>' +
@@ -2240,13 +2240,18 @@ function buildPdpSessionTable(sessions, showTargetCol) {
     var sGuide = s.avgGuidingRMS != null ? s.avgGuidingRMS.toFixed(2) + '"' : '--';
     var sessionDurMin = Math.round((s.integrationSeconds || 0) / 60);
 
-    // Target column — short label with full list in title tooltip
+    // Target column — show count; individual names appear as sub-rows on expand
     var targetCell = '';
+    var targetSubRows = '';
     if (showTargetCol) {
       var targets = s.targets || [];
-      var label = targets.length === 1 ? targets[0] : targets.length + ' targets';
-      targetCell = '<td class="pdp-session-targets" title="' + esc(targets.join(', ')) + '">' +
-        esc(label) + '</td>';
+      targetCell = '<td class="pdp-session-targets">' + targets.length + '</td>';
+      targetSubRows = targets.map(function(t) {
+        return '<tr class="pdp-target-subrow" data-for="' + idx + '" style="display:none">' +
+          '<td></td>' +
+          '<td class="pdp-target-subrow-name" colspan="7">' + esc(t) + '</td>' +
+        '</tr>';
+      }).join('');
     }
 
     return '<tr class="tdp-session-row" data-idx="' + idx + '" data-session-id="' + esc(s.sessionId || '') + '">' +
@@ -2259,14 +2264,14 @@ function buildPdpSessionTable(sessions, showTargetCol) {
         '<td>' + esc(sGuide) + '</td>' +
         '<td>' + esc(s.moonPhase || '--') + '</td>' +
         '<td><span class="tdp-row-link" data-session-id="' + esc(s.sessionId || '') + '">View</span></td>' +
-      '</tr>' + subRows;
+      '</tr>' + targetSubRows + subRows;
   }).join('');
 
   return '<table class="tdp-table pdp-session-table">' +
     '<thead><tr>' +
       '<th>Date</th>' +
       (showTargetCol ? '<th>Targets</th>' : '') +
-      '<th>Duration</th><th>Frames</th><th>HFR</th><th>Guide</th><th>Moon</th><th></th>' +
+      '<th>Integration</th><th>Frames</th><th>HFR</th><th>Guide</th><th>Moon</th><th></th>' +
     '</tr></thead>' +
     '<tbody>' + rows + '</tbody></table>';
 }
@@ -2277,10 +2282,12 @@ function bindPdpSessionTableEvents(backdrop) {
     row.addEventListener('click', function(e) {
       if (e.target.classList.contains('tdp-row-link')) return;
       var idx = row.getAttribute('data-idx');
-      var subs = backdrop.querySelectorAll('.pdp-session-table tr.tdp-filter-subrow[data-for="' + idx + '"]');
-      if (!subs.length) return;
+      var filterSubs = backdrop.querySelectorAll('.pdp-session-table tr.tdp-filter-subrow[data-for="' + idx + '"]');
+      var targetSubs = backdrop.querySelectorAll('.pdp-session-table tr.pdp-target-subrow[data-for="' + idx + '"]');
+      if (!filterSubs.length && !targetSubs.length) return;
       var isOpen = row.classList.toggle('tdp-expanded');
-      subs.forEach(function(sub) { sub.style.display = isOpen ? '' : 'none'; });
+      filterSubs.forEach(function(sub) { sub.style.display = isOpen ? '' : 'none'; });
+      targetSubs.forEach(function(sub) { sub.style.display = isOpen ? '' : 'none'; });
     });
   });
   // View report link

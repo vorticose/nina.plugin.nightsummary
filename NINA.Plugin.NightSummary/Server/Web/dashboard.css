@@ -3821,13 +3821,17 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 .pdp-sessions-section { padding: 0 20px 20px; }
 .pdp-sessions-section .pdp-section-title { margin-bottom: 8px; }
 .pdp-session-targets {
-  max-width: 180px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  text-align: center;
+  color: var(--text-secondary);
+}
+.pdp-target-subrow td {
+  padding: 2px 8px !important;
+  border-top: none !important;
+}
+.pdp-target-subrow-name {
   font-size: 11px;
   color: var(--text-secondary);
-  cursor: default;
+  padding-left: 12px !important;
 }
 
 /* Filter coverage matrix */
