@@ -3139,7 +3139,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   background: var(--surface);
   border: 1px solid rgba(255,255,255,0.16);
   border-radius: 14px;
-  width: min(960px, 94vw);
+  width: min(1060px, 94vw);
   max-height: 90vh;
   overflow-y: auto;
   overflow-x: hidden;
@@ -3699,7 +3699,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 }
 .pdp-panels-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 10px;
 }
 .pdp-panel-card {
@@ -3722,14 +3722,14 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   margin-bottom: 4px;
 }
 .pdp-panel-index {
-  font-size: 9px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.9px;
   color: var(--text-quaternary);
   font-weight: 700;
 }
 .pdp-panel-pct {
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--panel-color, var(--text-secondary));
 }
@@ -3747,18 +3747,25 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   opacity: 0.8;
 }
 .pdp-panel-coords {
-  font-size: 10px;
+  font-size: 13px;
   color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
   margin-bottom: 2px;
 }
+.pdp-coord-label {
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
 .pdp-panel-last-imaged {
-  font-size: 10px;
+  font-size: 13px;
   color: var(--text-tertiary);
   margin-bottom: 4px;
 }
 .pdp-panel-name {
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 6px;
@@ -3767,7 +3774,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   text-overflow: ellipsis;
 }
 .pdp-panel-stats {
-  font-size: 13px;
+  font-size: 15px;
   color: var(--text-secondary);
   display: flex;
   align-items: center;
@@ -3778,12 +3785,6 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 }
 .pdp-panel-stat-val .unit { font-size: 75%; color: var(--text-tertiary); }
 .pdp-panel-stat-sep { color: var(--text-quaternary); }
-.pdp-panel-fov {
-  font-size: 10px;
-  color: var(--text-tertiary);
-  font-variant-numeric: tabular-nums;
-  margin-bottom: 6px;
-}
 .pdp-panel-filters {
   display: flex;
   flex-wrap: wrap;
@@ -3830,8 +3831,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 }
 .pdp-target-subrow-name {
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  padding-right: 28px;
 }
 .pdp-subrow-integration {
   position: relative;
@@ -3854,9 +3854,29 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   .pdp-multi-thumb-grid { max-height: 90vw; }
   .pdp-stats-section { padding: 12px 16px; }
   .pdp-panels-section { padding: 14px 12px 18px; }
-  .pdp-panels-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .pdp-panels-grid { grid-template-columns: repeat(1, 1fr); gap: 8px; }
   .pdp-panel-card { min-width: 0; overflow: hidden; }
   .pdp-title { font-size: 18px; }
+  .pdp-sessions-section { padding: 0 0 20px; }
+  .pdp-sessions-section .pdp-section-title { padding: 0 16px; }
+  .pdp-sessions-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .pdp-session-table th, .pdp-session-table td { padding: 5px 4px; white-space: nowrap; }
+  .pdp-session-table tr.tdp-filter-subrow td { padding: 5px 4px; }
+  .pdp-session-table { font-size: 11px; }
+  .pdp-session-table .pdp-session-targets { padding-left: 16px; }
+  .pdp-session-table tr.tdp-filter-subrow td.pdp-target-subrow-name { padding-right: 28px; }
+  /* Sticky View column so it's always visible when scrolling */
+  .pdp-session-table th:last-child,
+  .pdp-session-table td:last-child {
+    position: sticky;
+    right: 0;
+    background: var(--surface);
+    z-index: 1;
+  }
+  .pdp-session-table tr.tdp-filter-subrow td:last-child,
+  .pdp-session-table tr.tdp-session-row.tdp-expanded td:last-child {
+    background: color-mix(in srgb, var(--surface) 97%, white);
+  }
 }
 
 /* Old target-card-stat 2x2 grid removed — now uses .target-card-stat-boxes + .stat-box */

@@ -2117,18 +2117,14 @@ function renderPdpPanelCard(panel, idx, tsTarget) {
   }
   html += '</div>';
 
-  // RA/Dec + FOV
+  // RA/Dec + Position Angle
   if (panel.ra != null && panel.dec != null) {
     var raH = panel.ra, raM = (raH % 1) * 60, raS = (raM % 1) * 60;
     var raStr = Math.floor(raH) + 'h ' + Math.floor(raM) + 'm ' + raS.toFixed(0) + 's';
     var decSign = panel.dec >= 0 ? '+' : '';
-    html += '<div class="pdp-panel-coords">' + raStr + '\u00a0\u00a0' + decSign + panel.dec.toFixed(2) + '\u00b0</div>';
+    var rotStr = panel.rotation != null ? '\u00a0\u00a0\u21bb\u00a0' + panel.rotation.toFixed(1) + '\u00b0' : '';
+    html += '<div class="pdp-panel-coords"><span class="pdp-coord-label">RA</span>\u00a0' + raStr + '\u00a0\u00a0<span class="pdp-coord-label">Dec</span>\u00a0' + decSign + panel.dec.toFixed(2) + '\u00b0' + rotStr + '</div>';
   }
-  if (panel.fovWidthDeg != null && panel.fovHeightDeg != null) {
-    html += '<div class="pdp-panel-fov">' +
-      panel.fovWidthDeg.toFixed(2) + '\u00b0\u00a0\u00d7\u00a0' + panel.fovHeightDeg.toFixed(2) + '\u00b0</div>';
-  }
-
   // Last imaged
   if (panel.lastImaged) {
     html += '<div class="pdp-panel-last-imaged">Last imaged ' + fmtRelativeTime(panel.lastImaged) + '</div>';
@@ -2137,7 +2133,7 @@ function renderPdpPanelCard(panel, idx, tsTarget) {
   // Filter pills
   if (panel.filters && panel.filters.length > 0) {
     html += '<div class="pdp-panel-filters">';
-    panel.filters.slice(0, 5).forEach(function(f) {
+    panel.filters.forEach(function(f) {
       html += '<span class="pdp-panel-filter-item">' + filterTypePill(f.filter) +
         '<span class="pdp-panel-filter-hrs">' + (f.totalHours || 0).toFixed(1) + 'h</span></span>';
     });
@@ -2186,14 +2182,13 @@ function buildPdpSessionTable(sessions, showTargetCol) {
       var fHFR = f.avgHFR != null ? f.avgHFR.toFixed(2) : '--';
       var fGuide = f.avgGuidingRMS != null ? f.avgGuidingRMS.toFixed(2) + '"' : '--';
       var fMin = Math.round((f.integrationSeconds || 0) / 60);
-      var tgtCell = '';
+      var firstCell = '<td></td>';
       if (showTargetCol) {
         var tgtName = fi < targets.length ? targets[fi] : '';
-        tgtCell = '<td class="pdp-target-subrow-name">' + esc(tgtName) + '</td>';
+        firstCell = '<td class="pdp-target-subrow-name" colspan="2">' + esc(tgtName) + '</td>';
       }
       return '<tr class="tdp-filter-subrow" data-for="' + idx + '" style="display:none">' +
-        '<td></td>' +
-        tgtCell +
+        firstCell +
         '<td class="pdp-subrow-integration">' + filterTypePill(f.filter) + '<span>' + esc(tdpFmtDuration(fMin)) + '</span></td>' +
         '<td>' + (f.frames || 0) + '</td>' +
         '<td>' + esc(fHFR) + '</td>' +
@@ -2206,8 +2201,7 @@ function buildPdpSessionTable(sessions, showTargetCol) {
     if (showTargetCol && targets.length > sortedFilters.length) {
       for (var ti = sortedFilters.length; ti < targets.length; ti++) {
         subRows += '<tr class="tdp-filter-subrow" data-for="' + idx + '" style="display:none">' +
-          '<td></td>' +
-          '<td class="pdp-target-subrow-name">' + esc(targets[ti]) + '</td>' +
+          '<td class="pdp-target-subrow-name" colspan="2">' + esc(targets[ti]) + '</td>' +
           '<td></td><td></td><td></td><td></td><td></td><td></td>' +
         '</tr>';
       }
@@ -2235,9 +2229,7 @@ function buildPdpSessionTable(sessions, showTargetCol) {
       '</tr>' + subRows;
   }).join('');
 
-  var colgroup = showTargetCol
-    ? '<colgroup><col style="width:14%"><col style="width:auto"><col style="width:10%"><col style="width:8%"><col style="width:8%"><col style="width:8%"><col style="width:8%"><col style="width:5%"></colgroup>'
-    : '';
+  var colgroup = '';
 
   return '<table class="tdp-table pdp-session-table">' +
     colgroup +
