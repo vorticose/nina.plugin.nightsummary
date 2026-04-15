@@ -1558,15 +1558,15 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 }
 
                 // ── Per-target summary list ──
-                sb.AppendLine("<table style='margin-top:12px; width:100%; table-layout:fixed;'>");
-                sb.AppendLine("<tr><th style='width:40%;'>Target</th><th style='width:25%;'>Window</th><th style='width:15%;'>Images</th><th style='width:20%;'>Total Time</th></tr>");
+                sb.AppendLine("<table style='margin-top:12px;'>");
+                sb.AppendLine("<tr><th>Target</th><th>Window</th><th>Images</th><th>Total Time</th></tr>");
 
                 foreach (var target in targets) {
                     int totalFrames = target.ExposurePlan.Sum(e => e.Count);
                     double totalIntSec = target.ExposurePlan.Sum(e => e.Exposure * e.Count);
                     sb.AppendLine($"<tr>");
-                    sb.AppendLine($"  <td style='overflow-wrap:break-word;'>{System.Web.HttpUtility.HtmlEncode(target.Name)}</td>");
-                    sb.AppendLine($"  <td>{target.StartTime:HH:mm} &ndash; {target.EndTime:HH:mm}</td>");
+                    sb.AppendLine($"  <td>{target.Name}</td>");
+                    sb.AppendLine($"  <td>{target.StartTime:HH:mm} - {target.EndTime:HH:mm}</td>");
                     sb.AppendLine($"  <td>{totalFrames}</td>");
                     sb.AppendLine($"  <td>{FormatDuration(totalIntSec)}</td>");
                     sb.AppendLine($"</tr>");
@@ -1584,7 +1584,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                         .OrderBy(g => FilterSortKey(g.Key.FilterName)).ThenBy(g => g.Key.FilterName).ThenBy(g => g.Key.Exposure);
                     string detailsOpen = SettingsManager.Instance.Current.ExpandSectionsDefault ? " open" : "";
                     sb.AppendLine($"<details class='history-section'{detailsOpen}>");
-                    sb.AppendLine($"<summary style='overflow-wrap:break-word;'>{System.Web.HttpUtility.HtmlEncode(targetGroup.Key)} — Filter Breakdown</summary>");
+                    sb.AppendLine($"<summary>{targetGroup.Key} - Filter Breakdown</summary>");
                     sb.AppendLine("<table style='margin-top:8px;width:auto;'>");
                     sb.AppendLine("<tr><th>Filter</th><th>Images</th><th>Exposure</th><th>Total Time</th></tr>");
                     foreach (var g in filterGroups) {
