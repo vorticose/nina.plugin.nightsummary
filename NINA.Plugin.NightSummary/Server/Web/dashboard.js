@@ -2240,13 +2240,13 @@ function buildPdpSessionTable(sessions, showTargetCol) {
     var sGuide = s.avgGuidingRMS != null ? s.avgGuidingRMS.toFixed(2) + '"' : '--';
     var sessionDurMin = Math.round((s.integrationSeconds || 0) / 60);
 
-    // Target pills for this session
+    // Target column — short label with full list in title tooltip
     var targetCell = '';
     if (showTargetCol) {
       var targets = s.targets || [];
-      targetCell = '<td class="pdp-session-targets">' +
-        targets.map(function(t) { return '<span class="pdp-session-target-pill">' + esc(t) + '</span>'; }).join(' ') +
-        '</td>';
+      var label = targets.length === 1 ? targets[0] : targets.length + ' targets';
+      targetCell = '<td class="pdp-session-targets" title="' + esc(targets.join(', ')) + '">' +
+        esc(label) + '</td>';
     }
 
     return '<tr class="tdp-session-row" data-idx="' + idx + '" data-session-id="' + esc(s.sessionId || '') + '">' +
