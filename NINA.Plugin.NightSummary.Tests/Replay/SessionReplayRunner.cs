@@ -119,7 +119,6 @@ namespace NINA.Plugin.NightSummary.Tests.Replay {
                 null, // weatherDataMediator
                 null, // switchMediator
                 null, // messageBroker — not needed for replay
-                null, // thumbnailVM — not needed for replay
                 _dbPath);
 
             // Set clock to the first event timestamp (or recordedAt) for session start
