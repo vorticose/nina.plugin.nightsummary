@@ -1698,6 +1698,8 @@ function openTargetDetail(targetName, latestSessionId) {
 // plus per-panel stats. Opens when user clicks "View Details" on a project container.
 
 var _pdpKeyHandler = null;
+var _pdpResizeHandler = null;
+var _pdpResizeDebounce = null;
 
 function closeProjectDetail() {
   var backdrop = document.getElementById('pdp-backdrop');
@@ -1710,6 +1712,14 @@ function closeProjectDetail() {
   if (_pdpKeyHandler) {
     document.removeEventListener('keydown', _pdpKeyHandler);
     _pdpKeyHandler = null;
+  }
+  if (_pdpResizeHandler) {
+    window.removeEventListener('resize', _pdpResizeHandler);
+    _pdpResizeHandler = null;
+  }
+  if (_pdpResizeDebounce) {
+    clearTimeout(_pdpResizeDebounce);
+    _pdpResizeDebounce = null;
   }
 }
 
@@ -1751,6 +1761,42 @@ function openProjectDetail(projectGuid, projectName) {
     } else {
       loadMosaicThumbnail(data.panels || [], backdrop, projectGuid);
     }
+
+    // Panel card click → drill-down
+    bindPdpPanelCardClicks(backdrop, data, projectGuid);
+
+    // Fetch project sessions for chart + table
+    api('/api/stats/projects/' + encodeURIComponent(projectGuid) + '/sessions').then(function(sessData) {
+      var cur = document.getElementById('pdp-backdrop');
+      if (!cur || cur !== backdrop) return;
+      var sessions = sessData.sessions || [];
+      if (!sessions.length) return;
+
+      // Show and populate chart
+      var chartSection = backdrop.querySelector('.pdp-chart-section');
+      if (chartSection) {
+        chartSection.style.display = '';
+        renderPdpChart(backdrop, sessions);
+      }
+
+      // Show and populate session table
+      var sessSection = backdrop.querySelector('.pdp-sessions-section');
+      var tableWrap = backdrop.querySelector('.pdp-sessions-table-wrap');
+      if (sessSection && tableWrap) {
+        sessSection.style.display = '';
+        var panelNames = sessData.panelNames || [];
+        tableWrap.innerHTML = buildPdpSessionTable(sessions, panelNames.length > 1);
+        bindPdpSessionTableEvents(backdrop);
+      }
+
+      // Resize handler for chart reflow
+      if (_pdpResizeHandler) window.removeEventListener('resize', _pdpResizeHandler);
+      _pdpResizeHandler = function() {
+        if (_pdpResizeDebounce) clearTimeout(_pdpResizeDebounce);
+        _pdpResizeDebounce = setTimeout(function() { renderPdpChart(backdrop, sessions); }, 120);
+      };
+      window.addEventListener('resize', _pdpResizeHandler);
+    }).catch(function() { /* session fetch failed — chart/table just stay hidden */ });
   }).catch(function(err) {
     var current = document.getElementById('pdp-backdrop');
     if (!current || current !== backdrop) return;
@@ -1936,7 +1982,21 @@ function renderProjectDetailPanel(data) {
   html += '</div>';
   html += '</div>';
 
-  // ── 6. Filter coverage matrix — only for mosaics with ≥2 panels ──────────
+  // ── 6. Integration Over Time chart (populated async after session fetch) ──
+  html += '<div class="pdp-chart-section" style="display:none">';
+  html += '<div class="pdp-section-title">Integration Over Time</div>';
+  html += '<div class="tdp-chart-wrap">';
+  html += '<div class="tdp-chart-svg"></div>';
+  html += '<div class="tdp-chart-legend"></div>';
+  html += '</div></div>';
+
+  // ── 7. Session History table (populated async after session fetch) ────────
+  html += '<div class="pdp-sessions-section" style="display:none">';
+  html += '<div class="pdp-section-title">Session History</div>';
+  html += '<div class="pdp-sessions-table-wrap"></div>';
+  html += '</div>';
+
+  // ── 8. Filter coverage matrix — only for mosaics with ≥2 panels ──────────
   if (panels.length >= 2) {
     var allFilters = [];
     panels.forEach(function(p) {
@@ -2069,7 +2129,7 @@ function renderPdpPanelCard(panel, idx, tsTarget) {
   var pct = tsTarget && tsTarget.ts && tsTarget.ts.project
     ? (tsTarget.ts.project.percentComplete || 0) : null;
 
-  var html = '<div class="pdp-panel-card" style="--panel-color:' + color + '">';
+  var html = '<div class="pdp-panel-card" style="--panel-color:' + color + '" data-panel-name="' + esc(panel.name || '') + '" data-panel-idx="' + idx + '">';
   html += '<div class="pdp-panel-header">';
   html += '<div class="pdp-panel-index">Panel ' + (idx + 1) + '</div>';
   if (pct !== null) {
@@ -2124,6 +2184,331 @@ function renderPdpPanelCard(panel, idx, tsTarget) {
   }
   html += '</div>';
   return html;
+}
+
+// ── PDP chart + session table helpers ─────────────────────────────────────
+
+function renderPdpChart(backdrop, sessions) {
+  if (!backdrop) return;
+  var wrap = backdrop.querySelector('.tdp-chart-wrap');
+  var svgHost = backdrop.querySelector('.tdp-chart-svg');
+  var legendHost = backdrop.querySelector('.tdp-chart-legend');
+  if (!wrap || !svgHost || !legendHost) return;
+
+  var cs = window.getComputedStyle(wrap);
+  var pL = parseFloat(cs.paddingLeft) || 0;
+  var pR = parseFloat(cs.paddingRight) || 0;
+  var innerWidth = Math.max(320, Math.floor(wrap.clientWidth - pL - pR));
+
+  var chart = renderTargetChart(sessions, innerWidth);
+  svgHost.innerHTML = chart.svg;
+
+  var pillsHtml = (chart.filtersUsed || []).map(function(k) { return filterTypePill(k); }).join('');
+  var cumHtml = '<span class="tdp-chart-legend-cum"><span class="tdp-cum-line"></span>Cumulative</span>';
+  legendHost.innerHTML = pillsHtml + cumHtml;
+}
+
+function buildPdpSessionTable(sessions, showTargetCol) {
+  var rows = sessions.map(function(s, idx) {
+    // Per-filter sub-rows
+    var subRows = (s.filters || [])
+      .slice()
+      .sort(function(a, b) {
+        var ta = resolveFilterType(a.filter) || 'Z';
+        var tb = resolveFilterType(b.filter) || 'Z';
+        var ia = TDP_FILTER_STACK_ORDER.indexOf(ta); if (ia === -1) ia = 99;
+        var ib = TDP_FILTER_STACK_ORDER.indexOf(tb); if (ib === -1) ib = 99;
+        return ia - ib;
+      })
+      .map(function(f) {
+        var fHFR = f.avgHFR != null ? f.avgHFR.toFixed(2) : '--';
+        var fGuide = f.avgGuidingRMS != null ? f.avgGuidingRMS.toFixed(2) + '"' : '--';
+        var fMin = Math.round((f.integrationSeconds || 0) / 60);
+        return '<tr class="tdp-filter-subrow" data-for="' + idx + '" style="display:none">' +
+          (showTargetCol ? '<td></td>' : '') +
+          '<td>' + filterTypePill(f.filter) + '</td>' +
+          '<td>' + esc(tdpFmtDuration(fMin)) + '</td>' +
+          '<td>' + (f.frames || 0) + '</td>' +
+          '<td>' + esc(fHFR) + '</td>' +
+          '<td>' + esc(fGuide) + '</td>' +
+          '<td></td>' +
+          '<td></td>' +
+        '</tr>';
+      }).join('');
+
+    var sHFR = s.avgHFR != null ? s.avgHFR.toFixed(2) : '--';
+    var sGuide = s.avgGuidingRMS != null ? s.avgGuidingRMS.toFixed(2) + '"' : '--';
+    var sessionDurMin = Math.round((s.integrationSeconds || 0) / 60);
+
+    // Target pills for this session
+    var targetCell = '';
+    if (showTargetCol) {
+      var targets = s.targets || [];
+      targetCell = '<td class="pdp-session-targets">' +
+        targets.map(function(t) { return '<span class="pdp-session-target-pill">' + esc(t) + '</span>'; }).join(' ') +
+        '</td>';
+    }
+
+    return '<tr class="tdp-session-row" data-idx="' + idx + '" data-session-id="' + esc(s.sessionId || '') + '">' +
+        '<td><span class="tdp-date-long">' + esc(tdpFmtDate(s.sessionStart)) + '</span>' +
+             '<span class="tdp-date-short">' + esc(tdpFmtDateShort(s.sessionStart)) + '</span></td>' +
+        targetCell +
+        '<td>' + esc(tdpFmtDuration(sessionDurMin)) + '</td>' +
+        '<td>' + (s.frames || 0) + '</td>' +
+        '<td>' + esc(sHFR) + '</td>' +
+        '<td>' + esc(sGuide) + '</td>' +
+        '<td>' + esc(s.moonPhase || '--') + '</td>' +
+        '<td><span class="tdp-row-link" data-session-id="' + esc(s.sessionId || '') + '">View</span></td>' +
+      '</tr>' + subRows;
+  }).join('');
+
+  return '<table class="tdp-table pdp-session-table">' +
+    '<thead><tr>' +
+      '<th>Date</th>' +
+      (showTargetCol ? '<th>Targets</th>' : '') +
+      '<th>Duration</th><th>Frames</th><th>HFR</th><th>Guide</th><th>Moon</th><th></th>' +
+    '</tr></thead>' +
+    '<tbody>' + rows + '</tbody></table>';
+}
+
+function bindPdpSessionTableEvents(backdrop) {
+  // Expand/collapse session rows
+  backdrop.querySelectorAll('.pdp-session-table tr.tdp-session-row').forEach(function(row) {
+    row.addEventListener('click', function(e) {
+      if (e.target.classList.contains('tdp-row-link')) return;
+      var idx = row.getAttribute('data-idx');
+      var subs = backdrop.querySelectorAll('.pdp-session-table tr.tdp-filter-subrow[data-for="' + idx + '"]');
+      if (!subs.length) return;
+      var isOpen = row.classList.toggle('tdp-expanded');
+      subs.forEach(function(sub) { sub.style.display = isOpen ? '' : 'none'; });
+    });
+  });
+  // View report link
+  backdrop.querySelectorAll('.pdp-session-table .tdp-row-link').forEach(function(link) {
+    link.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var sid = link.getAttribute('data-session-id');
+      if (!sid) return;
+      window.open('/api/sessions/' + encodeURIComponent(sid) + '/report', '_blank', 'noopener');
+    });
+  });
+}
+
+// ── PDP panel card drill-down ──────────────────────────────────────────────
+
+function bindPdpPanelCardClicks(backdrop, projectData, projectGuid) {
+  backdrop.querySelectorAll('.pdp-panel-card').forEach(function(card) {
+    card.addEventListener('click', function() {
+      var panelName = card.getAttribute('data-panel-name');
+      var panelIdx = parseInt(card.getAttribute('data-panel-idx') || '0', 10);
+      if (!panelName) return;
+      var panel = (projectData.panels || []).find(function(p) { return p.name === panelName; });
+      openPdpPanelDrillDown(backdrop, panelName, panel, projectData, projectGuid);
+    });
+  });
+}
+
+function openPdpPanelDrillDown(backdrop, panelName, panelData, projectData, projectGuid) {
+  var modal = backdrop.querySelector('.pdp-modal');
+  if (!modal) return;
+
+  // Show loading state
+  modal.innerHTML = '<button type="button" class="pdp-close" aria-label="Close">\u2715</button>' +
+    '<div class="pdp-drilldown-header">' +
+      '<span class="pdp-back-btn">\u2190 ' + esc((projectData.project || {}).name || 'Project') + '</span>' +
+    '</div>' +
+    '<div style="padding:40px;text-align:center;color:var(--text-tertiary)">Loading\u2026</div>';
+
+  // Bind close + back immediately
+  var closeBtn = modal.querySelector('.pdp-close');
+  if (closeBtn) closeBtn.addEventListener('click', closeProjectDetail);
+  var backBtn = modal.querySelector('.pdp-back-btn');
+  if (backBtn) backBtn.addEventListener('click', function() {
+    openProjectDetail(projectGuid, (projectData.project || {}).name);
+  });
+
+  // Scroll modal to top
+  modal.scrollTop = 0;
+
+  // Fetch per-target session data
+  api('/api/stats/targets/' + encodeURIComponent(panelName) + '/sessions').then(function(data) {
+    var cur = document.getElementById('pdp-backdrop');
+    if (!cur || cur !== backdrop) return;
+
+    modal.innerHTML = renderPdpPanelDrillDown(data, panelName, panelData, projectData, projectGuid);
+
+    // Close + back handlers
+    var closeBtn2 = modal.querySelector('.pdp-close');
+    if (closeBtn2) closeBtn2.addEventListener('click', closeProjectDetail);
+    var backBtn2 = modal.querySelector('.pdp-back-btn');
+    if (backBtn2) backBtn2.addEventListener('click', function() {
+      openProjectDetail(projectGuid, (projectData.project || {}).name);
+    });
+
+    // Session row expand/collapse + view links
+    bindPdpSessionTableEvents(backdrop);
+
+    // Load thumbnail
+    if (panelData && panelData.latestSessionId) {
+      loadTargetDetailThumb(panelName, panelData.latestSessionId);
+    }
+
+    // Chart — render synchronously (modal is already laid out after innerHTML set)
+    renderPdpChart(backdrop, data.sessions || []);
+    // Update resize handler for drill-down chart
+    if (_pdpResizeHandler) window.removeEventListener('resize', _pdpResizeHandler);
+    _pdpResizeHandler = function() {
+      if (_pdpResizeDebounce) clearTimeout(_pdpResizeDebounce);
+      _pdpResizeDebounce = setTimeout(function() { renderPdpChart(backdrop, data.sessions || []); }, 120);
+    };
+    window.addEventListener('resize', _pdpResizeHandler);
+  }).catch(function(err) {
+    modal.innerHTML = '<button type="button" class="pdp-close" aria-label="Close">\u2715</button>' +
+      '<div class="pdp-drilldown-header">' +
+        '<span class="pdp-back-btn">\u2190 ' + esc((projectData.project || {}).name || 'Project') + '</span>' +
+      '</div>' +
+      '<div style="padding:20px;color:#e15759">Failed to load: ' + esc(err && err.message ? err.message : 'unknown') + '</div>';
+    var c = modal.querySelector('.pdp-close');
+    if (c) c.addEventListener('click', closeProjectDetail);
+    var b = modal.querySelector('.pdp-back-btn');
+    if (b) b.addEventListener('click', function() {
+      openProjectDetail(projectGuid, (projectData.project || {}).name);
+    });
+  });
+}
+
+function renderPdpPanelDrillDown(data, panelName, panelData, projectData, projectGuid) {
+  var initial = panelName ? panelName.charAt(0).toUpperCase() : '?';
+  var totalHrs = data.totalIntegrationHours != null ? data.totalIntegrationHours.toFixed(1) : '--';
+  var avgHFR = data.avgHFR != null ? data.avgHFR.toFixed(2) : '--';
+
+  var firstDate = tdpFmtDate(data.firstSession);
+  var lastDate  = tdpFmtDate(data.lastSession);
+  var dateRange = 'First captured ' + firstDate + ' \u00b7 Last imaged ' + lastDate;
+
+  // Aggregate per-filter totals for KPI popup
+  var aggregated = {};
+  (data.sessions || []).forEach(function(s) {
+    (s.filters || []).forEach(function(f) {
+      var name = f.filter || 'Unknown';
+      if (!aggregated[name]) {
+        aggregated[name] = { filter: name, totalSeconds: 0, acceptedCount: 0, frameCount: 0 };
+      }
+      aggregated[name].totalSeconds  += f.integrationSeconds || 0;
+      aggregated[name].acceptedCount += f.frames             || 0;
+      aggregated[name].frameCount    += f.totalFrames        || 0;
+    });
+  });
+  tdpKpiFilters = Object.keys(aggregated).map(function(k) { return aggregated[k]; });
+
+  // ── Title pills ──────────────────────────────────────────────────────
+  var titlePills = '';
+  var ts = panelData ? findTsForTarget(panelName) : null;
+  if (ts && ts.project) {
+    var proj = ts.project;
+    titlePills += '<span class="tdp-project-state-pill" data-state="' + esc(proj.state || 'Draft') +
+      '" data-project-guid="' + esc(proj.guid || '') + '">' +
+      esc(proj.state || 'Draft') +
+      (proj.stateSource === 'override' ? ' \u00b7' : '') +
+      '</span>';
+    if (proj.isMosaic) {
+      titlePills += '<span class="tdp-type-pill">Mosaic Panel</span>';
+    }
+  }
+
+  // ── TS Progress bars ─────────────────────────────────────────────────
+  var progressHtml = '';
+  if (panelData && panelData.tsGoals && panelData.tsGoals.length && statsTsStatus === 'available') {
+    var STACK_ORDER = ['L', 'R', 'G', 'B', 'H', 'S', 'O', 'N'];
+    var sortedGoals = panelData.tsGoals.slice().sort(function(a, b) {
+      var ai = STACK_ORDER.indexOf(resolveFilterType(a.filter) || '');
+      var bi = STACK_ORDER.indexOf(resolveFilterType(b.filter) || '');
+      if (ai < 0) ai = STACK_ORDER.length;
+      if (bi < 0) bi = STACK_ORDER.length;
+      if (ai !== bi) return ai - bi;
+      return (b.exposureSec || 0) - (a.exposureSec || 0);
+    });
+
+    var goalRows = sortedGoals.map(function(g) {
+      var effective = (g.accepted || 0) > 0 ? (g.accepted || 0) : (g.acquired || 0);
+      var pct = g.desired > 0 ? effective / g.desired * 100 : 0;
+      var over = effective > g.desired;
+      var widthPct = Math.min(100, pct);
+      var filterType = resolveFilterType(g.filter);
+      var fillColor = (filterType && FILTER_TYPE_CHART_COLORS[filterType]) || '#66BB6A';
+      var expSec = g.exposureSec && g.exposureSec > 0 ? g.exposureSec : 0;
+      var labelText = expSec > 0 ? (expSec + 's') : '';
+      var labelHtml = labelText ? '<span class="tdp-progress-row-label-text">' + esc(labelText) + '</span>' : '';
+      return '<div class="tdp-progress-row">' +
+        '<div class="tdp-progress-row-label">' + filterTypePill(g.filter) + labelHtml + '</div>' +
+        '<div class="tdp-progress-bar-wrap' + (over ? ' over' : '') + '" style="--fill-color:' + fillColor + '">' +
+          '<div class="tdp-progress-bar-fill" style="width:' + widthPct.toFixed(1) + '%"></div>' +
+        '</div>' +
+        '<div class="tdp-progress-row-count">' + effective + ' <span class="unit">/ ' + g.desired + '</span></div>' +
+      '</div>';
+    }).join('');
+
+    // Overall
+    var totalAcc = 0, totalDes = 0;
+    sortedGoals.forEach(function(g) {
+      totalAcc += (g.accepted || 0) > 0 ? (g.accepted || 0) : (g.acquired || 0);
+      totalDes += g.desired || 0;
+    });
+    var overallRow = '';
+    if (totalDes > 0) {
+      var overallPct = totalAcc / totalDes * 100;
+      overallRow = '<div class="tdp-overall-separator"></div>' +
+        '<div class="tdp-progress-row tdp-progress-row-overall">' +
+          '<div class="tdp-progress-row-label"><span class="tdp-progress-row-label-text tdp-overall-label">Overall</span></div>' +
+          '<div class="tdp-progress-bar-wrap tdp-overall-bar-wrap' + (overallPct > 100 ? ' over' : '') + '">' +
+            '<div class="tdp-progress-bar-fill tdp-overall-bar-fill" style="width:' + Math.min(overallPct, 100).toFixed(1) + '%"></div>' +
+          '</div>' +
+          '<strong class="tdp-progress-row-count tdp-overall-count">' + overallPct.toFixed(1) + '%</strong>' +
+        '</div>';
+    }
+    if (goalRows || overallRow) {
+      progressHtml = '<div class="tdp-progress-section"><div class="tdp-project-progress-grid">' + goalRows + overallRow + '</div></div>';
+    }
+  }
+
+  // ── Session table ────────────────────────────────────────────────────
+  var sessions = data.sessions || [];
+  var tableHtml = buildPdpSessionTable(sessions, false);
+
+  return '<button type="button" class="pdp-close" aria-label="Close">\u2715</button>' +
+    '<div class="pdp-drilldown-header">' +
+      '<span class="pdp-back-btn">\u2190 ' + esc((projectData.project || {}).name || 'Project') + '</span>' +
+    '</div>' +
+    '<div class="tdp-title-section">' +
+      '<div class="tdp-title-row">' +
+        '<h2>' + esc(panelName) + '</h2>' +
+        titlePills +
+      '</div>' +
+      '<div class="tdp-daterange">' + esc(dateRange) + '</div>' +
+    '</div>' +
+    '<div class="tdp-hero">' +
+      '<div class="tdp-hero-wrap" id="tdp-hero-wrap">' +
+        '<div class="tdp-thumb-placeholder">' + esc(initial) + '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="tdp-stats-section">' +
+      '<div class="tdp-header-stats">' +
+        '<div class="tdp-kpi target-stat-expandable" data-stat-type="integration" data-stat-source="tdp"><div class="tdp-kpi-val">' + esc(totalHrs) + '<span class="unit">h</span></div><div class="tdp-kpi-label">Integration</div></div>' +
+        '<div class="tdp-kpi target-stat-expandable" data-stat-type="frames" data-stat-source="tdp"><div class="tdp-kpi-val">' + (data.totalFrames || 0) + '</div><div class="tdp-kpi-label">Frames</div></div>' +
+        '<div class="tdp-kpi"><div class="tdp-kpi-val">' + (data.sessionCount || 0) + '</div><div class="tdp-kpi-label">Sessions</div></div>' +
+        '<div class="tdp-kpi"><div class="tdp-kpi-val">' + esc(avgHFR) + '<span class="unit">px</span></div><div class="tdp-kpi-label">Avg HFR</div></div>' +
+      '</div>' +
+    '</div>' +
+    progressHtml +
+    '<div class="tdp-body">' +
+      '<div class="tdp-section-title">Integration Over Time</div>' +
+      '<div class="tdp-chart-wrap">' +
+        '<div class="tdp-chart-svg"></div>' +
+        '<div class="tdp-chart-legend"></div>' +
+      '</div>' +
+      '<div class="tdp-section-title">Session History</div>' +
+      '<div class="pdp-sessions-table-wrap">' + tableHtml + '</div>' +
+    '</div>';
 }
 
 // Fetch the combined HiPS survey image via the server's disk-cached endpoint and draw

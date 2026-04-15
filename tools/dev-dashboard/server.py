@@ -234,6 +234,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.serve_mosaic_thumb(project_guid)
             return
 
+        # /api/stats/projects/{guid}/sessions — all sessions across project panels
+        if len(parts) == 6 and parts[1] == "api" and parts[2] == "stats" and parts[3] == "projects" and parts[5] == "sessions":
+            import urllib.parse
+            project_guid = urllib.parse.unquote(parts[4])
+            self.serve_project_sessions(project_guid)
+            return
+
         # /api/stats/projects/{guid} — project detail for Phase 3c
         if len(parts) == 5 and parts[1] == "api" and parts[2] == "stats" and parts[3] == "projects":
             import urllib.parse
@@ -897,6 +904,162 @@ class DashboardHandler(BaseHTTPRequestHandler):
             })
         except Exception as e:
             self.send_json(500, {"error": f"project stats: {e}"})
+
+    def serve_project_sessions(self, project_guid):
+        """Return all sessions across all panels in a project, each annotated with targets imaged.
+        Used by the PDP for project-level integration chart and session history table."""
+        try:
+            ts_status, ts_projects = self._load_ts_projects()
+            if ts_status != "available" or not ts_projects:
+                self.send_json(404, {"error": "Target Scheduler not available"})
+                return
+
+            proj = next((p for p in ts_projects
+                         if (p.get("guid") or "").lower() == project_guid.lower()), None)
+            if proj is None:
+                self.send_json(404, {"error": f"Project '{project_guid}' not found"})
+                return
+
+            meta = self._load_ts_meta()
+            target_exclusions = (meta.get("targetExclusions", {}) or {}).get(proj.get("guid", ""), [])
+
+            # Collect target names in this project (excluding removed targets)
+            panel_names = []
+            for tgt in proj.get("targets", []):
+                tgt_name = tgt.get("name") or ""
+                if tgt_name.lower() in target_exclusions:
+                    continue
+                if tgt.get("ra") == 0 and tgt.get("dec") == 0:
+                    continue
+                panel_names.append(tgt_name)
+
+            panel_names_lower = [n.lower() for n in panel_names]
+
+            # Load all sessions
+            sessions_path = os.path.join(self.data_dir, "sessions.json")
+            all_sessions = []
+            if os.path.isfile(sessions_path):
+                with open(sessions_path, "r", encoding="utf-8") as f:
+                    all_sessions = json.load(f)
+
+            result_sessions = []
+
+            for s in all_sessions:
+                sid = s.get("sessionId")
+                if not sid:
+                    continue
+
+                # Check if any project target was imaged in this session
+                session_targets_lower = [t.lower() for t in (s.get("targets") or [])]
+                matched_panels = [n for n, nl in zip(panel_names, panel_names_lower) if nl in session_targets_lower]
+                if not matched_panels:
+                    continue
+
+                images_path = os.path.join(self.data_dir, "sessions", sid, "images.json")
+                if not os.path.isfile(images_path):
+                    continue
+                with open(images_path, "r", encoding="utf-8") as f:
+                    imgs = json.load(f)
+
+                # Only LIGHT frames for project targets
+                matching = [
+                    i for i in imgs
+                    if (i.get("targetName") or "").lower() in panel_names_lower
+                    and (i.get("imageType") in (None, "", "LIGHT"))
+                ]
+                if not matching:
+                    continue
+
+                accepted = [i for i in matching if i.get("accepted")]
+                integ_sec = sum(float(i.get("exposureDuration") or 0) for i in accepted)
+                hfrs = [i["hfr"] for i in accepted if i.get("hfr") and i["hfr"] > 0]
+                guides = [i["guidingRmsTotal"] for i in accepted if i.get("guidingRmsTotal") and i["guidingRmsTotal"] > 0]
+                avg_hfr = sum(hfrs) / len(hfrs) if hfrs else None
+                avg_guide = sum(guides) / len(guides) if guides else None
+
+                # Per-filter breakdown (across all project targets in this session)
+                by_filter = {}
+                for i in matching:
+                    f_name = i.get("filter") or "Unknown"
+                    fe = by_filter.setdefault(f_name, {
+                        "filter": f_name, "integrationSeconds": 0.0,
+                        "frames": 0, "totalFrames": 0,
+                        "_hfrs": [], "_guides": []
+                    })
+                    fe["totalFrames"] += 1
+                    if i.get("accepted"):
+                        fe["frames"] += 1
+                        fe["integrationSeconds"] += float(i.get("exposureDuration") or 0)
+                        if i.get("hfr") and i["hfr"] > 0:
+                            fe["_hfrs"].append(i["hfr"])
+                        if i.get("guidingRmsTotal") and i["guidingRmsTotal"] > 0:
+                            fe["_guides"].append(i["guidingRmsTotal"])
+
+                filters_out = []
+                for f_name, fe in by_filter.items():
+                    fh = sum(fe["_hfrs"]) / len(fe["_hfrs"]) if fe["_hfrs"] else None
+                    fg = sum(fe["_guides"]) / len(fe["_guides"]) if fe["_guides"] else None
+                    filters_out.append({
+                        "filter": f_name,
+                        "integrationSeconds": fe["integrationSeconds"],
+                        "integrationHours": round(fe["integrationSeconds"] / 3600.0, 2),
+                        "frames": fe["frames"],
+                        "totalFrames": fe["totalFrames"],
+                        "avgHFR": round(fh, 2) if fh else None,
+                        "avgGuidingRMS": round(fg, 2) if fg else None,
+                    })
+                filters_out.sort(key=lambda x: -x["integrationSeconds"])
+
+                # Which project targets were imaged in this session (actual image matches)
+                targets_in_session = list(set(
+                    (i.get("targetName") or "") for i in matching
+                    if (i.get("targetName") or "").lower() in panel_names_lower
+                ))
+
+                start_str = s.get("sessionStart")
+                end_str = s.get("sessionEnd")
+                dur_min = 0
+                try:
+                    if start_str and end_str:
+                        d1 = datetime.datetime.fromisoformat(start_str)
+                        d2 = datetime.datetime.fromisoformat(end_str)
+                        dur_min = int(round((d2 - d1).total_seconds() / 60.0))
+                except Exception:
+                    pass
+
+                result_sessions.append({
+                    "sessionId": sid,
+                    "sessionStart": start_str,
+                    "sessionEnd": end_str,
+                    "durationMinutes": dur_min,
+                    "integrationHours": round(integ_sec / 3600.0, 2),
+                    "integrationSeconds": integ_sec,
+                    "frames": len(accepted),
+                    "totalFrames": len(matching),
+                    "avgHFR": round(avg_hfr, 2) if avg_hfr else None,
+                    "avgGuidingRMS": round(avg_guide, 2) if avg_guide else None,
+                    "moonPhase": s.get("moonPhase"),
+                    "targets": targets_in_session,
+                    "filters": filters_out,
+                })
+
+            # Sort newest-first
+            result_sessions.sort(key=lambda x: x["sessionStart"] or "", reverse=True)
+
+            # Overall aggregates
+            total_sec = sum(x["integrationSeconds"] for x in result_sessions)
+            total_frames = sum(x["frames"] for x in result_sessions)
+
+            self.send_json(200, {
+                "projectGuid": project_guid,
+                "panelNames": panel_names,
+                "totalIntegrationHours": round(total_sec / 3600.0, 2),
+                "totalFrames": total_frames,
+                "sessionCount": len(result_sessions),
+                "sessions": result_sessions,
+            })
+        except Exception as e:
+            self.send_json(500, {"error": f"project sessions: {e}"})
 
     def serve_mosaic_thumb(self, project_guid):
         """Serve a disk-cached HiPS survey JPEG for a mosaic project.
