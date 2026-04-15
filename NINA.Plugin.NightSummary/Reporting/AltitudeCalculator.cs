@@ -199,23 +199,23 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
         /// <summary>
         /// Returns the local time when a target crosses the meridian (HA=0) on the night
-        /// containing the given session start. Searches from noon before the session to
-        /// noon after, returning the crossing closest to midnight.
+        /// containing the given session start. Searches a 24h window anchored at 6 PM
+        /// so nighttime transits are always centrally located and the noon-boundary
+        /// problem (transit drifting past the search edge) is avoided.
         /// Returns null if no crossing is found (circumpolar/never-rises edge cases).
         /// </summary>
         public static DateTime? GetMeridianTransitTime(double raHours, double lonDeg, DateTime sessionStart) {
-            // Start searching from local noon before the session
-            var noon = sessionStart.Hour >= 12
-                ? sessionStart.Date.AddHours(12)
-                : sessionStart.Date.AddHours(-12);
+            // Anchor at 6 PM on the session date — nighttime transits (18:00–06:00)
+            // are centrally located so the ~4 min/night drift never crosses the boundary.
+            var evening = sessionStart.Date.AddHours(18);
+            if (sessionStart.Hour < 12) evening = evening.AddDays(-1); // after-midnight session
 
-            // Target transits when LST = RA. Step through the night at 1-minute resolution.
             double targetRaDeg = raHours * 15.0;
             double? bestTime = null;
             double bestHa = 360;
 
             for (int m = 0; m <= 24 * 60; m++) {
-                var t = noon.AddMinutes(m);
+                var t = evening.AddMinutes(m);
                 var utc = t.Kind == DateTimeKind.Utc ? t : t.ToUniversalTime();
                 double jd = ToJulianDate(utc);
                 double gmstDeg = GreenwichMeanSiderealTime(jd);
@@ -228,9 +228,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 }
             }
 
-            // 1-minute resolution means bestHa should be < 0.5° for a valid crossing
             if (bestTime.HasValue && bestHa < 1.0)
-                return noon.AddMinutes(bestTime.Value);
+                return evening.AddMinutes(bestTime.Value);
 
             return null;
         }

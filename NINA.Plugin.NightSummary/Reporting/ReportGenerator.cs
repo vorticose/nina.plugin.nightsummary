@@ -2426,12 +2426,21 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
                 string thumbHtml = "";
                 if (showThumb && thumbResults.TryGetValue(target.Key, out var thumbResult)) {
+                    // Get rotation from the most recent plate-solved image for this target
+                    double rotation = targetImages
+                        .Where(i => i.PositionAngle.HasValue && i.PositionAngle.Value != 0)
+                        .Select(i => i.PositionAngle.Value)
+                        .DefaultIfEmpty(0)
+                        .Average();
+                    var svgAngle = -rotation;
+
                     var tSb = new StringBuilder();
                     tSb.AppendLine("<div class='ts-thumb-wrap'>");
                     tSb.AppendLine($"  <img src='{thumbResult.imgSrc}' alt='{WebUtility.HtmlEncode(target.Key)}' />");
                     tSb.AppendLine($"  <svg width='{thumbPx}' height='{thumbPx}' xmlns='http://www.w3.org/2000/svg'>");
                     tSb.AppendLine($"    <rect x='{(cx - boxW / 2):F1}' y='{(cy - boxH / 2):F1}' width='{boxW:F1}' height='{boxH:F1}'");
-                    tSb.AppendLine($"          fill='none' stroke='#7eb8f7' stroke-width='1.5' opacity='0.85' />");
+                    tSb.AppendLine($"          fill='none' stroke='#7eb8f7' stroke-width='1.5' opacity='0.85'");
+                    tSb.AppendLine($"          transform='rotate({svgAngle:F2},{cx:F1},{cy:F1})' />");
                     tSb.AppendLine($"  </svg>");
                     tSb.AppendLine("</div>");
                     thumbHtml = tSb.ToString();
