@@ -14,6 +14,8 @@
 - Reorganized the plugin options page for easier navigation — high-frequency actions (Preview Report, Resend Previous Session) are now surfaced at the top, delivery channel settings and equipment profile are grouped behind collapsible sections, and the layout and labelling of controls is more consistent throughout
 - Gmail app password hint now links directly to myaccount.google.com/apppasswords instead of describing the navigation path
 
+- Multi-Night Summary report -- generate a summary spanning multiple sessions from a selectable date range. Includes aggregate overview (total images, exposure, targets, sessions, avg HFR/guiding/FWHM), per-target sections with cross-session filter tables and per-session breakdowns, per-session cards with mini stats and expandable filter details, sky thumbnails with FOV overlay, and transit altitude trend charts showing how each target's peak altitude changes night-to-night. Quick-select presets (7/30/90 days) or custom date range. Opens in your default browser.
+
 **Bug fixes**
 - Fixed event marker hover tooltips on metric charts not responding -- markers (AutoFocus, Meridian Flip, Safe/Unsafe) now reliably show their tooltip on hover
 - Fixed additional chart settings showing dropdowns in a different order than the primary chart -- all chart configurations now show X-Axis, Primary Metric, Secondary Metric in that order

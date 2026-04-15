@@ -2162,5 +2162,493 @@ namespace NINA.Plugin.NightSummary.Reporting {
             Logger.Warning($"NightSummary: All thumbnail services failed for {targetName}, using remote URL");
             return (remoteUrl, true);
         }
+
+        // ══════════════════════════════════════════════════════════════════════
+        // ██  Multi-Night Summary Report
+        // ══════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// Generates an HTML report summarizing multiple sessions across a date range.
+        /// Reuses the same CSS theme and visual language as the single-session report.
+        /// </summary>
+        public async Task<string> GenerateMultiNightHtmlReport(MultiNightReportData data) {
+            Warnings.Clear();
+            FilterHelper.ReloadOverrides();
+            _chartIndex = 0;
+            var sb = new StringBuilder();
+
+            bool lightMode = SettingsManager.Instance.Current.ReportLightMode;
+
+            // Set SVG theme colors
+            if (lightMode) {
+                svgBg = "#f5f5f5"; svgBorder = "#c0c8d4"; svgMuted = "#666"; svgDim = "#888";
+                svgAccent = "#2563b8"; svgChartBg = "#e8eef5"; svgChartDark = "#0f0f23";
+                svgMoonStroke = "#7a8a9e"; svgMoonOpacity = "0.75"; svgSunrise = "#c07a00";
+            } else {
+                svgBg = "#1a1a2e"; svgBorder = "#2d2d5e"; svgMuted = "#888"; svgDim = "#555";
+                svgAccent = "#7eb8f7"; svgChartBg = "#0d1117"; svgChartDark = "#0f0f23";
+                svgMoonStroke = "#c0c0c0"; svgMoonOpacity = "0.45"; svgSunrise = "#f59e0b";
+            }
+
+            sb.AppendLine("<!DOCTYPE html>");
+            sb.AppendLine("<html><head><meta charset='UTF-8'><style>");
+
+            // Theme colors via CSS custom properties (same as single-session)
+            if (lightMode) {
+                sb.AppendLine(":root { --bg: #f5f5f5; --text: #1a1a2e; --accent: #2563b8; --accent-light: #3b7dd8; --accent-lighter: #5a9ae6; --surface: #e8ecf1; --border: #c0c8d4; --muted: #666; --dim: #888; --chart-bg: #e0e4ea; --chart-dark: #d0d4da; --bar-acquired: #8bb0d4; --warn-bg: #fff3cd; --warn-border: #d4a850; --warn-text: #856404; --warn-item: #6d5200; --skip-color: #cc3333; }");
+            } else {
+                sb.AppendLine(":root { --bg: #1a1a2e; --text: #e0e0e0; --accent: #7eb8f7; --accent-light: #a0c4ff; --accent-lighter: #c0d8ff; --surface: #16213e; --border: #2d2d5e; --muted: #888; --dim: #555; --chart-bg: #0d1117; --chart-dark: #0f0f23; --bar-acquired: #3a5a7a; --warn-bg: #3a2a00; --warn-border: #b8860b; --warn-text: #f0c040; --warn-item: #d4a850; --skip-color: #cc6666; }");
+            }
+
+            // Core styles (same as single-session report)
+            sb.AppendLine("body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background-color: var(--bg); color: var(--text); }");
+            sb.AppendLine("h1 { color: var(--accent); border-bottom: 2px solid var(--accent); padding-bottom: 10px; }");
+            sb.AppendLine("h2 { color: var(--accent-light); margin-top: 30px; }");
+            sb.AppendLine("h3 { color: var(--accent-lighter); }");
+            sb.AppendLine("table { width: 100%; border-collapse: collapse; margin-top: 10px; }");
+            sb.AppendLine("th { background-color: var(--border); color: var(--accent); padding: 8px; text-align: left; }");
+            sb.AppendLine("td { padding: 8px; border-bottom: 1px solid var(--border); }");
+            sb.AppendLine("tr:nth-child(even) { background-color: var(--surface); }");
+            sb.AppendLine(".stat-box { background-color: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 15px; text-align: center; }");
+            sb.AppendLine(".stat-value { font-size: 24px; color: var(--accent); font-weight: bold; }");
+            sb.AppendLine(".stat-label { font-size: 12px; color: var(--muted); margin-top: 5px; }");
+            sb.AppendLine("details.stat-breakdown > summary { list-style: none; cursor: pointer; display: block; }");
+            sb.AppendLine("details.stat-breakdown > summary::-webkit-details-marker { display: none; }");
+            sb.AppendLine("details.stat-breakdown .stat-value::after { content: ' \\25BC'; font-size: 14px; color: var(--accent); }");
+            sb.AppendLine("details.stat-breakdown[open] .stat-value::after { content: ' \\25B2'; font-size: 14px; color: var(--accent); }");
+            sb.AppendLine(".stat-breakdown-body { margin-top: 8px; font-size: 11px; text-align: left; border-top: 1px solid var(--border); padding-top: 6px; }");
+            sb.AppendLine(".stat-breakdown-row { display: flex; justify-content: space-between; padding: 1px 2px; }");
+            sb.AppendLine(".stat-breakdown-filter { color: var(--accent-light); }");
+            sb.AppendLine(".footnote { color: var(--dim); font-size: 12px; margin-top: 40px; }");
+            sb.AppendLine(".target-section { border-top: 1px solid var(--border); margin-top: 24px; padding-top: 16px; }");
+            sb.AppendLine(".ts-thumb-wrap { position: relative; width: 200px; height: 200px; flex-shrink: 0; }");
+            sb.AppendLine(".ts-thumb-wrap img { width: 200px; height: 200px; border-radius: 6px; border: 1px solid var(--border); display: block; }");
+            sb.AppendLine(".ts-thumb-wrap svg { position: absolute; top: 0; left: 0; border-radius: 6px; }");
+            sb.AppendLine(".ts-target-header { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 12px; flex-wrap: wrap; }");
+            sb.AppendLine(".ts-target-info { flex: 1; }");
+            // Multi-night specific styles
+            sb.AppendLine(".session-card { background-color: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; margin: 10px 0; }");
+            sb.AppendLine(".session-card-header { display: flex; justify-content: space-between; align-items: center; }");
+            sb.AppendLine(".session-card-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }");
+            sb.AppendLine(".session-mini-stat { text-align: center; }");
+            sb.AppendLine(".session-mini-value { font-size: 16px; color: var(--accent); font-weight: bold; }");
+            sb.AppendLine(".session-mini-label { font-size: 11px; color: var(--muted); }");
+            sb.AppendLine("details.session-detail > summary { list-style: none; cursor: pointer; }");
+            sb.AppendLine("details.session-detail > summary::-webkit-details-marker { display: none; }");
+            sb.AppendLine("details.session-detail > summary::before { content: '\\25B6\\00A0'; font-size: 12px; color: var(--accent-light); }");
+            sb.AppendLine("details.session-detail[open] > summary::before { content: '\\25BC\\00A0'; }");
+            sb.AppendLine("</style></head><body>");
+
+            // ── Header ───────────────────────────────────────────────
+            sb.Append(BuildMultiNightHeader(data));
+
+            const string warningsPlaceholder = "<!--WARNINGS_PLACEHOLDER-->";
+            sb.AppendLine(warningsPlaceholder);
+
+            if (!data.AllImages.Any()) {
+                sb.AppendLine("<p><em>No images were recorded during this period.</em></p>");
+                sb.Append(BuildFooter());
+                sb.AppendLine("</body></html>");
+                return sb.ToString();
+            }
+
+            // ── Aggregate Overview ───────────────────────────────────
+            sb.Append(BuildMultiNightOverview(data));
+
+            // ── Per-Target Sections ──────────────────────────────────
+            sb.Append(await BuildMultiNightTargetSections(data));
+
+            // ── Per-Session Cards ────────────────────────────────────
+            sb.Append(BuildMultiNightSessionCards(data));
+
+            // ── Footer ───────────────────────────────────────────────
+            sb.Append(BuildFooter());
+            sb.AppendLine("</body></html>");
+
+            // Replace warnings placeholder
+            var html = sb.ToString();
+            if (Warnings.Any()) {
+                var warningHtml = new StringBuilder();
+                warningHtml.AppendLine("<div style='background-color:var(--warn-bg); border:1px solid var(--warn-border); border-radius:8px; padding:12px 16px; margin:16px 0;'>");
+                warningHtml.AppendLine("<p style='color:var(--warn-text); font-weight:bold; margin:0 0 8px;'>&#9888; Report generated with warnings:</p>");
+                warningHtml.AppendLine("<ul style='margin:0; padding-left:20px; color:var(--warn-item);'>");
+                foreach (var warning in Warnings)
+                    warningHtml.AppendLine($"<li style='margin:2px 0; font-size:13px;'>{warning}</li>");
+                warningHtml.AppendLine("</ul></div>");
+                html = html.Replace(warningsPlaceholder, warningHtml.ToString());
+            } else {
+                html = html.Replace(warningsPlaceholder, "");
+            }
+
+            return html;
+        }
+
+        private string BuildMultiNightHeader(MultiNightReportData data) {
+            var sb = new StringBuilder();
+            var icon = IconDataUri;
+            if (icon != null) {
+                sb.AppendLine("<div style='display:flex; align-items:center; gap:14px; border-bottom:2px solid var(--accent); padding-bottom:10px; margin-bottom:8px;'>");
+                sb.AppendLine($"  <img src='{icon}' alt='Night Summary' style='width:48px; height:48px; border-radius:6px; flex-shrink:0;' />");
+                sb.AppendLine("  <h1 style='margin:0; border:none; padding:0;'>Multi-Night Summary</h1>");
+                sb.AppendLine("</div>");
+            } else {
+                sb.AppendLine("<h1>Multi-Night Summary</h1>");
+            }
+
+            var nightCount = data.Sessions.Count;
+            var daySpan = (int)(data.To - data.From).TotalDays + 1;
+            sb.AppendLine($"<p><strong>Period:</strong> {data.From:MMM d, yyyy} &mdash; {data.To:MMM d, yyyy} ({daySpan} days)</p>");
+            sb.AppendLine($"<p><strong>Sessions:</strong> {nightCount} night{(nightCount == 1 ? "" : "s")} &nbsp;&nbsp; <strong>Profile:</strong> {data.ProfileName}</p>");
+
+            return sb.ToString();
+        }
+
+        private string BuildMultiNightOverview(MultiNightReportData data) {
+            var sb = new StringBuilder();
+            var images = data.AllImages;
+            var totalExposureSec = images.Sum(i => i.ExposureDuration);
+            var targetCount = images.Select(i => i.TargetName).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+            var accepted = images.Count(i => i.Accepted);
+            var rejected = images.Count - accepted;
+
+            // Per-filter stats for expandable breakdown
+            var filterStats = images
+                .GroupBy(i => string.IsNullOrEmpty(i.Filter) ? "—" : i.Filter)
+                .OrderBy(g => FilterSortKey(g.Key)).ThenBy(g => g.Key)
+                .Select(g => (filter: g.Key, count: g.Count(), expSec: g.Sum(i => i.ExposureDuration)))
+                .ToList();
+            var imageBreakdown = new StringBuilder("<div class='stat-breakdown-body'>");
+            var expBreakdown   = new StringBuilder("<div class='stat-breakdown-body'>");
+            foreach (var (filter, count, expSec) in filterStats) {
+                var safeFilter = WebUtility.HtmlEncode(filter);
+                imageBreakdown.Append($"<div class='stat-breakdown-row'><span class='stat-breakdown-filter'>{safeFilter}</span><span>{count}</span></div>");
+                expBreakdown.Append($"<div class='stat-breakdown-row'><span class='stat-breakdown-filter'>{safeFilter}</span><span>{FormatDuration(expSec)}</span></div>");
+            }
+            imageBreakdown.Append("</div>");
+            expBreakdown.Append("</div>");
+
+            var hfrImages = images.Where(i => i.HFR > 0).ToList();
+            var guidingImages = images.Where(i => i.GuidingRMSTotal > 0).ToList();
+            var fwhmImages = images.Where(i => i.FWHM > 0).ToList();
+
+            sb.AppendLine("<h2>Overview</h2>");
+            sb.AppendLine("<div style='display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:10px 0;'>");
+
+            // Row 1: Images, Exposure, Targets, Sessions
+            sb.AppendLine($"<div class='stat-box'><details class='stat-breakdown'><summary><div class='stat-value'>{images.Count}</div><div class='stat-label'>Total Images</div></summary>{imageBreakdown}</details></div>");
+            sb.AppendLine($"<div class='stat-box'><details class='stat-breakdown'><summary><div class='stat-value'>{TimeSpan.FromSeconds(totalExposureSec).TotalHours:F1}h</div><div class='stat-label'>Total Exposure</div></summary>{expBreakdown}</details></div>");
+            sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{targetCount}</div><div class='stat-label'>Targets</div></div>");
+            sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{data.Sessions.Count}</div><div class='stat-label'>Sessions</div></div>");
+
+            // Row 2: Avg HFR, Avg Guiding, Avg FWHM, Rejected
+            if (hfrImages.Any())
+                sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{hfrImages.Average(i => i.HFR):F2}px</div><div class='stat-label'>Avg HFR</div></div>");
+            if (guidingImages.Any())
+                sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{guidingImages.Average(i => i.GuidingRMSTotal):F2}\"</div><div class='stat-label'>Avg Guiding RMS</div></div>");
+            if (fwhmImages.Any())
+                sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{fwhmImages.Average(i => i.FWHM):F2}\"</div><div class='stat-label'>Avg FWHM</div></div>");
+            if (rejected > 0)
+                sb.AppendLine($"<div class='stat-box'><div class='stat-value' style='color:var(--skip-color);'>{rejected}</div><div class='stat-label'>Rejected</div></div>");
+
+            sb.AppendLine("</div>");
+            return sb.ToString();
+        }
+
+        private async Task<string> BuildMultiNightTargetSections(MultiNightReportData data) {
+            var sb = new StringBuilder();
+            var images = data.AllImages;
+
+            // Group all images by target, ordered by first appearance
+            var targets = images
+                .GroupBy(i => i.TargetName, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(g => g.Sum(i => i.ExposureDuration))
+                .Reverse()
+                .ToList();
+
+            sb.AppendLine("<h2>Targets</h2>");
+
+            // Thumbnail geometry
+            const int thumbPx = 200;
+            const int fetchPx = 400;
+            var fovW = data.CameraFovWidthDeg;
+            var fovH = data.CameraFovHeightDeg;
+            var thumbFov = Math.Max(fovW, fovH) * 1.5;
+            if (thumbFov <= 0) thumbFov = 1.0;
+            double boxW = (fovW / thumbFov) * thumbPx;
+            double boxH = (fovH / thumbFov) * thumbPx;
+            double cx = thumbPx / 2.0;
+            double cy = thumbPx / 2.0;
+
+            // Pre-fetch thumbnails in parallel
+            var thumbResults = new Dictionary<string, (string imgSrc, bool usedFallback)>();
+            if (SettingsManager.Instance.Current.ShowSkyThumbnails) {
+                var thumbTasks = new List<(string targetName, double raDeg, double decD, Task<(string imgSrc, bool usedFallback)> task)>();
+                foreach (var target in targets) {
+                    var coordImg = target.FirstOrDefault(i => i.RaHours != 0 || i.DecDegrees != 0);
+                    if (coordImg == null) continue;
+                    var raDeg = coordImg.RaHours * 15.0;
+                    thumbTasks.Add((target.Key, raDeg, coordImg.DecDegrees, FetchThumbnailAsync(target.Key, raDeg, coordImg.DecDegrees, fetchPx, thumbFov)));
+                }
+                if (thumbTasks.Any()) {
+                    await Task.WhenAll(thumbTasks.Select(t => t.task));
+                    foreach (var t in thumbTasks) {
+                        var result = t.task.Result;
+                        thumbResults[t.targetName] = result;
+                        if (result.usedFallback)
+                            Warnings.Add("Sky thumbnails loaded from fallback survey (NASA SkyView DSS2 Red) — images are monochrome because the primary color service (CDS) is unavailable");
+                    }
+                }
+            }
+
+            foreach (var target in targets) {
+                var targetImages = target.ToList();
+                var totalExpSec = targetImages.Sum(i => i.ExposureDuration);
+                var sessionCount = targetImages.Select(i => i.SessionId).Distinct().Count();
+
+                // Resolve coordinates
+                double raH = 0, decD = 0;
+                var coordImg = targetImages.FirstOrDefault(i => i.RaHours != 0 || i.DecDegrees != 0);
+                if (coordImg != null) { raH = coordImg.RaHours; decD = coordImg.DecDegrees; }
+
+                // Subtitle: sessions, integration
+                string subtitle = $" <span style='font-weight:normal; font-size:12px; color:var(--muted);'>— " +
+                    $"{sessionCount} session{(sessionCount == 1 ? "" : "s")} · {FormatIntegration(totalExpSec)} integration";
+                if (raH != 0 || decD != 0)
+                    subtitle += $" · R.A. {FormatRA(raH)} · Dec. {FormatDec(decD)}";
+                subtitle += "</span>";
+
+                sb.AppendLine("<div class='target-section'>");
+                sb.AppendLine($"<h3>{target.Key}{subtitle}</h3>");
+
+                // Thumbnail + per-session altitude trend
+                bool showThumb = (raH != 0 || decD != 0) && SettingsManager.Instance.Current.ShowSkyThumbnails;
+                bool showAltChart = (raH != 0 || decD != 0) && SettingsManager.Instance.Current.ShowAltitudeChart;
+
+                string thumbHtml = "";
+                if (showThumb && thumbResults.TryGetValue(target.Key, out var thumbResult)) {
+                    var tSb = new StringBuilder();
+                    tSb.AppendLine("<div class='ts-thumb-wrap'>");
+                    tSb.AppendLine($"  <img src='{thumbResult.imgSrc}' alt='{WebUtility.HtmlEncode(target.Key)}' />");
+                    tSb.AppendLine($"  <svg width='{thumbPx}' height='{thumbPx}' xmlns='http://www.w3.org/2000/svg'>");
+                    tSb.AppendLine($"    <rect x='{(cx - boxW / 2):F1}' y='{(cy - boxH / 2):F1}' width='{boxW:F1}' height='{boxH:F1}'");
+                    tSb.AppendLine($"          fill='none' stroke='#7eb8f7' stroke-width='1.5' opacity='0.85' />");
+                    tSb.AppendLine($"  </svg>");
+                    tSb.AppendLine("</div>");
+                    thumbHtml = tSb.ToString();
+                }
+
+                if (showThumb || showAltChart) {
+                    sb.AppendLine("<div class='ts-target-header'>");
+                    sb.Append(thumbHtml);
+                    if (showAltChart) {
+                        // Transit altitude trend: one mini chart showing peak altitude across sessions
+                        var transitTrend = BuildTransitAltitudeTrend(target.Key, data.Sessions, data.AllImages,
+                            raH, decD, data.ObserverLatitude, data.ObserverLongitude);
+                        if (!string.IsNullOrEmpty(transitTrend))
+                            sb.Append($"<div style='flex:1; min-width:0;'>{transitTrend}</div>");
+                    }
+                    sb.AppendLine("</div>");
+                } else if (!string.IsNullOrEmpty(thumbHtml)) {
+                    sb.Append(thumbHtml);
+                }
+
+                // Filter table (aggregated across all sessions)
+                sb.AppendLine("<table>");
+                sb.AppendLine("<tr><th>Filter</th><th>Images</th><th>Exposure</th><th>Total Time</th><th>Sessions</th></tr>");
+                var filterGroups = targetImages
+                    .GroupBy(i => (i.Filter, i.ExposureDuration))
+                    .OrderBy(g => FilterSortKey(g.Key.Filter)).ThenBy(g => g.Key.Filter).ThenBy(g => g.Key.ExposureDuration);
+                foreach (var fg in filterGroups) {
+                    var totalTime = TimeSpan.FromSeconds(fg.Sum(i => i.ExposureDuration));
+                    var fgSessions = fg.Select(i => i.SessionId).Distinct().Count();
+                    sb.AppendLine($"<tr><td>{fg.Key.Filter}</td><td>{fg.Count()}</td><td>{fg.Key.ExposureDuration:F0}s</td><td>{FormatDuration(totalTime.TotalSeconds)}</td><td>{fgSessions}</td></tr>");
+                }
+                var targetTotal = TimeSpan.FromSeconds(totalExpSec);
+                sb.AppendLine($"<tr><td><strong>Total</strong></td><td><strong>{targetImages.Count}</strong></td><td></td><td><strong>{FormatDuration(targetTotal.TotalSeconds)}</strong></td><td><strong>{sessionCount}</strong></td></tr>");
+                sb.AppendLine("</table>");
+
+                // Per-session breakdown for this target
+                var targetSessions = targetImages
+                    .GroupBy(i => i.SessionId)
+                    .Select(g => {
+                        var session = data.Sessions.FirstOrDefault(s => s.SessionId == g.Key);
+                        return (session, images: g.ToList());
+                    })
+                    .Where(x => x.session != null)
+                    .OrderByDescending(x => x.session.SessionStart)
+                    .ToList();
+
+                if (targetSessions.Count > 1) {
+                    sb.AppendLine("<details class='session-detail' style='margin-top:10px;'>");
+                    sb.AppendLine($"<summary style='color:var(--accent-light); font-size:13px; font-weight:bold;'>Per-Session Breakdown ({targetSessions.Count} sessions)</summary>");
+                    sb.AppendLine("<table style='margin-top:6px; font-size:13px;'>");
+                    sb.AppendLine("<tr><th>Date</th><th>Images</th><th>Integration</th><th>Avg HFR</th><th>Avg Guiding</th></tr>");
+                    foreach (var (session, imgs) in targetSessions) {
+                        var hfr = imgs.Where(i => i.HFR > 0).ToList();
+                        var rms = imgs.Where(i => i.GuidingRMSTotal > 0).ToList();
+                        var hfrStr = hfr.Any() ? $"{hfr.Average(i => i.HFR):F2}px" : "—";
+                        var rmsStr = rms.Any() ? $"{rms.Average(i => i.GuidingRMSTotal):F2}\"" : "—";
+                        var integ = imgs.Sum(i => i.ExposureDuration);
+                        sb.AppendLine($"<tr><td>{session.SessionStart:MMM d}</td><td>{imgs.Count}</td><td>{FormatIntegration(integ)}</td><td>{hfrStr}</td><td>{rmsStr}</td></tr>");
+                    }
+                    sb.AppendLine("</table>");
+                    sb.AppendLine("</details>");
+                }
+
+                sb.AppendLine("</div>"); // target-section
+            }
+
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Builds a small SVG chart showing the transit (peak) altitude of a target
+        /// on each session date. Helps visualize seasonal observability trends.
+        /// </summary>
+        private string BuildTransitAltitudeTrend(string targetName, List<SessionRecord> sessions,
+            List<ImageRecord> allImages, double raH, double decD, double lat, double lon) {
+
+            // Collect peak altitude for each session that imaged this target
+            var sessionDates = allImages
+                .Where(i => string.Equals(i.TargetName, targetName, StringComparison.OrdinalIgnoreCase))
+                .Select(i => i.SessionId)
+                .Distinct()
+                .Select(sid => sessions.FirstOrDefault(s => s.SessionId == sid))
+                .Where(s => s != null)
+                .OrderBy(s => s.SessionStart)
+                .ToList();
+
+            if (sessionDates.Count < 2) return "";
+
+            var points = new List<(DateTime date, double peakAlt)>();
+            foreach (var session in sessionDates) {
+                // Calculate peak altitude during that session's imaging window
+                var peakAlt = AltitudeCalculator.GetPeakAltitude(raH, decD, lat, lon,
+                    session.SessionStart, session.SessionEnd > session.SessionStart ? session.SessionEnd : session.SessionStart.AddHours(6));
+                points.Add((session.SessionStart, peakAlt));
+            }
+
+            // SVG dimensions
+            const int w = 460, h = 140, pad = 40, padRight = 16, padTop = 20, padBot = 28;
+            int plotW = w - pad - padRight;
+            int plotH = h - padTop - padBot;
+
+            double minAlt = Math.Max(0, points.Min(p => p.peakAlt) - 5);
+            double maxAlt = Math.Min(90, points.Max(p => p.peakAlt) + 5);
+            if (maxAlt - minAlt < 10) { minAlt = Math.Max(0, maxAlt - 15); maxAlt = minAlt + 15; }
+
+            var firstDate = points.First().date;
+            var lastDate = points.Last().date;
+            double dateRange = Math.Max(1, (lastDate - firstDate).TotalDays);
+
+            double MapX(DateTime d) => pad + (d - firstDate).TotalDays / dateRange * plotW;
+            double MapY(double alt) => padTop + plotH - (alt - minAlt) / (maxAlt - minAlt) * plotH;
+
+            var svg = new StringBuilder();
+            svg.AppendLine($"<svg viewBox='0 0 {w} {h}' xmlns='http://www.w3.org/2000/svg' style='width:100%; max-width:{w}px;'>");
+            svg.AppendLine($"<rect width='{w}' height='{h}' rx='6' fill='{svgChartBg}' stroke='{svgBorder}' stroke-width='1'/>");
+
+            // Y-axis labels and grid
+            int ySteps = 3;
+            for (int i = 0; i <= ySteps; i++) {
+                double alt = minAlt + (maxAlt - minAlt) * i / ySteps;
+                double y = MapY(alt);
+                svg.AppendLine($"<line x1='{pad}' y1='{y:F1}' x2='{pad + plotW}' y2='{y:F1}' stroke='{svgBorder}' stroke-width='0.5'/>");
+                svg.AppendLine($"<text x='{pad - 4}' y='{y + 4:F1}' text-anchor='end' fill='{svgMuted}' font-size='10'>{alt:F0}°</text>");
+            }
+
+            // X-axis date labels
+            if (points.Count <= 7) {
+                foreach (var p in points) {
+                    double x = MapX(p.date);
+                    svg.AppendLine($"<text x='{x:F1}' y='{h - 4}' text-anchor='middle' fill='{svgMuted}' font-size='9'>{p.date:MMM d}</text>");
+                }
+            } else {
+                // Show first, last, and a middle date
+                svg.AppendLine($"<text x='{MapX(firstDate):F1}' y='{h - 4}' text-anchor='start' fill='{svgMuted}' font-size='9'>{firstDate:MMM d}</text>");
+                svg.AppendLine($"<text x='{MapX(lastDate):F1}' y='{h - 4}' text-anchor='end' fill='{svgMuted}' font-size='9'>{lastDate:MMM d}</text>");
+                var midPoint = points[points.Count / 2];
+                svg.AppendLine($"<text x='{MapX(midPoint.date):F1}' y='{h - 4}' text-anchor='middle' fill='{svgMuted}' font-size='9'>{midPoint.date:MMM d}</text>");
+            }
+
+            // Line connecting points
+            var pathParts = new List<string>();
+            for (int i = 0; i < points.Count; i++) {
+                var x = MapX(points[i].date);
+                var y = MapY(points[i].peakAlt);
+                pathParts.Add($"{(i == 0 ? "M" : "L")}{x:F1},{y:F1}");
+            }
+            svg.AppendLine($"<path d='{string.Join(" ", pathParts)}' fill='none' stroke='{svgAccent}' stroke-width='2'/>");
+
+            // Dots with tooltips
+            foreach (var p in points) {
+                var x = MapX(p.date);
+                var y = MapY(p.peakAlt);
+                svg.AppendLine($"<circle cx='{x:F1}' cy='{y:F1}' r='3.5' fill='{svgAccent}'><title>{p.date:MMM d}: {p.peakAlt:F1}° peak altitude</title></circle>");
+            }
+
+            // Title
+            svg.AppendLine($"<text x='{w / 2}' y='14' text-anchor='middle' fill='{svgMuted}' font-size='11' font-weight='bold'>Transit Altitude Trend</text>");
+
+            svg.AppendLine("</svg>");
+            return svg.ToString();
+        }
+
+        private string BuildMultiNightSessionCards(MultiNightReportData data) {
+            var sb = new StringBuilder();
+            sb.AppendLine("<h2>Sessions</h2>");
+
+            foreach (var session in data.Sessions) {
+                var sessionImages = data.AllImages.Where(i => i.SessionId == session.SessionId).ToList();
+                var totalExpSec = sessionImages.Sum(i => i.ExposureDuration);
+                var targetCount = sessionImages.Select(i => i.TargetName).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+                var targets = string.Join(", ", sessionImages.Select(i => i.TargetName).Distinct(StringComparer.OrdinalIgnoreCase));
+                var duration = session.SessionEnd > session.SessionStart
+                    ? (session.SessionEnd - session.SessionStart).TotalHours : 0;
+
+                sb.AppendLine("<div class='session-card'>");
+                sb.AppendLine("<div class='session-card-header'>");
+                sb.AppendLine($"<strong style='color:var(--accent);'>{session.SessionStart:ddd, MMM d yyyy}</strong>");
+                if (duration > 0)
+                    sb.AppendLine($"<span style='font-size:12px; color:var(--muted);'>{duration:F1}h session</span>");
+                sb.AppendLine("</div>");
+
+                sb.AppendLine($"<div style='font-size:12px; color:var(--muted); margin-top:4px;'>{targets}</div>");
+
+                // Mini stat row
+                var hfrImages = sessionImages.Where(i => i.HFR > 0).ToList();
+                var guidingImages = sessionImages.Where(i => i.GuidingRMSTotal > 0).ToList();
+
+                sb.AppendLine("<div class='session-card-stats'>");
+                sb.AppendLine($"<div class='session-mini-stat'><div class='session-mini-value'>{sessionImages.Count}</div><div class='session-mini-label'>Images</div></div>");
+                sb.AppendLine($"<div class='session-mini-stat'><div class='session-mini-value'>{FormatIntegration(totalExpSec)}</div><div class='session-mini-label'>Integration</div></div>");
+                if (hfrImages.Any())
+                    sb.AppendLine($"<div class='session-mini-stat'><div class='session-mini-value'>{hfrImages.Average(i => i.HFR):F2}px</div><div class='session-mini-label'>Avg HFR</div></div>");
+                if (guidingImages.Any())
+                    sb.AppendLine($"<div class='session-mini-stat'><div class='session-mini-value'>{guidingImages.Average(i => i.GuidingRMSTotal):F2}\"</div><div class='session-mini-label'>Avg Guiding</div></div>");
+                sb.AppendLine("</div>");
+
+                // Expandable filter table per session
+                if (sessionImages.Count > 0) {
+                    sb.AppendLine("<details class='session-detail' style='margin-top:8px;'>");
+                    sb.AppendLine("<summary style='font-size:12px; color:var(--accent-light);'>Filter Details</summary>");
+                    sb.AppendLine("<table style='margin-top:4px; font-size:13px;'>");
+                    sb.AppendLine("<tr><th>Target</th><th>Filter</th><th>Images</th><th>Exposure</th><th>Total</th></tr>");
+                    var sessionTargetFilters = sessionImages
+                        .GroupBy(i => (i.TargetName, i.Filter, i.ExposureDuration))
+                        .OrderBy(g => g.Key.TargetName).ThenBy(g => FilterSortKey(g.Key.Filter)).ThenBy(g => g.Key.Filter);
+                    foreach (var g in sessionTargetFilters) {
+                        var totalTime = g.Sum(i => i.ExposureDuration);
+                        sb.AppendLine($"<tr><td>{g.Key.TargetName}</td><td>{g.Key.Filter}</td><td>{g.Count()}</td><td>{g.Key.ExposureDuration:F0}s</td><td>{FormatDuration(totalTime)}</td></tr>");
+                    }
+                    sb.AppendLine("</table>");
+                    sb.AppendLine("</details>");
+                }
+
+                sb.AppendLine("</div>"); // session-card
+            }
+
+            return sb.ToString();
+        }
     }
 }

@@ -919,6 +919,40 @@ namespace NINA.Plugin.NightSummary.Session {
             return await reportGenerator.GenerateHtmlReport(reportData);
         }
 
+        /// <summary>
+        /// Builds a MultiNightReportData from a date range. Used by the Options UI "Generate Summary" command.
+        /// </summary>
+        public MultiNightReportData BuildMultiNightReportData(string dbPath, DateTime from, DateTime to) {
+            var db = new SessionDatabase(dbPath);
+            var sessions = db.GetSessionsByDateRange(from, to);
+            var allImages = db.GetAllImagesInRange(from, to);
+            var profileName = sessions.FirstOrDefault()?.ProfileName ?? profileService?.ActiveProfile?.Name ?? "Unknown";
+
+            // Use the most recent session for camera FOV
+            var latestSession = sessions.FirstOrDefault();
+            var (fovW, fovH) = ComputeCameraFov(latestSession);
+            var (lat, lon) = GetObserverCoords();
+
+            return new MultiNightReportData {
+                From = from,
+                To = to,
+                ProfileName = profileName,
+                Sessions = sessions,
+                AllImages = allImages,
+                ObserverLatitude = lat,
+                ObserverLongitude = lon,
+                CameraFovWidthDeg = fovW,
+                CameraFovHeightDeg = fovH
+            };
+        }
+
+        /// <summary>
+        /// Generates a multi-night HTML report from a MultiNightReportData.
+        /// </summary>
+        public async Task<string> GenerateMultiNightHtmlAsync(MultiNightReportData data) {
+            return await reportGenerator.GenerateMultiNightHtmlReport(data);
+        }
+
         public string GetCurrentSessionId() {
             return collector.GetCurrentSessionId();
         }

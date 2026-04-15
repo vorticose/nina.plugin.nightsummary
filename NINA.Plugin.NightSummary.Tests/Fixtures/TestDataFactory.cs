@@ -140,6 +140,57 @@ namespace NINA.Plugin.NightSummary.Tests.Fixtures {
             return images;
         }
 
+        /// <summary>
+        /// Builds a MultiNightReportData spanning multiple sessions.
+        /// RA/Dec default to 0 to avoid live HTTP thumbnail calls.
+        /// </summary>
+        public static MultiNightReportData MakeMultiNightData(
+            int sessionCount = 3,
+            int imagesPerSession = 5,
+            string[]? targets = null) {
+
+            var targetNames = targets ?? new[] { "M31", "NGC 7000" };
+            var sessions = new List<SessionRecord>();
+            var allImages = new List<ImageRecord>();
+            var baseDate = new DateTime(2025, 1, 10, 21, 0, 0);
+
+            for (int s = 0; s < sessionCount; s++) {
+                var sessionStart = baseDate.AddDays(s);
+                var sessionId = Guid.NewGuid().ToString();
+                var session = new SessionRecord {
+                    SessionId = sessionId,
+                    SessionStart = sessionStart,
+                    SessionEnd = sessionStart.AddHours(6),
+                    ProfileName = "Test Profile",
+                    CamXSize = 4656,
+                    CamYSize = 3520,
+                    PixelSizeMicrons = 3.76,
+                    FocalLengthMm = 714
+                };
+                sessions.Add(session);
+
+                foreach (var target in targetNames) {
+                    for (int i = 0; i < imagesPerSession; i++) {
+                        allImages.Add(MakeImage(sessionId, target: target,
+                            hfr: 2.0 + (i * 0.1),
+                            timestamp: sessionStart.AddMinutes(30 + i * 10)));
+                    }
+                }
+            }
+
+            return new MultiNightReportData {
+                From = baseDate.Date,
+                To = baseDate.AddDays(sessionCount - 1).Date,
+                ProfileName = "Test Profile",
+                Sessions = sessions,
+                AllImages = allImages,
+                ObserverLatitude = 40.7128,
+                ObserverLongitude = -74.0060,
+                CameraFovWidthDeg = 2.5,
+                CameraFovHeightDeg = 1.8
+            };
+        }
+
         private static string[] BuildTargetNames(int count) {
             var names = new[] { "M31", "M42", "NGC 7000", "IC 1805", "M81", "M51" };
             var result = new string[Math.Min(count, names.Length)];

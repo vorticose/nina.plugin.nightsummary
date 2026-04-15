@@ -57,11 +57,24 @@ namespace NINA.Plugin.NightSummary {
             set { _searchResultText = value; RaisePropertyChanged(); }
         }
 
-        public ButtonStatus EmailTestStatus   { get; } = new ButtonStatus();
-        public ButtonStatus DiscordTestStatus { get; } = new ButtonStatus();
-        public ButtonStatus PushoverTestStatus{ get; } = new ButtonStatus();
-        public ButtonStatus ResendStatus      { get; } = new ButtonStatus();
-        public ButtonStatus TestReportStatus  { get; } = new ButtonStatus();
+        public ButtonStatus EmailTestStatus    { get; } = new ButtonStatus();
+        public ButtonStatus DiscordTestStatus  { get; } = new ButtonStatus();
+        public ButtonStatus PushoverTestStatus { get; } = new ButtonStatus();
+        public ButtonStatus ResendStatus       { get; } = new ButtonStatus();
+        public ButtonStatus TestReportStatus   { get; } = new ButtonStatus();
+        public ButtonStatus MultiNightStatus   { get; } = new ButtonStatus();
+
+        private DateTime _multiNightFrom = DateTime.Today.AddDays(-7);
+        public DateTime MultiNightFrom {
+            get => _multiNightFrom;
+            set { _multiNightFrom = value; RaisePropertyChanged(); }
+        }
+
+        private DateTime _multiNightTo = DateTime.Today;
+        public DateTime MultiNightTo {
+            get => _multiNightTo;
+            set { _multiNightTo = value; RaisePropertyChanged(); }
+        }
 
         [ImportingConstructor]
         public NightSummaryPlugin(
@@ -244,6 +257,57 @@ namespace NINA.Plugin.NightSummary {
             PreviewReportCommand = new RelayCommand(async () => {
                 var window = new PreviewWindow(sessionService);
                 window.Show();
+            });
+
+            SetMultiNight7DaysCommand = new RelayCommand(async () => {
+                MultiNightFrom = DateTime.Today.AddDays(-7); MultiNightTo = DateTime.Today;
+                await Task.CompletedTask;
+            });
+            SetMultiNight30DaysCommand = new RelayCommand(async () => {
+                MultiNightFrom = DateTime.Today.AddDays(-30); MultiNightTo = DateTime.Today;
+                await Task.CompletedTask;
+            });
+            SetMultiNight90DaysCommand = new RelayCommand(async () => {
+                MultiNightFrom = DateTime.Today.AddDays(-90); MultiNightTo = DateTime.Today;
+                await Task.CompletedTask;
+            });
+
+            GenerateMultiNightCommand = new RelayCommand(async () => {
+                MultiNightStatus.Text = "";
+                if (!File.Exists(liveDbPath)) {
+                    MultiNightStatus.Text = "✗ No session database found";
+                    return;
+                }
+                if (MultiNightFrom > MultiNightTo) {
+                    MultiNightStatus.Text = "✗ From date must be before To date";
+                    return;
+                }
+
+                MultiNightStatus.Text = "Generating...";
+                try {
+                    var data = await Task.Run(() =>
+                        sessionService.BuildMultiNightReportData(liveDbPath, MultiNightFrom, MultiNightTo));
+
+                    if (data.Sessions.Count == 0) {
+                        MultiNightStatus.Text = "✗ No sessions found in that range";
+                        return;
+                    }
+
+                    var html = await sessionService.GenerateMultiNightHtmlAsync(data);
+                    var tempFile = Path.Combine(Path.GetTempPath(), "NightSummaryMultiNight.html");
+                    File.WriteAllText(tempFile, html, System.Text.Encoding.UTF8);
+
+                    // Open in default browser
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo {
+                        FileName = tempFile,
+                        UseShellExecute = true
+                    });
+
+                    MultiNightStatus.Text = $"✓ {data.Sessions.Count} sessions, {data.AllImages.Count} images";
+                } catch (Exception ex) {
+                    Logger.Error($"NightSummary: Multi-night report failed. {ex.Message}");
+                    MultiNightStatus.Text = "✗ Generation failed — check NINA log";
+                }
             });
 
             LoadSessions();
@@ -787,6 +851,10 @@ namespace NINA.Plugin.NightSummary {
         public ICommand SearchSessionsCommand { get; }
         public ICommand ClearSearchCommand { get; }
         public ICommand PreviewReportCommand { get; private set; }
+        public ICommand GenerateMultiNightCommand { get; private set; }
+        public ICommand SetMultiNight7DaysCommand { get; }
+        public ICommand SetMultiNight30DaysCommand { get; }
+        public ICommand SetMultiNight90DaysCommand { get; }
 
         public event PropertyChangedEventHandler PropertyChanged;
         protected void RaisePropertyChanged([CallerMemberName] string propertyName = null) {

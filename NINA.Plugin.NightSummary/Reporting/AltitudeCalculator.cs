@@ -74,6 +74,24 @@ namespace NINA.Plugin.NightSummary.Reporting {
         }
 
         /// <summary>
+        /// Returns the peak (maximum) altitude in degrees for a target during a given time window.
+        /// Samples every 10 minutes for performance — sufficient for multi-night trend charts.
+        /// </summary>
+        public static double GetPeakAltitude(double raHours, double decDeg, double latDeg, double lonDeg,
+            DateTime startLocal, DateTime endLocal) {
+            double peak = double.MinValue;
+            var t = startLocal;
+            while (t <= endLocal) {
+                var alt = GetAltitude(raHours, decDeg, latDeg, lonDeg, t);
+                if (alt > peak) peak = alt;
+                t = t.AddMinutes(10);
+            }
+            var endAlt = GetAltitude(raHours, decDeg, latDeg, lonDeg, endLocal);
+            if (endAlt > peak) peak = endAlt;
+            return peak;
+        }
+
+        /// <summary>
         /// Returns approximate Sun RA (decimal hours) and Dec (decimal degrees) at a given UTC time.
         /// Accurate to ~0.01° — sufficient for sunset/sunrise calculations.
         /// </summary>

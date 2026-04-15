@@ -212,5 +212,36 @@ namespace NINA.Plugin.NightSummary.Tests {
             var (_, dec) = AltitudeCalculator.GetMoonPosition(new DateTime(2025, 1, 15, 22, 0, 0, DateTimeKind.Utc));
             Assert.InRange(dec, -30.0, 30.0);
         }
+
+        // ── GetPeakAltitude ────────────────────────────────────────────────
+
+        [Fact]
+        public void GetPeakAltitude_ReturnsReasonableValue() {
+            // Vega (RA ~18.6h, Dec ~38.8°) from Philadelphia should transit high
+            var start = new DateTime(2025, 7, 15, 21, 0, 0);
+            var end = start.AddHours(6);
+            var peak = AltitudeCalculator.GetPeakAltitude(18.6, 38.8, Lat, Lon, start, end);
+            Assert.InRange(peak, 50.0, 90.0);
+        }
+
+        [Fact]
+        public void GetPeakAltitude_GreaterOrEqualToEndpoints() {
+            var start = new DateTime(2025, 1, 15, 21, 0, 0);
+            var end = start.AddHours(6);
+            var peak = AltitudeCalculator.GetPeakAltitude(5.5, 22.0, Lat, Lon, start, end);
+            var startAlt = AltitudeCalculator.GetAltitude(5.5, 22.0, Lat, Lon, start);
+            var endAlt = AltitudeCalculator.GetAltitude(5.5, 22.0, Lat, Lon, end);
+            Assert.True(peak >= startAlt - 0.1);
+            Assert.True(peak >= endAlt - 0.1);
+        }
+
+        [Fact]
+        public void GetPeakAltitude_SouthernTarget_StaysLow() {
+            // A target at Dec -70° from latitude +40° should never get very high
+            var start = new DateTime(2025, 1, 15, 21, 0, 0);
+            var end = start.AddHours(6);
+            var peak = AltitudeCalculator.GetPeakAltitude(3.0, -70.0, Lat, Lon, start, end);
+            Assert.True(peak < 0); // Below horizon
+        }
     }
 }

@@ -1096,6 +1096,43 @@
 
                     <Separator Margin="0,20,0,10" />
 
+                    <!-- ══ Multi-Night Summary ═════════════════════════════════════ -->
+                    <TextBlock Text="Multi-Night Summary" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
+
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                        <TextBlock Width="200" />
+                        <TextBlock Text="Generate a summary report spanning multiple sessions. Select a date range and click Generate to open the report in your browser."
+                                   TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="400" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,4">
+                        <TextBlock Text="From" Width="200" VerticalAlignment="Center" />
+                        <DatePicker SelectedDate="{Binding MultiNightFrom}" Width="130" />
+                        <TextBlock Text="To" Width="28" VerticalAlignment="Center" Margin="10,0,0,0" />
+                        <DatePicker SelectedDate="{Binding MultiNightTo}" Width="130" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,4">
+                        <TextBlock Text="Quick Range" Width="200" VerticalAlignment="Center" />
+                        <Button Content="7 Days" MinWidth="60" Margin="0,0,6,0"
+                                Command="{Binding SetMultiNight7DaysCommand}" />
+                        <Button Content="30 Days" MinWidth="60" Margin="0,0,6,0"
+                                Command="{Binding SetMultiNight30DaysCommand}" />
+                        <Button Content="90 Days" MinWidth="60"
+                                Command="{Binding SetMultiNight90DaysCommand}" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,10">
+                        <TextBlock Width="200" />
+                        <Button Content="Generate Summary" Command="{Binding GenerateMultiNightCommand}" Width="180" />
+                        <TextBlock Text="{Binding MultiNightStatus.Text}"
+                                   Foreground="{Binding MultiNightStatus.Foreground}"
+                                   Visibility="{Binding MultiNightStatus.Visibility}"
+                                   VerticalAlignment="Center" Margin="10,0,0,0" />
+                    </StackPanel>
+
+                    <Separator Margin="0,20,0,10" />
+
                     <!-- ══ Test Report ════════════════════════════════════════════ -->
                     <TextBlock Text="Test Report" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
 
