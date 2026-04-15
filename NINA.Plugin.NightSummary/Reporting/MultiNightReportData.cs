@@ -26,5 +26,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
         public double CameraFovWidthDeg { get; init; }
         /// <summary>Camera FOV height in degrees.</summary>
         public double CameraFovHeightDeg { get; init; }
+        /// <summary>Target Scheduler data for rotation/coordinates (may be null if TS not installed).</summary>
+        public List<TsTargetData> TsData { get; init; }
     }
 }

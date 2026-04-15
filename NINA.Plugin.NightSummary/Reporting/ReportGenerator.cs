@@ -2405,10 +2405,17 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var totalExpSec = targetImages.Sum(i => i.ExposureDuration);
                 var sessionCount = targetImages.Select(i => i.SessionId).Distinct().Count();
 
-                // Resolve coordinates
+                var tsTarget = data.TsData?.FirstOrDefault(t =>
+                    string.Equals(t.TargetName, target.Key, StringComparison.OrdinalIgnoreCase));
+
+                // Resolve coordinates: prefer TS data, fall back to image metadata
                 double raH = 0, decD = 0;
-                var coordImg = targetImages.FirstOrDefault(i => i.RaHours != 0 || i.DecDegrees != 0);
-                if (coordImg != null) { raH = coordImg.RaHours; decD = coordImg.DecDegrees; }
+                if (tsTarget != null && (tsTarget.RA != 0 || tsTarget.Dec != 0)) {
+                    raH = tsTarget.RA; decD = tsTarget.Dec;
+                } else {
+                    var coordImg = targetImages.FirstOrDefault(i => i.RaHours != 0 || i.DecDegrees != 0);
+                    if (coordImg != null) { raH = coordImg.RaHours; decD = coordImg.DecDegrees; }
+                }
 
                 // Subtitle: sessions, integration
                 string subtitle = $" <span style='font-weight:normal; font-size:12px; color:var(--muted);'>— " +
@@ -2426,12 +2433,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
                 string thumbHtml = "";
                 if (showThumb && thumbResults.TryGetValue(target.Key, out var thumbResult)) {
-                    // Get rotation from the most recent plate-solved image for this target
-                    double rotation = targetImages
-                        .Where(i => i.PositionAngle.HasValue && i.PositionAngle.Value != 0)
-                        .Select(i => i.PositionAngle.Value)
-                        .DefaultIfEmpty(0)
-                        .Average();
+                    // Sky position angle: prefer TS data, fall back to plate solve PA from images
+                    double rotation = (tsTarget != null && tsTarget.Rotation != 0) ? tsTarget.Rotation
+                        : targetImages.Where(i => i.PositionAngle.HasValue && i.PositionAngle.Value != 0)
+                                .Select(i => i.PositionAngle.Value).DefaultIfEmpty(0).Average();
                     var svgAngle = -rotation;
 
                     var tSb = new StringBuilder();
@@ -2632,8 +2637,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     $"<title>{points[i].date:MMM d}: meridian transit at {points[i].transit:HH:mm}</title></circle>");
             }
 
-            // Title
-            svg.AppendLine($"<text x='{svgW / 2}' y='16' text-anchor='middle' fill='{svgMuted}' font-size='11' font-weight='bold'>Meridian Transit Time</text>");
+            // Title — show UTC offset to clarify the fixed (non-DST) time reference
+            int utcOffset = (int)Math.Round(lon / 15.0);
+            string offsetLabel = utcOffset >= 0 ? $"UTC+{utcOffset}" : $"UTC{utcOffset}";
+            svg.AppendLine($"<text x='{svgW / 2}' y='16' text-anchor='middle' fill='{svgMuted}' font-size='11' font-weight='bold'>Meridian Transit Time ({offsetLabel})</text>");
 
             svg.AppendLine("</svg>");
             return svg.ToString();

@@ -933,6 +933,9 @@ namespace NINA.Plugin.NightSummary.Session {
             var (fovW, fovH) = ComputeCameraFov(latestSession);
             var (lat, lon) = GetObserverCoords();
 
+            var profileId = profileService?.ActiveProfile?.Id.ToString();
+            var tsData    = FetchTsData(allImages, profileId);
+
             return new MultiNightReportData {
                 From = from,
                 To = to,
@@ -942,7 +945,8 @@ namespace NINA.Plugin.NightSummary.Session {
                 ObserverLatitude = lat,
                 ObserverLongitude = lon,
                 CameraFovWidthDeg = fovW,
-                CameraFovHeightDeg = fovH
+                CameraFovHeightDeg = fovH,
+                TsData = tsData
             };
         }
 

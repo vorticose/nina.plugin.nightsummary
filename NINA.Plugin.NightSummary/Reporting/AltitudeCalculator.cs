@@ -198,25 +198,25 @@ namespace NINA.Plugin.NightSummary.Reporting {
         }
 
         /// <summary>
-        /// Returns the local time when a target crosses the meridian (HA=0) on the night
-        /// containing the given session start. Searches a 24h window anchored at 6 PM
-        /// so nighttime transits are always centrally located and the noon-boundary
-        /// problem (transit drifting past the search edge) is avoided.
-        /// Returns null if no crossing is found (circumpolar/never-rises edge cases).
+        /// Returns the meridian transit time for a target on the night of the given session,
+        /// expressed in mean solar time (fixed UTC offset from longitude, no DST).
+        /// This ensures the ~4 min/night sidereal drift produces a clean monotonic line
+        /// on multi-night charts without DST discontinuities.
+        /// Returns null if no crossing is found.
         /// </summary>
         public static DateTime? GetMeridianTransitTime(double raHours, double lonDeg, DateTime sessionStart) {
-            // Anchor at 6 PM on the session date — nighttime transits (18:00–06:00)
-            // are centrally located so the ~4 min/night drift never crosses the boundary.
-            var evening = sessionStart.Date.AddHours(18);
-            if (sessionStart.Hour < 12) evening = evening.AddDays(-1); // after-midnight session
+            // Work entirely in UTC to avoid DST issues.
+            // Anchor at ~18:00 mean solar time in UTC.
+            double fixedOffsetHours = Math.Round(lonDeg / 15.0);
+            var eveningUtc = sessionStart.Date.ToUniversalTime().AddHours(18 - fixedOffsetHours);
+            if (sessionStart.Hour < 12) eveningUtc = eveningUtc.AddDays(-1);
 
             double targetRaDeg = raHours * 15.0;
             double? bestTime = null;
             double bestHa = 360;
 
             for (int m = 0; m <= 24 * 60; m++) {
-                var t = evening.AddMinutes(m);
-                var utc = t.Kind == DateTimeKind.Utc ? t : t.ToUniversalTime();
+                var utc = eveningUtc.AddMinutes(m);
                 double jd = ToJulianDate(utc);
                 double gmstDeg = GreenwichMeanSiderealTime(jd);
                 double lstDeg = ((gmstDeg + lonDeg) % 360 + 360) % 360;
@@ -228,8 +228,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 }
             }
 
-            if (bestTime.HasValue && bestHa < 1.0)
-                return evening.AddMinutes(bestTime.Value);
+            if (bestTime.HasValue && bestHa < 1.0) {
+                // Convert UTC transit back to mean solar time (fixed offset, no DST)
+                var transitUtc = eveningUtc.AddMinutes(bestTime.Value);
+                return transitUtc.AddHours(fixedOffsetHours);
+            }
 
             return null;
         }
