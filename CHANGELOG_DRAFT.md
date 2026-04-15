@@ -8,6 +8,9 @@
 - Tonight's Preview now shows a multi-target altitude chart instead of a flat timeline — each scheduled target's altitude curve is plotted over the imaging window with color-coded shading per imaging block and hover tooltips showing the target name and window times. Moon curve shown when enabled. Coordinates are resolved automatically from the Target Scheduler database.
 
 **Improvements**
+- Expanded metric chart options from 20 to 35 metrics — added Sky Temperature (user-requested), Sky Brightness, Wind Direction, Wind Gust, Mean ADU, Std Deviation, MAD, Exposure, Gain, Offset, Cooler Setpoint, Rotator Position, Position Angle, Min ADU, and Max ADU. All available as primary, secondary, or x-axis metrics on the main chart and any additional charts.
+- Now collecting all 12 ASCOM ObservingConditions weather fields (previously 8) — added Sky Brightness, Sky Temperature, Wind Direction, and Wind Gust so the data is stored even before new chart options use it
+- Metric combo boxes reordered by usefulness — most commonly used metrics (HFR, FWHM, Guiding RMS, Star Count) at top, niche metrics (Position Angle, Min/Max ADU) at bottom, grouped by category
 - Reorganized the plugin options page for easier navigation — high-frequency actions (Preview Report, Resend Previous Session) are now surfaced at the top, delivery channel settings and equipment profile are grouped behind collapsible sections, and the layout and labelling of controls is more consistent throughout
 - Gmail app password hint now links directly to myaccount.google.com/apppasswords instead of describing the navigation path
 

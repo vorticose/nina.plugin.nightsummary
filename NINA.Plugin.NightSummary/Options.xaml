@@ -11,7 +11,12 @@
 
                     <StackPanel Orientation="Horizontal" Margin="0,5,0,10">
                         <TextBlock Text="Detail Level" Width="200" VerticalAlignment="Top" Margin="0,4,0,0" />
-                        <ComboBox SelectedIndex="{Binding ReportDetailLevel}" MinWidth="160" VerticalAlignment="Top">
+                        <ComboBox SelectedIndex="{Binding ReportDetailLevel}" MinWidth="160" VerticalAlignment="Top" HorizontalContentAlignment="Left">
+                            <ComboBox.ItemContainerStyle>
+                                <Style TargetType="ComboBoxItem">
+                                    <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                                </Style>
+                            </ComboBox.ItemContainerStyle>
                             <ComboBoxItem>Snapshot</ComboBoxItem>
                             <ComboBoxItem>Standard</ComboBoxItem>
                             <ComboBoxItem>Full</ComboBoxItem>
@@ -38,7 +43,12 @@
                         <TextBlock Width="200" />
                         <ComboBox ItemsSource="{Binding AvailableSessions}"
                                   SelectedItem="{Binding SelectedSession}"
-                                  MinWidth="300">
+                                  MinWidth="300" HorizontalContentAlignment="Left">
+                            <ComboBox.ItemContainerStyle>
+                                <Style TargetType="ComboBoxItem">
+                                    <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                                </Style>
+                            </ComboBox.ItemContainerStyle>
                             <ComboBox.ItemTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding DisplayLabel}" TextWrapping="NoWrap" TextTrimming="None" />
@@ -466,80 +476,140 @@
                             <StackPanel Grid.Column="0">
                                 <StackPanel Orientation="Horizontal" Margin="0,3">
                                     <TextBlock Text="X-Axis" Width="180" VerticalAlignment="Center" />
-                                    <ComboBox SelectedIndex="{Binding ChartXAxisMetric}" MinWidth="160">
+                                    <ComboBox SelectedIndex="{Binding ChartXAxisMetric}" MinWidth="160" HorizontalContentAlignment="Left">
+                                        <ComboBox.ItemContainerStyle>
+                                            <Style TargetType="ComboBoxItem">
+                                                <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                                            </Style>
+                                        </ComboBox.ItemContainerStyle>
                                         <ComboBoxItem>Time</ComboBoxItem>
                                         <ComboBoxItem>Frame Index</ComboBoxItem>
                                         <ComboBoxItem>HFR</ComboBoxItem>
                                         <ComboBoxItem>FWHM</ComboBoxItem>
                                         <ComboBoxItem>Guiding RMS</ComboBoxItem>
+                                        <ComboBoxItem>Eccentricity</ComboBoxItem>
+                                        <ComboBoxItem>Star Count</ComboBoxItem>
                                         <ComboBoxItem>Focuser Temp (°C)</ComboBoxItem>
                                         <ComboBoxItem>Ambient Temp (°C)</ComboBoxItem>
-                                        <ComboBoxItem>Eccentricity</ComboBoxItem>
-                                        <ComboBoxItem>Altitude (°)</ComboBoxItem>
-                                        <ComboBoxItem>Airmass</ComboBoxItem>
-                                        <ComboBoxItem>Humidity (%)</ComboBoxItem>
-                                        <ComboBoxItem>Focuser Position (steps)</ComboBoxItem>
-                                        <ComboBoxItem>Sky Quality (mag/arcsec²)</ComboBoxItem>
-                                        <ComboBoxItem>Cloud Cover (%)</ComboBoxItem>
                                         <ComboBoxItem>Camera Temp (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Cooler Setpoint (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Altitude (°)</ComboBoxItem>
+                                        <ComboBoxItem>Azimuth (°)</ComboBoxItem>
+                                        <ComboBoxItem>Airmass</ComboBoxItem>
+                                        <ComboBoxItem>Position Angle (°)</ComboBoxItem>
+                                        <ComboBoxItem>Rotator Position (°)</ComboBoxItem>
+                                        <ComboBoxItem>Focuser Position (steps)</ComboBoxItem>
+                                        <ComboBoxItem>Seeing FWHM (arcsec)</ComboBoxItem>
+                                        <ComboBoxItem>Sky Quality (mag/arcsec²)</ComboBoxItem>
+                                        <ComboBoxItem>Sky Brightness (Lux)</ComboBoxItem>
+                                        <ComboBoxItem>Cloud Cover (%)</ComboBoxItem>
+                                        <ComboBoxItem>Sky Temp (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Humidity (%)</ComboBoxItem>
                                         <ComboBoxItem>Dew Point (°C)</ComboBoxItem>
                                         <ComboBoxItem>Wind Speed (m/s)</ComboBoxItem>
+                                        <ComboBoxItem>Wind Gust (m/s)</ComboBoxItem>
+                                        <ComboBoxItem>Wind Direction (°)</ComboBoxItem>
                                         <ComboBoxItem>Pressure (hPa)</ComboBoxItem>
-                                        <ComboBoxItem>Star Count</ComboBoxItem>
-                                        <ComboBoxItem>Azimuth (°)</ComboBoxItem>
-                                        <ComboBoxItem>Seeing FWHM (arcsec)</ComboBoxItem>
+                                        <ComboBoxItem>Exposure (s)</ComboBoxItem>
+                                        <ComboBoxItem>Gain</ComboBoxItem>
+                                        <ComboBoxItem>Offset</ComboBoxItem>
                                         <ComboBoxItem>Median ADU</ComboBoxItem>
+                                        <ComboBoxItem>Mean ADU</ComboBoxItem>
+                                        <ComboBoxItem>Std Deviation (ADU)</ComboBoxItem>
+                                        <ComboBoxItem>MAD (ADU)</ComboBoxItem>
+                                        <ComboBoxItem>Min ADU</ComboBoxItem>
+                                        <ComboBoxItem>Max ADU</ComboBoxItem>
                                     </ComboBox>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,3">
                                     <TextBlock Text="Primary Metric" Width="180" VerticalAlignment="Center" />
-                                    <ComboBox SelectedIndex="{Binding ChartPrimaryMetric}" MinWidth="160">
+                                    <ComboBox SelectedIndex="{Binding ChartPrimaryMetric}" MinWidth="160" HorizontalContentAlignment="Left">
+                                        <ComboBox.ItemContainerStyle>
+                                            <Style TargetType="ComboBoxItem">
+                                                <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                                            </Style>
+                                        </ComboBox.ItemContainerStyle>
                                         <ComboBoxItem>HFR</ComboBoxItem>
                                         <ComboBoxItem>FWHM</ComboBoxItem>
                                         <ComboBoxItem>Guiding RMS</ComboBoxItem>
+                                        <ComboBoxItem>Eccentricity</ComboBoxItem>
+                                        <ComboBoxItem>Star Count</ComboBoxItem>
                                         <ComboBoxItem>Focuser Temp (°C)</ComboBoxItem>
                                         <ComboBoxItem>Ambient Temp (°C)</ComboBoxItem>
-                                        <ComboBoxItem>Eccentricity</ComboBoxItem>
-                                        <ComboBoxItem>Altitude (°)</ComboBoxItem>
-                                        <ComboBoxItem>Airmass</ComboBoxItem>
-                                        <ComboBoxItem>Humidity (%)</ComboBoxItem>
-                                        <ComboBoxItem>Focuser Position (steps)</ComboBoxItem>
-                                        <ComboBoxItem>Sky Quality (mag/arcsec²)</ComboBoxItem>
-                                        <ComboBoxItem>Cloud Cover (%)</ComboBoxItem>
                                         <ComboBoxItem>Camera Temp (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Cooler Setpoint (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Altitude (°)</ComboBoxItem>
+                                        <ComboBoxItem>Azimuth (°)</ComboBoxItem>
+                                        <ComboBoxItem>Airmass</ComboBoxItem>
+                                        <ComboBoxItem>Position Angle (°)</ComboBoxItem>
+                                        <ComboBoxItem>Rotator Position (°)</ComboBoxItem>
+                                        <ComboBoxItem>Focuser Position (steps)</ComboBoxItem>
+                                        <ComboBoxItem>Seeing FWHM (arcsec)</ComboBoxItem>
+                                        <ComboBoxItem>Sky Quality (mag/arcsec²)</ComboBoxItem>
+                                        <ComboBoxItem>Sky Brightness (Lux)</ComboBoxItem>
+                                        <ComboBoxItem>Cloud Cover (%)</ComboBoxItem>
+                                        <ComboBoxItem>Sky Temp (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Humidity (%)</ComboBoxItem>
                                         <ComboBoxItem>Dew Point (°C)</ComboBoxItem>
                                         <ComboBoxItem>Wind Speed (m/s)</ComboBoxItem>
+                                        <ComboBoxItem>Wind Gust (m/s)</ComboBoxItem>
+                                        <ComboBoxItem>Wind Direction (°)</ComboBoxItem>
                                         <ComboBoxItem>Pressure (hPa)</ComboBoxItem>
-                                        <ComboBoxItem>Star Count</ComboBoxItem>
-                                        <ComboBoxItem>Azimuth (°)</ComboBoxItem>
-                                        <ComboBoxItem>Seeing FWHM (arcsec)</ComboBoxItem>
+                                        <ComboBoxItem>Exposure (s)</ComboBoxItem>
+                                        <ComboBoxItem>Gain</ComboBoxItem>
+                                        <ComboBoxItem>Offset</ComboBoxItem>
                                         <ComboBoxItem>Median ADU</ComboBoxItem>
+                                        <ComboBoxItem>Mean ADU</ComboBoxItem>
+                                        <ComboBoxItem>Std Deviation (ADU)</ComboBoxItem>
+                                        <ComboBoxItem>MAD (ADU)</ComboBoxItem>
+                                        <ComboBoxItem>Min ADU</ComboBoxItem>
+                                        <ComboBoxItem>Max ADU</ComboBoxItem>
                                     </ComboBox>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,3">
                                     <TextBlock Text="Secondary Metric" Width="180" VerticalAlignment="Center" />
-                                    <ComboBox SelectedIndex="{Binding ChartSecondaryMetric}" MinWidth="160">
+                                    <ComboBox SelectedIndex="{Binding ChartSecondaryMetric}" MinWidth="160" HorizontalContentAlignment="Left">
+                                        <ComboBox.ItemContainerStyle>
+                                            <Style TargetType="ComboBoxItem">
+                                                <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                                            </Style>
+                                        </ComboBox.ItemContainerStyle>
                                         <ComboBoxItem>None</ComboBoxItem>
                                         <ComboBoxItem>HFR</ComboBoxItem>
                                         <ComboBoxItem>FWHM</ComboBoxItem>
                                         <ComboBoxItem>Guiding RMS</ComboBoxItem>
+                                        <ComboBoxItem>Eccentricity</ComboBoxItem>
+                                        <ComboBoxItem>Star Count</ComboBoxItem>
                                         <ComboBoxItem>Focuser Temp (°C)</ComboBoxItem>
                                         <ComboBoxItem>Ambient Temp (°C)</ComboBoxItem>
-                                        <ComboBoxItem>Eccentricity</ComboBoxItem>
-                                        <ComboBoxItem>Altitude (°)</ComboBoxItem>
-                                        <ComboBoxItem>Airmass</ComboBoxItem>
-                                        <ComboBoxItem>Humidity (%)</ComboBoxItem>
-                                        <ComboBoxItem>Focuser Position (steps)</ComboBoxItem>
-                                        <ComboBoxItem>Sky Quality (mag/arcsec²)</ComboBoxItem>
-                                        <ComboBoxItem>Cloud Cover (%)</ComboBoxItem>
                                         <ComboBoxItem>Camera Temp (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Cooler Setpoint (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Altitude (°)</ComboBoxItem>
+                                        <ComboBoxItem>Azimuth (°)</ComboBoxItem>
+                                        <ComboBoxItem>Airmass</ComboBoxItem>
+                                        <ComboBoxItem>Position Angle (°)</ComboBoxItem>
+                                        <ComboBoxItem>Rotator Position (°)</ComboBoxItem>
+                                        <ComboBoxItem>Focuser Position (steps)</ComboBoxItem>
+                                        <ComboBoxItem>Seeing FWHM (arcsec)</ComboBoxItem>
+                                        <ComboBoxItem>Sky Quality (mag/arcsec²)</ComboBoxItem>
+                                        <ComboBoxItem>Sky Brightness (Lux)</ComboBoxItem>
+                                        <ComboBoxItem>Cloud Cover (%)</ComboBoxItem>
+                                        <ComboBoxItem>Sky Temp (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Humidity (%)</ComboBoxItem>
                                         <ComboBoxItem>Dew Point (°C)</ComboBoxItem>
                                         <ComboBoxItem>Wind Speed (m/s)</ComboBoxItem>
+                                        <ComboBoxItem>Wind Gust (m/s)</ComboBoxItem>
+                                        <ComboBoxItem>Wind Direction (°)</ComboBoxItem>
                                         <ComboBoxItem>Pressure (hPa)</ComboBoxItem>
-                                        <ComboBoxItem>Star Count</ComboBoxItem>
-                                        <ComboBoxItem>Azimuth (°)</ComboBoxItem>
-                                        <ComboBoxItem>Seeing FWHM (arcsec)</ComboBoxItem>
+                                        <ComboBoxItem>Exposure (s)</ComboBoxItem>
+                                        <ComboBoxItem>Gain</ComboBoxItem>
+                                        <ComboBoxItem>Offset</ComboBoxItem>
                                         <ComboBoxItem>Median ADU</ComboBoxItem>
+                                        <ComboBoxItem>Mean ADU</ComboBoxItem>
+                                        <ComboBoxItem>Std Deviation (ADU)</ComboBoxItem>
+                                        <ComboBoxItem>MAD (ADU)</ComboBoxItem>
+                                        <ComboBoxItem>Min ADU</ComboBoxItem>
+                                        <ComboBoxItem>Max ADU</ComboBoxItem>
                                     </ComboBox>
                                 </StackPanel>
                             </StackPanel>
@@ -547,8 +617,9 @@
                                        Margin="20,0,0,0" MaxWidth="300" VerticalAlignment="Center">
                                 FWHM and Eccentricity require the Hocus Focus plugin. Focuser Temp requires a focuser with a built-in temperature sensor.
                                 Ambient Temp, Humidity, Dew Point, Wind Speed, and Pressure require a device connected as a NINA weather data source (e.g. Pegasus UPB, AAG CloudWatcher).
-                                Sky Quality requires a sky quality meter and Cloud Cover requires a cloud sensor, both connected as NINA weather data sources.
-                                Focuser Position requires a motorized focuser.
+                                Sky Quality, Cloud Cover, Sky Temp, Sky Brightness, Wind Direction, and Wind Gust require an ASCOM ObservingConditions device with the corresponding sensor.
+                                Focuser Position requires a motorized focuser. Rotator Position requires a connected rotator. Cooler Setpoint requires a cooled camera.
+                                Image statistics (Median, Mean, StDev, MAD, Min, Max ADU) are captured automatically from each saved image.
                             </TextBlock>
                         </Grid>
 
@@ -563,20 +634,38 @@
                                             <TextBlock Text="X-Axis" Width="180" VerticalAlignment="Center" />
                                             <ComboBox SelectedIndex="{Binding XAxis, Mode=TwoWay}"
                                                       ItemsSource="{Binding DataContext.XAxisMetricNames, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                      MinWidth="160" />
+                                                      MinWidth="160" HorizontalContentAlignment="Left">
+                                                <ComboBox.ItemContainerStyle>
+                                                    <Style TargetType="ComboBoxItem">
+                                                        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                                                    </Style>
+                                                </ComboBox.ItemContainerStyle>
+                                            </ComboBox>
                                         </StackPanel>
                                         <StackPanel Orientation="Horizontal" Margin="0,2">
                                             <TextBlock Text="Primary Metric" Width="180" VerticalAlignment="Center" />
                                             <ComboBox SelectedIndex="{Binding Primary, Mode=TwoWay}"
                                                       ItemsSource="{Binding DataContext.PrimaryMetricNames, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                      MinWidth="160" />
+                                                      MinWidth="160" HorizontalContentAlignment="Left">
+                                                <ComboBox.ItemContainerStyle>
+                                                    <Style TargetType="ComboBoxItem">
+                                                        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                                                    </Style>
+                                                </ComboBox.ItemContainerStyle>
+                                            </ComboBox>
                                             <Button Content="✕" Click="RemoveChart_Click" Margin="8,0,0,0" MinWidth="30" ToolTip="Remove this chart" />
                                         </StackPanel>
                                         <StackPanel Orientation="Horizontal" Margin="0,2">
                                             <TextBlock Text="Secondary Metric" Width="180" VerticalAlignment="Center" />
                                             <ComboBox SelectedIndex="{Binding Secondary, Mode=TwoWay}"
                                                       ItemsSource="{Binding DataContext.SecondaryMetricNames, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                      MinWidth="160" />
+                                                      MinWidth="160" HorizontalContentAlignment="Left">
+                                                <ComboBox.ItemContainerStyle>
+                                                    <Style TargetType="ComboBoxItem">
+                                                        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                                                    </Style>
+                                                </ComboBox.ItemContainerStyle>
+                                            </ComboBox>
                                         </StackPanel>
                                     </StackPanel>
                                 </DataTemplate>

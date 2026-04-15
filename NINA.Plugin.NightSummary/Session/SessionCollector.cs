@@ -1,14 +1,19 @@
 ﻿using NINA.Core.Enum;
 using NINA.Core.Utility;
+using NINA.Image;
 using NINA.Image.Interfaces;
 using NINA.Plugin.NightSummary.Data;
 using NINA.Sequencer.Interfaces;
 using NINA.Sequencer.Interfaces.Mediator;
 using NINA.Sequencer.SequenceItem;
 using NINA.WPF.Base.Interfaces.Mediator;
+using NINA.WPF.Base.Interfaces.ViewModel;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.ComponentModel;
+using System.IO;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,6 +23,7 @@ namespace NINA.Plugin.NightSummary.Session {
         private readonly SessionDatabase database;
         private readonly IImageSaveMediator imageSaveMediator;
         private readonly ISequenceMediator sequenceMediator;
+        private readonly IThumbnailVM thumbnailVM;
         private SessionRecord currentSession;
         private bool isCollecting = false;
 
@@ -26,14 +32,25 @@ namespace NINA.Plugin.NightSummary.Session {
         private readonly HashSet<int> trackedItems = new HashSet<int>();
         private int skippedExposures = 0;
 
+        // Manual grading tracking (thumbnail subscription — dormant, ThumbnailVM is internal)
+        private readonly HashSet<Thumbnail> subscribedThumbnails = new HashSet<Thumbnail>();
+
+        // File-based manual grade tracking via FileSystemWatcher
+        private readonly ConcurrentDictionary<string, DateTime> _pathToTimestamp
+            = new ConcurrentDictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, FileSystemWatcher> _directoryWatchers
+            = new Dictionary<string, FileSystemWatcher>(StringComparer.OrdinalIgnoreCase);
+        private readonly object _watcherLock = new object();
+
         public SessionDatabase Database { get; private set; }
         public int SkippedExposures => skippedExposures;
 
-        public SessionCollector(IImageSaveMediator imageSaveMediator, ISequenceMediator sequenceMediator, SessionDatabase database) {
+        public SessionCollector(IImageSaveMediator imageSaveMediator, ISequenceMediator sequenceMediator, SessionDatabase database, IThumbnailVM thumbnailVM = null) {
             this.imageSaveMediator = imageSaveMediator;
             this.sequenceMediator = sequenceMediator;
             this.database = database;
             this.Database = database;
+            this.thumbnailVM = thumbnailVM;
         }
 
         public void StartSession(string profileName) {
@@ -50,6 +67,19 @@ namespace NINA.Plugin.NightSummary.Session {
             database.CreateSession(currentSession);
             imageSaveMediator.ImageSaved += OnImageSaved;
 
+            // Subscribe to manual grading events from NINA's thumbnail panel
+            if (thumbnailVM != null) {
+                ((INotifyCollectionChanged)thumbnailVM.Thumbnails).CollectionChanged += OnThumbnailsChanged;
+                subscribedThumbnails.Clear();
+            }
+
+            // Reset file-based grade tracking
+            _pathToTimestamp.Clear();
+            lock (_watcherLock) {
+                foreach (var w in _directoryWatchers.Values) { w.Renamed -= OnFileRenamed; w.Dispose(); }
+                _directoryWatchers.Clear();
+            }
+
             // Start monitoring for skipped exposures
             skippedExposures = 0;
             trackedItems.Clear();
@@ -63,6 +93,21 @@ namespace NINA.Plugin.NightSummary.Session {
         public void EndSession() {
             if (!isCollecting) return;
             imageSaveMediator.ImageSaved -= OnImageSaved;
+
+            // Unsubscribe manual grading listeners
+            if (thumbnailVM != null) {
+                ((INotifyCollectionChanged)thumbnailVM.Thumbnails).CollectionChanged -= OnThumbnailsChanged;
+                foreach (var t in subscribedThumbnails)
+                    ((INotifyPropertyChanged)t).PropertyChanged -= OnThumbnailPropertyChanged;
+                subscribedThumbnails.Clear();
+            }
+
+            // Dispose file-based grade watchers
+            lock (_watcherLock) {
+                foreach (var w in _directoryWatchers.Values) { w.Renamed -= OnFileRenamed; w.Dispose(); }
+                _directoryWatchers.Clear();
+            }
+            _pathToTimestamp.Clear();
 
             // Stop skip monitoring
             skipPollTimer?.Dispose();
@@ -185,6 +230,10 @@ namespace NINA.Plugin.NightSummary.Session {
                     DewPoint         = NullIfNaN(e.MetaData?.WeatherData?.DewPoint),
                     WindSpeed        = NullIfNaN(e.MetaData?.WeatherData?.WindSpeed),
                     Pressure         = NullIfNaN(e.MetaData?.WeatherData?.Pressure),
+                    SkyBrightness    = NullIfNaN(e.MetaData?.WeatherData?.SkyBrightness),
+                    SkyTemperature   = NullIfNaN(e.MetaData?.WeatherData?.SkyTemperature),
+                    WindDirection    = NullIfNaN(e.MetaData?.WeatherData?.WindDirection),
+                    WindGust         = NullIfNaN(e.MetaData?.WeatherData?.WindGust),
                     // TS grading fields — populated at session end via UpdateImageGradingFromTs
                     GradingStatus    = -1,
                     // Frame type
@@ -213,8 +262,59 @@ namespace NINA.Plugin.NightSummary.Session {
 
                 database.SaveImageRecord(record);
                 Logger.Debug($"NightSummary: Recorded image - Target={record.TargetName}, Filter={record.Filter}, HFR={record.HFR:F2}, GuidingRMS={record.GuidingRMSTotal:F2}\"");
+
+                // Track file path so FileSystemWatcher can match renames to DB records
+                var filePath = e.PathToImage?.LocalPath;
+                if (!string.IsNullOrEmpty(filePath)) {
+                    _pathToTimestamp[filePath] = record.Timestamp;
+                    EnsureWatching(Path.GetDirectoryName(filePath));
+                }
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to record image. {ex.Message}");
+            }
+        }
+
+        private void EnsureWatching(string directory) {
+            if (string.IsNullOrEmpty(directory)) return;
+            lock (_watcherLock) {
+                if (_directoryWatchers.ContainsKey(directory)) return;
+                try {
+                    var watcher = new FileSystemWatcher(directory) {
+                        NotifyFilter = NotifyFilters.FileName,
+                        EnableRaisingEvents = true
+                    };
+                    watcher.Renamed += OnFileRenamed;
+                    _directoryWatchers[directory] = watcher;
+                    Logger.Debug($"NightSummary: Watching {directory} for manual grade changes");
+                } catch (Exception ex) {
+                    Logger.Warning($"NightSummary: Could not watch {directory} for grade changes: {ex.Message}");
+                }
+            }
+        }
+
+        private void OnFileRenamed(object sender, RenamedEventArgs e) {
+            if (currentSession == null) return;
+            try {
+                var oldName = Path.GetFileName(e.OldFullPath);
+                var newName = Path.GetFileName(e.FullPath);
+
+                if (newName.StartsWith("BAD_", StringComparison.OrdinalIgnoreCase)) {
+                    // Reject: image.fits → BAD_image.fits
+                    if (_pathToTimestamp.TryRemove(e.OldFullPath, out var ts)) {
+                        _pathToTimestamp[e.FullPath] = ts;
+                        int rows = database.UpdateImageAccepted(currentSession.SessionId, ts, accepted: false, rejectReason: "Manual");
+                        Logger.Debug($"NightSummary: Manual reject — {oldName} → {newName} ({rows} row(s) updated)");
+                    }
+                } else if (oldName.StartsWith("BAD_", StringComparison.OrdinalIgnoreCase)) {
+                    // Un-reject: BAD_image.fits → image.fits
+                    if (_pathToTimestamp.TryRemove(e.OldFullPath, out var ts)) {
+                        _pathToTimestamp[e.FullPath] = ts;
+                        int rows = database.UpdateImageAccepted(currentSession.SessionId, ts, accepted: true, rejectReason: "");
+                        Logger.Debug($"NightSummary: Manual un-reject — {oldName} → {newName} ({rows} row(s) updated)");
+                    }
+                }
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Error in file rename handler: {ex.Message}");
             }
         }
 
@@ -225,5 +325,29 @@ namespace NINA.Plugin.NightSummary.Session {
 
         private static double? NullIfNaN(double? value) =>
             value.HasValue && !double.IsNaN(value.Value) ? value : null;
+
+        // ── Manual rejection tracking ────────────────────────────────────────
+
+        private void OnThumbnailsChanged(object sender, NotifyCollectionChangedEventArgs e) {
+            if (e.NewItems == null) return;
+            foreach (Thumbnail t in e.NewItems) {
+                if (subscribedThumbnails.Add(t))
+                    ((INotifyPropertyChanged)t).PropertyChanged += OnThumbnailPropertyChanged;
+            }
+        }
+
+        private void OnThumbnailPropertyChanged(object sender, PropertyChangedEventArgs e) {
+            if (e.PropertyName != nameof(Thumbnail.Grade)) return;
+            if (currentSession == null) return;
+            var t = (Thumbnail)sender;
+            // NINA cycles Grade: "" (accepted) → "BAD" (rejected) → "" (accepted again)
+            bool accepted = string.IsNullOrEmpty(t.Grade);
+            try {
+                int rows = database.UpdateImageAccepted(currentSession.SessionId, t.Date, accepted);
+                Logger.Debug($"NightSummary: Manual grade '{(accepted ? "accepted" : "rejected")}' for image at {t.Date:HH:mm:ss} ({rows} row(s) updated)");
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Failed to record manual grade: {ex.Message}");
+            }
+        }
     }
 }

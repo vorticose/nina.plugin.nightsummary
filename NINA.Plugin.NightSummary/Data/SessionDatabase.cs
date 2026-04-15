@@ -454,6 +454,10 @@ namespace NINA.Plugin.NightSummary.Data {
                         DewPoint REAL,
                         WindSpeed REAL,
                         Pressure REAL,
+                        SkyBrightness REAL,
+                        SkyTemperature REAL,
+                        WindDirection REAL,
+                        WindGust REAL,
                         GradingStatus INTEGER DEFAULT -1,
                         RejectReason TEXT,
                         ImageType TEXT,
@@ -550,6 +554,10 @@ namespace NINA.Plugin.NightSummary.Data {
                 MigrateAddColumn(conn, "Images",        "StatMin",          "INTEGER");
                 MigrateAddColumn(conn, "Images",        "StatMax",          "INTEGER");
                 MigrateAddColumn(conn, "Images",        "StatBitDepth",     "INTEGER");
+                MigrateAddColumn(conn, "Images",        "SkyBrightness",    "REAL");
+                MigrateAddColumn(conn, "Images",        "SkyTemperature",   "REAL");
+                MigrateAddColumn(conn, "Images",        "WindDirection",    "REAL");
+                MigrateAddColumn(conn, "Images",        "WindGust",         "REAL");
 
                 // Index to keep session-list enrichment queries fast even on DBs with
                 // hundreds of sessions and 100k+ images (subqueries per-session).
@@ -719,6 +727,7 @@ namespace NINA.Plugin.NightSummary.Data {
                         Gain, Offset, Binning, CameraTemp, CoolerSetpoint,
                         FocuserPosition, RotatorPosition, PositionAngle,
                         Humidity, DewPoint, WindSpeed, Pressure,
+                        SkyBrightness, SkyTemperature, WindDirection, WindGust,
                         GradingStatus, RejectReason,
                         ImageType, Altitude, Azimuth, Airmass, SideOfPier, ReadoutMode, SkyQuality, CloudCover, SeeingFWHM,
                         StatMedian, StatMean, StatStDev, StatMAD, StatMin, StatMax, StatBitDepth)
@@ -729,6 +738,7 @@ namespace NINA.Plugin.NightSummary.Data {
                         @Gain, @Offset, @Binning, @CameraTemp, @CoolerSetpoint,
                         @FocuserPosition, @RotatorPosition, @PositionAngle,
                         @Humidity, @DewPoint, @WindSpeed, @Pressure,
+                        @SkyBrightness, @SkyTemperature, @WindDirection, @WindGust,
                         @GradingStatus, @RejectReason,
                         @ImageType, @Altitude, @Azimuth, @Airmass, @SideOfPier, @ReadoutMode, @SkyQuality, @CloudCover, @SeeingFWHM,
                         @StatMedian, @StatMean, @StatStDev, @StatMAD, @StatMin, @StatMax, @StatBitDepth)";
@@ -762,6 +772,10 @@ namespace NINA.Plugin.NightSummary.Data {
                     cmd.Parameters.AddWithValue("@DewPoint",        image.DewPoint.HasValue        ? (object)image.DewPoint.Value        : DBNull.Value);
                     cmd.Parameters.AddWithValue("@WindSpeed",       image.WindSpeed.HasValue       ? (object)image.WindSpeed.Value       : DBNull.Value);
                     cmd.Parameters.AddWithValue("@Pressure",        image.Pressure.HasValue        ? (object)image.Pressure.Value        : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@SkyBrightness",  image.SkyBrightness.HasValue  ? (object)image.SkyBrightness.Value  : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@SkyTemperature", image.SkyTemperature.HasValue ? (object)image.SkyTemperature.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@WindDirection",  image.WindDirection.HasValue   ? (object)image.WindDirection.Value  : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@WindGust",       image.WindGust.HasValue        ? (object)image.WindGust.Value       : DBNull.Value);
                     cmd.Parameters.AddWithValue("@GradingStatus",   image.GradingStatus);
                     cmd.Parameters.AddWithValue("@RejectReason",    image.RejectReason != null     ? (object)image.RejectReason          : DBNull.Value);
                     cmd.Parameters.AddWithValue("@ImageType",       image.ImageType    != null     ? (object)image.ImageType             : DBNull.Value);
@@ -827,6 +841,10 @@ namespace NINA.Plugin.NightSummary.Data {
                                 DewPoint        = reader["DewPoint"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["DewPoint"]),
                                 WindSpeed       = reader["WindSpeed"]       == DBNull.Value ? (double?)null : Convert.ToDouble(reader["WindSpeed"]),
                                 Pressure        = reader["Pressure"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["Pressure"]),
+                                SkyBrightness   = reader["SkyBrightness"]   == DBNull.Value ? (double?)null : Convert.ToDouble(reader["SkyBrightness"]),
+                                SkyTemperature  = reader["SkyTemperature"]  == DBNull.Value ? (double?)null : Convert.ToDouble(reader["SkyTemperature"]),
+                                WindDirection   = reader["WindDirection"]   == DBNull.Value ? (double?)null : Convert.ToDouble(reader["WindDirection"]),
+                                WindGust        = reader["WindGust"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["WindGust"]),
                                 GradingStatus   = reader["GradingStatus"]   == DBNull.Value ? -1 : Convert.ToInt32(reader["GradingStatus"]),
                                 RejectReason    = reader["RejectReason"]    == DBNull.Value ? null : reader["RejectReason"].ToString(),
                                 ImageType       = reader["ImageType"]       == DBNull.Value ? null : reader["ImageType"].ToString(),
@@ -1235,6 +1253,35 @@ namespace NINA.Plugin.NightSummary.Data {
                         }
                     }
                     tx.Commit();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Updates the Accepted flag for a single image matched by session and capture timestamp.
+        /// Uses a ±5-second tolerance to accommodate slight clock differences between
+        /// NINA's image-saved event and the thumbnail view model.
+        /// Called when the user manually grades (or un-grades) a frame in NINA's thumbnail panel.
+        /// </summary>
+        public int UpdateImageAccepted(string sessionId, DateTime timestamp, bool accepted, string rejectReason = null) {
+            using (var conn = new SQLiteConnection(connectionString)) {
+                conn.Open();
+                // rejectReason null = leave existing reason unchanged (preserves TS-set reasons).
+                // Empty string = clear reason (used when un-rejecting).
+                string sql = rejectReason != null
+                    ? @"UPDATE Images SET Accepted = @Accepted, RejectReason = @RejectReason
+                        WHERE SessionId = @SessionId
+                          AND ABS(JULIANDAY(Timestamp) - JULIANDAY(@Timestamp)) * 86400.0 <= 5.0"
+                    : @"UPDATE Images SET Accepted = @Accepted
+                        WHERE SessionId = @SessionId
+                          AND ABS(JULIANDAY(Timestamp) - JULIANDAY(@Timestamp)) * 86400.0 <= 5.0";
+                using (var cmd = new SQLiteCommand(sql, conn)) {
+                    cmd.Parameters.AddWithValue("@SessionId", sessionId);
+                    cmd.Parameters.AddWithValue("@Timestamp", timestamp.ToString("o"));
+                    cmd.Parameters.AddWithValue("@Accepted",  accepted ? 1 : 0);
+                    if (rejectReason != null)
+                        cmd.Parameters.AddWithValue("@RejectReason", rejectReason.Length > 0 ? (object)rejectReason : DBNull.Value);
+                    return cmd.ExecuteNonQuery();
                 }
             }
         }
