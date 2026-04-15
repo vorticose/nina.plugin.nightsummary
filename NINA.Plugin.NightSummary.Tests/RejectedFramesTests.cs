@@ -156,7 +156,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
             var html = await _gen.GenerateHtmlReport(data);
 
-            Assert.Contains("2 images rejected", html);
+            Assert.Contains("2 rejected", html);
         }
 
         [Fact]
@@ -166,8 +166,8 @@ namespace NINA.Plugin.NightSummary.Tests {
 
             var html = await _gen.GenerateHtmlReport(data);
 
-            Assert.Contains("3 exposures aborted mid-shot", html);
-            Assert.Contains("1 image rejected", html);
+            Assert.Contains("3 aborted", html);
+            Assert.Contains("1 rejected", html);
         }
 
         // ── Report: filter table ──────────────────────────────────────────────

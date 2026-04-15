@@ -316,11 +316,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var rejectedCount = data.Images.Count(i => !i.Accepted);
             var qualityNotes = new System.Text.StringBuilder();
             if (data.SkippedExposures > 0)
-                qualityNotes.Append($"<div style='font-size:11px; color:var(--skip-color); margin-bottom:4px;'>{data.SkippedExposures} exposure{(data.SkippedExposures == 1 ? "" : "s")} aborted mid-shot</div>");
+                qualityNotes.Append($"<div style='font-size:12px; font-weight:bold; color:var(--skip-color); margin-bottom:2px;'>{data.SkippedExposures} aborted</div>");
             if (rejectedCount > 0)
-                qualityNotes.Append($"<div style='font-size:11px; color:var(--skip-color); margin-bottom:4px;'>{rejectedCount} image{(rejectedCount == 1 ? "" : "s")} rejected</div>");
+                qualityNotes.Append($"<div style='font-size:12px; font-weight:bold; color:var(--skip-color); margin-bottom:2px;'>{rejectedCount} rejected</div>");
             var imageBreakdownWithNotes = qualityNotes.Length > 0
-                ? qualityNotes.ToString() + imageBreakdown
+                ? $"<div style='margin-bottom:8px;'>{qualityNotes}</div>{imageBreakdown}"
                 : imageBreakdown.ToString();
             sb.AppendLine($"<div class='stat-box'><details class='stat-breakdown'><summary><div class='stat-value'>{data.Images.Count}</div><div class='stat-label'>Total Images</div></summary>{imageBreakdownWithNotes}</details></div>");
             sb.AppendLine($"<div class='stat-box'><details class='stat-breakdown'><summary><div class='stat-value'>{TimeSpan.FromSeconds(totalExposureSec).TotalHours:F1}h</div><div class='stat-label'>Total Exposure</div></summary>{expBreakdown}</details></div>");
