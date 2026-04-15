@@ -302,14 +302,14 @@ namespace NINA.Plugin.NightSummary.Session {
                     // Reject: image.fits → BAD_image.fits
                     if (_pathToTimestamp.TryRemove(e.OldFullPath, out var ts)) {
                         _pathToTimestamp[e.FullPath] = ts;
-                        int rows = database.UpdateImageAccepted(currentSession.SessionId, ts, accepted: false);
+                        int rows = database.UpdateImageAccepted(currentSession.SessionId, ts, accepted: false, rejectReason: "Manual");
                         Logger.Debug($"NightSummary: Manual reject — {oldName} → {newName} ({rows} row(s) updated)");
                     }
                 } else if (oldName.StartsWith("BAD_", StringComparison.OrdinalIgnoreCase)) {
                     // Un-reject: BAD_image.fits → image.fits
                     if (_pathToTimestamp.TryRemove(e.OldFullPath, out var ts)) {
                         _pathToTimestamp[e.FullPath] = ts;
-                        int rows = database.UpdateImageAccepted(currentSession.SessionId, ts, accepted: true);
+                        int rows = database.UpdateImageAccepted(currentSession.SessionId, ts, accepted: true, rejectReason: "");
                         Logger.Debug($"NightSummary: Manual un-reject — {oldName} → {newName} ({rows} row(s) updated)");
                     }
                 }
