@@ -706,18 +706,44 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 }
 
                 // Session filter table
+                bool hasRejections = target.Any(i => !i.Accepted);
                 sb.AppendLine("<table>");
-                sb.AppendLine("<tr><th>Filter</th><th>Images</th><th>Exposure</th><th>Total Time</th></tr>");
+                sb.AppendLine(hasRejections
+                    ? "<tr><th>Filter</th><th>Images</th><th>Rejected</th><th>Exposure</th><th>Total Time</th></tr>"
+                    : "<tr><th>Filter</th><th>Images</th><th>Exposure</th><th>Total Time</th></tr>");
                 var filterGroups = target
                     .GroupBy(i => (i.Filter, i.ExposureDuration))
                     .OrderBy(g => FilterSortKey(g.Key.Filter)).ThenBy(g => g.Key.Filter).ThenBy(g => g.Key.ExposureDuration);
                 foreach (var filterGroup in filterGroups) {
-                    var totalTime = TimeSpan.FromSeconds(filterGroup.Sum(i => i.ExposureDuration));
-                    sb.AppendLine($"<tr><td>{filterGroup.Key.Filter}</td><td>{filterGroup.Count()}</td><td>{filterGroup.Key.ExposureDuration:F0}s</td><td>{FormatDuration(totalTime.TotalSeconds)}</td></tr>");
+                    var totalTime     = TimeSpan.FromSeconds(filterGroup.Sum(i => i.ExposureDuration));
+                    var rejectedCount = filterGroup.Count(i => !i.Accepted);
+                    if (hasRejections)
+                        sb.AppendLine($"<tr><td>{filterGroup.Key.Filter}</td><td>{filterGroup.Count()}</td><td>{(rejectedCount > 0 ? rejectedCount.ToString() : "—")}</td><td>{filterGroup.Key.ExposureDuration:F0}s</td><td>{FormatDuration(totalTime.TotalSeconds)}</td></tr>");
+                    else
+                        sb.AppendLine($"<tr><td>{filterGroup.Key.Filter}</td><td>{filterGroup.Count()}</td><td>{filterGroup.Key.ExposureDuration:F0}s</td><td>{FormatDuration(totalTime.TotalSeconds)}</td></tr>");
                 }
-                var targetTotal = TimeSpan.FromSeconds(target.Sum(i => i.ExposureDuration));
-                sb.AppendLine($"<tr><td><strong>Total</strong></td><td><strong>{target.Count()}</strong></td><td></td><td><strong>{FormatDuration(targetTotal.TotalSeconds)}</strong></td></tr>");
+                var targetTotal         = TimeSpan.FromSeconds(target.Sum(i => i.ExposureDuration));
+                var targetRejectedTotal = target.Count(i => !i.Accepted);
+                if (hasRejections)
+                    sb.AppendLine($"<tr><td><strong>Total</strong></td><td><strong>{target.Count()}</strong></td><td><strong>{targetRejectedTotal}</strong></td><td></td><td><strong>{FormatDuration(targetTotal.TotalSeconds)}</strong></td></tr>");
+                else
+                    sb.AppendLine($"<tr><td><strong>Total</strong></td><td><strong>{target.Count()}</strong></td><td></td><td><strong>{FormatDuration(targetTotal.TotalSeconds)}</strong></td></tr>");
                 sb.AppendLine("</table>");
+
+                // TS rejection reason breakdown (shown only when TS-graded rejections exist)
+                var tsRejections = target
+                    .Where(i => !i.Accepted && !string.IsNullOrEmpty(i.RejectReason))
+                    .GroupBy(i => i.RejectReason)
+                    .OrderByDescending(g => g.Count())
+                    .ToList();
+                if (tsRejections.Any()) {
+                    sb.AppendLine("<p style='margin:8px 0 4px; font-size:12px; color:var(--muted);'><strong>Rejection reasons (Target Scheduler)</strong></p>");
+                    sb.AppendLine("<table class='star-count-table'>");
+                    sb.AppendLine("<tr><th>Reason</th><th>Count</th></tr>");
+                    foreach (var g in tsRejections)
+                        sb.AppendLine($"<tr><td>{System.Web.HttpUtility.HtmlEncode(g.Key)}</td><td>{g.Count()}</td></tr>");
+                    sb.AppendLine("</table>");
+                }
 
                 if (detailLevel >= 1 && SettingsManager.Instance.Current.ShowStarCountCV) {
                     // Star count CV

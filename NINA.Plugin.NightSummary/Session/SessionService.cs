@@ -7,6 +7,7 @@ using NINA.Plugin.NightSummary.Reporting;
 using NINA.Profile.Interfaces;
 using NINA.Sequencer.Interfaces.Mediator;
 using NINA.WPF.Base.Interfaces.Mediator;
+using NINA.WPF.Base.Interfaces.ViewModel;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
@@ -57,12 +58,13 @@ namespace NINA.Plugin.NightSummary.Session {
             IFlatDeviceMediator    flatDeviceMediator,
             IWeatherDataMediator   weatherDataMediator,
             ISwitchMediator        switchMediator,
-            IMessageBroker         messageBroker)
+            IMessageBroker         messageBroker,
+            IThumbnailVM           thumbnailVM)
             : this(imageSaveMediator, profileService, safetyMonitorMediator,
                    focuserMediator, telescopeMediator, cameraMediator, sequenceMediator,
                    filterWheelMediator, rotatorMediator, guiderMediator,
                    domeMediator, flatDeviceMediator, weatherDataMediator, switchMediator,
-                   messageBroker, databasePath: null) { }
+                   messageBroker, thumbnailVM, databasePath: null) { }
 
         /// <summary>
         /// Internal constructor for test replay. Accepts an explicit database path
@@ -85,6 +87,7 @@ namespace NINA.Plugin.NightSummary.Session {
             IWeatherDataMediator   weatherDataMediator,
             ISwitchMediator        switchMediator,
             IMessageBroker         messageBroker,
+            IThumbnailVM           thumbnailVM,
             string                 databasePath) {
 
             this.profileService        = profileService;
@@ -102,7 +105,7 @@ namespace NINA.Plugin.NightSummary.Session {
             this.switchMediator        = switchMediator;
             this.messageBroker         = messageBroker;
             var database             = databasePath != null ? new SessionDatabase(databasePath) : new SessionDatabase();
-            this.collector       = new SessionCollector(imageSaveMediator, sequenceMediator, database);
+            this.collector       = new SessionCollector(imageSaveMediator, sequenceMediator, database, thumbnailVM);
             this.eventCollector  = new SessionEventCollector(database, safetyMonitorMediator, focuserMediator, telescopeMediator);
             this.reportGenerator = new ReportGenerator();
             Logger.Info($"NightSummary: SessionService created — messageBroker={messageBroker != null}");
