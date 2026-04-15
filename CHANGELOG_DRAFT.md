@@ -15,6 +15,7 @@
 - Gmail app password hint now links directly to myaccount.google.com/apppasswords instead of describing the navigation path
 
 **Bug fixes**
+- Graceful session cleanup when sequence is stopped manually -- if the NINA sequence ends before the Night Summary End instruction runs (manual stop, error, or missing instruction), the session is now finalized automatically with an end time and all listeners are cleaned up. No report is generated or delivered -- use "Resend Previous Session" to get a report from the saved data.
 - Rejected frame tracking -- frames rejected by Target Scheduler grading or manually thumbed-down in NINA's thumbnail panel are now counted and shown in the report. The per-target filter table gains a Rejected column when any rejections exist, with a hover tooltip breaking down rejection reasons and counts (e.g. "HFR too high: 4, Guiding RMS: 1" or "Manual: 2"). The session overview shows a rejected count alongside aborted exposures. Manual rejections are detected automatically via file system watching -- no extra setup required.
 - Fixed event marker hover tooltips on metric charts not responding -- markers (AutoFocus, Meridian Flip, Safe/Unsafe) now reliably show their tooltip on hover
 - Fixed additional chart settings showing dropdowns in a different order than the primary chart -- all chart configurations now show X-Axis, Primary Metric, Secondary Metric in that order
