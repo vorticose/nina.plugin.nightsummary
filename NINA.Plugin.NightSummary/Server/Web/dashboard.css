@@ -3845,44 +3845,6 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 }
 
 /* Filter coverage matrix */
-.pdp-matrix-section { padding: 0 20px 20px; }
-.pdp-matrix {
-  display: table;
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 11px;
-}
-.pdp-matrix-row { display: table-row; }
-.pdp-matrix-cell {
-  display: table-cell;
-  padding: 6px 8px;
-  vertical-align: middle;
-  text-align: center;
-  border-bottom: 1px solid rgba(255,255,255,0.05);
-}
-.pdp-matrix-header .pdp-matrix-cell { border-bottom: 1px solid rgba(255,255,255,0.12); }
-.pdp-matrix-corner { width: 28px; }
-.pdp-matrix-row-hdr {
-  text-align: center;
-  width: 28px;
-}
-.pdp-matrix-panel-num {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--panel-color) 25%, transparent);
-  border: 1px solid color-mix(in srgb, var(--panel-color) 60%, transparent);
-  font-size: 9px;
-  font-weight: 700;
-  color: var(--panel-color);
-}
-.pdp-matrix-data { color: var(--text-tertiary); }
-.pdp-matrix-data.has-data { color: var(--text-primary); font-weight: 600; }
-.pdp-matrix-hrs { font-variant-numeric: tabular-nums; }
-.pdp-matrix-empty { opacity: 0.3; }
 
 /* Mobile */
 @media (max-width: 640px) {

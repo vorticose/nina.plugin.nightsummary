@@ -1997,45 +1997,6 @@ function renderProjectDetailPanel(data) {
   html += '</div>';
 
   // ── 8. Filter coverage matrix — only for mosaics with ≥2 panels ──────────
-  if (panels.length >= 2) {
-    var allFilters = [];
-    panels.forEach(function(p) {
-      (p.filters || []).forEach(function(f) {
-        if (allFilters.indexOf(f.filter) < 0) allFilters.push(f.filter);
-      });
-    });
-    if (allFilters.length > 0) {
-      html += '<div class="pdp-matrix-section">';
-      html += '<div class="pdp-section-title">Filter Coverage</div>';
-      html += '<div class="pdp-matrix">';
-      // Header row
-      html += '<div class="pdp-matrix-row pdp-matrix-header">';
-      html += '<div class="pdp-matrix-cell pdp-matrix-corner"></div>';
-      allFilters.forEach(function(f) {
-        html += '<div class="pdp-matrix-cell pdp-matrix-col-hdr">' + filterTypePill(f) + '</div>';
-      });
-      html += '</div>';
-      // Data rows
-      panels.forEach(function(panel, i) {
-        var palette = ['#90CAF9','#A5D6A7','#FFCC80','#EF9A9A','#CE93D8','#80DEEA','#BCAAA4','#B0BEC5'];
-        var color = palette[i % palette.length];
-        html += '<div class="pdp-matrix-row">';
-        html += '<div class="pdp-matrix-cell pdp-matrix-row-hdr" style="--panel-color:' + color + '">' +
-                '<span class="pdp-matrix-panel-num">' + (i + 1) + '</span></div>';
-        allFilters.forEach(function(f) {
-          var match = (panel.filters || []).find(function(pf) { return pf.filter === f; });
-          var hrs = match ? match.totalHours : 0;
-          html += '<div class="pdp-matrix-cell pdp-matrix-data' + (hrs > 0 ? ' has-data' : '') + '" title="' +
-                  esc('Panel ' + (i+1) + ' \u00b7 ' + f + ' \u00b7 ' + (hrs > 0 ? hrs.toFixed(1) + 'h' : 'none')) + '">' +
-                  (hrs > 0 ? '<span class="pdp-matrix-hrs">' + hrs.toFixed(1) + 'h</span>' : '<span class="pdp-matrix-empty">\u2013</span>') +
-                  '</div>';
-        });
-        html += '</div>';
-      });
-      html += '</div></div>';
-    }
-  }
-
   html += '</div>';
   return html;
 }
