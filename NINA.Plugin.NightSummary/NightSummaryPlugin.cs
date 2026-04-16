@@ -303,7 +303,8 @@ namespace NINA.Plugin.NightSummary {
                         UseShellExecute = true
                     });
 
-                    MultiNightStatus.Text = $"✓ {data.Sessions.Count} sessions, {data.AllImages.Count} images";
+                    var acceptedCount = data.AllImages.Count(i => i.Accepted);
+                    MultiNightStatus.Text = $"✓ {data.Sessions.Count} sessions, {acceptedCount} images";
                 } catch (Exception ex) {
                     Logger.Error($"NightSummary: Multi-night report failed. {ex.Message}");
                     MultiNightStatus.Text = "✗ Generation failed — check NINA log";

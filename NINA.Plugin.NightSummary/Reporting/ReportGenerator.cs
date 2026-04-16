@@ -2252,6 +2252,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 return sb.ToString();
             }
 
+            // ── TS coverage note (only when TS accepted > NS recorded) ─
+            sb.Append(BuildTsCoverageNote(data));
+
             // ── Aggregate Overview ───────────────────────────────────
             sb.Append(BuildMultiNightOverview(data));
 
@@ -2303,16 +2306,38 @@ namespace NINA.Plugin.NightSummary.Reporting {
             return sb.ToString();
         }
 
+        private string BuildTsCoverageNote(MultiNightReportData data) {
+            if (data.TsData == null || !data.TsData.Any()) return "";
+
+            var acceptedImages = data.AllImages.Where(i => i.Accepted).ToList();
+
+            // Compare per-target: sum TS accepted across all filters vs NS accepted count
+            bool tsHasMore = false;
+            foreach (var ts in data.TsData) {
+                var tsAccepted = ts.Filters.Sum(f => f.Accepted);
+                var nsAccepted = acceptedImages.Count(i =>
+                    string.Equals(i.TargetName, ts.TargetName, StringComparison.OrdinalIgnoreCase));
+                if (tsAccepted > nsAccepted) { tsHasMore = true; break; }
+            }
+
+            if (!tsHasMore) return "";
+
+            return "<p style='font-size:12px; color:var(--muted); margin:4px 0 0;'>" +
+                "<em>Note: This report covers sessions recorded by Night Summary. " +
+                "Some targets may show fewer images than Target Scheduler progress " +
+                "if imaging occurred before Night Summary was installed.</em></p>";
+        }
+
         private string BuildMultiNightOverview(MultiNightReportData data) {
             var sb = new StringBuilder();
             var images = data.AllImages;
-            var totalExposureSec = images.Sum(i => i.ExposureDuration);
-            var targetCount = images.Select(i => i.TargetName).Distinct(StringComparer.OrdinalIgnoreCase).Count();
-            var accepted = images.Count(i => i.Accepted);
-            var rejected = images.Count - accepted;
+            var acceptedImages = images.Where(i => i.Accepted).ToList();
+            var totalExposureSec = acceptedImages.Sum(i => i.ExposureDuration);
+            var targetCount = acceptedImages.Select(i => i.TargetName).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+            var rejected = images.Count - acceptedImages.Count;
 
-            // Per-filter stats for expandable breakdown
-            var filterStats = images
+            // Per-filter stats for expandable breakdown (accepted only)
+            var filterStats = acceptedImages
                 .GroupBy(i => string.IsNullOrEmpty(i.Filter) ? "—" : i.Filter)
                 .OrderBy(g => FilterSortKey(g.Key)).ThenBy(g => g.Key)
                 .Select(g => (filter: g.Key, count: g.Count(), expSec: g.Sum(i => i.ExposureDuration)))
@@ -2327,15 +2352,15 @@ namespace NINA.Plugin.NightSummary.Reporting {
             imageBreakdown.Append("</div>");
             expBreakdown.Append("</div>");
 
-            var hfrImages = images.Where(i => i.HFR > 0).ToList();
-            var guidingImages = images.Where(i => i.GuidingRMSTotal > 0).ToList();
-            var fwhmImages = images.Where(i => i.FWHM > 0).ToList();
+            var hfrImages = acceptedImages.Where(i => i.HFR > 0).ToList();
+            var guidingImages = acceptedImages.Where(i => i.GuidingRMSTotal > 0).ToList();
+            var fwhmImages = acceptedImages.Where(i => i.FWHM > 0).ToList();
 
             sb.AppendLine("<h2>Overview</h2>");
             sb.AppendLine("<div style='display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:10px 0;'>");
 
             // Row 1: Images, Exposure, Targets, Sessions
-            sb.AppendLine($"<div class='stat-box'><details class='stat-breakdown'><summary><div class='stat-value'>{images.Count}</div><div class='stat-label'>Total Images</div></summary>{imageBreakdown}</details></div>");
+            sb.AppendLine($"<div class='stat-box'><details class='stat-breakdown'><summary><div class='stat-value'>{acceptedImages.Count}</div><div class='stat-label'>Total Images</div></summary>{imageBreakdown}</details></div>");
             sb.AppendLine($"<div class='stat-box'><details class='stat-breakdown'><summary><div class='stat-value'>{TimeSpan.FromSeconds(totalExposureSec).TotalHours:F1}h</div><div class='stat-label'>Total Exposure</div></summary>{expBreakdown}</details></div>");
             sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{targetCount}</div><div class='stat-label'>Targets</div></div>");
             sb.AppendLine($"<div class='stat-box'><div class='stat-value'>{data.Sessions.Count}</div><div class='stat-label'>Sessions</div></div>");
@@ -2358,10 +2383,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var sb = new StringBuilder();
             var images = data.AllImages;
 
-            // Group all images by target, ordered by first appearance
+            // Group all images by target, ordered by accepted exposure (descending)
             var targets = images
                 .GroupBy(i => i.TargetName, StringComparer.OrdinalIgnoreCase)
-                .OrderBy(g => g.Sum(i => i.ExposureDuration))
+                .OrderBy(g => g.Where(i => i.Accepted).Sum(i => i.ExposureDuration))
                 .Reverse()
                 .ToList();
 
@@ -2401,9 +2426,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             foreach (var target in targets) {
-                var targetImages = target.ToList();
+                var allTargetImages = target.ToList();
+                var targetImages = allTargetImages.Where(i => i.Accepted).ToList();
                 var totalExpSec = targetImages.Sum(i => i.ExposureDuration);
-                var sessionCount = targetImages.Select(i => i.SessionId).Distinct().Count();
+                var sessionCount = allTargetImages.Select(i => i.SessionId).Distinct().Count();
 
                 var tsTarget = data.TsData?.FirstOrDefault(t =>
                     string.Equals(t.TargetName, target.Key, StringComparison.OrdinalIgnoreCase));
@@ -2413,7 +2439,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 if (tsTarget != null && (tsTarget.RA != 0 || tsTarget.Dec != 0)) {
                     raH = tsTarget.RA; decD = tsTarget.Dec;
                 } else {
-                    var coordImg = targetImages.FirstOrDefault(i => i.RaHours != 0 || i.DecDegrees != 0);
+                    var coordImg = allTargetImages.FirstOrDefault(i => i.RaHours != 0 || i.DecDegrees != 0);
                     if (coordImg != null) { raH = coordImg.RaHours; decD = coordImg.DecDegrees; }
                 }
 
@@ -2435,7 +2461,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 if (showThumb && thumbResults.TryGetValue(target.Key, out var thumbResult)) {
                     // Sky position angle: prefer TS data, fall back to plate solve PA from images
                     double rotation = (tsTarget != null && tsTarget.Rotation != 0) ? tsTarget.Rotation
-                        : targetImages.Where(i => i.PositionAngle.HasValue && i.PositionAngle.Value != 0)
+                        : allTargetImages.Where(i => i.PositionAngle.HasValue && i.PositionAngle.Value != 0)
                                 .Select(i => i.PositionAngle.Value).DefaultIfEmpty(0).Average();
                     var svgAngle = -rotation;
 
@@ -2455,11 +2481,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     sb.AppendLine("<div class='ts-target-header'>");
                     sb.Append(thumbHtml);
                     if (showAltChart) {
-                        // Meridian transit time chart: shows when target crosses meridian each session night
-                        var transitChart = BuildMeridianTransitChart(target.Key, data.Sessions, data.AllImages,
-                            raH, data.ObserverLongitude);
-                        if (!string.IsNullOrEmpty(transitChart))
-                            sb.Append($"<div style='flex:1; min-width:0; margin-top:-20px;'>{transitChart}</div>");
+                        // Availability chart: available hours vs actual imaging per session
+                        double minAlt = (tsTarget != null && tsTarget.MinimumAltitude > 0)
+                            ? tsTarget.MinimumAltitude : 25.0;
+                        var availChart = BuildAvailabilityChart(target.Key, data,
+                            allTargetImages, raH, decD, minAlt);
+                        if (!string.IsNullOrEmpty(availChart))
+                            sb.Append($"<div style='flex:1; min-width:0; margin-top:-20px;'>{availChart}</div>");
                     }
                     sb.AppendLine("</div>");
                 } else if (!string.IsNullOrEmpty(thumbHtml)) {
@@ -2481,12 +2509,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine($"<tr><td><strong>Total</strong></td><td><strong>{targetImages.Count}</strong></td><td></td><td><strong>{FormatDuration(targetTotal.TotalSeconds)}</strong></td><td><strong>{sessionCount}</strong></td></tr>");
                 sb.AppendLine("</table>");
 
-                // Per-session breakdown for this target
-                var targetSessions = targetImages
+                // Per-session breakdown for this target (use all images for session grouping)
+                var targetSessions = allTargetImages
                     .GroupBy(i => i.SessionId)
                     .Select(g => {
                         var session = data.Sessions.FirstOrDefault(s => s.SessionId == g.Key);
-                        return (session, images: g.ToList());
+                        return (session, images: g.Where(i => i.Accepted).ToList());
                     })
                     .Where(x => x.session != null)
                     .OrderByDescending(x => x.session.SessionStart)
@@ -2521,128 +2549,220 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// whether the target is moving into or out of the imaging window.
         /// Sized to match the 200px thumbnail height and fill remaining flex space.
         /// </summary>
-        private string BuildMeridianTransitChart(string targetName, List<SessionRecord> sessions,
-            List<ImageRecord> allImages, double raH, double lon) {
+        private string BuildAvailabilityChart(string targetName, MultiNightReportData data,
+            List<ImageRecord> targetImages, double raH, double decD, double minAlt) {
 
-            // Find sessions that imaged this target
-            var sessionList = allImages
-                .Where(i => string.Equals(i.TargetName, targetName, StringComparison.OrdinalIgnoreCase))
-                .Select(i => i.SessionId)
-                .Distinct()
-                .Select(sid => sessions.FirstOrDefault(s => s.SessionId == sid))
+            double lat = data.ObserverLatitude;
+            double lon = data.ObserverLongitude;
+
+            // Find session dates for this target
+            var targetSessionDates = targetImages
+                .Select(i => data.Sessions.FirstOrDefault(s => s.SessionId == i.SessionId))
                 .Where(s => s != null)
-                .OrderBy(s => s.SessionStart)
+                .Select(s => s.SessionStart.Date)
+                .Distinct()
+                .OrderBy(d => d)
                 .ToList();
 
-            if (sessionList.Count < 2) return "";
+            if (!targetSessionDates.Any()) return "";
 
-            // Calculate meridian transit time for each session date
-            var points = new List<(DateTime date, DateTime transit)>();
-            foreach (var session in sessionList) {
-                var transitTime = AltitudeCalculator.GetMeridianTransitTime(raH, lon, session.SessionStart);
-                if (transitTime.HasValue)
-                    points.Add((session.SessionStart, transitTime.Value));
+            var firstSession = targetSessionDates.First();
+            var lastSession = targetSessionDates.Last();
+            int sessionSpan = Math.Max(1, (int)(lastSession - firstSession).TotalDays);
+
+            // Add context padding: 15% each side, minimum 3 days, enforce minimum 7-day span
+            int contextDays = Math.Max(3, (int)(sessionSpan * 0.15));
+            var from = firstSession.AddDays(-contextDays);
+            var to = lastSession.AddDays(contextDays);
+            if ((to - from).TotalDays < 7) {
+                var mid = from.AddDays((to - from).TotalDays / 2);
+                from = mid.AddDays(-3.5);
+                to = mid.AddDays(3.5);
             }
 
-            if (points.Count < 2) return "";
+            // Compute daily available hours for the padded range
+            var rawAvailable = new List<(DateTime date, double hours)>();
+            for (var d = from; d <= to; d = d.AddDays(1)) {
+                var hours = AltitudeCalculator.GetAvailableHours(raH, decD, lat, lon, minAlt, d);
+                rawAvailable.Add((d, hours));
+            }
 
-            // SVG dimensions — match single-session altitude chart sizing
+            // Smooth with 3-day centered moving average for a clean curve
+            var dailyAvailable = new List<(DateTime date, double hours)>();
+            for (int i = 0; i < rawAvailable.Count; i++) {
+                int lo = Math.Max(0, i - 1);
+                int hi = Math.Min(rawAvailable.Count - 1, i + 1);
+                double avg = 0;
+                for (int j = lo; j <= hi; j++) avg += rawAvailable[j].hours;
+                avg /= (hi - lo + 1);
+                dailyAvailable.Add((rawAvailable[i].date, avg));
+            }
+
+            double maxAvail = dailyAvailable.Max(x => x.hours);
+            if (maxAvail <= 0) return "";
+
+            // Compute accepted integration hours per session for this target
+            var sessionHours = targetImages
+                .Where(i => i.Accepted)
+                .GroupBy(i => i.SessionId)
+                .Select(g => {
+                    var session = data.Sessions.FirstOrDefault(s => s.SessionId == g.Key);
+                    if (session == null) return ((DateTime?)null, 0.0);
+                    var integrationHours = g.Sum(i => i.ExposureDuration) / 3600.0;
+                    return ((DateTime?)session.SessionStart.Date, integrationHours);
+                })
+                .Where(x => x.Item1.HasValue)
+                .Select(x => (date: x.Item1.Value, hours: x.Item2))
+                .ToList();
+
+            // SVG dimensions
             const int svgW = 500;
-            const int padL = 52, padR = 10, padT = 24, padB = 28;
-            const int plotH = 200;  // match thumbnail height
+            const int padL = 40, padR = 14, padT = 24, padB = 28;
+            const int plotH = 200;
             int plotW = svgW - padL - padR;
             int svgH = plotH + padT + padB;
 
-            // X range: session dates
-            var firstDate = points.First().date;
-            var lastDate = points.Last().date;
-            double dateRange = Math.Max(1, (lastDate - firstDate).TotalDays);
+            double dateRange = Math.Max(1, (to - from).TotalDays);
+            double yMax = Math.Ceiling(maxAvail + 0.5);
 
-            // Y range: transit times as hours-of-day
-            // Normalize to evening hours: treat times before noon as +24h (next day early morning)
-            double ToEveningHour(DateTime t) {
-                double h = t.Hour + t.Minute / 60.0;
-                return h < 12 ? h + 24.0 : h;
-            }
+            // Envelope draws edge-to-edge; bars get their own width calculation
+            double barW = Math.Max(3, Math.Min(12, plotW / Math.Max(1, dateRange) * 0.7));
+            double MapX(DateTime d) => padL + (d - from).TotalDays / dateRange * plotW;
+            double MapY(double h) => padT + plotH - (h / yMax * plotH);
 
-            var transitHours = points.Select(p => ToEveningHour(p.transit)).ToList();
-            double minH = transitHours.Min() - 0.5;
-            double maxH = transitHours.Max() + 0.5;
-            // Ensure at least 2h range for readability
-            if (maxH - minH < 2.0) {
-                var mid = (maxH + minH) / 2.0;
-                minH = mid - 1.0; maxH = mid + 1.0;
-            }
-
-            // Y inverted: earlier times at top (more intuitive — "higher" = earlier in evening)
-            double MapX(DateTime d) => padL + (d - firstDate).TotalDays / dateRange * plotW;
-            double MapY(double evH) => padT + (evH - minH) / (maxH - minH) * plotH;
-
-            string FormatHour(double evH) {
-                int h24 = ((int)evH) % 24;
-                int min = (int)((evH - (int)evH) * 60);
-                return $"{h24:D2}:{min:D2}";
+            // Interpolate smoothed curve height at any date
+            double CurveHoursAt(DateTime d) {
+                double dayOfs = (d - from).TotalDays;
+                if (dayOfs <= 0) return dailyAvailable.First().hours;
+                if (dayOfs >= dateRange) return dailyAvailable.Last().hours;
+                int idx = (int)dayOfs;
+                if (idx >= dailyAvailable.Count - 1) return dailyAvailable.Last().hours;
+                double frac = dayOfs - idx;
+                return dailyAvailable[idx].hours * (1 - frac) + dailyAvailable[idx + 1].hours * frac;
             }
 
             var svg = new StringBuilder();
             svg.AppendLine($"<svg viewBox='0 0 {svgW} {svgH}' xmlns='http://www.w3.org/2000/svg' style='width:100%; font-family:Arial,sans-serif; font-size:10px;'>");
+
             // Background
             svg.AppendLine($"<rect x='{padL}' y='{padT}' width='{plotW}' height='{plotH}' fill='{svgChartBg}' rx='4'/>");
             svg.AppendLine($"<rect x='{padL}' y='{padT}' width='{plotW}' height='{plotH}' fill='none' stroke='{svgBorder}' stroke-width='1' rx='4'/>");
 
-            // Y-axis: time labels and grid lines at whole hours
-            int startHour = (int)Math.Ceiling(minH);
-            int endHour = (int)Math.Floor(maxH);
-            for (int h = startHour; h <= endHour; h++) {
+            // Clip path for plot area
+            svg.AppendLine($"<defs><clipPath id='avail-clip-{_chartIndex}'><rect x='{padL}' y='{padT}' width='{plotW}' height='{plotH}'/></clipPath></defs>");
+
+            // Y-axis grid lines and labels
+            for (int h = 0; h <= (int)yMax; h++) {
                 double y = MapY(h);
-                svg.AppendLine($"<line x1='{padL}' y1='{y:F1}' x2='{padL + plotW}' y2='{y:F1}' stroke='{svgBorder}' stroke-width='0.5'/>");
-                svg.AppendLine($"<text x='{padL - 4}' y='{y + 4:F1}' text-anchor='end' fill='{svgMuted}' font-size='10'>{FormatHour(h)}</text>");
+                if (h > 0)
+                    svg.AppendLine($"<line x1='{padL}' y1='{y:F1}' x2='{padL + plotW}' y2='{y:F1}' stroke='{svgBorder}' stroke-width='0.5'/>");
+                svg.AppendLine($"<text x='{padL - 4}' y='{y + 4:F1}' text-anchor='end' fill='{svgMuted}' font-size='10'>{h}h</text>");
             }
 
-            // X-axis: date labels
-            if (points.Count <= 7) {
-                foreach (var p in points) {
-                    double x = MapX(p.date);
-                    svg.AppendLine($"<text x='{x:F1}' y='{svgH - 4}' text-anchor='middle' fill='{svgMuted}' font-size='9'>{p.date:MMM d}</text>");
+            // X-axis date labels — collision-free placement
+            {
+                const double minLabelSpacingPx = 50;  // minimum pixels between label centers
+                int totalDays = dailyAvailable.Count;
+                // Choose a step that gives good spacing
+                int labelStep = 1;
+                while (labelStep < totalDays) {
+                    double spacingPx = labelStep / dateRange * plotW;
+                    if (spacingPx >= minLabelSpacingPx) break;
+                    // Try natural progressions: 1, 2, 7, 14, 30
+                    if (labelStep < 2) labelStep = 2;
+                    else if (labelStep < 7) labelStep = 7;
+                    else if (labelStep < 14) labelStep = 14;
+                    else labelStep = 30;
                 }
-            } else {
-                // Adaptive: show ~5 evenly spaced labels
-                int step = Math.Max(1, points.Count / 5);
-                for (int i = 0; i < points.Count; i += step) {
-                    double x = MapX(points[i].date);
-                    string anchor = i == 0 ? "start" : (i + step >= points.Count ? "end" : "middle");
-                    svg.AppendLine($"<text x='{x:F1}' y='{svgH - 4}' text-anchor='{anchor}' fill='{svgMuted}' font-size='9'>{points[i].date:MMM d}</text>");
+
+                double lastLabelX = -999;
+                for (int i = 0; i < totalDays; i += labelStep) {
+                    var d = dailyAvailable[i].date;
+                    double x = MapX(d);
+                    // Skip if too close to previous label
+                    if (x - lastLabelX < minLabelSpacingPx && i > 0) continue;
+                    string anchor = i == 0 ? "start" : "middle";
+                    svg.AppendLine($"<text x='{x:F1}' y='{svgH - 4}' text-anchor='{anchor}' fill='{svgMuted}' font-size='9'>{d:MMM d}</text>");
+                    lastLabelX = x;
                 }
-                // Always show last date
-                if (points.Count % step != 1) {
-                    double x = MapX(lastDate);
-                    svg.AppendLine($"<text x='{x:F1}' y='{svgH - 4}' text-anchor='end' fill='{svgMuted}' font-size='9'>{lastDate:MMM d}</text>");
+                // Last date — only if far enough from previous label
+                var lastDate = dailyAvailable.Last().date;
+                double lx = MapX(lastDate);
+                if (lx - lastLabelX >= minLabelSpacingPx) {
+                    svg.AppendLine($"<text x='{lx:F1}' y='{svgH - 4}' text-anchor='end' fill='{svgMuted}' font-size='9'>{lastDate:MMM d}</text>");
                 }
             }
 
-            // Line connecting points
-            var pathParts = new List<string>();
-            for (int i = 0; i < points.Count; i++) {
-                var x = MapX(points[i].date);
-                var y = MapY(transitHours[i]);
-                pathParts.Add($"{(i == 0 ? "M" : "L")}{x:F1},{y:F1}");
+            // Day tick marks on x-axis baseline for visual day counting
+            {
+                var sessionDateSet = new HashSet<DateTime>(targetSessionDates);
+                double pxPerDay = plotW / dateRange;
+                // Adaptive: every day if ticks >= 3px apart, else every 7 days
+                int tickStep = pxPerDay >= 3 ? 1 : 7;
+                double baseY = padT + plotH;
+                for (int i = 0; i < dailyAvailable.Count; i += tickStep) {
+                    var d = dailyAvailable[i].date;
+                    double x = MapX(d);
+                    bool isSession = sessionDateSet.Contains(d.Date);
+                    double tickH = isSession ? 6 : 3;
+                    string color = isSession ? svgAccent : svgBorder;
+                    double opacity = isSession ? 0.8 : 0.6;
+                    svg.AppendLine($"<line x1='{x:F1}' y1='{baseY:F1}' x2='{x:F1}' y2='{baseY + tickH:F1}' " +
+                        $"stroke='{color}' stroke-width='{(isSession ? "1.5" : "0.75")}' opacity='{opacity:F1}'/>");
+                }
             }
-            svg.AppendLine($"<path d='{string.Join(" ", pathParts)}' fill='none' stroke='{svgAccent}' stroke-width='2'/>");
 
-            // Dots with tooltips
-            for (int i = 0; i < points.Count; i++) {
-                var x = MapX(points[i].date);
-                var y = MapY(transitHours[i]);
-                svg.AppendLine($"<circle cx='{x:F1}' cy='{y:F1}' r='3.5' fill='{svgAccent}'>" +
-                    $"<title>{points[i].date:MMM d}: meridian transit at {points[i].transit:HH:mm}</title></circle>");
+            // Availability envelope — filled area polygon (edge-to-edge)
+            var areaPath = new StringBuilder();
+            for (int i = 0; i < dailyAvailable.Count; i++) {
+                var x = MapX(dailyAvailable[i].date);
+                var y = MapY(dailyAvailable[i].hours);
+                areaPath.Append(i == 0 ? $"M{x:F1},{y:F1}" : $" L{x:F1},{y:F1}");
+            }
+            var xEnd = MapX(dailyAvailable.Last().date);
+            var xStart = MapX(dailyAvailable.First().date);
+            var yBase = MapY(0);
+            areaPath.Append($" L{xEnd:F1},{yBase:F1} L{xStart:F1},{yBase:F1} Z");
+
+            svg.AppendLine($"<path d='{areaPath}' fill='{svgAccent}' fill-opacity='0.15' " +
+                $"clip-path='url(#avail-clip-{_chartIndex})'/>");
+
+            // Availability outline
+            var linePath = new StringBuilder();
+            for (int i = 0; i < dailyAvailable.Count; i++) {
+                var x = MapX(dailyAvailable[i].date);
+                var y = MapY(dailyAvailable[i].hours);
+                linePath.Append(i == 0 ? $"M{x:F1},{y:F1}" : $" L{x:F1},{y:F1}");
+            }
+            svg.AppendLine($"<path d='{linePath}' fill='none' stroke='{svgAccent}' stroke-width='1.5' stroke-opacity='0.5' " +
+                $"clip-path='url(#avail-clip-{_chartIndex})'/>");
+
+            // Session bars — actual integration time
+            foreach (var (date, hours) in sessionHours) {
+                if (hours <= 0) continue;
+                var avail = dailyAvailable.FirstOrDefault(a => a.date.Date == date.Date);
+                var availH = avail.hours;
+                var pct = availH > 0 ? (hours / availH * 100) : 0;
+
+                // Snap to curve when >= 90% utilization
+                double displayH = (availH > 0 && hours / availH >= 0.90)
+                    ? CurveHoursAt(date) : hours;
+                displayH = Math.Min(displayH, availH > 0 ? CurveHoursAt(date) : displayH);
+
+                double x = MapX(date) - barW / 2;
+                double y = MapY(displayH);
+                double h = MapY(0) - y;
+                svg.AppendLine($"<rect x='{x:F1}' y='{y:F1}' width='{barW:F1}' height='{h:F1}' " +
+                    $"fill='{svgAccent}' fill-opacity='0.7' rx='1.5'>" +
+                    $"<title>{date:MMM d}: {hours:F1}h imaged / {availH:F1}h available ({pct:F0}%)</title></rect>");
             }
 
-            // Title — show UTC offset to clarify the fixed (non-DST) time reference
-            int utcOffset = (int)Math.Round(lon / 15.0);
-            string offsetLabel = utcOffset >= 0 ? $"UTC+{utcOffset}" : $"UTC{utcOffset}";
-            svg.AppendLine($"<text x='{svgW / 2}' y='16' text-anchor='middle' fill='{svgMuted}' font-size='11' font-weight='bold'>Meridian Transit Time ({offsetLabel})</text>");
+            // Title
+            svg.AppendLine($"<text x='{svgW / 2}' y='16' text-anchor='middle' fill='{svgMuted}' font-size='11' font-weight='bold'>" +
+                $"Imaging Window (above {minAlt:F0}\u00b0)</text>");
 
             svg.AppendLine("</svg>");
+            _chartIndex++;
             return svg.ToString();
         }
 
@@ -2651,10 +2771,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("<h2>Sessions</h2>");
 
             foreach (var session in data.Sessions) {
-                var sessionImages = data.AllImages.Where(i => i.SessionId == session.SessionId).ToList();
+                var allSessionImages = data.AllImages.Where(i => i.SessionId == session.SessionId).ToList();
+                var sessionImages = allSessionImages.Where(i => i.Accepted).ToList();
                 var totalExpSec = sessionImages.Sum(i => i.ExposureDuration);
                 var targetCount = sessionImages.Select(i => i.TargetName).Distinct(StringComparer.OrdinalIgnoreCase).Count();
-                var targets = string.Join(", ", sessionImages.Select(i => i.TargetName).Distinct(StringComparer.OrdinalIgnoreCase));
+                var targets = string.Join(", ", allSessionImages.Select(i => i.TargetName).Distinct(StringComparer.OrdinalIgnoreCase));
                 var duration = session.SessionEnd > session.SessionStart
                     ? (session.SessionEnd - session.SessionStart).TotalHours : 0;
 
@@ -2667,7 +2788,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
                 sb.AppendLine($"<div style='font-size:12px; color:var(--muted); margin-top:4px;'>{targets}</div>");
 
-                // Mini stat row
+                // Mini stat row (accepted only)
                 var hfrImages = sessionImages.Where(i => i.HFR > 0).ToList();
                 var guidingImages = sessionImages.Where(i => i.GuidingRMSTotal > 0).ToList();
 
@@ -2680,8 +2801,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     sb.AppendLine($"<div class='session-mini-stat'><div class='session-mini-value'>{guidingImages.Average(i => i.GuidingRMSTotal):F2}\"</div><div class='session-mini-label'>Avg Guiding</div></div>");
                 sb.AppendLine("</div>");
 
-                // Expandable filter table per session
-                if (sessionImages.Count > 0) {
+                // Expandable filter table per session (accepted only)
+                if (sessionImages.Any()) {
                     sb.AppendLine("<details class='session-detail' style='margin-top:8px;'>");
                     sb.AppendLine("<summary style='font-size:12px; color:var(--accent-light);'>Filter Details</summary>");
                     sb.AppendLine("<table style='margin-top:4px; font-size:13px;'>");

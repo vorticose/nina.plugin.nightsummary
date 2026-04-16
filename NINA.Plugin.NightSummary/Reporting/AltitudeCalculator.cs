@@ -198,6 +198,121 @@ namespace NINA.Plugin.NightSummary.Reporting {
         }
 
         /// <summary>
+        /// Finds the astronomical twilight window (sun below -18°) for the night of the given date.
+        /// Works entirely in UTC with a fixed longitude-based offset to avoid DST discontinuities.
+        /// Returns UTC times for the dusk-to-dawn interval during which true darkness holds.
+        /// </summary>
+        public static (DateTime Dusk, DateTime Dawn) FindAstronomicalTwilightWindow(
+            double latDeg, double lonDeg, DateTime eveningDate) {
+
+            const double threshold = -18.0;
+
+            // Work in UTC: anchor at ~12:00 mean solar time (no local timezone involvement)
+            double fixedOffsetH = Math.Round(lonDeg / 15.0);
+            var noonUtc = new DateTime(eveningDate.Year, eveningDate.Month, eveningDate.Day,
+                12, 0, 0, DateTimeKind.Utc).AddHours(-fixedOffsetH);
+
+            DateTime? dusk = null, dawn = null;
+            double prevAlt = GetSunAltitudeUtc(latDeg, lonDeg, noonUtc);
+
+            for (int m = 5; m <= 24 * 60; m += 5) {
+                var    utc = noonUtc.AddMinutes(m);
+                double alt = GetSunAltitudeUtc(latDeg, lonDeg, utc);
+
+                // Dusk: sun descends below -18° (evening)
+                if (dusk == null && prevAlt >= threshold && alt < threshold && m >= 3 * 60 && m <= 14 * 60) {
+                    // Linear interpolation for precise crossing
+                    double frac = (prevAlt - threshold) / (prevAlt - alt);
+                    dusk = noonUtc.AddMinutes(m - 5 + frac * 5);
+                }
+
+                // Dawn: sun ascends above -18° (morning)
+                if (dawn == null && prevAlt < threshold && alt >= threshold && m >= 12 * 60 && m <= 22 * 60) {
+                    double frac = (threshold - prevAlt) / (alt - prevAlt);
+                    dawn = noonUtc.AddMinutes(m - 5 + frac * 5);
+                }
+
+                prevAlt = alt;
+            }
+
+            // Fallback: if no crossing found (polar regions / perpetual twilight)
+            return (
+                dusk ?? noonUtc.AddHours(8),
+                dawn ?? noonUtc.AddHours(16)
+            );
+        }
+
+        /// <summary>
+        /// Computes hours a target is above minAltitude during astronomical darkness for a given night.
+        /// Uses UTC throughout and interpolates threshold crossings for a smooth day-to-day curve.
+        /// </summary>
+        public static double GetAvailableHours(
+            double raHours, double decDeg, double latDeg, double lonDeg,
+            double minAltitude, DateTime eveningDate) {
+
+            var (dusk, dawn) = FindAstronomicalTwilightWindow(latDeg, lonDeg, eveningDate);
+            // dusk/dawn are UTC — sweep in UTC
+            double totalMinutes = 0;
+            const int step = 5;
+            var t = dusk;
+            double prevAlt = GetAltitudeUtc(raHours, decDeg, latDeg, lonDeg, t);
+            bool prevAbove = prevAlt >= minAltitude;
+            t = t.AddMinutes(step);
+
+            while (t <= dawn) {
+                double alt = GetAltitudeUtc(raHours, decDeg, latDeg, lonDeg, t);
+                bool above = alt >= minAltitude;
+
+                if (prevAbove && above) {
+                    // Fully above — count entire interval
+                    totalMinutes += step;
+                } else if (prevAbove && !above) {
+                    // Crossing downward — interpolate fraction above
+                    double frac = (prevAlt - minAltitude) / (prevAlt - alt);
+                    totalMinutes += frac * step;
+                } else if (!prevAbove && above) {
+                    // Crossing upward — interpolate fraction above
+                    double frac = (minAltitude - prevAlt) / (alt - prevAlt);
+                    totalMinutes += (1 - frac) * step;
+                }
+                // else: both below — add nothing
+
+                prevAlt = alt;
+                prevAbove = above;
+                t = t.AddMinutes(step);
+            }
+
+            return totalMinutes / 60.0;
+        }
+
+        /// <summary>
+        /// Computes sun altitude from a UTC time directly (no local time conversion).
+        /// </summary>
+        private static double GetSunAltitudeUtc(double latDeg, double lonDeg, DateTime utc) {
+            var (sunRa, sunDec) = GetSunPosition(utc);
+            return GetAltitudeUtc(sunRa, sunDec, latDeg, lonDeg, utc);
+        }
+
+        /// <summary>
+        /// Computes target altitude from a UTC time directly (no local time conversion).
+        /// </summary>
+        private static double GetAltitudeUtc(double raHours, double decDeg, double latDeg, double lonDeg, DateTime utc) {
+            double jd      = ToJulianDate(utc);
+            double gmstDeg = GreenwichMeanSiderealTime(jd);
+            double lstDeg  = ((gmstDeg + lonDeg) % 360 + 360) % 360;
+            double haDeg   = ((lstDeg - raHours * 15.0) % 360 + 360) % 360;
+            if (haDeg > 180) haDeg -= 360;
+
+            double decRad = decDeg * Math.PI / 180.0;
+            double latRad = latDeg * Math.PI / 180.0;
+            double haRad  = haDeg  * Math.PI / 180.0;
+
+            double sinAlt = Math.Sin(decRad) * Math.Sin(latRad)
+                          + Math.Cos(decRad) * Math.Cos(latRad) * Math.Cos(haRad);
+            return Math.Asin(Math.Max(-1.0, Math.Min(1.0, sinAlt))) * 180.0 / Math.PI;
+        }
+
+        /// <summary>
         /// Returns the meridian transit time for a target on the night of the given session,
         /// expressed in mean solar time (fixed UTC offset from longitude, no DST).
         /// This ensures the ~4 min/night sidereal drift produces a clean monotonic line

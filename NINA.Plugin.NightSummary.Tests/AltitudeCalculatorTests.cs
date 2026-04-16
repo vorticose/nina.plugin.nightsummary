@@ -244,6 +244,70 @@ namespace NINA.Plugin.NightSummary.Tests {
             Assert.True(peak < 0); // Below horizon
         }
 
+        // ── FindAstronomicalTwilightWindow ──────────────────────────────────
+
+        [Fact]
+        public void FindAstronomicalTwilightWindow_DuskBeforeDawn() {
+            var (dusk, dawn) = AltitudeCalculator.FindAstronomicalTwilightWindow(Lat, Lon, new DateTime(2025, 1, 15));
+            Assert.True(dusk < dawn);
+        }
+
+        [Fact]
+        public void FindAstronomicalTwilightWindow_WindowShorterThanCivilNight() {
+            // Astronomical darkness should be shorter than sunset-to-sunrise
+            var (dusk, dawn) = AltitudeCalculator.FindAstronomicalTwilightWindow(Lat, Lon, new DateTime(2025, 1, 15));
+            var (sunset, sunrise) = AltitudeCalculator.FindNightWindow(Lat, Lon, new DateTime(2025, 1, 15, 21, 0, 0));
+            var astroHours = (dawn - dusk).TotalHours;
+            var civilHours = (sunrise - sunset).TotalHours;
+            Assert.True(astroHours < civilHours, $"Astro {astroHours:F1}h should be shorter than civil {civilHours:F1}h");
+        }
+
+        [Fact]
+        public void FindAstronomicalTwilightWindow_WinterReasonableLength() {
+            // Mid-latitude winter: astronomical darkness ~10-13 hours
+            var (dusk, dawn) = AltitudeCalculator.FindAstronomicalTwilightWindow(Lat, Lon, new DateTime(2025, 1, 15));
+            var hours = (dawn - dusk).TotalHours;
+            Assert.InRange(hours, 8.0, 14.0);
+        }
+
+        [Fact]
+        public void FindAstronomicalTwilightWindow_SummerShorterThanWinter() {
+            var (duskW, dawnW) = AltitudeCalculator.FindAstronomicalTwilightWindow(Lat, Lon, new DateTime(2025, 1, 15));
+            var (duskS, dawnS) = AltitudeCalculator.FindAstronomicalTwilightWindow(Lat, Lon, new DateTime(2025, 6, 15));
+            var winterHours = (dawnW - duskW).TotalHours;
+            var summerHours = (dawnS - duskS).TotalHours;
+            Assert.True(summerHours < winterHours, $"Summer {summerHours:F1}h should be shorter than winter {winterHours:F1}h");
+        }
+
+        // ── GetAvailableHours ──────────────────────────────────────────────
+
+        [Fact]
+        public void GetAvailableHours_HighAltTarget_ReturnsPositive() {
+            // Orion (RA ~5.5h, Dec ~-1.2°) in January from Philadelphia — should be well above 30° for several hours
+            var hours = AltitudeCalculator.GetAvailableHours(5.5, -1.2, Lat, Lon, 30.0, new DateTime(2025, 1, 15));
+            Assert.True(hours > 2.0, $"Expected >2h but got {hours:F1}h");
+        }
+
+        [Fact]
+        public void GetAvailableHours_NeverRisesTarget_ReturnsZero() {
+            // Deep southern target from northern latitude — never above 30°
+            var hours = AltitudeCalculator.GetAvailableHours(12.0, -70.0, Lat, Lon, 30.0, new DateTime(2025, 1, 15));
+            Assert.Equal(0.0, hours);
+        }
+
+        [Fact]
+        public void GetAvailableHours_LowerMinAlt_MoreHours() {
+            var hours20 = AltitudeCalculator.GetAvailableHours(5.5, -1.2, Lat, Lon, 20.0, new DateTime(2025, 1, 15));
+            var hours40 = AltitudeCalculator.GetAvailableHours(5.5, -1.2, Lat, Lon, 40.0, new DateTime(2025, 1, 15));
+            Assert.True(hours20 >= hours40, $"20° min ({hours20:F1}h) should give >= hours than 40° min ({hours40:F1}h)");
+        }
+
+        [Fact]
+        public void GetAvailableHours_ResultIsNonNegative() {
+            var hours = AltitudeCalculator.GetAvailableHours(18.6, 38.8, Lat, Lon, 30.0, new DateTime(2025, 7, 15));
+            Assert.True(hours >= 0);
+        }
+
         // ── GetMeridianTransitTime ─────────────────────────────────────────
 
         [Fact]
