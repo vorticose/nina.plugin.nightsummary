@@ -17,6 +17,7 @@ import datetime
 import json
 import os
 import re
+import subprocess
 import sys
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
@@ -25,6 +26,29 @@ from socketserver import ThreadingMixIn
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 WEB_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "..", "NINA.Plugin.NightSummary", "Server", "Web"))
 ICON_PATH = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "..", "assets", "plugin-icon.png"))
+
+# In a git worktree, untracked dirs (like data/) only exist in the main checkout.
+# Find the repo root so we can locate data/ reliably.
+def _find_repo_data_dir():
+    """Return tools/dev-dashboard/data/ in the main repo checkout."""
+    try:
+        root = subprocess.check_output(
+            ["git", "rev-parse", "--git-common-dir"],
+            cwd=SCRIPT_DIR, text=True, stderr=subprocess.DEVNULL
+        ).strip()
+        # --git-common-dir returns the .git dir of the main checkout
+        repo_root = os.path.dirname(os.path.normpath(os.path.abspath(
+            os.path.join(SCRIPT_DIR, root)
+        )))
+        candidate = os.path.join(repo_root, "tools", "dev-dashboard", "data")
+        if os.path.isdir(candidate):
+            return candidate
+    except Exception:
+        pass
+    # Fallback: data/ next to this script
+    return os.path.join(SCRIPT_DIR, "data")
+
+DEFAULT_DATA_DIR = _find_repo_data_dir()
 
 # Cached at startup (icon never changes during dev)
 ICON_DATA_URI = ""
@@ -319,8 +343,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 ts_proj_by_guid[p.get("guid", "")] = p
                 for t in p.get("targets", []):
                     name = (t.get("name") or "").lower()
-                    if name and name not in ts_by_name:
-                        ts_by_name[name] = (p, t)
+                    if name:
+                        # Prefer-richer: prefer the entry with more exposure plans so a
+                        # target that appears in multiple TS projects (e.g. a ratio-test
+                        # project with no plans) doesn't shadow the real project.
+                        existing = ts_by_name.get(name)
+                        existing_plan_count = len(existing[1].get("exposurePlans", [])) if existing else -1
+                        new_plan_count = len(t.get("exposurePlans", []))
+                        if not existing or new_plan_count > existing_plan_count:
+                            ts_by_name[name] = (p, t)
                     g = t.get("guid")
                     if g:
                         ts_by_guid[g] = (p, t)
@@ -339,9 +370,19 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     matched_by = "manual"
                 # 2. Project assignment (user explicitly assigned to a project)
                 elif target_name.lower() in project_assignments:
-                    pguid = project_assignments[target_name.lower()]
+                    pguid_raw = project_assignments[target_name.lower()]
+                    # Values may be a single GUID string or a list (multi-project planned feature);
+                    # use the first GUID only for now.
+                    pguid = pguid_raw[0] if isinstance(pguid_raw, list) else pguid_raw
                     if pguid in ts_proj_by_guid:
                         assigned_project = ts_proj_by_guid[pguid]
+                        # Try to find the target within the assigned project so we
+                        # get real goals (not empty). Assignment only overrides project
+                        # context, not goal data.
+                        for _at in assigned_project.get("targets", []):
+                            if (_at.get("name") or "").lower() == target_name.lower():
+                                ts_match = (assigned_project, _at)
+                                break
                         matched_by = "assigned"
                     elif pguid in custom_projects:
                         assigned_project = {
@@ -1318,6 +1359,50 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.route("POST")
 
 
+def find_pid_on_port(port):
+    """Find the PID listening on the given port (Windows only)."""
+    try:
+        out = subprocess.check_output(
+            ["netstat", "-ano"], text=True, stderr=subprocess.DEVNULL
+        )
+        for line in out.splitlines():
+            if f":{port}" in line and "LISTENING" in line:
+                return int(line.strip().split()[-1])
+    except Exception:
+        pass
+    return None
+
+
+def stop_server(port):
+    """Kill whatever process is listening on the given port."""
+    pid = find_pid_on_port(port)
+    if pid is None:
+        print(f"No server found on port {port}.")
+        return
+    try:
+        subprocess.check_call(["taskkill", "/F", "/PID", str(pid)],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print(f"Stopped server (PID {pid}) on port {port}.")
+    except subprocess.CalledProcessError:
+        print(f"Failed to kill PID {pid}. Try running as admin.")
+
+
+def start_detached(args):
+    """Re-launch this script in a new console window."""
+    cmd = [sys.executable, os.path.abspath(__file__),
+           "-p", str(args.port)]
+    if args.webdir:
+        cmd += ["-w", os.path.abspath(args.webdir)]
+    # Always resolve data dir — default finds main repo's data/ even in worktrees
+    data = args.data if args.data else DEFAULT_DATA_DIR
+    cmd += ["-d", os.path.abspath(data)]
+    subprocess.Popen(
+        cmd,
+        creationflags=subprocess.CREATE_NEW_CONSOLE,
+    )
+    print(f"Dev server starting in new window on port {args.port}.")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Night Summary Dashboard Dev Server")
     parser.add_argument("-p", "--port", type=int, default=8182,
@@ -1327,13 +1412,25 @@ def main():
     parser.add_argument("-w", "--webdir", default=None,
                         help="Web assets directory containing dashboard.html/css/js "
                              "(default: auto-detected from repo tree)")
+    parser.add_argument("--stop", action="store_true",
+                        help="Stop a running dev server on the given port")
+    parser.add_argument("--start", action="store_true",
+                        help="Start server in a new console window (detached)")
     args = parser.parse_args()
+
+    if args.stop:
+        stop_server(args.port)
+        return
+
+    if args.start:
+        start_detached(args)
+        return
 
     global WEB_DIR
     if args.webdir:
         WEB_DIR = os.path.normpath(os.path.abspath(args.webdir))
 
-    data_dir = args.data or os.path.join(SCRIPT_DIR, "data")
+    data_dir = args.data or DEFAULT_DATA_DIR
     data_dir = os.path.normpath(os.path.abspath(data_dir))
     DashboardHandler.data_dir = data_dir
 

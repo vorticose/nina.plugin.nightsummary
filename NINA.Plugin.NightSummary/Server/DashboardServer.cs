@@ -1224,10 +1224,15 @@ namespace NINA.Plugin.NightSummary.Server {
             if (tsProjects != null) {
                 foreach (var proj in tsProjects) {
                     foreach (var tgt in proj.Targets) {
-                        // First match wins on name collisions (rare; only happens if user has
-                        // multiple TS targets with identical names). Manual link can override.
-                        if (!string.IsNullOrEmpty(tgt.Name) && !tsTargetByNameLower.ContainsKey(tgt.Name)) {
-                            tsTargetByNameLower[tgt.Name] = (proj, tgt);
+                        // On name collisions (same target in multiple TS projects), prefer the
+                        // entry with more exposure plans so we don't silently pick a project
+                        // that has the target defined but no plans yet (which would produce
+                        // goals=[] in the TDP). Manual link can always override.
+                        if (!string.IsNullOrEmpty(tgt.Name)) {
+                            if (!tsTargetByNameLower.ContainsKey(tgt.Name) ||
+                                tgt.ExposurePlans.Count > tsTargetByNameLower[tgt.Name].target.ExposurePlans.Count) {
+                                tsTargetByNameLower[tgt.Name] = (proj, tgt);
+                            }
                         }
                         if (!string.IsNullOrEmpty(tgt.Guid)) {
                             tsTargetByGuid[tgt.Guid] = (proj, tgt);
