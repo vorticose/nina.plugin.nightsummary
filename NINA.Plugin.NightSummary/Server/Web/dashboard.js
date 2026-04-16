@@ -621,7 +621,7 @@ function initTargetsControlBar() {
       document.querySelectorAll('.mosaic-fov-svg').forEach(function(svg) {
         svg.style.display = showFovOverlay ? '' : 'none';
       });
-      document.querySelectorAll('.card-thumb-wrap svg, .target-card-thumb svg').forEach(function(svg) {
+      document.querySelectorAll('.card-thumb-wrap svg, .target-card-thumb svg, .pdp-multi-thumb-cell svg, #pdp-thumb-wrap svg, #tdp-hero-wrap svg').forEach(function(svg) {
         svg.style.display = showFovOverlay ? '' : 'none';
       });
     });
@@ -727,8 +727,26 @@ function renderProjectContainer(info) {
     html += '<div class="stat-box"><div class="stat-value">' + totalSessions +
             '</div><div class="stat-label">Sessions</div></div>';
     html += '</div>'; // .targets-project-stat-boxes
+  } else if (info.targets.length >= 2) {
+    // Non-mosaic multi-target — 2x2 grid of target thumbnails inside the standard thumb-wrap
+    html += '<div class="targets-project-thumb-col">';
+    html += '<div class="targets-project-thumb-wrap">';
+    html += '<div class="targets-project-thumb-grid">';
+    info.targets.forEach(function(t) {
+      var tInitial = t.target ? t.target.charAt(0).toUpperCase() : '?';
+      html += '<div class="targets-project-thumb-cell target-card-thumb" data-session-id="' +
+              esc(t.latestSessionId || '') + '" data-target="' + esc(t.target || '') + '">';
+      html += '<span class="thumb-placeholder">' + esc(tInitial) + '</span>';
+      html += '</div>';
+    });
+    html += '</div>'; // .targets-project-thumb-grid
+    if (lastImaged) {
+      html += '<div class="targets-project-last-imaged">Last imaged ' + fmtRelativeTime(lastImaged) + '</div>';
+    }
+    html += '</div>'; // .targets-project-thumb-wrap
+    html += '</div>'; // .targets-project-thumb-col
   } else {
-    // Non-mosaic grouped project — thumbnail from first target + stat boxes
+    // Non-mosaic single target — single thumbnail
     var firstTarget = info.targets[0];
     html += '<div class="targets-project-thumb-col">';
     html += '<div class="targets-project-thumb-wrap target-card-thumb" data-session-id="' +
@@ -741,7 +759,9 @@ function renderProjectContainer(info) {
     }
     html += '</div>'; // .targets-project-thumb-wrap
     html += '</div>'; // .targets-project-thumb-col
+  }
 
+  if (!info.isMosaic) {
     var avgHFR = 0, hfrCount = 0;
     info.targets.forEach(function(t) {
       if (t.avgHFR) { avgHFR += t.avgHFR; hfrCount++; }
@@ -1636,6 +1656,15 @@ function loadTargetDetailThumb(targetName, latestSessionId) {
     }
     if (match && match.dataUri) {
       thumbEl.innerHTML = '<img src="' + match.dataUri + '" alt="' + esc(targetName) + '">';
+      if (match.fovSvg) {
+        var fovHtml = match.fovSvg
+          .replace(/width='\d+'/, "width='100%'")
+          .replace(/height='\d+'/, "height='100%'")
+          .replace("<svg ", "<svg viewBox='0 0 200 200' " + (showFovOverlay ? '' : "style='display:none' "));
+        var fovDiv = document.createElement('div');
+        fovDiv.innerHTML = fovHtml;
+        thumbEl.appendChild(fovDiv.firstChild);
+      }
     }
   }
 
@@ -1910,7 +1939,7 @@ function renderProjectDetailPanel(data) {
   html += '<div class="pdp-kpi"><div class="pdp-kpi-val">' + (agg.sessionCount || 0) +
     '</div><div class="pdp-kpi-label">Sessions</div></div>';
   html += '<div class="pdp-kpi"><div class="pdp-kpi-val">' + panels.length +
-    '</div><div class="pdp-kpi-label">Panels</div></div>';
+    '</div><div class="pdp-kpi-label">' + (proj.isMosaic ? 'Panels' : 'Targets') + '</div></div>';
   html += '</div>';
   html += '</div>'; // end pdp-stats-section
 
@@ -1992,7 +2021,7 @@ function renderProjectDetailPanel(data) {
 
   // ── 5. Per-panel cards ────────────────────────────────────────────────────
   html += '<div class="pdp-panels-section">';
-  html += '<div class="pdp-section-title">Panels (' + panels.length + ')</div>';
+  html += '<div class="pdp-section-title">' + (proj.isMosaic ? 'Panels' : 'Targets') + ' (' + panels.length + ')</div>';
   html += '<div class="pdp-panels-grid">';
   panels.forEach(function(panel, i) {
     // Enrich with per-panel TS progress data from summary cache
@@ -2050,6 +2079,17 @@ function loadPdpMultiThumbs(backdrop, imagedPanels) {
         img.src = match.dataUri;
         img.alt = esc(targetName);
         cell.insertBefore(img, cell.firstChild);
+        if (match.fovSvg) {
+          var oldSvg = cell.querySelector('svg');
+          if (oldSvg) oldSvg.remove();
+          var fovHtml = match.fovSvg
+            .replace(/width='\d+'/, "width='100%'")
+            .replace(/height='\d+'/, "height='100%'")
+            .replace("<svg ", "<svg viewBox='0 0 200 200' " + (showFovOverlay ? '' : "style='display:none' "));
+          var fovDiv = document.createElement('div');
+          fovDiv.innerHTML = fovHtml;
+          cell.appendChild(fovDiv.firstChild);
+        }
       }
     }
 
@@ -2091,6 +2131,17 @@ function loadPdpSingleThumb(backdrop, panel) {
       img.src = match.dataUri;
       img.alt = targetName || '';
       wrap.insertBefore(img, wrap.firstChild);
+      if (match.fovSvg) {
+        var oldSvg = wrap.querySelector('svg');
+        if (oldSvg) oldSvg.remove();
+        var fovHtml = match.fovSvg
+          .replace(/width='\d+'/, "width='100%'")
+          .replace(/height='\d+'/, "height='100%'")
+          .replace("<svg ", "<svg viewBox='0 0 200 200' " + (showFovOverlay ? '' : "style='display:none' "));
+        var fovDiv = document.createElement('div');
+        fovDiv.innerHTML = fovHtml;
+        wrap.appendChild(fovDiv.firstChild);
+      }
     }
   }
 
@@ -4324,7 +4375,7 @@ function bindListEvents() {
     fovEl.addEventListener('change', function() {
       showFovOverlay = this.checked;
       localStorage.setItem('ns-show-fov', showFovOverlay ? 'true' : 'false');
-      document.querySelectorAll('.card-thumb-wrap svg, .target-card-thumb svg').forEach(function(svg) {
+      document.querySelectorAll('.card-thumb-wrap svg, .target-card-thumb svg, .pdp-multi-thumb-cell svg, #pdp-thumb-wrap svg, #tdp-hero-wrap svg').forEach(function(svg) {
         svg.style.display = showFovOverlay ? '' : 'none';
       });
       document.querySelectorAll('.mosaic-fov-svg').forEach(function(svg) {

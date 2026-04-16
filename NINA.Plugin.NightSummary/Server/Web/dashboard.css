@@ -2159,6 +2159,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 .targets-project-thumb-col {
   flex: 1;
   min-width: 0;
+  position: relative;
 }
 .targets-project-thumb-wrap {
   position: relative;
@@ -2173,6 +2174,48 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   height: 100%;
   object-fit: cover;
   display: block;
+}
+/* Multi-target thumbnail grid — square cells inside the standard thumb-wrap */
+.targets-project-thumb-wrap:has(.targets-project-thumb-grid) {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.targets-project-thumb-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2px;
+  width: 100%;
+  margin: auto 0;
+  flex-shrink: 0;
+}
+.targets-project-thumb-cell {
+  position: relative;
+  aspect-ratio: 1;
+  background: rgba(0,0,0,0.3);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* Odd last cell (e.g. 3rd of 3, 5th of 5): center under the row above */
+.targets-project-thumb-cell:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+  justify-self: center;
+  width: calc(50% - 1px);
+}
+.targets-project-thumb-cell img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.targets-project-thumb-cell .thumb-placeholder {
+  font-size: 14px;
+  color: var(--text-tertiary);
+  z-index: 0;
 }
 .targets-project-last-imaged {
   position: absolute;
