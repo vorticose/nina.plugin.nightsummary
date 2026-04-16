@@ -1576,6 +1576,7 @@ namespace NINA.Plugin.NightSummary.Server {
             int aggSessions = 0;
             DateTime? aggLastImaged = null;
             DateTime? aggFirstImaged = null;
+            var panelNamesLower = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var tgt in proj.Targets) {
                 if (exclusionsForProj.Any(x => string.Equals(x, tgt.Name, StringComparison.OrdinalIgnoreCase))) continue;
@@ -1674,6 +1675,108 @@ namespace NINA.Plugin.NightSummary.Server {
                         accepted     = ep.Accepted,
                         acquired     = ep.Acquired,
                     }).ToList(),
+                });
+                panelNamesLower.Add(tgt.Name ?? "");
+            }
+
+            // Cross-assigned targets: targets assigned to this project via projectAssignments
+            // that aren't native TS targets of this project. Look up exposure plans from the
+            // target's native TS project so the cumulative TS progress bars in the UI include them.
+            var projectAssignments = GetProjectAssignments();
+            var projGuidLower = proj.Guid ?? "";
+            foreach (var kv in projectAssignments) {
+                var tgtKey = kv.Key ?? "";
+                var guids = kv.Value ?? new List<string>();
+                if (panelNamesLower.Contains(tgtKey)) continue;
+                if (!guids.Any(g => string.Equals(g, projGuidLower, StringComparison.OrdinalIgnoreCase))) continue;
+
+                // Find the target's native TS target for RA/Dec + exposure plans
+                TsProjectTarget nativeTarget = allProjects
+                    .SelectMany(p => p.Targets)
+                    .FirstOrDefault(x => string.Equals(x.Name, tgtKey, StringComparison.OrdinalIgnoreCase));
+
+                var displayName = nativeTarget?.Name ?? tgtKey;
+                List<TargetSessionDetail> caSessions = db2 != null
+                    ? db2.GetSessionsForTarget(displayName)
+                    : new List<TargetSessionDetail>();
+                if (caSessions.Count == 0) continue;
+
+                double caTotalSec    = caSessions.Sum(s => s.IntegrationSeconds);
+                int    caTotFrames   = caSessions.Sum(s => s.AcceptedFrames);
+                int    caSessCount   = caSessions.Count;
+                DateTime? caLastImg  = caSessions.Max(s => s.SessionStart) as DateTime?;
+                DateTime? caFirstImg = caSessions.Min(s => s.SessionStart) as DateTime?;
+
+                aggFrames   += caTotFrames;
+                aggSeconds  += caTotalSec;
+                aggSessions += caSessCount;
+                if (caLastImg.HasValue  && (aggLastImaged  == null || caLastImg.Value  > aggLastImaged.Value))
+                    aggLastImaged  = caLastImg;
+                if (caFirstImg.HasValue && (aggFirstImaged == null || caFirstImg.Value < aggFirstImaged.Value))
+                    aggFirstImaged = caFirstImg;
+
+                // Camera/FOV from most recent session with valid cam info
+                SessionRecord caBest = null;
+                foreach (var tsd in caSessions) {
+                    if (sessionById.TryGetValue(tsd.SessionId, out var sr) &&
+                        sr.CamXSize > 0 && sr.PixelSizeMicrons > 0 && sr.FocalLengthMm > 0) {
+                        if (caBest == null || sr.SessionStart > caBest.SessionStart)
+                            caBest = sr;
+                    }
+                }
+                int?    caCamX = null, caCamY = null;
+                double? caPx = null, caFl = null, caScale = null, caFovW = null, caFovH = null;
+                if (caBest != null) {
+                    caCamX  = caBest.CamXSize;
+                    caCamY  = caBest.CamYSize;
+                    caPx    = caBest.PixelSizeMicrons;
+                    caFl    = caBest.FocalLengthMm;
+                    caScale = Math.Round((caBest.PixelSizeMicrons / caBest.FocalLengthMm) * 206.265, 4);
+                    caFovW  = Math.Round(caBest.CamXSize * caScale.Value / 3600.0, 4);
+                    caFovH  = Math.Round(caBest.CamYSize * caScale.Value / 3600.0, 4);
+                }
+
+                latestPaByTarget.TryGetValue(displayName, out var caPlateAngle);
+
+                panels.Add(new {
+                    guid             = nativeTarget?.Guid,
+                    name             = displayName,
+                    active           = true,
+                    ra               = nativeTarget?.RA ?? 0,
+                    dec              = nativeTarget?.Dec ?? 0,
+                    rotation         = nativeTarget?.Rotation ?? 0,
+                    positionAngle    = caPlateAngle,
+                    totalIntegrationHours = Math.Round(caTotalSec / 3600.0, 2),
+                    acceptedFrames   = caTotFrames,
+                    sessionCount     = caSessCount,
+                    lastImaged       = caLastImg.HasValue  ? caLastImg.Value.ToString("o")  : (string)null,
+                    firstImaged      = caFirstImg.HasValue ? caFirstImg.Value.ToString("o") : (string)null,
+                    latestSessionId  = caSessions.OrderByDescending(s => s.SessionStart).First().SessionId,
+                    camXSize         = caCamX,
+                    camYSize         = caCamY,
+                    pixelSizeMicrons = caPx,
+                    focalLengthMm    = caFl,
+                    pixelScaleArcSec = caScale,
+                    fovWidthDeg      = caFovW,
+                    fovHeightDeg     = caFovH,
+                    filters          = caSessions.SelectMany(s => s.Filters)
+                        .GroupBy(f => f.Filter)
+                        .Select(g => new {
+                            filter         = g.Key,
+                            totalHours     = Math.Round(g.Sum(f => f.IntegrationSeconds) / 3600.0, 2),
+                            acceptedFrames = g.Sum(f => f.AcceptedFrames),
+                        })
+                        .OrderByDescending(f => f.totalHours)
+                        .ToList(),
+                    tsGoals          = (nativeTarget?.ExposurePlans ?? new List<TsProjectExposurePlan>()).Select(ep => new {
+                        filter       = ep.Filter,
+                        templateName = ep.TemplateName,
+                        exposureSec  = ep.ExposureSec,
+                        desired      = ep.Desired,
+                        accepted     = ep.Accepted,
+                        acquired     = ep.Acquired,
+                    }).ToList(),
+                    crossAssigned    = true,
                 });
             }
 
