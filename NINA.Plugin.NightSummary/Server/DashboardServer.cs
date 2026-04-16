@@ -916,20 +916,45 @@ namespace NINA.Plugin.NightSummary.Server {
             SetDashboardMeta(TsTargetLinksKey, JsonSerializer.Serialize(map));
         }
 
-        private Dictionary<string, string> GetProjectAssignments() {
+        private Dictionary<string, List<string>> GetProjectAssignments() {
             var raw = GetDashboardMeta(TsProjectAssignmentsKey);
-            if (string.IsNullOrEmpty(raw)) return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (string.IsNullOrEmpty(raw)) return new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
             try {
-                return JsonSerializer.Deserialize<Dictionary<string, string>>(raw)
-                    ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            } catch { return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase); }
+                // Try new array format first
+                var result = JsonSerializer.Deserialize<Dictionary<string, List<string>>>(raw);
+                if (result != null) return new Dictionary<string, List<string>>(result, StringComparer.OrdinalIgnoreCase);
+            } catch {
+                // Fall back to old string format and normalize
+                try {
+                    var old = JsonSerializer.Deserialize<Dictionary<string, string>>(raw);
+                    if (old != null) {
+                        var normalized = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+                        foreach (var kv in old) {
+                            if (!string.IsNullOrEmpty(kv.Value))
+                                normalized[kv.Key] = new List<string> { kv.Value };
+                        }
+                        return normalized;
+                    }
+                } catch { }
+            }
+            return new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         }
 
         private void SetProjectAssignment(string targetNameLower, string projectGuidOrEmpty) {
             if (string.IsNullOrEmpty(targetNameLower)) return;
             var map = GetProjectAssignments();
-            if (string.IsNullOrEmpty(projectGuidOrEmpty)) map.Remove(targetNameLower);
-            else map[targetNameLower] = projectGuidOrEmpty;
+            if (string.IsNullOrEmpty(projectGuidOrEmpty)) {
+                // Clear all assignments
+                map.Remove(targetNameLower);
+            } else if (map.TryGetValue(targetNameLower, out var existing) && existing.Contains(projectGuidOrEmpty)) {
+                // Toggle off: remove this GUID
+                existing.Remove(projectGuidOrEmpty);
+                if (existing.Count == 0) map.Remove(targetNameLower);
+            } else {
+                // Toggle on: add this GUID
+                if (!map.ContainsKey(targetNameLower)) map[targetNameLower] = new List<string>();
+                map[targetNameLower].Add(projectGuidOrEmpty);
+            }
             SetDashboardMeta(TsProjectAssignmentsKey, JsonSerializer.Serialize(map));
         }
 

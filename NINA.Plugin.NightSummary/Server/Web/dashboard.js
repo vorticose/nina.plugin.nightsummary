@@ -355,6 +355,13 @@ function renderTargetCard(t, index) {
             (overridden ? '<span class="override-mark" title="User override active"></span>' : '') +
             '</span>';
   }
+  // Additional project badges (multi-project assignment)
+  if (t.additionalProjects && t.additionalProjects.length > 0) {
+    t.additionalProjects.forEach(function(ap) {
+      html += '<span class="target-card-project-pill" title="' + esc(ap.name || '') + '">' +
+              esc(ap.name || 'Project') + '</span>';
+    });
+  }
   html += '</div>';
 
   // Progress bar
@@ -659,7 +666,7 @@ function renderProjectContainer(info) {
   html += '<div class="targets-project-header">';
   html += '<div class="targets-project-header-left">';
   html += '<span class="targets-project-name">' + esc(info.name) + '</span>';
-  var containerType = info.isMosaic ? 'Mosaic' : (info.targetCount > 1 ? 'Multi' : 'Single');
+  var containerType = info.isMosaic ? 'Mosaic' : (Math.max(info.targetCount, info.targets.length) > 1 ? 'Multi' : 'Single');
   html += '<span class="targets-project-type-badge">' + containerType + '</span>';
   html += '<span class="target-card-ts-badge" data-state="' + esc(info.state) +
     '" data-project-guid="' + esc(info.guid) + '" title="Click to override status">' + esc(info.state) + '</span>';
@@ -774,6 +781,19 @@ function renderGroupedTargets(targets, sortKey) {
         targetCount: proj.targetCount || 1, targets: [] };
     }
     containerMap[guid].targets.push(t);
+    // Multi-project: also add to additional project containers
+    if (t.additionalProjects) {
+      t.additionalProjects.forEach(function(ap) {
+        if (!ap.guid) return;
+        if (!containerMap[ap.guid]) {
+          containerMap[ap.guid] = { guid: ap.guid, name: ap.name || 'Project',
+            state: ap.state || 'Draft', isMosaic: !!ap.isMosaic,
+            targetCount: ap.targetCount || 1, targets: [],
+            isCustom: !!ap.isCustom };
+        }
+        containerMap[ap.guid].targets.push(t);
+      });
+    }
   });
 
   var enabledTypes = getTargetTypeFilter();
@@ -781,9 +801,11 @@ function renderGroupedTargets(targets, sortKey) {
   Object.keys(containerMap).forEach(function(guid) {
     var grp = containerMap[guid];
     if (enabled.indexOf(grp.state) < 0) return; // state filtered
-    var pType = projectType(grp.isMosaic, grp.targetCount);
+    // Use actual target count (may exceed TS targetCount due to multi-project assignments)
+    var effectiveCount = Math.max(grp.targetCount, grp.targets.length);
+    var pType = projectType(grp.isMosaic, effectiveCount);
     if (enabledTypes.indexOf(pType) < 0) return; // type filtered
-    if (!grp.isMosaic && grp.targetCount <= 1) {
+    if (!grp.isMosaic && effectiveCount <= 1) {
       items.push({ type: 'standalone', pType: pType, target: grp.targets[0], state: grp.state });
     } else {
       items.push({ type: 'container', pType: pType, info: grp, state: grp.state });
@@ -4989,8 +5011,21 @@ var statsTargetData = null;
 var statsTsStatus   = null;   // "available" | "not_installed" | "error" | null
 var statsTsError    = null;   // string or null
 var statsTsProjects = null;   // array of { guid, name, state, isMosaic, isCustom, targetCount, targets: [{guid,name}] }
-var statsProjectAssignments = null; // { "target name (lowercase)": "project-guid" }
+var statsProjectAssignments = null; // { "target name (lowercase)": ["project-guid", ...] }
 var statsTargetExclusions  = null; // { "project-guid": ["target name (lowercase)", ...] }
+
+// Normalize projectAssignments: old string values → arrays for backward compat
+function normalizeAssignments(obj) {
+  if (!obj) return {};
+  var result = {};
+  Object.keys(obj).forEach(function(k) {
+    var v = obj[k];
+    if (typeof v === 'string') result[k] = v ? [v] : [];
+    else if (Array.isArray(v)) result[k] = v;
+    else result[k] = [];
+  });
+  return result;
+}
 
 function renderStatsTabContent(tabId) {
   var container = document.getElementById('stats-tab-content');
@@ -5244,9 +5279,9 @@ function getMatchedProjectGuids() {
   (statsTargetData || []).forEach(function(d) {
     if (d.ts && d.ts.project && d.ts.project.guid) matched[d.ts.project.guid] = true;
   });
-  // Also include custom projects that have assignments
+  // Also include projects that have assignments
   Object.keys(statsProjectAssignments || {}).forEach(function(k) {
-    matched[statsProjectAssignments[k]] = true;
+    (statsProjectAssignments[k] || []).forEach(function(g) { matched[g] = true; });
   });
   return matched;
 }
@@ -5270,7 +5305,7 @@ function openManageProjectsModal() {
     }
     // Manually assigned targets (only add if not already listed from p.targets)
     Object.keys(statsProjectAssignments || {}).forEach(function(k) {
-      if (statsProjectAssignments[k] === p.guid) {
+      if ((statsProjectAssignments[k] || []).indexOf(p.guid) >= 0) {
         var alreadyListed = targets.some(function(t) { return t.name.toLowerCase() === k; });
         if (!alreadyListed) targets.push({ name: k, source: 'assigned' });
       }
@@ -5383,7 +5418,7 @@ function openManageProjectsModal() {
     if (proj.isCustom) {
       var assignedCount = 0;
       Object.keys(statsProjectAssignments || {}).forEach(function(k) {
-        if ((statsProjectAssignments || {})[k] === projectGuid) assignedCount++;
+        if ((statsProjectAssignments[k] || []).indexOf(projectGuid) >= 0) assignedCount++;
       });
       subtitle = assignedCount > 0
         ? assignedCount + ' assigned target' + (assignedCount !== 1 ? 's' : '')
@@ -5427,9 +5462,16 @@ function openManageProjectsModal() {
       url  = '/api/stats/ts/exclude';
       body = { targetName: targetName, projectGuid: projectGuid, exclude: true };
     } else {
-      if (statsProjectAssignments) delete statsProjectAssignments[targetName.toLowerCase()];
+      if (statsProjectAssignments) {
+        var tKey = targetName.toLowerCase();
+        var arr = statsProjectAssignments[tKey] || [];
+        var idx = arr.indexOf(projectGuid);
+        if (idx >= 0) arr.splice(idx, 1);
+        if (arr.length === 0) delete statsProjectAssignments[tKey];
+        else statsProjectAssignments[tKey] = arr;
+      }
       url  = '/api/stats/ts/assign';
-      body = { targetName: targetName, projectGuid: '' };
+      body = { targetName: targetName, projectGuid: projectGuid };
     }
     var row = btn.closest('.manage-project-target');
     if (row) row.remove();
@@ -5557,7 +5599,10 @@ function openManageProjectsModal() {
           // Remove from memory and rebuild list
           if (statsTsProjects) statsTsProjects = statsTsProjects.filter(function(p) { return p.guid !== guid; });
           Object.keys(statsProjectAssignments || {}).forEach(function(k) {
-            if (statsProjectAssignments[k] === guid) delete statsProjectAssignments[k];
+            var arr = statsProjectAssignments[k] || [];
+            var idx = arr.indexOf(guid);
+            if (idx >= 0) arr.splice(idx, 1);
+            if (arr.length === 0) delete statsProjectAssignments[k];
           });
           rebuildList();
         });
@@ -5610,6 +5655,7 @@ function openManageProjectsModal() {
 
 // ── Project assignment picker (per target card) ──────────────────────────
 
+var _projectAssignDirty = false;
 function closeProjectAssignPicker() {
   var bd = document.getElementById('project-assign-backdrop');
   if (bd && bd.parentNode) bd.parentNode.removeChild(bd);
@@ -5617,6 +5663,10 @@ function closeProjectAssignPicker() {
   if (dd && dd.parentNode) dd.parentNode.removeChild(dd);
   document.removeEventListener('keydown', _projectAssignKeyHandler);
   document.body.style.overflow = '';
+  if (_projectAssignDirty) {
+    _projectAssignDirty = false;
+    renderStats();
+  }
 }
 
 var _projectAssignOutsideHandler = function(e) {
@@ -5631,17 +5681,24 @@ function openProjectAssignPicker(anchorEl, targetName) {
   closeProjectAssignPicker();
   var projects = statsTsProjects || [];
   var matchedGuids = getMatchedProjectGuids();
-  var currentGuid = (statsProjectAssignments || {})[targetName.toLowerCase()] || null;
+  var currentGuids = (statsProjectAssignments || {})[targetName.toLowerCase()] || [];
   // Also check if target is auto-matched to a TS project
   var targetRow = (statsTargetData || []).filter(function(t) { return t.target === targetName; })[0];
   var autoProjectGuid = (targetRow && targetRow.ts && targetRow.ts.project) ? targetRow.ts.project.guid : null;
-  var effectiveGuid = currentGuid || autoProjectGuid;
+  // All checked GUIDs: manual assignments + auto-match
+  var checkedGuids = currentGuids.slice();
+  if (autoProjectGuid && checkedGuids.indexOf(autoProjectGuid) < 0) checkedGuids.push(autoProjectGuid);
 
   function renderOption(p) {
-    var cls = 'project-assign-option' + (p.guid === effectiveGuid ? ' selected' : '');
+    var isChecked = checkedGuids.indexOf(p.guid) >= 0;
+    var isAuto = p.guid === autoProjectGuid && currentGuids.indexOf(p.guid) < 0;
+    var cls = 'project-assign-option' + (isChecked ? ' selected' : '');
     var tag = p.isCustom ? 'Custom' : (p.isMosaic ? 'Mosaic' : 'TS');
+    var checkmark = isChecked ? '\u2611' : '\u2610';
+    var autoLabel = isAuto ? ' <span class="project-assign-auto">(auto)</span>' : '';
     return '<div class="' + cls + '" data-guid="' + esc(p.guid) + '">' +
-      '<span class="project-assign-name">' + esc(p.name) + '</span>' +
+      '<span class="project-assign-check">' + checkmark + '</span>' +
+      '<span class="project-assign-name">' + esc(p.name) + autoLabel + '</span>' +
       '<span class="project-assign-tag">' + esc(tag) + '</span>' +
     '</div>';
   }
@@ -5663,10 +5720,10 @@ function openProjectAssignPicker(anchorEl, targetName) {
   }
 
   var html =
-    '<div class="project-assign-header">Assign to project</div>' +
+    '<div class="project-assign-header">Assign to projects</div>' +
     '<div class="project-assign-list">' + options + '</div>' +
     '<div class="project-assign-footer">' +
-      '<div class="project-assign-reset" data-action="clear">Remove from project</div>' +
+      '<div class="project-assign-reset" data-action="clear">Remove all</div>' +
     '</div>';
 
   // Measure anchor position before locking scroll
@@ -5720,17 +5777,29 @@ function openProjectAssignPicker(anchorEl, targetName) {
     });
   }
 
-  // Click handlers
+  // Click handlers — toggle checkbox, don't close picker
   dropdown.querySelectorAll('.project-assign-option').forEach(function(opt) {
     opt.addEventListener('click', function() {
       var guid = opt.getAttribute('data-guid');
-      closeProjectAssignPicker();
+      var key = targetName.toLowerCase();
+      // Toggle in local state
+      _projectAssignDirty = true;
+      if (!statsProjectAssignments) statsProjectAssignments = {};
+      var arr = statsProjectAssignments[key] || [];
+      var idx = arr.indexOf(guid);
+      if (idx >= 0) { arr.splice(idx, 1); } else { arr.push(guid); }
+      if (arr.length === 0) delete statsProjectAssignments[key];
+      else statsProjectAssignments[key] = arr;
+      // Update checkbox visual
+      var isNowChecked = idx < 0; // was not checked, now is
+      opt.classList.toggle('selected', isNowChecked);
+      var checkEl = opt.querySelector('.project-assign-check');
+      if (checkEl) checkEl.textContent = isNowChecked ? '\u2611' : '\u2610';
+      // Persist to server (toggle endpoint)
       fetch('/api/stats/ts/assign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ targetName: targetName, projectGuid: guid })
-      }).then(function(r) { return r.json(); }).then(function() {
-        renderStats();
       });
     });
   });
@@ -5867,7 +5936,7 @@ function renderStats() {
     statsTsStatus   = targetData.tsStatus   || null;
     statsTsError    = targetData.tsError    || null;
     statsTsProjects = targetData.tsProjects || null;
-    statsProjectAssignments = targetData.projectAssignments || {};
+    statsProjectAssignments = normalizeAssignments(targetData.projectAssignments || {});
     statsTargetExclusions  = targetData.targetExclusions  || {};
 
     // Populate globalFilterTypeMap from plugin settings (case-insensitive)

@@ -38,6 +38,22 @@ def load_icon():
             ICON_DATA_URI = "data:image/png;base64," + base64.b64encode(f.read()).decode("ascii")
 
 
+def _normalize_assignments(assignments):
+    """Normalize projectAssignments: old string values → arrays for backward compat."""
+    if not assignments:
+        return {}
+    normalized = {}
+    for k, v in assignments.items():
+        if isinstance(v, str):
+            normalized[k] = [v] if v else []
+        elif isinstance(v, list):
+            normalized[k] = v
+        else:
+            normalized[k] = []
+    # Remove empty entries
+    return {k: v for k, v in normalized.items() if v}
+
+
 class DashboardHandler(BaseHTTPRequestHandler):
     data_dir = ""
 
@@ -307,7 +323,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             meta = self._load_ts_meta()
             status_overrides    = meta.get("statusOverrides",   {}) or {}
             manual_links        = meta.get("targetLinks",       {}) or {}
-            project_assignments = meta.get("projectAssignments",{}) or {}
+            project_assignments = _normalize_assignments(meta.get("projectAssignments",{}) or {})
             custom_projects     = meta.get("customProjects",    {}) or {}
             target_exclusions   = meta.get("targetExclusions",  {}) or {}
 
@@ -325,36 +341,82 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     if g:
                         ts_by_guid[g] = (p, t)
 
+            # Helper: build a project summary dict for an assigned project GUID
+            def _build_assigned_project_obj(pguid):
+                if pguid in ts_proj_by_guid:
+                    aproj = ts_proj_by_guid[pguid]
+                else:
+                    cproj = custom_projects.get(pguid)
+                    if not cproj:
+                        return None
+                    aproj = {
+                        "guid": pguid,
+                        "name": cproj.get("name", "Custom Project"),
+                        "state": cproj.get("state", "Active"),
+                        "isMosaic": False,
+                        "targets": [],
+                    }
+                raw_state = aproj.get("state") or "Active"
+                override  = status_overrides.get(aproj.get("guid") or "")
+                eff_state = override if override else raw_state
+                eff_src   = "override" if override else "raw"
+                aproj_guid = aproj.get("guid", "")
+                assigned_count = sum(1 for guids in project_assignments.values() if aproj_guid in guids)
+                ts_target_count = len(aproj.get("targets", []))
+                return {
+                    "id":              aproj.get("id"),
+                    "guid":            aproj_guid,
+                    "profileId":       aproj.get("profileId"),
+                    "name":            aproj.get("name"),
+                    "description":     aproj.get("description"),
+                    "rawState":        raw_state,
+                    "state":           eff_state,
+                    "stateSource":     eff_src,
+                    "priority":        aproj.get("priority"),
+                    "isMosaic":        bool(aproj.get("isMosaic")),
+                    "createDate":      aproj.get("createDate"),
+                    "activeDate":      aproj.get("activeDate"),
+                    "inactiveDate":    aproj.get("inactiveDate"),
+                    "minimumAltitude": aproj.get("minimumAltitude") or 0,
+                    "maximumAltitude": aproj.get("maximumAltitude") or 0,
+                    "targetCount":     ts_target_count + assigned_count,
+                    "percentComplete": None,
+                    "isCustom":        aproj_guid.startswith("custom-"),
+                }
+
             enriched = []
             for row in targets:
                 target_name = row.get("target") or ""
+                key = target_name.lower()
                 ts_match = None
                 matched_by = None
-                assigned_project = None
+                assigned_guids = project_assignments.get(key, [])
 
                 # 1. Manual target link wins (links to a specific TS target)
-                linked = manual_links.get(target_name.lower())
+                linked = manual_links.get(key)
                 if linked and linked in ts_by_guid:
                     ts_match = ts_by_guid[linked]
                     matched_by = "manual"
-                # 2. Project assignment (user explicitly assigned to a project)
-                elif target_name.lower() in project_assignments:
-                    pguid = project_assignments[target_name.lower()]
-                    if pguid in ts_proj_by_guid:
-                        assigned_project = ts_proj_by_guid[pguid]
-                        matched_by = "assigned"
-                    elif pguid in custom_projects:
-                        assigned_project = {
-                            "guid": pguid,
-                            "name": custom_projects[pguid].get("name", "Custom Project"),
-                            "state": custom_projects[pguid].get("state", "Active"),
-                            "isMosaic": False,
-                            "targets": [],
-                        }
-                        matched_by = "assigned"
+                # 2. If only project assignments exist (no target link), use first as primary
+                elif assigned_guids:
+                    # Primary project comes from first assignment
+                    primary_guid = assigned_guids[0]
+                    proj_obj = _build_assigned_project_obj(primary_guid)
+                    if proj_obj:
+                        # Check if this is a TS project with a matching target
+                        if primary_guid in ts_proj_by_guid:
+                            # Look for a target in this project that matches by name
+                            p = ts_proj_by_guid[primary_guid]
+                            for t in p.get("targets", []):
+                                if (t.get("name") or "").lower() == key:
+                                    ts_match = (p, t)
+                                    matched_by = "assigned"
+                                    break
+                        if not ts_match:
+                            matched_by = "assigned"
                 # 3. Case-insensitive exact-name auto-match
-                elif target_name.lower() in ts_by_name:
-                    ts_match = ts_by_name[target_name.lower()]
+                if not ts_match and matched_by != "assigned" and key in ts_by_name:
+                    ts_match = ts_by_name[key]
                     matched_by = "name"
 
                 ts_obj = None
@@ -433,53 +495,39 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         "matchedBy": matched_by,
                     }
 
-                # Build synthetic ts_obj for project-assigned targets (no TS target match)
-                if not ts_obj and assigned_project:
-                    aproj = assigned_project
-                    raw_state = aproj.get("state") or "Active"
-                    override  = status_overrides.get(aproj.get("guid") or "")
-                    eff_state = override if override else raw_state
-                    eff_src   = "override" if override else "raw"
-                    # Count how many targets are assigned to this project
-                    aproj_guid = aproj.get("guid", "")
-                    assigned_count = sum(1 for v in project_assignments.values() if v == aproj_guid)
-                    ts_target_count = len(aproj.get("targets", []))
-                    ts_obj = {
-                        "project": {
-                            "id":              None,
-                            "guid":            aproj_guid,
-                            "profileId":       aproj.get("profileId"),
-                            "name":            aproj.get("name"),
-                            "description":     aproj.get("description"),
-                            "rawState":        raw_state,
-                            "state":           eff_state,
-                            "stateSource":     eff_src,
-                            "priority":        aproj.get("priority"),
-                            "isMosaic":        bool(aproj.get("isMosaic")),
-                            "createDate":      aproj.get("createDate"),
-                            "activeDate":      aproj.get("activeDate"),
-                            "inactiveDate":    aproj.get("inactiveDate"),
-                            "minimumAltitude": aproj.get("minimumAltitude") or 0,
-                            "maximumAltitude": aproj.get("maximumAltitude") or 0,
-                            "targetCount":     ts_target_count + assigned_count,
-                            "percentComplete": None,
-                            "isCustom":        aproj_guid.startswith("custom-"),
-                        },
-                        "target": {
-                            "id":       None,
-                            "guid":     None,
-                            "name":     target_name,
-                            "active":   True,
-                            "ra":       0,
-                            "dec":      0,
-                            "rotation": 0,
-                        },
-                        "goals":     [],
-                        "matchedBy": matched_by,
-                    }
+                # Build synthetic ts_obj for assignment-only targets (no TS target match)
+                if not ts_obj and matched_by == "assigned" and assigned_guids:
+                    proj_obj = _build_assigned_project_obj(assigned_guids[0])
+                    if proj_obj:
+                        ts_obj = {
+                            "project": proj_obj,
+                            "target": {
+                                "id":       None,
+                                "guid":     None,
+                                "name":     target_name,
+                                "active":   True,
+                                "ra":       0,
+                                "dec":      0,
+                                "rotation": 0,
+                            },
+                            "goals":     [],
+                            "matchedBy": matched_by,
+                        }
+
+                # Build additional project list (all assigned GUIDs beyond the primary)
+                additional_projects = []
+                primary_guid = ts_obj["project"]["guid"] if ts_obj and ts_obj.get("project") else None
+                for aguid in assigned_guids:
+                    if aguid == primary_guid:
+                        continue
+                    proj_obj = _build_assigned_project_obj(aguid)
+                    if proj_obj:
+                        additional_projects.append(proj_obj)
 
                 enriched_row = dict(row)
                 enriched_row["ts"] = ts_obj
+                if additional_projects:
+                    enriched_row["additionalProjects"] = additional_projects
                 enriched.append(enriched_row)
 
             # Summary of all projects (TS + custom) for picker UIs
@@ -499,7 +547,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 } for p in ts_projects]
             # Append custom projects
             for cguid, cproj in custom_projects.items():
-                assigned_targets = [k for k, v in project_assignments.items() if v == cguid]
+                assigned_targets = [k for k, guids in project_assignments.items() if cguid in guids]
                 ts_projects_summary.append({
                     "guid":        cguid,
                     "name":        cproj.get("name", "Custom Project"),
@@ -566,7 +614,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_json(200, {"ok": True, "sessionTargetName": session_target_name, "tsTargetGuid": ts_target_guid})
 
     def handle_ts_assign(self):
-        """Assign a session target to a project (TS or custom). Stored in projectAssignments."""
+        """Add/remove a project assignment for a target. Supports multi-project arrays."""
         body = self._read_post_body()
         target_name  = body.get("targetName")
         project_guid = body.get("projectGuid")
@@ -574,14 +622,26 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_json(400, {"error": "targetName required"})
             return
         meta = self._load_ts_meta()
-        assignments = meta.setdefault("projectAssignments", {})
+        assignments = _normalize_assignments(meta.setdefault("projectAssignments", {}))
         key = target_name.lower()
         if not project_guid:
+            # Clear all assignments for this target
             assignments.pop(key, None)
         else:
-            assignments[key] = project_guid
+            current = assignments.get(key, [])
+            if project_guid in current:
+                current.remove(project_guid)
+                if not current:
+                    assignments.pop(key, None)
+                else:
+                    assignments[key] = current
+            else:
+                current.append(project_guid)
+                assignments[key] = current
+        meta["projectAssignments"] = assignments
         self._save_ts_meta(meta)
-        self.send_json(200, {"ok": True, "targetName": target_name, "projectGuid": project_guid})
+        self.send_json(200, {"ok": True, "targetName": target_name, "projectGuid": project_guid,
+                             "assignments": assignments.get(key, [])})
 
     def handle_ts_exclude(self):
         """Exclude (or restore) a TS-native target from a project's dashboard display."""
@@ -645,11 +705,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self.send_json(404, {"error": "custom project not found"})
                 return
             del custom[guid]
-            # Also remove any assignments pointing to this project
-            assignments = meta.get("projectAssignments", {})
-            to_remove = [k for k, v in assignments.items() if v == guid]
-            for k in to_remove:
-                del assignments[k]
+            # Remove this GUID from any assignment arrays
+            assignments = _normalize_assignments(meta.get("projectAssignments", {}))
+            for k in list(assignments.keys()):
+                if guid in assignments[k]:
+                    assignments[k].remove(guid)
+                if not assignments[k]:
+                    del assignments[k]
+            meta["projectAssignments"] = assignments
             self._save_ts_meta(meta)
             self.send_json(200, {"ok": True, "guid": guid, "deleted": True})
         else:

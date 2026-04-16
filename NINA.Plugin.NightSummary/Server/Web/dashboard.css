@@ -2396,6 +2396,39 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   top: -1px;
 }
 
+/* Additional project pill (multi-project assignment) */
+.target-card-project-pill {
+  position: relative;
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 3px 7px;
+  border-radius: 8px;
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
+  background: rgba(var(--accent-rgb), 0.12);
+  color: var(--accent-light);
+  margin-left: 4px;
+  white-space: nowrap;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  z-index: 3;
+}
+
+/* Project assign picker checkbox style */
+.project-assign-check {
+  font-size: 14px;
+  margin-right: 6px;
+  opacity: 0.7;
+}
+.project-assign-option.selected .project-assign-check { opacity: 1; }
+.project-assign-auto {
+  font-size: 9px;
+  opacity: 0.5;
+  font-style: italic;
+}
+
 /* TS state override dropdown — appended to document.body, positioned in viewport coords */
 .ts-override-dropdown {
   position: absolute;
