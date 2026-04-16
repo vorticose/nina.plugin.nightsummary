@@ -795,13 +795,19 @@ function renderGroupedTargets(targets, sortKey) {
     if (!t.ts || !t.ts.project || !t.ts.project.guid) { unassigned.push(t); return; }
     var proj = t.ts.project;
     var guid = proj.guid;
-    if (!containerMap[guid]) {
-      containerMap[guid] = { guid: guid, name: proj.name || 'TS Project',
-        state: proj.state || 'Draft', isMosaic: !!proj.isMosaic,
-        targetCount: proj.targetCount || 1, targets: [] };
+    // Skip targets excluded from their native project
+    var excl = (statsTargetExclusions || {})[guid] || [];
+    var isExcluded = excl.indexOf((t.target || '').toLowerCase()) >= 0;
+    if (!isExcluded) {
+      if (!containerMap[guid]) {
+        containerMap[guid] = { guid: guid, name: proj.name || 'TS Project',
+          state: proj.state || 'Draft', isMosaic: !!proj.isMosaic,
+          targetCount: proj.targetCount || 1, targets: [] };
+      }
+      containerMap[guid].targets.push(t);
     }
-    containerMap[guid].targets.push(t);
     // Multi-project: also add to additional project containers
+    var addedElsewhere = false;
     if (t.additionalProjects) {
       t.additionalProjects.forEach(function(ap) {
         if (!ap.guid) return;
@@ -812,8 +818,11 @@ function renderGroupedTargets(targets, sortKey) {
             isCustom: !!ap.isCustom };
         }
         containerMap[ap.guid].targets.push(t);
+        addedElsewhere = true;
       });
     }
+    // Excluded from native project and not assigned elsewhere → unassigned
+    if (isExcluded && !addedElsewhere) unassigned.push(t);
   });
 
   var enabledTypes = getTargetTypeFilter();
@@ -5313,11 +5322,16 @@ function applyTsTargetLink(sessionTargetName, tsTargetGuid, onDone) {
 
 // ── Manage Projects modal ─────────────────────────────────────────────────
 
+var _manageProjectsDirty = false;
 function closeManageProjectsModal() {
   var bd = document.getElementById('manage-projects-backdrop');
   if (bd && bd.parentNode) bd.parentNode.removeChild(bd);
   document.removeEventListener('keydown', _manageProjectsKeyHandler);
   document.body.style.overflow = '';
+  if (_manageProjectsDirty) {
+    _manageProjectsDirty = false;
+    renderStats();
+  }
 }
 
 var _manageProjectsKeyHandler = function(e) {
@@ -5500,6 +5514,7 @@ function openManageProjectsModal() {
 
   // Remove a target row in-place and persist.
   function handleTargetRemove(btn) {
+    _manageProjectsDirty = true;
     var targetName  = btn.getAttribute('data-target');
     var projectGuid = btn.getAttribute('data-project');
     var source      = btn.getAttribute('data-source');
@@ -5532,6 +5547,7 @@ function openManageProjectsModal() {
 
   // Restore all hidden targets for one project in-place.
   function handleProjectReset(projectGuid) {
+    _manageProjectsDirty = true;
     var proj = (statsTsProjects || []).find(function(p) { return p.guid === projectGuid; });
     if (!proj) return;
     var excluded = ((statsTargetExclusions || {})[projectGuid] || []).slice();
@@ -5567,6 +5583,7 @@ function openManageProjectsModal() {
 
   // Rebuild the project list in-place (for structural changes: create, delete, global reset).
   function rebuildList() {
+    _manageProjectsDirty = true;
     var listEl = backdrop.querySelector('.manage-projects-list');
     if (!listEl) return;
     var curProjects = statsTsProjects || [];
