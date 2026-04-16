@@ -960,18 +960,20 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     continue  # already a native panel
                 if not any(g.lower() == proj_guid_lower for g in guids):
                     continue  # not assigned to this project
-                # Look up RA/Dec from the target's native TS project
+                # Look up RA/Dec and exposure plans from the target's native TS project
                 ts_entry = ts_by_name.get(tgt_key)
                 tgt_ra = 0
                 tgt_dec = 0
                 tgt_rotation = 0
                 tgt_display_name = tgt_key.title()  # fallback display name
+                tgt_exposure_plans = []
                 if ts_entry:
                     _, ts_tgt = ts_entry
                     tgt_ra = ts_tgt.get("ra") or 0
                     tgt_dec = ts_tgt.get("dec") or 0
                     tgt_rotation = ts_tgt.get("rotation") or 0
                     tgt_display_name = ts_tgt.get("name") or tgt_display_name
+                    tgt_exposure_plans = ts_tgt.get("exposurePlans", []) or []
                 stats = _scan_target_sessions(tgt_key)
                 if stats["sess_count"] == 0 and stats["total_frames"] == 0:
                     continue  # no data for this target
@@ -997,7 +999,17 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     "firstImaged": stats["first_imaged"],
                     "latestSessionId": stats["latest_sid"],
                     "filters": _filters_out(stats["filters_agg"]),
-                    "tsGoals": [],  # no TS goals for cross-assigned targets
+                    "tsGoals": [
+                        {
+                            "filter":       e.get("filter"),
+                            "templateName": e.get("templateName"),
+                            "exposureSec":  e.get("exposureSec"),
+                            "desired":  int(e.get("desired")  or 0),
+                            "accepted": int(e.get("accepted") or 0),
+                            "acquired": int(e.get("acquired") or 0),
+                        }
+                        for e in tgt_exposure_plans
+                    ],
                     "crossAssigned": True,
                 }
                 if stats["best_cam"]:

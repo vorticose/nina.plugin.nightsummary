@@ -2192,12 +2192,13 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 }
 .targets-project-thumb-cell {
   position: relative;
-  aspect-ratio: 1;
   background: rgba(0,0,0,0.3);
   overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+}
+.targets-project-thumb-cell::before {
+  content: '';
+  display: block;
+  padding-bottom: 100%;
 }
 /* Odd last cell (e.g. 3rd of 3, 5th of 5): center under the row above */
 .targets-project-thumb-cell:last-child:nth-child(odd) {
@@ -2213,6 +2214,11 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   object-fit: cover;
 }
 .targets-project-thumb-cell .thumb-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 14px;
   color: var(--text-tertiary);
   z-index: 0;
@@ -3692,13 +3698,14 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   scrollbar-color: rgba(255,255,255,0.18) transparent;
 }
 .pdp-multi-thumb-cell {
-  aspect-ratio: 1 / 1;
   background: var(--surface-well);
   overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   position: relative;
+}
+.pdp-multi-thumb-cell::before {
+  content: '';
+  display: block;
+  padding-bottom: 100%;
 }
 .pdp-multi-thumb-cell img {
   position: absolute;
@@ -3716,6 +3723,11 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   pointer-events: none;
 }
 .pdp-cell-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 28px;
   font-weight: 700;
   color: var(--text-quaternary);
