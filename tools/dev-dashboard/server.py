@@ -757,6 +757,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
             status_overrides  = meta.get("statusOverrides",  {}) or {}
             target_exclusions = (meta.get("targetExclusions", {}) or {}).get(proj.get("guid", ""), [])
 
+            # Build name→(project, target) lookup for cross-assigned target coords
+            ts_by_name = {}
+            for p in ts_projects:
+                for t in p.get("targets", []):
+                    name = (t.get("name") or "").lower()
+                    if name and name not in ts_by_name:
+                        ts_by_name[name] = (p, t)
+
             # Effective state
             raw_state = proj.get("state") or "Draft"
             override = status_overrides.get(proj.get("guid") or "")
@@ -824,39 +832,24 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 _detail_cache[sid] = result
                 return result
 
-            panels = []
-            agg_frames = 0
-            agg_seconds = 0.0
-            agg_sessions = 0
-            agg_last_imaged = None
-            agg_first_imaged = None
-
-            for tgt in proj.get("targets", []):
-                tgt_name = tgt.get("name") or ""
-                tgt_lower = tgt_name.lower()
-                if tgt_lower in target_exclusions:
-                    continue
-
-                # Find sessions containing this target (ordered newest-first)
+            # Helper: scan sessions for a target name, return stats dict
+            def _scan_target_sessions(tgt_lower):
                 tgt_session_ids = [
                     s["sessionId"] for s in sorted(all_sessions,
                         key=lambda x: x.get("sessionStart") or "", reverse=True)
                     if tgt_lower in [t.lower() for t in (s.get("targets") or [])]
                 ]
                 latest_sid = tgt_session_ids[0] if tgt_session_ids else None
-
                 total_sec = 0.0
                 total_frames = 0
                 sess_count = 0
                 last_imaged = None
                 first_imaged = None
                 filters_agg = {}
-                best_cam = None  # camera data from the most-recent session with valid info
-
+                best_cam = None
                 for sid in tgt_session_ids:
                     if best_cam is None:
                         best_cam = _get_cam_from_detail(sid)
-
                     images_path = os.path.join(self.data_dir, "sessions", sid, "images.json")
                     if not os.path.isfile(images_path):
                         continue
@@ -879,7 +872,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
                             last_imaged = s_start
                         if first_imaged is None or s_start < first_imaged:
                             first_imaged = s_start
-
                     for i in matching:
                         if not i.get("accepted"):
                             continue
@@ -887,23 +879,42 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         fe = filters_agg.setdefault(fn, {"totalSeconds": 0.0, "frames": 0})
                         fe["totalSeconds"] += float(i.get("exposureDuration") or 0)
                         fe["frames"] += 1
+                return {
+                    "total_sec": total_sec, "total_frames": total_frames,
+                    "sess_count": sess_count, "last_imaged": last_imaged,
+                    "first_imaged": first_imaged, "filters_agg": filters_agg,
+                    "best_cam": best_cam, "latest_sid": latest_sid,
+                }
 
-                agg_seconds  += total_sec
-                agg_frames   += total_frames
-                agg_sessions += sess_count
-                if last_imaged and (agg_last_imaged is None or last_imaged > agg_last_imaged):
-                    agg_last_imaged = last_imaged
-                if first_imaged and (agg_first_imaged is None or first_imaged < agg_first_imaged):
-                    agg_first_imaged = first_imaged
-
-                filters_out = sorted([
-                    {
-                        "filter": fn,
-                        "totalHours": round(fe["totalSeconds"] / 3600.0, 2),
-                        "acceptedFrames": fe["frames"],
-                    }
+            def _filters_out(filters_agg):
+                return sorted([
+                    {"filter": fn, "totalHours": round(fe["totalSeconds"] / 3600.0, 2),
+                     "acceptedFrames": fe["frames"]}
                     for fn, fe in filters_agg.items()
                 ], key=lambda x: -x["totalHours"])
+
+            panels = []
+            agg_frames = 0
+            agg_seconds = 0.0
+            agg_sessions = 0
+            agg_last_imaged = None
+            agg_first_imaged = None
+            panel_names = set()  # track names to avoid duplicates from cross-assignments
+
+            for tgt in proj.get("targets", []):
+                tgt_name = tgt.get("name") or ""
+                tgt_lower = tgt_name.lower()
+                if tgt_lower in target_exclusions:
+                    continue
+
+                stats = _scan_target_sessions(tgt_lower)
+                agg_seconds  += stats["total_sec"]
+                agg_frames   += stats["total_frames"]
+                agg_sessions += stats["sess_count"]
+                if stats["last_imaged"] and (agg_last_imaged is None or stats["last_imaged"] > agg_last_imaged):
+                    agg_last_imaged = stats["last_imaged"]
+                if stats["first_imaged"] and (agg_first_imaged is None or stats["first_imaged"] < agg_first_imaged):
+                    agg_first_imaged = stats["first_imaged"]
 
                 panel = {
                     "guid":     tgt.get("guid"),
@@ -912,14 +923,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     "ra":       tgt.get("ra") or 0,
                     "dec":      tgt.get("dec") or 0,
                     "rotation": tgt.get("rotation") or 0,
-                    "positionAngle": tgt.get("rotation"),  # use TS rotation as stand-in
-                    "totalIntegrationHours": round(total_sec / 3600.0, 2),
-                    "acceptedFrames": total_frames,
-                    "sessionCount": sess_count,
-                    "lastImaged": last_imaged,
-                    "firstImaged": first_imaged,
-                    "latestSessionId": latest_sid,
-                    "filters": filters_out,
+                    "positionAngle": tgt.get("rotation"),
+                    "totalIntegrationHours": round(stats["total_sec"] / 3600.0, 2),
+                    "acceptedFrames": stats["total_frames"],
+                    "sessionCount": stats["sess_count"],
+                    "lastImaged": stats["last_imaged"],
+                    "firstImaged": stats["first_imaged"],
+                    "latestSessionId": stats["latest_sid"],
+                    "filters": _filters_out(stats["filters_agg"]),
                     "tsGoals": [
                         {
                             "filter":       e.get("filter"),
@@ -932,11 +943,65 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         for e in tgt.get("exposurePlans", [])
                     ],
                 }
-                if best_cam:
-                    panel.update(best_cam)
+                if stats["best_cam"]:
+                    panel.update(stats["best_cam"])
                 # Skip placeholder panels with unset coordinates
                 if tgt.get("ra") == 0 and tgt.get("dec") == 0:
                     continue
+                panels.append(panel)
+                panel_names.add(tgt_lower)
+
+            # Cross-assigned targets: scan projectAssignments for targets assigned
+            # to this project that aren't native TS targets of this project
+            project_assignments = _normalize_assignments(meta.get("projectAssignments", {}) or {})
+            proj_guid_lower = (proj.get("guid") or "").lower()
+            for tgt_key, guids in project_assignments.items():
+                if tgt_key in panel_names:
+                    continue  # already a native panel
+                if not any(g.lower() == proj_guid_lower for g in guids):
+                    continue  # not assigned to this project
+                # Look up RA/Dec from the target's native TS project
+                ts_entry = ts_by_name.get(tgt_key)
+                tgt_ra = 0
+                tgt_dec = 0
+                tgt_rotation = 0
+                tgt_display_name = tgt_key.title()  # fallback display name
+                if ts_entry:
+                    _, ts_tgt = ts_entry
+                    tgt_ra = ts_tgt.get("ra") or 0
+                    tgt_dec = ts_tgt.get("dec") or 0
+                    tgt_rotation = ts_tgt.get("rotation") or 0
+                    tgt_display_name = ts_tgt.get("name") or tgt_display_name
+                stats = _scan_target_sessions(tgt_key)
+                if stats["sess_count"] == 0 and stats["total_frames"] == 0:
+                    continue  # no data for this target
+                agg_seconds  += stats["total_sec"]
+                agg_frames   += stats["total_frames"]
+                agg_sessions += stats["sess_count"]
+                if stats["last_imaged"] and (agg_last_imaged is None or stats["last_imaged"] > agg_last_imaged):
+                    agg_last_imaged = stats["last_imaged"]
+                if stats["first_imaged"] and (agg_first_imaged is None or stats["first_imaged"] < agg_first_imaged):
+                    agg_first_imaged = stats["first_imaged"]
+                panel = {
+                    "guid":     (ts_entry[1].get("guid") if ts_entry else None),
+                    "name":     tgt_display_name,
+                    "active":   True,
+                    "ra":       tgt_ra,
+                    "dec":      tgt_dec,
+                    "rotation": tgt_rotation,
+                    "positionAngle": tgt_rotation,
+                    "totalIntegrationHours": round(stats["total_sec"] / 3600.0, 2),
+                    "acceptedFrames": stats["total_frames"],
+                    "sessionCount": stats["sess_count"],
+                    "lastImaged": stats["last_imaged"],
+                    "firstImaged": stats["first_imaged"],
+                    "latestSessionId": stats["latest_sid"],
+                    "filters": _filters_out(stats["filters_agg"]),
+                    "tsGoals": [],  # no TS goals for cross-assigned targets
+                    "crossAssigned": True,
+                }
+                if stats["best_cam"]:
+                    panel.update(stats["best_cam"])
                 panels.append(panel)
 
             self.send_json(200, {
@@ -995,6 +1060,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 if tgt.get("ra") == 0 and tgt.get("dec") == 0:
                     continue
                 panel_names.append(tgt_name)
+
+            # Also include cross-assigned targets
+            project_assignments = _normalize_assignments(meta.get("projectAssignments", {}) or {})
+            proj_guid_lower = (proj.get("guid") or "").lower()
+            native_lower = set(n.lower() for n in panel_names)
+            for tgt_key, guids in project_assignments.items():
+                if tgt_key in native_lower:
+                    continue
+                if any(g.lower() == proj_guid_lower for g in guids):
+                    panel_names.append(tgt_key.title())  # display name from assignment key
 
             panel_names_lower = [n.lower() for n in panel_names]
 
