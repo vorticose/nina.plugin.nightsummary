@@ -3284,6 +3284,13 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   object-fit: cover;
   display: block;
 }
+.tdp-hero-wrap svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
 .tdp-hero-wrap .tdp-thumb-placeholder {
   font-size: 64px;
   font-weight: 700;
@@ -3701,6 +3708,13 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   object-fit: cover;
   display: block;
 }
+.pdp-multi-thumb-cell svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
 .pdp-cell-placeholder {
   font-size: 28px;
   font-weight: 700;
@@ -3752,6 +3766,13 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   height: 100%;
   object-fit: cover;
   display: block;
+}
+.pdp-mosaic-thumb-wrap svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 .pdp-mosaic-placeholder {
   font-size: 48px;
