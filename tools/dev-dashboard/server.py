@@ -380,12 +380,18 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     if pguid in ts_proj_by_guid:
                         assigned_project = ts_proj_by_guid[pguid]
                         # Try to find the target within the assigned project so we
-                        # get real goals (not empty). Assignment only overrides project
-                        # context, not goal data.
+                        # get real goals (not empty). Assignment only overrides which
+                        # project badge/context is shown — goals still come from TS.
                         for _at in assigned_project.get("targets", []):
                             if (_at.get("name") or "").lower() == target_name.lower():
                                 ts_match = (assigned_project, _at)
                                 break
+                        # Fallback: target not in assigned project (e.g. it lives in a
+                        # different TS project). Use name-match for goals but keep
+                        # assigned_project for project context.
+                        if not ts_match and target_name.lower() in ts_by_name:
+                            _, _name_tgt = ts_by_name[target_name.lower()]
+                            ts_match = (assigned_project, _name_tgt)
                         matched_by = "assigned"
                     elif pguid in custom_projects:
                         assigned_project = {
