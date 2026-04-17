@@ -4395,4 +4395,22 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--surface-well);
+  line-height: 1.6;
+}
+
+.tonight-retry-btn {
+  margin-top: 12px;
+  display: inline-block;
+  padding: 6px 16px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tonight-retry-btn:hover {
+  background: var(--surface-well);
+  color: var(--text-primary);
 }

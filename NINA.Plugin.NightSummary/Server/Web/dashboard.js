@@ -5089,7 +5089,8 @@ function renderTonightTab(container) {
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (data.error) {
-        container.innerHTML = '<div class="tonight-error">' + esc(data.error) + '</div>';
+        container.innerHTML = '<div class="tonight-error">' + esc(data.error) +
+          '<br><button class="tonight-retry-btn" onclick="tonightPreviewCache=null;renderTonightTab(this.closest(\'#stats-tab-content\'))">Retry</button></div>';
         return;
       }
       tonightPreviewCache = data;
@@ -5097,7 +5098,8 @@ function renderTonightTab(container) {
       renderTonightContent(container, data);
     })
     .catch(function(err) {
-      container.innerHTML = '<div class="tonight-error">Failed to load tonight\'s preview: ' + esc(err.message) + '</div>';
+      container.innerHTML = '<div class="tonight-error">Failed to load tonight\'s preview: ' + esc(err.message) +
+        '<br><button class="tonight-retry-btn" onclick="tonightPreviewCache=null;renderTonightTab(this.closest(\'#stats-tab-content\'))">Retry</button></div>';
     });
 }
 

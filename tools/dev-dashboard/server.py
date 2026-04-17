@@ -1385,7 +1385,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_json(200, _tonight_cache)
             return
 
-        # 1. Find TS API port from TS SQLite
+        # 1. Find TS API port from TS SQLite.
+        # We read apiPort only — we do NOT check enableAPI here because
+        # profilepreference LIMIT 1 may return a different profile's row than the
+        # active one, causing false "not enabled" errors when TS is actually running.
+        # If the API really isn't running the HTTP call below will fail cleanly.
         ts_db_path = os.path.join(
             os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
             "NINA", "SchedulerPlugin", "schedulerdb.sqlite"
@@ -1395,16 +1399,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
             try:
                 conn = sqlite3.connect(f"file:{ts_db_path}?mode=ro", uri=True)
                 cur = conn.cursor()
-                cur.execute("SELECT enableAPI, apiPort FROM profilepreference LIMIT 1")
+                cur.execute("SELECT apiPort FROM profilepreference WHERE apiPort > 0 LIMIT 1")
                 row = cur.fetchone()
                 conn.close()
-                if row:
-                    enabled, port = row
-                    if port and int(port) > 0:
-                        api_port = int(port)
-                    if not enabled:
-                        self.send_json(200, {"error": "Target Scheduler API is disabled. Enable it in Target Scheduler settings."})
-                        return
+                if row and row[0]:
+                    api_port = int(row[0])
             except Exception as e:
                 sys.stderr.write(f"  tonight: TS SQLite read error: {e}\n")
 
