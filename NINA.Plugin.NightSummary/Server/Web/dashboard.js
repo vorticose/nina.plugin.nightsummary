@@ -5147,6 +5147,15 @@ function renderTonightContent(container, data) {
   // Timeline SVG
   html += buildTonightTimeline(entries, targets, colorMap, uniqueNames, timelineStart, totalMs);
 
+  // Altitude chart
+  html += '<h4 class="tonight-section-heading">Altitude</h4>';
+  var altSvg = buildTonightAltitudeChart(data, uniqueNames, colorMap, entries, timelineStart, totalMs);
+  if (altSvg.indexOf('<svg') !== -1) {
+    html += '<div class="tonight-altitude-wrap">' + altSvg + '</div>';
+  } else {
+    html += altSvg;
+  }
+
   // Summary table
   html += '<table class="tonight-summary-table">';
   html += '<thead><tr><th>Target</th><th>Window</th><th>Images</th><th>Total Time</th></tr></thead>';
@@ -5203,6 +5212,173 @@ function renderTonightContent(container, data) {
 
   html += '</div>';
   container.innerHTML = html;
+
+  // Wire crosshair on the altitude chart (must be after innerHTML is set)
+  var altWrap = container.querySelector('.tonight-altitude-wrap');
+  if (altWrap && altWrap.querySelector('svg')) {
+    setupChartCrosshair(altWrap);
+  }
+}
+
+// ── Altitude maths (port of AltitudeCalculator.cs) ────────────────────────
+
+function toJulianDate(d) {
+  // JS Date.getTime() is ms since Unix epoch; Unix epoch = JD 2440587.5
+  return d.getTime() / 86400000.0 + 2440587.5;
+}
+
+function calcAltitudeDeg(raHours, decDeg, latDeg, lonDeg, dateUTC) {
+  var jd       = toJulianDate(dateUTC);
+  var gmstDeg  = ((280.46061837 + 360.98564736629 * (jd - 2451545.0)) % 360 + 360) % 360;
+  var lstDeg   = ((gmstDeg + lonDeg)        % 360 + 360) % 360;
+  var haDeg    = ((lstDeg - raHours * 15.0) % 360 + 360) % 360;
+  if (haDeg > 180) haDeg -= 360;
+  var decRad   = decDeg * Math.PI / 180;
+  var latRad   = latDeg * Math.PI / 180;
+  var haRad    = haDeg  * Math.PI / 180;
+  var sinAlt   = Math.sin(decRad)*Math.sin(latRad) + Math.cos(decRad)*Math.cos(latRad)*Math.cos(haRad);
+  return Math.asin(Math.max(-1.0, Math.min(1.0, sinAlt))) * 180.0 / Math.PI;
+}
+
+// Build an altitude-vs-time SVG compatible with setupChartCrosshair.
+// Uses the same plotL/plotT/plotB/plotR constants as the session altitude charts.
+function buildTonightAltitudeChart(data, uniqueNames, colorMap, targets, timelineStart, totalMs) {
+  var observerLat = (data.observerLat != null) ? data.observerLat : 0;
+  var observerLon = (data.observerLon != null) ? data.observerLon : 0;
+
+  if (observerLat === 0 && observerLon === 0) {
+    return '<div class="tonight-altitude-note">' +
+      'Altitude curves require observer coordinates. ' +
+      'Restart the dev server with <code>--lat &lt;deg&gt; --lon &lt;deg&gt;</code>, ' +
+      'e.g. <code>--lat 43.1 --lon -89.5</code>.' +
+      '</div>';
+  }
+
+  // Collect RA/Dec from entry data; deduplicate by name (first occurrence wins)
+  var targetCoords = {};
+  targets.forEach(function(e) {
+    if (!e.waitPeriod && e.name && !(e.ra === 0 && e.dec === 0) && !targetCoords[e.name]) {
+      targetCoords[e.name] = { ra: e.ra || 0, dec: e.dec || 0 };
+    }
+  });
+  // Fallback: try statsTargetData by TS target name match
+  if (statsTargetData) {
+    uniqueNames.forEach(function(name) {
+      if (targetCoords[name]) return;
+      for (var i = 0; i < statsTargetData.length; i++) {
+        var t = statsTargetData[i];
+        var tsDec = t.ts && t.ts.target && t.ts.target.dec;
+        var tsRa  = t.ts && t.ts.target && t.ts.target.ra;
+        var tsName = t.ts && t.ts.target && (t.ts.target.name || '');
+        if (tsName.toLowerCase() === name.toLowerCase() && !(tsRa === 0 && tsDec === 0)) {
+          targetCoords[name] = { ra: tsRa || 0, dec: tsDec || 0 };
+          break;
+        }
+        if ((t.target || '').toLowerCase() === name.toLowerCase() && t.ts && t.ts.target &&
+            !(tsRa === 0 && tsDec === 0)) {
+          targetCoords[name] = { ra: tsRa || 0, dec: tsDec || 0 };
+          break;
+        }
+      }
+    });
+  }
+
+  var charted = uniqueNames.filter(function(n) { return targetCoords[n]; });
+  if (!charted.length) {
+    return '<div class="tonight-altitude-note">Altitude curves unavailable (no RA/Dec found for tonight\'s targets).</div>';
+  }
+
+  // SVG layout — matches setupChartCrosshair's hardcoded plot bounds
+  var svgW = 760, svgH = 250;
+  var plotL = 38, plotR = svgW - 10, plotT = 20, plotB = 220;
+  var timelineEnd = new Date(timelineStart.getTime() + totalMs);
+
+  function timeToX(d) {
+    return plotL + (d.getTime() - timelineStart.getTime()) / totalMs * (plotR - plotL);
+  }
+  function altToY(alt) {
+    return plotB - (alt / 90) * (plotB - plotT);
+  }
+
+  // Sample altitude every 5 min across the timeline
+  var stepMs  = 5 * 60 * 1000;
+  var steps   = [];
+  for (var ts = timelineStart.getTime(); ts <= timelineEnd.getTime(); ts += stepMs) {
+    steps.push(new Date(Math.min(ts, timelineEnd.getTime())));
+    if (ts >= timelineEnd.getTime()) break;
+  }
+  if (!steps.length || steps[steps.length - 1].getTime() < timelineEnd.getTime()) {
+    steps.push(timelineEnd);
+  }
+
+  var s = '';
+  s += '<svg viewBox="0 0 ' + svgW + ' ' + svgH + '" xmlns="http://www.w3.org/2000/svg"';
+  s += ' style="width:100%;font-family:Arial,sans-serif;font-size:11px;" preserveAspectRatio="none">';
+
+  // Plot background
+  s += '<rect x="' + plotL + '" y="' + plotT + '" width="' + (plotR - plotL) + '" height="' + (plotB - plotT) + '" fill="#111827"/>';
+
+  // Gridlines + Y-axis labels at 0°, 30°, 60°, 90°
+  [0, 30, 60, 90].forEach(function(alt) {
+    var gy = altToY(alt).toFixed(1);
+    var isHorizon = (alt === 0);
+    s += '<line x1="' + plotL + '" y1="' + gy + '" x2="' + plotR + '" y2="' + gy + '"';
+    s += ' stroke="#2d3748" stroke-width="' + (isHorizon ? '1.5' : '1') + '"';
+    if (!isHorizon) s += ' stroke-dasharray="4,4"';
+    s += '/>';
+    s += '<text x="' + (plotL - 4) + '" y="' + (parseFloat(gy) + 4).toFixed(1) + '" fill="#888" text-anchor="end" font-size="9">' + alt + '</text>';
+  });
+
+  // Imaging window shading — one rect per target entry block (matching colors for crosshair)
+  targets.forEach(function(entry) {
+    if (entry.waitPeriod || !entry.name || !targetCoords[entry.name]) return;
+    var x1 = timeToX(new Date(entry.startTime));
+    var x2 = timeToX(new Date(entry.endTime));
+    var w  = Math.max(x2 - x1, 1);
+    var c  = colorMap[entry.name];
+    s += '<rect x="' + x1.toFixed(1) + '" y="' + plotT + '" width="' + w.toFixed(1) + '" height="' + (plotB - plotT) + '" fill="' + c + '" opacity="0.15"/>';
+    s += '<line x1="' + x1.toFixed(1) + '" y1="' + plotT + '" x2="' + x1.toFixed(1) + '" y2="' + plotB + '" stroke="' + c + '" opacity="0.6" stroke-width="1"/>';
+    s += '<line x1="' + x2.toFixed(1) + '" y1="' + plotT + '" x2="' + x2.toFixed(1) + '" y2="' + plotB + '" stroke="' + c + '" opacity="0.6" stroke-width="1"/>';
+  });
+
+  // One altitude curve per unique target name (wrapped in <g><title>…</title>)
+  charted.forEach(function(name) {
+    var coords = targetCoords[name];
+    var color  = colorMap[name];
+    var pts = steps.map(function(d) {
+      var alt = calcAltitudeDeg(coords.ra, coords.dec, observerLat, observerLon, d);
+      return timeToX(d).toFixed(1) + ',' + altToY(alt).toFixed(1);
+    }).join(' ');
+    s += '<g>';
+    s += '<title>' + esc(name) + '</title>';
+    s += '<polyline points="' + pts + '" fill="none" stroke="' + color + '" stroke-width="1.5"/>';
+    s += '</g>';
+  });
+
+  // Time-axis ruler at y=plotB (required by crosshair for time interpolation)
+  var durationHours    = totalMs / 3600000;
+  var tickIntervalMin  = durationHours < 2 ? 15 : durationHours < 5 ? 30 : 60;
+  var tickLabelY       = plotB + 14;
+
+  s += '<line x1="' + plotL + '" y1="' + plotB + '" x2="' + plotR + '" y2="' + plotB + '" stroke="#555" stroke-width="1"/>';
+  s += '<text x="' + plotL + '" y="' + tickLabelY + '" fill="#888">' + fmtTimeHHMM(timelineStart) + '</text>';
+  s += '<text x="' + plotR  + '" y="' + tickLabelY + '" fill="#888" text-anchor="end">' + fmtTimeHHMM(timelineEnd) + '</text>';
+
+  var tickT = new Date(timelineStart);
+  tickT.setMinutes(0, 0, 0);
+  tickT = new Date(tickT.getTime() + tickIntervalMin * 60000);
+  while (tickT <= timelineStart) tickT = new Date(tickT.getTime() + tickIntervalMin * 60000);
+  while (tickT < timelineEnd) {
+    var tx = timeToX(tickT);
+    if (tx - plotL > 40 && plotR - tx > 40) {
+      s += '<line x1="' + tx.toFixed(1) + '" y1="' + plotB + '" x2="' + tx.toFixed(1) + '" y2="' + (plotB + 5) + '" stroke="#555" stroke-width="1"/>';
+      s += '<text x="' + tx.toFixed(1) + '" y="' + tickLabelY + '" fill="#888" text-anchor="middle">' + fmtTimeHHMM(tickT) + '</text>';
+    }
+    tickT = new Date(tickT.getTime() + tickIntervalMin * 60000);
+  }
+
+  s += '</svg>';
+  return s;
 }
 
 function buildTonightTimeline(entries, targets, colorMap, uniqueNames, timelineStart, totalMs) {

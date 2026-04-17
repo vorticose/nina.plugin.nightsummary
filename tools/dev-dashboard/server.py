@@ -72,6 +72,8 @@ def load_icon():
 class DashboardHandler(BaseHTTPRequestHandler):
     data_dir = ""
     ts_host = "localhost"
+    observer_lat = 0.0
+    observer_lon = 0.0
 
     def log_message(self, format, *args):
         """Compact log format: method+path + status code."""
@@ -1396,15 +1398,27 @@ class DashboardHandler(BaseHTTPRequestHandler):
             "NINA", "SchedulerPlugin", "schedulerdb.sqlite"
         )
         api_port = 8188
+        target_coords = {}  # lowercase name → {ra, dec}
         if os.path.isfile(ts_db_path):
             try:
                 conn = sqlite3.connect(f"file:{ts_db_path}?mode=ro", uri=True)
                 cur = conn.cursor()
                 cur.execute("SELECT apiPort FROM profilepreference WHERE apiPort > 0 LIMIT 1")
                 row = cur.fetchone()
-                conn.close()
                 if row and row[0]:
                     api_port = int(row[0])
+                # Also load target coordinates for altitude chart
+                try:
+                    cur.execute("SELECT name, ra, dec FROM target")
+                    for trow in cur.fetchall():
+                        if trow[0]:
+                            target_coords[trow[0].lower()] = {
+                                "ra":  float(trow[1] or 0),
+                                "dec": float(trow[2] or 0),
+                            }
+                except Exception as e2:
+                    sys.stderr.write(f"  tonight: target coords read error: {e2}\n")
+                conn.close()
             except Exception as e:
                 sys.stderr.write(f"  tonight: TS SQLite read error: {e}\n")
 
@@ -1462,19 +1476,28 @@ class DashboardHandler(BaseHTTPRequestHandler):
             }
 
         def norm_entry(e):
+            name = e.get("Name") or e.get("name") or ""
+            coords = target_coords.get(name.lower()) or {}
             return {
                 "id":          e.get("Id")          or e.get("id"),
-                "name":        e.get("Name")        or e.get("name"),
+                "name":        name,
                 "waitPeriod":  bool(e.get("WaitPeriod") or e.get("waitPeriod") or False),
                 "startTime":   e.get("StartTime")   or e.get("startTime"),
                 "endTime":     e.get("EndTime")     or e.get("endTime"),
+                "ra":          coords.get("ra",  0),
+                "dec":         coords.get("dec", 0),
                 "exposurePlan": [norm_ep(ep) for ep in (
                     e.get("ExposurePlan") or e.get("exposurePlan") or []
                 )],
             }
 
         entries = [norm_entry(e) for e in entries_raw]
-        result = {"entries": entries, "startTime": start_time.isoformat()}
+        result = {
+            "entries": entries,
+            "startTime": start_time.isoformat(),
+            "observerLat": self.observer_lat,
+            "observerLon": self.observer_lon,
+        }
         _tonight_cache = result
         _tonight_cache_time = time.time()
         self.send_json(200, result)
@@ -1569,6 +1592,10 @@ def run_with_reload(args):
         cmd += ["-d", args.data]
         if args.ts_host and args.ts_host != "localhost":
             cmd += ["--ts-host", args.ts_host]
+        if args.lat != 0.0:
+            cmd += ["--lat", str(args.lat)]
+        if args.lon != 0.0:
+            cmd += ["--lon", str(args.lon)]
         return cmd
 
     def get_mtimes():
@@ -1650,6 +1677,10 @@ def main():
                         help="Hostname/IP of the machine running Target Scheduler "
                              "(default: localhost). Use the remote machine IP when "
                              "the dev server and TS are on different machines.")
+    parser.add_argument("--lat", type=float, default=0.0,
+                        help="Observer latitude in decimal degrees (default: 0.0)")
+    parser.add_argument("--lon", type=float, default=0.0,
+                        help="Observer longitude in decimal degrees (default: 0.0)")
     args = parser.parse_args()
 
     # Resolve paths to absolute NOW, while CWD is still the launch directory.
@@ -1682,6 +1713,8 @@ def main():
     data_dir = os.path.normpath(os.path.abspath(data_dir))
     DashboardHandler.data_dir = data_dir
     DashboardHandler.ts_host = args.ts_host
+    DashboardHandler.observer_lat = args.lat
+    DashboardHandler.observer_lon = args.lon
 
     # Startup validation
     html_path = os.path.join(WEB_DIR, "dashboard.html")
