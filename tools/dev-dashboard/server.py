@@ -1448,13 +1448,18 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     api_port = int(row[0])
                 # Also load target coordinates for altitude chart
                 try:
+                    import re as _re
                     cur.execute("SELECT name, ra, dec FROM target")
                     for trow in cur.fetchall():
                         if trow[0]:
-                            target_coords[trow[0].lower()] = {
-                                "ra":  float(trow[1] or 0),
-                                "dec": float(trow[2] or 0),
-                            }
+                            coords = {"ra": float(trow[1] or 0), "dec": float(trow[2] or 0)}
+                            name_lower = trow[0].lower()
+                            target_coords[name_lower] = coords
+                            # TS SQLite names include a trailing " (N)" panel/copy suffix
+                            # but the TS API strips it — index both forms
+                            stripped = _re.sub(r'\s*\(\d+\)\s*$', '', name_lower).strip()
+                            if stripped != name_lower:
+                                target_coords.setdefault(stripped, coords)
                 except Exception as e2:
                     sys.stderr.write(f"  tonight: target coords read error: {e2}\n")
                 conn.close()
@@ -1788,7 +1793,7 @@ def main():
     print(f"  Sessions: {session_count} (from snapshot)")
     print(f"  Icon:     {'loaded' if ICON_DATA_URI else 'not found'}")
     print(f"  Server:   http://localhost:{args.port}")
-    print(f"  TS host:  {args.ts_host}")
+    print(f"  TS host:  {DashboardHandler.ts_host}")
     print()
 
     class ThreadedServer(ThreadingMixIn, HTTPServer):
