@@ -611,10 +611,7 @@ function initTargetsControlBar() {
     targetsFovEl.addEventListener('change', function() {
       showFovOverlay = this.checked;
       localStorage.setItem('ns-show-fov', showFovOverlay ? 'true' : 'false');
-      document.querySelectorAll('.mosaic-fov-svg').forEach(function(svg) {
-        svg.style.display = showFovOverlay ? '' : 'none';
-      });
-      document.querySelectorAll('.card-thumb-wrap svg, .target-card-thumb svg').forEach(function(svg) {
+      document.querySelectorAll('.mosaic-fov-svg, .card-thumb-wrap svg, .target-card-thumb svg, .tdp-hero-wrap svg').forEach(function(svg) {
         svg.style.display = showFovOverlay ? '' : 'none';
       });
     });
@@ -1617,7 +1614,14 @@ function loadTargetDetailThumb(targetName, latestSessionId) {
       }
     }
     if (match && match.dataUri) {
-      thumbEl.innerHTML = '<img src="' + match.dataUri + '" alt="' + esc(targetName) + '">';
+      var svg = '';
+      if (match.fovSvg) {
+        svg = match.fovSvg
+          .replace(/width='\d+'/, "width='100%'")
+          .replace(/height='\d+'/, "height='100%'")
+          .replace("<svg ", "<svg viewBox='0 0 200 200' " + (showFovOverlay ? '' : "style='display:none' "));
+      }
+      thumbEl.innerHTML = '<img src="' + match.dataUri + '" alt="' + esc(targetName) + '">' + svg;
     }
   }
 
@@ -4306,10 +4310,7 @@ function bindListEvents() {
     fovEl.addEventListener('change', function() {
       showFovOverlay = this.checked;
       localStorage.setItem('ns-show-fov', showFovOverlay ? 'true' : 'false');
-      document.querySelectorAll('.card-thumb-wrap svg, .target-card-thumb svg').forEach(function(svg) {
-        svg.style.display = showFovOverlay ? '' : 'none';
-      });
-      document.querySelectorAll('.mosaic-fov-svg').forEach(function(svg) {
+      document.querySelectorAll('.mosaic-fov-svg, .card-thumb-wrap svg, .target-card-thumb svg, .tdp-hero-wrap svg').forEach(function(svg) {
         svg.style.display = showFovOverlay ? '' : 'none';
       });
     });
