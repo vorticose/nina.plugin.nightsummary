@@ -5311,6 +5311,9 @@ function buildTonightAltitudeChart(data, uniqueNames, colorMap, targets, timelin
   s += '<svg viewBox="0 0 ' + svgW + ' ' + svgH + '" xmlns="http://www.w3.org/2000/svg"';
   s += ' style="width:100%;font-family:Arial,sans-serif;font-size:11px;" preserveAspectRatio="none">';
 
+  // Clip path — curves and shading must not overflow below the horizon or above the plot
+  s += '<defs><clipPath id="altPlotClip"><rect x="' + plotL + '" y="' + plotT + '" width="' + (plotR - plotL) + '" height="' + (plotB - plotT) + '"/></clipPath></defs>';
+
   // Plot background
   s += '<rect x="' + plotL + '" y="' + plotT + '" width="' + (plotR - plotL) + '" height="' + (plotB - plotT) + '" fill="#111827"/>';
 
@@ -5332,7 +5335,7 @@ function buildTonightAltitudeChart(data, uniqueNames, colorMap, targets, timelin
     var x2 = timeToX(new Date(entry.endTime));
     var w  = Math.max(x2 - x1, 1);
     var c  = colorMap[entry.name];
-    s += '<rect x="' + x1.toFixed(1) + '" y="' + plotT + '" width="' + w.toFixed(1) + '" height="' + (plotB - plotT) + '" fill="' + c + '" opacity="0.15"/>';
+    s += '<rect x="' + x1.toFixed(1) + '" y="' + plotT + '" width="' + w.toFixed(1) + '" height="' + (plotB - plotT) + '" fill="' + c + '" opacity="0.15" clip-path="url(#altPlotClip)"/>';
     s += '<line x1="' + x1.toFixed(1) + '" y1="' + plotT + '" x2="' + x1.toFixed(1) + '" y2="' + plotB + '" stroke="' + c + '" opacity="0.6" stroke-width="1"/>';
     s += '<line x1="' + x2.toFixed(1) + '" y1="' + plotT + '" x2="' + x2.toFixed(1) + '" y2="' + plotB + '" stroke="' + c + '" opacity="0.6" stroke-width="1"/>';
   });
@@ -5345,7 +5348,7 @@ function buildTonightAltitudeChart(data, uniqueNames, colorMap, targets, timelin
       var alt = calcAltitudeDeg(coords.ra, coords.dec, observerLat, observerLon, d);
       return timeToX(d).toFixed(1) + ',' + altToY(alt).toFixed(1);
     }).join(' ');
-    s += '<g>';
+    s += '<g clip-path="url(#altPlotClip)">';
     s += '<title>' + esc(name) + '</title>';
     s += '<polyline points="' + pts + '" fill="none" stroke="' + color + '" stroke-width="1.5"/>';
     s += '</g>';
