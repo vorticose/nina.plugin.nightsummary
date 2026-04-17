@@ -1268,11 +1268,14 @@ namespace NINA.Plugin.NightSummary.Server {
                     var tgt  = ts.Value.target;
 
                     // Per-filter goals + progress
-                    int totalDesired  = 0;
-                    int totalAccepted = 0;
+                    // effective = accepted when grading is active; falls back to acquired
+                    // when grading is pending or disabled (accepted=0 but acquired>0).
+                    int totalDesired   = 0;
+                    int totalEffective = 0;
                     var goals = tgt.ExposurePlans.Select(ep => {
-                        totalDesired  += ep.Desired;
-                        totalAccepted += ep.Accepted;
+                        int effective = ep.Accepted > 0 ? ep.Accepted : ep.Acquired;
+                        totalDesired   += ep.Desired;
+                        totalEffective += effective;
                         return new {
                             filter       = ep.Filter,
                             templateName = ep.TemplateName,
@@ -1280,13 +1283,14 @@ namespace NINA.Plugin.NightSummary.Server {
                             desired      = ep.Desired,
                             acquired     = ep.Acquired,
                             accepted     = ep.Accepted,
+                            effective    = effective,
                             percentComplete = ep.Desired > 0
-                                ? Math.Round(Math.Min(100.0, (ep.Accepted * 100.0) / ep.Desired), 1)
+                                ? Math.Round(Math.Min(100.0, (effective * 100.0) / ep.Desired), 1)
                                 : (double?)null,
                         };
                     }).ToList();
                     double? projectPercent = totalDesired > 0
-                        ? Math.Round(Math.Min(100.0, (totalAccepted * 100.0) / totalDesired), 1)
+                        ? Math.Round(Math.Min(100.0, (totalEffective * 100.0) / totalDesired), 1)
                         : (double?)null;
 
                     // Effective state = override > inferred Completed > raw state

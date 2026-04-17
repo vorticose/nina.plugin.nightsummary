@@ -434,6 +434,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                             "desired":      desired,
                             "acquired":     acquired,
                             "accepted":     accepted,
+                            "effective":    effective,
                             "percentComplete": pct,
                         })
 

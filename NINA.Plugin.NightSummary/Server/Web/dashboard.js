@@ -1261,7 +1261,10 @@ function renderTargetDetailPanel(data, targetName, ts) {
 
     var goalRows = sortedGoals.map(function(g) {
       var pct = g.percentComplete;
-      var over = pct != null && g.accepted > g.desired;
+      // effective = accepted when grading is active; falls back to acquired
+      // (grading pending/disabled). Matches the server-side percentComplete calc.
+      var effective = (g.effective != null) ? g.effective : g.accepted;
+      var over = pct != null && effective > g.desired;
       var widthPct = pct != null ? Math.min(100, pct) : 0;
       var filterType = resolveFilterType(g.filter);
       var fillColor = (filterType && FILTER_TYPE_CHART_COLORS[filterType]) || '#66BB6A';
@@ -1281,7 +1284,7 @@ function renderTargetDetailPanel(data, targetName, ts) {
           '<div class="tdp-progress-bar-fill" style="width:' + widthPct + '%"></div>' +
         '</div>' +
         '<div class="tdp-progress-row-count">' +
-          g.accepted + ' <span class="unit">/ ' + g.desired + '</span>' +
+          effective + ' <span class="unit">/ ' + g.desired + '</span>' +
         '</div>' +
       '</div>';
     }).join('');
@@ -1405,7 +1408,8 @@ function renderTsProjectSection(ts, targetName) {
 
   var rows = sortedGoals.map(function(g) {
     var pct = g.percentComplete;
-    var over = pct != null && g.accepted > g.desired;
+    var effective = (g.effective != null) ? g.effective : g.accepted;
+    var over = pct != null && effective > g.desired;
     var widthPct = pct != null ? Math.min(100, pct) : 0;
     // Use the same color map as the stacked chart bars (L is off-white).
     var filterType = resolveFilterType(g.filter);
@@ -1429,7 +1433,7 @@ function renderTsProjectSection(ts, targetName) {
         '<div class="tdp-progress-bar-fill" style="width:' + widthPct + '%"></div>' +
       '</div>' +
       '<div class="tdp-progress-row-count">' +
-        g.accepted + ' <span class="unit">/ ' + g.desired + '</span>' +
+        effective + ' <span class="unit">/ ' + g.desired + '</span>' +
       '</div>' +
     '</div>';
   }).join('');
