@@ -28,6 +28,7 @@ from socketserver import ThreadingMixIn
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 WEB_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "..", "NINA.Plugin.NightSummary", "Server", "Web"))
 ICON_PATH = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "..", "assets", "plugin-icon.png"))
+PID_FILE = os.path.join(SCRIPT_DIR, "server.pid")
 
 # In a git worktree, untracked dirs (like data/) only exist in the main checkout.
 # Find the repo root so we can locate data/ reliably.
@@ -68,8 +69,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
     data_dir = ""
 
     def log_message(self, format, *args):
-        """Compact log format."""
-        sys.stderr.write(f"  {args[0]}\n")
+        """Compact log format: method+path + status code."""
+        sys.stderr.write(f"  {args[0]}  →  {args[1]}\n")
 
     def send_json(self, status, obj):
         body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
@@ -1376,32 +1377,52 @@ def find_pid_on_port(port):
 
 
 def stop_server(port):
-    """Kill whatever process is listening on the given port."""
-    pid = find_pid_on_port(port)
+    """Kill the server process tree.
+
+    Tries PID file first (covers --reload parent + all its children),
+    falls back to netstat lookup. Uses /T (tree kill) so parent + child
+    processes all die together.
+    """
+    pid = None
+    # Prefer PID file — written by --reload and regular startup
+    if os.path.isfile(PID_FILE):
+        try:
+            pid = int(open(PID_FILE).read().strip())
+            print(f"Found PID {pid} from server.pid")
+        except (ValueError, OSError):
+            pid = None
+
+    # Fallback: find by port
+    if pid is None:
+        pid = find_pid_on_port(port)
+
     if pid is None:
         print(f"No server found on port {port}.")
         return
+
     try:
-        subprocess.check_call(["taskkill", "/F", "/PID", str(pid)],
+        # /T kills the entire process tree (parent + any child processes)
+        subprocess.check_call(["taskkill", "/F", "/T", "/PID", str(pid)],
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         print(f"Stopped server (PID {pid}) on port {port}.")
     except subprocess.CalledProcessError:
         print(f"Failed to kill PID {pid}. Try running as admin.")
+    finally:
+        if os.path.isfile(PID_FILE):
+            try:
+                os.remove(PID_FILE)
+            except OSError:
+                pass
 
 
 def start_detached(args):
     """Re-launch this script in a new console window."""
-    cmd = [sys.executable, os.path.abspath(__file__),
-           "-p", str(args.port)]
+    # args.data and args.webdir are already absolute (resolved in main())
+    cmd = [sys.executable, os.path.abspath(__file__), "-p", str(args.port)]
     if args.webdir:
-        cmd += ["-w", os.path.abspath(args.webdir)]
-    # Always resolve data dir — default finds main repo's data/ even in worktrees
-    data = args.data if args.data else DEFAULT_DATA_DIR
-    cmd += ["-d", os.path.abspath(data)]
-    subprocess.Popen(
-        cmd,
-        creationflags=subprocess.CREATE_NEW_CONSOLE,
-    )
+        cmd += ["-w", args.webdir]
+    cmd += ["-d", args.data]
+    subprocess.Popen(cmd, creationflags=subprocess.CREATE_NEW_CONSOLE)
     print(f"Dev server starting in new window on port {args.port}.")
 
 
@@ -1411,11 +1432,11 @@ def run_with_reload(args):
     watched = [script]
 
     def build_cmd():
+        # args.data and args.webdir are already absolute (resolved in main())
         cmd = [sys.executable, script, "-p", str(args.port)]
         if args.webdir:
-            cmd += ["-w", os.path.abspath(args.webdir)]
-        data = args.data if args.data else DEFAULT_DATA_DIR
-        cmd += ["-d", os.path.abspath(data)]
+            cmd += ["-w", args.webdir]
+        cmd += ["-d", args.data]
         return cmd
 
     def get_mtimes():
@@ -1429,39 +1450,53 @@ def run_with_reload(args):
 
     mtimes = get_mtimes()
 
-    while True:
-        print("[reload] Starting server...")
-        proc = subprocess.Popen(build_cmd())
-        try:
-            while True:
-                time.sleep(1)
-                new_mtimes = get_mtimes()
-                changed = [f for f in watched if new_mtimes.get(f) != mtimes.get(f)]
-                if changed:
-                    print(f"[reload] {os.path.basename(changed[0])} changed — restarting...")
-                    mtimes = new_mtimes
-                    proc.terminate()
-                    try:
-                        proc.wait(timeout=3)
-                    except subprocess.TimeoutExpired:
-                        proc.kill()
-                    break
-                if proc.poll() is not None:
-                    code = proc.returncode
-                    if code == 0:
-                        print("[reload] Server exited cleanly.")
-                        return
-                    print(f"[reload] Server crashed (exit {code}). Restarting in 2s...")
-                    time.sleep(2)
-                    break
-        except KeyboardInterrupt:
-            print("\n[reload] Stopping.")
-            proc.terminate()
+    # Write PID file so --stop can kill the entire tree reliably
+    try:
+        with open(PID_FILE, "w") as f:
+            f.write(str(os.getpid()))
+    except OSError:
+        pass
+
+    try:
+        while True:
+            print("[reload] Starting server...")
+            proc = subprocess.Popen(build_cmd())
             try:
-                proc.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-            return
+                while True:
+                    time.sleep(1)
+                    new_mtimes = get_mtimes()
+                    changed = [f for f in watched if new_mtimes.get(f) != mtimes.get(f)]
+                    if changed:
+                        print(f"[reload] {os.path.basename(changed[0])} changed — restarting...")
+                        mtimes = new_mtimes
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=3)
+                        except subprocess.TimeoutExpired:
+                            proc.kill()
+                        break
+                    if proc.poll() is not None:
+                        code = proc.returncode
+                        if code == 0:
+                            print("[reload] Server exited cleanly.")
+                            return
+                        print(f"[reload] Server crashed (exit {code}). Restarting in 2s...")
+                        time.sleep(2)
+                        break
+            except KeyboardInterrupt:
+                print("\n[reload] Stopping.")
+                proc.terminate()
+                try:
+                    proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                return
+    finally:
+        if os.path.isfile(PID_FILE):
+            try:
+                os.remove(PID_FILE)
+            except OSError:
+                pass
 
 
 def main():
@@ -1480,6 +1515,16 @@ def main():
     parser.add_argument("--reload", action="store_true",
                         help="Auto-restart when server.py changes (hot fix mode)")
     args = parser.parse_args()
+
+    # Resolve paths to absolute NOW, while CWD is still the launch directory.
+    # This ensures start_detached / run_with_reload always pass absolute paths
+    # to child processes regardless of CWD changes later.
+    if args.data:
+        args.data = os.path.normpath(os.path.abspath(args.data))
+    else:
+        args.data = DEFAULT_DATA_DIR  # already absolute
+    if args.webdir:
+        args.webdir = os.path.normpath(os.path.abspath(args.webdir))
 
     if args.stop:
         stop_server(args.port)
