@@ -134,6 +134,7 @@ namespace NINA.Plugin.NightSummary.Data {
             }
 
             // State tracking for Starting/Finishing pairs
+            DateTime? lastFilterMoveTimestamp = null;
             DateTime? exposureStart = null;
             string exposureDetails = null;
             double exposureRequestedSeconds = 0;
@@ -225,7 +226,17 @@ namespace NINA.Plugin.NightSummary.Data {
                             exposureDetails = null;
                             exposureRequestedSeconds = 0;
                         } else if (pendingStarts.TryGetValue(itemName, out var startTime)) {
+                            pendingStarts.Remove(itemName);
                             var eventType = ItemCategoryMap.TryGetValue(itemName, out var mapped) ? mapped : itemName;
+
+                            // Suppress SwitchFilter events where the filter wheel didn't actually move.
+                            // NINA calls SwitchFilter before every exposure; if the filter is already
+                            // in position, FilterWheelVM skips the movement and no "Moving to Filter"
+                            // log line appears between this item's start and finish.
+                            if (itemName == "SwitchFilter" &&
+                                (lastFilterMoveTimestamp == null || lastFilterMoveTimestamp.Value < startTime))
+                                continue;
+
                             events.Add(new TimingEvent {
                                 EventType = eventType,
                                 StartTime = startTime,
@@ -233,7 +244,6 @@ namespace NINA.Plugin.NightSummary.Data {
                                 DurationSeconds = (timestamp - startTime).TotalSeconds,
                                 Details = ExtractItemDetails(itemName, message)
                             });
-                            pendingStarts.Remove(itemName);
                         }
                     }
                 }
@@ -273,6 +283,14 @@ namespace NINA.Plugin.NightSummary.Data {
                         });
                         parsedImageSaveCount++;
                     }
+                }
+
+                // === FilterWheelVM.cs|ChangeFilter — actual physical filter movement ===
+                // Only fires when the wheel position actually changes (no-op switches are excluded).
+                // Used to suppress SwitchFilter overhead events where no movement occurred.
+                else if (source == "FilterWheelVM.cs" && member == "ChangeFilter") {
+                    if (message.StartsWith("Moving to Filter "))
+                        lastFilterMoveTimestamp = timestamp;
                 }
 
                 // === AscomTelescope.cs|MeridianFlip — internal trigger-based flip ===

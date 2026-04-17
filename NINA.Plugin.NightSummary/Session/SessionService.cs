@@ -132,6 +132,7 @@ namespace NINA.Plugin.NightSummary.Session {
             }
 
             CaptureEquipmentNames();
+            collector.FirstImageSaved += OnFirstImageSaved;
 
             if (messageBroker != null && S.ShowLiveStackImages) {
                 liveStackCapture = new LiveStackCapture(messageBroker);
@@ -148,6 +149,8 @@ namespace NINA.Plugin.NightSummary.Session {
             }
 
             var sessionId = collector.GetCurrentSessionId();
+
+            collector.FirstImageSaved -= OnFirstImageSaved;
 
             // Fill in any equipment that wasn't connected at session start
             CaptureEquipmentNames();
@@ -803,6 +806,11 @@ namespace NINA.Plugin.NightSummary.Session {
             } catch (Exception ex) {
                 Logger.Warning($"NightSummary: Could not capture equipment names. {ex.Message}");
             }
+        }
+
+        private void OnFirstImageSaved(object sender, EventArgs e) {
+            collector.FirstImageSaved -= OnFirstImageSaved;
+            CaptureEquipmentNames();
         }
 
         /// Falls back to (1.0, 1.0) if no usable values are found.

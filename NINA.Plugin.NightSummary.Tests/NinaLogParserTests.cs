@@ -38,6 +38,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 2026-03-30T21:38:45.8577|INFO|SequenceItem.cs|Run|208|Starting Category: , Item: Dither
 2026-03-30T21:38:45.8759|INFO|SequenceItem.cs|Run|254|Finishing Category: , Item: Dither
 2026-03-30T21:38:45.8894|INFO|SequenceItem.cs|Run|208|Starting Category: Scheduler, Item: SwitchFilter, Filter: S
+2026-03-30T21:38:46.5000|INFO|FilterWheelVM.cs|ChangeFilter|112|Moving to Filter S at Position 4
 2026-03-30T21:38:50.0272|INFO|SequenceItem.cs|Run|254|Finishing Category: Scheduler, Item: SwitchFilter, Filter: S
 2026-03-30T21:39:06.8545|INFO|SequenceItem.cs|Run|208|Starting Category: Scheduler, Item: TakeExposure, ExposureTime 600, Gain 100, Offset 19, ImageType LIGHT, Binning 1x1
 2026-03-30T21:49:11.8742|INFO|SequenceItem.cs|Run|254|Finishing Category: Scheduler, Item: TakeExposure, ExposureTime 600, Gain 100, Offset 19, ImageType LIGHT, Binning 1x1
@@ -46,6 +47,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 2026-03-30T21:49:17.1189|INFO|HocusFocusStarDetection.cs|Detect|413|Average HFR: 1.604065807017856, HFR MAD: 0.064623168208225, Detected Stars 1394, Region: 0
 2026-03-30T21:49:22.6443|INFO|ImageSaveController.cs|DoWork|97|Successfully saved file at D:\\Seagull Nebula\S\600.00s\test.fits. Duration Total: 00:00:10.7636414; BeforeSave: 00:00:00.0199465; BeforeFinalizeImageSaved: 00:00:05.5429538; FinalizeSaveTime: 00:00:05.2007394
 2026-03-30T21:49:25.8666|INFO|SequenceItem.cs|Run|208|Starting Category: Scheduler, Item: SwitchFilter, Filter: H
+2026-03-30T21:49:26.5000|INFO|FilterWheelVM.cs|ChangeFilter|112|Moving to Filter H at Position 5
 2026-03-30T21:49:35.0816|INFO|SequenceItem.cs|Run|254|Finishing Category: Scheduler, Item: SwitchFilter, Filter: H
 2026-03-30T21:49:35.1164|INFO|SequenceItem.cs|Run|208|Starting Category: Scheduler, Item: TakeExposure, ExposureTime 600, Gain 100, Offset 19, ImageType LIGHT, Binning 1x1
 2026-03-30T21:59:40.2080|INFO|SequenceItem.cs|Run|254|Finishing Category: Scheduler, Item: TakeExposure, ExposureTime 600, Gain 100, Offset 19, ImageType LIGHT, Binning 1x1
@@ -247,6 +249,73 @@ namespace NINA.Plugin.NightSummary.Tests {
             // Exposure at 21:39 and filter change at 21:38:45 should still be included
             var exposures = events.Where(e => e.EventType == "Exposure").ToList();
             Assert.Single(exposures); // Only the first exposure (21:39-21:49), second starts at 21:49
+        }
+
+        [Fact]
+        public void SwitchFilter_NoFilterMoveInWindow_IsNotCounted() {
+            var log = @"----------------------------------------------------------------------
+--------------N.I.N.A. - Nighttime Imaging 'N' Astronomy--------------
+--------------------------Version 3.2.0.9001--------------------------
+-------------------------2026-03-30T21:21:13--------------------------
+----------------------------------------------------------------------
+2026-03-30T21:38:45.8894|INFO|SequenceItem.cs|Run|208|Starting Category: Scheduler, Item: SwitchFilter, Filter: S
+2026-03-30T21:38:45.9100|INFO|SequenceItem.cs|Run|254|Finishing Category: Scheduler, Item: SwitchFilter, Filter: S
+";
+            var path = Path.Combine(Path.GetTempPath(), $"noop_{Guid.NewGuid():N}.log");
+            File.WriteAllText(path, log);
+            try {
+                var events = NinaLogParser.ParseFile(path, SessionStart, SessionEnd);
+                Assert.Empty(events.Where(e => e.EventType == "FilterChange"));
+            } finally {
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void SwitchFilter_FilterMoveBeforeWindow_IsNotCounted() {
+            // A "Moving to Filter" from before the SwitchFilter start (e.g. autofocus)
+            // should not satisfy the check for the subsequent SwitchFilter window.
+            var log = @"----------------------------------------------------------------------
+--------------N.I.N.A. - Nighttime Imaging 'N' Astronomy--------------
+--------------------------Version 3.2.0.9001--------------------------
+-------------------------2026-03-30T21:21:13--------------------------
+----------------------------------------------------------------------
+2026-03-30T21:38:00.0000|INFO|FilterWheelVM.cs|ChangeFilter|112|Moving to Filter L at Position 0
+2026-03-30T21:38:45.8894|INFO|SequenceItem.cs|Run|208|Starting Category: Scheduler, Item: SwitchFilter, Filter: S
+2026-03-30T21:38:45.9100|INFO|SequenceItem.cs|Run|254|Finishing Category: Scheduler, Item: SwitchFilter, Filter: S
+";
+            var path = Path.Combine(Path.GetTempPath(), $"before_{Guid.NewGuid():N}.log");
+            File.WriteAllText(path, log);
+            try {
+                var events = NinaLogParser.ParseFile(path, SessionStart, SessionEnd);
+                Assert.Empty(events.Where(e => e.EventType == "FilterChange"));
+            } finally {
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void SwitchFilter_FilterMoveInWindow_IsCounted() {
+            var log = @"----------------------------------------------------------------------
+--------------N.I.N.A. - Nighttime Imaging 'N' Astronomy--------------
+--------------------------Version 3.2.0.9001--------------------------
+-------------------------2026-03-30T21:21:13--------------------------
+----------------------------------------------------------------------
+2026-03-30T21:38:45.8894|INFO|SequenceItem.cs|Run|208|Starting Category: Scheduler, Item: SwitchFilter, Filter: S
+2026-03-30T21:38:46.5000|INFO|FilterWheelVM.cs|ChangeFilter|112|Moving to Filter S at Position 4
+2026-03-30T21:38:50.0272|INFO|SequenceItem.cs|Run|254|Finishing Category: Scheduler, Item: SwitchFilter, Filter: S
+";
+            var path = Path.Combine(Path.GetTempPath(), $"real_{Guid.NewGuid():N}.log");
+            File.WriteAllText(path, log);
+            try {
+                var events = NinaLogParser.ParseFile(path, SessionStart, SessionEnd);
+                var filters = events.Where(e => e.EventType == "FilterChange").ToList();
+                Assert.Single(filters);
+                Assert.Equal("S", filters[0].Details);
+                Assert.InRange(filters[0].DurationSeconds, 3, 6);
+            } finally {
+                File.Delete(path);
+            }
         }
 
         [Fact]
