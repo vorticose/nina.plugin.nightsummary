@@ -276,6 +276,8 @@ namespace NINA.Plugin.NightSummary.Server {
                         await HandleGetProjectStats(res, projectGuid, done);
                     } else if (path == "/api/stats/summary") {
                         await HandleGetStatsSummary(res, done);
+                    } else if (path == "/api/tonight/preview") {
+                        await HandleGetTonightPreview(res, done);
                     } else if (path == "/api/ts/projects") {
                         await HandleGetTsProjects(res, done);
                     } else if (path == "/api/filters") {
@@ -1817,6 +1819,114 @@ namespace NINA.Plugin.NightSummary.Server {
             done?.Invoke(200, $"{projects.Count} ts projects (status: {tsStatus})");
         }
 
+        private static readonly System.Net.Http.HttpClient TonightApiClient = new System.Net.Http.HttpClient {
+            Timeout = TimeSpan.FromSeconds(120)
+        };
+
+        // Tonight preview response cache (5-minute TTL; refreshed on first request after expiry)
+        private string _tonightPreviewJson = null;
+        private DateTime _tonightPreviewCachedAt = DateTime.MinValue;
+
+        private async Task HandleGetTonightPreview(HttpListenerResponse res, Action<int, string> done) {
+            try {
+                // Return cached data if still fresh (5 min TTL — preview call takes ~25s)
+                if (_tonightPreviewJson != null &&
+                    (DateTime.UtcNow - _tonightPreviewCachedAt).TotalSeconds < 300) {
+                    await WriteJsonRaw(res, 200, _tonightPreviewJson);
+                    done?.Invoke(200, "tonight preview (cached)");
+                    return;
+                }
+
+                var tsDb = new TargetSchedulerDatabase();
+                if (!TargetSchedulerDatabase.IsPluginInstalled || !tsDb.IsAvailable) {
+                    await WriteJson(res, 200, new { error = "Target Scheduler is not installed or not available." });
+                    done?.Invoke(200, "tonight: ts not available");
+                    return;
+                }
+
+                var (apiEnabled, apiPort) = tsDb.GetApiSettings();
+                if (!apiEnabled) {
+                    await WriteJson(res, 200, new { error = "Target Scheduler API is disabled. Enable it in Target Scheduler settings." });
+                    done?.Invoke(200, "tonight: ts api disabled");
+                    return;
+                }
+
+                var baseUrl = $"http://localhost:{apiPort}/ts/v0";
+                log?.Info($"Tonight preview: calling TS API at {baseUrl}");
+
+                // Get active profile
+                string profilesJson;
+                try {
+                    profilesJson = await TonightApiClient.GetStringAsync($"{baseUrl}/profiles");
+                } catch (Exception ex) {
+                    await WriteJson(res, 200, new { error = $"Could not reach Target Scheduler API: {ex.Message}" });
+                    done?.Invoke(200, "tonight: ts api unreachable");
+                    return;
+                }
+
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var profiles = JsonSerializer.Deserialize<List<TsProfileInfo>>(profilesJson, options);
+                var active = profiles?.FirstOrDefault(p => p.Active);
+                if (active == null) {
+                    await WriteJson(res, 200, new { error = "No active NINA profile found in Target Scheduler." });
+                    done?.Invoke(200, "tonight: no active profile");
+                    return;
+                }
+
+                // Compute start time: now if in observing window (18:00-06:00), else 22:00 tonight
+                var now = DateTime.Now;
+                DateTime startTime;
+                if (now.Hour >= 18 || now.Hour < 6) {
+                    startTime = now;
+                } else {
+                    startTime = now.Date.AddHours(22);
+                }
+
+                var encodedStart = Uri.EscapeDataString(startTime.ToString("o"));
+                var previewUrl = $"{baseUrl}/profiles/{active.Id}/preview?startTime={encodedStart}";
+                log?.Info($"Tonight preview: start={startTime:HH:mm}, url={previewUrl}");
+
+                // Call preview endpoint (~25s)
+                string previewJson;
+                try {
+                    previewJson = await TonightApiClient.GetStringAsync(previewUrl);
+                } catch (Exception ex) {
+                    await WriteJson(res, 200, new { error = $"Target Scheduler preview failed: {ex.Message}" });
+                    done?.Invoke(200, $"tonight: preview error: {ex.Message}");
+                    return;
+                }
+
+                var entries = JsonSerializer.Deserialize<List<TsPreviewEntry>>(previewJson, options);
+                if (entries == null) entries = new List<Data.TsPreviewEntry>();
+
+                var responseObj = new {
+                    entries = entries.Select(e => new {
+                        id         = e.Id,
+                        name       = e.Name,
+                        waitPeriod = e.WaitPeriod,
+                        startTime  = e.StartTime.ToString("o"),
+                        endTime    = e.EndTime.ToString("o"),
+                        exposurePlan = e.ExposurePlan.Select(ep => new {
+                            filterName = ep.FilterName,
+                            exposure   = ep.Exposure,
+                            count      = ep.Count
+                        }).ToList()
+                    }).ToList(),
+                    startTime = startTime.ToString("o")
+                };
+
+                _tonightPreviewJson = JsonSerializer.Serialize(responseObj, JsonOpts);
+                _tonightPreviewCachedAt = DateTime.UtcNow;
+
+                await WriteJsonRaw(res, 200, _tonightPreviewJson);
+                done?.Invoke(200, $"tonight preview: {entries.Count} entries");
+            } catch (Exception ex) {
+                log?.Error("HandleGetTonightPreview", ex);
+                await WriteJson(res, 500, new { error = ex.Message });
+                done?.Invoke(500, ex.Message);
+            }
+        }
+
         private async Task HandleTsStatusOverride(HttpListenerRequest req, HttpListenerResponse res, Action<int, string> done) {
             try {
                 string body;
@@ -2351,6 +2461,16 @@ namespace NINA.Plugin.NightSummary.Server {
             res.ContentType = "application/json; charset=utf-8";
             res.Headers.Add("Access-Control-Allow-Origin", "*");
             var json = JsonSerializer.Serialize(data, JsonOpts);
+            var bytes = Encoding.UTF8.GetBytes(json);
+            res.ContentLength64 = bytes.Length;
+            await res.OutputStream.WriteAsync(bytes, 0, bytes.Length);
+            res.Close();
+        }
+
+        private static async Task WriteJsonRaw(HttpListenerResponse res, int status, string json) {
+            res.StatusCode = status;
+            res.ContentType = "application/json; charset=utf-8";
+            res.Headers.Add("Access-Control-Allow-Origin", "*");
             var bytes = Encoding.UTF8.GetBytes(json);
             res.ContentLength64 = bytes.Length;
             await res.OutputStream.WriteAsync(bytes, 0, bytes.Length);

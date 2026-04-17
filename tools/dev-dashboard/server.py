@@ -56,6 +56,10 @@ DEFAULT_DATA_DIR = _find_repo_data_dir()
 # Cached at startup (icon never changes during dev)
 ICON_DATA_URI = ""
 
+# Tonight preview cache (5-minute TTL; shared across threads via GIL)
+_tonight_cache = None
+_tonight_cache_time = 0.0
+
 
 def load_icon():
     """Load and base64-encode the plugin icon once at startup."""
@@ -280,6 +284,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
             import urllib.parse
             target_name = urllib.parse.unquote(parts[4])
             self.serve_target_sessions(target_name)
+            return
+
+        # Tonight preview: fetches live data from the local TS API
+        if path == "/api/tonight/preview":
+            self.serve_tonight_preview()
             return
 
         # Not found
@@ -1355,6 +1364,120 @@ class DashboardHandler(BaseHTTPRequestHandler):
             })
         except Exception as e:
             self.send_json(500, {"error": f"target sessions: {e}"})
+
+    def serve_tonight_preview(self):
+        """Fetch tonight's TS preview from the live Target Scheduler API and return camelCase JSON.
+
+        Reads TS SQLite for the API port, calls /profiles to find the active profile,
+        then calls /profiles/{id}/preview?startTime=... with a start time of 22:00 tonight
+        (or 'now' if we're already in the observing window 18:00-06:00).
+
+        Response is cached for 5 minutes since the preview call takes ~25s.
+        """
+        import urllib.request
+        import urllib.parse
+        import sqlite3
+
+        global _tonight_cache, _tonight_cache_time
+
+        # Return cached data if still fresh
+        if _tonight_cache is not None and (time.time() - _tonight_cache_time) < 300:
+            self.send_json(200, _tonight_cache)
+            return
+
+        # 1. Find TS API port from TS SQLite
+        ts_db_path = os.path.join(
+            os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
+            "NINA", "SchedulerPlugin", "schedulerdb.sqlite"
+        )
+        api_port = 8188
+        if os.path.isfile(ts_db_path):
+            try:
+                conn = sqlite3.connect(f"file:{ts_db_path}?mode=ro", uri=True)
+                cur = conn.cursor()
+                cur.execute("SELECT enableAPI, apiPort FROM profilepreference LIMIT 1")
+                row = cur.fetchone()
+                conn.close()
+                if row:
+                    enabled, port = row
+                    if port and int(port) > 0:
+                        api_port = int(port)
+                    if not enabled:
+                        self.send_json(200, {"error": "Target Scheduler API is disabled. Enable it in Target Scheduler settings."})
+                        return
+            except Exception as e:
+                sys.stderr.write(f"  tonight: TS SQLite read error: {e}\n")
+
+        base_url = f"http://localhost:{api_port}/ts/v0"
+        sys.stderr.write(f"  tonight: TS API at {base_url}\n")
+
+        # 2. Get active NINA profile
+        try:
+            req = urllib.request.Request(
+                f"{base_url}/profiles",
+                headers={"User-Agent": "NightSummary-DevServer/1.0"}
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                profiles = json.loads(resp.read().decode("utf-8"))
+        except Exception as e:
+            self.send_json(200, {"error": f"Could not reach Target Scheduler API at {base_url}: {e}"})
+            return
+
+        active = next((p for p in profiles if p.get("Active") or p.get("active")), None)
+        if not active:
+            self.send_json(200, {"error": "No active NINA profile found in Target Scheduler."})
+            return
+
+        profile_id = active.get("Id") or active.get("id")
+
+        # 3. Compute start time: "now" if in observing window (18:00-06:00), else 22:00 tonight
+        now = datetime.datetime.now()
+        if now.hour >= 18 or now.hour < 6:
+            start_time = now
+        else:
+            start_time = now.replace(hour=22, minute=0, second=0, microsecond=0)
+
+        encoded_start = urllib.parse.quote(start_time.strftime("%Y-%m-%dT%H:%M:%S"))
+        preview_url = f"{base_url}/profiles/{profile_id}/preview?startTime={encoded_start}"
+        sys.stderr.write(f"  tonight: calling {preview_url} (may take ~25s)\n")
+
+        # 4. Call preview endpoint
+        try:
+            req = urllib.request.Request(
+                preview_url,
+                headers={"User-Agent": "NightSummary-DevServer/1.0"}
+            )
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                entries_raw = json.loads(resp.read().decode("utf-8"))
+        except Exception as e:
+            self.send_json(200, {"error": f"Target Scheduler preview failed: {e}"})
+            return
+
+        # 5. Normalize field names to camelCase (TS returns PascalCase)
+        def norm_ep(ep):
+            return {
+                "filterName": ep.get("FilterName") or ep.get("filterName") or "",
+                "exposure":   float(ep.get("Exposure")   or ep.get("exposure")   or 0),
+                "count":      int(ep.get("Count")       or ep.get("count")       or 0),
+            }
+
+        def norm_entry(e):
+            return {
+                "id":          e.get("Id")          or e.get("id"),
+                "name":        e.get("Name")        or e.get("name"),
+                "waitPeriod":  bool(e.get("WaitPeriod") or e.get("waitPeriod") or False),
+                "startTime":   e.get("StartTime")   or e.get("startTime"),
+                "endTime":     e.get("EndTime")     or e.get("endTime"),
+                "exposurePlan": [norm_ep(ep) for ep in (
+                    e.get("ExposurePlan") or e.get("exposurePlan") or []
+                )],
+            }
+
+        entries = [norm_entry(e) for e in entries_raw]
+        result = {"entries": entries, "startTime": start_time.isoformat()}
+        _tonight_cache = result
+        _tonight_cache_time = time.time()
+        self.send_json(200, result)
 
     def do_GET(self):
         self.route("GET")
