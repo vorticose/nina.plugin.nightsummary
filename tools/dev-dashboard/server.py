@@ -9,6 +9,7 @@ Usage:
     python server.py -p 9000                # custom port
     python server.py -d /path/to/data       # custom data directory
     python server.py -w /path/to/Server/Web # serve web assets from another location
+    python server.py --reload               # hot-fix mode: auto-restart on server.py changes
 """
 
 import argparse
@@ -19,6 +20,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 
@@ -1403,6 +1405,65 @@ def start_detached(args):
     print(f"Dev server starting in new window on port {args.port}.")
 
 
+def run_with_reload(args):
+    """Watch server.py for changes and restart the server process automatically."""
+    script = os.path.abspath(__file__)
+    watched = [script]
+
+    def build_cmd():
+        cmd = [sys.executable, script, "-p", str(args.port)]
+        if args.webdir:
+            cmd += ["-w", os.path.abspath(args.webdir)]
+        data = args.data if args.data else DEFAULT_DATA_DIR
+        cmd += ["-d", os.path.abspath(data)]
+        return cmd
+
+    def get_mtimes():
+        result = {}
+        for f in watched:
+            try:
+                result[f] = os.stat(f).st_mtime
+            except OSError:
+                result[f] = None
+        return result
+
+    mtimes = get_mtimes()
+
+    while True:
+        print("[reload] Starting server...")
+        proc = subprocess.Popen(build_cmd())
+        try:
+            while True:
+                time.sleep(1)
+                new_mtimes = get_mtimes()
+                changed = [f for f in watched if new_mtimes.get(f) != mtimes.get(f)]
+                if changed:
+                    print(f"[reload] {os.path.basename(changed[0])} changed — restarting...")
+                    mtimes = new_mtimes
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                    break
+                if proc.poll() is not None:
+                    code = proc.returncode
+                    if code == 0:
+                        print("[reload] Server exited cleanly.")
+                        return
+                    print(f"[reload] Server crashed (exit {code}). Restarting in 2s...")
+                    time.sleep(2)
+                    break
+        except KeyboardInterrupt:
+            print("\n[reload] Stopping.")
+            proc.terminate()
+            try:
+                proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+            return
+
+
 def main():
     parser = argparse.ArgumentParser(description="Night Summary Dashboard Dev Server")
     parser.add_argument("-p", "--port", type=int, default=8182,
@@ -1416,6 +1477,8 @@ def main():
                         help="Stop a running dev server on the given port")
     parser.add_argument("--start", action="store_true",
                         help="Start server in a new console window (detached)")
+    parser.add_argument("--reload", action="store_true",
+                        help="Auto-restart when server.py changes (hot fix mode)")
     args = parser.parse_args()
 
     if args.stop:
@@ -1424,6 +1487,10 @@ def main():
 
     if args.start:
         start_detached(args)
+        return
+
+    if args.reload:
+        run_with_reload(args)
         return
 
     global WEB_DIR
