@@ -71,6 +71,7 @@ def load_icon():
 
 class DashboardHandler(BaseHTTPRequestHandler):
     data_dir = ""
+    ts_host = "localhost"
 
     def log_message(self, format, *args):
         """Compact log format: method+path + status code."""
@@ -1407,7 +1408,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 sys.stderr.write(f"  tonight: TS SQLite read error: {e}\n")
 
-        base_url = f"http://localhost:{api_port}/ts/v0"
+        base_url = f"http://{self.ts_host}:{api_port}/ts/v0"
         sys.stderr.write(f"  tonight: TS API at {base_url}\n")
 
         # 2. Get active NINA profile
@@ -1566,6 +1567,8 @@ def run_with_reload(args):
         if args.webdir:
             cmd += ["-w", args.webdir]
         cmd += ["-d", args.data]
+        if args.ts_host and args.ts_host != "localhost":
+            cmd += ["--ts-host", args.ts_host]
         return cmd
 
     def get_mtimes():
@@ -1643,6 +1646,10 @@ def main():
                         help="Start server in a new console window (detached)")
     parser.add_argument("--reload", action="store_true",
                         help="Auto-restart when server.py changes (hot fix mode)")
+    parser.add_argument("--ts-host", default="localhost",
+                        help="Hostname/IP of the machine running Target Scheduler "
+                             "(default: localhost). Use the remote machine IP when "
+                             "the dev server and TS are on different machines.")
     args = parser.parse_args()
 
     # Resolve paths to absolute NOW, while CWD is still the launch directory.
@@ -1674,6 +1681,7 @@ def main():
     data_dir = args.data or DEFAULT_DATA_DIR
     data_dir = os.path.normpath(os.path.abspath(data_dir))
     DashboardHandler.data_dir = data_dir
+    DashboardHandler.ts_host = args.ts_host
 
     # Startup validation
     html_path = os.path.join(WEB_DIR, "dashboard.html")
@@ -1700,6 +1708,7 @@ def main():
     print(f"  Sessions: {session_count} (from snapshot)")
     print(f"  Icon:     {'loaded' if ICON_DATA_URI else 'not found'}")
     print(f"  Server:   http://localhost:{args.port}")
+    print(f"  TS host:  {args.ts_host}")
     print()
 
     class ThreadedServer(ThreadingMixIn, HTTPServer):
