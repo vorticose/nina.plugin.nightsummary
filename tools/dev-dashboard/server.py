@@ -53,6 +53,45 @@ def _find_repo_data_dir():
 
 DEFAULT_DATA_DIR = _find_repo_data_dir()
 
+
+def _read_nina_observer_coords():
+    """Read observer lat/lon from NINA profile XML files.
+
+    Scans all .profile files in %LOCALAPPDATA%\\NINA\\Profiles\\, returns the
+    lat/lon from the first profile that has non-zero coordinates.  Falls back
+    to (0.0, 0.0) if nothing is found.
+    """
+    try:
+        import xml.etree.ElementTree as ET
+        profiles_dir = os.path.join(
+            os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
+            "NINA", "Profiles"
+        )
+        if not os.path.isdir(profiles_dir):
+            return 0.0, 0.0
+        for fn in os.listdir(profiles_dir):
+            if not fn.endswith(".profile") or fn.endswith(".bkp"):
+                continue
+            try:
+                tree = ET.parse(os.path.join(profiles_dir, fn))
+                root = tree.getroot()
+                # Element names may be namespace-qualified; use any() to find by local name
+                lat, lon = None, None
+                for elem in root.iter():
+                    local = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
+                    if local == "Latitude" and elem.text:
+                        lat = float(elem.text)
+                    elif local == "Longitude" and elem.text:
+                        lon = float(elem.text)
+                if lat is not None and lon is not None and (lat != 0.0 or lon != 0.0):
+                    return lat, lon
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return 0.0, 0.0
+
+
 # Cached at startup (icon never changes during dev)
 ICON_DATA_URI = ""
 
@@ -1713,8 +1752,16 @@ def main():
     data_dir = os.path.normpath(os.path.abspath(data_dir))
     DashboardHandler.data_dir = data_dir
     DashboardHandler.ts_host = args.ts_host
-    DashboardHandler.observer_lat = args.lat
-    DashboardHandler.observer_lon = args.lon
+    # Auto-read observer coords from NINA profile if not explicitly provided
+    if args.lat != 0.0 or args.lon != 0.0:
+        DashboardHandler.observer_lat = args.lat
+        DashboardHandler.observer_lon = args.lon
+    else:
+        auto_lat, auto_lon = _read_nina_observer_coords()
+        DashboardHandler.observer_lat = auto_lat
+        DashboardHandler.observer_lon = auto_lon
+        if auto_lat != 0.0 or auto_lon != 0.0:
+            sys.stderr.write(f"  observer: auto-detected lat={auto_lat}, lon={auto_lon} from NINA profile\n")
 
     # Startup validation
     html_path = os.path.join(WEB_DIR, "dashboard.html")

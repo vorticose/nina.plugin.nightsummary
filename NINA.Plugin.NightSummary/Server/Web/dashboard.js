@@ -5247,11 +5247,7 @@ function buildTonightAltitudeChart(data, uniqueNames, colorMap, targets, timelin
   var observerLon = (data.observerLon != null) ? data.observerLon : 0;
 
   if (observerLat === 0 && observerLon === 0) {
-    return '<div class="tonight-altitude-note">' +
-      'Altitude curves require observer coordinates. ' +
-      'Restart the dev server with <code>--lat &lt;deg&gt; --lon &lt;deg&gt;</code>, ' +
-      'e.g. <code>--lat 43.1 --lon -89.5</code>.' +
-      '</div>';
+    return '<div class="tonight-altitude-note">Altitude curves unavailable (observer coordinates not set in NINA profile).</div>';
   }
 
   // Collect RA/Dec from entry data; deduplicate by name (first occurrence wins)
