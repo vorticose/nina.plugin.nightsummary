@@ -4055,7 +4055,19 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 
   /* ── Filter & navigation ── */
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
-  .stats-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  /* On mobile, tab row stacks: tabs take full width, Manage Projects below */
+  .stats-tab-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .stats-tabs {
+    flex: 1 1 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .stats-tabs::-webkit-scrollbar { display: none; }
+  .targets-manage-projects-btn { align-self: flex-start; }
   /* Target cards — single column on mobile */
   .target-grid { grid-template-columns: 1fr; gap: 10px; }
   .targets-control-bar { gap: 6px; }
