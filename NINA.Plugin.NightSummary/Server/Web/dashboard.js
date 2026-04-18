@@ -6318,10 +6318,11 @@ function buildActivityHeatmap(sessions, firstSessionIso) {
     byDay[key] = (byDay[key] || 0) + (s.totalIntegrationSeconds || 0);
   });
 
-  // Always render a rolling 365-day window. Cells before firstDate render as
-  // pre-history (faded) so new users get a full-width grid that fills in as
-  // they gain history — no tiny 2-col grid stuck to the right edge.
-  var startDate = new Date(today.getTime() - 364 * dayMs);
+  // Grid spans firstSession -> today, capped at rolling 365 days so the
+  // heatmap builds out organically rather than showing a pre-seeded year.
+  var startDate = historyDays >= 365
+    ? new Date(today.getTime() - 364 * dayMs)
+    : new Date(firstDate);
 
   // GitHub-style grid: rows = days-of-week (Sun=0 .. Sat=6), cols = weeks.
   // Snap gridStart back to the preceding Sunday for clean column alignment.
@@ -6350,9 +6351,14 @@ function buildActivityHeatmap(sessions, firstSessionIso) {
     d.setDate(d.getDate() + 1);
   }
 
-  var cellSize = 14, gap = 3;
-  var step = cellSize + gap;
+  // Cell size scales with data span: sparse histories get bigger cells so
+  // the grid doesn't render as a tiny clump in the corner. A full year
+  // collapses to ~14px cells (GitHub-standard); two months gets ~28px.
   var totalCols = Math.ceil(cells.length / 7);
+  var gap = 3;
+  var TARGET_WIDTH = 520;
+  var cellSize = Math.max(14, Math.min(28, Math.floor((TARGET_WIDTH - (totalCols - 1) * gap) / totalCols)));
+  var step = cellSize + gap;
   var width = totalCols * step - gap;
   var monthLabelH = 14;
   var legendH = 16;
