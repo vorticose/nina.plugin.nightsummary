@@ -1744,6 +1744,33 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 .lifetime-heatmap-slot,
 .lifetime-ring-slot { min-height: 90px; }
 
+.lifetime-heatmap-slot {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.lifetime-heatmap {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+}
+.lifetime-heatmap-month {
+  fill: var(--text-tertiary, #888);
+  font-size: 9px;
+  font-family: inherit;
+}
+.lifetime-heatmap-cell {
+  fill: var(--surface-well, rgba(128,128,128,0.15));
+  stroke: none;
+  shape-rendering: crispEdges;
+}
+.lifetime-heatmap-cell.intensity-1 { fill: var(--accent-light, #4a9eff); fill-opacity: 0.30; }
+.lifetime-heatmap-cell.intensity-2 { fill: var(--accent-light, #4a9eff); fill-opacity: 0.55; }
+.lifetime-heatmap-cell.intensity-3 { fill: var(--accent-light, #4a9eff); fill-opacity: 0.80; }
+.lifetime-heatmap-cell.intensity-4 { fill: var(--accent-light, #4a9eff); fill-opacity: 1.00; }
+.lifetime-heatmap-cell.pre-history { opacity: 0.35; }
+
 @media (max-width: 720px) {
   .lifetime-strip {
     grid-template-columns: 1fr;

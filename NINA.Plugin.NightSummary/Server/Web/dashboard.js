@@ -6284,6 +6284,119 @@ function openTsLinkPicker(sessionTargetName) {
   });
 }
 
+// ── Activity heatmap (GitHub contribution-grid style) ──────────────────────
+//
+// Scales organically with user history:
+//   - no sessions OR < 14 days of history → skip entirely (return empty string)
+//   - 14–365 days → grid spans firstSession → today (width grows as user images more)
+//   - ≥ 365 days → rolling 365-day window
+//
+// Cells bucket by local date portion of sessionStart (YYYY-MM-DD).  Intensity
+// buckets (hours): 0 / 0<h<1 / 1–3 / 3–6 / ≥6.
+function buildActivityHeatmap(sessions, firstSessionIso) {
+  if (!firstSessionIso || !sessions || !sessions.length) return '';
+
+  var firstParts = String(firstSessionIso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!firstParts) return '';
+  var firstDate = new Date(parseInt(firstParts[1]), parseInt(firstParts[2]) - 1, parseInt(firstParts[3]));
+  firstDate.setHours(0, 0, 0, 0);
+
+  var today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  var dayMs = 86400000;
+  var historyDays = Math.floor((today - firstDate) / dayMs);
+  if (historyDays < 14) return '';
+
+  // Bucket sessions by local YYYY-MM-DD
+  var byDay = {};
+  sessions.forEach(function(s) {
+    if (!s.sessionStart) return;
+    var m = String(s.sessionStart).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return;
+    var key = m[1] + '-' + m[2] + '-' + m[3];
+    byDay[key] = (byDay[key] || 0) + (s.totalIntegrationSeconds || 0);
+  });
+
+  // Date range — cap at rolling 365 days
+  var startDate = historyDays >= 365
+    ? new Date(today.getTime() - 364 * dayMs)
+    : new Date(firstDate);
+
+  // GitHub-style grid: rows = days-of-week (Sun=0 .. Sat=6), cols = weeks.
+  // Snap gridStart back to the preceding Sunday for clean column alignment.
+  var gridStart = new Date(startDate);
+  gridStart.setDate(gridStart.getDate() - gridStart.getDay());
+
+  function bucketFor(hrs) {
+    if (hrs <= 0) return 0;
+    if (hrs < 1) return 1;
+    if (hrs < 3) return 2;
+    if (hrs < 6) return 3;
+    return 4;
+  }
+
+  var cells = [];
+  var d = new Date(gridStart);
+  while (d <= today) {
+    var y = d.getFullYear();
+    var mo = String(d.getMonth() + 1).padStart(2, '0');
+    var da = String(d.getDate()).padStart(2, '0');
+    var key = y + '-' + mo + '-' + da;
+    var secs = byDay[key] || 0;
+    var hrs = secs / 3600;
+    var preHistory = d < firstDate;
+    cells.push({ date: new Date(d), key: key, hours: hrs, intensity: bucketFor(hrs), pre: preHistory });
+    d.setDate(d.getDate() + 1);
+  }
+
+  var cellSize = 11, gap = 2;
+  var step = cellSize + gap;
+  var totalCols = Math.ceil(cells.length / 7);
+  var width = totalCols * step - gap;
+  var monthLabelH = 14;
+  var height = monthLabelH + 7 * step - gap;
+
+  var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  var svg = '<svg class="lifetime-heatmap" viewBox="0 0 ' + width + ' ' + height + '" ';
+  svg += 'preserveAspectRatio="xMinYMid meet" ';
+  svg += 'style="height:' + height + 'px;max-width:' + width + 'px;width:100%">';
+
+  // Month labels (top) — once per column where the month first appears
+  var lastMonth = -1;
+  for (var col = 0; col < totalCols; col++) {
+    var firstCellOfCol = cells[col * 7];
+    if (!firstCellOfCol) break;
+    var m = firstCellOfCol.date.getMonth();
+    if (m !== lastMonth) {
+      var lx = col * step;
+      svg += '<text class="lifetime-heatmap-month" x="' + lx + '" y="10">' + MONTHS[m] + '</text>';
+      lastMonth = m;
+    }
+  }
+
+  // Cells — skip anything past today
+  cells.forEach(function(c, i) {
+    if (c.date > today) return;
+    var col = Math.floor(i / 7);
+    var row = i % 7;
+    var x = col * step;
+    var y = monthLabelH + row * step;
+    var cls = 'lifetime-heatmap-cell intensity-' + c.intensity;
+    if (c.pre) cls += ' pre-history';
+    var tooltip = c.pre
+      ? c.key + ' \u00b7 before first session'
+      : c.key + ' \u00b7 ' + (c.hours > 0 ? c.hours.toFixed(1) + 'h' : 'no session');
+    svg += '<rect class="' + cls + '" x="' + x + '" y="' + y + '" ';
+    svg += 'width="' + cellSize + '" height="' + cellSize + '" rx="2"><title>';
+    svg += esc(tooltip) + '</title></rect>';
+  });
+
+  svg += '</svg>';
+  return svg;
+}
+
 function renderStats() {
   var el = document.getElementById('content');
   var sub = document.getElementById('page-subtitle');
@@ -6294,11 +6407,13 @@ function renderStats() {
   Promise.all([
     api('/api/stats/targets'),
     api('/api/stats/summary'),
-    api('/api/settings')
+    api('/api/settings'),
+    api('/api/sessions')
   ]).then(function(results) {
     var targetData = results[0];
     var summary    = results[1];
     var settings   = results[2];
+    var sessions   = results[3] || [];
     var targets = targetData.targets || [];
     statsTargetData = targets;
     statsTsStatus   = targetData.tsStatus   || null;
@@ -6346,7 +6461,9 @@ function renderStats() {
                 '</div>';
     }
     html +=   '</div>';
-    html +=   '<div class="lifetime-heatmap-slot" aria-hidden="true"></div>';
+    html +=   '<div class="lifetime-heatmap-slot">' +
+                buildActivityHeatmap(sessions, summary.firstSession) +
+              '</div>';
     html +=   '<div class="lifetime-ring-slot" aria-hidden="true"></div>';
     html += '</div>';
 
