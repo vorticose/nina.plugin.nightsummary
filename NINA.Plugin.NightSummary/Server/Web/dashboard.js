@@ -6309,19 +6309,24 @@ function buildActivityHeatmap(sessions, firstSessionIso) {
   if (historyDays < 14) return '';
 
   // Bucket sessions by local YYYY-MM-DD. Each bucket tracks total
-  // integration seconds and the earliest-starting session's id (used for
-  // the click-through link to that day's report).
+  // integration seconds and the "best" session's id for click-through
+  // (most integration time, breaking ties on image count). This avoids
+  // linking to false-start sessions (e.g. 15-second dry runs with 0
+  // images) when a real multi-hour session exists on the same date.
   var byDay = {};
   sessions.forEach(function(s) {
     if (!s.sessionStart) return;
     var m = String(s.sessionStart).match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (!m) return;
     var key = m[1] + '-' + m[2] + '-' + m[3];
-    var bucket = byDay[key] || { seconds: 0, sessionId: null, sessionStart: null };
-    bucket.seconds += (s.totalIntegrationSeconds || 0);
-    if (s.sessionId && s.hasReport && (!bucket.sessionStart || s.sessionStart < bucket.sessionStart)) {
+    var bucket = byDay[key] || { seconds: 0, sessionId: null, bestSecs: -1, bestImgs: -1 };
+    var secs = s.totalIntegrationSeconds || 0;
+    var imgs = s.imageCount || 0;
+    bucket.seconds += secs;
+    if (s.sessionId && s.hasReport && (secs > bucket.bestSecs || (secs === bucket.bestSecs && imgs > bucket.bestImgs))) {
       bucket.sessionId = s.sessionId;
-      bucket.sessionStart = s.sessionStart;
+      bucket.bestSecs = secs;
+      bucket.bestImgs = imgs;
     }
     byDay[key] = bucket;
   });
