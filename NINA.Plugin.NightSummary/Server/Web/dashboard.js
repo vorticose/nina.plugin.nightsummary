@@ -6318,10 +6318,10 @@ function buildActivityHeatmap(sessions, firstSessionIso) {
     byDay[key] = (byDay[key] || 0) + (s.totalIntegrationSeconds || 0);
   });
 
-  // Date range — cap at rolling 365 days
-  var startDate = historyDays >= 365
-    ? new Date(today.getTime() - 364 * dayMs)
-    : new Date(firstDate);
+  // Always render a rolling 365-day window. Cells before firstDate render as
+  // pre-history (faded) so new users get a full-width grid that fills in as
+  // they gain history — no tiny 2-col grid stuck to the right edge.
+  var startDate = new Date(today.getTime() - 364 * dayMs);
 
   // GitHub-style grid: rows = days-of-week (Sun=0 .. Sat=6), cols = weeks.
   // Snap gridStart back to the preceding Sunday for clean column alignment.
@@ -6350,18 +6350,23 @@ function buildActivityHeatmap(sessions, firstSessionIso) {
     d.setDate(d.getDate() + 1);
   }
 
-  var cellSize = 11, gap = 2;
+  var cellSize = 14, gap = 3;
   var step = cellSize + gap;
   var totalCols = Math.ceil(cells.length / 7);
   var width = totalCols * step - gap;
   var monthLabelH = 14;
-  var height = monthLabelH + 7 * step - gap;
+  var legendH = 16;
+  var height = monthLabelH + 7 * step - gap + legendH;
+  // Minimum width to fit the legend; expand viewBox if grid is narrower
+  var MIN_WIDTH_FOR_LEGEND = 24 + 5 + (5 * (12 + 2) - 2) + 5 + 28; // ~130
+  var svgWidth = Math.max(width, MIN_WIDTH_FOR_LEGEND);
 
   var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-  var svg = '<svg class="lifetime-heatmap" viewBox="0 0 ' + width + ' ' + height + '" ';
-  svg += 'preserveAspectRatio="xMinYMid meet" ';
-  svg += 'style="height:' + height + 'px;max-width:' + width + 'px;width:100%">';
+  var svg = '<svg class="lifetime-heatmap" viewBox="0 0 ' + svgWidth + ' ' + height + '" ';
+  svg += 'preserveAspectRatio="xMidYMid meet" ';
+  svg += 'width="' + svgWidth + '" height="' + height + '" ';
+  svg += 'style="max-width:100%;height:auto">';
 
   // Month labels (top) — once per column where the month first appears
   var lastMonth = -1;
@@ -6392,6 +6397,28 @@ function buildActivityHeatmap(sessions, firstSessionIso) {
     svg += 'width="' + cellSize + '" height="' + cellSize + '" rx="2"><title>';
     svg += esc(tooltip) + '</title></rect>';
   });
+
+  // Legend — right-aligned: "Less [0][1][2][3][4] More"
+  var legendY = monthLabelH + 7 * step - gap + 4;
+  var legendCells = 5;
+  var legendCellSize = Math.max(10, cellSize - 2);
+  var legendGap = 2;
+  var legendTextPad = 5;
+  var lessW = 24;
+  var moreW = 28;
+  var swatchRowW = legendCells * (legendCellSize + legendGap) - legendGap;
+  var legendTotalW = lessW + legendTextPad + swatchRowW + legendTextPad + moreW;
+  var legendStartX = Math.max(0, svgWidth - legendTotalW);
+  var legendTextY = legendY + legendCellSize - 2;
+  svg += '<text class="lifetime-heatmap-legend" x="' + legendStartX + '" y="' + legendTextY + '">Less</text>';
+  var legendSwatchStart = legendStartX + lessW + legendTextPad;
+  for (var li = 0; li < legendCells; li++) {
+    var lx2 = legendSwatchStart + li * (legendCellSize + legendGap);
+    svg += '<rect class="lifetime-heatmap-cell intensity-' + li + '" x="' + lx2 + '" y="' + legendY + '" ';
+    svg += 'width="' + legendCellSize + '" height="' + legendCellSize + '" rx="2"/>';
+  }
+  var legendMoreX = legendSwatchStart + swatchRowW + legendTextPad;
+  svg += '<text class="lifetime-heatmap-legend" x="' + legendMoreX + '" y="' + legendTextY + '">More</text>';
 
   svg += '</svg>';
   return svg;
@@ -6464,7 +6491,6 @@ function renderStats() {
     html +=   '<div class="lifetime-heatmap-slot">' +
                 buildActivityHeatmap(sessions, summary.firstSession) +
               '</div>';
-    html +=   '<div class="lifetime-ring-slot" aria-hidden="true"></div>';
     html += '</div>';
 
     // Tab bar + content

@@ -1688,8 +1688,8 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 /* Lifetime trophy case — stats left, reserved slots center/right for heatmap + filter ring */
 .lifetime-strip {
   display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 24px;
+  grid-template-columns: auto 1fr;
+  gap: 28px;
   align-items: center;
   padding: 18px 22px;
   margin-bottom: 14px;
@@ -1740,36 +1740,49 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 }
 .lifetime-stat--date .lifetime-value { white-space: nowrap; }
 
-/* Reserved slots filled by commits 2 + 3 */
-.lifetime-heatmap-slot,
-.lifetime-ring-slot { min-height: 90px; }
+/* Reserved slot filled by commit 3 (filter ring will reclaim right-side space) */
+.lifetime-heatmap-slot { min-height: 110px; }
 
 .lifetime-heatmap-slot {
   display: flex;
-  justify-content: center;
+  justify-content: flex-end;
   align-items: center;
 }
 .lifetime-heatmap {
   display: block;
-  width: 100%;
   max-width: 100%;
   height: auto;
 }
-.lifetime-heatmap-month {
+.lifetime-heatmap-month,
+.lifetime-heatmap-legend {
   fill: var(--text-tertiary, #888);
-  font-size: 9px;
+  font-size: 10px;
   font-family: inherit;
 }
 .lifetime-heatmap-cell {
-  fill: var(--surface-well, rgba(128,128,128,0.15));
   stroke: none;
   shape-rendering: crispEdges;
 }
-.lifetime-heatmap-cell.intensity-1 { fill: var(--accent-light, #4a9eff); fill-opacity: 0.30; }
-.lifetime-heatmap-cell.intensity-2 { fill: var(--accent-light, #4a9eff); fill-opacity: 0.55; }
-.lifetime-heatmap-cell.intensity-3 { fill: var(--accent-light, #4a9eff); fill-opacity: 0.80; }
-.lifetime-heatmap-cell.intensity-4 { fill: var(--accent-light, #4a9eff); fill-opacity: 1.00; }
-.lifetime-heatmap-cell.pre-history { opacity: 0.35; }
+/* Empty cells — subtle frame visible against strip background */
+.lifetime-heatmap-cell.intensity-0 { fill: rgba(255, 255, 255, 0.06); }
+/* Activity ramp — darker to brighter accent blue */
+.lifetime-heatmap-cell.intensity-1 { fill: #3b5a8c; }
+.lifetime-heatmap-cell.intensity-2 { fill: #5681c6; }
+.lifetime-heatmap-cell.intensity-3 { fill: #7ea8e6; }
+.lifetime-heatmap-cell.intensity-4 { fill: #c0d8ff; }
+.lifetime-heatmap-cell.pre-history { opacity: 0.25; }
+
+/* Light theme — flip empty to subtle dark, ramp to deeper blue */
+:root.light-theme .lifetime-heatmap-cell.intensity-0,
+[data-theme="light"] .lifetime-heatmap-cell.intensity-0 { fill: rgba(0, 0, 0, 0.08); }
+:root.light-theme .lifetime-heatmap-cell.intensity-1,
+[data-theme="light"] .lifetime-heatmap-cell.intensity-1 { fill: #b7ccec; }
+:root.light-theme .lifetime-heatmap-cell.intensity-2,
+[data-theme="light"] .lifetime-heatmap-cell.intensity-2 { fill: #7ea2d7; }
+:root.light-theme .lifetime-heatmap-cell.intensity-3,
+[data-theme="light"] .lifetime-heatmap-cell.intensity-3 { fill: #4575b8; }
+:root.light-theme .lifetime-heatmap-cell.intensity-4,
+[data-theme="light"] .lifetime-heatmap-cell.intensity-4 { fill: #1e4a8a; }
 
 @media (max-width: 720px) {
   .lifetime-strip {
@@ -1779,8 +1792,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   }
   .lifetime-stats { gap: 20px; }
   .lifetime-value { font-size: 22px; }
-  .lifetime-heatmap-slot,
-  .lifetime-ring-slot { display: none; }
+  .lifetime-heatmap-slot { display: none; }
 }
 
 .stats-table {
