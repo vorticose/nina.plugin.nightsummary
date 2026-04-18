@@ -1764,18 +1764,22 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   stroke: none;
   shape-rendering: crispEdges;
 }
-/* Empty cells — subtle frame visible against strip background */
-.lifetime-heatmap-cell.intensity-0 { fill: rgba(255, 255, 255, 0.06); }
+/* No-session days — translucent red to flag missed nights */
+.lifetime-heatmap-cell.intensity-0 { fill: rgba(239, 68, 68, 0.18); }
 /* Activity ramp — darker to brighter accent blue */
 .lifetime-heatmap-cell.intensity-1 { fill: #3b5a8c; }
 .lifetime-heatmap-cell.intensity-2 { fill: #5681c6; }
 .lifetime-heatmap-cell.intensity-3 { fill: #7ea8e6; }
 .lifetime-heatmap-cell.intensity-4 { fill: #c0d8ff; }
-.lifetime-heatmap-cell.pre-history { opacity: 0.25; }
+/* Pre-history cells (before firstSession) never imaged — override to
+   neutral so they don't read as "missed" nights */
+.lifetime-heatmap-cell.pre-history { fill: rgba(255, 255, 255, 0.05); opacity: 1; }
 
 /* Light theme — flip empty to subtle dark, ramp to deeper blue */
 :root.light-theme .lifetime-heatmap-cell.intensity-0,
-[data-theme="light"] .lifetime-heatmap-cell.intensity-0 { fill: rgba(0, 0, 0, 0.08); }
+[data-theme="light"] .lifetime-heatmap-cell.intensity-0 { fill: rgba(200, 40, 40, 0.15); }
+:root.light-theme .lifetime-heatmap-cell.pre-history,
+[data-theme="light"] .lifetime-heatmap-cell.pre-history { fill: rgba(0, 0, 0, 0.06); opacity: 1; }
 :root.light-theme .lifetime-heatmap-cell.intensity-1,
 [data-theme="light"] .lifetime-heatmap-cell.intensity-1 { fill: #b7ccec; }
 :root.light-theme .lifetime-heatmap-cell.intensity-2,
