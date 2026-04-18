@@ -2981,6 +2981,14 @@ function buildCalendarHeatmap(sessions) {
   return svg;
 }
 
+function toggleLifetimeView(btn, view) {
+  var strip = btn.closest('.lifetime-strip');
+  strip.querySelectorAll('.lv-toggle-btn').forEach(function(b) { b.classList.remove('lv-toggle-active'); });
+  btn.classList.add('lv-toggle-active');
+  strip.querySelector('.lifetime-waveform-slot').style.display = view === 'waveform' ? '' : 'none';
+  strip.querySelector('.lifetime-calendar-slot').style.display = view === 'calendar' ? '' : 'none';
+}
+
 function renderLifetimeStrip(sessions) {
   if (!sessions || sessions.length === 0) return '';
   var totalSessions = sessions.length;
@@ -2991,18 +2999,24 @@ function renderLifetimeStrip(sessions) {
   var firstSession = sessions.reduce(function(min, s) { return (!min || s.sessionStart < min) ? s.sessionStart : min; }, null);
 
   var html = '<div class="lifetime-strip">';
+  html += '<div class="lifetime-stats-row">';
   html += '<div class="lifetime-stats">';
-  html += '<div class="lifetime-stat"><span class="lifetime-value">' + totalSessions + '</span><span class="lifetime-label">Sessions</span></div>';
-  html += '<div class="lifetime-stat"><span class="lifetime-value">' + (totalIntegSec / 3600).toFixed(1) + '<span class="unit">h</span></span><span class="lifetime-label">Integration</span></div>';
-  html += '<div class="lifetime-stat"><span class="lifetime-value">' + targetCount + '</span><span class="lifetime-label">Targets</span></div>';
+  html += '<div class="card-stat lifetime-card-stat"><div class="card-stat-value">' + totalSessions + '</div><div class="card-stat-label">Sessions</div></div>';
+  html += '<div class="card-stat lifetime-card-stat"><div class="card-stat-value">' + (totalIntegSec / 3600).toFixed(1) + '<span class="card-stat-unit">h</span></div><div class="card-stat-label">Integration</div></div>';
+  html += '<div class="card-stat lifetime-card-stat"><div class="card-stat-value">' + targetCount + '</div><div class="card-stat-label">Targets</div></div>';
   if (firstSession) {
-    html += '<div class="lifetime-stat lifetime-stat--date"><span class="lifetime-value">' + esc(fmtSinceDate(firstSession)) + '</span><span class="lifetime-label">Imaging Since</span></div>';
+    html += '<div class="card-stat lifetime-card-stat"><div class="card-stat-value" style="white-space:nowrap">' + esc(fmtSinceDate(firstSession)) + '</div><div class="card-stat-label">Since</div></div>';
   }
+  html += '</div>';
+  html += '<div class="lv-toggle">';
+  html += '<button class="lv-toggle-btn lv-toggle-active" onclick="toggleLifetimeView(this,\'waveform\')">Bar</button>';
+  html += '<button class="lv-toggle-btn" onclick="toggleLifetimeView(this,\'calendar\')">Calendar</button>';
+  html += '</div>';
   html += '</div>';
   var waveform = buildActivityWaveform(sessions);
   if (waveform) html += '<div class="lifetime-waveform-slot">' + waveform + '</div>';
   var calendar = buildCalendarHeatmap(sessions);
-  if (calendar) html += '<div class="lifetime-calendar-slot">' + calendar + '</div>';
+  if (calendar) html += '<div class="lifetime-calendar-slot" style="display:none">' + calendar + '</div>';
   html += '</div>';
   return html;
 }

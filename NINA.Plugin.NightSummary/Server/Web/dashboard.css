@@ -1702,41 +1702,47 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 }
 :root.light .lifetime-strip { box-shadow: 0 0 0 1px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.05); }
 
+.lifetime-stats-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
 .lifetime-stats {
   display: flex;
-  gap: 28px;
-  align-items: center;
+  gap: 8px;
+  align-items: stretch;
   flex-wrap: wrap;
 }
-.lifetime-stat {
+.lifetime-card-stat {
+  padding: 10px 20px;
+  min-width: 0;
+}
+
+/* View toggle (Bar / Calendar) */
+.lv-toggle {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  min-width: 70px;
+  gap: 2px;
+  flex-shrink: 0;
 }
-.lifetime-value {
-  font-size: 26px;
-  line-height: 1.1;
-  color: var(--text-primary);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum";
-}
-.lifetime-value .unit {
-  font-size: 15px;
+.lv-toggle-btn {
+  background: var(--surface-well);
+  border: 1px solid rgba(255,255,255,0.1);
   color: var(--text-tertiary);
+  border-radius: 5px;
+  padding: 5px 12px;
+  font-size: 12px;
   font-weight: 600;
-  margin-left: 2px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, color 0.15s;
 }
-.lifetime-label {
-  font-size: 10px;
-  color: var(--text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  font-weight: 600;
-  margin-top: 4px;
+.lv-toggle-btn:hover { color: var(--text-secondary); }
+.lv-toggle-active {
+  background: rgba(96,165,250,0.15);
+  border-color: rgba(96,165,250,0.35);
+  color: var(--accent-lighter, #93c5fd);
 }
-.lifetime-stat--date .lifetime-value { white-space: nowrap; }
 
 .lifetime-waveform-slot,
 .lifetime-calendar-slot {
@@ -1819,14 +1825,13 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 [data-theme="light"] .lifetime-heatmap-cell.intensity-4 { fill: #1e4a8a; }
 
 @media (max-width: 720px) {
-  .lifetime-strip {
-    padding: 14px 16px;
-  }
-  .lifetime-stats { gap: 20px; }
-  .lifetime-value { font-size: 22px; }
+  .lifetime-strip { padding: 14px 16px; }
+  .lifetime-stats { gap: 6px; }
+  .lifetime-card-stat { padding: 8px 14px; }
   .lifetime-heatmap-slot,
   .lifetime-waveform-slot,
-  .lifetime-calendar-slot { display: none; }
+  .lifetime-calendar-slot { display: none !important; }
+  .lv-toggle { display: none; }
 }
 
 /* ── Sessions V2: hero card ─────────────────────────────────────────────── */
