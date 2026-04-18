@@ -188,6 +188,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self.send_json(405, {"error": "Method not allowed"})
             return
 
+        # Static HTML files in WEB_DIR (e.g. mockup pages)
+        if method == "GET" and path.endswith(".html"):
+            static_path = os.path.join(WEB_DIR, path.lstrip("/"))
+            if os.path.isfile(static_path):
+                self.serve_file(static_path, "text/html; charset=utf-8")
+                return
+
         # Health check
         if path == "/api/health":
             self.send_json(200, {"status": "ok"})

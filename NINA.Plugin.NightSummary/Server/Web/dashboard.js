@@ -4469,7 +4469,11 @@ function renderAltitudeChart(s, data) {
     var svgWrap = el.querySelector('.chart-svg-wrap');
     var chartLeft = svgWrap ? svgWrap.getBoundingClientRect().left : el.getBoundingClientRect().left;
     var clearance = (textRight > chartLeft - 15) ? 18 : 0;
-    var pullUp = Math.max(0, headerH + headerMargin - cardPadTop - clearance);
+    var latestLabel = card.querySelector('.latest-label');
+    var extraPullUp = latestLabel
+      ? latestLabel.offsetHeight + parseFloat(getComputedStyle(latestLabel).marginBottom || 0)
+      : 0;
+    var pullUp = Math.max(0, headerH + headerMargin - cardPadTop - clearance + extraPullUp);
     el.style.marginTop = '-' + pullUp + 'px';
   }
   var body = el.parentElement;
