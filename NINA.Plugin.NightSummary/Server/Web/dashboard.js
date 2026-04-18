@@ -6359,20 +6359,33 @@ function buildActivityHeatmap(sessions, firstSessionIso) {
   var TARGET_WIDTH = 520;
   var cellSize = Math.max(14, Math.min(28, Math.floor((TARGET_WIDTH - (totalCols - 1) * gap) / totalCols)));
   var step = cellSize + gap;
-  var width = totalCols * step - gap;
+  var gridWidth = totalCols * step - gap;
   var monthLabelH = 14;
   var legendH = 16;
+  // Day-of-week label gutter (left). Shows Mon/Wed/Fri — the column-per-week
+  // layout reads weeks left->right, days top->bottom, and the gutter
+  // disambiguates that vs. a calendar grid.
+  var dowLabelW = 26;
   var height = monthLabelH + 7 * step - gap + legendH;
+  var width = dowLabelW + gridWidth;
   // Minimum width to fit the legend; expand viewBox if grid is narrower
   var MIN_WIDTH_FOR_LEGEND = 24 + 5 + (5 * (12 + 2) - 2) + 5 + 28; // ~130
-  var svgWidth = Math.max(width, MIN_WIDTH_FOR_LEGEND);
+  var svgWidth = Math.max(width, dowLabelW + MIN_WIDTH_FOR_LEGEND);
 
   var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var DOW_LABELS = { 1: 'Mon', 3: 'Wed', 5: 'Fri' };
 
   var svg = '<svg class="lifetime-heatmap" viewBox="0 0 ' + svgWidth + ' ' + height + '" ';
   svg += 'preserveAspectRatio="xMidYMid meet" ';
   svg += 'width="' + svgWidth + '" height="' + height + '" ';
   svg += 'style="max-width:100%;height:auto">';
+
+  // Day-of-week labels (left gutter) — only Mon/Wed/Fri to avoid clutter
+  for (var dr = 0; dr < 7; dr++) {
+    if (!DOW_LABELS[dr]) continue;
+    var dy = monthLabelH + dr * step + Math.floor(cellSize * 0.7);
+    svg += '<text class="lifetime-heatmap-dow" x="0" y="' + dy + '">' + DOW_LABELS[dr] + '</text>';
+  }
 
   // Month labels (top) — once per column where the month first appears
   var lastMonth = -1;
@@ -6381,7 +6394,7 @@ function buildActivityHeatmap(sessions, firstSessionIso) {
     if (!firstCellOfCol) break;
     var m = firstCellOfCol.date.getMonth();
     if (m !== lastMonth) {
-      var lx = col * step;
+      var lx = dowLabelW + col * step;
       svg += '<text class="lifetime-heatmap-month" x="' + lx + '" y="10">' + MONTHS[m] + '</text>';
       lastMonth = m;
     }
@@ -6392,7 +6405,7 @@ function buildActivityHeatmap(sessions, firstSessionIso) {
     if (c.date > today) return;
     var col = Math.floor(i / 7);
     var row = i % 7;
-    var x = col * step;
+    var x = dowLabelW + col * step;
     var y = monthLabelH + row * step;
     var cls = 'lifetime-heatmap-cell intensity-' + c.intensity;
     if (c.pre) cls += ' pre-history';

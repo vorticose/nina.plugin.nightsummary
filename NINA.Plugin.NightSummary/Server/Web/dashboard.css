@@ -1754,7 +1754,8 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   height: auto;
 }
 .lifetime-heatmap-month,
-.lifetime-heatmap-legend {
+.lifetime-heatmap-legend,
+.lifetime-heatmap-dow {
   fill: var(--text-tertiary, #888);
   font-size: 10px;
   font-family: inherit;
