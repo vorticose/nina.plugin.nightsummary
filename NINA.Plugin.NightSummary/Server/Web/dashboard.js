@@ -6373,7 +6373,7 @@ function buildActivityHeatmap(sessions, firstSessionIso) {
   var svgWidth = Math.max(width, dowLabelW + MIN_WIDTH_FOR_LEGEND);
 
   var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  var DOW_LABELS = { 1: 'Mon', 3: 'Wed', 5: 'Fri' };
+  var DOW_LABELS = { 0: 'Sun', 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat' };
 
   var svg = '<svg class="lifetime-heatmap" viewBox="0 0 ' + svgWidth + ' ' + height + '" ';
   svg += 'preserveAspectRatio="xMidYMid meet" ';
