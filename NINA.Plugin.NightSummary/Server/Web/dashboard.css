@@ -1860,7 +1860,6 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   .lifetime-stats { gap: 6px; }
   .lifetime-card-stat { padding: 8px 14px; }
   .lifetime-heatmap-slot,
-  .lifetime-waveform-slot,
   .lifetime-calendar-slot { display: none !important; }
   .lv-toggle { display: none; }
 }
@@ -4269,6 +4268,17 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
       0px 2px 4px rgba(0,0,0,0.3),
       0px 8px 16px -4px rgba(0,0,0,0.25),
       inset 0px 1px 0px rgba(255,255,255,0.04);
+  }
+  .session-card--latest,
+  .session-card--latest:hover {
+    background: linear-gradient(135deg, rgba(212,160,106,0.22) 0%, rgba(212,160,106,0.06) 50%, transparent 75%), var(--surface);
+    box-shadow:
+      0px 0px 0px 1px rgba(212,160,106,0.45),
+      0px 0px 14px rgba(212,160,106,0.22),
+      0px 0px 40px rgba(212,160,106,0.10),
+      0px 4px 8px rgba(0,0,0,0.35),
+      0px 12px 24px -4px rgba(0,0,14,0.35),
+      inset 0px 1px 0px rgba(255,255,255,0.06);
   }
 
   /* Scroll-driven center glow: card lights up as it passes through viewport center */
