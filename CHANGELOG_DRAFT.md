@@ -18,6 +18,9 @@
 - Fixed event marker hover tooltips on metric charts not responding -- markers (AutoFocus, Meridian Flip, Safe/Unsafe) now reliably show their tooltip on hover
 - Fixed additional chart settings showing dropdowns in a different order than the primary chart -- all chart configurations now show X-Axis, Primary Metric, Secondary Metric in that order
 - Fixed filter chip selector causing a slight layout shift when switching filters -- chips are now consistently bold so toggling the active state no longer changes their width
+- Fixed equipment section showing only a subset of connected equipment -- now captures equipment names on the first saved image instead of at session start, guaranteeing all devices are connected before the snapshot is taken
+- Fixed filter change counts being inflated by no-op filter switches -- the plugin now only counts a filter change when the wheel actually moved, not every time the sequence asked for a filter that was already in position
+- Overhead Analysis accuracy improvements: the full meridian flip window (slew + re-center + re-guide + settle) is now captured instead of slew-only; no-op `StartGuiding` calls (when PHD2 is already guiding) are no longer counted; plate solves internal to Center/CenterAndRotate are no longer double-counted alongside the centering event; sequence items that fail validation mid-run no longer leak as orphaned "in-progress" entries; sequencer-caused `WaitForTimeSpan` delays (e.g. post-unsafe safety buffers) are now categorized as `Wait`; and `WaitUntilSafe` (weather-gated) is no longer counted as overhead, since the rig physically cannot image during that time
 
 
 ## v2.10.0

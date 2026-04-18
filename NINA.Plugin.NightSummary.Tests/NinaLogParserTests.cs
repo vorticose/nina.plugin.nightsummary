@@ -319,6 +319,208 @@ namespace NINA.Plugin.NightSummary.Tests {
         }
 
         [Fact]
+        public void RunAutofocus_RestoresFilter_DoesNotBleedToNextSwitchFilter() {
+            // Finding 5 regression: AF internally logs "Moving to Filter" when restoring the
+            // working filter. Without the lastFilterMoveTimestamp reset on RunAutofocus finish,
+            // the subsequent SwitchFilter (a no-op) would incorrectly be counted.
+            var log = @"----------------------------------------------------------------------
+--------------N.I.N.A. - Nighttime Imaging 'N' Astronomy--------------
+--------------------------Version 3.2.0.9001--------------------------
+-------------------------2026-03-30T21:21:13--------------------------
+----------------------------------------------------------------------
+2026-03-30T21:40:00.0000|INFO|SequenceItem.cs|Run|208|Starting Category: Focuser, Item: RunAutofocus
+2026-03-30T21:42:50.0000|INFO|FilterWheelVM.cs|ChangeFilter|112|Moving to Filter H at Position 5
+2026-03-30T21:43:00.0000|INFO|SequenceItem.cs|Run|254|Finishing Category: Focuser, Item: RunAutofocus
+2026-03-30T21:43:06.0000|INFO|SequenceItem.cs|Run|208|Starting Category: Scheduler, Item: SwitchFilter, Filter: H
+2026-03-30T21:43:06.5000|INFO|SequenceItem.cs|Run|254|Finishing Category: Scheduler, Item: SwitchFilter, Filter: H
+";
+            var path = Path.Combine(Path.GetTempPath(), $"afbleed_{Guid.NewGuid():N}.log");
+            File.WriteAllText(path, log);
+            try {
+                var events = NinaLogParser.ParseFile(path, SessionStart, SessionEnd);
+                Assert.Single(events.Where(e => e.EventType == "Autofocus"));
+                Assert.Empty(events.Where(e => e.EventType == "FilterChange"));
+            } finally {
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void ErrorLevel_SequenceItem_ClearsPendingStart() {
+            // Finding 4: a validation failure ("ERROR|SequenceItem.cs|Run|...|Failed validation:")
+            // must terminate the item's pendingStart and emit the event — otherwise pendingStarts
+            // leak and the warning log fills with "unmatched X start" entries.
+            var log = @"----------------------------------------------------------------------
+--------------N.I.N.A. - Nighttime Imaging 'N' Astronomy--------------
+--------------------------Version 3.2.0.9001--------------------------
+-------------------------2026-03-30T21:21:13--------------------------
+----------------------------------------------------------------------
+2026-03-30T21:40:00.0000|INFO|SequenceItem.cs|Run|208|Starting Category: Focuser, Item: RunAutofocus
+2026-03-30T21:40:00.0050|ERROR|SequenceItem.cs|Run|281|Failed validation: Category: Focuser, Item: RunAutofocus - no focuser connected
+";
+            var path = Path.Combine(Path.GetTempPath(), $"fail_{Guid.NewGuid():N}.log");
+            File.WriteAllText(path, log);
+            try {
+                var events = NinaLogParser.ParseFile(path, SessionStart, SessionEnd);
+                var af = events.Where(e => e.EventType == "Autofocus").ToList();
+                Assert.Single(af);
+                Assert.True(af[0].DurationSeconds < 1);
+            } finally {
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void StartGuiding_NoRealRequest_IsSuppressed() {
+            // Finding 1: if PHD2 is already guiding, StartGuiding SequenceItem executes as a no-op.
+            // Real starts log "Phd2 - Requesting to start guiding" via TryStartGuideCommand;
+            // no-ops do not. Suppress when no real request in window.
+            var log = @"----------------------------------------------------------------------
+--------------N.I.N.A. - Nighttime Imaging 'N' Astronomy--------------
+--------------------------Version 3.2.0.9001--------------------------
+-------------------------2026-03-30T21:21:13--------------------------
+----------------------------------------------------------------------
+2026-03-30T21:40:00.0000|INFO|SequenceItem.cs|Run|208|Starting Category: Guider, Item: StartGuiding
+2026-03-30T21:40:00.0100|INFO|PHD2Guider.cs|StartGuidingPrivate|195|Phd2 - App is already guiding. Skipping start guiding
+2026-03-30T21:40:00.0200|INFO|SequenceItem.cs|Run|254|Finishing Category: Guider, Item: StartGuiding
+";
+            var path = Path.Combine(Path.GetTempPath(), $"guide_{Guid.NewGuid():N}.log");
+            File.WriteAllText(path, log);
+            try {
+                var events = NinaLogParser.ParseFile(path, SessionStart, SessionEnd);
+                Assert.Empty(events.Where(e => e.EventType == "Guiding"));
+            } finally {
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void StartGuiding_WithRealRequest_IsCounted() {
+            var log = @"----------------------------------------------------------------------
+--------------N.I.N.A. - Nighttime Imaging 'N' Astronomy--------------
+--------------------------Version 3.2.0.9001--------------------------
+-------------------------2026-03-30T21:21:13--------------------------
+----------------------------------------------------------------------
+2026-03-30T21:40:00.0000|INFO|SequenceItem.cs|Run|208|Starting Category: Guider, Item: StartGuiding
+2026-03-30T21:40:00.5000|INFO|PHD2Guider.cs|TryStartGuideCommand|150|Phd2 - Requesting to start guiding
+2026-03-30T21:40:30.0000|INFO|SequenceItem.cs|Run|254|Finishing Category: Guider, Item: StartGuiding
+";
+            var path = Path.Combine(Path.GetTempPath(), $"guidereal_{Guid.NewGuid():N}.log");
+            File.WriteAllText(path, log);
+            try {
+                var events = NinaLogParser.ParseFile(path, SessionStart, SessionEnd);
+                Assert.Single(events.Where(e => e.EventType == "Guiding"));
+            } finally {
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void InnerPlateSolveDuringCentering_IsSuppressed() {
+            // Finding 2: Center/CenterAndRotate run inner plate solves as part of execution.
+            // Those must not emit separate PlateSolve events — would double-count with the
+            // Centering event itself.
+            var log = @"----------------------------------------------------------------------
+--------------N.I.N.A. - Nighttime Imaging 'N' Astronomy--------------
+--------------------------Version 3.2.0.9001--------------------------
+-------------------------2026-03-30T21:21:13--------------------------
+----------------------------------------------------------------------
+2026-03-30T21:40:00.0000|INFO|SequenceItem.cs|Run|208|Starting Category: Telescope, Item: CenterAndRotate
+2026-03-30T21:40:05.0000|INFO|ImageSolver.cs|Solve|41|Platesolving with parameters: FocalLength: 448
+2026-03-30T21:40:08.0000|INFO|ImageSolver.cs|Solve|54|Platesolve successful: Coordinates: RA: 07:05:49
+2026-03-30T21:40:10.0000|INFO|SequenceItem.cs|Run|254|Finishing Category: Telescope, Item: CenterAndRotate
+2026-03-30T21:50:00.0000|INFO|ImageSolver.cs|Solve|41|Platesolving with parameters: FocalLength: 448
+2026-03-30T21:50:03.0000|INFO|ImageSolver.cs|Solve|54|Platesolve successful: Coordinates: RA: 07:05:49
+";
+            var path = Path.Combine(Path.GetTempPath(), $"innersolve_{Guid.NewGuid():N}.log");
+            File.WriteAllText(path, log);
+            try {
+                var events = NinaLogParser.ParseFile(path, SessionStart, SessionEnd);
+                Assert.Single(events.Where(e => e.EventType == "Centering"));
+                // Only the outer (post-exposure) plate solve should be emitted, not the inner one
+                var solves = events.Where(e => e.EventType == "PlateSolve").ToList();
+                Assert.Single(solves);
+                Assert.Equal(new DateTime(2026, 3, 30, 21, 50, 0), solves[0].StartTime);
+            } finally {
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void MeridianFlipTrigger_FullWindow_IsTracked() {
+            // Finding D: trigger-based flip spans from SequenceTrigger start to MeridianFlipVM
+            // "Exiting meridian flip" — includes slew, center, re-guide, settle. Slew-only was
+            // a significant undercount (32s vs 110s real).
+            var log = @"----------------------------------------------------------------------
+--------------N.I.N.A. - Nighttime Imaging 'N' Astronomy--------------
+--------------------------Version 3.2.0.9001--------------------------
+-------------------------2026-03-30T21:21:13--------------------------
+----------------------------------------------------------------------
+2026-03-30T22:00:00.0000|INFO|SequenceTrigger.cs|Run|45|Starting Trigger: MeridianFlipTrigger
+2026-03-30T22:01:50.9000|INFO|MeridianFlipVM.cs|DoMeridianFlip|310|Meridian Flip - Exiting meridian flip
+";
+            var path = Path.Combine(Path.GetTempPath(), $"mflip_{Guid.NewGuid():N}.log");
+            File.WriteAllText(path, log);
+            try {
+                var events = NinaLogParser.ParseFile(path, SessionStart, SessionEnd);
+                var flips = events.Where(e => e.EventType == "MeridianFlip").ToList();
+                Assert.Single(flips);
+                Assert.InRange(flips[0].DurationSeconds, 110, 112);
+                Assert.Contains("full window", flips[0].Details);
+            } finally {
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void WaitForTimeSpan_IsTrackedAsWait() {
+            // User's safety stabilization wait pattern: a deliberate buffer after unsafe→safe
+            // transition. Sequencer-caused wait — counts as overhead.
+            var log = @"----------------------------------------------------------------------
+--------------N.I.N.A. - Nighttime Imaging 'N' Astronomy--------------
+--------------------------Version 3.2.0.9001--------------------------
+-------------------------2026-03-30T21:21:13--------------------------
+----------------------------------------------------------------------
+2026-03-30T22:00:00.0000|INFO|SequenceItem.cs|Run|208|Starting Category: Utility, Item: WaitForTimeSpan, Wait: 120s
+2026-03-30T22:02:00.0000|INFO|SequenceItem.cs|Run|254|Finishing Category: Utility, Item: WaitForTimeSpan, Wait: 120s
+";
+            var path = Path.Combine(Path.GetTempPath(), $"wait_{Guid.NewGuid():N}.log");
+            File.WriteAllText(path, log);
+            try {
+                var events = NinaLogParser.ParseFile(path, SessionStart, SessionEnd);
+                var waits = events.Where(e => e.EventType == "Wait").ToList();
+                Assert.Single(waits);
+                Assert.InRange(waits[0].DurationSeconds, 119, 121);
+            } finally {
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void WaitUntilSafe_IsNotTracked() {
+            // Condition-gated wait: weather unsafe means rig physically can't image.
+            // Not overhead — skipped by design.
+            var log = @"----------------------------------------------------------------------
+--------------N.I.N.A. - Nighttime Imaging 'N' Astronomy--------------
+--------------------------Version 3.2.0.9001--------------------------
+-------------------------2026-03-30T21:21:13--------------------------
+----------------------------------------------------------------------
+2026-03-30T22:00:00.0000|INFO|SequenceItem.cs|Run|208|Starting Category: Safety, Item: WaitUntilSafe
+2026-03-30T22:30:00.0000|INFO|SequenceItem.cs|Run|254|Finishing Category: Safety, Item: WaitUntilSafe
+";
+            var path = Path.Combine(Path.GetTempPath(), $"safewait_{Guid.NewGuid():N}.log");
+            // Widen session window to cover the 30-min wait
+            var wideEnd = new DateTime(2026, 3, 30, 23, 0, 0);
+            File.WriteAllText(path, log);
+            try {
+                var events = NinaLogParser.ParseFile(path, SessionStart, wideEnd);
+                Assert.Empty(events.Where(e => e.EventType == "SafetyWait" || e.EventType == "Wait" || e.EventType == "WaitUntilSafe"));
+            } finally {
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
         public void ParsesAllEventTypesFromTestFixture() {
             var events = NinaLogParser.ParseFile(_logPath, SessionStart, SessionEnd);
 
