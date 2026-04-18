@@ -1685,15 +1685,13 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   white-space: nowrap;
 }
 
-/* Lifetime trophy case — stats left, reserved slots center/right for heatmap + filter ring */
+/* Lifetime trophy case — stats row + waveform + calendar heatmap stacked vertically */
 .lifetime-strip {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 28px;
-  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
   padding: 18px 22px;
   margin-bottom: 14px;
-  min-height: 130px;
   background: var(--surface);
   border-radius: 8px;
   box-shadow:
@@ -1740,13 +1738,31 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 }
 .lifetime-stat--date .lifetime-value { white-space: nowrap; }
 
-/* Reserved slot filled by commit 3 (filter ring will reclaim right-side space) */
-.lifetime-heatmap-slot { min-height: 110px; }
-
+.lifetime-waveform-slot,
+.lifetime-calendar-slot {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  overflow-x: auto;
+}
+/* keep old slot name in case referenced elsewhere */
 .lifetime-heatmap-slot {
   display: flex;
   justify-content: flex-start;
   align-items: center;
+}
+
+.lw-label {
+  fill: var(--text-tertiary, #888);
+  font-size: 10px;
+  font-family: inherit;
+}
+.lw-bar { cursor: pointer; }
+.lifetime-waveform a:hover .lw-bar,
+.lifetime-calendar a:hover .lifetime-heatmap-cell {
+  stroke: var(--accent-lighter, #c0d8ff);
+  stroke-width: 1.5;
+  paint-order: stroke;
 }
 .lifetime-heatmap {
   display: block;
@@ -1804,13 +1820,13 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 
 @media (max-width: 720px) {
   .lifetime-strip {
-    grid-template-columns: 1fr;
     padding: 14px 16px;
-    min-height: 0;
   }
   .lifetime-stats { gap: 20px; }
   .lifetime-value { font-size: 22px; }
-  .lifetime-heatmap-slot { display: none; }
+  .lifetime-heatmap-slot,
+  .lifetime-waveform-slot,
+  .lifetime-calendar-slot { display: none; }
 }
 
 /* ── Sessions V2: hero card ─────────────────────────────────────────────── */

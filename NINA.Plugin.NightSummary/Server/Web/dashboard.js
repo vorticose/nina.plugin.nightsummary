@@ -2788,6 +2788,199 @@ function getAllTargets() {
 
 // ── Sessions V2: trophy case + hero card + historical expander ──────────────
 
+function buildActivityWaveform(sessions) {
+  if (!sessions || sessions.length < 2) return '';
+  var dates = sessions.map(function(s) { return new Date(s.sessionStart).getTime(); });
+  var minDRaw = Math.min.apply(null, dates), maxDRaw = Math.max.apply(null, dates);
+  var minDObj = new Date(minDRaw), maxDObj = new Date(maxDRaw);
+  var minD = new Date(minDObj.getFullYear(), minDObj.getMonth(), minDObj.getDate()).getTime();
+  var maxD = new Date(maxDObj.getFullYear(), maxDObj.getMonth(), maxDObj.getDate()).getTime();
+  var dateSpan = maxD - minD || 86400000;
+  var maxInteg = Math.max.apply(null, sessions.map(function(s) { return s.totalIntegrationSeconds || 0; }));
+  if (!maxInteg) return '';
+
+  // Calendar-day granularity: same-night sessions collapse to one slot for bar-width calculation
+  var uniqueDayMs = dates.map(function(t) {
+    var d = new Date(t);
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  }).filter(function(t, i, arr) { return arr.indexOf(t) === i; }).sort(function(a, b) { return a - b; });
+  var minGapMs = Infinity;
+  for (var gi = 1; gi < uniqueDayMs.length; gi++) {
+    var g = uniqueDayMs[gi] - uniqueDayMs[gi - 1];
+    if (g > 0 && g < minGapMs) minGapMs = g;
+  }
+  var W = 680, CHART_H = 64, LABEL_H = 28, H = CHART_H + LABEL_H;
+  var availPx = uniqueDayMs.length > 1 ? (minGapMs / dateSpan) * W : W;
+  var BAR_W = Math.max(6, Math.min(Math.floor(availPx * 0.75), 28));
+
+  var svg = '<svg class="lifetime-waveform" viewBox="0 0 ' + W + ' ' + H + '" ';
+  svg += 'preserveAspectRatio="xMinYMid meet" ';
+  svg += 'width="' + W + '" height="' + H + '" style="max-width:100%;height:auto">';
+  svg += '<defs><linearGradient id="lw-grad" x1="0" y1="0" x2="0" y2="1">';
+  svg += '<stop offset="0%" stop-color="#79c0ff"/>';
+  svg += '<stop offset="100%" stop-color="#388bfd" stop-opacity="0.7"/>';
+  svg += '</linearGradient></defs>';
+
+  svg += '<line x1="0" y1="' + CHART_H + '" x2="' + W + '" y2="' + CHART_H + '" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>';
+
+  // Adaptive x-axis: daily ticks on short spans, weekly on medium, monthly on long
+  var DAY_MS = 86400000;
+  var spanDays = Math.ceil(dateSpan / DAY_MS);
+  var tickEveryDays = spanDays > 120 ? 7 : spanDays > 60 ? 2 : 1;
+  var MNAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var axD = new Date(minD);
+  var prevLabelX = -99;
+  while (axD.getTime() <= minD + dateSpan + DAY_MS) {
+    var axX = ((axD.getTime() - minD) / dateSpan) * (W - BAR_W) + BAR_W / 2;
+    if (axX < -4 || axX > W + 4) { axD.setDate(axD.getDate() + 1); continue; }
+    var isMonthStart = axD.getDate() === 1;
+    var daysIn = Math.round((axD.getTime() - minD) / DAY_MS);
+    var isTick = isMonthStart || (daysIn % tickEveryDays === 0);
+    if (!isTick) { axD.setDate(axD.getDate() + 1); continue; }
+    if (isMonthStart) {
+      svg += '<line x1="' + axX.toFixed(1) + '" y1="0" x2="' + axX.toFixed(1) + '" y2="' + CHART_H + '" stroke="rgba(255,255,255,0.05)" stroke-width="1" stroke-dasharray="3,4"/>';
+    }
+    var tickH = isMonthStart ? 8 : 5;
+    svg += '<line x1="' + axX.toFixed(1) + '" y1="' + CHART_H + '" x2="' + axX.toFixed(1) + '" y2="' + (CHART_H + tickH) + '"'
+      + ' stroke="' + (isMonthStart ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.35)') + '" stroke-width="1"/>';
+    var labelText = null;
+    if (isMonthStart) {
+      labelText = MNAMES[axD.getMonth()];
+      if (spanDays > 300) labelText += ' \'' + String(axD.getFullYear()).slice(2);
+    } else if (spanDays <= 60 && daysIn % 7 === 0 && axX - prevLabelX > 26) {
+      labelText = String(axD.getDate());
+    }
+    if (labelText && axX - prevLabelX > 18) {
+      svg += '<text class="lw-label" x="' + axX.toFixed(1) + '" y="' + (H - 3) + '" text-anchor="middle">' + esc(labelText) + '</text>';
+      prevLabelX = axX;
+    }
+    axD.setDate(axD.getDate() + 1);
+  }
+
+  // Bars — midnight-snapped position so ticks and bars align
+  sessions.forEach(function(s) {
+    var sd = new Date(s.sessionStart);
+    var dayMs = new Date(sd.getFullYear(), sd.getMonth(), sd.getDate()).getTime();
+    var t = (dayMs - minD) / dateSpan;
+    var x = t * (W - BAR_W);
+    var hours = (s.totalIntegrationSeconds || 0) / 3600;
+    var normInteg = maxInteg > 0 ? hours / (maxInteg / 3600) : 0;
+    var barH = Math.max(2, normInteg * (CHART_H - 4));
+    var y = CHART_H - barH;
+    var tgtStr = (s.targets && s.targets.length) ? s.targets.join(', ') : '';
+    var tooltip = (tgtStr ? tgtStr + '\n' : '') + fmtDate(s.sessionStart) + ' \u00b7 ' + fmt(s.totalIntegrationSeconds || 0) + ' \u00b7 ' + (s.imageCount || 0) + ' images';
+    svg += '<rect x="' + (x - 2).toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + (BAR_W + 4) + '" height="' + barH.toFixed(1) + '" fill="#58a6ff" opacity="0.12" rx="2"/>';
+    var bar = '<rect class="lw-bar" x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + BAR_W + '" height="' + barH.toFixed(1) + '" fill="url(#lw-grad)" rx="2"><title>' + esc(tooltip) + '</title></rect>';
+    if (s.sessionId && s.hasReport) {
+      svg += '<a href="/api/sessions/' + encodeURIComponent(s.sessionId) + '/report" target="_blank" rel="noopener">' + bar + '</a>';
+    } else {
+      svg += bar;
+    }
+  });
+
+  svg += '</svg>';
+  return svg;
+}
+
+function buildCalendarHeatmap(sessions) {
+  if (!sessions || !sessions.length) return '';
+  var allTs = sessions.map(function(s) { return new Date(s.sessionStart).getTime(); });
+  var minTs = Math.min.apply(null, allTs), maxTs = Math.max.apply(null, allTs);
+
+  // Snap to week boundaries (Sun → Sat)
+  var startD = new Date(minTs);
+  startD = new Date(startD.getFullYear(), startD.getMonth(), startD.getDate());
+  startD.setDate(startD.getDate() - startD.getDay());
+  var endD = new Date(maxTs);
+  endD = new Date(endD.getFullYear(), endD.getMonth(), endD.getDate());
+  endD.setDate(endD.getDate() + (6 - endD.getDay()));
+
+  var totalWeeks = Math.round((endD - startD) / (7 * 86400000)) + 1;
+  var DOW_LABELS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  var MNAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var DOW_W = 28, TOP_H = 18;
+
+  // Auto-size cells to fill ~680px target width
+  var TARGET_W = 680;
+  var GAP = 2;
+  var CELL = Math.max(9, Math.min(20, Math.floor((TARGET_W - DOW_W - GAP * (totalWeeks - 1)) / totalWeeks)));
+  GAP = Math.max(1, Math.min(3, Math.floor(CELL / 5)));
+  var STEP = CELL + GAP;
+  var svgW = DOW_W + totalWeeks * STEP;
+  var svgH = TOP_H + 7 * STEP;
+
+  // Build day buckets: total integration + best session for click-through
+  var dayMap = {};
+  var sessionMap = {};
+  sessions.forEach(function(s) {
+    if (!s.sessionStart) return;
+    var m = String(s.sessionStart).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return;
+    var dk = m[1] + '-' + m[2] + '-' + m[3];
+    dayMap[dk] = (dayMap[dk] || 0) + (s.totalIntegrationSeconds || 0);
+    var secs = s.totalIntegrationSeconds || 0, imgs = s.imageCount || 0;
+    var cur = sessionMap[dk];
+    if (s.sessionId && s.hasReport && (!cur || secs > cur.bestSecs || (secs === cur.bestSecs && imgs > cur.bestImgs))) {
+      sessionMap[dk] = { id: s.sessionId, targets: s.targets || [], bestSecs: secs, bestImgs: imgs };
+    } else if (!cur) {
+      sessionMap[dk] = { id: null, targets: s.targets || [], bestSecs: secs, bestImgs: imgs };
+    }
+  });
+
+  var maxSecs = 0;
+  for (var k in dayMap) { if (dayMap[k] > maxSecs) maxSecs = dayMap[k]; }
+  if (!maxSecs) return '';
+
+  function cellColor(secs) {
+    if (!secs) return 'rgba(255,255,255,0.05)';
+    var norm = Math.pow(secs / maxSecs, 0.55);
+    var sat = Math.round(42 + norm * 50);
+    var lit = Math.round(16 + norm * 58);
+    return 'hsl(215,' + sat + '%,' + lit + '%)';
+  }
+
+  var svg = '<svg class="lifetime-calendar" viewBox="0 0 ' + svgW + ' ' + svgH + '" ';
+  svg += 'preserveAspectRatio="xMinYMid meet" ';
+  svg += 'width="' + svgW + '" height="' + svgH + '" style="max-width:100%;height:auto">';
+
+  // DOW labels (all 7)
+  DOW_LABELS.forEach(function(label, i) {
+    svg += '<text class="lifetime-heatmap-dow" x="' + (DOW_W - 4) + '" y="' + (TOP_H + i * STEP + Math.floor(CELL * 0.75)) + '" text-anchor="end">' + esc(label) + '</text>';
+  });
+
+  // Cells + month labels
+  var prevMonth = -1;
+  for (var w = 0; w < totalWeeks; w++) {
+    for (var dow = 0; dow < 7; dow++) {
+      var cellDate = new Date(startD.getTime() + (w * 7 + dow) * 86400000);
+      if (cellDate > endD) continue;
+      var mo = cellDate.getMonth(), yr = cellDate.getFullYear(), da = cellDate.getDate();
+      var dk = yr + '-' + String(mo + 1).padStart(2, '0') + '-' + String(da).padStart(2, '0');
+      var cx = DOW_W + w * STEP;
+      var cy = TOP_H + dow * STEP;
+      var secs = dayMap[dk] || 0;
+      var sessInfo = sessionMap[dk];
+      var tgtStr = (sessInfo && sessInfo.targets && sessInfo.targets.length) ? sessInfo.targets.join(', ') : '';
+      var tooltip = (tgtStr ? tgtStr + '\n' : '') + dk + (secs ? ' \u00b7 ' + fmt(secs) : ' \u00b7 no session');
+      var clickable = sessInfo && sessInfo.id;
+      var rect = '<rect class="lifetime-heatmap-cell' + (clickable ? ' is-clickable' : '') + '" x="' + cx + '" y="' + cy + '" width="' + CELL + '" height="' + CELL + '" rx="2" fill="' + cellColor(secs) + '"><title>' + esc(tooltip) + '</title></rect>';
+      if (clickable) {
+        svg += '<a href="/api/sessions/' + encodeURIComponent(sessInfo.id) + '/report" target="_blank" rel="noopener">' + rect + '</a>';
+      } else {
+        svg += rect;
+      }
+      if (dow === 0 && mo !== prevMonth) {
+        var mlabel = MNAMES[mo] + (mo === 0 ? ' ' + yr : '');
+        svg += '<text class="lifetime-heatmap-month" x="' + cx + '" y="' + (TOP_H - 5) + '">' + esc(mlabel) + '</text>';
+        prevMonth = mo;
+      }
+    }
+  }
+
+  svg += '</svg>';
+  return svg;
+}
+
 function renderLifetimeStrip(sessions) {
   if (!sessions || sessions.length === 0) return '';
   var totalSessions = sessions.length;
@@ -2806,7 +2999,10 @@ function renderLifetimeStrip(sessions) {
     html += '<div class="lifetime-stat lifetime-stat--date"><span class="lifetime-value">' + esc(fmtSinceDate(firstSession)) + '</span><span class="lifetime-label">Imaging Since</span></div>';
   }
   html += '</div>';
-  html += '<div class="lifetime-heatmap-slot">' + buildActivityHeatmap(sessions, firstSession) + '</div>';
+  var waveform = buildActivityWaveform(sessions);
+  if (waveform) html += '<div class="lifetime-waveform-slot">' + waveform + '</div>';
+  var calendar = buildCalendarHeatmap(sessions);
+  if (calendar) html += '<div class="lifetime-calendar-slot">' + calendar + '</div>';
   html += '</div>';
   return html;
 }
