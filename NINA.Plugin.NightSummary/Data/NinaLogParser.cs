@@ -39,6 +39,10 @@ namespace NINA.Plugin.NightSummary.Data {
             ["StartGuiding"]             = "Guiding",
             ["StopGuiding"]              = "Guiding",
 
+            // Waits — only sequencer-caused waits count as overhead.
+            // Condition-gated waits (WaitForAltitude, WaitUntilSafe, TS plan gaps) are skipped.
+            ["WaitForTimeSpan"]          = "Wait",
+
             // Mount / Slew
             ["SlewScopeToRaDec"]         = "Slew",
             ["SlewScopeToAltAz"]         = "Slew",
@@ -78,9 +82,6 @@ namespace NINA.Plugin.NightSummary.Data {
 
             // Switch
             ["SetSwitchValue"]          = "Switch",
-
-            // Safety
-            ["WaitUntilSafe"]           = "SafetyWait",
 
             // Meridian flip
             ["MeridianFlip"]            = "MeridianFlip",
@@ -134,14 +135,17 @@ namespace NINA.Plugin.NightSummary.Data {
             }
 
             // State tracking for Starting/Finishing pairs
+            DateTime? lastFilterMoveTimestamp = null;
+            DateTime? lastGuideStartRequestTimestamp = null;
             DateTime? exposureStart = null;
             string exposureDetails = null;
             double exposureRequestedSeconds = 0;
+            int centeringDepth = 0;  // >0 while inside Center/CenterAndRotate — suppresses inner plate solves
 
             // Generic tracker for all non-exposure SequenceItem Starting/Finishing pairs
             var pendingStarts = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
             DateTime? plateSolveStart = null;
-            DateTime? meridianFlipSlewStart = null;
+            DateTime? meridianFlipTriggerStart = null;
 
             int parsedExposureCount = 0;
             int parsedImageSaveCount = 0;
@@ -163,12 +167,15 @@ namespace NINA.Plugin.NightSummary.Data {
                     continue;
 
                 var level = parts[1];
-                if (level != "INFO") continue;
-
                 var source = parts[2];
                 var member = parts[3];
                 // parts[4] is line number — intentionally ignored
                 var message = string.Join("|", parts.Skip(5)); // rejoin in case message contains pipes
+
+                // ERROR lines are only relevant for SequenceItem.Run — failed items must emit
+                // their Finishing equivalent so pendingStarts don't leak. Everything else is INFO-only.
+                if (level != "INFO" && !(level == "ERROR" && source == "SequenceItem.cs" && member == "Run"))
+                    continue;
 
                 // === SequenceItem.cs|Run — Starting/Finishing pairs ===
                 if (source == "SequenceItem.cs" && member == "Run") {
@@ -177,6 +184,8 @@ namespace NINA.Plugin.NightSummary.Data {
                         // Unparseable message (containers, custom items without "Item:" prefix)
                     } else if (message.StartsWith("Starting ")) {
                         totalSequenceItemLines++;
+                        if (itemName == "Center" || itemName == "CenterAndRotate")
+                            centeringDepth++;
                         if (itemName == "TakeExposure" || itemName == "TakeSubframeExposure") {
                             // If a previous exposure start was never finished, emit it as aborted
                             if (exposureStart.HasValue) {
@@ -197,7 +206,11 @@ namespace NINA.Plugin.NightSummary.Data {
                         } else {
                             skippedItems[itemName] = skippedItems.GetValueOrDefault(itemName) + 1;
                         }
-                    } else if (message.StartsWith("Finishing ")) {
+                    } else if (message.StartsWith("Finishing ") || level == "ERROR") {
+                        // ERROR lines (e.g. "Failed validation: Category: X, Item: Y") are treated
+                        // as terminal — same as Finishing — so pendingStarts don't leak.
+                        if (itemName == "Center" || itemName == "CenterAndRotate")
+                            centeringDepth = Math.Max(0, centeringDepth - 1);
                         if ((itemName == "TakeExposure" || itemName == "TakeSubframeExposure") && exposureStart.HasValue) {
                             var totalDuration = (timestamp - exposureStart.Value).TotalSeconds;
                             events.Add(new TimingEvent {
@@ -225,7 +238,33 @@ namespace NINA.Plugin.NightSummary.Data {
                             exposureDetails = null;
                             exposureRequestedSeconds = 0;
                         } else if (pendingStarts.TryGetValue(itemName, out var startTime)) {
+                            pendingStarts.Remove(itemName);
                             var eventType = ItemCategoryMap.TryGetValue(itemName, out var mapped) ? mapped : itemName;
+
+                            // Suppress SwitchFilter events where the filter wheel didn't actually move.
+                            // NINA calls SwitchFilter before every exposure; if the filter is already
+                            // in position, FilterWheelVM skips the movement and no "Moving to Filter"
+                            // log line appears between this item's start and finish.
+                            if (itemName == "SwitchFilter" &&
+                                (lastFilterMoveTimestamp == null || lastFilterMoveTimestamp.Value < startTime)) {
+                                // Autofocus restores filter mid-execution; that move predates the next
+                                // SwitchFilter's start and would incorrectly count as a real move for
+                                // the subsequent SwitchFilter. Reset happens on RunAutofocus finish below.
+                                continue;
+                            }
+
+                            // Suppress StartGuiding no-ops (PHD2 already guiding). Real starts log
+                            // "Phd2 - Requesting to start guiding" via TryStartGuideCommand between
+                            // the item's Starting and Finishing; no-ops do not.
+                            if (itemName == "StartGuiding" &&
+                                (lastGuideStartRequestTimestamp == null || lastGuideStartRequestTimestamp.Value < startTime))
+                                continue;
+
+                            // Finding 5: RunAutofocus restores the working filter on exit. Clear the
+                            // last-filter-move marker so the next SwitchFilter's no-op check is honest.
+                            if (itemName == "RunAutofocus")
+                                lastFilterMoveTimestamp = null;
+
                             events.Add(new TimingEvent {
                                 EventType = eventType,
                                 StartTime = startTime,
@@ -233,7 +272,6 @@ namespace NINA.Plugin.NightSummary.Data {
                                 DurationSeconds = (timestamp - startTime).TotalSeconds,
                                 Details = ExtractItemDetails(itemName, message)
                             });
-                            pendingStarts.Remove(itemName);
                         }
                     }
                 }
@@ -242,19 +280,25 @@ namespace NINA.Plugin.NightSummary.Data {
                 // Post-exposure plate solves run between SequenceItems (not inside CenterAndRotate).
                 // They typically overlap with ImageSave so won't affect coverage %, but provide
                 // useful per-category info in the table.
+                //
+                // Finding 2: Center/CenterAndRotate run inner plate solves as part of their
+                // execution — those must not be emitted separately or the Centering event and
+                // its inner solves double-count. centeringDepth>0 means we're inside such an item.
                 else if (source == "ImageSolver.cs" && member == "Solve") {
                     if (message.StartsWith("Platesolving with parameters")) {
                         plateSolveStart = timestamp;
                     } else if (message.StartsWith("Platesolve successful") || message.StartsWith("Platesolve failed")) {
                         if (plateSolveStart.HasValue) {
-                            events.Add(new TimingEvent {
-                                EventType = "PlateSolve",
-                                StartTime = plateSolveStart.Value,
-                                EndTime = timestamp,
-                                DurationSeconds = (timestamp - plateSolveStart.Value).TotalSeconds,
-                                Details = message.StartsWith("Platesolve successful") ? "Success" : "Failed"
-                            });
-                            parsedPlateSolveCount++;
+                            if (centeringDepth == 0) {
+                                events.Add(new TimingEvent {
+                                    EventType = "PlateSolve",
+                                    StartTime = plateSolveStart.Value,
+                                    EndTime = timestamp,
+                                    DurationSeconds = (timestamp - plateSolveStart.Value).TotalSeconds,
+                                    Details = message.StartsWith("Platesolve successful") ? "Success" : "Failed"
+                                });
+                                parsedPlateSolveCount++;
+                            }
                             plateSolveStart = null;
                         }
                     }
@@ -275,21 +319,43 @@ namespace NINA.Plugin.NightSummary.Data {
                     }
                 }
 
-                // === AscomTelescope.cs|MeridianFlip — internal trigger-based flip ===
-                // When MeridianFlipTrigger fires, the slew + pier flip is handled internally
-                // by NINA, not as a SequenceItem. Track the slew start/end as MeridianFlip overhead.
-                else if (source == "AscomTelescope.cs" && member == "MeridianFlip") {
-                    if (message.StartsWith("Slewing to coordinates")) {
-                        meridianFlipSlewStart = timestamp;
-                    } else if (message.StartsWith("Finished slewing") && meridianFlipSlewStart.HasValue) {
+                // === FilterWheelVM.cs|ChangeFilter — actual physical filter movement ===
+                // Only fires when the wheel position actually changes (no-op switches are excluded).
+                // Used to suppress SwitchFilter overhead events where no movement occurred.
+                else if (source == "FilterWheelVM.cs" && member == "ChangeFilter") {
+                    if (message.StartsWith("Moving to Filter "))
+                        lastFilterMoveTimestamp = timestamp;
+                }
+
+                // === PHD2Guider.cs|TryStartGuideCommand — actual guide start request ===
+                // StartGuiding SequenceItem may no-op if PHD2 is already guiding. Real starts
+                // log "Phd2 - Requesting to start guiding"; no-ops log via StartGuidingPrivate
+                // with "already guiding. Skipping start guiding".
+                else if (source == "PHD2Guider.cs" && member == "TryStartGuideCommand") {
+                    if (message.StartsWith("Phd2 - Requesting to start guiding"))
+                        lastGuideStartRequestTimestamp = timestamp;
+                }
+
+                // === SequenceTrigger.cs|Run — MeridianFlipTrigger full window start ===
+                // Finding D: the SequenceItem MeridianFlip (above map) only covers direct-invoked flips.
+                // Trigger-based flips run between SequenceItems and are logged as a SequenceTrigger.
+                // Capture the full window (slew + center + re-guide + settle), not slew-only.
+                else if (source == "SequenceTrigger.cs" && member == "Run") {
+                    if (message.StartsWith("Starting Trigger: MeridianFlipTrigger"))
+                        meridianFlipTriggerStart = timestamp;
+                }
+
+                // === MeridianFlipVM.cs|DoMeridianFlip — trigger-based flip exit ===
+                else if (source == "MeridianFlipVM.cs" && member == "DoMeridianFlip") {
+                    if (message.StartsWith("Meridian Flip - Exiting meridian flip") && meridianFlipTriggerStart.HasValue) {
                         events.Add(new TimingEvent {
                             EventType = "MeridianFlip",
-                            StartTime = meridianFlipSlewStart.Value,
+                            StartTime = meridianFlipTriggerStart.Value,
                             EndTime = timestamp,
-                            DurationSeconds = (timestamp - meridianFlipSlewStart.Value).TotalSeconds,
-                            Details = "Trigger-based flip (internal)"
+                            DurationSeconds = (timestamp - meridianFlipTriggerStart.Value).TotalSeconds,
+                            Details = "Trigger-based flip (full window)"
                         });
-                        meridianFlipSlewStart = null;
+                        meridianFlipTriggerStart = null;
                     }
                 }
             }

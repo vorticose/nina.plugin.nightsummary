@@ -29,6 +29,9 @@ namespace NINA.Plugin.NightSummary.Session {
         public SessionDatabase Database { get; private set; }
         public int SkippedExposures => skippedExposures;
 
+        public event EventHandler FirstImageSaved;
+        private bool firstImageFired = false;
+
         public SessionCollector(IImageSaveMediator imageSaveMediator, ISequenceMediator sequenceMediator, SessionDatabase database) {
             this.imageSaveMediator = imageSaveMediator;
             this.sequenceMediator = sequenceMediator;
@@ -51,6 +54,7 @@ namespace NINA.Plugin.NightSummary.Session {
             imageSaveMediator.ImageSaved += OnImageSaved;
 
             // Start monitoring for skipped exposures
+            firstImageFired = false;
             skippedExposures = 0;
             trackedItems.Clear();
             if (!Clock.DisableSkipPolling)
@@ -128,6 +132,11 @@ namespace NINA.Plugin.NightSummary.Session {
                 var imageType = e.MetaData?.Image?.ImageType;
                 if (!"LIGHT".Equals(imageType, StringComparison.OrdinalIgnoreCase))
                     return;
+
+                if (!firstImageFired) {
+                    firstImageFired = true;
+                    FirstImageSaved?.Invoke(this, EventArgs.Empty);
+                }
 
                 // Read guiding scale from NINA - this converts pixels to arcseconds
                 // Default to 1 if not available so values are still stored (as pixels)
