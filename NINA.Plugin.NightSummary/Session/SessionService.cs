@@ -38,6 +38,7 @@ namespace NINA.Plugin.NightSummary.Session {
         private readonly ISwitchMediator        switchMediator;
         private readonly IMessageBroker         messageBroker;
         private LiveStackCapture               liveStackCapture;
+        private bool                           sequenceFinishedSubscribed;
 
         private static NightSummarySettings S => SettingsManager.Instance.Current;
 
@@ -101,14 +102,16 @@ namespace NINA.Plugin.NightSummary.Session {
             this.weatherDataMediator   = weatherDataMediator;
             this.switchMediator        = switchMediator;
             this.messageBroker         = messageBroker;
-            var database             = databasePath != null ? new SessionDatabase(databasePath) : new SessionDatabase();
+            var database        = databasePath != null ? new SessionDatabase(databasePath) : new SessionDatabase();
             this.collector       = new SessionCollector(imageSaveMediator, sequenceMediator, database);
             this.eventCollector  = new SessionEventCollector(database, safetyMonitorMediator, focuserMediator, telescopeMediator);
             this.reportGenerator = new ReportGenerator();
 
-            // Listen for sequence stop/cancel to finalize orphaned sessions
-            if (sequenceMediator != null)
-                sequenceMediator.SequenceFinished += OnSequenceFinished;
+            // NOTE: SequenceFinished subscription happens in StartSession, not here.
+            // At plugin-load time NINA's SequenceMediator has no backing delegate yet and
+            // subscribing NREs inside the mediator's add accessor. By the time the Night
+            // Summary Start instruction runs the sequencer is fully initialized. Nothing
+            // to clean up before the first session begins anyway.
 
             Logger.Info($"NightSummary: SessionService created — messageBroker={messageBroker != null}");
         }
@@ -138,6 +141,16 @@ namespace NINA.Plugin.NightSummary.Session {
 
             CaptureEquipmentNames();
             collector.FirstImageSaved += OnFirstImageSaved;
+
+            // Subscribe to SequenceFinished lazily — safe now that sequencer is initialized.
+            if (!sequenceFinishedSubscribed && sequenceMediator != null) {
+                try {
+                    sequenceMediator.SequenceFinished += OnSequenceFinished;
+                    sequenceFinishedSubscribed = true;
+                } catch (Exception ex) {
+                    Logger.Warning($"NightSummary: Could not subscribe to SequenceFinished: {ex.Message}");
+                }
+            }
 
             if (messageBroker != null && S.ShowLiveStackImages) {
                 liveStackCapture = new LiveStackCapture(messageBroker);

@@ -19,8 +19,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
     /// </summary>
     public class ReportGenerator {
 
-        private static readonly HttpClient Http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-        private static readonly HttpClient SkyViewHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+        // CDS HiPS2FITS: primary thumbnail service. 8s tolerates slow-but-healthy responses
+        // (typical is 2-5s) while keeping fallback to SkyView quick when CDS is degraded.
+        private static readonly HttpClient Http = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+        private static readonly HttpClient SkyViewHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
         private static readonly HttpClient TsApiClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
 
         /// <summary>
