@@ -1004,6 +1004,17 @@ nav {
 
 .badge-green { background: rgba(63,185,80,0.15); color: var(--green); }
 .badge-red { background: rgba(248,81,73,0.15); color: var(--red); }
+.badge-latest {
+  background: rgba(96,165,250,0.15);
+  color: var(--accent-lighter, #93c5fd);
+  border: 1px solid rgba(96,165,250,0.25);
+}
+
+/* Most-recent session card — subtle accent tint */
+.session-card--latest {
+  border-left: 3px solid rgba(96,165,250,0.6);
+  background: linear-gradient(135deg, rgba(96,165,250,0.06) 0%, transparent 40%), var(--surface);
+}
 
 .card-targets-line {
   display: flex;

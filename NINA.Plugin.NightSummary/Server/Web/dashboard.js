@@ -3042,12 +3042,13 @@ function renderHeroSection(session) {
     '<div class="card-stat stat-moon">' + (s.moonPhase ? '<div class="card-stat-value">' + esc(s.moonPhase) + '</div><div class="card-stat-label">Moon</div>' : '') + '</div>' +
     '</div>';
 
-  return '<div class="session-card" onclick="navigate(\'#/sessions/' + s.sessionId + '\')">' +
+  return '<div class="session-card session-card--latest" onclick="navigate(\'#/sessions/' + s.sessionId + '\')">' +
     '<button class="hide-btn" data-session="' + s.sessionId + '" onclick="event.stopPropagation();hideSession(this.dataset.session)" title="Hide this session">\u2715</button>' +
     '<div class="card-header">' +
       '<span class="session-date">' + fmtDate(s.sessionStart) + '</span>' +
       '<span class="session-times">' + sessionTimes + '</span>' +
       '<span class="card-targets-line" id="targets-' + s.sessionId + '">' + targetsHtml + '</span>' +
+      '<span class="badge badge-latest">Latest</span>' +
       badge +
     '</div>' +
     '<div class="card-body">' +
