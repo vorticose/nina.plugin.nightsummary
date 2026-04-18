@@ -1257,6 +1257,35 @@ namespace NINA.Plugin.NightSummary.Data {
             }
         }
 
+        /// <summary>
+        /// Updates the Accepted flag for a single image matched by session and capture timestamp.
+        /// Uses a ±5-second tolerance to accommodate slight clock differences between
+        /// NINA's image-saved event and the thumbnail view model.
+        /// Called when the user manually grades (or un-grades) a frame in NINA's thumbnail panel.
+        /// </summary>
+        public int UpdateImageAccepted(string sessionId, DateTime timestamp, bool accepted, string rejectReason = null) {
+            using (var conn = new SQLiteConnection(connectionString)) {
+                conn.Open();
+                // rejectReason null = leave existing reason unchanged (preserves TS-set reasons).
+                // Empty string = clear reason (used when un-rejecting).
+                string sql = rejectReason != null
+                    ? @"UPDATE Images SET Accepted = @Accepted, RejectReason = @RejectReason
+                        WHERE SessionId = @SessionId
+                          AND ABS(JULIANDAY(Timestamp) - JULIANDAY(@Timestamp)) * 86400.0 <= 5.0"
+                    : @"UPDATE Images SET Accepted = @Accepted
+                        WHERE SessionId = @SessionId
+                          AND ABS(JULIANDAY(Timestamp) - JULIANDAY(@Timestamp)) * 86400.0 <= 5.0";
+                using (var cmd = new SQLiteCommand(sql, conn)) {
+                    cmd.Parameters.AddWithValue("@SessionId", sessionId);
+                    cmd.Parameters.AddWithValue("@Timestamp", timestamp.ToString("o"));
+                    cmd.Parameters.AddWithValue("@Accepted",  accepted ? 1 : 0);
+                    if (rejectReason != null)
+                        cmd.Parameters.AddWithValue("@RejectReason", rejectReason.Length > 0 ? (object)rejectReason : DBNull.Value);
+                    return cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
         private static SessionRecord ReadSessionRecord(SQLiteDataReader reader) {
             return new SessionRecord {
                 Id               = Convert.ToInt32(reader["Id"]),
