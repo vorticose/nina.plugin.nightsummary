@@ -1016,8 +1016,6 @@ nav {
 .badge-green { background: rgba(63,185,80,0.15); color: var(--green); }
 .badge-red { background: rgba(248,81,73,0.15); color: var(--red); }
 /* Most-recent session card — gold glow matching hover colour */
-.session-card--latest .card-altitude { align-items: center; }
-
 .session-card--latest {
   background: linear-gradient(135deg, rgba(212,160,106,0.22) 0%, rgba(212,160,106,0.06) 50%, transparent 75%), var(--surface);
   box-shadow:
