@@ -1780,6 +1780,13 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   stroke-width: 1.5;
   paint-order: stroke;
 }
+/* Clickable cells (have a session report) — hover feedback */
+.lifetime-heatmap a { cursor: pointer; }
+.lifetime-heatmap a:hover .lifetime-heatmap-cell.is-clickable {
+  stroke: var(--accent-lighter, #c0d8ff);
+  stroke-width: 1.5;
+  paint-order: stroke;
+}
 
 /* Light theme — flip empty to subtle dark, ramp to deeper blue */
 :root.light-theme .lifetime-heatmap-cell.intensity-0,

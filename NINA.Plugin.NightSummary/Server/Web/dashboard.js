@@ -6308,14 +6308,22 @@ function buildActivityHeatmap(sessions, firstSessionIso) {
   var historyDays = Math.floor((today - firstDate) / dayMs);
   if (historyDays < 14) return '';
 
-  // Bucket sessions by local YYYY-MM-DD
+  // Bucket sessions by local YYYY-MM-DD. Each bucket tracks total
+  // integration seconds and the earliest-starting session's id (used for
+  // the click-through link to that day's report).
   var byDay = {};
   sessions.forEach(function(s) {
     if (!s.sessionStart) return;
     var m = String(s.sessionStart).match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (!m) return;
     var key = m[1] + '-' + m[2] + '-' + m[3];
-    byDay[key] = (byDay[key] || 0) + (s.totalIntegrationSeconds || 0);
+    var bucket = byDay[key] || { seconds: 0, sessionId: null, sessionStart: null };
+    bucket.seconds += (s.totalIntegrationSeconds || 0);
+    if (s.sessionId && s.hasReport && (!bucket.sessionStart || s.sessionStart < bucket.sessionStart)) {
+      bucket.sessionId = s.sessionId;
+      bucket.sessionStart = s.sessionStart;
+    }
+    byDay[key] = bucket;
   });
 
   // Grid spans firstSession -> today, capped at rolling 365 days so the
@@ -6344,10 +6352,14 @@ function buildActivityHeatmap(sessions, firstSessionIso) {
     var mo = String(d.getMonth() + 1).padStart(2, '0');
     var da = String(d.getDate()).padStart(2, '0');
     var key = y + '-' + mo + '-' + da;
-    var secs = byDay[key] || 0;
+    var bucket = byDay[key] || null;
+    var secs = bucket ? bucket.seconds : 0;
     var hrs = secs / 3600;
     var preHistory = d < firstDate;
-    cells.push({ date: new Date(d), key: key, hours: hrs, intensity: bucketFor(hrs), pre: preHistory });
+    cells.push({
+      date: new Date(d), key: key, hours: hrs, intensity: bucketFor(hrs), pre: preHistory,
+      sessionId: bucket ? bucket.sessionId : null
+    });
     d.setDate(d.getDate() + 1);
   }
 
@@ -6413,13 +6425,19 @@ function buildActivityHeatmap(sessions, firstSessionIso) {
     if (c.pre) cls += ' pre-history';
     var isToday = c.date.getTime() === todayTime;
     if (isToday) cls += ' is-today';
+    if (c.sessionId) cls += ' is-clickable';
     var tooltipSuffix = c.pre
       ? ' \u00b7 before first session'
       : ' \u00b7 ' + (c.hours > 0 ? c.hours.toFixed(1) + 'h' : 'no session');
     var tooltip = c.key + (isToday ? ' (today)' : '') + tooltipSuffix;
-    svg += '<rect class="' + cls + '" x="' + x + '" y="' + y + '" ';
-    svg += 'width="' + cellSize + '" height="' + cellSize + '" rx="2"><title>';
-    svg += esc(tooltip) + '</title></rect>';
+    var rect = '<rect class="' + cls + '" x="' + x + '" y="' + y + '" ' +
+               'width="' + cellSize + '" height="' + cellSize + '" rx="2"><title>' +
+               esc(tooltip) + '</title></rect>';
+    if (c.sessionId) {
+      svg += '<a href="/api/sessions/' + encodeURIComponent(c.sessionId) + '/report" target="_blank" rel="noopener">' + rect + '</a>';
+    } else {
+      svg += rect;
+    }
   });
 
   // Legend — right-aligned: "Less [0][1][2][3][4] More"
