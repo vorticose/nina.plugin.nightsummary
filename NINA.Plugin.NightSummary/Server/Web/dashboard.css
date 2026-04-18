@@ -1774,6 +1774,12 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 /* Pre-history cells (before firstSession) never imaged — override to
    neutral so they don't read as "missed" nights */
 .lifetime-heatmap-cell.pre-history { fill: rgba(255, 255, 255, 0.05); opacity: 1; }
+/* Today marker — bright ring around the current day cell */
+.lifetime-heatmap-cell.is-today {
+  stroke: var(--text, #fff);
+  stroke-width: 1.5;
+  paint-order: stroke;
+}
 
 /* Light theme — flip empty to subtle dark, ramp to deeper blue */
 :root.light-theme .lifetime-heatmap-cell.intensity-0,

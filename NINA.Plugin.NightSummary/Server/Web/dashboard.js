@@ -6400,6 +6400,8 @@ function buildActivityHeatmap(sessions, firstSessionIso) {
     }
   }
 
+  var todayTime = today.getTime();
+
   // Cells — skip anything past today
   cells.forEach(function(c, i) {
     if (c.date > today) return;
@@ -6409,9 +6411,12 @@ function buildActivityHeatmap(sessions, firstSessionIso) {
     var y = monthLabelH + row * step;
     var cls = 'lifetime-heatmap-cell intensity-' + c.intensity;
     if (c.pre) cls += ' pre-history';
-    var tooltip = c.pre
-      ? c.key + ' \u00b7 before first session'
-      : c.key + ' \u00b7 ' + (c.hours > 0 ? c.hours.toFixed(1) + 'h' : 'no session');
+    var isToday = c.date.getTime() === todayTime;
+    if (isToday) cls += ' is-today';
+    var tooltipSuffix = c.pre
+      ? ' \u00b7 before first session'
+      : ' \u00b7 ' + (c.hours > 0 ? c.hours.toFixed(1) + 'h' : 'no session');
+    var tooltip = c.key + (isToday ? ' (today)' : '') + tooltipSuffix;
     svg += '<rect class="' + cls + '" x="' + x + '" y="' + y + '" ';
     svg += 'width="' + cellSize + '" height="' + cellSize + '" rx="2"><title>';
     svg += esc(tooltip) + '</title></rect>';
