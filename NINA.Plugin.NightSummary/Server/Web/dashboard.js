@@ -3027,27 +3027,36 @@ function renderHeroSection(session) {
   var targetsHtml = s.targets.length > 0
     ? s.targets.map(function(t, i) { return makeTargetBadge(t, i); }).join('')
     : '<span style="color:var(--text-quaternary);font-size:12px">No targets</span>';
-  var statBoxes =
+  var badge = s.hasReport ? '' : '<span class="badge badge-red">No report</span>';
+  var statsLine = '<span class="stat-val">' + s.imageCount + '</span> imgs' +
+    ' &middot; <span class="stat-val">' + fmt(s.totalIntegrationSeconds) + '</span>' +
+    ' &middot; HFR <span class="stat-val">' + fmtNum(s.avgHfr) + '</span>px' +
+    ' &middot; FWHM <span class="stat-val">' + fmtNum(s.avgFwhm) + '</span>&Prime;' +
+    ' &middot; <span class="stat-val">' + fmtNum(s.avgGuiding) + '&Prime;</span> guiding';
+  var statBoxes = '<div class="card-stats">' +
     '<div class="card-stat card-stat-expandable stat-images" data-stat-type="images" data-session-id="' + s.sessionId + '"><div class="card-stat-value">' + s.imageCount + '</div><div class="card-stat-label">Images</div></div>' +
     '<div class="card-stat card-stat-expandable stat-integration" data-stat-type="integration" data-session-id="' + s.sessionId + '"><div class="card-stat-value">' + fmt(s.totalIntegrationSeconds) + '</div><div class="card-stat-label">Integration</div></div>' +
     '<div class="card-stat stat-hfr"><div class="card-stat-value">' + fmtNum(s.avgHfr) + 'px</div><div class="card-stat-label">HFR</div></div>' +
     '<div class="card-stat stat-fwhm"><div class="card-stat-value">' + fmtNum(s.avgFwhm) + '&Prime;</div><div class="card-stat-label">FWHM</div></div>' +
     '<div class="card-stat stat-guiding"><div class="card-stat-value">' + fmtNum(s.avgGuiding) + '&Prime;</div><div class="card-stat-label">Guiding</div></div>' +
-    (s.moonPhase ? '<div class="card-stat stat-moon"><div class="card-stat-value">' + esc(s.moonPhase) + '</div><div class="card-stat-label">Moon</div></div>' : '');
+    '<div class="card-stat stat-moon">' + (s.moonPhase ? '<div class="card-stat-value">' + esc(s.moonPhase) + '</div><div class="card-stat-label">Moon</div>' : '') + '</div>' +
+    '</div>';
 
-  return '<div class="hero-session">' +
-    '<div class="hero-header">' +
-      '<div class="hero-header-left">' +
-        '<div class="hero-date">' + fmtDate(s.sessionStart) + '</div>' +
-        '<div class="hero-time">' + sessionTimes + '</div>' +
-        '<div class="hero-targets" id="targets-' + s.sessionId + '">' + targetsHtml + '</div>' +
-      '</div>' +
-      (s.hasReport ? '<a href="/api/sessions/' + s.sessionId + '/report" target="_blank" class="hero-report-btn">Open full report \u2192</a>' : '') +
+  return '<div class="session-card" onclick="navigate(\'#/sessions/' + s.sessionId + '\')">' +
+    '<button class="hide-btn" data-session="' + s.sessionId + '" onclick="event.stopPropagation();hideSession(this.dataset.session)" title="Hide this session">\u2715</button>' +
+    '<div class="card-header">' +
+      '<span class="session-date">' + fmtDate(s.sessionStart) + '</span>' +
+      '<span class="session-times">' + sessionTimes + '</span>' +
+      '<span class="card-targets-line" id="targets-' + s.sessionId + '">' + targetsHtml + '</span>' +
+      badge +
     '</div>' +
-    '<div class="hero-body">' +
-      '<div class="hero-thumbs" id="thumbs-' + s.sessionId + '"></div>' +
-      '<div class="hero-kpis card-stats">' + statBoxes + '</div>' +
-      '<div class="hero-breakdown" id="hero-breakdown-' + s.sessionId + '"></div>' +
+    '<div class="card-body">' +
+      '<div class="card-content">' +
+        '<div class="card-thumbs" id="thumbs-' + s.sessionId + '"></div>' +
+        '<div class="card-stats-line">' + statsLine + '</div>' +
+        statBoxes +
+      '</div>' +
+      '<div class="card-altitude" id="altitude-' + s.sessionId + '"' + (showAltitude ? '' : ' style="display:none"') + '></div>' +
     '</div>' +
   '</div>';
 }
@@ -3098,17 +3107,10 @@ function renderSessionsV2(el, sub, params) {
 
   el.innerHTML = html;
 
-  // Load hero assets
+  // Load hero card assets
   loadThumbnails([hero]);
   loadLiveStacks([hero]);
-  if (detailCache[hero.sessionId]) {
-    renderHeroBreakdown(hero.sessionId, detailCache[hero.sessionId]);
-  } else {
-    api('/api/sessions/' + hero.sessionId).then(function(detail) {
-      detailCache[hero.sessionId] = detail;
-      renderHeroBreakdown(hero.sessionId, detail);
-    }).catch(function() {});
-  }
+  loadAltitudeCharts([hero]);
 
   // Wire expander
   var expanderBtn = document.getElementById('sessions-expander-btn');
