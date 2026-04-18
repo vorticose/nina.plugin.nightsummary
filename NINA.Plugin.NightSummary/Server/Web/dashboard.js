@@ -38,7 +38,8 @@ function fmtDate(iso) {
 
 function fmtTime(iso) {
   if (!iso) return '--';
-  return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  var d = new Date(iso);
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
 }
 
 // "Nov 2024" from YYYY-MM-DD (same timezone-safe parsing as fmtDate)
@@ -3044,11 +3045,11 @@ function renderHeroSection(session) {
 
   return '<div class="session-card session-card--latest" onclick="navigate(\'#/sessions/' + s.sessionId + '\')">' +
     '<button class="hide-btn" data-session="' + s.sessionId + '" onclick="event.stopPropagation();hideSession(this.dataset.session)" title="Hide this session">\u2715</button>' +
+    '<div class="latest-label">Latest Session</div>' +
     '<div class="card-header">' +
       '<span class="session-date">' + fmtDate(s.sessionStart) + '</span>' +
       '<span class="session-times">' + sessionTimes + '</span>' +
       '<span class="card-targets-line" id="targets-' + s.sessionId + '">' + targetsHtml + '</span>' +
-      '<span class="badge badge-latest">Latest</span>' +
       badge +
     '</div>' +
     '<div class="card-body">' +
