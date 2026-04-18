@@ -2775,6 +2775,8 @@ var thumbnailFetching = {}; // sessionId -> true while request is in flight
 var detailCache = {}; // sessionId -> detail JSON (for stat expand)
 var statExpandTimer = null;
 var statExpandActiveEl = null;
+var sessionsV2Mode = true;  // false when ?sessionsV1=1
+var heroSessionId = null;   // excluded from the historical list in V2
 
 function getAllTargets() {
   var targets = {};
@@ -2784,6 +2786,148 @@ function getAllTargets() {
   return Object.keys(targets).sort();
 }
 
+// ── Sessions V2: trophy case + hero card + historical expander ──────────────
+
+function renderLifetimeStrip(sessions) {
+  if (!sessions || sessions.length === 0) return '';
+  var totalSessions = sessions.length;
+  var totalIntegSec = sessions.reduce(function(sum, s) { return sum + (s.totalIntegrationSeconds || 0); }, 0);
+  var allTargets = {};
+  sessions.forEach(function(s) { (s.targets || []).forEach(function(t) { allTargets[t] = true; }); });
+  var targetCount = Object.keys(allTargets).length;
+  var firstSession = sessions.reduce(function(min, s) { return (!min || s.sessionStart < min) ? s.sessionStart : min; }, null);
+
+  var html = '<div class="lifetime-strip">';
+  html += '<div class="lifetime-stats">';
+  html += '<div class="lifetime-stat"><span class="lifetime-value">' + totalSessions + '</span><span class="lifetime-label">Sessions</span></div>';
+  html += '<div class="lifetime-stat"><span class="lifetime-value">' + (totalIntegSec / 3600).toFixed(1) + '<span class="unit">h</span></span><span class="lifetime-label">Integration</span></div>';
+  html += '<div class="lifetime-stat"><span class="lifetime-value">' + targetCount + '</span><span class="lifetime-label">Targets</span></div>';
+  if (firstSession) {
+    html += '<div class="lifetime-stat lifetime-stat--date"><span class="lifetime-value">' + esc(fmtSinceDate(firstSession)) + '</span><span class="lifetime-label">Imaging Since</span></div>';
+  }
+  html += '</div>';
+  html += '<div class="lifetime-heatmap-slot">' + buildActivityHeatmap(sessions, firstSession) + '</div>';
+  html += '</div>';
+  return html;
+}
+
+function renderHeroSection(session) {
+  var s = session;
+  var sessionTimes = fmtTime(s.sessionStart) + ' \u2013 ' + fmtTime(s.sessionEnd);
+  var targetsHtml = s.targets.length > 0
+    ? s.targets.map(function(t, i) { return makeTargetBadge(t, i); }).join('')
+    : '<span style="color:var(--text-quaternary);font-size:12px">No targets</span>';
+  var statBoxes =
+    '<div class="card-stat card-stat-expandable stat-images" data-stat-type="images" data-session-id="' + s.sessionId + '"><div class="card-stat-value">' + s.imageCount + '</div><div class="card-stat-label">Images</div></div>' +
+    '<div class="card-stat card-stat-expandable stat-integration" data-stat-type="integration" data-session-id="' + s.sessionId + '"><div class="card-stat-value">' + fmt(s.totalIntegrationSeconds) + '</div><div class="card-stat-label">Integration</div></div>' +
+    '<div class="card-stat stat-hfr"><div class="card-stat-value">' + fmtNum(s.avgHfr) + 'px</div><div class="card-stat-label">HFR</div></div>' +
+    '<div class="card-stat stat-fwhm"><div class="card-stat-value">' + fmtNum(s.avgFwhm) + '&Prime;</div><div class="card-stat-label">FWHM</div></div>' +
+    '<div class="card-stat stat-guiding"><div class="card-stat-value">' + fmtNum(s.avgGuiding) + '&Prime;</div><div class="card-stat-label">Guiding</div></div>' +
+    (s.moonPhase ? '<div class="card-stat stat-moon"><div class="card-stat-value">' + esc(s.moonPhase) + '</div><div class="card-stat-label">Moon</div></div>' : '');
+
+  return '<div class="hero-session">' +
+    '<div class="hero-header">' +
+      '<div class="hero-header-left">' +
+        '<div class="hero-date">' + fmtDate(s.sessionStart) + '</div>' +
+        '<div class="hero-time">' + sessionTimes + '</div>' +
+        '<div class="hero-targets" id="targets-' + s.sessionId + '">' + targetsHtml + '</div>' +
+      '</div>' +
+      (s.hasReport ? '<a href="/api/sessions/' + s.sessionId + '/report" target="_blank" class="hero-report-btn">Open full report \u2192</a>' : '') +
+    '</div>' +
+    '<div class="hero-body">' +
+      '<div class="hero-thumbs" id="thumbs-' + s.sessionId + '"></div>' +
+      '<div class="hero-kpis card-stats">' + statBoxes + '</div>' +
+      '<div class="hero-breakdown" id="hero-breakdown-' + s.sessionId + '"></div>' +
+    '</div>' +
+  '</div>';
+}
+
+function renderHeroBreakdown(sessionId, detail) {
+  var el = document.getElementById('hero-breakdown-' + sessionId);
+  if (!el) return;
+  var targets = (detail && detail.targets) ? detail.targets.filter(function(t) { return t.imageCount > 0 || t.integrationSeconds > 0; }) : [];
+  if (targets.length < 2) { return; } // single target: breakdown redundant
+  var rows = targets.map(function(t) {
+    return '<tr><td class="hb-target">' + esc(t.target) + '</td><td class="hb-val">' + t.imageCount + '</td><td class="hb-val">' + fmt(t.integrationSeconds) + '</td></tr>';
+  }).join('');
+  el.innerHTML = '<table class="hero-breakdown-tbl"><thead><tr><th>Target</th><th>Imgs</th><th>Integration</th></tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
+function renderSessionsV2(el, sub, params) {
+  var fromVal = params ? (params.get('from') || '') : '';
+  var toVal = params ? (params.get('to') || '') : '';
+  var sortVal = params ? (params.get('sort') || 'date-desc') : 'date-desc';
+
+  var sessions = sessionsCache;
+  if (sessions.length === 0) {
+    el.innerHTML = '<div class="empty">No sessions recorded yet.</div>';
+    if (sub) sub.textContent = 'Sessions';
+    return;
+  }
+
+  var byDate = sessions.slice().sort(function(a, b) { return b.sessionStart.localeCompare(a.sessionStart); });
+  var hero = byDate[0];
+  heroSessionId = hero.sessionId;
+
+  var earlierCount = sessions.length - 1;
+  var isOpen = localStorage.getItem('ns-sessions-expander') !== 'closed';
+
+  if (sub) sub.textContent = fmtDate(hero.sessionStart);
+
+  var html = renderLifetimeStrip(sessions);
+  html += renderHeroSection(hero);
+  if (earlierCount > 0) {
+    html += '<div class="sessions-expander">' +
+      '<button class="sessions-expander-btn" id="sessions-expander-btn">' +
+        'Earlier sessions (' + earlierCount + ') ' + (isOpen ? '\u25b2' : '\u25bc') +
+      '</button>' +
+      '<div id="sessions-history"' + (isOpen ? '' : ' style="display:none"') + '>' +
+      '</div>' +
+    '</div>';
+  }
+
+  el.innerHTML = html;
+
+  // Load hero assets
+  loadThumbnails([hero]);
+  loadLiveStacks([hero]);
+  if (detailCache[hero.sessionId]) {
+    renderHeroBreakdown(hero.sessionId, detailCache[hero.sessionId]);
+  } else {
+    api('/api/sessions/' + hero.sessionId).then(function(detail) {
+      detailCache[hero.sessionId] = detail;
+      renderHeroBreakdown(hero.sessionId, detail);
+    }).catch(function() {});
+  }
+
+  // Wire expander
+  var expanderBtn = document.getElementById('sessions-expander-btn');
+  if (expanderBtn) {
+    expanderBtn.addEventListener('click', function() {
+      var histEl = document.getElementById('sessions-history');
+      var nowOpen = histEl.style.display !== 'none';
+      if (nowOpen) {
+        histEl.style.display = 'none';
+        localStorage.setItem('ns-sessions-expander', 'closed');
+        expanderBtn.textContent = 'Earlier sessions (' + earlierCount + ') \u25bc';
+      } else {
+        histEl.style.display = '';
+        localStorage.setItem('ns-sessions-expander', 'open');
+        expanderBtn.textContent = 'Earlier sessions (' + earlierCount + ') \u25b2';
+        if (!histEl.querySelector('.filter-bar')) {
+          doRenderList(histEl, null, fromVal, toVal, sortVal);
+        }
+      }
+    });
+  }
+
+  // Render history list if expander starts open
+  if (isOpen && earlierCount > 0) {
+    var histEl = document.getElementById('sessions-history');
+    doRenderList(histEl, null, fromVal, toVal, sortVal);
+  }
+}
+
 function renderSessionList(params) {
   var el = document.getElementById('content');
   var sub = document.getElementById('page-subtitle');
@@ -2791,21 +2935,32 @@ function renderSessionList(params) {
   var fromVal = params ? (params.get('from') || '') : '';
   var toVal = params ? (params.get('to') || '') : '';
   var sortVal = params ? (params.get('sort') || 'date-desc') : 'date-desc';
+  var v1 = params && params.get('sessionsV1') === '1';
+
+  sessionsV2Mode = !v1;
+  heroSessionId = null;
 
   if (sessionsCache.length === 0) {
     el.innerHTML = '<div class="loading">Loading sessions...</div>';
     api('/api/sessions').then(function(data) {
       sessionsCache = data;
       logInfo('Sessions loaded:', data.length);
-      // Initialize: all targets selected
       getAllTargets().forEach(function(t) { selectedTargets[t] = true; });
-      doRenderList(el, sub, fromVal, toVal, sortVal);
+      if (v1) {
+        doRenderList(el, sub, fromVal, toVal, sortVal);
+      } else {
+        renderSessionsV2(el, sub, params);
+      }
     }).catch(function(err) {
       logError('Failed to load sessions:', err.message);
       el.innerHTML = '<div class="error">Failed to load sessions: ' + esc(err.message) + '</div>';
     });
   } else {
-    doRenderList(el, sub, fromVal, toVal, sortVal);
+    if (v1) {
+      doRenderList(el, sub, fromVal, toVal, sortVal);
+    } else {
+      renderSessionsV2(el, sub, params);
+    }
   }
 }
 
@@ -2887,6 +3042,7 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
   var hiddenCount = sessionsCache.filter(function(s) { return hiddenSessions[s.sessionId]; }).length;
 
   var filtered = sessionsCache.filter(function(s) {
+    if (sessionsV2Mode && heroSessionId && s.sessionId === heroSessionId) return false;
     if (!showHidden && hiddenSessions[s.sessionId]) return false;
     if (!showEmptySessions && s.imageCount === 0) return false;
     if (!allSelected) {
@@ -2907,7 +3063,7 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
     return b.sessionStart.localeCompare(a.sessionStart); // date-desc default
   });
 
-  sub.textContent = filtered.length + ' of ' + sessionsCache.length + ' sessions';
+  if (sub) sub.textContent = filtered.length + ' of ' + sessionsCache.length + ' sessions';
 
   if (sessionsCache.length === 0) {
     el.innerHTML = filterHtml + '<div class="empty">No sessions recorded yet.</div>';
@@ -4209,8 +4365,10 @@ function bindListEvents() {
 
   function refresh() {
     var f = getFilters();
-    var el = document.getElementById('content');
     var sub = document.getElementById('page-subtitle');
+    var el = sessionsV2Mode
+      ? (document.getElementById('sessions-history') || document.getElementById('content'))
+      : document.getElementById('content');
     doRenderList(el, sub, f.from, f.to, f.sort);
   }
 
@@ -6511,34 +6669,6 @@ function renderStats() {
       ' \u00b7 ' + summary.totalSessions + ' session' + (summary.totalSessions !== 1 ? 's' : '');
 
     var html = '';
-
-    // Lifetime trophy case — three-column grid: compact stats | activity heatmap (future) | filter ring (future)
-    html += '<div class="lifetime-strip">';
-    html +=   '<div class="lifetime-stats">';
-    html +=     '<div class="lifetime-stat">' +
-                  '<span class="lifetime-value">' + summary.totalSessions + '</span>' +
-                  '<span class="lifetime-label">Sessions</span>' +
-                '</div>';
-    html +=     '<div class="lifetime-stat">' +
-                  '<span class="lifetime-value">' + summary.totalIntegrationHours.toFixed(1) +
-                    '<span class="unit">h</span></span>' +
-                  '<span class="lifetime-label">Integration</span>' +
-                '</div>';
-    html +=     '<div class="lifetime-stat">' +
-                  '<span class="lifetime-value">' + summary.targetCount + '</span>' +
-                  '<span class="lifetime-label">Targets</span>' +
-                '</div>';
-    if (summary.firstSession) {
-      html +=   '<div class="lifetime-stat lifetime-stat--date">' +
-                  '<span class="lifetime-value">' + esc(fmtSinceDate(summary.firstSession)) + '</span>' +
-                  '<span class="lifetime-label">Imaging Since</span>' +
-                '</div>';
-    }
-    html +=   '</div>';
-    html +=   '<div class="lifetime-heatmap-slot">' +
-                buildActivityHeatmap(sessions, summary.firstSession) +
-              '</div>';
-    html += '</div>';
 
     // Tab bar + content
     var tabs = [{id: 'targets', label: 'Targets'}, {id: 'tonight', label: 'Tonight'}];
