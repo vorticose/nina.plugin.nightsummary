@@ -41,6 +41,16 @@ function fmtTime(iso) {
   return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
 
+// "Nov 2024" from YYYY-MM-DD (same timezone-safe parsing as fmtDate)
+function fmtSinceDate(iso) {
+  if (!iso) return '--';
+  var parts = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  var d = parts
+    ? new Date(parseInt(parts[1]), parseInt(parts[2]) - 1, parseInt(parts[3]))
+    : new Date(iso);
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short' });
+}
+
 function fmtDateTime(iso) {
   return fmtDate(iso) + '  ' + fmtTime(iso);
 }
@@ -6313,19 +6323,32 @@ function renderStats() {
 
     var html = '';
 
-    // All-Time Summary
-    html += '<div class="detail-section"><h2>All-Time Summary</h2><div class="stat-grid">';
-    html += statBox(summary.totalSessions, 'Sessions');
-    html += statBox(summary.targetCount, 'Targets');
-    html += statBox(summary.totalIntegrationHours.toFixed(1) + 'h', 'Integration');
-    html += statBox(summary.totalImages != null ? summary.totalImages : '--', 'Images');
+    // Lifetime trophy case — three-column grid: compact stats | activity heatmap (future) | filter ring (future)
+    html += '<div class="lifetime-strip">';
+    html +=   '<div class="lifetime-stats">';
+    html +=     '<div class="lifetime-stat">' +
+                  '<span class="lifetime-value">' + summary.totalSessions + '</span>' +
+                  '<span class="lifetime-label">Sessions</span>' +
+                '</div>';
+    html +=     '<div class="lifetime-stat">' +
+                  '<span class="lifetime-value">' + summary.totalIntegrationHours.toFixed(1) +
+                    '<span class="unit">h</span></span>' +
+                  '<span class="lifetime-label">Integration</span>' +
+                '</div>';
+    html +=     '<div class="lifetime-stat">' +
+                  '<span class="lifetime-value">' + summary.targetCount + '</span>' +
+                  '<span class="lifetime-label">Targets</span>' +
+                '</div>';
     if (summary.firstSession) {
-      html += statBox(fmtDate(summary.firstSession), 'First Session', 'stat-date');
+      html +=   '<div class="lifetime-stat lifetime-stat--date">' +
+                  '<span class="lifetime-value">' + esc(fmtSinceDate(summary.firstSession)) + '</span>' +
+                  '<span class="lifetime-label">Imaging Since</span>' +
+                '</div>';
     }
-    if (summary.lastSession) {
-      html += statBox(fmtDate(summary.lastSession), 'Last Session', 'stat-date');
-    }
-    html += '</div></div>';
+    html +=   '</div>';
+    html +=   '<div class="lifetime-heatmap-slot" aria-hidden="true"></div>';
+    html +=   '<div class="lifetime-ring-slot" aria-hidden="true"></div>';
+    html += '</div>';
 
     // Tab bar + content
     var tabs = [{id: 'targets', label: 'Targets'}, {id: 'tonight', label: 'Tonight'}];
