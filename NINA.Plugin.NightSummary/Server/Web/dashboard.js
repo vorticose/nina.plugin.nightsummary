@@ -3148,7 +3148,7 @@ function initWaveformScrubber(container) {
 
   if (info) info.addEventListener('click', function(e) { e.stopPropagation(); });
 
-  svg.addEventListener('touchstart', function(e) { e.preventDefault(); showAt(e.touches[0].clientX); }, {passive: false});
+  svg.addEventListener('touchstart', function(e) { e.preventDefault(); if (pinned) hide(); showAt(e.touches[0].clientX); }, {passive: false});
   svg.addEventListener('touchmove',  function(e) { e.preventDefault(); showAt(e.touches[0].clientX); }, {passive: false});
   svg.addEventListener('touchend',   function(e) { pin(); });
   svg.addEventListener('touchcancel', hide);
