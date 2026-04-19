@@ -2829,6 +2829,9 @@ function buildActivityWaveform(sessions) {
   var DAY_MS = 86400000;
   var spanDays = Math.ceil(dateSpan / DAY_MS);
   var tickEveryDays = spanDays > 120 ? 7 : spanDays > 60 ? 2 : 1;
+  var tickMajH = isMobile ? 15 : 8;
+  var tickMinH = isMobile ? 10 : 5;
+  var MIN_LABEL_GAP = isMobile ? 80 : 36;
   var MNAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   var axD = new Date(minD);
   var prevLabelX = -99;
@@ -2842,17 +2845,17 @@ function buildActivityWaveform(sessions) {
     if (isMonthStart) {
       svg += '<line x1="' + axX.toFixed(1) + '" y1="0" x2="' + axX.toFixed(1) + '" y2="' + CHART_H + '" stroke="rgba(255,255,255,0.05)" stroke-width="1" stroke-dasharray="3,4"/>';
     }
-    var tickH = isMonthStart ? 8 : 5;
+    var tickH = isMonthStart ? tickMajH : tickMinH;
     svg += '<line x1="' + axX.toFixed(1) + '" y1="' + CHART_H + '" x2="' + axX.toFixed(1) + '" y2="' + (CHART_H + tickH) + '"'
       + ' stroke="' + (isMonthStart ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.35)') + '" stroke-width="1"/>';
     var labelText = null;
     if (isMonthStart) {
       labelText = MNAMES[axD.getMonth()];
       if (spanDays > 300) labelText += ' \'' + String(axD.getFullYear()).slice(2);
-    } else if (spanDays <= 60 && daysIn % 7 === 0 && axX - prevLabelX > 26) {
-      labelText = String(axD.getDate());
+    } else if (daysIn % 7 === 0 && spanDays <= 300) {
+      labelText = MNAMES[axD.getMonth()] + ' ' + axD.getDate();
     }
-    if (labelText && axX - prevLabelX > 18) {
+    if (labelText && axX - prevLabelX > MIN_LABEL_GAP) {
       svg += '<text class="lw-label" x="' + axX.toFixed(1) + '" y="' + (H - 3) + '" text-anchor="middle">' + esc(labelText) + '</text>';
       prevLabelX = axX;
     }

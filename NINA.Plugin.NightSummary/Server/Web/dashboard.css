@@ -1791,7 +1791,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 
 .lw-label {
   fill: var(--text-tertiary, #888);
-  font-size: 10px;
+  font-size: 12px;
   font-family: inherit;
 }
 .lw-bar { cursor: pointer; }
@@ -1858,7 +1858,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 .lifetime-strip-handle { display: none; }
 
 .lifetime-chart-label {
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1px;
