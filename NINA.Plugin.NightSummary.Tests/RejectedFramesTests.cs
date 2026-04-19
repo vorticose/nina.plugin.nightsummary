@@ -229,9 +229,11 @@ namespace NINA.Plugin.NightSummary.Tests {
 
             var html = await _gen.GenerateHtmlReport(data);
 
-            // Rejected column appears but no tooltip since no TS reason
+            // Rejected column appears but no tooltip on the rejected td since no TS reason.
+            // (Other cursor:help tooltips exist elsewhere in the report — yield stat, info icons —
+            // so we check specifically for a tooltip attribute on the rejected <td>.)
             Assert.Contains("<th>Rejected</th>", html);
-            Assert.DoesNotContain("cursor:help", html);
+            Assert.DoesNotContain("<td title=", html);
         }
 
         [Fact]
