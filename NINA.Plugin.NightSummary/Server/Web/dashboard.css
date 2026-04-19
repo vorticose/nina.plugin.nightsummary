@@ -1855,7 +1855,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 :root.light-theme .lifetime-heatmap-cell.intensity-4,
 [data-theme="light"] .lifetime-heatmap-cell.intensity-4 { fill: #1e4a8a; }
 
-.lifetime-expand-icon { display: none; }
+.lifetime-strip-handle { display: none; }
 
 .lifetime-chart-label {
   font-size: 10px;
@@ -1863,7 +1863,13 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   text-transform: uppercase;
   letter-spacing: 1px;
   color: var(--text-tertiary);
-  margin-bottom: 6px;
+  margin-bottom: 8px;
+}
+
+.lifetime-waveform-slot,
+.lifetime-calendar-slot {
+  flex-direction: column;
+  align-items: stretch;
 }
 
 @media (max-width: 720px) {
@@ -1876,17 +1882,17 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   .lifetime-strip--expanded .lifetime-waveform-slot { display: flex !important; }
   .lv-toggle { display: none; }
   .lifetime-strip-expandable { cursor: pointer; }
-  .lifetime-expand-icon {
-    display: flex;
-    align-items: center;
-    flex-shrink: 0;
-    color: var(--text-tertiary);
-    font-size: 13px;
-    opacity: 0.55;
-    padding-left: 8px;
-    transition: transform 0.2s;
+  .lifetime-strip-handle {
+    display: block;
+    width: 32px;
+    height: 3px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 2px;
+    margin: 8px auto 0;
+    transition: background 0.2s;
   }
-  .lifetime-strip--expanded .lifetime-expand-icon { transform: scaleY(-1); }
+  .lifetime-strip-expandable:hover .lifetime-strip-handle,
+  .lifetime-strip--expanded .lifetime-strip-handle { background: rgba(255,255,255,0.3); }
 }
 
 /* ── Sessions V2: hero card ─────────────────────────────────────────────── */

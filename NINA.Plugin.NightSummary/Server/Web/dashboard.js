@@ -3016,18 +3016,29 @@ function renderLifetimeStrip(sessions) {
   html += '<button class="lv-toggle-btn lv-toggle-active" onclick="toggleLifetimeView(this,\'waveform\')">Bar</button>';
   html += '<button class="lv-toggle-btn" onclick="toggleLifetimeView(this,\'calendar\')">Calendar</button>';
   html += '</div>';
-  if (hasChart) html += '<span class="lifetime-expand-icon">▾</span>';
   html += '</div>';
-  if (waveform) html += '<div class="lifetime-waveform-slot"><div class="lifetime-chart-label">Session Activity</div>' + waveform + '</div>';
+  if (hasChart) html += '<div class="lifetime-strip-handle"></div>';
+  if (waveform) html += '<div class="lifetime-waveform-slot"><div class="lifetime-chart-label">Session Activity \u00b7 ' + esc(fmtActivityRange(sessions)) + '</div>' + waveform + '</div>';
   if (calendar) html += '<div class="lifetime-calendar-slot" style="display:none">' + calendar + '</div>';
   html += '</div>';
   return html;
 }
 
+function fmtActivityRange(sessions) {
+  var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var dates = sessions.map(function(s) { return s.sessionStart ? s.sessionStart.substring(0,10) : ''; }).filter(Boolean).sort();
+  if (dates.length < 2) return dates.length ? dates[0].substring(0,7) : '';
+  var f = new Date(dates[0] + 'T12:00:00'), l = new Date(dates[dates.length-1] + 'T12:00:00');
+  var fm = MONTHS[f.getMonth()], lm = MONTHS[l.getMonth()];
+  if (f.getFullYear() !== l.getFullYear())
+    return fm + ' ' + f.getFullYear() + ' \u2013 ' + lm + ' ' + l.getFullYear();
+  if (f.getMonth() !== l.getMonth())
+    return fm + ' ' + f.getDate() + ' \u2013 ' + lm + ' ' + l.getDate() + ', ' + l.getFullYear();
+  return fm + ' ' + f.getDate() + ' \u2013 ' + l.getDate() + ', ' + l.getFullYear();
+}
+
 function toggleLifetimeExpand(strip) {
-  var expanded = strip.classList.toggle('lifetime-strip--expanded');
-  var icon = strip.querySelector('.lifetime-expand-icon');
-  if (icon) icon.textContent = expanded ? '▴' : '▾';
+  strip.classList.toggle('lifetime-strip--expanded');
 }
 
 function renderHeroSection(session) {
