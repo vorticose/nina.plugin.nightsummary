@@ -2830,8 +2830,9 @@ function buildActivityWaveform(sessions) {
   var DAY_MS = 86400000;
   var spanDays = Math.ceil(dateSpan / DAY_MS);
   var tickEveryDays = spanDays > 120 ? 7 : spanDays > 60 ? 2 : 1;
-  var tickMajH = isMobile ? 15 : 8;
-  var tickMinH = isMobile ? 10 : 5;
+  var tickLabelH = isMobile ? 24 : 12;  // labeled ticks
+  var tickMajH   = isMobile ? 15 : 8;   // month-start unlabeled
+  var tickMinH   = isMobile ? 6  : 3;   // minor unlabeled ticks
   var MIN_LABEL_GAP = isMobile ? 80 : 36;
   var MNAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   var axD = new Date(minD);
@@ -2846,16 +2847,18 @@ function buildActivityWaveform(sessions) {
     if (isMonthStart) {
       svg += '<line x1="' + axX.toFixed(1) + '" y1="0" x2="' + axX.toFixed(1) + '" y2="' + CHART_H + '" stroke="rgba(255,255,255,0.05)" stroke-width="1" stroke-dasharray="3,4"/>';
     }
-    var tickH = isMonthStart ? tickMajH : tickMinH;
-    svg += '<line x1="' + axX.toFixed(1) + '" y1="' + CHART_H + '" x2="' + axX.toFixed(1) + '" y2="' + (CHART_H + tickH) + '"'
-      + ' stroke="' + (isMonthStart ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.35)') + '" stroke-width="1"/>';
+    // Compute label before tick so we can size the tick appropriately
     var labelText = null;
     if (isMonthStart || (daysIn % 7 === 0 && spanDays <= 300)) {
       labelText = MNAMES[axD.getMonth()] + ' ' + (isMonthStart ? 1 : axD.getDate());
       if (spanDays > 300 && isMonthStart && axD.getMonth() === 0)
         labelText += ' \'' + String(axD.getFullYear()).slice(2);
     }
-    if (labelText && axX - prevLabelX > MIN_LABEL_GAP) {
+    var willLabel = labelText && axX - prevLabelX > MIN_LABEL_GAP;
+    var tickH = willLabel ? tickLabelH : (isMonthStart ? tickMajH : tickMinH);
+    svg += '<line x1="' + axX.toFixed(1) + '" y1="' + CHART_H + '" x2="' + axX.toFixed(1) + '" y2="' + (CHART_H + tickH) + '"'
+      + ' stroke="' + (willLabel ? 'rgba(255,255,255,0.75)' : isMonthStart ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.2)') + '" stroke-width="1"/>';
+    if (willLabel) {
       var anchor = axX < W * 0.07 ? 'start' : (axX > W * 0.93 ? 'end' : 'middle');
       svg += '<text class="lw-label" x="' + axX.toFixed(1) + '" y="' + (H - 3) + '" text-anchor="' + anchor + '">' + esc(labelText) + '</text>';
       prevLabelX = axX;
