@@ -2857,7 +2857,7 @@ function buildActivityWaveform(sessions) {
     var willLabel = labelText && axX - prevLabelX > MIN_LABEL_GAP;
     var tickH = willLabel ? tickLabelH : (isMonthStart ? tickMajH : tickMinH);
     svg += '<line x1="' + axX.toFixed(1) + '" y1="' + CHART_H + '" x2="' + axX.toFixed(1) + '" y2="' + (CHART_H + tickH) + '"'
-      + ' stroke="' + (willLabel ? 'rgba(120,170,255,0.5)' : 'rgba(120,170,255,0.2)') + '" stroke-width="1"/>';
+      + ' stroke="' + (willLabel ? 'rgba(120,170,255,0.5)' : 'rgba(120,170,255,0.38)') + '" stroke-width="1"/>';
     if (willLabel) {
       var anchor = axX < W * 0.07 ? 'start' : (axX > W * 0.93 ? 'end' : 'middle');
       svg += '<text class="lw-label" x="' + axX.toFixed(1) + '" y="' + (H - 3) + '" text-anchor="' + anchor + '">' + esc(labelText) + '</text>';
@@ -2868,6 +2868,7 @@ function buildActivityWaveform(sessions) {
 
   // Bars — midnight-snapped position so ticks and bars align
   sessions.forEach(function(s) {
+    if (!s.imageCount) return;
     var sd = new Date(s.sessionStart);
     var dayMs = new Date(sd.getFullYear(), sd.getMonth(), sd.getDate()).getTime();
     var t = (dayMs - minD) / dateSpan;
