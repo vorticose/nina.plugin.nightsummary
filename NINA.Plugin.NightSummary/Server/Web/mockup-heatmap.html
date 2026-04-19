@@ -1,0 +1,1140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Heatmap Mockups — Night Summary</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #0d1117;
+  color: #e6edf3;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  padding: 40px 48px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+h1 { font-size: 18px; font-weight: 700; margin-bottom: 8px; color: #f0f6fc; letter-spacing: -0.3px; }
+.page-sub { font-size: 13px; color: #7d8590; margin-bottom: 48px; }
+
+.mockup { margin-bottom: 56px; }
+.mockup-meta { margin-bottom: 14px; }
+.mockup-num {
+  display: inline-block;
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px;
+  color: #58a6ff; background: rgba(88,166,255,0.1);
+  border: 1px solid rgba(88,166,255,0.2);
+  border-radius: 4px; padding: 2px 8px; margin-bottom: 6px;
+}
+.mockup-title { font-size: 15px; font-weight: 600; color: #f0f6fc; margin-bottom: 3px; }
+.mockup-desc { font-size: 12px; color: #7d8590; }
+
+.viz-box {
+  background: #161b22;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 8px;
+  padding: 22px 26px 18px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  position: relative;
+}
+svg { display: block; width: 100%; overflow: visible; }
+
+/* Tooltip */
+#tooltip {
+  position: fixed; z-index: 999;
+  background: #21262d;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 6px; padding: 8px 12px;
+  font-size: 12px; pointer-events: none; display: none;
+  white-space: nowrap; line-height: 1.6;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+#tooltip strong { display: block; color: #f0f6fc; font-size: 13px; }
+#tooltip .t2 { color: #7d8590; }
+</style>
+</head>
+<body>
+
+<h1>Activity Heatmap — Alternative Designs</h1>
+<p class="page-sub">All six rendered with real session data. Click any element to open that session's report.</p>
+
+<div id="root"><div style="color:#7d8590;padding:20px 0">Loading sessions…</div></div>
+<div id="tooltip"></div>
+
+<script>
+var tooltip = document.getElementById('tooltip');
+
+function showTip(e, html) {
+  tooltip.innerHTML = html;
+  tooltip.style.display = 'block';
+  moveTip(e);
+}
+function moveTip(e) {
+  var x = e.clientX + 14, y = e.clientY - 10;
+  if (x + 220 > window.innerWidth) x = e.clientX - 230;
+  tooltip.style.left = x + 'px';
+  tooltip.style.top = y + 'px';
+}
+function hideTip() { tooltip.style.display = 'none'; }
+
+function fmtDate(iso) {
+  var d = new Date(iso);
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+function fmtHours(sec) {
+  var h = sec / 3600;
+  if (h < 1) return Math.round(h * 60) + 'm';
+  return h.toFixed(1) + 'h';
+}
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+fetch('/api/sessions')
+  .then(function(r) { return r.json(); })
+  .then(function(sessions) {
+    sessions.sort(function(a,b) { return a.sessionStart.localeCompare(b.sessionStart); });
+    var root = document.getElementById('root');
+    root.innerHTML = '';
+    root.appendChild(makeYearWaveform());
+    root.appendChild(makeStarField(sessions));
+    root.appendChild(makeWaveform(sessions));
+    root.appendChild(makeRadial(sessions));
+    root.appendChild(makeStackedBar(sessions));
+    root.appendChild(makeDNAStrip(sessions));
+    root.appendChild(makeRidgeline(sessions));
+    root.appendChild(makeMonthlyBar(sessions));
+  })
+  .catch(function(e) {
+    document.getElementById('root').innerHTML = '<div style="color:#f85149">Error: ' + esc(e.message) + '</div>';
+  });
+
+// ─── OPTION 1: Star field ────────────────────────────────────────────────────
+
+function makeStarField(sessions) {
+  var wrap = document.createElement('div');
+  wrap.className = 'mockup';
+  wrap.innerHTML =
+    '<div class="mockup-meta">' +
+      '<div class="mockup-num">Option 1</div>' +
+      '<div class="mockup-title">Star Field</div>' +
+      '<div class="mockup-desc">Each session = a glowing dot. Size = integration hours. Brightness = image count. Y-axis is decorative jitter — like stars on the meridian.</div>' +
+    '</div>' +
+    '<div class="viz-box" id="sf-box"></div>';
+
+  setTimeout(function() {
+    var box = wrap.querySelector('#sf-box');
+    var W = box.offsetWidth - 52; // subtract padding
+    var H = 140;
+
+    var dates = sessions.map(function(s) { return new Date(s.sessionStart).getTime(); });
+    var minD = Math.min.apply(null, dates), maxD = Math.max.apply(null, dates);
+    var dateSpan = maxD - minD || 1;
+    var maxInteg = Math.max.apply(null, sessions.map(function(s) { return s.totalIntegrationSeconds || 0; }));
+
+    // Month label positions
+    var monthLabels = getMonthTicks(minD, maxD, W);
+
+    var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" height="' + H + '">';
+
+    // Month separators
+    monthLabels.forEach(function(m) {
+      svg += '<line x1="' + m.x.toFixed(1) + '" y1="0" x2="' + m.x.toFixed(1) + '" y2="' + (H-18) + '" stroke="rgba(255,255,255,0.05)" stroke-width="1" stroke-dasharray="3,3"/>';
+      svg += '<text x="' + m.x.toFixed(1) + '" y="' + (H-4) + '" fill="#4d5566" font-size="10" font-family="inherit" text-anchor="middle">' + m.label + '</text>';
+    });
+
+    // Centerline
+    var cy = (H - 18) / 2;
+    svg += '<line x1="0" y1="' + cy + '" x2="' + W + '" y2="' + cy + '" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>';
+
+    // Dots
+    sessions.forEach(function(s, i) {
+      var t = (new Date(s.sessionStart).getTime() - minD) / dateSpan;
+      var x = 6 + t * (W - 12);
+      var hours = (s.totalIntegrationSeconds || 0) / 3600;
+      var normInteg = maxInteg > 0 ? hours / (maxInteg / 3600) : 0;
+      var r = 3.5 + 9 * Math.sqrt(normInteg);
+
+      // Deterministic jitter: golden-angle walk, scaled to stay in bounds
+      var jitter = Math.sin(i * 2.3999) * (cy * 0.52);
+      var y = cy + jitter;
+
+      var opacity = 0.35 + 0.65 * normInteg;
+      var glowR = r * 2.5;
+
+      // Glow
+      svg += '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="' + glowR.toFixed(1) + '" fill="#58a6ff" opacity="' + (opacity * 0.18).toFixed(3) + '"/>';
+      // Core
+      svg += '<circle class="sf-dot" cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="' + r.toFixed(1) + '"'
+        + ' fill="' + dotColor(s) + '" opacity="' + opacity.toFixed(2) + '" cursor="pointer"'
+        + ' data-id="' + s.sessionId + '" data-i="' + i + '"'
+        + ' data-date="' + esc(fmtDate(s.sessionStart)) + '"'
+        + ' data-integ="' + esc(fmtHours(s.totalIntegrationSeconds || 0)) + '"'
+        + ' data-imgs="' + (s.imageCount || 0) + '"'
+        + ' data-targets="' + esc((s.targets || []).join(', ') || '—') + '"'
+        + '/>';
+    });
+
+    svg += '</svg>';
+    box.innerHTML = svg;
+
+    // Events
+    box.querySelectorAll('.sf-dot').forEach(function(el) {
+      el.addEventListener('mouseenter', function(e) {
+        this.setAttribute('stroke', '#fff');
+        this.setAttribute('stroke-width', '1.5');
+        showTip(e,
+          '<strong>' + this.dataset.date + '</strong>' +
+          '<span class="t2">' + this.dataset.targets + '<br>' +
+          this.dataset.integ + ' &middot; ' + this.dataset.imgs + ' imgs</span>');
+      });
+      el.addEventListener('mousemove', moveTip);
+      el.addEventListener('mouseleave', function() {
+        this.removeAttribute('stroke');
+        this.removeAttribute('stroke-width');
+        hideTip();
+      });
+      el.addEventListener('click', function() {
+        if (this.dataset.id) window.open('/api/sessions/' + this.dataset.id + '/report', '_blank');
+      });
+    });
+  }, 0);
+
+  return wrap;
+}
+
+function dotColor(s) {
+  // Blue→teal based on HFR quality: lower HFR = better = brighter teal
+  var hfr = s.avgHfr || 2;
+  if (hfr < 1.5) return '#79c0ff'; // excellent
+  if (hfr < 2.5) return '#58a6ff'; // good
+  return '#388bfd';                 // ok
+}
+
+// ─── OPTION 2: Bar waveform ──────────────────────────────────────────────────
+
+function makeWaveform(sessions) {
+  var wrap = document.createElement('div');
+  wrap.className = 'mockup';
+  wrap.innerHTML =
+    '<div class="mockup-meta">' +
+      '<div class="mockup-num">Option 2</div>' +
+      '<div class="mockup-title">Bar Waveform</div>' +
+      '<div class="mockup-desc">Each session = a vertical bar. Height = integration hours. Gaps show nights you didn\'t image. Like a skyline or audio waveform.</div>' +
+    '</div>' +
+    '<div class="viz-box" id="wv-box"></div>';
+
+  setTimeout(function() {
+    var box = wrap.querySelector('#wv-box');
+    var W = box.offsetWidth - 52;
+    var CHART_H = 72;
+    var LABEL_H = 30;
+    var H = CHART_H + LABEL_H;
+
+    var dates = sessions.map(function(s) { return new Date(s.sessionStart).getTime(); });
+    var minDRaw = Math.min.apply(null, dates), maxDRaw = Math.max.apply(null, dates);
+    // Snap to midnight so bars and ticks share the same day-aligned coordinate system
+    var minDObj = new Date(minDRaw), maxDObj = new Date(maxDRaw);
+    var minD = new Date(minDObj.getFullYear(), minDObj.getMonth(), minDObj.getDate()).getTime();
+    var maxD = new Date(maxDObj.getFullYear(), maxDObj.getMonth(), maxDObj.getDate()).getTime();
+    var dateSpan = maxD - minD || 86400000;
+    var maxInteg = Math.max.apply(null, sessions.map(function(s) { return s.totalIntegrationSeconds || 0; }));
+
+    // Auto-size bars using calendar-day granularity (sessions same night share a slot)
+    var uniqueDayMs = dates.map(function(t) {
+      var d = new Date(t);
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    }).filter(function(t, i, arr) { return arr.indexOf(t) === i; }).sort(function(a, b) { return a - b; });
+    var minGapMs = Infinity;
+    for (var gi = 1; gi < uniqueDayMs.length; gi++) {
+      var g = uniqueDayMs[gi] - uniqueDayMs[gi - 1];
+      if (g > 0 && g < minGapMs) minGapMs = g;
+    }
+    var availPx = uniqueDayMs.length > 1 ? (minGapMs / dateSpan) * W : W;
+    var BAR_W = Math.max(6, Math.min(Math.floor(availPx * 0.75), 28));
+    var monthLabels = getMonthTicks(minD, maxD, W);
+
+    var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" height="' + H + '">';
+
+    // Baseline
+    svg += '<line x1="0" y1="' + CHART_H + '" x2="' + W + '" y2="' + CHART_H + '" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>';
+
+    // Month separators + labels
+    monthLabels.forEach(function(m) {
+      svg += '<line x1="' + m.x.toFixed(1) + '" y1="0" x2="' + m.x.toFixed(1) + '" y2="' + CHART_H + '" stroke="rgba(255,255,255,0.06)" stroke-width="1" stroke-dasharray="3,4"/>';
+      svg += '<text x="' + m.x.toFixed(1) + '" y="' + (H - 4) + '" fill="#4d5566" font-size="10" font-family="inherit" text-anchor="middle">' + m.label + '</text>';
+    });
+
+    // Bars
+    sessions.forEach(function(s) {
+      var t = (new Date(s.sessionStart).getTime() - minD) / dateSpan;
+      var x = t * (W - BAR_W);
+      var hours = (s.totalIntegrationSeconds || 0) / 3600;
+      var normInteg = maxInteg > 0 ? hours / (maxInteg / 3600) : 0;
+      var barH = Math.max(2, normInteg * (CHART_H - 4));
+      var y = CHART_H - barH;
+
+      // Subtle glow behind bar
+      svg += '<rect x="' + (x - 2).toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + (BAR_W + 4) + '" height="' + barH.toFixed(1) + '"'
+        + ' fill="#58a6ff" opacity="0.12" rx="2"/>';
+      // Bar
+      svg += '<rect class="wv-bar" x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + BAR_W + '" height="' + barH.toFixed(1) + '"'
+        + ' fill="url(#wv-grad)" rx="2" cursor="pointer"'
+        + ' data-id="' + s.sessionId + '"'
+        + ' data-date="' + esc(fmtDate(s.sessionStart)) + '"'
+        + ' data-integ="' + esc(fmtHours(s.totalIntegrationSeconds || 0)) + '"'
+        + ' data-imgs="' + (s.imageCount || 0) + '"'
+        + ' data-targets="' + esc((s.targets || []).join(', ') || '—') + '"'
+        + '/>';
+    });
+
+    // Gradient def
+    svg = svg.replace('<svg ', '<svg><defs><linearGradient id="wv-grad" x1="0" y1="0" x2="0" y2="1">'
+      + '<stop offset="0%" stop-color="#79c0ff"/>'
+      + '<stop offset="100%" stop-color="#388bfd" stop-opacity="0.7"/>'
+      + '</linearGradient></defs>').replace('<svg><defs', '<svg viewBox="0 0 ' + W + ' ' + H + '" height="' + H + '"><defs');
+    // (Rebuild cleanly)
+    svg = buildWaveformSVG(sessions, W, CHART_H, LABEL_H, BAR_W, minD, dateSpan, maxInteg, monthLabels);
+    box.innerHTML = svg;
+
+    box.querySelectorAll('.wv-bar').forEach(function(el) {
+      el.addEventListener('mouseenter', function(e) {
+        this.setAttribute('fill', '#a5d6ff');
+        showTip(e,
+          '<strong>' + this.dataset.date + '</strong>' +
+          '<span class="t2">' + this.dataset.targets + '<br>' +
+          this.dataset.integ + ' &middot; ' + this.dataset.imgs + ' imgs</span>');
+      });
+      el.addEventListener('mousemove', moveTip);
+      el.addEventListener('mouseleave', function() {
+        this.setAttribute('fill', 'url(#wv-grad)');
+        hideTip();
+      });
+      el.addEventListener('click', function() {
+        if (this.dataset.id) window.open('/api/sessions/' + this.dataset.id + '/report', '_blank');
+      });
+    });
+  }, 0);
+
+  return wrap;
+}
+
+function buildWaveformSVG(sessions, W, CHART_H, LABEL_H, BAR_W, minD, dateSpan, maxInteg, monthLabels) {
+  var H = CHART_H + LABEL_H;
+  var s = '<svg viewBox="0 0 ' + W + ' ' + H + '" height="' + H + '">';
+  s += '<defs><linearGradient id="wv-grad" x1="0" y1="0" x2="0" y2="1">'
+    + '<stop offset="0%" stop-color="#79c0ff"/>'
+    + '<stop offset="100%" stop-color="#388bfd" stop-opacity="0.7"/>'
+    + '</linearGradient></defs>';
+
+  s += '<line x1="0" y1="' + CHART_H + '" x2="' + W + '" y2="' + CHART_H + '" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>';
+
+  // ── Adaptive x-axis: day ticks + smart labels ────────────────────────────────
+  var DAY_MS = 86400000;
+  var spanDays = Math.ceil(dateSpan / DAY_MS);
+  var tickEveryDays = spanDays > 120 ? 7 : spanDays > 60 ? 2 : 1;
+  var MNAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var axD = new Date(minD);
+  axD = new Date(axD.getFullYear(), axD.getMonth(), axD.getDate());
+  var prevLabelX = -99;
+
+  while (axD.getTime() <= minD + dateSpan + DAY_MS) {
+    var axX = ((axD.getTime() - minD) / dateSpan) * (W - BAR_W) + BAR_W / 2;
+    if (axX < -4 || axX > W + 4) { axD.setDate(axD.getDate() + 1); continue; }
+    var isMonthStart = axD.getDate() === 1;
+    var daysIn = Math.round((axD.getTime() - minD) / DAY_MS);
+    var isTick = isMonthStart || (daysIn % tickEveryDays === 0);
+    if (!isTick) { axD.setDate(axD.getDate() + 1); continue; }
+
+    // Subtle vertical guide through chart body at month boundaries
+    if (isMonthStart) {
+      s += '<line x1="' + axX.toFixed(1) + '" y1="0" x2="' + axX.toFixed(1) + '" y2="' + CHART_H + '" stroke="rgba(255,255,255,0.05)" stroke-width="1" stroke-dasharray="3,4"/>';
+    }
+    // Tick mark below baseline
+    var tickH = isMonthStart ? 8 : 5;
+    s += '<line x1="' + axX.toFixed(1) + '" y1="' + CHART_H + '" x2="' + axX.toFixed(1) + '" y2="' + (CHART_H + tickH) + '"'
+      + ' stroke="' + (isMonthStart ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.35)') + '" stroke-width="1"/>';
+
+    // Labels: month name always; day number on short ranges at 7-day intervals
+    var labelText = null;
+    if (isMonthStart) {
+      labelText = MNAMES[axD.getMonth()];
+      if (spanDays > 300) labelText += ' \'' + String(axD.getFullYear()).slice(2);
+    } else if (spanDays <= 60 && daysIn % 7 === 0 && axX - prevLabelX > 26) {
+      labelText = String(axD.getDate());
+    }
+    if (labelText && axX - prevLabelX > 18) {
+      s += '<text x="' + axX.toFixed(1) + '" y="' + (H - 3) + '" fill="' + (isMonthStart ? '#6e7681' : '#4d5566') + '" font-size="10" font-family="inherit" text-anchor="middle">' + labelText + '</text>';
+      prevLabelX = axX;
+    }
+    axD.setDate(axD.getDate() + 1);
+  }
+
+  sessions.forEach(function(sess) {
+    var sd = new Date(sess.sessionStart);
+    var dayMs = new Date(sd.getFullYear(), sd.getMonth(), sd.getDate()).getTime();
+    var t = (dayMs - minD) / dateSpan;
+    var x = t * (W - BAR_W);
+    var hours = (sess.totalIntegrationSeconds || 0) / 3600;
+    var normInteg = maxInteg > 0 ? hours / (maxInteg / 3600) : 0;
+    var barH = Math.max(2, normInteg * (CHART_H - 4));
+    var y = CHART_H - barH;
+
+    s += '<rect x="' + (x - 2).toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + (BAR_W + 4) + '" height="' + barH.toFixed(1) + '" fill="#58a6ff" opacity="0.12" rx="2"/>';
+    s += '<rect class="wv-bar" x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + BAR_W + '" height="' + barH.toFixed(1) + '"'
+      + ' fill="url(#wv-grad)" rx="2" cursor="pointer"'
+      + ' data-id="' + sess.sessionId + '"'
+      + ' data-date="' + esc(fmtDate(sess.sessionStart)) + '"'
+      + ' data-integ="' + esc(fmtHours(sess.totalIntegrationSeconds || 0)) + '"'
+      + ' data-imgs="' + (sess.imageCount || 0) + '"'
+      + ' data-targets="' + esc((sess.targets || []).join(', ') || '—') + '"'
+      + '/>';
+  });
+
+  s += '</svg>';
+  return s;
+}
+
+// ─── OPTION 3: Polar / radial ────────────────────────────────────────────────
+
+function makeRadial(sessions) {
+  var wrap = document.createElement('div');
+  wrap.className = 'mockup';
+  wrap.innerHTML =
+    '<div class="mockup-meta">' +
+      '<div class="mockup-num">Option 3</div>' +
+      '<div class="mockup-title">Polar Calendar</div>' +
+      '<div class="mockup-desc">Sessions plotted on a clock face. Angle = day of year (Jan at top, clockwise). Radius = integration hours. Months labeled on the rim.</div>' +
+    '</div>' +
+    '<div class="viz-box" id="rd-box"></div>';
+
+  setTimeout(function() {
+    var box = wrap.querySelector('#rd-box');
+    var SIZE = Math.min(box.offsetWidth - 52, 380);
+    var cx = SIZE / 2, cy = SIZE / 2;
+    var outerR = SIZE / 2 - 28;
+    var innerR = outerR * 0.28;
+
+    var maxInteg = Math.max.apply(null, sessions.map(function(s) { return s.totalIntegrationSeconds || 0; }));
+
+    var svg = '<svg viewBox="0 0 ' + SIZE + ' ' + SIZE + '" width="' + SIZE + '" height="' + SIZE + '">';
+
+    // Background rings (month separators at even angles)
+    svg += '<circle cx="' + cx + '" cy="' + cy + '" r="' + outerR + '" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>';
+    svg += '<circle cx="' + cx + '" cy="' + cy + '" r="' + ((outerR+innerR)/2) + '" fill="none" stroke="rgba(255,255,255,0.03)" stroke-width="1" stroke-dasharray="2,4"/>';
+    svg += '<circle cx="' + cx + '" cy="' + cy + '" r="' + innerR + '" fill="rgba(255,255,255,0.02)" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>';
+
+    var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var DAYS_IN_YEAR = 365;
+
+    // Month spoke lines + labels
+    MONTHS.forEach(function(name, i) {
+      var dayOfYear = [0,31,59,90,120,151,181,212,243,273,304,334][i];
+      var angle = (dayOfYear / DAYS_IN_YEAR) * 2 * Math.PI - Math.PI / 2;
+      var x1 = cx + Math.cos(angle) * innerR;
+      var y1 = cy + Math.sin(angle) * innerR;
+      var x2 = cx + Math.cos(angle) * outerR;
+      var y2 = cy + Math.sin(angle) * outerR;
+      svg += '<line x1="' + x1.toFixed(1) + '" y1="' + y1.toFixed(1) + '" x2="' + x2.toFixed(1) + '" y2="' + y2.toFixed(1) + '" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>';
+
+      var lx = cx + Math.cos(angle) * (outerR + 16);
+      var ly = cy + Math.sin(angle) * (outerR + 16);
+      svg += '<text x="' + lx.toFixed(1) + '" y="' + (ly + 3).toFixed(1) + '" fill="#4d5566" font-size="9" font-family="inherit" text-anchor="middle">' + name + '</text>';
+    });
+
+    // Sessions as dots
+    sessions.forEach(function(s) {
+      var d = new Date(s.sessionStart);
+      var start = new Date(d.getFullYear(), 0, 0);
+      var dayOfYear = Math.floor((d - start) / 86400000);
+      var angle = (dayOfYear / DAYS_IN_YEAR) * 2 * Math.PI - Math.PI / 2;
+
+      var hours = (s.totalIntegrationSeconds || 0) / 3600;
+      var normInteg = maxInteg > 0 ? hours / (maxInteg / 3600) : 0;
+      var r = innerR + normInteg * (outerR - innerR);
+
+      var x = cx + Math.cos(angle) * r;
+      var y = cy + Math.sin(angle) * r;
+      var dotR = 3.5 + 4 * normInteg;
+
+      // Glow
+      svg += '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="' + (dotR * 2.2).toFixed(1) + '" fill="#58a6ff" opacity="' + (0.08 + 0.1 * normInteg).toFixed(3) + '"/>';
+      // Dot
+      svg += '<circle class="rd-dot" cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="' + dotR.toFixed(1) + '"'
+        + ' fill="' + dotColor(s) + '" opacity="' + (0.5 + 0.5 * normInteg).toFixed(2) + '" cursor="pointer"'
+        + ' data-id="' + s.sessionId + '"'
+        + ' data-date="' + esc(fmtDate(s.sessionStart)) + '"'
+        + ' data-integ="' + esc(fmtHours(s.totalIntegrationSeconds || 0)) + '"'
+        + ' data-imgs="' + (s.imageCount || 0) + '"'
+        + ' data-targets="' + esc((s.targets || []).join(', ') || '—') + '"'
+        + '/>';
+    });
+
+    // Center label
+    svg += '<text x="' + cx + '" y="' + (cy - 6) + '" fill="#4d5566" font-size="11" font-family="inherit" text-anchor="middle" font-weight="600">' + sessions.length + '</text>';
+    svg += '<text x="' + cx + '" y="' + (cy + 8) + '" fill="#4d5566" font-size="9" font-family="inherit" text-anchor="middle">sessions</text>';
+
+    svg += '</svg>';
+    box.innerHTML = svg;
+
+    box.querySelectorAll('.rd-dot').forEach(function(el) {
+      el.addEventListener('mouseenter', function(e) {
+        this.setAttribute('stroke', '#fff');
+        this.setAttribute('stroke-width', '1.5');
+        showTip(e,
+          '<strong>' + this.dataset.date + '</strong>' +
+          '<span class="t2">' + this.dataset.targets + '<br>' +
+          this.dataset.integ + ' &middot; ' + this.dataset.imgs + ' imgs</span>');
+      });
+      el.addEventListener('mousemove', moveTip);
+      el.addEventListener('mouseleave', function() {
+        this.removeAttribute('stroke');
+        this.removeAttribute('stroke-width');
+        hideTip();
+      });
+      el.addEventListener('click', function() {
+        if (this.dataset.id) window.open('/api/sessions/' + this.dataset.id + '/report', '_blank');
+      });
+    });
+  }, 0);
+
+  return wrap;
+}
+
+// ─── OPTION 4: Stacked Bar (filter composition) ──────────────────────────────
+
+function makeStackedBar(sessions) {
+  var wrap = document.createElement('div');
+  wrap.className = 'mockup';
+  wrap.innerHTML =
+    '<div class="mockup-meta">' +
+      '<div class="mockup-num">Option 4</div>' +
+      '<div class="mockup-title">Stacked Bar — Target Composition</div>' +
+      '<div class="mockup-desc">Bar waveform upgraded: each bar stacked by target. Same target = same color across all sessions. Single-target nights = solid bar. Multi-target nights show the split. Segments are evenly divided (real impl would use per-target integration from the detail API).</div>' +
+    '</div>' +
+    '<div class="viz-box" id="sb-box"></div>';
+
+  setTimeout(function() {
+    var box = wrap.querySelector('#sb-box');
+    var W = box.offsetWidth - 52;
+    var CHART_H = 90;
+    var LABEL_H = 20;
+    var H = CHART_H + LABEL_H;
+
+    var dates = sessions.map(function(s) { return new Date(s.sessionStart).getTime(); });
+    var minD = Math.min.apply(null, dates), maxD = Math.max.apply(null, dates);
+    var dateSpan = maxD - minD || 1;
+    var maxInteg = Math.max.apply(null, sessions.map(function(s) { return s.totalIntegrationSeconds || 0; }));
+    var BAR_W = Math.max(3, Math.min(10, Math.floor(W / sessions.length * 0.65)));
+    var monthLabels = getMonthTicks(minD, maxD, W);
+
+    // Collect all unique target names and assign stable colors
+    var allTargets = [];
+    sessions.forEach(function(s) {
+      (s.targets || []).forEach(function(t) {
+        if (allTargets.indexOf(t) < 0) allTargets.push(t);
+      });
+    });
+    allTargets.sort();
+
+    // Assign colors by sorted index using golden-ratio hue stepping
+    function targetColor(name) {
+      var idx = allTargets.indexOf(name);
+      var hue = (idx * 137.508) % 360;
+      return 'hsl(' + hue.toFixed(0) + ',38%,60%)';
+    }
+    function targetColorDim(name) {
+      var idx = allTargets.indexOf(name);
+      var hue = (idx * 137.508) % 360;
+      return 'hsl(' + hue.toFixed(0) + ',28%,38%)';
+    }
+
+    // Fetch all session details in parallel for real per-target integration
+    Promise.all(sessions.map(function(s) {
+      return fetch('/api/sessions/' + s.sessionId)
+        .then(function(r) { return r.json(); })
+        .then(function(d) { return { sessionId: s.sessionId, targets: d.targets || [] }; })
+        .catch(function() { return { sessionId: s.sessionId, targets: [] }; });
+    })).then(function(details) {
+      var detailMap = {};
+      details.forEach(function(d) { detailMap[d.sessionId] = d.targets; });
+
+      // Build per-target gradient defs
+      var gradDefs = '<defs>';
+      allTargets.forEach(function(t, i) {
+        gradDefs += '<linearGradient id="sb-tg-' + i + '" x1="0" y1="0" x2="0" y2="1">'
+          + '<stop offset="0%" stop-color="' + targetColor(t) + '"/>'
+          + '<stop offset="100%" stop-color="' + targetColorDim(t) + '"/>'
+          + '</linearGradient>';
+      });
+      gradDefs += '</defs>';
+
+      var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" height="' + H + '">' + gradDefs;
+      svg += '<line x1="0" y1="' + CHART_H + '" x2="' + W + '" y2="' + CHART_H + '" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>';
+
+      monthLabels.forEach(function(m) {
+        svg += '<line x1="' + m.x.toFixed(1) + '" y1="0" x2="' + m.x.toFixed(1) + '" y2="' + CHART_H + '" stroke="rgba(255,255,255,0.06)" stroke-width="1" stroke-dasharray="3,4"/>';
+        svg += '<text x="' + m.x.toFixed(1) + '" y="' + (H - 4) + '" fill="#4d5566" font-size="10" font-family="inherit" text-anchor="middle">' + m.label + '</text>';
+      });
+
+      sessions.forEach(function(s) {
+        var t = (new Date(s.sessionStart).getTime() - minD) / dateSpan;
+        var x = t * (W - BAR_W);
+        var hours = (s.totalIntegrationSeconds || 0) / 3600;
+        var normInteg = maxInteg > 0 ? hours / (maxInteg / 3600) : 0;
+        var totalBarH = Math.max(2, normInteg * (CHART_H - 4));
+
+        // Use real per-target integration from detail; fall back to even split
+        var detailTargets = detailMap[s.sessionId] || [];
+        var totalDetailSecs = 0;
+        detailTargets.forEach(function(dt) { totalDetailSecs += dt.integrationSeconds || 0; });
+        if (!totalDetailSecs) totalDetailSecs = 1;
+
+        var segs = detailTargets.length
+          ? detailTargets.map(function(dt) { return { name: dt.target, secs: dt.integrationSeconds || 0 }; })
+          : (s.targets || ['Unknown']).map(function(n) { return { name: n, secs: 1 }; });
+
+        var yTop = CHART_H;
+        segs.forEach(function(seg, si) {
+          var segH = (seg.secs / totalDetailSecs) * totalBarH;
+          yTop -= segH;
+          var tIdx = allTargets.indexOf(seg.name);
+          if (tIdx < 0) tIdx = 0;
+          svg += '<rect class="sb-bar"'
+            + ' x="' + x.toFixed(1) + '" y="' + yTop.toFixed(1) + '"'
+            + ' width="' + BAR_W + '" height="' + Math.max(0.5, segH).toFixed(1) + '"'
+            + ' fill="url(#sb-tg-' + tIdx + ')"'
+            + (si === 0 ? ' rx="2"' : '')
+            + ' cursor="pointer"'
+            + ' data-id="' + esc(s.sessionId) + '"'
+            + ' data-date="' + esc(fmtDate(s.sessionStart)) + '"'
+            + ' data-integ="' + esc(fmtHours(s.totalIntegrationSeconds || 0)) + '"'
+            + ' data-imgs="' + (s.imageCount || 0) + '"'
+            + ' data-seg="' + esc(seg.name + ': ' + fmtHours(seg.secs)) + '"'
+            + ' data-targets="' + esc(segs.map(function(sg) { return sg.name + ' ' + fmtHours(sg.secs); }).join(' / ')) + '"'
+            + '/>';
+        });
+      });
+
+      svg += '</svg>';
+      box.innerHTML = svg;
+
+      box.querySelectorAll('.sb-bar').forEach(function(el) {
+        el.addEventListener('mouseenter', function(e) {
+          this.style.filter = 'brightness(1.35)';
+          showTip(e,
+            '<strong>' + this.dataset.date + '</strong>' +
+            '<span class="t2">' + this.dataset.seg + '<br>' +
+            this.dataset.targets + '<br>' +
+            this.dataset.integ + ' total &middot; ' + this.dataset.imgs + ' imgs</span>');
+        });
+        el.addEventListener('mousemove', moveTip);
+        el.addEventListener('mouseleave', function() { this.style.filter = ''; hideTip(); });
+        el.addEventListener('click', function() {
+          if (this.dataset.id) window.open('/api/sessions/' + this.dataset.id + '/report', '_blank');
+        });
+      });
+    });
+  }, 0);
+
+  return wrap;
+}
+
+// ─── OPTION 5: DNA Strip (WakaTime-style) ────────────────────────────────────
+
+function makeDNAStrip(sessions) {
+  var wrap = document.createElement('div');
+  wrap.className = 'mockup';
+  wrap.innerHTML =
+    '<div class="mockup-meta">' +
+      '<div class="mockup-num">Option 5</div>' +
+      '<div class="mockup-title">DNA Strip</div>' +
+      '<div class="mockup-desc">One pixel-column per calendar day. Color intensity = integration hours. Dead nights are invisible. Reads like a spectrogram — continuous, no gaps, uniquely dense.</div>' +
+    '</div>' +
+    '<div class="viz-box" id="dna-box"></div>';
+
+  setTimeout(function() {
+    var box = wrap.querySelector('#dna-box');
+    var W = box.offsetWidth - 52;
+    var CHART_H = 52;
+    var LABEL_H = 18;
+    var H = CHART_H + LABEL_H;
+
+    var dates = sessions.map(function(s) { return new Date(s.sessionStart).getTime(); });
+    var minD = Math.min.apply(null, dates), maxD = Math.max.apply(null, dates);
+    var dayMs = 86400000;
+    var totalDays = Math.max(1, Math.ceil((maxD - minD) / dayMs) + 1);
+    var dayW = W / totalDays;
+    var maxInteg = Math.max.apply(null, sessions.map(function(s) { return s.totalIntegrationSeconds || 0; }));
+    var monthLabels = getMonthTicks(minD, maxD, W);
+
+    var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" height="' + H + '">';
+    svg += '<rect x="0" y="0" width="' + W + '" height="' + CHART_H + '" fill="rgba(255,255,255,0.025)" rx="3"/>';
+
+    sessions.forEach(function(s) {
+      var daysFromStart = Math.floor((new Date(s.sessionStart).getTime() - minD) / dayMs);
+      var x = daysFromStart * dayW;
+      var norm = maxInteg > 0 ? (s.totalIntegrationSeconds || 0) / maxInteg : 0;
+      var r = Math.round(20  + 190 * norm);
+      var g = Math.round(35  + 140 * norm);
+      var b = Math.round(70  + 185 * norm);
+      var colH = CHART_H * 0.28 + CHART_H * 0.72 * norm;
+      var colY = (CHART_H - colH) / 2;
+      svg += '<rect class="dna-col"'
+        + ' x="' + x.toFixed(2) + '" y="' + colY.toFixed(1) + '"'
+        + ' width="' + Math.max(dayW * 0.82, 1.5).toFixed(2) + '" height="' + colH.toFixed(1) + '"'
+        + ' fill="rgb(' + r + ',' + g + ',' + b + ')" rx="1" cursor="pointer"'
+        + ' data-id="' + esc(s.sessionId) + '"'
+        + ' data-date="' + esc(fmtDate(s.sessionStart)) + '"'
+        + ' data-integ="' + esc(fmtHours(s.totalIntegrationSeconds || 0)) + '"'
+        + ' data-targets="' + esc((s.targets || []).join(', ') || '—') + '"'
+        + '/>';
+    });
+
+    monthLabels.forEach(function(m) {
+      svg += '<line x1="' + m.x.toFixed(1) + '" y1="0" x2="' + m.x.toFixed(1) + '" y2="' + CHART_H + '" stroke="rgba(0,0,0,0.3)" stroke-width="1"/>';
+      svg += '<text x="' + m.x.toFixed(1) + '" y="' + (H - 2) + '" fill="#4d5566" font-size="10" font-family="inherit" text-anchor="middle">' + m.label + '</text>';
+    });
+
+    svg += '</svg>';
+    box.innerHTML = svg;
+
+    box.querySelectorAll('.dna-col').forEach(function(el) {
+      el.addEventListener('mouseenter', function(e) {
+        this.style.filter = 'brightness(1.5)';
+        showTip(e,
+          '<strong>' + this.dataset.date + '</strong>' +
+          '<span class="t2">' + this.dataset.targets + '<br>' + this.dataset.integ + '</span>');
+      });
+      el.addEventListener('mousemove', moveTip);
+      el.addEventListener('mouseleave', function() { this.style.filter = ''; hideTip(); });
+      el.addEventListener('click', function() {
+        if (this.dataset.id) window.open('/api/sessions/' + this.dataset.id + '/report', '_blank');
+      });
+    });
+  }, 0);
+
+  return wrap;
+}
+
+// ─── OPTION 6: Ridgeline / Joy Plot ──────────────────────────────────────────
+
+function makeRidgeline(sessions) {
+  var wrap = document.createElement('div');
+  wrap.className = 'mockup';
+  wrap.innerHTML =
+    '<div class="mockup-meta">' +
+      '<div class="mockup-num">Option 6</div>' +
+      '<div class="mockup-title">Ridgeline / Joy Plot</div>' +
+      '<div class="mockup-desc">One area curve per month, stacked with overlap. Height = integration hours on that day. Like mountain silhouettes — seasonal patterns at a glance. Great for multi-year views.</div>' +
+    '</div>' +
+    '<div class="viz-box" id="rl-box"></div>';
+
+  setTimeout(function() {
+    var box = wrap.querySelector('#rl-box');
+    var W = box.offsetWidth - 52;
+
+    var byMonth = {};
+    sessions.forEach(function(s) {
+      var d = new Date(s.sessionStart);
+      var mo = d.getMonth() + 1;
+      var key = d.getFullYear() + '-' + (mo < 10 ? '0' : '') + mo;
+      if (!byMonth[key]) byMonth[key] = [];
+      byMonth[key].push({
+        day: d.getDate(),
+        secs: s.totalIntegrationSeconds || 0,
+        sessionId: s.sessionId,
+        targets: (s.targets || []).join(', ') || '—',
+        date: fmtDate(s.sessionStart)
+      });
+    });
+
+    var monthKeys = Object.keys(byMonth).sort();
+    if (!monthKeys.length) { box.innerHTML = '<div style="color:#7d8590">No data</div>'; return; }
+
+    var MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var ROW_H = 40;
+    var OVERLAP = 14;
+    var LABEL_W = 38;
+    var CHART_W = W - LABEL_W;
+    var MAX_DAY = 31;
+    var totalH = monthKeys.length * (ROW_H - OVERLAP) + OVERLAP + 6;
+
+    var maxSecs = 0;
+    for (var ki = 0; ki < monthKeys.length; ki++) {
+      var mdays = byMonth[monthKeys[ki]];
+      for (var di = 0; di < mdays.length; di++) {
+        if (mdays[di].secs > maxSecs) maxSecs = mdays[di].secs;
+      }
+    }
+
+    var svg = '<svg viewBox="0 0 ' + W + ' ' + totalH + '" height="' + totalH + '"><defs>';
+    for (var ri = 0; ri < monthKeys.length; ri++) {
+      var frac = monthKeys.length > 1 ? ri / (monthKeys.length - 1) : 0;
+      svg += '<linearGradient id="rl-g' + ri + '" x1="0" y1="0" x2="0" y2="1">'
+        + '<stop offset="0%" stop-color="#58a6ff" stop-opacity="' + (0.55 + 0.35 * frac).toFixed(2) + '"/>'
+        + '<stop offset="100%" stop-color="#1a2332" stop-opacity="' + (0.22 + 0.14 * frac).toFixed(2) + '"/>'
+        + '</linearGradient>';
+    }
+    svg += '</defs>';
+
+    for (var ri = 0; ri < monthKeys.length; ri++) {
+      var mk = monthKeys[ri];
+      var baseY = ri * (ROW_H - OVERLAP) + ROW_H;
+      var parts = mk.split('-');
+      var label = MONTHS_SHORT[parseInt(parts[1], 10) - 1] + ' \'' + parts[0].slice(2);
+      var days = byMonth[mk];
+
+      // Build point array (one per day 1-31)
+      var pts = [];
+      for (var d = 1; d <= MAX_DAY; d++) {
+        var found = null;
+        for (var di = 0; di < days.length; di++) {
+          if (days[di].day === d) { found = days[di]; break; }
+        }
+        var secs = found ? found.secs : 0;
+        var norm = maxSecs > 0 ? secs / maxSecs : 0;
+        pts.push({
+          x: LABEL_W + ((d - 1) / (MAX_DAY - 1)) * CHART_W,
+          y: baseY - norm * (ROW_H - 6)
+        });
+      }
+
+      // Smooth cubic bezier
+      var pathD = 'M ' + pts[0].x.toFixed(1) + ' ' + baseY + ' L ' + pts[0].x.toFixed(1) + ' ' + pts[0].y.toFixed(1);
+      for (var pi = 1; pi < pts.length; pi++) {
+        var p0 = pts[pi - 1], p1 = pts[pi];
+        var cpx = ((p0.x + p1.x) / 2).toFixed(1);
+        pathD += ' C ' + cpx + ' ' + p0.y.toFixed(1) + ' ' + cpx + ' ' + p1.y.toFixed(1) + ' ' + p1.x.toFixed(1) + ' ' + p1.y.toFixed(1);
+      }
+      pathD += ' L ' + pts[MAX_DAY - 1].x.toFixed(1) + ' ' + baseY + ' Z';
+
+      // Occlusion background
+      svg += '<rect x="' + LABEL_W + '" y="' + (baseY - ROW_H - 2) + '"'
+        + ' width="' + CHART_W + '" height="' + (ROW_H + 4) + '" fill="#161b22"/>';
+      // Area fill
+      svg += '<path d="' + pathD + '" fill="url(#rl-g' + ri + ')" stroke="#58a6ff" stroke-width="1" stroke-opacity="0.5"/>';
+      // Baseline
+      svg += '<line x1="' + LABEL_W + '" y1="' + baseY + '" x2="' + W + '" y2="' + baseY + '" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>';
+      // Month label
+      svg += '<text x="' + (LABEL_W - 5) + '" y="' + (baseY - 2) + '" fill="#4d5566" font-size="9" font-family="inherit" text-anchor="end">' + label + '</text>';
+
+      // Dot markers on actual session days
+      for (var di = 0; di < days.length; di++) {
+        var s = days[di];
+        var norm2 = maxSecs > 0 ? s.secs / maxSecs : 0;
+        var px = LABEL_W + ((s.day - 1) / (MAX_DAY - 1)) * CHART_W;
+        var py = baseY - norm2 * (ROW_H - 6);
+        svg += '<circle class="rl-dot"'
+          + ' cx="' + px.toFixed(1) + '" cy="' + py.toFixed(1) + '" r="3"'
+          + ' fill="#79c0ff" stroke="#161b22" stroke-width="1.5" cursor="pointer"'
+          + ' data-id="' + esc(s.sessionId) + '"'
+          + ' data-date="' + esc(s.date) + '"'
+          + ' data-integ="' + esc(fmtHours(s.secs)) + '"'
+          + ' data-targets="' + esc(s.targets) + '"'
+          + '/>';
+      }
+    }
+
+    svg += '</svg>';
+    box.innerHTML = svg;
+
+    box.querySelectorAll('.rl-dot').forEach(function(el) {
+      el.addEventListener('mouseenter', function(e) {
+        this.setAttribute('r', '5');
+        this.setAttribute('fill', '#fff');
+        showTip(e,
+          '<strong>' + this.dataset.date + '</strong>' +
+          '<span class="t2">' + this.dataset.targets + '<br>' + this.dataset.integ + '</span>');
+      });
+      el.addEventListener('mousemove', moveTip);
+      el.addEventListener('mouseleave', function() {
+        this.setAttribute('r', '3');
+        this.setAttribute('fill', '#79c0ff');
+        hideTip();
+      });
+      el.addEventListener('click', function() {
+        if (this.dataset.id) window.open('/api/sessions/' + this.dataset.id + '/report', '_blank');
+      });
+    });
+  }, 0);
+
+  return wrap;
+}
+
+// ─── OPTION 7: Calendar heatmap ──────────────────────────────────────────────
+
+function makeMonthlyBar(sessions) {
+  var wrap = document.createElement('div');
+  wrap.className = 'mockup';
+  wrap.innerHTML =
+    '<div class="mockup-meta">' +
+      '<div class="mockup-num">Option 7</div>' +
+      '<div class="mockup-title">Calendar Heatmap</div>' +
+      '<div class="mockup-desc">Classic contribution-graph layout — weeks as columns, days of week as rows. Cell color = integration hours. Scales to any number of years without crowding. Different from GitHub\'s design via color scheme and the astrophotography-specific data.</div>' +
+    '</div>' +
+    '<div class="viz-box" id="ma-box" style="overflow-x:auto"></div>';
+
+  setTimeout(function() {
+    var box = wrap.querySelector('#ma-box');
+    var W = box.offsetWidth - 52;
+    var DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    var MNAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var DOW_W = 28;  // left gutter for day-of-week labels
+    var TOP_H = 18;  // top gutter for month labels
+
+    // Compute date range first so we know totalWeeks before sizing cells
+    var allTs = sessions.map(function(s) { return new Date(s.sessionStart).getTime(); });
+    var minTs = Math.min.apply(null, allTs), maxTs = Math.max.apply(null, allTs);
+    var startD = new Date(minTs);
+    startD = new Date(startD.getFullYear(), startD.getMonth(), startD.getDate());
+    startD.setDate(startD.getDate() - startD.getDay());
+    var endD = new Date(maxTs);
+    endD = new Date(endD.getFullYear(), endD.getMonth(), endD.getDate());
+    endD.setDate(endD.getDate() + (6 - endD.getDay()));
+    var totalWeeks = Math.round((endD - startD) / (7 * 86400000)) + 1;
+
+    // Scale cell size to fill available width; clamp to [9, 20]
+    var GAP  = 2;
+    var CELL = Math.max(9, Math.min(20, Math.floor((W - DOW_W - GAP * (totalWeeks - 1)) / totalWeeks)));
+    GAP      = Math.max(1, Math.min(3, Math.floor(CELL / 5)));
+    var STEP = CELL + GAP;
+
+    // Build day map
+    var dayMap = {};
+    var sessionMap = {};
+    sessions.forEach(function(s) {
+      var d = new Date(s.sessionStart);
+      var key = d.getFullYear() + '-'
+        + (d.getMonth() < 9 ? '0' : '') + (d.getMonth() + 1) + '-'
+        + (d.getDate() < 10 ? '0' : '') + d.getDate();
+      dayMap[key] = (dayMap[key] || 0) + (s.totalIntegrationSeconds || 0);
+      if (!sessionMap[key]) sessionMap[key] = { targets: [], date: fmtDate(s.sessionStart), id: s.sessionId };
+      (s.targets || []).forEach(function(t) {
+        if (sessionMap[key].targets.indexOf(t) < 0) sessionMap[key].targets.push(t);
+      });
+    });
+
+    var maxSecs = 0;
+    for (var k in dayMap) { if (dayMap[k] > maxSecs) maxSecs = dayMap[k]; }
+
+    // Date range: snap to week boundaries
+    var svgW = DOW_W + totalWeeks * STEP;
+    var svgH = TOP_H + 7 * STEP;
+
+    function cellColor(secs) {
+      if (!secs) return 'rgba(255,255,255,0.05)';
+      var norm = Math.pow(secs / maxSecs, 0.55);
+      var sat = Math.round(42 + norm * 50);       // 42% → 92%
+      var lit = Math.round(16 + norm * 58);       // 16% → 74%
+      return 'hsl(215,' + sat + '%,' + lit + '%)';
+    }
+
+    var svg = '<svg viewBox="0 0 ' + svgW + ' ' + svgH + '" height="' + svgH + '" width="' + svgW + '">';
+
+    // Day-of-week labels
+    DOW_LABELS.forEach(function(label, i) {
+      if (!label) return;
+      svg += '<text x="' + (DOW_W - 4) + '" y="' + (TOP_H + i * STEP + CELL * 0.75) + '"'
+        + ' fill="#4d5566" font-size="9" font-family="inherit" text-anchor="end">' + label + '</text>';
+    });
+
+    // Cells + month labels
+    var prevMonth = -1;
+    for (var w = 0; w < totalWeeks; w++) {
+      for (var dow = 0; dow < 7; dow++) {
+        var cellDate = new Date(startD.getTime() + (w * 7 + dow) * 86400000);
+        if (cellDate > endD) continue;
+        var mo = cellDate.getMonth(), yr = cellDate.getFullYear();
+        var dk = yr + '-'
+          + (mo < 9 ? '0' : '') + (mo + 1) + '-'
+          + (cellDate.getDate() < 10 ? '0' : '') + cellDate.getDate();
+        var cx = DOW_W + w * STEP;
+        var cy = TOP_H + dow * STEP;
+        var secs = dayMap[dk] || 0;
+        var sess = sessionMap[dk];
+
+        svg += '<rect class="hm-cell" x="' + cx + '" y="' + cy + '" width="' + CELL + '" height="' + CELL + '"'
+          + ' fill="' + cellColor(secs) + '" rx="2"'
+          + (secs ? ' cursor="pointer"' : '')
+          + ' data-dk="' + dk + '"'
+          + ' data-secs="' + secs + '"'
+          + ' data-id="' + (sess ? esc(sess.id) : '') + '"'
+          + ' data-date="' + (sess ? esc(sess.date) : '') + '"'
+          + ' data-targets="' + (sess ? esc(sess.targets.join(', ')) : '') + '"'
+          + '/>';
+
+        // Month label at first cell of each month
+        if (dow === 0 && mo !== prevMonth) {
+          var mlabel = MNAMES[mo] + (mo === 0 ? ' ' + yr : '');
+          svg += '<text x="' + cx + '" y="' + (TOP_H - 5) + '"'
+            + ' fill="#6e7681" font-size="10" font-family="inherit">' + mlabel + '</text>';
+          prevMonth = mo;
+        }
+      }
+    }
+
+    svg += '</svg>';
+    box.innerHTML = svg;
+
+    box.querySelectorAll('.hm-cell[cursor="pointer"]').forEach(function(el) {
+      el.addEventListener('mouseenter', function(e) {
+        this.setAttribute('stroke', '#fff');
+        this.setAttribute('stroke-width', '1');
+        showTip(e,
+          '<strong>' + this.dataset.date + '</strong>' +
+          '<span class="t2">' + this.dataset.targets + '<br>' + fmtHours(parseInt(this.dataset.secs)) + '</span>');
+      });
+      el.addEventListener('mousemove', moveTip);
+      el.addEventListener('mouseleave', function() {
+        this.removeAttribute('stroke');
+        this.removeAttribute('stroke-width');
+        hideTip();
+      });
+      el.addEventListener('click', function() {
+        if (this.dataset.id) window.open('/api/sessions/' + this.dataset.id + '/report', '_blank');
+      });
+    });
+  }, 0);
+
+  return wrap;
+}
+
+// ─── YEAR STRESS TEST ────────────────────────────────────────────────────────
+
+function pseudoRand(n) {
+  var x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+function genYearSessions() {
+  var sessions = [];
+  var origin = new Date(2025, 3, 15).getTime();
+  var endMs   = new Date(2026, 3, 14).getTime();
+  var DAY = 86400000;
+  var day = 0;
+  for (var t = origin; t <= endMs; t += DAY, day++) {
+    var moonPos = (day % 29.5) / 29.5;
+    if (moonPos > 0.35 && moonPos < 0.65) continue;
+    if (pseudoRand(day) < 0.50) continue;
+    var mo = new Date(t).getMonth();
+    if (mo >= 5 && mo <= 7 && pseudoRand(day + 1000) > 0.25) continue;
+    var integ = Math.floor(3600 + pseudoRand(day + 500) * 14400);
+    var imgs  = Math.floor(integ / (180 + Math.floor(pseudoRand(day + 200) * 420)));
+    sessions.push({ d: new Date(t).toISOString().substring(0, 10), i: integ, n: imgs });
+  }
+  return sessions;
+}
+
+function buildYearSvg(sessions, scrollable) {
+  var MNAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var DAY_MS = 86400000;
+  var dates = sessions.map(function(s) { return new Date(s.d + 'T12:00:00').getTime(); });
+  var minD = Math.min.apply(null, dates), maxD = Math.max.apply(null, dates);
+  var dateSpan = maxD - minD || DAY_MS;
+  var spanDays = Math.ceil(dateSpan / DAY_MS);
+  var maxInteg = Math.max.apply(null, sessions.map(function(s) { return s.i; }));
+
+  var W, BAR_W;
+  if (scrollable) {
+    W = Math.max(680, spanDays * 8);
+    BAR_W = 6;
+  } else {
+    W = 680;
+    var uniqueDayMs = dates.filter(function(t, i, a) { return a.indexOf(t) === i; }).sort(function(a, b) { return a - b; });
+    var minGapMs = Infinity;
+    for (var gi = 1; gi < uniqueDayMs.length; gi++) {
+      var g = uniqueDayMs[gi] - uniqueDayMs[gi - 1];
+      if (g > 0 && g < minGapMs) minGapMs = g;
+    }
+    var availPx = uniqueDayMs.length > 1 ? (minGapMs / dateSpan) * W : W;
+    BAR_W = Math.max(6, Math.min(Math.floor(availPx * 0.75), 28));
+  }
+
+  var CHART_H = 80, LABEL_H = 22, H = CHART_H + LABEL_H;
+  var svgAttrs = scrollable
+    ? ' width="' + W + '" height="' + H + '" style="display:block"'
+    : ' style="max-width:100%;height:auto"';
+
+  var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '"' + svgAttrs + '>';
+  svg += '<line x1="0" y1="' + CHART_H + '" x2="' + W + '" y2="' + CHART_H + '" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>';
+
+  var prevLabelX = -99, MIN_LABEL_GAP = 36;
+  var axD = new Date(minD);
+  while (axD.getTime() <= minD + dateSpan + DAY_MS) {
+    var axX = ((axD.getTime() - minD) / dateSpan) * (W - BAR_W) + BAR_W / 2;
+    var isMonthStart = axD.getDate() === 1;
+    var daysIn = Math.round((axD.getTime() - minD) / DAY_MS);
+    if (!isMonthStart && daysIn % 7 !== 0) { axD.setDate(axD.getDate() + 1); continue; }
+    if (isMonthStart) {
+      svg += '<line x1="' + axX.toFixed(1) + '" y1="0" x2="' + axX.toFixed(1) + '" y2="' + CHART_H + '" stroke="rgba(255,255,255,0.05)" stroke-width="1" stroke-dasharray="3,4"/>';
+    }
+    var labelText = isMonthStart ? MNAMES[axD.getMonth()] + (axD.getMonth() === 0 ? " '" + String(axD.getFullYear()).slice(2) : '') : null;
+    var willLabel = labelText && axX - prevLabelX > MIN_LABEL_GAP;
+    var tickH = willLabel ? 10 : (isMonthStart ? 6 : 3);
+    svg += '<line x1="' + axX.toFixed(1) + '" y1="' + CHART_H + '" x2="' + axX.toFixed(1) + '" y2="' + (CHART_H + tickH) + '" stroke="' + (willLabel ? 'rgba(120,170,255,0.5)' : 'rgba(120,170,255,0.28)') + '" stroke-width="1"/>';
+    if (willLabel) {
+      var anchor = axX < W * 0.04 ? 'start' : axX > W * 0.96 ? 'end' : 'middle';
+      svg += '<text x="' + axX.toFixed(1) + '" y="' + (H - 3) + '" fill="#7d8fa8" font-size="10" font-family="inherit" text-anchor="' + anchor + '">' + labelText + '</text>';
+      prevLabelX = axX;
+    }
+    axD.setDate(axD.getDate() + 1);
+  }
+
+  sessions.forEach(function(s) {
+    var t = new Date(s.d + 'T12:00:00').getTime();
+    var normT = (t - minD) / dateSpan;
+    var x = normT * (W - BAR_W);
+    var normInteg = maxInteg > 0 ? s.i / maxInteg : 0;
+    var barH = Math.max(3, normInteg * CHART_H * 0.92);
+    var y = CHART_H - barH;
+    var hColor = 'hsl(213,' + Math.round(50 + normInteg * 40) + '%,' + Math.round(15 + normInteg * 55) + '%)';
+    svg += '<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + BAR_W + '" height="' + barH.toFixed(1) + '" fill="' + hColor + '" rx="1"/>';
+  });
+
+  svg += '</svg>';
+  return svg;
+}
+
+function makeYearWaveform() {
+  var synth = genYearSessions();
+  var wrap = document.createElement('div');
+  wrap.className = 'mockup';
+  wrap.innerHTML =
+    '<div class="mockup-meta">' +
+      '<div class="mockup-num">Year Stress Test</div>' +
+      '<div class="mockup-title">Bar Chart — Full Year (' + synth.length + ' sessions, Apr 2025–Apr 2026)</div>' +
+      '<div class="mockup-desc">Synthetic data: ~3 sessions/week, moon-aware gaps, summer slowdown. Top = current fixed-width. Bottom = proposed scrollable (proportional).</div>' +
+    '</div>' +
+    '<div class="viz-box">' +
+      '<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.9px;color:#7d8590;margin-bottom:8px">Current: fixed 680px (BAR_W floors to 6px, bars overlap)</div>' +
+      '<div id="yw-fixed"></div>' +
+      '<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.9px;color:#7d8590;margin:20px 0 8px">Proposed: scrollable — 8px per day (~2920px wide)</div>' +
+      '<div id="yw-scroll" style="overflow-x:auto;border:1px solid rgba(255,255,255,0.07);border-radius:6px;padding:2px 0"></div>' +
+    '</div>';
+
+  setTimeout(function() {
+    wrap.querySelector('#yw-fixed').innerHTML  = buildYearSvg(synth, false);
+    wrap.querySelector('#yw-scroll').innerHTML = buildYearSvg(synth, true);
+  }, 0);
+
+  return wrap;
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function getMonthTicks(minD, maxD, W) {
+  var ticks = [];
+  var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var dateSpan = maxD - minD || 1;
+  var d = new Date(minD);
+  d.setDate(1);
+  d.setMonth(d.getMonth() + 1);
+  while (d.getTime() <= maxD) {
+    var x = ((d.getTime() - minD) / dateSpan) * W;
+    ticks.push({ x: x, label: MONTHS[d.getMonth()] + ' ' + d.getFullYear().toString().slice(2) });
+    d.setMonth(d.getMonth() + 1);
+  }
+  return ticks;
+}
+</script>
+</body>
+</html>
