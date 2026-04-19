@@ -2811,7 +2811,7 @@ function buildActivityWaveform(sessions) {
     if (g > 0 && g < minGapMs) minGapMs = g;
   }
   var isMobile = window.innerWidth < 720;
-  var W = 680, CHART_H = isMobile ? 160 : 64, LABEL_H = isMobile ? 36 : 28, H = CHART_H + LABEL_H;
+  var W = 680, CHART_H = isMobile ? 160 : 64, LABEL_H = isMobile ? 60 : 28, H = CHART_H + LABEL_H;
   var availPx = uniqueDayMs.length > 1 ? (minGapMs / dateSpan) * W : W;
   var BAR_W = Math.max(6, Math.min(Math.floor(availPx * 0.75), 28));
 
@@ -2830,7 +2830,7 @@ function buildActivityWaveform(sessions) {
   var DAY_MS = 86400000;
   var spanDays = Math.ceil(dateSpan / DAY_MS);
   var tickEveryDays = spanDays > 120 ? 7 : spanDays > 60 ? 2 : 1;
-  var tickLabelH = isMobile ? 24 : 12;  // labeled ticks
+  var tickLabelH = isMobile ? 20 : 12;  // labeled ticks
   var tickMajH   = isMobile ? 15 : 8;   // month-start unlabeled
   var tickMinH   = isMobile ? 6  : 3;   // minor unlabeled ticks
   var MIN_LABEL_GAP = isMobile ? 80 : 36;
