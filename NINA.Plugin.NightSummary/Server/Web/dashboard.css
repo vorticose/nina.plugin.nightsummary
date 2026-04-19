@@ -1902,7 +1902,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 
 @media (max-width: 720px) {
   .lifetime-strip { padding: 14px 16px; }
-  .lw-label { font-size: 20px; }
+  .lw-label { font-size: 12px; }
   .lifetime-stats { gap: 6px; flex: 1; }
   .lifetime-card-stat { padding: 8px 6px; flex: 1; text-align: center; }
   .lifetime-heatmap-slot,

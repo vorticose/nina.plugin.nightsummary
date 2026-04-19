@@ -2820,7 +2820,7 @@ function buildActivityWaveform(sessions) {
   var isMobile = window.innerWidth < 720;
   var W = Math.max(680, spanDays * 8);
   var BAR_W = 6;
-  var CHART_H = isMobile ? 160 : 64, LABEL_H = isMobile ? 60 : 28, H = CHART_H + LABEL_H;
+  var CHART_H = isMobile ? 90 : 64, LABEL_H = isMobile ? 33 : 28, H = CHART_H + LABEL_H;
 
   // Brightness ramp: near-black navy → bright sky blue (wide contrast)
   function barHeatColor(t) {
@@ -2840,10 +2840,10 @@ function buildActivityWaveform(sessions) {
 
   // Adaptive x-axis: daily ticks on short spans, weekly on medium, monthly on long
   var tickEveryDays = spanDays > 120 ? 7 : spanDays > 60 ? 2 : 1;
-  var tickLabelH = isMobile ? 20 : 12;  // labeled ticks
-  var tickMajH   = isMobile ? 15 : 8;   // month-start unlabeled
-  var tickMinH   = isMobile ? 6  : 3;   // minor unlabeled ticks
-  var MIN_LABEL_GAP = isMobile ? 80 : 36;
+  var tickLabelH = isMobile ? 12 : 12;  // labeled ticks
+  var tickMajH   = isMobile ? 8  : 8;   // month-start unlabeled
+  var tickMinH   = isMobile ? 3  : 3;   // minor unlabeled ticks
+  var MIN_LABEL_GAP = isMobile ? 60 : 36;
   var MNAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   var axD = new Date(minD);
   var prevLabelX = -99;
@@ -3156,9 +3156,18 @@ function initWaveformScrubber(container) {
 
   if (info) info.addEventListener('click', function(e) { e.stopPropagation(); });
 
-  svg.addEventListener('touchstart', function(e) { e.preventDefault(); if (pinned) hide(); showAt(e.touches[0].clientX); }, {passive: false});
-  svg.addEventListener('touchmove',  function(e) { e.preventDefault(); showAt(e.touches[0].clientX); }, {passive: false});
-  svg.addEventListener('touchend',   function(e) { pin(); });
+  var touchStartX = 0, touchStartY = 0;
+  svg.addEventListener('touchstart', function(e) {
+    if (pinned) hide();
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+    showAt(e.touches[0].clientX);
+  }, {passive: true});
+  svg.addEventListener('touchend', function(e) {
+    var dx = Math.abs(e.changedTouches[0].clientX - touchStartX);
+    var dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
+    if (dx < 10 && dy < 10) { pin(); } else { hide(); }
+  });
   svg.addEventListener('touchcancel', hide);
 }
 
@@ -3250,7 +3259,7 @@ function renderSessionsV2(el, sub, params) {
   el.innerHTML = html;
 
   var scrollWrap = el.querySelector('.lw-scroll-wrap');
-  if (scrollWrap) scrollWrap.scrollLeft = scrollWrap.scrollWidth;
+  if (scrollWrap) requestAnimationFrame(function() { scrollWrap.scrollLeft = scrollWrap.scrollWidth; });
 
   initWaveformScrubber(el);
 
