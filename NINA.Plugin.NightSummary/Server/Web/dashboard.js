@@ -2815,9 +2815,9 @@ function buildActivityWaveform(sessions) {
   var availPx = uniqueDayMs.length > 1 ? (minGapMs / dateSpan) * W : W;
   var BAR_W = Math.max(6, Math.min(Math.floor(availPx * 0.75), 28));
 
-  // Brightness ramp: dark navy → bright sky blue
+  // Brightness ramp: near-black navy → bright sky blue (wide contrast)
   function barHeatColor(t) {
-    return 'hsl(213,' + Math.round(70 + t * 20) + '%,' + Math.round(28 + t * 40) + '%)';
+    return 'hsl(213,' + Math.round(50 + t * 40) + '%,' + Math.round(15 + t * 55) + '%)';
   }
 
   var svg = '<svg class="lifetime-waveform" viewBox="0 0 ' + W + ' ' + H + '" ';
@@ -2876,7 +2876,8 @@ function buildActivityWaveform(sessions) {
     var tgtStr = (s.targets && s.targets.length) ? s.targets.join(', ') : '';
     var tooltip = (tgtStr ? tgtStr + '\n' : '') + fmtDate(s.sessionStart) + ' \u00b7 ' + fmt(s.totalIntegrationSeconds || 0) + ' \u00b7 ' + (s.imageCount || 0) + ' images';
     var hColor = barHeatColor(normInteg);
-    svg += '<rect x="' + (x - 2).toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + (BAR_W + 4) + '" height="' + barH.toFixed(1) + '" fill="' + hColor + '" opacity="0.18" rx="2"/>';
+    var glowOpacity = (0.05 + normInteg * 0.25).toFixed(2);
+    svg += '<rect x="' + (x - 2).toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + (BAR_W + 4) + '" height="' + barH.toFixed(1) + '" fill="' + hColor + '" opacity="' + glowOpacity + '" rx="2"/>';
     var bar = '<rect class="lw-bar" x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + BAR_W + '" height="' + barH.toFixed(1) + '" fill="' + hColor + '" rx="2"><title>' + esc(tooltip) + '</title></rect>';
     if (s.sessionId && s.hasReport) {
       svg += '<a href="/api/sessions/' + encodeURIComponent(s.sessionId) + '/report" target="_blank" rel="noopener">' + bar + '</a>';
