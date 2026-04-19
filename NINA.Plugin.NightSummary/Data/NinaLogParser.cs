@@ -146,6 +146,7 @@ namespace NINA.Plugin.NightSummary.Data {
             var pendingStarts = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
             DateTime? plateSolveStart = null;
             DateTime? meridianFlipTriggerStart = null;
+            DateTime? schedulerWaitStart = null;
 
             int parsedExposureCount = 0;
             int parsedImageSaveCount = 0;
@@ -187,16 +188,22 @@ namespace NINA.Plugin.NightSummary.Data {
                         if (itemName == "Center" || itemName == "CenterAndRotate")
                             centeringDepth++;
                         if (itemName == "TakeExposure" || itemName == "TakeSubframeExposure") {
-                            // If a previous exposure start was never finished, emit it as aborted
+                            // If a previous exposure start was never finished, emit it as aborted.
+                            // Same cap as the end-of-log orphan (see below) — if there's a long gap
+                            // between exposures (pause, unsafe, etc.) the abort duration is capped at
+                            // requested exposure + 30s download grace to avoid inflating overhead.
                             if (exposureStart.HasValue) {
+                                var rawDuration = (timestamp - exposureStart.Value).TotalSeconds;
+                                var cap         = exposureRequestedSeconds > 0 ? exposureRequestedSeconds + 30 : 600;
+                                var duration    = Math.Min(rawDuration, cap);
                                 events.Add(new TimingEvent {
                                     EventType = "AbortedExposure",
                                     StartTime = exposureStart.Value,
-                                    EndTime = timestamp,
-                                    DurationSeconds = (timestamp - exposureStart.Value).TotalSeconds,
+                                    EndTime = exposureStart.Value.AddSeconds(duration),
+                                    DurationSeconds = duration,
                                     Details = exposureDetails
                                 });
-                                Logger.Warning($"NightSummary: LogParser — exposure started at {exposureStart.Value:o} was aborted (new exposure started)");
+                                Logger.Warning($"NightSummary: LogParser — exposure started at {exposureStart.Value:o} was aborted (new exposure started, duration capped at {duration:F0}s of raw {rawDuration:F0}s)");
                             }
                             exposureStart = timestamp;
                             exposureDetails = ExtractExposureDetails(message);
@@ -345,6 +352,25 @@ namespace NINA.Plugin.NightSummary.Data {
                         meridianFlipTriggerStart = timestamp;
                 }
 
+                // === Symbol.cs|OnMessageReceived — Target Scheduler wait intervals ===
+                // When TS has no target available (all below horizon, filters unavailable, etc.)
+                // it broadcasts "TargetScheduler-WaitStart" and resumes with "TargetScheduler-NewTargetStart".
+                // This is external-dependent idle time, not overhead — subtracted from window in ReportGenerator.
+                else if (source == "Symbol.cs" && member == "OnMessageReceived") {
+                    if (message.Contains("TargetScheduler-WaitStart")) {
+                        schedulerWaitStart = timestamp;
+                    } else if (message.Contains("TargetScheduler-NewTargetStart") && schedulerWaitStart.HasValue) {
+                        events.Add(new TimingEvent {
+                            EventType = "SchedulerWait",
+                            StartTime = schedulerWaitStart.Value,
+                            EndTime = timestamp,
+                            DurationSeconds = (timestamp - schedulerWaitStart.Value).TotalSeconds,
+                            Details = "Target Scheduler waiting for available target"
+                        });
+                        schedulerWaitStart = null;
+                    }
+                }
+
                 // === MeridianFlipVM.cs|DoMeridianFlip — trigger-based flip exit ===
                 else if (source == "MeridianFlipVM.cs" && member == "DoMeridianFlip") {
                     if (message.StartsWith("Meridian Flip - Exiting meridian flip") && meridianFlipTriggerStart.HasValue) {
@@ -358,18 +384,45 @@ namespace NINA.Plugin.NightSummary.Data {
                         meridianFlipTriggerStart = null;
                     }
                 }
+
+                // === WhenCommon.cs|InterruptWhen — sequence cancelled (e.g. roof close) ===
+                // When WhenUnsafe/similar triggers an interrupt, any in-flight SequenceItems
+                // (StartGuiding retrying, etc.) never get a Finishing or ERROR line. Flush all
+                // pendingStarts at the cancel timestamp so their wall time is credited.
+                else if (source == "WhenCommon.cs" && member == "InterruptWhen"
+                         && message.StartsWith("Canceling sequence")) {
+                    foreach (var kvp in pendingStarts) {
+                        var cancelType = ItemCategoryMap.TryGetValue(kvp.Key, out var cm) ? cm : kvp.Key;
+                        events.Add(new TimingEvent {
+                            EventType = cancelType,
+                            StartTime = kvp.Value,
+                            EndTime = timestamp,
+                            DurationSeconds = (timestamp - kvp.Value).TotalSeconds,
+                            Details = "Cancelled"
+                        });
+                    }
+                    pendingStarts.Clear();
+                }
             }
 
-            // Emit unmatched exposure as aborted (e.g. cancelled by unsafe trigger)
+            // Emit unmatched exposure as aborted (e.g. cancelled by unsafe trigger).
+            // Cap duration: an aborted exposure can't have run longer than the requested
+            // exposure time + a download grace. Without capping, the orphan stretches to
+            // end-of-log and creates a ghost overhead event (e.g. 2h15m of "AbortedExposure"
+            // after NINA kept running post-sequence-stop). Fallback cap = 10 min when
+            // requested duration isn't known.
             if (exposureStart.HasValue) {
+                var rawDuration = (sessionEnd - exposureStart.Value).TotalSeconds;
+                var cap         = exposureRequestedSeconds > 0 ? exposureRequestedSeconds + 30 : 600;
+                var duration    = Math.Min(rawDuration, cap);
                 events.Add(new TimingEvent {
                     EventType = "AbortedExposure",
                     StartTime = exposureStart.Value,
-                    EndTime = sessionEnd,
-                    DurationSeconds = (sessionEnd - exposureStart.Value).TotalSeconds,
+                    EndTime = exposureStart.Value.AddSeconds(duration),
+                    DurationSeconds = duration,
                     Details = exposureDetails
                 });
-                Logger.Warning($"NightSummary: LogParser — exposure started at {exposureStart.Value:o} was aborted (no matching finish)");
+                Logger.Warning($"NightSummary: LogParser — exposure started at {exposureStart.Value:o} was aborted (no matching finish, duration capped at {duration:F0}s of raw {rawDuration:F0}s)");
             }
             foreach (var pending in pendingStarts)
                 Logger.Warning($"NightSummary: LogParser — unmatched {pending.Key} start at {pending.Value:o}");

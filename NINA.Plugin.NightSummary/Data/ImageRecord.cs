@@ -64,8 +64,8 @@ namespace NINA.Plugin.NightSummary.Data {
         public double? WindDirection  { get; set; }  // wind direction degrees (0-360)
         public double? WindGust       { get; set; }  // peak 3-second wind gust m/s
 
-        // Target Scheduler grading; -1 = no TS match or TS not installed
-        public int    GradingStatus { get; set; }
+        // Target Scheduler grading; -1 = no TS match or TS not installed, 0 = TS Pending, 1 = TS Accepted, 2 = TS Rejected
+        public int    GradingStatus { get; set; } = -1;
         public string RejectReason  { get; set; }
 
         // Frame type — "LIGHT", "DARK", "FLAT", "BIAS", "SNAPSHOT"; empty = unknown (pre-v2.7 data)
