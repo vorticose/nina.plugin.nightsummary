@@ -2820,11 +2820,14 @@ function buildActivityWaveform(sessions) {
     return 'hsl(213,' + Math.round(50 + t * 40) + '%,' + Math.round(15 + t * 55) + '%)';
   }
 
+  var barData = [];
+
   var svg = '<svg class="lifetime-waveform" viewBox="0 0 ' + W + ' ' + H + '" ';
   svg += 'preserveAspectRatio="xMinYMid meet" ';
   svg += 'width="' + W + '" height="' + H + '" style="max-width:100%;height:auto">';
 
   svg += '<line x1="0" y1="' + CHART_H + '" x2="' + W + '" y2="' + CHART_H + '" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>';
+  svg += '<line class="lw-cursor" x1="-99" y1="0" x2="-99" y2="' + CHART_H + '" stroke="rgba(255,255,255,0.7)" stroke-width="1.5" pointer-events="none"/>';
 
   // Adaptive x-axis: daily ticks on short spans, weekly on medium, monthly on long
   var DAY_MS = 86400000;
@@ -2881,6 +2884,7 @@ function buildActivityWaveform(sessions) {
     var tooltip = (tgtStr ? tgtStr + '\n' : '') + fmtDate(s.sessionStart) + ' \u00b7 ' + fmt(s.totalIntegrationSeconds || 0) + ' \u00b7 ' + (s.imageCount || 0) + ' images';
     var hColor = barHeatColor(normInteg);
     var glowOpacity = (0.05 + normInteg * 0.25).toFixed(2);
+    barData.push({x: (x + BAR_W / 2).toFixed(1), d: (s.sessionStart || '').substring(0, 10), i: s.totalIntegrationSeconds || 0, n: s.imageCount || 0, t: (s.targets || []).join(', ')});
     svg += '<rect x="' + (x - 2).toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + (BAR_W + 4) + '" height="' + barH.toFixed(1) + '" fill="' + hColor + '" opacity="' + glowOpacity + '" rx="2"/>';
     var bar = '<rect class="lw-bar" x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + BAR_W + '" height="' + barH.toFixed(1) + '" fill="' + hColor + '" rx="2"><title>' + esc(tooltip) + '</title></rect>';
     if (!isMobile && s.sessionId && s.hasReport) {
@@ -2891,6 +2895,8 @@ function buildActivityWaveform(sessions) {
   });
 
   svg += '</svg>';
+  var barsJson = JSON.stringify(barData).replace(/"/g, '&quot;');
+  svg = svg.replace('class="lifetime-waveform"', 'class="lifetime-waveform" data-bars="' + barsJson + '"');
   return svg;
 }
 
@@ -3028,7 +3034,7 @@ function renderLifetimeStrip(sessions) {
   html += '</div>';
   html += '</div>';
   if (hasChart) html += '<div class="lifetime-strip-handle"></div>';
-  if (waveform) html += '<div class="lifetime-waveform-slot"><div class="lifetime-chart-label">Session Activity \u00b7 ' + esc(fmtActivityRange(sessions)) + '</div>' + waveform + '</div>';
+  if (waveform) html += '<div class="lifetime-waveform-slot"><div class="lifetime-chart-label">Session Activity \u00b7 ' + esc(fmtActivityRange(sessions)) + '</div><div class="lw-scrubber-info"></div>' + waveform + '</div>';
   if (calendar) html += '<div class="lifetime-calendar-slot" style="display:none">' + calendar + '</div>';
   html += '</div>';
   return html;
@@ -3049,6 +3055,61 @@ function fmtActivityRange(sessions) {
 
 function toggleLifetimeExpand(strip) {
   strip.classList.toggle('lifetime-strip--expanded');
+}
+
+function initWaveformScrubber(container) {
+  if (window.innerWidth >= 720) return;
+  var slot = container.querySelector('.lifetime-waveform-slot');
+  if (!slot) return;
+  var svg = slot.querySelector('svg.lifetime-waveform');
+  if (!svg) return;
+  var bars = [];
+  try { bars = JSON.parse(svg.getAttribute('data-bars') || '[]'); } catch (e) {}
+  if (!bars.length) return;
+  var cursor = svg.querySelector('.lw-cursor');
+  var info = slot.querySelector('.lw-scrubber-info');
+  var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  function findNearest(clientX) {
+    var rect = svg.getBoundingClientRect();
+    var frac = (clientX - rect.left) / rect.width;
+    var svgW = parseFloat(svg.getAttribute('width') || '680');
+    var touchX = frac * svgW;
+    var best = null, bestDist = Infinity;
+    bars.forEach(function(b) {
+      var d = Math.abs(parseFloat(b.x) - touchX);
+      if (d < bestDist) { bestDist = d; best = b; }
+    });
+    return best;
+  }
+
+  function showAt(clientX) {
+    var b = findNearest(clientX);
+    if (!b) return;
+    if (cursor) { cursor.setAttribute('x1', b.x); cursor.setAttribute('x2', b.x); }
+    if (info && b.d) {
+      var dt = new Date(b.d + 'T12:00:00');
+      var dateStr = MONTHS[dt.getMonth()] + ' ' + dt.getDate() + ', ' + dt.getFullYear();
+      info.innerHTML =
+        '<span class="lw-si-date">' + esc(dateStr) + '</span>' +
+        '<span class="lw-si-dot">\u00b7</span>' +
+        '<span class="lw-si-stat">' + fmt(b.i) + '</span>' +
+        '<span class="lw-si-dot">\u00b7</span>' +
+        '<span class="lw-si-stat">' + b.n + ' images</span>' +
+        (b.t ? '<span class="lw-si-dot">\u00b7</span><span class="lw-si-tgts">' + esc(b.t) + '</span>' : '');
+      info.classList.add('lw-scrubber-active');
+    }
+  }
+
+  function hide() {
+    if (cursor) { cursor.setAttribute('x1', '-99'); cursor.setAttribute('x2', '-99'); }
+    if (info) info.classList.remove('lw-scrubber-active');
+  }
+
+  svg.addEventListener('touchstart', function(e) { e.preventDefault(); showAt(e.touches[0].clientX); }, {passive: false});
+  svg.addEventListener('touchmove',  function(e) { e.preventDefault(); showAt(e.touches[0].clientX); }, {passive: false});
+  svg.addEventListener('touchend',    hide);
+  svg.addEventListener('touchcancel', hide);
 }
 
 function renderHeroSection(session) {
@@ -3137,6 +3198,8 @@ function renderSessionsV2(el, sub, params) {
   }
 
   el.innerHTML = html;
+
+  initWaveformScrubber(el);
 
   // Load hero card assets
   loadThumbnails([hero]);

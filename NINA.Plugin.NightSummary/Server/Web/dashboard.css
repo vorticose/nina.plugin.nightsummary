@@ -1795,6 +1795,21 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   font-family: inherit;
 }
 .lw-bar { cursor: pointer; }
+
+.lw-scrubber-info {
+  display: none;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  padding: 6px 2px;
+  font-size: 13px;
+  min-height: 32px;
+}
+.lw-scrubber-info.lw-scrubber-active { display: flex; }
+.lw-si-date { font-weight: 700; color: var(--text); }
+.lw-si-dot  { color: var(--text-tertiary); }
+.lw-si-stat { color: var(--text-secondary, #aaa); }
+.lw-si-tgts { color: var(--text-tertiary); font-size: 12px; }
 .lifetime-waveform a:hover .lw-bar,
 .lifetime-calendar a:hover .lifetime-heatmap-cell {
   stroke: var(--accent-lighter, #c0d8ff);
