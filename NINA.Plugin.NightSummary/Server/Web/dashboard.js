@@ -2810,7 +2810,8 @@ function buildActivityWaveform(sessions) {
     var g = uniqueDayMs[gi] - uniqueDayMs[gi - 1];
     if (g > 0 && g < minGapMs) minGapMs = g;
   }
-  var W = 680, CHART_H = 64, LABEL_H = 28, H = CHART_H + LABEL_H;
+  var isMobile = window.innerWidth < 720;
+  var W = 680, CHART_H = isMobile ? 110 : 64, LABEL_H = isMobile ? 36 : 28, H = CHART_H + LABEL_H;
   var availPx = uniqueDayMs.length > 1 ? (minGapMs / dateSpan) * W : W;
   var BAR_W = Math.max(6, Math.min(Math.floor(availPx * 0.75), 28));
 

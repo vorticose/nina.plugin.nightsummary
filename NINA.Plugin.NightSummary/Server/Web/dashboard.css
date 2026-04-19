@@ -1857,6 +1857,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 
 @media (max-width: 720px) {
   .lifetime-strip { padding: 14px 16px; }
+  .lifetime-stats-row { justify-content: center; }
   .lifetime-stats { gap: 6px; }
   .lifetime-card-stat { padding: 8px 14px; }
   .lifetime-heatmap-slot,
