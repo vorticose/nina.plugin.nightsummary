@@ -1864,6 +1864,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   letter-spacing: 1px;
   color: var(--text-tertiary);
   margin-bottom: 8px;
+  text-align: center;
 }
 
 .lifetime-waveform-slot,
