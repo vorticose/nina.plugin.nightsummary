@@ -2995,20 +2995,18 @@ function renderLifetimeStrip(sessions) {
   if (!sessions || sessions.length === 0) return '';
   var totalSessions = sessions.length;
   var totalIntegSec = sessions.reduce(function(sum, s) { return sum + (s.totalIntegrationSeconds || 0); }, 0);
+  var totalImages = sessions.reduce(function(sum, s) { return sum + (s.imageCount || 0); }, 0);
   var allTargets = {};
   sessions.forEach(function(s) { (s.targets || []).forEach(function(t) { allTargets[t] = true; }); });
   var targetCount = Object.keys(allTargets).length;
-  var firstSession = sessions.reduce(function(min, s) { return (!min || s.sessionStart < min) ? s.sessionStart : min; }, null);
 
   var html = '<div class="lifetime-strip">';
   html += '<div class="lifetime-stats-row">';
   html += '<div class="lifetime-stats">';
   html += '<div class="card-stat lifetime-card-stat"><div class="card-stat-value">' + totalSessions + '</div><div class="card-stat-label">Sessions</div></div>';
-  html += '<div class="card-stat lifetime-card-stat"><div class="card-stat-value">' + (totalIntegSec / 3600).toFixed(1) + '<span class="card-stat-unit">h</span></div><div class="card-stat-label">Integration</div></div>';
   html += '<div class="card-stat lifetime-card-stat"><div class="card-stat-value">' + targetCount + '</div><div class="card-stat-label">Targets</div></div>';
-  if (firstSession) {
-    html += '<div class="card-stat lifetime-card-stat"><div class="card-stat-value" style="white-space:nowrap">' + esc(fmtSinceDate(firstSession)) + '</div><div class="card-stat-label">Since</div></div>';
-  }
+  html += '<div class="card-stat lifetime-card-stat"><div class="card-stat-value">' + totalImages + '</div><div class="card-stat-label">Images</div></div>';
+  html += '<div class="card-stat lifetime-card-stat"><div class="card-stat-value">' + (totalIntegSec / 3600).toFixed(1) + '<span class="card-stat-unit">h</span></div><div class="card-stat-label">Integration</div></div>';
   html += '</div>';
   html += '<div class="lv-toggle">';
   html += '<button class="lv-toggle-btn lv-toggle-active" onclick="toggleLifetimeView(this,\'waveform\')">Bar</button>';
