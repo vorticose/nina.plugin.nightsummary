@@ -2827,7 +2827,6 @@ function buildActivityWaveform(sessions) {
   svg += 'width="' + W + '" height="' + H + '" style="max-width:100%;height:auto">';
 
   svg += '<line x1="0" y1="' + CHART_H + '" x2="' + W + '" y2="' + CHART_H + '" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>';
-  svg += '<line class="lw-cursor" x1="-99" y1="0" x2="-99" y2="' + CHART_H + '" stroke="rgba(255,255,255,0.7)" stroke-width="1.5" pointer-events="none"/>';
 
   // Adaptive x-axis: daily ticks on short spans, weekly on medium, monthly on long
   var DAY_MS = 86400000;
@@ -2884,7 +2883,7 @@ function buildActivityWaveform(sessions) {
     var tooltip = (tgtStr ? tgtStr + '\n' : '') + fmtDate(s.sessionStart) + ' \u00b7 ' + fmt(s.totalIntegrationSeconds || 0) + ' \u00b7 ' + (s.imageCount || 0) + ' images';
     var hColor = barHeatColor(normInteg);
     var glowOpacity = (0.05 + normInteg * 0.25).toFixed(2);
-    barData.push({x: (x + BAR_W / 2).toFixed(1), d: (s.sessionStart || '').substring(0, 10), i: s.totalIntegrationSeconds || 0, n: s.imageCount || 0, t: (s.targets || []).join(', ')});
+    barData.push({x: (x + BAR_W / 2).toFixed(1), rx: x.toFixed(1), d: (s.sessionStart || '').substring(0, 10), i: s.totalIntegrationSeconds || 0, n: s.imageCount || 0, t: (s.targets || []).join(', ')});
     svg += '<rect x="' + (x - 2).toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + (BAR_W + 4) + '" height="' + barH.toFixed(1) + '" fill="' + hColor + '" opacity="' + glowOpacity + '" rx="2"/>';
     var bar = '<rect class="lw-bar" x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + BAR_W + '" height="' + barH.toFixed(1) + '" fill="' + hColor + '" rx="2"><title>' + esc(tooltip) + '</title></rect>';
     if (!isMobile && s.sessionId && s.hasReport) {
@@ -3066,10 +3065,11 @@ function initWaveformScrubber(container) {
   var bars = [];
   try { bars = JSON.parse(svg.getAttribute('data-bars') || '[]'); } catch (e) {}
   if (!bars.length) return;
-  var cursor = svg.querySelector('.lw-cursor');
   var info = slot.querySelector('.lw-scrubber-info');
   var strip = slot.closest('.lifetime-strip');
   if (strip && info) strip.appendChild(info);
+  var barRects = Array.prototype.slice.call(svg.querySelectorAll('.lw-bar'));
+  var currentBar = null;
   var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
   function findNearest(clientX) {
@@ -3088,7 +3088,10 @@ function initWaveformScrubber(container) {
   function showAt(clientX) {
     var b = findNearest(clientX);
     if (!b) return;
-    if (cursor) { cursor.setAttribute('x1', b.x); cursor.setAttribute('x2', b.x); }
+    if (currentBar) currentBar.classList.remove('lw-bar-selected');
+    currentBar = null;
+    barRects.forEach(function(r) { if (r.getAttribute('x') === b.rx) currentBar = r; });
+    if (currentBar) currentBar.classList.add('lw-bar-selected');
     if (info && b.d) {
       var dt = new Date(b.d + 'T12:00:00');
       var dateStr = MONTHS[dt.getMonth()] + ' ' + dt.getDate() + ', ' + dt.getFullYear();
@@ -3102,7 +3105,7 @@ function initWaveformScrubber(container) {
   }
 
   function hide() {
-    if (cursor) { cursor.setAttribute('x1', '-99'); cursor.setAttribute('x2', '-99'); }
+    if (currentBar) { currentBar.classList.remove('lw-bar-selected'); currentBar = null; }
     if (info) info.classList.remove('lw-scrubber-active');
   }
 
