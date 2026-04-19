@@ -119,7 +119,7 @@ namespace NINA.Plugin.NightSummary.Session {
             try {
                 database.SaveEvent(new SessionEvent {
                     SessionId   = currentSessionId,
-                    Timestamp   = DateTime.Now,
+                    Timestamp   = Clock.Now(),
                     EventType   = eventType,
                     Description = description,
                     AfSucceeded = afSucceeded,

@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [dev]
+    branches: [dev, v3-dev, 'feature/**']
   pull_request:
     branches: [main]
 
@@ -54,3 +54,26 @@ jobs:
         with:
           name: coverage-report
           path: ./coverage-report/
+
+      - name: Package plugin
+        shell: pwsh
+        run: |
+          $buildDir = "NINA.Plugin.NightSummary/bin/Release/net8.0-windows"
+          $outDir = "artifact"
+          New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+          Get-ChildItem -Path $buildDir -Recurse -File |
+            Where-Object { $_.Extension -ne ".pdb" } |
+            ForEach-Object {
+              $rel = $_.FullName.Substring((Resolve-Path $buildDir).Path.Length + 1)
+              $dest = Join-Path $outDir $rel
+              $destDir = Split-Path $dest -Parent
+              if (!(Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
+              Copy-Item $_.FullName $dest
+            }
+
+      - name: Upload plugin build
+        uses: actions/upload-artifact@v4
+        with:
+          name: NightSummary-dev-${{ github.sha }}
+          path: artifact/
+          retention-days: 30

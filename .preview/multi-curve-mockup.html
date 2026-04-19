@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Multi-Curve Chart — Concept Mockup</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #111224; color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    padding: 32px;
+  }
+  h1 { color: #a0c4ff; font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+  .intro {
+    color: #888; font-size: 13px; max-width: 820px; line-height: 1.6;
+    margin-bottom: 32px; border-left: 3px solid #2d2d5e; padding-left: 12px;
+  }
+  .section-head {
+    color: #555; font-size: 11px; text-transform: uppercase; letter-spacing: 2px;
+    margin: 36px 0 16px; border-bottom: 1px solid #2d2d5e; padding-bottom: 6px;
+    max-width: 820px;
+  }
+  .scenario { margin-bottom: 32px; max-width: 820px; }
+  .scenario-title { font-size: 13px; color: #c0d8ff; font-weight: 600; margin-bottom: 3px; }
+  .scenario-note { font-size: 12px; color: #666; margin-bottom: 8px; line-height: 1.4; }
+  .seq-vis { font-family: monospace; font-size: 11px; color: #555; margin-bottom: 10px; }
+  .tradeoffs {
+    margin-top: 40px; max-width: 820px;
+    border: 1px solid #2d2d5e; border-radius: 6px;
+    padding: 16px 20px; background: #181930;
+  }
+  .tradeoffs h2 { color: #a0c4ff; font-size: 12px; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; }
+  .tradeoffs ul { color: #aaa; font-size: 13px; line-height: 1.9; padding-left: 16px; }
+  .tradeoffs li b { color: #e0e0e0; }
+  code { background: #1e1f3c; padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+</style>
+</head>
+<body>
+<h1>Multi-Curve Chart — Concept Mockup</h1>
+<p class="intro">
+  HFR (left axis, solid dots) + Median ADU (right axis, hollow dots) vs. time.
+  Each filter gets its own color from <code>FILTER_TYPE_CHART_COLORS</code>.
+  L lets in far more light than RGB so its ADU is ~4× higher — the right axis
+  shows this dramatically. Three LRGB acquisition patterns + one narrowband case.
+</p>
+
+<div class="section-head">LRGB — Acquisition Strategy Comparison</div>
+
+<div class="scenario">
+  <div class="scenario-title">Strategy A — Block Sequence</div>
+  <div class="seq-vis">L L L L L L L L L L L L · R R R R R R R R R R R R · G G G G G G G G G G G G · B B B B B B B B B B B B</div>
+  <div class="scenario-note">Each filter completed before moving to the next. Both HFR and ADU curves are contiguous — cleanest visual. ADU drop is clearly visible at each filter switch.</div>
+  <div id="chart-block"></div>
+</div>
+
+<div class="scenario">
+  <div class="scenario-title">Strategy B — Ratio Cycling (LLLRGB)</div>
+  <div class="seq-vis">L L L R G B · L L L R G B · L L L R G B · L L L R G B · L L L R G B · L L L R G B · L L L R G B · L L L R G B</div>
+  <div class="scenario-note">L gets 3× denser sampling; R/G/B have wider gaps. ADU separates the filters more visibly since L is always a cluster high on the right axis.</div>
+  <div id="chart-lllrgb"></div>
+</div>
+
+<div class="scenario">
+  <div class="scenario-title">Strategy C — Pure Interleave (LRGB)</div>
+  <div class="seq-vis">L R G B · L R G B · L R G B · L R G B · L R G B · L R G B · L R G B · L R G B · L R G B · L R G B · L R G B · L R G B</div>
+  <div class="scenario-note">All four filters alternate every frame. ADU values jump up and down between L and RGB at every step — the ADU curve becomes very jagged on the right axis.</div>
+  <div id="chart-lrgb"></div>
+</div>
+
+<div class="section-head">Narrowband</div>
+
+<div class="scenario">
+  <div class="scenario-title">Narrowband — HOO Interleaved (Ha + 2× OIII)</div>
+  <div class="seq-vis">Ha OIII OIII · Ha OIII OIII · Ha OIII OIII · Ha OIII OIII · Ha OIII OIII · Ha OIII OIII · Ha OIII OIII · Ha OIII OIII</div>
+  <div class="scenario-note">ADU values are close between Ha and OIII (both narrowband). HFR is also similar so both metrics cluster together — easiest to read of all four scenarios.</div>
+  <div id="chart-nb"></div>
+</div>
+
+<div class="tradeoffs">
+  <h2>Observations with Dual-Axis + Per-Filter Coloring</h2>
+  <ul>
+    <li><b>ADU separation:</b> L's high ADU makes it instantly visually distinct on the right axis even in interleaved sequences — you can see the L cluster high and RGB cluster low</li>
+    <li><b>Block (A):</b> Cleanest — each curve is a solid line, ADU step-down at filter switches is a clear visual signature</li>
+    <li><b>Ratio cycling (B):</b> Readable — L curves are denser, sparse R/G/B still track the trend</li>
+    <li><b>Pure interleave (C):</b> ADU zigzags sharply between L and RGB levels every frame — right axis becomes very noisy</li>
+    <li><b>Shared right axis:</b> When L ADU (~15–18k) and RGB ADU (~3–5k) share one scale, the RGB variation is compressed into a narrow band at the bottom of the right axis, making fine RGB ADU trends hard to see — the chip selector avoids this by rescaling per filter</li>
+    <li><b>Narrowband:</b> Works well — ADU values are similar across filters and HFR tracks closely, so two clean parallel curves emerge</li>
+  </ul>
+</div>
+
+<script>
+// ── Filter colors (FILTER_TYPE_CHART_COLORS from dashboard.js) ────────────────
+var FC = {
+  H:'#E53935', S:'#C62828', O:'#00ACC1', N:'#FB8C00',
+  L:'#DCE1E8', R:'#FF7043', G:'#66BB6A', B:'#42A5F5',
+};
+
+// ── Chart dimensions ──────────────────────────────────────────────────────────
+var W=820, H=240, PL=46, PR=68, PT=22, PB=38;
+var plotW = W-PL-PR;   // 706
+var plotH = H-PT-PB;   // 180
+
+// ── Data generators ───────────────────────────────────────────────────────────
+// Time-based: session runs from t=0 to t=360 min (22:00–04:00)
+// x values are elapsed minutes.
+
+var SESSION_MIN = 360;  // 6 hours
+
+// HFR: starts ~2.0, improves to ~1.5 around 40% through (AF event), then slow rise
+function hfrAt(t, fo) {
+  // fo = filter offset (0 = best, 0.7 = worst)
+  var p = t / SESSION_MIN;
+  var base = 2.0 - 0.55 * Math.sin(p * Math.PI * 0.9);
+  var af   = (p > 0.38 && p < 0.44) ? -0.10 : 0;
+  var noise = Math.sin(t * 0.11 + fo * 17) * 0.04;
+  return Math.round((base + af + noise + fo * 0.055) * 100) / 100;
+}
+
+// Median ADU per filter — large variation between L and RGB
+var ADU_BASE  = { L:15200, R:4100, G:3600, B:2900, H:1300, O:980, S:820 };
+var ADU_SLOPE = { L:7.5,   R:3.8,  G:3.3,  B:2.8,  H:1.4,  O:1.1, S:0.9 }; // ADU/min rise (sky bg)
+
+function aduAt(t, key) {
+  var base  = ADU_BASE[key]  || 2000;
+  var slope = ADU_SLOPE[key] || 3;
+  var noise = Math.sin(t * 0.073 + key.charCodeAt(0) * 0.8) * base * 0.035;
+  return Math.round(base + slope * t + noise);
+}
+
+// ── Time formatter (22:00 start) ──────────────────────────────────────────────
+function fmtTime(elapsed) {
+  var total = (22 * 60 + elapsed) % (24 * 60);
+  var h = Math.floor(total / 60), m = Math.round(total % 60);
+  return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
+}
+function fmtADU(v) {
+  return v >= 1000 ? (v / 1000).toFixed(0) + 'k' : String(v);
+}
+
+// ── Chart renderer ────────────────────────────────────────────────────────────
+// primarySeries  = [{key, label, pts:[{x,hfr}]}]  — HFR, left axis, solid dots
+// secondarySeries = [{key, label, pts:[{x,adu}]}]  — ADU, right axis, hollow dots
+// opts: { minHfr, maxHfr, hfrStep, maxAdu, aduStep, events:[{x,label}] }
+function makeChart(primarySeries, secondarySeries, opts) {
+  var minL = opts.minHfr, maxL = opts.maxHfr, rangeL = maxL - minL;
+  var minR = 0, maxR = opts.maxAdu, rangeR = maxR - minR;
+  var hfrStep = opts.hfrStep || 0.2;
+  var aduStep = opts.aduStep || 4000;
+
+  // X range from data
+  var allX = [];
+  primarySeries.forEach(function(s){ s.pts.forEach(function(p){ allX.push(p.x); }); });
+  var minX = 0, maxX = SESSION_MIN, xRange = maxX;
+
+  function xp(x) { return (PL + (x / xRange) * plotW).toFixed(1); }
+  function yL(v) { return (PT + plotH - ((v - minL) / rangeL) * plotH).toFixed(1); }
+  function yR(v) { return (PT + plotH - ((v - minR) / rangeR) * plotH).toFixed(1); }
+
+  var Cbg   = '#1a1b2e';
+  var Cgrid = '#2d2d5e';
+  var Caxis = '#3a3a6a';
+  var Clbl  = '#666';
+  var CrLbl = '#7eb8f7';  // right axis uses accent blue (matches NS convention)
+
+  var s = '';
+  s += '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+W+' '+H+'" style="width:100%;display:block;font-family:sans-serif">';
+  s += '<rect width="'+W+'" height="'+H+'" fill="'+Cbg+'" rx="6"/>';
+
+  // ── Horizontal grid + left Y labels (HFR) ────────────────────────────────
+  for (var v = minL; v <= maxL + 0.001; v = Math.round((v + hfrStep) * 1000) / 1000) {
+    var yy = yL(v);
+    s += '<line x1="'+PL+'" y1="'+yy+'" x2="'+(W-PR)+'" y2="'+yy+'" stroke="'+Cgrid+'" stroke-width="1"/>';
+    s += '<text x="'+(PL-5)+'" y="'+(parseFloat(yy)+4).toFixed(1)+'" fill="'+Clbl+'" font-size="11" text-anchor="end">'+v.toFixed(1)+'</text>';
+  }
+
+  // ── Right Y axis labels (ADU) ─────────────────────────────────────────────
+  var rightLineX = W - PR;
+  s += '<line x1="'+rightLineX+'" y1="'+PT+'" x2="'+rightLineX+'" y2="'+(PT+plotH)+'" stroke="'+Caxis+'" stroke-width="1"/>';
+  for (var rv = minR; rv <= maxR + 1; rv += aduStep) {
+    var ryy = yR(rv);
+    s += '<text x="'+(rightLineX+5)+'" y="'+(parseFloat(ryy)+4).toFixed(1)+'" fill="'+CrLbl+'" font-size="11" text-anchor="start">'+fmtADU(rv)+'</text>';
+  }
+  // Right axis title
+  var rtx = W - 10, rty = H / 2;
+  s += '<text x="'+rtx+'" y="'+rty+'" fill="'+CrLbl+'" font-size="11" text-anchor="middle" transform="rotate(90,'+rtx+','+rty+')">Median ADU</text>';
+
+  // ── X axis: time ticks every 60 min ──────────────────────────────────────
+  for (var t = 0; t <= SESSION_MIN; t += 60) {
+    var xx = xp(t);
+    s += '<line x1="'+xx+'" y1="'+PT+'" x2="'+xx+'" y2="'+(PT+plotH)+'" stroke="'+Cgrid+'" stroke-width="1"/>';
+    s += '<text x="'+xx+'" y="'+(PT+plotH+14)+'" fill="'+Clbl+'" font-size="11" text-anchor="middle">'+fmtTime(t)+'</text>';
+  }
+
+  // ── Left and bottom axes ──────────────────────────────────────────────────
+  s += '<line x1="'+PL+'" y1="'+PT+'" x2="'+PL+'" y2="'+(PT+plotH)+'" stroke="'+Caxis+'" stroke-width="1"/>';
+  s += '<line x1="'+PL+'" y1="'+(PT+plotH)+'" x2="'+(W-PR)+'" y2="'+(PT+plotH)+'" stroke="'+Caxis+'" stroke-width="1"/>';
+
+  // Left Y axis title
+  s += '<text x="12" y="'+(H/2)+'" fill="'+Clbl+'" font-size="11" text-anchor="middle" transform="rotate(-90,12,'+(H/2)+')">HFR (arcsec)</text>';
+
+  // ── AF event markers ──────────────────────────────────────────────────────
+  if (opts.events) {
+    opts.events.forEach(function(ev) {
+      var ex = xp(ev.x);
+      s += '<line x1="'+ex+'" y1="'+PT+'" x2="'+ex+'" y2="'+(PT+plotH)+'" stroke="#7eb8f7" stroke-width="1" stroke-dasharray="3,3" opacity="0.55"/>';
+      s += '<text x="'+(parseFloat(ex)+3).toFixed(1)+'" y="'+(PT+11)+'" fill="#7eb8f7" font-size="9">'+ev.label+'</text>';
+    });
+  }
+
+  // ── ADU curves (drawn first, behind HFR) — hollow dots + dashed lines ────
+  secondarySeries.forEach(function(series) {
+    var col = FC[series.key] || '#aaa';
+    var pts = series.pts;
+    if (pts.length > 1) {
+      var d = pts.map(function(p,i){ return (i===0?'M':'L')+xp(p.x)+','+yR(p.y); }).join(' ');
+      s += '<path d="'+d+'" fill="none" stroke="'+col+'" stroke-width="1.5" stroke-dasharray="4,2" opacity="0.5"/>';
+    }
+    pts.forEach(function(p) {
+      var tip = series.label+' · '+fmtTime(p.x)+' · Median ADU '+p.y;
+      s += '<circle cx="'+xp(p.x)+'" cy="'+yR(p.y)+'" r="3" fill="none" stroke="'+col+'" stroke-width="1.5"><title>'+tip+'</title></circle>';
+    });
+  });
+
+  // ── HFR curves — solid dots + solid lines ─────────────────────────────────
+  primarySeries.forEach(function(series) {
+    var col = FC[series.key] || '#aaa';
+    var pts = series.pts;
+    if (pts.length > 1) {
+      var d = pts.map(function(p,i){ return (i===0?'M':'L')+xp(p.x)+','+yL(p.y); }).join(' ');
+      s += '<path d="'+d+'" fill="none" stroke="'+col+'" stroke-width="1.5" opacity="0.65"/>';
+    }
+    pts.forEach(function(p) {
+      var tip = series.label+' · '+fmtTime(p.x)+' · HFR '+p.hfr.toFixed(2);
+      s += '<circle cx="'+xp(p.x)+'" cy="'+yL(p.hfr)+'" r="3" fill="'+col+'"><title>'+tip+'</title></circle>';
+    });
+  });
+
+  // ── Filter legend (top-left, inside chart) ────────────────────────────────
+  var filters = primarySeries;
+  var legItemW = 60;
+  var legW = filters.length * legItemW + 10;
+  var legH = 20;
+  var legX = PL + 8;
+  var legY = PT + 5;
+  s += '<rect x="'+legX+'" y="'+legY+'" width="'+legW+'" height="'+legH+'" rx="3" fill="rgba(22,23,44,0.95)" stroke="'+Cgrid+'" stroke-width="1"/>';
+  filters.forEach(function(series, i) {
+    var col = FC[series.key] || '#aaa';
+    var ix = legX + 8 + i * legItemW;
+    var iy = legY + 10;
+    s += '<line x1="'+ix+'" y1="'+iy+'" x2="'+(ix+12)+'" y2="'+iy+'" stroke="'+col+'" stroke-width="2"/>';
+    s += '<circle cx="'+(ix+6)+'" cy="'+iy+'" r="3" fill="'+col+'"/>';
+    s += '<text x="'+(ix+16)+'" y="'+(iy+4)+'" fill="'+col+'" font-size="10" font-weight="600">'+series.label+'</text>';
+  });
+
+  // ── Metric legend (top-right, inside chart) ───────────────────────────────
+  var mlx = W - PR - 150, mly = PT + 5;
+  s += '<rect x="'+mlx+'" y="'+mly+'" width="144" height="20" rx="3" fill="rgba(22,23,44,0.95)" stroke="'+Cgrid+'" stroke-width="1"/>';
+  // HFR: solid dot + solid line
+  s += '<line x1="'+(mlx+8)+'" y1="'+(mly+10)+'" x2="'+(mlx+20)+'" y2="'+(mly+10)+'" stroke="'+Clbl+'" stroke-width="1.5"/>';
+  s += '<circle cx="'+(mlx+14)+'" cy="'+(mly+10)+'" r="3" fill="'+Clbl+'"/>';
+  s += '<text x="'+(mlx+24)+'" y="'+(mly+14)+'" fill="'+Clbl+'" font-size="10">HFR</text>';
+  // ADU: hollow dot + dashed line
+  s += '<line x1="'+(mlx+62)+'" y1="'+(mly+10)+'" x2="'+(mlx+74)+'" y2="'+(mly+10)+'" stroke="'+CrLbl+'" stroke-width="1.5" stroke-dasharray="4,2"/>';
+  s += '<circle cx="'+(mlx+68)+'" cy="'+(mly+10)+'" r="3" fill="none" stroke="'+CrLbl+'" stroke-width="1.5"/>';
+  s += '<text x="'+(mlx+78)+'" y="'+(mly+14)+'" fill="'+CrLbl+'" font-size="10">Med ADU</text>';
+
+  s += '</svg>';
+  return s;
+}
+
+// ── Build per-filter series from a list of {t, key} frame assignments ─────────
+function buildSeries(assignments, filterOffsets) {
+  var byKey = {};
+  assignments.forEach(function(a) {
+    if (!byKey[a.key]) byKey[a.key] = [];
+    byKey[a.key].push(a.t);
+  });
+  var primary = [], secondary = [];
+  Object.keys(byKey).forEach(function(key) {
+    var fo = filterOffsets[key] || 0;
+    var hfrPts = byKey[key].map(function(t){ return {x:t, hfr:hfrAt(t,fo), y:hfrAt(t,fo)}; });
+    var aduPts = byKey[key].map(function(t){ return {x:t, y:aduAt(t,key)}; });
+    primary.push({key:key, label:key, pts:hfrPts});
+    secondary.push({key:key, label:key, pts:aduPts});
+  });
+  // Sort by canonical order
+  var order = ['L','R','G','B','H','O','S'];
+  function srt(arr) { arr.sort(function(a,b){ return order.indexOf(a.key)-order.indexOf(b.key); }); }
+  srt(primary); srt(secondary);
+  return {primary:primary, secondary:secondary};
+}
+
+var FO = {L:0, R:0.4, G:0.3, B:0.6};  // filter HFR offsets (B slightly worse)
+
+// ── Strategy A: Block (LLLLL...RRRRR...GGGGG...BBBBB...) ─────────────────────
+(function(){
+  var EXP_MIN = 7.5;   // 450s = 7.5 min per exposure
+  var assigns = [];
+  var keys = ['L','R','G','B'];
+  for (var fi = 0; fi < keys.length; fi++) {
+    for (var i = 0; i < 12; i++) {
+      assigns.push({key:keys[fi], t: (fi*12 + i) * EXP_MIN});
+    }
+  }
+  var d = buildSeries(assigns, FO);
+  document.getElementById('chart-block').innerHTML = makeChart(d.primary, d.secondary, {
+    minHfr:1.3, maxHfr:2.3, hfrStep:0.2,
+    maxAdu:22000, aduStep:4000,
+    events:[{x:SESSION_MIN*0.41, label:'AF'}]
+  });
+})();
+
+// ── Strategy B: LLLRGB cycling ────────────────────────────────────────────────
+(function(){
+  var EXP_MIN = 7.5;
+  var assigns = [];
+  var cyclePattern = ['L','L','L','R','G','B'];
+  for (var cycle = 0; cycle < 8; cycle++) {
+    for (var i = 0; i < cyclePattern.length; i++) {
+      assigns.push({key:cyclePattern[i], t:(cycle*6+i)*EXP_MIN});
+    }
+  }
+  var d = buildSeries(assigns, FO);
+  document.getElementById('chart-lllrgb').innerHTML = makeChart(d.primary, d.secondary, {
+    minHfr:1.3, maxHfr:2.3, hfrStep:0.2,
+    maxAdu:22000, aduStep:4000,
+    events:[{x:SESSION_MIN*0.41, label:'AF'}]
+  });
+})();
+
+// ── Strategy C: Pure LRGB interleave ──────────────────────────────────────────
+(function(){
+  var EXP_MIN = 7.5;
+  var assigns = [];
+  var cyclePattern = ['L','R','G','B'];
+  for (var cycle = 0; cycle < 12; cycle++) {
+    for (var i = 0; i < cyclePattern.length; i++) {
+      assigns.push({key:cyclePattern[i], t:(cycle*4+i)*EXP_MIN});
+    }
+  }
+  var d = buildSeries(assigns, FO);
+  document.getElementById('chart-lrgb').innerHTML = makeChart(d.primary, d.secondary, {
+    minHfr:1.3, maxHfr:2.3, hfrStep:0.2,
+    maxAdu:22000, aduStep:4000,
+    events:[{x:SESSION_MIN*0.41, label:'AF'}]
+  });
+})();
+
+// ── Narrowband HOO (Ha + 2xOIII interleaved) ──────────────────────────────────
+(function(){
+  var EXP_MIN = 10;  // 600s narrowband exposures
+  var assigns = [];
+  var FON = {H:0, O:0.35};
+  for (var i = 0; i < 36; i++) {
+    assigns.push({key:(i%3===0?'H':'O'), t:i*EXP_MIN});
+  }
+  var d = buildSeries(assigns, FON);
+  document.getElementById('chart-nb').innerHTML = makeChart(d.primary, d.secondary, {
+    minHfr:1.3, maxHfr:2.3, hfrStep:0.2,
+    maxAdu:3000, aduStep:500,
+    events:[{x:SESSION_MIN*0.41, label:'AF'}]
+  });
+})();
+</script>
+</body>
+</html>

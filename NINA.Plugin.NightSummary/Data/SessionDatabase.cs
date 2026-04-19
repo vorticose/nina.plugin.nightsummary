@@ -386,15 +386,22 @@ namespace NINA.Plugin.NightSummary.Data {
         /// </summary>
         private static void SeedTestDatabaseIfMissing(string pluginDataPath) {
             try {
-                var testDbPath = Path.Combine(pluginDataPath, "test", "nightsummary.sqlite");
-                if (File.Exists(testDbPath)) return;
-
+                var testDir    = Path.Combine(pluginDataPath, "test");
+                var testDbPath = Path.Combine(testDir, "nightsummary.sqlite");
+                var versionFile = Path.Combine(testDir, "demo.version");
                 var pluginDir  = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
                 var bundled    = Path.Combine(pluginDir, "Assets", "demo-nightsummary.sqlite");
                 if (!File.Exists(bundled)) return;
 
-                Directory.CreateDirectory(Path.GetDirectoryName(testDbPath));
-                File.Copy(bundled, testDbPath);
+                var currentVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "";
+                var existingVersion = File.Exists(versionFile) ? File.ReadAllText(versionFile).Trim() : "";
+
+                if (File.Exists(testDbPath) && currentVersion == existingVersion) return;
+
+                Directory.CreateDirectory(testDir);
+                File.Copy(bundled, testDbPath, overwrite: true);
+                File.WriteAllText(versionFile, currentVersion);
+                Logger.Info($"NightSummary: Demo database updated to version {currentVersion}");
             } catch { /* non-fatal — user can always run the seed script manually */ }
         }
 
@@ -447,6 +454,10 @@ namespace NINA.Plugin.NightSummary.Data {
                         DewPoint REAL,
                         WindSpeed REAL,
                         Pressure REAL,
+                        SkyBrightness REAL,
+                        SkyTemperature REAL,
+                        WindDirection REAL,
+                        WindGust REAL,
                         GradingStatus INTEGER DEFAULT -1,
                         RejectReason TEXT,
                         ImageType TEXT,
@@ -457,7 +468,14 @@ namespace NINA.Plugin.NightSummary.Data {
                         ReadoutMode TEXT,
                         SkyQuality REAL,
                         CloudCover REAL,
-                        SeeingFWHM REAL
+                        SeeingFWHM REAL,
+                        StatMedian REAL,
+                        StatMean REAL,
+                        StatStDev REAL,
+                        StatMAD REAL,
+                        StatMin INTEGER,
+                        StatMax INTEGER,
+                        StatBitDepth INTEGER
                     )";
 
                 using (var cmd = new SQLiteCommand(createSessions, conn))
@@ -498,6 +516,7 @@ namespace NINA.Plugin.NightSummary.Data {
                 MigrateAddColumn(conn, "Images",        "CoolerSetpoint",   "REAL");
                 MigrateAddColumn(conn, "Images",        "FocuserPosition",  "INTEGER");
                 MigrateAddColumn(conn, "Images",        "RotatorPosition",  "REAL");
+                MigrateAddColumn(conn, "Images",        "PositionAngle",    "REAL");
                 MigrateAddColumn(conn, "Images",        "Humidity",         "REAL");
                 MigrateAddColumn(conn, "Images",        "DewPoint",         "REAL");
                 MigrateAddColumn(conn, "Images",        "WindSpeed",        "REAL");
@@ -516,6 +535,49 @@ namespace NINA.Plugin.NightSummary.Data {
                 MigrateAddColumn(conn, "SessionEvents", "AfSucceeded",      "INTEGER");
                 MigrateAddColumn(conn, "SessionEvents", "AfHfr",            "REAL");
                 MigrateAddColumn(conn, "Sessions",      "SkippedExposures", "INTEGER DEFAULT 0");
+                MigrateAddColumn(conn, "Sessions",      "CameraName",       "TEXT");
+                MigrateAddColumn(conn, "Sessions",      "TelescopeName",    "TEXT");
+                MigrateAddColumn(conn, "Sessions",      "MountName",        "TEXT");
+                MigrateAddColumn(conn, "Sessions",      "FilterWheelName",  "TEXT");
+                MigrateAddColumn(conn, "Sessions",      "FocuserName",      "TEXT");
+                MigrateAddColumn(conn, "Sessions",      "RotatorName",      "TEXT");
+                MigrateAddColumn(conn, "Sessions",      "GuiderName",       "TEXT");
+                MigrateAddColumn(conn, "Sessions",      "DomeName",         "TEXT");
+                MigrateAddColumn(conn, "Sessions",      "FlatDeviceName",   "TEXT");
+                MigrateAddColumn(conn, "Sessions",      "SafetyMonitorName","TEXT");
+                MigrateAddColumn(conn, "Sessions",      "WeatherName",      "TEXT");
+                MigrateAddColumn(conn, "Sessions",      "SwitchName",       "TEXT");
+                MigrateAddColumn(conn, "Images",        "StatMedian",       "REAL");
+                MigrateAddColumn(conn, "Images",        "StatMean",         "REAL");
+                MigrateAddColumn(conn, "Images",        "StatStDev",        "REAL");
+                MigrateAddColumn(conn, "Images",        "StatMAD",          "REAL");
+                MigrateAddColumn(conn, "Images",        "StatMin",          "INTEGER");
+                MigrateAddColumn(conn, "Images",        "StatMax",          "INTEGER");
+                MigrateAddColumn(conn, "Images",        "StatBitDepth",     "INTEGER");
+                MigrateAddColumn(conn, "Images",        "SkyBrightness",    "REAL");
+                MigrateAddColumn(conn, "Images",        "SkyTemperature",   "REAL");
+                MigrateAddColumn(conn, "Images",        "WindDirection",    "REAL");
+                MigrateAddColumn(conn, "Images",        "WindGust",         "REAL");
+
+                // Index to keep session-list enrichment queries fast even on DBs with
+                // hundreds of sessions and 100k+ images (subqueries per-session).
+                using (var cmd = new SQLiteCommand("CREATE INDEX IF NOT EXISTS idx_images_sessionid ON Images(SessionId)", conn)) {
+                    cmd.ExecuteNonQuery();
+                }
+
+                string createTimingEvents = @"
+                    CREATE TABLE IF NOT EXISTS SessionTimingEvents (
+                        Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        SessionId TEXT NOT NULL,
+                        EventType TEXT NOT NULL,
+                        StartTime TEXT,
+                        EndTime TEXT,
+                        DurationSeconds REAL,
+                        Details TEXT
+                    )";
+
+                using (var cmd = new SQLiteCommand(createTimingEvents, conn))
+                    cmd.ExecuteNonQuery();
             }
         }
 
@@ -582,6 +644,52 @@ namespace NINA.Plugin.NightSummary.Data {
         }
 
         /// <summary>
+        /// Updates equipment names for a session. Only overwrites fields that are currently empty,
+        /// so calling at both session start and end fills in late-connecting equipment without
+        /// overwriting values captured earlier.
+        /// </summary>
+        public void UpdateSessionEquipment(string sessionId, string camera, string telescope, string mount,
+            string filterWheel, string focuser, string rotator, string guider,
+            string dome = null, string flatDevice = null, string safetyMonitor = null,
+            string weather = null, string switchHub = null) {
+            using (var conn = new SQLiteConnection(connectionString)) {
+                conn.Open();
+                string sql = @"
+                    UPDATE Sessions SET
+                        CameraName        = CASE WHEN CameraName        IS NULL OR CameraName        = '' THEN @Camera        ELSE CameraName        END,
+                        TelescopeName     = CASE WHEN TelescopeName     IS NULL OR TelescopeName     = '' THEN @Telescope     ELSE TelescopeName     END,
+                        MountName         = CASE WHEN MountName         IS NULL OR MountName         = '' THEN @Mount         ELSE MountName         END,
+                        FilterWheelName   = CASE WHEN FilterWheelName   IS NULL OR FilterWheelName   = '' THEN @FilterWheel   ELSE FilterWheelName   END,
+                        FocuserName       = CASE WHEN FocuserName       IS NULL OR FocuserName       = '' THEN @Focuser       ELSE FocuserName       END,
+                        RotatorName       = CASE WHEN RotatorName       IS NULL OR RotatorName       = '' THEN @Rotator       ELSE RotatorName       END,
+                        GuiderName        = CASE WHEN GuiderName        IS NULL OR GuiderName        = '' THEN @Guider        ELSE GuiderName        END,
+                        DomeName          = CASE WHEN DomeName          IS NULL OR DomeName          = '' THEN @Dome          ELSE DomeName          END,
+                        FlatDeviceName    = CASE WHEN FlatDeviceName    IS NULL OR FlatDeviceName    = '' THEN @FlatDevice    ELSE FlatDeviceName    END,
+                        SafetyMonitorName = CASE WHEN SafetyMonitorName IS NULL OR SafetyMonitorName = '' THEN @SafetyMonitor ELSE SafetyMonitorName END,
+                        WeatherName       = CASE WHEN WeatherName       IS NULL OR WeatherName       = '' THEN @Weather       ELSE WeatherName       END,
+                        SwitchName        = CASE WHEN SwitchName        IS NULL OR SwitchName        = '' THEN @Switch        ELSE SwitchName        END
+                    WHERE SessionId = @SessionId";
+
+                using (var cmd = new SQLiteCommand(sql, conn)) {
+                    cmd.Parameters.AddWithValue("@SessionId",      sessionId);
+                    cmd.Parameters.AddWithValue("@Camera",         (object)camera         ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Telescope",      (object)telescope      ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Mount",          (object)mount          ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@FilterWheel",    (object)filterWheel    ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Focuser",        (object)focuser        ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Rotator",        (object)rotator        ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Guider",         (object)guider         ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Dome",           (object)dome           ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@FlatDevice",     (object)flatDevice     ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@SafetyMonitor",  (object)safetyMonitor  ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Weather",        (object)weather        ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Switch",         (object)switchHub      ?? DBNull.Value);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        /// <summary>
         /// Updates the session end time and report sent status.
         /// Call this when the sequence ends.
         /// </summary>
@@ -617,19 +725,23 @@ namespace NINA.Plugin.NightSummary.Data {
                         HFR, FWHM, Eccentricity, StarCount, GuidingRMSTotal, GuidingScale, Accepted,
                         RaHours, DecDegrees, FocuserTemp, AmbientTemp,
                         Gain, Offset, Binning, CameraTemp, CoolerSetpoint,
-                        FocuserPosition, RotatorPosition,
+                        FocuserPosition, RotatorPosition, PositionAngle,
                         Humidity, DewPoint, WindSpeed, Pressure,
+                        SkyBrightness, SkyTemperature, WindDirection, WindGust,
                         GradingStatus, RejectReason,
-                        ImageType, Altitude, Azimuth, Airmass, SideOfPier, ReadoutMode, SkyQuality, CloudCover, SeeingFWHM)
+                        ImageType, Altitude, Azimuth, Airmass, SideOfPier, ReadoutMode, SkyQuality, CloudCover, SeeingFWHM,
+                        StatMedian, StatMean, StatStDev, StatMAD, StatMin, StatMax, StatBitDepth)
                     VALUES (
                         @SessionId, @Timestamp, @TargetName, @Filter, @ExposureDuration,
                         @HFR, @FWHM, @Eccentricity, @StarCount, @GuidingRMSTotal, @GuidingScale, @Accepted,
                         @RaHours, @DecDegrees, @FocuserTemp, @AmbientTemp,
                         @Gain, @Offset, @Binning, @CameraTemp, @CoolerSetpoint,
-                        @FocuserPosition, @RotatorPosition,
+                        @FocuserPosition, @RotatorPosition, @PositionAngle,
                         @Humidity, @DewPoint, @WindSpeed, @Pressure,
+                        @SkyBrightness, @SkyTemperature, @WindDirection, @WindGust,
                         @GradingStatus, @RejectReason,
-                        @ImageType, @Altitude, @Azimuth, @Airmass, @SideOfPier, @ReadoutMode, @SkyQuality, @CloudCover, @SeeingFWHM)";
+                        @ImageType, @Altitude, @Azimuth, @Airmass, @SideOfPier, @ReadoutMode, @SkyQuality, @CloudCover, @SeeingFWHM,
+                        @StatMedian, @StatMean, @StatStDev, @StatMAD, @StatMin, @StatMax, @StatBitDepth)";
 
                 using (var cmd = new SQLiteCommand(sql, conn)) {
                     cmd.Parameters.AddWithValue("@SessionId",       image.SessionId);
@@ -655,10 +767,15 @@ namespace NINA.Plugin.NightSummary.Data {
                     cmd.Parameters.AddWithValue("@CoolerSetpoint",  image.CoolerSetpoint.HasValue  ? (object)image.CoolerSetpoint.Value  : DBNull.Value);
                     cmd.Parameters.AddWithValue("@FocuserPosition", image.FocuserPosition.HasValue ? (object)image.FocuserPosition.Value : DBNull.Value);
                     cmd.Parameters.AddWithValue("@RotatorPosition", image.RotatorPosition.HasValue ? (object)image.RotatorPosition.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@PositionAngle",   image.PositionAngle.HasValue   ? (object)image.PositionAngle.Value   : DBNull.Value);
                     cmd.Parameters.AddWithValue("@Humidity",        image.Humidity.HasValue        ? (object)image.Humidity.Value        : DBNull.Value);
                     cmd.Parameters.AddWithValue("@DewPoint",        image.DewPoint.HasValue        ? (object)image.DewPoint.Value        : DBNull.Value);
                     cmd.Parameters.AddWithValue("@WindSpeed",       image.WindSpeed.HasValue       ? (object)image.WindSpeed.Value       : DBNull.Value);
                     cmd.Parameters.AddWithValue("@Pressure",        image.Pressure.HasValue        ? (object)image.Pressure.Value        : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@SkyBrightness",  image.SkyBrightness.HasValue  ? (object)image.SkyBrightness.Value  : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@SkyTemperature", image.SkyTemperature.HasValue ? (object)image.SkyTemperature.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@WindDirection",  image.WindDirection.HasValue   ? (object)image.WindDirection.Value  : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@WindGust",       image.WindGust.HasValue        ? (object)image.WindGust.Value       : DBNull.Value);
                     cmd.Parameters.AddWithValue("@GradingStatus",   image.GradingStatus);
                     cmd.Parameters.AddWithValue("@RejectReason",    image.RejectReason != null     ? (object)image.RejectReason          : DBNull.Value);
                     cmd.Parameters.AddWithValue("@ImageType",       image.ImageType    != null     ? (object)image.ImageType             : DBNull.Value);
@@ -670,6 +787,13 @@ namespace NINA.Plugin.NightSummary.Data {
                     cmd.Parameters.AddWithValue("@SkyQuality",      image.SkyQuality.HasValue      ? (object)image.SkyQuality.Value      : DBNull.Value);
                     cmd.Parameters.AddWithValue("@CloudCover",      image.CloudCover.HasValue      ? (object)image.CloudCover.Value      : DBNull.Value);
                     cmd.Parameters.AddWithValue("@SeeingFWHM",      image.SeeingFWHM.HasValue      ? (object)image.SeeingFWHM.Value      : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@StatMedian",      image.StatMedian.HasValue      ? (object)image.StatMedian.Value      : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@StatMean",        image.StatMean.HasValue        ? (object)image.StatMean.Value        : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@StatStDev",       image.StatStDev.HasValue       ? (object)image.StatStDev.Value       : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@StatMAD",         image.StatMAD.HasValue         ? (object)image.StatMAD.Value         : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@StatMin",         image.StatMin.HasValue         ? (object)image.StatMin.Value         : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@StatMax",         image.StatMax.HasValue         ? (object)image.StatMax.Value         : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@StatBitDepth",    image.StatBitDepth.HasValue    ? (object)image.StatBitDepth.Value    : DBNull.Value);
                     cmd.ExecuteNonQuery();
                 }
             }
@@ -712,10 +836,15 @@ namespace NINA.Plugin.NightSummary.Data {
                                 CoolerSetpoint  = reader["CoolerSetpoint"]  == DBNull.Value ? (double?)null : Convert.ToDouble(reader["CoolerSetpoint"]),
                                 FocuserPosition = reader["FocuserPosition"] == DBNull.Value ? (int?)null    : Convert.ToInt32(reader["FocuserPosition"]),
                                 RotatorPosition = reader["RotatorPosition"] == DBNull.Value ? (double?)null : Convert.ToDouble(reader["RotatorPosition"]),
+                                PositionAngle   = reader["PositionAngle"]   == DBNull.Value ? (double?)null : Convert.ToDouble(reader["PositionAngle"]),
                                 Humidity        = reader["Humidity"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["Humidity"]),
                                 DewPoint        = reader["DewPoint"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["DewPoint"]),
                                 WindSpeed       = reader["WindSpeed"]       == DBNull.Value ? (double?)null : Convert.ToDouble(reader["WindSpeed"]),
                                 Pressure        = reader["Pressure"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["Pressure"]),
+                                SkyBrightness   = reader["SkyBrightness"]   == DBNull.Value ? (double?)null : Convert.ToDouble(reader["SkyBrightness"]),
+                                SkyTemperature  = reader["SkyTemperature"]  == DBNull.Value ? (double?)null : Convert.ToDouble(reader["SkyTemperature"]),
+                                WindDirection   = reader["WindDirection"]   == DBNull.Value ? (double?)null : Convert.ToDouble(reader["WindDirection"]),
+                                WindGust        = reader["WindGust"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["WindGust"]),
                                 GradingStatus   = reader["GradingStatus"]   == DBNull.Value ? -1 : Convert.ToInt32(reader["GradingStatus"]),
                                 RejectReason    = reader["RejectReason"]    == DBNull.Value ? null : reader["RejectReason"].ToString(),
                                 ImageType       = reader["ImageType"]       == DBNull.Value ? null : reader["ImageType"].ToString(),
@@ -726,7 +855,14 @@ namespace NINA.Plugin.NightSummary.Data {
                                 ReadoutMode     = reader["ReadoutMode"]     == DBNull.Value ? null : reader["ReadoutMode"].ToString(),
                                 SkyQuality      = reader["SkyQuality"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["SkyQuality"]),
                                 CloudCover      = reader["CloudCover"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["CloudCover"]),
-                                SeeingFWHM      = reader["SeeingFWHM"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["SeeingFWHM"])
+                                SeeingFWHM      = reader["SeeingFWHM"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["SeeingFWHM"]),
+                                StatMedian      = reader["StatMedian"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["StatMedian"]),
+                                StatMean        = reader["StatMean"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["StatMean"]),
+                                StatStDev       = reader["StatStDev"]       == DBNull.Value ? (double?)null : Convert.ToDouble(reader["StatStDev"]),
+                                StatMAD         = reader["StatMAD"]         == DBNull.Value ? (double?)null : Convert.ToDouble(reader["StatMAD"]),
+                                StatMin         = reader["StatMin"]         == DBNull.Value ? (int?)null    : Convert.ToInt32(reader["StatMin"]),
+                                StatMax         = reader["StatMax"]         == DBNull.Value ? (int?)null    : Convert.ToInt32(reader["StatMax"]),
+                                StatBitDepth    = reader["StatBitDepth"]    == DBNull.Value ? (int?)null    : Convert.ToInt32(reader["StatBitDepth"])
                             });
                         }
                     }
@@ -809,6 +945,106 @@ namespace NINA.Plugin.NightSummary.Data {
             return events;
         }
 
+        public void SaveTimingEvents(string sessionId, List<TimingEvent> events) {
+            if (events == null || events.Count == 0) return;
+            using (var conn = new SQLiteConnection(connectionString)) {
+                conn.Open();
+                using (var transaction = conn.BeginTransaction()) {
+                    string sql = @"
+                        INSERT INTO SessionTimingEvents (SessionId, EventType, StartTime, EndTime, DurationSeconds, Details)
+                        VALUES (@SessionId, @EventType, @StartTime, @EndTime, @DurationSeconds, @Details)";
+
+                    foreach (var evt in events) {
+                        using (var cmd = new SQLiteCommand(sql, conn)) {
+                            cmd.Parameters.AddWithValue("@SessionId",       sessionId);
+                            cmd.Parameters.AddWithValue("@EventType",       evt.EventType ?? "");
+                            cmd.Parameters.AddWithValue("@StartTime",       evt.StartTime == DateTime.MinValue ? (object)DBNull.Value : evt.StartTime.ToString("o"));
+                            cmd.Parameters.AddWithValue("@EndTime",         evt.EndTime   == DateTime.MinValue ? (object)DBNull.Value : evt.EndTime.ToString("o"));
+                            cmd.Parameters.AddWithValue("@DurationSeconds", evt.DurationSeconds);
+                            cmd.Parameters.AddWithValue("@Details",         evt.Details != null ? (object)evt.Details : DBNull.Value);
+                            cmd.ExecuteNonQuery();
+                        }
+                    }
+                    transaction.Commit();
+                }
+            }
+        }
+
+        public void ClearTimingEvents(string sessionId) {
+            using (var conn = new SQLiteConnection(connectionString)) {
+                conn.Open();
+                using (var cmd = new SQLiteCommand("DELETE FROM SessionTimingEvents WHERE SessionId = @SessionId", conn)) {
+                    cmd.Parameters.AddWithValue("@SessionId", sessionId);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Atomically deletes a session and all of its related rows (images, events, timing events).
+        /// Returns the number of rows deleted from the Sessions table (0 if the session was not found, 1 on success).
+        /// </summary>
+        public int DeleteSession(string sessionId) {
+            if (string.IsNullOrWhiteSpace(sessionId)) return 0;
+
+            using (var conn = new SQLiteConnection(connectionString)) {
+                conn.Open();
+                using (var tx = conn.BeginTransaction()) {
+                    try {
+                        int affectedParent;
+
+                        using (var cmd = new SQLiteCommand("DELETE FROM Images WHERE SessionId = @sid", conn, tx)) {
+                            cmd.Parameters.AddWithValue("@sid", sessionId);
+                            cmd.ExecuteNonQuery();
+                        }
+                        using (var cmd = new SQLiteCommand("DELETE FROM SessionEvents WHERE SessionId = @sid", conn, tx)) {
+                            cmd.Parameters.AddWithValue("@sid", sessionId);
+                            cmd.ExecuteNonQuery();
+                        }
+                        using (var cmd = new SQLiteCommand("DELETE FROM SessionTimingEvents WHERE SessionId = @sid", conn, tx)) {
+                            cmd.Parameters.AddWithValue("@sid", sessionId);
+                            cmd.ExecuteNonQuery();
+                        }
+                        using (var cmd = new SQLiteCommand("DELETE FROM Sessions WHERE SessionId = @sid", conn, tx)) {
+                            cmd.Parameters.AddWithValue("@sid", sessionId);
+                            affectedParent = cmd.ExecuteNonQuery();
+                        }
+
+                        tx.Commit();
+                        Logger.Info($"NightSummary: Deleted session {sessionId} ({affectedParent} session row)");
+                        return affectedParent;
+                    } catch (Exception ex) {
+                        try { tx.Rollback(); } catch { }
+                        Logger.Error($"NightSummary: Failed to delete session {sessionId}: {ex.Message}");
+                        throw;
+                    }
+                }
+            }
+        }
+
+        public List<TimingEvent> GetTimingEventsForSession(string sessionId) {
+            var events = new List<TimingEvent>();
+            using (var conn = new SQLiteConnection(connectionString)) {
+                conn.Open();
+                string sql = "SELECT * FROM SessionTimingEvents WHERE SessionId = @SessionId ORDER BY StartTime";
+                using (var cmd = new SQLiteCommand(sql, conn)) {
+                    cmd.Parameters.AddWithValue("@SessionId", sessionId);
+                    using (var reader = cmd.ExecuteReader()) {
+                        while (reader.Read()) {
+                            events.Add(new TimingEvent {
+                                EventType       = reader["EventType"]       == DBNull.Value ? "" : reader["EventType"].ToString(),
+                                StartTime       = reader["StartTime"]       == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["StartTime"].ToString()),
+                                EndTime         = reader["EndTime"]         == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["EndTime"].ToString()),
+                                DurationSeconds = reader["DurationSeconds"] == DBNull.Value ? 0 : Convert.ToDouble(reader["DurationSeconds"]),
+                                Details         = reader["Details"]         == DBNull.Value ? null : reader["Details"].ToString()
+                            });
+                        }
+                    }
+                }
+            }
+            return events;
+        }
+
         /// <summary>
         /// Returns total accepted exposure seconds per target name across all sessions
         /// except the one identified by excludeSessionId.
@@ -842,7 +1078,7 @@ namespace NINA.Plugin.NightSummary.Data {
         /// Returns per-session aggregate stats for a target across all sessions except the current one.
         /// Ordered most-recent-first, limited to <paramref name="limit"/> rows.
         /// </summary>
-        public List<TargetSessionHistory> GetSessionHistoryForTarget(string targetName, string excludeSessionId, int limit = 5) {
+        public List<TargetSessionHistory> GetSessionHistoryForTarget(string targetName, string excludeSessionId) {
             var result = new List<TargetSessionHistory>();
             using (var conn = new SQLiteConnection(connectionString)) {
                 conn.Open();
@@ -858,13 +1094,11 @@ namespace NINA.Plugin.NightSummary.Data {
                     WHERE i.TargetName = @TargetName
                       AND i.SessionId != @ExcludeSessionId
                     GROUP BY i.SessionId
-                    ORDER BY s.SessionStart DESC
-                    LIMIT @Limit";
+                    ORDER BY s.SessionStart DESC";
 
                 using (var cmd = new SQLiteCommand(sql, conn)) {
                     cmd.Parameters.AddWithValue("@TargetName",       targetName       ?? "");
                     cmd.Parameters.AddWithValue("@ExcludeSessionId", excludeSessionId ?? "");
-                    cmd.Parameters.AddWithValue("@Limit",            limit);
                     using (var reader = cmd.ExecuteReader()) {
                         while (reader.Read()) {
                             result.Add(new TargetSessionHistory {
@@ -888,12 +1122,12 @@ namespace NINA.Plugin.NightSummary.Data {
             var result = new List<SessionRecord>();
             using (var conn = new SQLiteConnection(connectionString)) {
                 conn.Open();
-                string sql = "SELECT * FROM Sessions ORDER BY SessionStart DESC LIMIT @Limit";
+                string sql = SessionListWithCountsSql + " ORDER BY s.SessionStart DESC LIMIT @Limit";
                 using (var cmd = new SQLiteCommand(sql, conn)) {
                     cmd.Parameters.AddWithValue("@Limit", limit);
                     using (var reader = cmd.ExecuteReader()) {
                         while (reader.Read()) {
-                            try { result.Add(ReadSessionRecord(reader)); }
+                            try { result.Add(ReadEnrichedSessionRecord(reader)); }
                             catch (Exception ex) { Logger.Error($"NightSummary: Error reading session record: {ex.Message}"); }
                         }
                     }
@@ -909,21 +1143,39 @@ namespace NINA.Plugin.NightSummary.Data {
             var result = new List<SessionRecord>();
             using (var conn = new SQLiteConnection(connectionString)) {
                 conn.Open();
-                string sql = @"SELECT * FROM Sessions
-                               WHERE SessionStart >= @From AND SessionStart <= @To
-                               ORDER BY SessionStart DESC";
+                string sql = SessionListWithCountsSql +
+                    " WHERE s.SessionStart >= @From AND s.SessionStart <= @To ORDER BY s.SessionStart DESC";
                 using (var cmd = new SQLiteCommand(sql, conn)) {
                     cmd.Parameters.AddWithValue("@From", from.ToString("o"));
                     cmd.Parameters.AddWithValue("@To",   to.Date.AddDays(1).AddSeconds(-1).ToString("o"));
                     using (var reader = cmd.ExecuteReader()) {
                         while (reader.Read()) {
-                            try { result.Add(ReadSessionRecord(reader)); }
+                            try { result.Add(ReadEnrichedSessionRecord(reader)); }
                             catch (Exception ex) { Logger.Error($"NightSummary: Error reading session record: {ex.Message}"); }
                         }
                     }
                 }
             }
             return result;
+        }
+
+        // Shared SELECT for session-list methods that need image/target/integration counts
+        // for display in the dropdown. Counts use Accepted = 1 to match what the report shows
+        // as the "X images" number. Uses correlated subqueries (no GROUP BY ambiguity with s.*)
+        // and the idx_images_sessionid index to keep this fast on large DBs.
+        private const string SessionListWithCountsSql = @"
+            SELECT s.*,
+                (SELECT COUNT(*) FROM Images WHERE SessionId = s.SessionId AND Accepted = 1) AS ImageCount,
+                (SELECT COUNT(DISTINCT TargetName) FROM Images WHERE SessionId = s.SessionId AND Accepted = 1 AND TargetName IS NOT NULL AND TargetName <> '') AS TargetCount,
+                (SELECT COALESCE(SUM(ExposureDuration), 0) FROM Images WHERE SessionId = s.SessionId AND Accepted = 1) AS IntegrationSeconds
+            FROM Sessions s";
+
+        private SessionRecord ReadEnrichedSessionRecord(SQLiteDataReader reader) {
+            var record = ReadSessionRecord(reader);
+            record.ImageCount         = reader["ImageCount"]         == DBNull.Value ? 0 : Convert.ToInt32(reader["ImageCount"]);
+            record.TargetCount        = reader["TargetCount"]        == DBNull.Value ? 0 : Convert.ToInt32(reader["TargetCount"]);
+            record.IntegrationSeconds = reader["IntegrationSeconds"] == DBNull.Value ? 0 : Convert.ToDouble(reader["IntegrationSeconds"]);
+            return record;
         }
 
         /// <summary>
@@ -1005,6 +1257,35 @@ namespace NINA.Plugin.NightSummary.Data {
             }
         }
 
+        /// <summary>
+        /// Updates the Accepted flag for a single image matched by session and capture timestamp.
+        /// Uses a ±5-second tolerance to accommodate slight clock differences between
+        /// NINA's image-saved event and the thumbnail view model.
+        /// Called when the user manually grades (or un-grades) a frame in NINA's thumbnail panel.
+        /// </summary>
+        public int UpdateImageAccepted(string sessionId, DateTime timestamp, bool accepted, string rejectReason = null) {
+            using (var conn = new SQLiteConnection(connectionString)) {
+                conn.Open();
+                // rejectReason null = leave existing reason unchanged (preserves TS-set reasons).
+                // Empty string = clear reason (used when un-rejecting).
+                string sql = rejectReason != null
+                    ? @"UPDATE Images SET Accepted = @Accepted, RejectReason = @RejectReason
+                        WHERE SessionId = @SessionId
+                          AND ABS(JULIANDAY(Timestamp) - JULIANDAY(@Timestamp)) * 86400.0 <= 5.0"
+                    : @"UPDATE Images SET Accepted = @Accepted
+                        WHERE SessionId = @SessionId
+                          AND ABS(JULIANDAY(Timestamp) - JULIANDAY(@Timestamp)) * 86400.0 <= 5.0";
+                using (var cmd = new SQLiteCommand(sql, conn)) {
+                    cmd.Parameters.AddWithValue("@SessionId", sessionId);
+                    cmd.Parameters.AddWithValue("@Timestamp", timestamp.ToString("o"));
+                    cmd.Parameters.AddWithValue("@Accepted",  accepted ? 1 : 0);
+                    if (rejectReason != null)
+                        cmd.Parameters.AddWithValue("@RejectReason", rejectReason.Length > 0 ? (object)rejectReason : DBNull.Value);
+                    return cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
         private static SessionRecord ReadSessionRecord(SQLiteDataReader reader) {
             return new SessionRecord {
                 Id               = Convert.ToInt32(reader["Id"]),
@@ -1018,7 +1299,19 @@ namespace NINA.Plugin.NightSummary.Data {
                 CamYSize         = reader["CamYSize"]         == DBNull.Value ? 0 : Convert.ToInt32(reader["CamYSize"]),
                 PixelSizeMicrons = reader["PixelSizeMicrons"] == DBNull.Value ? 0 : Convert.ToDouble(reader["PixelSizeMicrons"]),
                 FocalLengthMm    = reader["FocalLengthMm"]    == DBNull.Value ? 0 : Convert.ToDouble(reader["FocalLengthMm"]),
-                SkippedExposures = reader["SkippedExposures"] == DBNull.Value ? 0 : Convert.ToInt32(reader["SkippedExposures"])
+                SkippedExposures = reader["SkippedExposures"] == DBNull.Value ? 0 : Convert.ToInt32(reader["SkippedExposures"]),
+                CameraName        = reader["CameraName"]        == DBNull.Value ? null : reader["CameraName"].ToString(),
+                TelescopeName     = reader["TelescopeName"]     == DBNull.Value ? null : reader["TelescopeName"].ToString(),
+                MountName         = reader["MountName"]         == DBNull.Value ? null : reader["MountName"].ToString(),
+                FilterWheelName   = reader["FilterWheelName"]   == DBNull.Value ? null : reader["FilterWheelName"].ToString(),
+                FocuserName       = reader["FocuserName"]       == DBNull.Value ? null : reader["FocuserName"].ToString(),
+                RotatorName       = reader["RotatorName"]       == DBNull.Value ? null : reader["RotatorName"].ToString(),
+                GuiderName        = reader["GuiderName"]        == DBNull.Value ? null : reader["GuiderName"].ToString(),
+                DomeName          = reader["DomeName"]          == DBNull.Value ? null : reader["DomeName"].ToString(),
+                FlatDeviceName    = reader["FlatDeviceName"]    == DBNull.Value ? null : reader["FlatDeviceName"].ToString(),
+                SafetyMonitorName = reader["SafetyMonitorName"] == DBNull.Value ? null : reader["SafetyMonitorName"].ToString(),
+                WeatherName       = reader["WeatherName"]       == DBNull.Value ? null : reader["WeatherName"].ToString(),
+                SwitchName        = reader["SwitchName"]        == DBNull.Value ? null : reader["SwitchName"].ToString()
             };
         }
     }

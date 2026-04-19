@@ -1,8 +1,8 @@
 using NINA.Core.Utility;
 using NINA.Core.Utility.Notification;
 using NINA.Equipment.Interfaces.Mediator;
+using NINA.Plugin.Interfaces;
 using NINA.Plugin.NightSummary.Data;
-using NINA.Plugin.NightSummary.MyPluginProperties;
 using NINA.Plugin.NightSummary.Reporting;
 using NINA.Profile.Interfaces;
 using NINA.Sequencer.Interfaces.Mediator;
@@ -23,8 +23,24 @@ namespace NINA.Plugin.NightSummary.Session {
         private readonly SessionCollector      collector;
         private readonly SessionEventCollector eventCollector;
         private readonly ReportGenerator       reportGenerator;
-        private readonly IProfileService       profileService;
-        private readonly ICameraMediator       cameraMediator;
+        private readonly IProfileService        profileService;
+        private readonly ICameraMediator        cameraMediator;
+        private readonly ITelescopeMediator     telescopeMediator;
+        private readonly ISequenceMediator      sequenceMediator;
+        private readonly IFilterWheelMediator   filterWheelMediator;
+        private readonly IFocuserMediator       focuserMediator;
+        private readonly IRotatorMediator       rotatorMediator;
+        private readonly IGuiderMediator        guiderMediator;
+        private readonly ISafetyMonitorMediator safetyMonitorMediator;
+        private readonly IDomeMediator          domeMediator;
+        private readonly IFlatDeviceMediator    flatDeviceMediator;
+        private readonly IWeatherDataMediator   weatherDataMediator;
+        private readonly ISwitchMediator        switchMediator;
+        private readonly IMessageBroker         messageBroker;
+        private LiveStackCapture               liveStackCapture;
+        private bool                           sequenceFinishedSubscribed;
+
+        private static NightSummarySettings S => SettingsManager.Instance.Current;
 
         [ImportingConstructor]
         public SessionService(
@@ -34,14 +50,70 @@ namespace NINA.Plugin.NightSummary.Session {
             IFocuserMediator       focuserMediator,
             ITelescopeMediator     telescopeMediator,
             ICameraMediator        cameraMediator,
-            ISequenceMediator      sequenceMediator) {
+            ISequenceMediator      sequenceMediator,
+            IFilterWheelMediator   filterWheelMediator,
+            IRotatorMediator       rotatorMediator,
+            IGuiderMediator        guiderMediator,
+            IDomeMediator          domeMediator,
+            IFlatDeviceMediator    flatDeviceMediator,
+            IWeatherDataMediator   weatherDataMediator,
+            ISwitchMediator        switchMediator,
+            IMessageBroker         messageBroker)
+            : this(imageSaveMediator, profileService, safetyMonitorMediator,
+                   focuserMediator, telescopeMediator, cameraMediator, sequenceMediator,
+                   filterWheelMediator, rotatorMediator, guiderMediator,
+                   domeMediator, flatDeviceMediator, weatherDataMediator, switchMediator,
+                   messageBroker, databasePath: null) { }
 
-            this.profileService  = profileService;
-            this.cameraMediator  = cameraMediator;
-            var database         = new SessionDatabase();
+        /// <summary>
+        /// Internal constructor for test replay. Accepts an explicit database path
+        /// to isolate tests from the production LOCALAPPDATA database.
+        /// When databasePath is null, uses the default production path.
+        /// </summary>
+        internal SessionService(
+            IImageSaveMediator     imageSaveMediator,
+            IProfileService        profileService,
+            ISafetyMonitorMediator safetyMonitorMediator,
+            IFocuserMediator       focuserMediator,
+            ITelescopeMediator     telescopeMediator,
+            ICameraMediator        cameraMediator,
+            ISequenceMediator      sequenceMediator,
+            IFilterWheelMediator   filterWheelMediator,
+            IRotatorMediator       rotatorMediator,
+            IGuiderMediator        guiderMediator,
+            IDomeMediator          domeMediator,
+            IFlatDeviceMediator    flatDeviceMediator,
+            IWeatherDataMediator   weatherDataMediator,
+            ISwitchMediator        switchMediator,
+            IMessageBroker         messageBroker,
+            string                 databasePath) {
+
+            this.profileService        = profileService;
+            this.cameraMediator        = cameraMediator;
+            this.telescopeMediator     = telescopeMediator;
+            this.sequenceMediator      = sequenceMediator;
+            this.filterWheelMediator   = filterWheelMediator;
+            this.focuserMediator       = focuserMediator;
+            this.rotatorMediator       = rotatorMediator;
+            this.guiderMediator        = guiderMediator;
+            this.safetyMonitorMediator = safetyMonitorMediator;
+            this.domeMediator          = domeMediator;
+            this.flatDeviceMediator    = flatDeviceMediator;
+            this.weatherDataMediator   = weatherDataMediator;
+            this.switchMediator        = switchMediator;
+            this.messageBroker         = messageBroker;
+            var database        = databasePath != null ? new SessionDatabase(databasePath) : new SessionDatabase();
             this.collector       = new SessionCollector(imageSaveMediator, sequenceMediator, database);
             this.eventCollector  = new SessionEventCollector(database, safetyMonitorMediator, focuserMediator, telescopeMediator);
             this.reportGenerator = new ReportGenerator();
+
+            // NOTE: SequenceFinished subscription happens in StartSession, not here.
+            // At plugin-load time NINA's SequenceMediator has no backing delegate yet and
+            // subscribing NREs inside the mediator's add accessor. By the time the Night
+            // Summary Start instruction runs the sequencer is fully initialized. Nothing
+            // to clean up before the first session begins anyway.
+
+            Logger.Info($"NightSummary: SessionService created — messageBroker={messageBroker != null}");
         }
 
         public void StartSession(string profileName) {
@@ -66,6 +138,26 @@ namespace NINA.Plugin.NightSummary.Session {
             } catch (Exception ex) {
                 Logger.Warning($"NightSummary: Could not read camera info at session start. {ex.Message}");
             }
+
+            CaptureEquipmentNames();
+            collector.FirstImageSaved += OnFirstImageSaved;
+
+            // Subscribe to SequenceFinished lazily — safe now that sequencer is initialized.
+            if (!sequenceFinishedSubscribed && sequenceMediator != null) {
+                try {
+                    sequenceMediator.SequenceFinished += OnSequenceFinished;
+                    sequenceFinishedSubscribed = true;
+                } catch (Exception ex) {
+                    Logger.Warning($"NightSummary: Could not subscribe to SequenceFinished: {ex.Message}");
+                }
+            }
+
+            if (messageBroker != null && S.ShowLiveStackImages) {
+                liveStackCapture = new LiveStackCapture(messageBroker);
+                Logger.Info("NightSummary: LiveStack capture started for this session");
+            } else {
+                Logger.Info($"NightSummary: LiveStack capture skipped — broker={messageBroker != null}, setting={S.ShowLiveStackImages}");
+            }
         }
 
         public void EndSession() {
@@ -75,8 +167,16 @@ namespace NINA.Plugin.NightSummary.Session {
             }
 
             var sessionId = collector.GetCurrentSessionId();
+
+            collector.FirstImageSaved -= OnFirstImageSaved;
+
+            // Fill in any equipment that wasn't connected at session start
+            CaptureEquipmentNames();
+
             collector.EndSession();
             eventCollector.EndSession();
+            var liveStackImages = liveStackCapture?.StopAndCollect() ?? new List<LiveStackImage>();
+            liveStackCapture = null;
 
             var database   = collector.Database;
             var session    = database.GetSession(sessionId);
@@ -92,6 +192,20 @@ namespace NINA.Plugin.NightSummary.Session {
             SyncTsGrading(database, sessionId, session.SessionStart, session.SessionEnd, images);
             // Reload images so report uses updated Accepted/GradingStatus/RejectReason values
             images = database.GetImagesForSession(sessionId);
+
+            // Parse NINA logs for per-event overhead timing data
+            List<TimingEvent> timingEvents;
+            try {
+                Logger.Info($"NightSummary: EndSession — parsing logs for session {sessionId} (start={session.SessionStart:o}, end={session.SessionEnd:o}, images={images.Count})");
+                timingEvents = NinaLogParser.Parse(session.SessionStart, session.SessionEnd, images.Count);
+                Logger.Info($"NightSummary: EndSession — parser returned {timingEvents.Count} events");
+                if (timingEvents.Any())
+                    database.SaveTimingEvents(sessionId, timingEvents);
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Log parsing failed — overhead breakdown will be unavailable. {ex.Message}");
+                Logger.Warning($"NightSummary: Log parsing stack trace: {ex.StackTrace}");
+                timingEvents = new List<TimingEvent>();
+            }
 
             var profileId    = profileService?.ActiveProfile?.Id.ToString();
             var tsData       = FetchTsData(images, profileId);
@@ -111,7 +225,10 @@ namespace NINA.Plugin.NightSummary.Session {
                 ObserverLatitude             = lat,
                 ObserverLongitude            = lon,
                 ActiveProfileId              = profileId,
-                SkippedExposures             = collector.SkippedExposures
+                SkippedExposures             = collector.SkippedExposures,
+                TimingEvents                 = timingEvents,
+                Equipment                    = BuildEquipmentDictionary(session),
+                LiveStackImages              = liveStackImages
             };
 
             _ = Task.Run(async () => {
@@ -121,6 +238,28 @@ namespace NINA.Plugin.NightSummary.Session {
                     Logger.Error($"NightSummary: Unhandled error in report generation. {ex.Message}");
                 }
             });
+        }
+
+        /// <summary>
+        /// Called when NINA's sequence finishes (normal completion, manual stop, or error).
+        /// If a session is still active (End instruction never ran), finalize the session
+        /// record and clean up listeners — but do NOT generate or deliver a report.
+        /// The user can always resend via "Resend Previous Session" if they want the report.
+        /// </summary>
+        private Task OnSequenceFinished(object sender, EventArgs e) {
+            var sessionId = collector.GetCurrentSessionId();
+            if (sessionId == null) return Task.CompletedTask;
+
+            Logger.Info($"NightSummary: Sequence finished with active session {sessionId} — finalizing without report");
+            try {
+                collector.EndSession();
+                eventCollector.EndSession();
+                liveStackCapture?.StopAndCollect();
+                liveStackCapture = null;
+            } catch (Exception ex) {
+                Logger.Error($"NightSummary: Error during graceful session cleanup: {ex.Message}");
+            }
+            return Task.CompletedTask;
         }
 
         private async Task GenerateAndSendAsync(ReportData reportData) {
@@ -140,20 +279,20 @@ namespace NINA.Plugin.NightSummary.Session {
 
                 // Build list of enabled delivery channels
                 var channels = new List<string>();
-                if (Settings.Default.SaveReportLocally) channels.Add("Local Save");
-                if (Settings.Default.EmailEnabled) channels.Add("Email");
-                if (Settings.Default.PushoverEnabled) channels.Add("Pushover");
-                if (Settings.Default.DiscordEnabled) channels.Add("Discord");
+                if (S.SaveReportLocally) channels.Add("Local Save");
+                if (S.EmailEnabled) channels.Add("Email");
+                if (S.PushoverEnabled) channels.Add("Pushover");
+                if (S.DiscordEnabled) channels.Add("Discord");
                 Logger.Info($"NightSummary: Delivering report to: {(channels.Any() ? string.Join(", ", channels) : "no channels enabled")}");
 
                 var tasks = new List<Task>();
-                if (Settings.Default.SaveReportLocally)
+                if (S.SaveReportLocally)
                     tasks.Add(SaveReportLocallyAsync(reportData, htmlReport));
-                if (Settings.Default.EmailEnabled)
+                if (S.EmailEnabled)
                     tasks.Add(SendReportWithDataAsync(reportData, htmlReport));
-                if (Settings.Default.PushoverEnabled)
+                if (S.PushoverEnabled)
                     tasks.Add(SendPushoverWithDataAsync(reportData));
-                if (Settings.Default.DiscordEnabled)
+                if (S.DiscordEnabled)
                     tasks.Add(SendDiscordWithDataAsync(reportData, htmlReport));
 
                 await Task.WhenAll(tasks);
@@ -188,6 +327,27 @@ namespace NINA.Plugin.NightSummary.Session {
                 var history      = BuildSessionHistory(testDb, images, session.SessionId);
                 var (fovW, fovH) = ComputeCameraFov(session);
                 var (lat, lon)   = GetObserverCoords();
+                // Fallback for test reports when no profile location is configured
+                if (lat == 0 && lon == 0) { lat = 32.9; lon = -105.5; }
+
+                // Always re-parse timing events from logs to pick up parser improvements.
+                // Falls back to cached DB data only if the log file is no longer available.
+                List<TimingEvent> timingEvents;
+                try {
+                    timingEvents = NinaLogParser.Parse(session.SessionStart, session.SessionEnd, images.Count);
+                    if (timingEvents.Any()) {
+                        testDb.ClearTimingEvents(session.SessionId);
+                        testDb.SaveTimingEvents(session.SessionId, timingEvents);
+                    }
+                } catch (Exception ex) {
+                    Logger.Warning($"NightSummary: Log re-parse failed, using cached data — {ex.Message}");
+                    timingEvents = null;  // fall through to DB lookup below
+                }
+                // If log parsing returned nothing (no log file, or empty), use cached DB data
+                if (timingEvents == null || !timingEvents.Any()) {
+                    timingEvents = testDb.GetTimingEventsForSession(session.SessionId);
+                }
+
                 var reportData   = new ReportData {
                     Session                      = session,
                     Images                       = images,
@@ -200,8 +360,16 @@ namespace NINA.Plugin.NightSummary.Session {
                     ObserverLatitude             = lat,
                     ObserverLongitude            = lon,
                     ActiveProfileId              = profileId,
-                    SkippedExposures             = session.SkippedExposures
+                    SkippedExposures             = session.SkippedExposures,
+                    Equipment                    = BuildEquipmentDictionary(session),
+                    TimingEvents                 = timingEvents
                 };
+
+                // Try to load persisted live stack masters for this session
+                var (resolvedDir, resolvedFilename) = ResolveReportSavePath(reportData, scanForExisting: true);
+                if (resolvedDir != null) {
+                    reportData.LiveStackImages = LoadLiveStackMasters(resolvedDir, resolvedFilename);
+                }
 
                 var htmlReport = await reportGenerator.GenerateHtmlReport(reportData);
 
@@ -213,13 +381,13 @@ namespace NINA.Plugin.NightSummary.Session {
                 }
 
                 var tasks = new List<Task>();
-                if (Settings.Default.SaveReportLocally)
+                if (S.SaveReportLocally)
                     tasks.Add(SaveReportLocallyAsync(reportData, htmlReport));
-                if (Settings.Default.EmailEnabled)
+                if (S.EmailEnabled)
                     tasks.Add(SendReportWithDataAsync(reportData, htmlReport));
-                if (Settings.Default.PushoverEnabled)
+                if (S.PushoverEnabled)
                     tasks.Add(SendPushoverWithDataAsync(reportData));
-                if (Settings.Default.DiscordEnabled)
+                if (S.DiscordEnabled)
                     tasks.Add(SendDiscordWithDataAsync(reportData, htmlReport));
 
                 await Task.WhenAll(tasks);
@@ -230,32 +398,251 @@ namespace NINA.Plugin.NightSummary.Session {
             }
         }
 
+        /// <summary>
+        /// Resolves the save directory and filename for a report based on current settings.
+        /// The resolved pattern becomes a session folder, with the HTML file inside using the same name.
+        /// e.g. pattern "$DATEMINUS12$" → Saved Reports/NightSummary_2026-03-31/NightSummary_2026-03-31.html
+        /// </summary>
+        /// <summary>
+        /// Resolves the save directory and filename for a report.
+        /// When scanForExisting is true (used by preview/resend to load assets),
+        /// falls back to scanning for an existing folder by session date if the
+        /// resolved path doesn't exist. When false (used by live save), always
+        /// creates a new folder.
+        /// </summary>
+        private (string dir, string filename) ResolveReportSavePath(ReportData reportData, bool scanForExisting = false) {
+            var basePath = S.SaveReportPath;
+            var saveRoot = !string.IsNullOrWhiteSpace(basePath)
+                ? basePath
+                : Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                    "N.I.N.A.", "Night Summary", "Saved Reports");
+
+            var pattern = S.SaveReportFilePattern;
+            var context = BuildPatternContext(reportData);
+            string folderName;
+            if (!string.IsNullOrWhiteSpace(pattern)) {
+                folderName = ResolveFilePattern(pattern, context);
+            } else {
+                // Strip .html from default filename to use as folder name
+                folderName = Path.GetFileNameWithoutExtension(GetReportFileName(reportData));
+            }
+
+            var sessionDir = Path.Combine(saveRoot, folderName);
+            var filename = folderName;
+            // If pattern included path separators, use only the last segment as filename
+            if (filename.Contains(Path.DirectorySeparatorChar) || filename.Contains(Path.AltDirectorySeparatorChar)) {
+                filename = Path.GetFileName(filename);
+            }
+
+            // Only scan for existing folders when loading assets (preview/resend), not when saving
+            if (scanForExisting && !Directory.Exists(sessionDir) && reportData?.Session != null) {
+                Logger.Info($"NightSummary: Resolved report path doesn't exist: {sessionDir}, scanning for date match...");
+                var found = FindSavedReportDir(saveRoot, reportData.Session.SessionStart);
+                if (found != null) {
+                    Logger.Info($"NightSummary: Found saved report folder by date: {found}");
+                    sessionDir = found;
+                    filename = Path.GetFileName(found);
+                } else {
+                    Logger.Info($"NightSummary: No saved report folder found for session date {reportData.Session.SessionStart:yyyy-MM-dd}");
+                }
+            }
+
+            return (sessionDir, filename + ".html");
+        }
+
+        /// <summary>
+        /// Scans the save root for existing report folders whose name contains the session date.
+        /// Checks both the session start date and the next calendar day (since reports are
+        /// typically generated in the early morning after an overnight session).
+        /// Returns the most recently modified match, or null if none found.
+        /// </summary>
+        private static string FindSavedReportDir(string saveRoot, DateTime sessionStart) {
+            if (!Directory.Exists(saveRoot)) return null;
+
+            var dateStr = sessionStart.ToString("yyyy-MM-dd");
+            var nextDayStr = sessionStart.AddDays(1).ToString("yyyy-MM-dd");
+            try {
+                var matches = Directory.GetDirectories(saveRoot)
+                    .Where(d => {
+                        var name = Path.GetFileName(d);
+                        return name.Contains(dateStr) || name.Contains(nextDayStr);
+                    })
+                    .OrderByDescending(d => Directory.GetLastWriteTime(d))
+                    .ToList();
+                return matches.FirstOrDefault();
+            } catch {
+                return null;
+            }
+        }
+
         private async Task SaveReportLocallyAsync(ReportData reportData, string htmlReport = null) {
             try {
-                var customPath = Settings.Default.SaveReportPath;
-                var saveDir = !string.IsNullOrWhiteSpace(customPath)
-                    ? customPath
-                    : Path.Combine(
-                        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                        "N.I.N.A.", "Night Summary", "Saved Reports");
+                var (saveDir, filename) = ResolveReportSavePath(reportData);
                 Directory.CreateDirectory(saveDir);
-
-                var filename = $"NightSummary_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.html";
                 var filePath = Path.Combine(saveDir, filename);
 
                 htmlReport ??= await reportGenerator.GenerateHtmlReport(reportData);
                 await File.WriteAllTextAsync(filePath, htmlReport);
-
                 Logger.Info($"NightSummary: Report saved locally to {filePath}");
+
+                // Save live stack master images alongside the report
+                SaveLiveStackMasters(saveDir, filename, reportData);
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to save report locally. {ex.Message}");
             }
         }
 
+        private static void SaveLiveStackMasters(string reportDir, string reportFilename, ReportData reportData) {
+            if (reportData.LiveStackImages == null || reportData.LiveStackImages.Count == 0) return;
+
+            var assetsDir = Path.Combine(reportDir, "assets");
+
+            try {
+                Directory.CreateDirectory(assetsDir);
+                var manifest = new List<Dictionary<string, object>>();
+                foreach (var img in reportData.LiveStackImages) {
+                    var data = img.MasterJpegData ?? img.JpegData;
+                    var safeName = SanitizeFileName($"{img.Target}_{img.Filter}");
+                    var jpgFile = safeName + ".jpg";
+                    File.WriteAllBytes(Path.Combine(assetsDir, jpgFile), data);
+
+                    manifest.Add(new Dictionary<string, object> {
+                        ["file"] = jpgFile,
+                        ["target"] = img.Target,
+                        ["filter"] = img.Filter,
+                        ["isMonochrome"] = img.IsMonochrome,
+                        ["stackCount"] = img.StackCount,
+                        ["redStackCount"] = img.RedStackCount,
+                        ["greenStackCount"] = img.GreenStackCount,
+                        ["blueStackCount"] = img.BlueStackCount
+                    });
+                }
+
+                var json = System.Text.Json.JsonSerializer.Serialize(manifest, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(Path.Combine(assetsDir, "livestack.json"), json);
+                Logger.Info($"NightSummary: Saved {reportData.LiveStackImages.Count} live stack master(s) to {assetsDir}");
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Failed to save live stack masters: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Loads live stack master images from an assets directory alongside a saved report.
+        /// Returns empty list if no assets found.
+        /// </summary>
+        internal static List<LiveStackImage> LoadLiveStackMasters(string reportDir, string reportFilename) {
+            var assetsDir = Path.Combine(reportDir, "assets");
+            var manifestPath = Path.Combine(assetsDir, "livestack.json");
+
+            if (!File.Exists(manifestPath)) {
+                Logger.Info($"NightSummary: No livestack.json manifest at {manifestPath}");
+                return new List<LiveStackImage>();
+            }
+
+            try {
+                var json = File.ReadAllText(manifestPath);
+                var entries = System.Text.Json.JsonSerializer.Deserialize<List<Dictionary<string, System.Text.Json.JsonElement>>>(json);
+                var images = new List<LiveStackImage>();
+
+                foreach (var entry in entries) {
+                    var jpgPath = Path.Combine(assetsDir, entry["file"].GetString());
+                    if (!File.Exists(jpgPath)) {
+                        Logger.Warning($"NightSummary: Live stack JPEG missing: {jpgPath}");
+                        continue;
+                    }
+
+                    var masterData = File.ReadAllBytes(jpgPath);
+                    // Re-scale master to report-embed size for inline base64
+                    var reportData = LiveStackCapture.ScaleJpegForReport(masterData);
+                    images.Add(new LiveStackImage {
+                        Target = entry["target"].GetString(),
+                        Filter = entry["filter"].GetString(),
+                        IsMonochrome = entry["isMonochrome"].GetBoolean(),
+                        JpegData = reportData,
+                        MasterJpegData = masterData,
+                        StackCount = entry["stackCount"].GetInt32(),
+                        RedStackCount = entry.TryGetValue("redStackCount", out var r) && r.ValueKind != System.Text.Json.JsonValueKind.Null ? r.GetInt32() : null,
+                        GreenStackCount = entry.TryGetValue("greenStackCount", out var g) && g.ValueKind != System.Text.Json.JsonValueKind.Null ? g.GetInt32() : null,
+                        BlueStackCount = entry.TryGetValue("blueStackCount", out var b) && b.ValueKind != System.Text.Json.JsonValueKind.Null ? b.GetInt32() : null,
+                    });
+                }
+
+                Logger.Info($"NightSummary: Loaded {images.Count} live stack master(s) from {assetsDir}");
+                return images;
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Failed to load live stack masters: {ex.Message}");
+                return new List<LiveStackImage>();
+            }
+        }
+
+        private static string SanitizeFileName(string name) {
+            var invalid = Path.GetInvalidFileNameChars();
+            return string.Concat(name.Select(c => invalid.Contains(c) ? '_' : c));
+        }
+
+        /// <summary>
+        /// Resolves NINA-style $$PATTERN$$ variables in a file pattern string.
+        /// Date/time patterns always resolve. Equipment/session patterns resolve
+        /// when context values are provided (null values become empty strings).
+        /// </summary>
+        internal static string ResolveFilePattern(string pattern, Dictionary<string, string> context = null) {
+            var now = DateTime.Now;
+            var utcNow = DateTime.UtcNow;
+            var minus12 = now.AddHours(-12);
+
+            var result = pattern
+                .Replace("$$DATEMINUS12$$", minus12.ToString("yyyy-MM-dd"))
+                .Replace("$$DATE$$", now.ToString("yyyy-MM-dd"))
+                .Replace("$$DATEUTC$$", utcNow.ToString("yyyy-MM-dd"))
+                .Replace("$$DATETIME$$", now.ToString("yyyy-MM-dd_HH-mm-ss"))
+                .Replace("$$TIME$$", now.ToString("HH-mm-ss"))
+                .Replace("$$TIMEUTC$$", utcNow.ToString("HH-mm-ss"))
+                .Replace("$$CAMERA$$", context?.GetValueOrDefault("$$CAMERA$$") ?? "")
+                .Replace("$$TELESCOPE$$", context?.GetValueOrDefault("$$TELESCOPE$$") ?? "")
+                .Replace("$$SEQUENCETITLE$$", context?.GetValueOrDefault("$$SEQUENCETITLE$$") ?? "");
+
+            // Sanitize each path segment
+            var segments = result.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
+            return Path.Combine(segments.Select(s => string.Join("_",
+                s.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries)).Trim()
+            ).ToArray());
+        }
+
+        /// <summary>
+        /// Builds the context dictionary for pattern resolution from available session data.
+        /// </summary>
+        private Dictionary<string, string> BuildPatternContext(ReportData reportData) {
+            var ctx = new Dictionary<string, string>();
+
+            try { ctx["$$CAMERA$$"] = cameraMediator?.GetInfo()?.Name ?? ""; } catch { ctx["$$CAMERA$$"] = ""; }
+            try { ctx["$$TELESCOPE$$"] = profileService?.ActiveProfile?.TelescopeSettings?.Name ?? ""; } catch { ctx["$$TELESCOPE$$"] = ""; }
+            try {
+                var seqPath = sequenceMediator?.GetAdvancedSequencerSavePath();
+                ctx["$$SEQUENCETITLE$$"] = !string.IsNullOrEmpty(seqPath) ? Path.GetFileNameWithoutExtension(seqPath) : "";
+            } catch { ctx["$$SEQUENCETITLE$$"] = ""; }
+
+            return ctx;
+        }
+
+        /// <summary>
+        /// Returns the resolved report filename (no directory, with .html extension).
+        /// Used by all delivery channels for consistent naming.
+        /// </summary>
+        internal string GetReportFileName(ReportData reportData = null) {
+            var pattern = S.SaveReportFilePattern;
+            if (string.IsNullOrWhiteSpace(pattern))
+                return $"NightSummary_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.html";
+            var context = reportData != null ? BuildPatternContext(reportData) : null;
+            var resolved = ResolveFilePattern(pattern, context);
+            // Strip any directory parts — only the filename portion applies to non-local channels
+            return Path.GetFileName(resolved) + ".html";
+        }
+
         private async Task SendPushoverWithDataAsync(ReportData reportData) {
             try {
-                var appToken = Settings.Default.PushoverAppToken;
-                var userKey  = Settings.Default.PushoverUserKey;
+                var appToken = S.PushoverAppToken;
+                var userKey  = S.PushoverUserKey;
 
                 if (string.IsNullOrWhiteSpace(appToken) || string.IsNullOrWhiteSpace(userKey)) {
                     Logger.Warning("NightSummary: Pushover not configured — skipping notification");
@@ -273,7 +660,7 @@ namespace NINA.Plugin.NightSummary.Session {
 
         private async Task SendDiscordWithDataAsync(ReportData reportData, string htmlReport = null) {
             try {
-                var webhookUrl = Settings.Default.DiscordWebhookUrl;
+                var webhookUrl = S.DiscordWebhookUrl;
 
                 if (string.IsNullOrWhiteSpace(webhookUrl)) {
                     Logger.Warning("NightSummary: Discord webhook URL not configured — skipping");
@@ -281,8 +668,9 @@ namespace NINA.Plugin.NightSummary.Session {
                 }
 
                 htmlReport ??= await reportGenerator.GenerateHtmlReport(reportData);
+                var fileName   = GetReportFileName(reportData);
                 var sender     = new DiscordSender(webhookUrl);
-                await sender.SendReportAsync(reportData, htmlReport);
+                await sender.SendReportAsync(reportData, htmlReport, fileName);
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to send Discord report. {ex.Message}");
             }
@@ -290,9 +678,9 @@ namespace NINA.Plugin.NightSummary.Session {
 
         private async Task SendReportWithDataAsync(ReportData reportData, string htmlReport = null) {
             try {
-                var senderAddress = Settings.Default.SenderAddress;
-                var smtpPassword  = Settings.Default.SmtpPassword;
-                var recipient     = Settings.Default.RecipientAddress;
+                var senderAddress = S.SenderAddress;
+                var smtpPassword  = S.SmtpPassword;
+                var recipient     = S.RecipientAddress;
 
                 if (string.IsNullOrWhiteSpace(senderAddress) ||
                     string.IsNullOrWhiteSpace(smtpPassword) ||
@@ -307,12 +695,12 @@ namespace NINA.Plugin.NightSummary.Session {
                 var subject    = $"Night Summary Report - {session.SessionStart:yyyy-MM-dd} - {images.Count} images";
                 var body       = BuildSessionSummary(reportData, compact: false);
 
-                var attachmentFileName = $"NightSummary_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.html";
-                bool useGmail = Settings.Default.UseGmailSmtp;
+                var attachmentFileName = GetReportFileName(reportData);
+                bool useGmail = S.UseGmailSmtp;
                 var sender = new EmailSender(
-                    useGmail ? "smtp.gmail.com" : Settings.Default.SmtpHost,
-                    useGmail ? 587 : Settings.Default.SmtpPort,
-                    useGmail ? true : Settings.Default.SmtpSsl,
+                    useGmail ? "smtp.gmail.com" : S.SmtpHost,
+                    useGmail ? 587 : S.SmtpPort,
+                    useGmail ? true : S.SmtpSsl,
                     senderAddress, smtpPassword, recipient);
                 var success = await sender.SendReportAsync(subject, htmlReport, body.ToString(), attachmentFileName);
 
@@ -329,7 +717,7 @@ namespace NINA.Plugin.NightSummary.Session {
         private Dictionary<string, List<TargetSessionHistory>> BuildSessionHistory(SessionDatabase database, List<ImageRecord> images, string sessionId) {
             var result = new Dictionary<string, List<TargetSessionHistory>>(StringComparer.OrdinalIgnoreCase);
             foreach (var targetName in images.Select(i => i.TargetName).Distinct()) {
-                result[targetName] = database.GetSessionHistoryForTarget(targetName, sessionId, 5);
+                result[targetName] = database.GetSessionHistoryForTarget(targetName, sessionId);
             }
             return result;
         }
@@ -379,6 +767,92 @@ namespace NINA.Plugin.NightSummary.Session {
         /// Computes the imaging camera's field of view in degrees.
         /// Primary source: camera hardware info stored in the session record (captured from the first image).
         /// Fallback: pixel size and focal length from the active NINA profile, with sensor size from FramingAssistantSettings.
+        /// <summary>
+        /// Builds an ordered dictionary of equipment names for the report, applying user overrides where set.
+        /// Empty/null entries are omitted.
+        /// </summary>
+        private static Dictionary<string, string> BuildEquipmentDictionary(SessionRecord session) {
+            var overrides = ParseEquipmentOverrides(S.EquipmentOverrides);
+            var equipment = new Dictionary<string, string>();
+
+            void Add(string key, string dbValue) {
+                var value = overrides.TryGetValue(key, out var ov) && !string.IsNullOrWhiteSpace(ov) ? ov : dbValue;
+                if (!string.IsNullOrWhiteSpace(value))
+                    equipment[key] = value;
+            }
+
+            var visible = new HashSet<string>(
+                (S.EquipmentVisibleFields ?? "").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
+                StringComparer.OrdinalIgnoreCase);
+
+            void AddIfVisible(string key, string dbValue) {
+                if (visible.Contains(key)) Add(key, dbValue);
+            }
+
+            AddIfVisible("Camera",         session.CameraName);
+            AddIfVisible("Telescope",      session.TelescopeName);
+            AddIfVisible("Mount",          session.MountName);
+            AddIfVisible("Filter Wheel",   session.FilterWheelName);
+            AddIfVisible("Focuser",        session.FocuserName);
+            AddIfVisible("Rotator",        session.RotatorName);
+            AddIfVisible("Guider",         session.GuiderName);
+            AddIfVisible("Dome",           session.DomeName);
+            AddIfVisible("Flat Panel",     session.FlatDeviceName);
+            AddIfVisible("Safety Monitor", session.SafetyMonitorName);
+            AddIfVisible("Weather",        session.WeatherName);
+            AddIfVisible("Switch",         session.SwitchName);
+
+            return equipment;
+        }
+
+        internal static Dictionary<string, string> ParseEquipmentOverrides(string raw) =>
+            string.IsNullOrWhiteSpace(raw)
+                ? new Dictionary<string, string>()
+                : raw.Split(',')
+                    .Select(p => p.Split(':', 2))
+                    .Where(p => p.Length == 2)
+                    .ToDictionary(p => p[0].Trim(), p => p[1].Trim(), StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Captures equipment names from all connected mediators and stores them in the session database.
+        /// Uses COALESCE logic in SQL so calling this multiple times only fills empty fields.
+        /// </summary>
+        private void CaptureEquipmentNames() {
+            var sessionId = collector.GetCurrentSessionId();
+            if (sessionId == null) return;
+
+            try {
+                string SafeName(Func<string> getter) { try { return getter(); } catch { return null; } }
+
+                var camera        = SafeName(() => cameraMediator?.GetInfo()?.Name);
+                var telescope     = SafeName(() => profileService?.ActiveProfile?.TelescopeSettings?.Name);
+                var mount         = SafeName(() => telescopeMediator?.GetInfo()?.Name);
+                var filterWheel   = SafeName(() => filterWheelMediator?.GetInfo()?.Name);
+                var focuser       = SafeName(() => focuserMediator?.GetInfo()?.Name);
+                var rotator       = SafeName(() => rotatorMediator?.GetInfo()?.Name);
+                var guider        = SafeName(() => guiderMediator?.GetInfo()?.Name);
+                var dome          = SafeName(() => domeMediator?.GetInfo()?.Name);
+                var flatDevice    = SafeName(() => flatDeviceMediator?.GetInfo()?.Name);
+                var safetyMonitor = SafeName(() => safetyMonitorMediator?.GetInfo()?.Name);
+                var weather       = SafeName(() => weatherDataMediator?.GetInfo()?.Name);
+                var switchHub     = SafeName(() => switchMediator?.GetInfo()?.Name);
+
+                collector.Database.UpdateSessionEquipment(sessionId,
+                    camera, telescope, mount, filterWheel, focuser, rotator, guider,
+                    dome, flatDevice, safetyMonitor, weather, switchHub);
+
+                Logger.Info($"NightSummary: Equipment captured — Camera={camera ?? "n/a"}, Telescope={telescope ?? "n/a"}, Mount={mount ?? "n/a"}, " +
+                    $"FilterWheel={filterWheel ?? "n/a"}, Focuser={focuser ?? "n/a"}, Rotator={rotator ?? "n/a"}, Guider={guider ?? "n/a"}");
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Could not capture equipment names. {ex.Message}");
+            }
+        }
+
+        private void OnFirstImageSaved(object sender, EventArgs e) {
+            collector.FirstImageSaved -= OnFirstImageSaved;
+            CaptureEquipmentNames();
+        }
+
         /// Falls back to (1.0, 1.0) if no usable values are found.
         /// </summary>
         private (double widthDeg, double heightDeg) ComputeCameraFov(SessionRecord session = null) {
@@ -443,7 +917,24 @@ namespace NINA.Plugin.NightSummary.Session {
             var (fovW, fovH) = ComputeCameraFov(session);
             var (lat, lon)   = GetObserverCoords();
 
-            return new ReportData {
+            // Always re-parse timing events from logs (fast, < 1s) to pick up parser improvements.
+            // Falls back to cached DB data only if the log file is no longer available.
+            List<TimingEvent> timingEvents;
+            try {
+                timingEvents = NinaLogParser.Parse(session.SessionStart, session.SessionEnd, images.Count);
+                if (timingEvents.Any()) {
+                    db.ClearTimingEvents(session.SessionId);
+                    db.SaveTimingEvents(session.SessionId, timingEvents);
+                }
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Log re-parse failed, using cached data — {ex.Message}");
+                timingEvents = null;
+            }
+            if (timingEvents == null || !timingEvents.Any()) {
+                timingEvents = db.GetTimingEventsForSession(session.SessionId);
+            }
+
+            var reportData = new ReportData {
                 Session                      = session,
                 Images                       = images,
                 Events                       = events,
@@ -455,8 +946,18 @@ namespace NINA.Plugin.NightSummary.Session {
                 ObserverLatitude             = lat,
                 ObserverLongitude            = lon,
                 ActiveProfileId              = profileId,
-                SkippedExposures             = session.SkippedExposures
+                SkippedExposures             = session.SkippedExposures,
+                Equipment                    = BuildEquipmentDictionary(session),
+                TimingEvents                 = timingEvents
             };
+
+            // Try to load persisted live stack masters for this session
+            var (resolvedDir, resolvedFilename) = ResolveReportSavePath(reportData, scanForExisting: true);
+            if (resolvedDir != null) {
+                reportData.LiveStackImages = LoadLiveStackMasters(resolvedDir, resolvedFilename);
+            }
+
+            return reportData;
         }
 
         /// <summary>

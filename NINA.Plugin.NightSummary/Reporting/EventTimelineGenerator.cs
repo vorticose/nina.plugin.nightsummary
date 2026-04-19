@@ -1,5 +1,4 @@
 using NINA.Plugin.NightSummary.Data;
-using NINA.Plugin.NightSummary.MyPluginProperties;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -69,11 +68,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
             int svgHeight = legendTop + legendHeight + 10;
 
             var sb = new StringBuilder();
-            sb.AppendLine("<h2>Session Timeline</h2>");
-            sb.AppendLine("<div class='timeline-container' style='position:relative;'>");
 
             // Floating tooltip div — positioned by JS on mousemove
-            bool light = Settings.Default.ReportLightMode;
+            bool light = SettingsManager.Instance.Current.ReportLightMode;
             string tooltipBg = light ? "#ffffff" : "#1e1e2e";
             string tooltipFg = light ? "#1a1a2e" : "#e0e0e0";
             string tooltipShadow = light ? "rgba(0,0,0,0.15)" : "rgba(0,0,0,0.6)";
@@ -82,7 +79,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             string tickColor = light ? "#888" : "#555";
             string labelColor = light ? "#666" : "#888";
             string legendText = light ? "#1a1a2e" : "#e0e0e0";
-            sb.AppendLine($"<div id='ns-tooltip' style='display:none;position:fixed;background:{tooltipBg};color:{tooltipFg};padding:6px 10px;border-radius:6px;font-size:12px;font-family:Arial,sans-serif;pointer-events:none;box-shadow:0 2px 8px {tooltipShadow};z-index:9999;white-space:nowrap;'></div>");
+            sb.AppendLine($"<div class='ns-tl-tip' style='display:none;position:fixed;background:{tooltipBg};color:{tooltipFg};padding:6px 10px;border-radius:6px;font-size:12px;font-family:Arial,sans-serif;pointer-events:none;box-shadow:0 2px 8px {tooltipShadow};z-index:9999;white-space:nowrap;'></div>");
 
             sb.AppendLine($"<svg viewBox='0 0 {svgWidth} {svgHeight}' xmlns='http://www.w3.org/2000/svg' style='width:100%;font-family:Arial,sans-serif;font-size:11px;'>");
 
@@ -264,10 +261,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             sb.AppendLine($@"<script>
 (function() {{
-  var tip = document.getElementById('ns-tooltip');
+  var root = document.currentScript.parentElement;
+  var tip = root.querySelector('.ns-tl-tip');
   if (!tip) return;
   var markers = {jsMarkers};
-  document.querySelectorAll('[data-tip]').forEach(function(el) {{
+  root.querySelectorAll('[data-tip]').forEach(function(el) {{
     el.addEventListener('mousemove', function(e) {{
       tip.textContent = el.getAttribute('data-tip');
       tip.style.display = 'block';
@@ -278,11 +276,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
       tip.style.display = 'none';
     }});
   }});
-  var container = document.querySelector('.timeline-container');
-  if (container) {{
-    var svg = container.querySelector('svg');
-    container.addEventListener('click', function(e) {{
-      if (!svg || markers.length === 0) return;
+  var svg = root.querySelector('svg');
+  if (svg) {{
+    root.addEventListener('click', function(e) {{
+      if (markers.length === 0) return;
       var rect = svg.getBoundingClientRect();
       var svgW = {svgWidth};
       var scaleX = rect.width / svgW;
@@ -312,7 +309,6 @@ namespace NINA.Plugin.NightSummary.Reporting {
 }})();
 </script>");
 
-            sb.AppendLine("</div>");
             return sb.ToString();
         }
     }
