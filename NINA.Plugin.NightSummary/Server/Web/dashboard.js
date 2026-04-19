@@ -2883,7 +2883,7 @@ function buildActivityWaveform(sessions) {
     var glowOpacity = (0.05 + normInteg * 0.25).toFixed(2);
     svg += '<rect x="' + (x - 2).toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + (BAR_W + 4) + '" height="' + barH.toFixed(1) + '" fill="' + hColor + '" opacity="' + glowOpacity + '" rx="2"/>';
     var bar = '<rect class="lw-bar" x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + BAR_W + '" height="' + barH.toFixed(1) + '" fill="' + hColor + '" rx="2"><title>' + esc(tooltip) + '</title></rect>';
-    if (s.sessionId && s.hasReport) {
+    if (!isMobile && s.sessionId && s.hasReport) {
       svg += '<a href="/api/sessions/' + encodeURIComponent(s.sessionId) + '/report" target="_blank" rel="noopener">' + bar + '</a>';
     } else {
       svg += bar;
