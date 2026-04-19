@@ -224,6 +224,32 @@ namespace NINA.Plugin.NightSummary.Tests {
                 var aborted = events.Where(e => e.EventType == "AbortedExposure").ToList();
                 Assert.Single(aborted);
                 Assert.Equal(new DateTime(2026, 3, 30, 21, 39, 6, 854).AddTicks(5000), aborted[0].StartTime);
+                // Duration should be capped at requested exposure (600s) + 30s grace, not
+                // extended to sessionEnd (which would be ~51 minutes here).
+                Assert.Equal(630, aborted[0].DurationSeconds);
+            } finally {
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void UnmatchedExposure_WithoutRequestedDuration_CapsAt600s() {
+            // No "ExposureTime N" in the Starting message — parser can't extract requested time,
+            // so it falls back to the 600s (10 min) conservative cap.
+            var unmatchedLog = @"----------------------------------------------------------------------
+--------------N.I.N.A. - Nighttime Imaging 'N' Astronomy--------------
+--------------------------Version 3.2.0.9001--------------------------
+-------------------------2026-03-30T21:21:13--------------------------
+----------------------------------------------------------------------
+2026-03-30T21:39:06.8545|INFO|SequenceItem.cs|Run|208|Starting Category: Scheduler, Item: TakeExposure
+";
+            var path = Path.Combine(Path.GetTempPath(), $"unmatched_nodur_{Guid.NewGuid():N}.log");
+            File.WriteAllText(path, unmatchedLog);
+            try {
+                var events = NinaLogParser.ParseFile(path, SessionStart, SessionEnd);
+                var aborted = events.Where(e => e.EventType == "AbortedExposure").ToList();
+                Assert.Single(aborted);
+                Assert.Equal(600, aborted[0].DurationSeconds);
             } finally {
                 File.Delete(path);
             }

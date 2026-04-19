@@ -179,16 +179,22 @@ namespace NINA.Plugin.NightSummary.Data {
                     } else if (message.StartsWith("Starting ")) {
                         totalSequenceItemLines++;
                         if (itemName == "TakeExposure" || itemName == "TakeSubframeExposure") {
-                            // If a previous exposure start was never finished, emit it as aborted
+                            // If a previous exposure start was never finished, emit it as aborted.
+                            // Same cap as the end-of-log orphan (see below) — if there's a long gap
+                            // between exposures (pause, unsafe, etc.) the abort duration is capped at
+                            // requested exposure + 30s download grace to avoid inflating overhead.
                             if (exposureStart.HasValue) {
+                                var rawDuration = (timestamp - exposureStart.Value).TotalSeconds;
+                                var cap         = exposureRequestedSeconds > 0 ? exposureRequestedSeconds + 30 : 600;
+                                var duration    = Math.Min(rawDuration, cap);
                                 events.Add(new TimingEvent {
                                     EventType = "AbortedExposure",
                                     StartTime = exposureStart.Value,
-                                    EndTime = timestamp,
-                                    DurationSeconds = (timestamp - exposureStart.Value).TotalSeconds,
+                                    EndTime = exposureStart.Value.AddSeconds(duration),
+                                    DurationSeconds = duration,
                                     Details = exposureDetails
                                 });
-                                Logger.Warning($"NightSummary: LogParser — exposure started at {exposureStart.Value:o} was aborted (new exposure started)");
+                                Logger.Warning($"NightSummary: LogParser — exposure started at {exposureStart.Value:o} was aborted (new exposure started, duration capped at {duration:F0}s of raw {rawDuration:F0}s)");
                             }
                             exposureStart = timestamp;
                             exposureDetails = ExtractExposureDetails(message);
@@ -314,16 +320,24 @@ namespace NINA.Plugin.NightSummary.Data {
                 }
             }
 
-            // Emit unmatched exposure as aborted (e.g. cancelled by unsafe trigger)
+            // Emit unmatched exposure as aborted (e.g. cancelled by unsafe trigger).
+            // Cap duration: an aborted exposure can't have run longer than the requested
+            // exposure time + a download grace. Without capping, the orphan stretches to
+            // end-of-log and creates a ghost overhead event (e.g. 2h15m of "AbortedExposure"
+            // after NINA kept running post-sequence-stop). Fallback cap = 10 min when
+            // requested duration isn't known.
             if (exposureStart.HasValue) {
+                var rawDuration = (sessionEnd - exposureStart.Value).TotalSeconds;
+                var cap         = exposureRequestedSeconds > 0 ? exposureRequestedSeconds + 30 : 600;
+                var duration    = Math.Min(rawDuration, cap);
                 events.Add(new TimingEvent {
                     EventType = "AbortedExposure",
                     StartTime = exposureStart.Value,
-                    EndTime = sessionEnd,
-                    DurationSeconds = (sessionEnd - exposureStart.Value).TotalSeconds,
+                    EndTime = exposureStart.Value.AddSeconds(duration),
+                    DurationSeconds = duration,
                     Details = exposureDetails
                 });
-                Logger.Warning($"NightSummary: LogParser — exposure started at {exposureStart.Value:o} was aborted (no matching finish)");
+                Logger.Warning($"NightSummary: LogParser — exposure started at {exposureStart.Value:o} was aborted (no matching finish, duration capped at {duration:F0}s of raw {rawDuration:F0}s)");
             }
             foreach (var pending in pendingStarts)
                 Logger.Warning($"NightSummary: LogParser — unmatched {pending.Key} start at {pending.Value:o}");

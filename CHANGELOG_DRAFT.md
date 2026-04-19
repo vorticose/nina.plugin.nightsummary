@@ -22,6 +22,7 @@
 - Fixed filter chip selector causing a slight layout shift when switching filters -- chips are now consistently bold so toggling the active state no longer changes their width
 - Fixed rejected count inflating when Target Scheduler had not finished grading by session end -- images still Pending in TS are no longer miscounted as rejected, and hover tooltips for rejections only show reasons for actually-rejected frames.
 - Fixed overhead analysis "Overhead Accounted %" dropping below typical values on nights where Target Scheduler had to wait for targets to rise -- idle wait periods are now excluded from the imaging window (the same way roof-closed time already was), so coverage reflects true overhead efficiency.
+- Fixed aborted exposures with no matching finish (e.g. sequence cut off by an unsafe trigger and NINA left running) inflating overhead with a ghost event extending to end-of-log. Abort duration is now capped at the requested exposure time plus a small grace, or 10 minutes if the requested duration can't be determined.
 
 
 ## v2.10.0
