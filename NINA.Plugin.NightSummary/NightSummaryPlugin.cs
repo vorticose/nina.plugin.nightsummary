@@ -439,7 +439,9 @@ namespace NINA.Plugin.NightSummary {
                 S.ShowChartFlipMarkers  = true;
                 S.ShowChartRoofMarkers  = false;
                 S.ShowPerTargetIQ       = true;
-                S.ShowNextNightPreview  = true;
+                S.ShowNextNightPreview    = true;
+                S.PreviewAltitudeDefault  = true;
+                S.TimelineAltitudeDefault = true;
                 SaveSettings();
                 RaisePropertyChanged();
                 RaisePropertyChanged(nameof(ShowOverheadBreakdown));
@@ -457,6 +459,8 @@ namespace NINA.Plugin.NightSummary {
                 RaisePropertyChanged(nameof(ShowChartRoofMarkers));
                 RaisePropertyChanged(nameof(ShowPerTargetIQ));
                 RaisePropertyChanged(nameof(ShowNextNightPreview));
+                RaisePropertyChanged(nameof(PreviewAltitudeDefault));
+                RaisePropertyChanged(nameof(TimelineAltitudeDefault));
             }
         }
 
@@ -558,28 +562,37 @@ namespace NINA.Plugin.NightSummary {
         public const int MaxAdditionalCharts = 4;
 
         private static readonly List<string> _primaryMetricNames = new List<string> {
-            "HFR", "FWHM", "Guiding RMS", "Focuser Temp (°C)", "Ambient Temp (°C)",
-            "Eccentricity", "Altitude (°)", "Airmass", "Humidity (%)", "Focuser Position (steps)",
-            "Sky Quality (mag/arcsec²)", "Cloud Cover (%)", "Camera Temp (°C)", "Dew Point (°C)",
-            "Wind Speed (m/s)", "Pressure (hPa)", "Star Count", "Azimuth (°)", "Seeing FWHM (arcsec)",
-            "Median ADU"
+            "HFR", "FWHM", "Guiding RMS", "Eccentricity", "Star Count",
+            "Focuser Temp (°C)", "Ambient Temp (°C)", "Camera Temp (°C)", "Cooler Setpoint (°C)",
+            "Altitude (°)", "Azimuth (°)", "Airmass",
+            "Position Angle (°)", "Rotator Position (°)", "Focuser Position (steps)",
+            "Seeing FWHM (arcsec)", "Sky Quality (mag/arcsec²)", "Sky Brightness (Lux)", "Cloud Cover (%)", "Sky Temp (°C)",
+            "Humidity (%)", "Dew Point (°C)", "Wind Speed (m/s)", "Wind Gust (m/s)", "Wind Direction (°)", "Pressure (hPa)",
+            "Exposure (s)", "Gain", "Offset",
+            "Median ADU", "Mean ADU", "Std Deviation (ADU)", "MAD (ADU)", "Min ADU", "Max ADU"
         };
 
         private static readonly List<string> _secondaryMetricNames = new List<string> {
-            "None", "HFR", "FWHM", "Guiding RMS", "Focuser Temp (°C)", "Ambient Temp (°C)",
-            "Eccentricity", "Altitude (°)", "Airmass", "Humidity (%)", "Focuser Position (steps)",
-            "Sky Quality (mag/arcsec²)", "Cloud Cover (%)", "Camera Temp (°C)", "Dew Point (°C)",
-            "Wind Speed (m/s)", "Pressure (hPa)", "Star Count", "Azimuth (°)", "Seeing FWHM (arcsec)",
-            "Median ADU"
+            "None", "HFR", "FWHM", "Guiding RMS", "Eccentricity", "Star Count",
+            "Focuser Temp (°C)", "Ambient Temp (°C)", "Camera Temp (°C)", "Cooler Setpoint (°C)",
+            "Altitude (°)", "Azimuth (°)", "Airmass",
+            "Position Angle (°)", "Rotator Position (°)", "Focuser Position (steps)",
+            "Seeing FWHM (arcsec)", "Sky Quality (mag/arcsec²)", "Sky Brightness (Lux)", "Cloud Cover (%)", "Sky Temp (°C)",
+            "Humidity (%)", "Dew Point (°C)", "Wind Speed (m/s)", "Wind Gust (m/s)", "Wind Direction (°)", "Pressure (hPa)",
+            "Exposure (s)", "Gain", "Offset",
+            "Median ADU", "Mean ADU", "Std Deviation (ADU)", "MAD (ADU)", "Min ADU", "Max ADU"
         };
 
         private static readonly List<string> _xAxisMetricNames = new List<string> {
             "Time", "Frame Index",
-            "HFR", "FWHM", "Guiding RMS", "Focuser Temp (°C)", "Ambient Temp (°C)",
-            "Eccentricity", "Altitude (°)", "Airmass", "Humidity (%)", "Focuser Position (steps)",
-            "Sky Quality (mag/arcsec²)", "Cloud Cover (%)", "Camera Temp (°C)", "Dew Point (°C)",
-            "Wind Speed (m/s)", "Pressure (hPa)", "Star Count", "Azimuth (°)", "Seeing FWHM (arcsec)",
-            "Median ADU"
+            "HFR", "FWHM", "Guiding RMS", "Eccentricity", "Star Count",
+            "Focuser Temp (°C)", "Ambient Temp (°C)", "Camera Temp (°C)", "Cooler Setpoint (°C)",
+            "Altitude (°)", "Azimuth (°)", "Airmass",
+            "Position Angle (°)", "Rotator Position (°)", "Focuser Position (steps)",
+            "Seeing FWHM (arcsec)", "Sky Quality (mag/arcsec²)", "Sky Brightness (Lux)", "Cloud Cover (%)", "Sky Temp (°C)",
+            "Humidity (%)", "Dew Point (°C)", "Wind Speed (m/s)", "Wind Gust (m/s)", "Wind Direction (°)", "Pressure (hPa)",
+            "Exposure (s)", "Gain", "Offset",
+            "Median ADU", "Mean ADU", "Std Deviation (ADU)", "MAD (ADU)", "Min ADU", "Max ADU"
         };
 
         public IReadOnlyList<string> PrimaryMetricNames  => _primaryMetricNames;
@@ -605,10 +618,17 @@ namespace NINA.Plugin.NightSummary {
         public void AddAdditionalChart() {
             if (AdditionalCharts.Count >= MaxAdditionalCharts) return;
             AdditionalCharts.Add(new ChartConfig(0, 0, SerializeChartConfigs));
+            RenumberCharts();
         }
 
         public void RemoveAdditionalChart(ChartConfig config) {
             AdditionalCharts.Remove(config);
+            RenumberCharts();
+        }
+
+        private void RenumberCharts() {
+            for (int i = 0; i < AdditionalCharts.Count; i++)
+                AdditionalCharts[i].ChartNumber = i + 2;
         }
 
         private void SerializeChartConfigs() {
@@ -629,12 +649,24 @@ namespace NINA.Plugin.NightSummary {
                     col.Add(new ChartConfig(p, s, SerializeChartConfigs, xAxis));
                 }
             }
+            for (int i = 0; i < col.Count; i++)
+                col[i].ChartNumber = i + 2;
             return col;
         }
 
         public bool ShowNextNightPreview {
             get => S.ShowNextNightPreview && IsTsInstalled && IsTsApiEnabled;
             set { S.ShowNextNightPreview = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
+        public bool PreviewAltitudeDefault {
+            get => S.PreviewAltitudeDefault;
+            set { S.PreviewAltitudeDefault = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
+        public bool TimelineAltitudeDefault {
+            get => S.TimelineAltitudeDefault;
+            set { S.TimelineAltitudeDefault = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public bool IsTsInstalled => TargetSchedulerDatabase.IsPluginInstalled;
@@ -895,6 +927,12 @@ namespace NINA.Plugin.NightSummary {
         public int XAxis {
             get => _xAxis;
             set { _xAxis = value; OnPropertyChanged(); _onChanged(); }
+        }
+
+        private int _chartNumber;
+        public int ChartNumber {
+            get => _chartNumber;
+            set { _chartNumber = value; OnPropertyChanged(); }
         }
 
         public event PropertyChangedEventHandler PropertyChanged;

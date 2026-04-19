@@ -31,6 +31,9 @@
     <EmbeddedResource Include="..\assets\plugin-icon.png">
       <LogicalName>plugin-icon.png</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="Reporting\metric-chart.js">
+      <LogicalName>metric-chart.js</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>

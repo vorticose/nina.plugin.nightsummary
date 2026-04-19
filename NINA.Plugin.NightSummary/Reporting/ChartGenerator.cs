@@ -14,30 +14,46 @@ namespace NINA.Plugin.NightSummary.Reporting {
         // X-axis metric indices (ChartXAxisMetric setting)
         public const int XAxisTime       = 0;
         public const int XAxisFrameIndex = 1;
-        // Indices 2–20 mirror the primary metrics offset by 2
+        // Indices 2–36 mirror the primary metrics offset by 2
         public const int XAxisMetricOffset = 2;
 
         // Primary metric indices (ChartPrimaryMetric setting, SelectedIndex in primary ComboBox)
-        public const int PrimaryHFR          = 0;
+        // Ordered by usefulness/popularity — see docs/metric-order.md
+        public const int PrimaryHFR          = 0;   // Image Quality
         public const int PrimaryFWHM         = 1;
-        public const int PrimaryGuidingRMS   = 2;
-        public const int PrimaryFocuserTemp  = 3;
-        public const int PrimaryAmbientTemp  = 4;
-        public const int PrimaryEccentricity = 5;
-        public const int PrimaryAltitude     = 6;
-        public const int PrimaryAirmass      = 7;
-        public const int PrimaryHumidity     = 8;
-        public const int PrimaryFocuserPos   = 9;
-        public const int PrimarySkyQuality   = 10;
-        public const int PrimaryCloudCover   = 11;
-        public const int PrimaryCameraTemp   = 12;
-        public const int PrimaryDewPoint     = 13;
-        public const int PrimaryWindSpeed    = 14;
-        public const int PrimaryPressure     = 15;
-        public const int PrimaryStarCount    = 16;
-        public const int PrimaryAzimuth      = 17;
-        public const int PrimarySeeingFWHM   = 18;
-        public const int PrimaryMedian       = 19;
+        public const int PrimaryGuidingRMS   = 2;   // Guiding
+        public const int PrimaryEccentricity = 3;   // Image Quality
+        public const int PrimaryStarCount    = 4;
+        public const int PrimaryFocuserTemp  = 5;   // Temperature
+        public const int PrimaryAmbientTemp  = 6;
+        public const int PrimaryCameraTemp   = 7;
+        public const int PrimaryCoolerSet    = 8;
+        public const int PrimaryAltitude     = 9;   // Pointing
+        public const int PrimaryAzimuth      = 10;
+        public const int PrimaryAirmass      = 11;
+        public const int PrimaryPosAngle     = 12;  // Equipment/Pointing
+        public const int PrimaryRotatorPos   = 13;  // Equipment
+        public const int PrimaryFocuserPos   = 14;
+        public const int PrimarySeeingFWHM   = 15;  // Sky Conditions
+        public const int PrimarySkyQuality   = 16;
+        public const int PrimarySkyBright    = 17;
+        public const int PrimaryCloudCover   = 18;
+        public const int PrimarySkyTemp      = 19;
+        public const int PrimaryHumidity     = 20;  // Weather
+        public const int PrimaryDewPoint     = 21;
+        public const int PrimaryWindSpeed    = 22;
+        public const int PrimaryWindGust     = 23;
+        public const int PrimaryWindDir      = 24;
+        public const int PrimaryPressure     = 25;
+        public const int PrimaryExposure     = 26;  // Capture Settings
+        public const int PrimaryGain         = 27;
+        public const int PrimaryOffset       = 28;
+        public const int PrimaryMedian       = 29;  // Image Statistics
+        public const int PrimaryMeanADU      = 30;
+        public const int PrimaryStDev        = 31;
+        public const int PrimaryMAD          = 32;
+        public const int PrimaryMinADU       = 33;
+        public const int PrimaryMaxADU       = 34;
 
         // Secondary metric indices (ChartSecondaryMetric setting, SelectedIndex in secondary ComboBox)
         // Index 0 = None; indices 1–N mirror the primary set offset by 1
@@ -45,23 +61,38 @@ namespace NINA.Plugin.NightSummary.Reporting {
         public const int SecHFR          = 1;
         public const int SecFWHM         = 2;
         public const int SecGuidingRMS   = 3;
-        public const int SecFocuserTemp  = 4;
-        public const int SecAmbientTemp  = 5;
-        public const int SecEccentricity = 6;
-        public const int SecAltitude     = 7;
-        public const int SecAirmass      = 8;
-        public const int SecHumidity     = 9;
-        public const int SecFocuserPos   = 10;
-        public const int SecSkyQuality   = 11;
-        public const int SecCloudCover   = 12;
-        public const int SecCameraTemp   = 13;
-        public const int SecDewPoint     = 14;
-        public const int SecWindSpeed    = 15;
-        public const int SecPressure     = 16;
-        public const int SecStarCount    = 17;
-        public const int SecAzimuth      = 18;
-        public const int SecSeeingFWHM   = 19;
-        public const int SecMedian       = 20;
+        public const int SecEccentricity = 4;
+        public const int SecStarCount    = 5;
+        public const int SecFocuserTemp  = 6;
+        public const int SecAmbientTemp  = 7;
+        public const int SecCameraTemp   = 8;
+        public const int SecCoolerSet    = 9;
+        public const int SecAltitude     = 10;
+        public const int SecAzimuth      = 11;
+        public const int SecAirmass      = 12;
+        public const int SecPosAngle     = 13;
+        public const int SecRotatorPos   = 14;
+        public const int SecFocuserPos   = 15;
+        public const int SecSeeingFWHM   = 16;
+        public const int SecSkyQuality   = 17;
+        public const int SecSkyBright    = 18;
+        public const int SecCloudCover   = 19;
+        public const int SecSkyTemp      = 20;
+        public const int SecHumidity     = 21;
+        public const int SecDewPoint     = 22;
+        public const int SecWindSpeed    = 23;
+        public const int SecWindGust     = 24;
+        public const int SecWindDir      = 25;
+        public const int SecPressure     = 26;
+        public const int SecExposure     = 27;
+        public const int SecGain         = 28;
+        public const int SecOffset       = 29;
+        public const int SecMedian       = 30;
+        public const int SecMeanADU      = 31;
+        public const int SecStDev        = 32;
+        public const int SecMAD          = 33;
+        public const int SecMinADU       = 34;
+        public const int SecMaxADU       = 35;
 
         private const int Width        = 800;
         private const int Height       = 300;
@@ -139,8 +170,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var primaryPts   = JoinWithXAxis(primaryRaw, xByTime);
             var secondaryPts = JoinWithXAxis(secondaryRaw, xByTime);
 
-            bool hasPrimary    = primaryPts.Count >= 2;
-            bool hasSecondary  = secondaryPts.Count >= 2;
+            bool hasPrimary    = primaryPts.Count >= 1;
+            bool hasSecondary  = secondaryPts.Count >= 1;
             bool wantSecondary = secondaryMetric > SecNone;
 
             // Both empty → full placeholder
@@ -155,7 +186,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             var leftPts  = swapped ? secondaryPts : primaryPts;
             var rightPts = (!swapped && hasSecondary) ? secondaryPts : new List<(double x, double y, DateTime t)>();
-            bool hasDual = rightPts.Count >= 2;
+            bool hasDual = rightPts.Count >= 1;
 
             string leftColor     = swapped ? ColorSecondary    : ColorPrimary;
             string leftDotColor  = swapped ? ColorSecondaryDot : ColorPrimaryDot;
@@ -179,10 +210,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
             int plotH    = Height - PadTop  - PadBottom;
 
             // X range — union of all points
-            var allX    = leftPts.Select(p => p.x).Concat(rightPts.Select(p => p.x)).ToList();
-            double minX = allX.Min();
-            double maxX = allX.Max();
-            double xRange = Math.Max(maxX - minX, xAxisMetric == XAxisFrameIndex ? 1 : 0.001);
+            var allX      = leftPts.Select(p => p.x).Concat(rightPts.Select(p => p.x)).ToList();
+            double rawMinX = allX.Min();
+            double rawMaxX = allX.Max();
+            // Single-point: pad ±1 so ToXPx(rawMinX) == center (matches JS isSinglePoint logic)
+            bool isSinglePoint = rawMaxX - rawMinX < (xAxisMetric == XAxisFrameIndex ? 1.0 : 0.001);
+            double minX  = isSinglePoint ? rawMinX - 1 : rawMinX;
+            double xRange = isSinglePoint ? 2.0 : Math.Max(rawMaxX - rawMinX, xAxisMetric == XAxisFrameIndex ? 1 : 0.001);
 
             // Y scales
             double leftMinSpan = swapped ? GetSecondaryMinSpan(secondaryMetric) : GetPrimaryMinSpan(primaryMetric);
@@ -227,13 +261,21 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             // X axis labels
             int pointCount = Math.Max(leftPts.Count, hasDual ? rightPts.Count : 0);
-            int xSteps = Math.Max(1, Math.Min(6, pointCount - 1));
-            for (int i = 0; i <= xSteps; i++) {
-                double xVal = minX + (xRange / xSteps * i);
-                double xPx  = ToXPx(xVal);
+            if (isSinglePoint) {
+                // One grid line + label centered on the single data point (matches JS isSinglePoint rendering)
+                double xPx = PadLeft + plotW / 2.0;
+                string xLabel = FormatXAxisValue(rawMinX, xAxisMetric, leftPts.Count > 0 ? leftPts[0].t : DateTime.MinValue, rawMinX);
                 sb.AppendLine($"<line x1=\"{xPx:F1}\" y1=\"{PadTop}\" x2=\"{xPx:F1}\" y2=\"{PadTop + plotH}\" stroke=\"{ColorGrid}\" stroke-width=\"1\"/>");
-                string xLabel = FormatXAxisValue(xVal, xAxisMetric, leftPts.Count > 0 ? leftPts[0].t : DateTime.MinValue, minX);
                 sb.AppendLine($"<text x=\"{xPx:F1}\" y=\"{Height - 10}\" fill=\"{ColorLabel}\" font-size=\"11\" text-anchor=\"middle\">{xLabel}</text>");
+            } else {
+                int xSteps = Math.Max(1, Math.Min(6, pointCount - 1));
+                for (int i = 0; i <= xSteps; i++) {
+                    double xVal = minX + (xRange / xSteps * i);
+                    double xPx  = ToXPx(xVal);
+                    sb.AppendLine($"<line x1=\"{xPx:F1}\" y1=\"{PadTop}\" x2=\"{xPx:F1}\" y2=\"{PadTop + plotH}\" stroke=\"{ColorGrid}\" stroke-width=\"1\"/>");
+                    string xLabel = FormatXAxisValue(xVal, xAxisMetric, leftPts.Count > 0 ? leftPts[0].t : DateTime.MinValue, minX);
+                    sb.AppendLine($"<text x=\"{xPx:F1}\" y=\"{Height - 10}\" fill=\"{ColorLabel}\" font-size=\"11\" text-anchor=\"middle\">{xLabel}</text>");
+                }
             }
 
             // Left and bottom axes
@@ -248,11 +290,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine($"<text x=\"{PadLeft + plotW / 2}\" y=\"{Height - 2}\" fill=\"{ColorLabel}\" font-size=\"10\" text-anchor=\"middle\">{GetXAxisAxisLabel(xAxisMetric)}</text>");
             }
 
-            // Event markers (Time x-axis only, drawn behind data lines)
+            // Event markers pass 1: visible dashed lines only (drawn behind data)
+            // Hit areas and labels are emitted in pass 2, after data dots, so they
+            // sit on top in SVG z-order and reliably receive hover events.
+            var activeMarkers = new List<(double xPx, string color, string label, string tip)>();
             if (xAxisMetric == XAxisTime && eventMarkers != null && minTime != DateTime.MinValue) {
                 foreach (var (ts, evtType, desc) in eventMarkers) {
                     double evtSec = (ts - minTime).TotalSeconds;
-                    if (evtSec < minX || evtSec > maxX) continue;
+                    if (evtSec < minX || evtSec > minX + xRange) continue;
 
                     double xPx = ToXPx(evtSec);
                     var (color, label) = evtType switch {
@@ -262,11 +307,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
                         _              => (ColorUnsafeMarker,  "US")
                     };
                     string tip = $"{label}: {EscapeXml(desc ?? evtType)} @ {ts:HH:mm:ss}";
-                    // Visible dashed line
                     sb.AppendLine($"<line x1=\"{xPx:F1}\" y1=\"{PadTop}\" x2=\"{xPx:F1}\" y2=\"{PadTop + plotH}\" stroke=\"{color}\" stroke-width=\"1\" stroke-dasharray=\"4,3\" opacity=\"0.7\"/>");
-                    // Invisible wider hit area for hover tooltip
-                    sb.AppendLine($"<line class=\"evt-hit\" x1=\"{xPx:F1}\" y1=\"{PadTop}\" x2=\"{xPx:F1}\" y2=\"{PadTop + plotH}\" stroke=\"transparent\" stroke-width=\"8\"><title>{tip}</title></line>");
-                    sb.AppendLine($"<text x=\"{xPx:F1}\" y=\"{PadTop - 4}\" fill=\"{color}\" font-size=\"8\" text-anchor=\"middle\" opacity=\"0.85\">{label}</text>");
+                    activeMarkers.Add((xPx, color, label, tip));
                 }
             }
 
@@ -295,6 +337,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine($"<circle cx=\"{ToXPx(p.x):F1}\" cy=\"{ToYL(p.y):F1}\" r=\"3\" fill=\"{leftDotColor}\"><title>{tip}</title></circle>");
             }
 
+            // Event markers pass 2: hit areas + labels on top of data dots
+            foreach (var (xPx, color, label, tip) in activeMarkers) {
+                sb.AppendLine($"<line x1=\"{xPx:F1}\" y1=\"{PadTop}\" x2=\"{xPx:F1}\" y2=\"{PadTop + plotH}\" stroke=\"transparent\" stroke-width=\"8\" pointer-events=\"all\"><title>{tip}</title></line>");
+                sb.AppendLine($"<text x=\"{xPx:F1}\" y=\"{PadTop - 4}\" fill=\"{color}\" font-size=\"8\" text-anchor=\"middle\" opacity=\"0.85\" pointer-events=\"none\">{label}</text>");
+            }
+
             // Warning badge
             if (badgeText != null) {
                 int bx = PadLeft + 8;
@@ -312,6 +360,236 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             sb.AppendLine("</svg>");
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Builds a JSON-ready <see cref="ChartModel"/> describing the chart.
+        /// This is the JS-renderer path: the model is serialized and embedded in the
+        /// HTML report as a data attribute, then rendered client-side. Same shape is
+        /// served by the dashboard API. No SVG is produced here.
+        /// </summary>
+        public static ChartModel BuildChartModel(
+                List<ImageRecord> images,
+                int primaryMetric,
+                int secondaryMetric,
+                int xAxisMetric = XAxisTime,
+                List<(DateTime timestamp, string eventType, string description)>? eventMarkers = null) {
+
+            var model = new ChartModel {
+                Width     = Width,
+                Height    = Height,
+                LightMode = IsLight,
+                Title     = GetChartTitle(primaryMetric, secondaryMetric, xAxisMetric),
+                Primary   = BuildPrimaryMetricInfo(images, primaryMetric),
+                XAxis     = BuildXAxisInfo(xAxisMetric)
+            };
+
+            if (secondaryMetric > SecNone)
+                model.Secondary = BuildSecondaryMetricInfo(images, secondaryMetric);
+
+            // Iterate images directly rather than going through the timestamp-keyed
+            // ExtractPrimary/JoinWithXAxis pipeline the legacy SVG path uses. Keyed
+            // lookups drop points when two images share a timestamp, and (more
+            // importantly here) misattribute filter names. Iterating the ordered
+            // list guarantees each point carries its own image's filter.
+            var ordered = images.OrderBy(i => i.Timestamp).ToList();
+
+            model.PrimaryPoints = BuildPointsForMetric(ordered, primaryMetric, xAxisMetric, isPrimary: true);
+            if (secondaryMetric > SecNone) {
+                model.SecondaryPoints = BuildPointsForMetric(ordered, secondaryMetric, xAxisMetric, isPrimary: false);
+            }
+
+            // Event markers — precompute xValue (seconds since session start) so the
+            // JS renderer doesn't need to rerun time math on every re-render.
+            if (eventMarkers != null && eventMarkers.Count > 0 && ordered.Count > 0) {
+                var minTime = ordered[0].Timestamp;
+                foreach (var (ts, evtType, desc) in eventMarkers) {
+                    double xSec = (ts - minTime).TotalSeconds;
+                    var label = evtType switch {
+                        "AutoFocus"    => "AF",
+                        "MeridianFlip" => "MF",
+                        "RoofOpen"     => "S",
+                        _              => "US"
+                    };
+                    model.EventMarkers.Add(new ChartEventMarker {
+                        Timestamp   = ts,
+                        XValue      = xSec,
+                        Type        = evtType,
+                        Label       = label,
+                        Description = desc ?? evtType
+                    });
+                }
+            }
+
+            // Distinct filters in FilterHelper sort order (L, R, G, B, Ha, Sii, Oiii, …).
+            // Sourced from the raw images, NOT from the extracted point list — that way
+            // every chart in the report shows the same filter chip list (the filters
+            // actually used this session), regardless of which metric the chart is
+            // plotting. If a filter has images but no valid points for the current
+            // metric (e.g. Ha with no star detection and HFR chart), clicking the chip
+            // correctly falls through to the "No data for filter X" placeholder.
+            model.Filters = ordered
+                .Select(i => i.Filter)
+                .Where(f => !string.IsNullOrWhiteSpace(f))
+                .Distinct()
+                .OrderBy(FilterHelper.SortKey)
+                .ThenBy(f => f)
+                .ToList();
+
+            return model;
+        }
+
+        /// <summary>
+        /// Builds the plot-point list for one metric by iterating the ordered
+        /// image list. Each emitted point carries the x-axis value (time-since-start,
+        /// frame index, or metric value) plus the source image's filter and timestamp.
+        /// Points with no valid y-value (or no valid x-value in metric x-axis mode)
+        /// are skipped. Returned list is sorted by X.
+        /// </summary>
+        private static List<ChartPoint> BuildPointsForMetric(
+                List<ImageRecord> ordered,
+                int metric,
+                int xAxisMetric,
+                bool isPrimary) {
+            var list = new List<ChartPoint>(ordered.Count);
+            if (ordered.Count == 0) return list;
+
+            var sessionStart = ordered[0].Timestamp;
+            int xMetricIdx = xAxisMetric >= XAxisMetricOffset ? xAxisMetric - XAxisMetricOffset : -1;
+
+            for (int i = 0; i < ordered.Count; i++) {
+                var img = ordered[i];
+                double? y = ExtractMetricValue(img, metric, isPrimary);
+                if (y == null) continue;
+
+                double x;
+                if (xAxisMetric == XAxisTime) {
+                    x = (img.Timestamp - sessionStart).TotalSeconds;
+                } else if (xAxisMetric == XAxisFrameIndex) {
+                    x = i + 1;
+                } else {
+                    // Metric x-axis: skip points whose x-metric has no value
+                    double? xVal = ExtractMetricValue(img, xMetricIdx, isPrimary: true);
+                    if (xVal == null) continue;
+                    x = xVal.Value;
+                }
+
+                list.Add(new ChartPoint {
+                    X         = x,
+                    Y         = y.Value,
+                    Filter    = img.Filter ?? "",
+                    Timestamp = img.Timestamp
+                });
+            }
+
+            list.Sort((a, b) => a.X.CompareTo(b.X));
+            return list;
+        }
+
+        /// <summary>
+        /// Unified per-image metric extractor. Returns null when the image lacks
+        /// a valid value for the requested metric (matching the &gt;0 / HasValue
+        /// filters in ExtractPrimary/ExtractSecondary). The <paramref name="isPrimary"/>
+        /// flag selects between the primary and secondary metric index spaces,
+        /// which differ by 1 (SecNone = 0 shifts all secondary indices up by 1).
+        /// </summary>
+        private static double? ExtractMetricValue(ImageRecord img, int metric, bool isPrimary) {
+            // Normalize to the primary index space so the switch has one set of cases.
+            int m = isPrimary ? metric : metric - 1;
+            return m switch {
+                PrimaryHFR          => img.HFR > 0                  ? img.HFR : (double?)null,
+                PrimaryFWHM         => img.FWHM > 0                 ? img.FWHM : (double?)null,
+                PrimaryGuidingRMS   => img.GuidingRMSTotal > 0      ? img.GuidingRMSTotal : (double?)null,
+                PrimaryFocuserTemp  => img.FocuserTemp,
+                PrimaryAmbientTemp  => img.AmbientTemp,
+                PrimaryEccentricity => img.Eccentricity > 0         ? img.Eccentricity : (double?)null,
+                PrimaryAltitude     => img.Altitude,
+                PrimaryAirmass      => img.Airmass,
+                PrimaryHumidity     => img.Humidity,
+                PrimaryFocuserPos   => img.FocuserPosition.HasValue ? (double)img.FocuserPosition.Value : (double?)null,
+                PrimarySkyQuality   => img.SkyQuality,
+                PrimaryCloudCover   => img.CloudCover,
+                PrimaryCameraTemp   => img.CameraTemp,
+                PrimaryDewPoint     => img.DewPoint,
+                PrimaryWindSpeed    => img.WindSpeed,
+                PrimaryPressure     => img.Pressure,
+                PrimaryStarCount    => img.StarCount > 0            ? img.StarCount : (double?)null,
+                PrimaryAzimuth      => img.Azimuth,
+                PrimarySeeingFWHM   => img.SeeingFWHM,
+                PrimaryMedian       => img.StatMedian,
+                PrimarySkyTemp      => img.SkyTemperature,
+                PrimarySkyBright    => img.SkyBrightness,
+                PrimaryWindDir      => img.WindDirection,
+                PrimaryWindGust     => img.WindGust,
+                PrimaryMeanADU      => img.StatMean,
+                PrimaryStDev        => img.StatStDev,
+                PrimaryMAD          => img.StatMAD,
+                PrimaryExposure     => img.ExposureDuration > 0 ? img.ExposureDuration : (double?)null,
+                PrimaryGain         => img.Gain >= 0            ? (double)img.Gain : (double?)null,
+                PrimaryOffset       => img.Offset >= 0          ? (double)img.Offset : (double?)null,
+                PrimaryCoolerSet    => img.CoolerSetpoint,
+                PrimaryRotatorPos   => img.RotatorPosition,
+                PrimaryPosAngle     => img.PositionAngle,
+                PrimaryMinADU       => img.StatMin.HasValue     ? (double)img.StatMin.Value : (double?)null,
+                PrimaryMaxADU       => img.StatMax.HasValue     ? (double)img.StatMax.Value : (double?)null,
+                _                   => null
+            };
+        }
+
+        private static ChartMetricInfo BuildPrimaryMetricInfo(List<ImageRecord> images, int metric) {
+            var info = new ChartMetricInfo {
+                Index         = metric,
+                Label         = GetPrimaryLabel(metric),
+                AxisLabel     = GetPrimaryAxisLabel(metric),
+                Unit          = GetTooltipUnit(metric, true),
+                Format        = GetValueFormat(metric, true),
+                TooltipFormat = GetTooltipFormat(metric, true),
+                MinSpan       = GetPrimaryMinSpan(metric)
+            };
+            // Pre-populate the no-data message when there's globally insufficient data —
+            // saves the JS renderer from having a lookup table of its own.
+            int valid = ExtractPrimary(images, metric).Count;
+            if (valid < 2) {
+                info.NoDataMessage = GetPrimaryNoDataMsg(metric);
+                info.NoDataHint    = GetPrimaryNoDataHint(metric);
+            }
+            return info;
+        }
+
+        private static ChartMetricInfo BuildSecondaryMetricInfo(List<ImageRecord> images, int metric) {
+            var info = new ChartMetricInfo {
+                Index         = metric,
+                Label         = GetSecondaryLabel(metric),
+                AxisLabel     = GetSecondaryAxisLabel(metric),
+                Unit          = GetTooltipUnit(metric, false),
+                Format        = GetValueFormat(metric, false),
+                TooltipFormat = GetTooltipFormat(metric, false),
+                MinSpan       = GetSecondaryMinSpan(metric)
+            };
+            int valid = ExtractSecondary(images, metric).Count;
+            if (valid < 2) {
+                info.NoDataMessage = GetSecondaryNoDataMsg(metric);
+                info.NoDataHint    = GetSecondaryNoDataHint(metric);
+            }
+            return info;
+        }
+
+        private static ChartXAxisInfo BuildXAxisInfo(int xAxisMetric) {
+            var info = new ChartXAxisInfo {
+                Mode  = xAxisMetric,
+                Label = GetXAxisLabel(xAxisMetric)
+            };
+            if (xAxisMetric == XAxisTime) {
+                info.AxisLabel = "";  // Time axis draws no bottom label
+            } else if (xAxisMetric == XAxisFrameIndex) {
+                info.AxisLabel = "Frame #";
+            } else {
+                int primaryIdx = xAxisMetric - XAxisMetricOffset;
+                info.AxisLabel = GetPrimaryAxisLabel(primaryIdx);
+                info.Format    = GetValueFormat(primaryIdx, true);
+                info.Unit      = GetTooltipUnit(primaryIdx, true);
+            }
+            return info;
         }
 
         // ── X-axis helpers ──────────────────────────────────────────────────
@@ -403,6 +681,21 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 PrimaryAzimuth      => images.Where(i => i.Azimuth.HasValue)      .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.Azimuth!.Value)).ToList(),
                 PrimarySeeingFWHM   => images.Where(i => i.SeeingFWHM.HasValue)  .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.SeeingFWHM!.Value)).ToList(),
                 PrimaryMedian       => images.Where(i => i.StatMedian.HasValue)  .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.StatMedian!.Value)).ToList(),
+                PrimarySkyTemp      => images.Where(i => i.SkyTemperature.HasValue).OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.SkyTemperature!.Value)).ToList(),
+                PrimarySkyBright    => images.Where(i => i.SkyBrightness.HasValue).OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.SkyBrightness!.Value)).ToList(),
+                PrimaryWindDir      => images.Where(i => i.WindDirection.HasValue).OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.WindDirection!.Value)).ToList(),
+                PrimaryWindGust     => images.Where(i => i.WindGust.HasValue)     .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.WindGust!.Value)).ToList(),
+                PrimaryMeanADU      => images.Where(i => i.StatMean.HasValue)     .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.StatMean!.Value)).ToList(),
+                PrimaryStDev        => images.Where(i => i.StatStDev.HasValue)    .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.StatStDev!.Value)).ToList(),
+                PrimaryMAD          => images.Where(i => i.StatMAD.HasValue)      .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.StatMAD!.Value)).ToList(),
+                PrimaryExposure     => images.Where(i => i.ExposureDuration > 0)  .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.ExposureDuration)).ToList(),
+                PrimaryGain         => images.Where(i => i.Gain >= 0)             .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, (double)i.Gain)).ToList(),
+                PrimaryOffset       => images.Where(i => i.Offset >= 0)           .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, (double)i.Offset)).ToList(),
+                PrimaryCoolerSet    => images.Where(i => i.CoolerSetpoint.HasValue).OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.CoolerSetpoint!.Value)).ToList(),
+                PrimaryRotatorPos   => images.Where(i => i.RotatorPosition.HasValue).OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.RotatorPosition!.Value)).ToList(),
+                PrimaryPosAngle     => images.Where(i => i.PositionAngle.HasValue).OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.PositionAngle!.Value)).ToList(),
+                PrimaryMinADU       => images.Where(i => i.StatMin.HasValue)      .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, (double)i.StatMin!.Value)).ToList(),
+                PrimaryMaxADU       => images.Where(i => i.StatMax.HasValue)      .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, (double)i.StatMax!.Value)).ToList(),
                 _                   => new List<(DateTime, double)>()
             };
         }
@@ -429,6 +722,21 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 SecAzimuth      => images.Where(i => i.Azimuth.HasValue)      .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.Azimuth!.Value)).ToList(),
                 SecSeeingFWHM   => images.Where(i => i.SeeingFWHM.HasValue)  .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.SeeingFWHM!.Value)).ToList(),
                 SecMedian       => images.Where(i => i.StatMedian.HasValue)  .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.StatMedian!.Value)).ToList(),
+                SecSkyTemp      => images.Where(i => i.SkyTemperature.HasValue).OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.SkyTemperature!.Value)).ToList(),
+                SecSkyBright    => images.Where(i => i.SkyBrightness.HasValue).OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.SkyBrightness!.Value)).ToList(),
+                SecWindDir      => images.Where(i => i.WindDirection.HasValue).OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.WindDirection!.Value)).ToList(),
+                SecWindGust     => images.Where(i => i.WindGust.HasValue)     .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.WindGust!.Value)).ToList(),
+                SecMeanADU      => images.Where(i => i.StatMean.HasValue)     .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.StatMean!.Value)).ToList(),
+                SecStDev        => images.Where(i => i.StatStDev.HasValue)    .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.StatStDev!.Value)).ToList(),
+                SecMAD          => images.Where(i => i.StatMAD.HasValue)      .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.StatMAD!.Value)).ToList(),
+                SecExposure     => images.Where(i => i.ExposureDuration > 0)  .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.ExposureDuration)).ToList(),
+                SecGain         => images.Where(i => i.Gain >= 0)             .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, (double)i.Gain)).ToList(),
+                SecOffset       => images.Where(i => i.Offset >= 0)           .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, (double)i.Offset)).ToList(),
+                SecCoolerSet    => images.Where(i => i.CoolerSetpoint.HasValue).OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.CoolerSetpoint!.Value)).ToList(),
+                SecRotatorPos   => images.Where(i => i.RotatorPosition.HasValue).OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.RotatorPosition!.Value)).ToList(),
+                SecPosAngle     => images.Where(i => i.PositionAngle.HasValue).OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, i.PositionAngle!.Value)).ToList(),
+                SecMinADU       => images.Where(i => i.StatMin.HasValue)      .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, (double)i.StatMin!.Value)).ToList(),
+                SecMaxADU       => images.Where(i => i.StatMax.HasValue)      .OrderBy(i => i.Timestamp).Select(i => (i.Timestamp, (double)i.StatMax!.Value)).ToList(),
                 _               => new List<(DateTime, double)>()
             };
         }
@@ -481,6 +789,21 @@ namespace NINA.Plugin.NightSummary.Reporting {
             PrimaryStarCount    => 50.0,
             PrimaryAzimuth      => 10.0,
             PrimaryMedian       => 100.0,
+            PrimarySkyTemp      => 5.0,
+            PrimarySkyBright    => 0.05,
+            PrimaryWindDir      => 30.0,
+            PrimaryWindGust     => 1.0,
+            PrimaryMeanADU      => 100.0,
+            PrimaryStDev        => 10.0,
+            PrimaryMAD          => 10.0,
+            PrimaryExposure     => 10.0,
+            PrimaryGain         => 10.0,
+            PrimaryOffset       => 5.0,
+            PrimaryCoolerSet    => 2.0,
+            PrimaryRotatorPos   => 10.0,
+            PrimaryPosAngle     => 10.0,
+            PrimaryMinADU       => 50.0,
+            PrimaryMaxADU       => 500.0,
             _                   => 0.5
         };
 
@@ -501,6 +824,21 @@ namespace NINA.Plugin.NightSummary.Reporting {
             SecStarCount    => 50.0,
             SecAzimuth      => 10.0,
             SecMedian       => 100.0,
+            SecSkyTemp      => 5.0,
+            SecSkyBright    => 0.05,
+            SecWindDir      => 30.0,
+            SecWindGust     => 1.0,
+            SecMeanADU      => 100.0,
+            SecStDev        => 10.0,
+            SecMAD          => 10.0,
+            SecExposure     => 10.0,
+            SecGain         => 10.0,
+            SecOffset       => 5.0,
+            SecCoolerSet    => 2.0,
+            SecRotatorPos   => 10.0,
+            SecPosAngle     => 10.0,
+            SecMinADU       => 50.0,
+            SecMaxADU       => 500.0,
             _               => 0.5
         };
 
@@ -527,6 +865,21 @@ namespace NINA.Plugin.NightSummary.Reporting {
             PrimaryAzimuth      => "Azimuth",
             PrimarySeeingFWHM   => "Seeing (FWHM)",
             PrimaryMedian       => "Median ADU",
+            PrimarySkyTemp      => "Sky Temp",
+            PrimarySkyBright    => "Sky Brightness",
+            PrimaryWindDir      => "Wind Direction",
+            PrimaryWindGust     => "Wind Gust",
+            PrimaryMeanADU      => "Mean ADU",
+            PrimaryStDev        => "Std Deviation",
+            PrimaryMAD          => "MAD",
+            PrimaryExposure     => "Exposure",
+            PrimaryGain         => "Gain",
+            PrimaryOffset       => "Offset",
+            PrimaryCoolerSet    => "Cooler Setpoint",
+            PrimaryRotatorPos   => "Rotator Position",
+            PrimaryPosAngle     => "Position Angle",
+            PrimaryMinADU       => "Min ADU",
+            PrimaryMaxADU       => "Max ADU",
             _                   => "HFR"
         };
 
@@ -551,6 +904,21 @@ namespace NINA.Plugin.NightSummary.Reporting {
             SecAzimuth      => "Azimuth",
             SecSeeingFWHM   => "Seeing (FWHM)",
             SecMedian       => "Median ADU",
+            SecSkyTemp      => "Sky Temp",
+            SecSkyBright    => "Sky Brightness",
+            SecWindDir      => "Wind Direction",
+            SecWindGust     => "Wind Gust",
+            SecMeanADU      => "Mean ADU",
+            SecStDev        => "Std Deviation",
+            SecMAD          => "MAD",
+            SecExposure     => "Exposure",
+            SecGain         => "Gain",
+            SecOffset       => "Offset",
+            SecCoolerSet    => "Cooler Setpoint",
+            SecRotatorPos   => "Rotator Position",
+            SecPosAngle     => "Position Angle",
+            SecMinADU       => "Min ADU",
+            SecMaxADU       => "Max ADU",
             _               => ""
         };
 
@@ -575,6 +943,21 @@ namespace NINA.Plugin.NightSummary.Reporting {
             PrimaryAzimuth      => "Azimuth (&#176;)",
             PrimarySeeingFWHM   => "Seeing FWHM (\")",
             PrimaryMedian       => "Median ADU",
+            PrimarySkyTemp      => "Sky Temp (&#176;C)",
+            PrimarySkyBright    => "Brightness (Lux)",
+            PrimaryWindDir      => "Direction (&#176;)",
+            PrimaryWindGust     => "Gust (m/s)",
+            PrimaryMeanADU      => "Mean ADU",
+            PrimaryStDev        => "Std Dev (ADU)",
+            PrimaryMAD          => "MAD (ADU)",
+            PrimaryExposure     => "Exposure (s)",
+            PrimaryGain         => "Gain",
+            PrimaryOffset       => "Offset",
+            PrimaryCoolerSet    => "Setpoint (&#176;C)",
+            PrimaryRotatorPos   => "Rotator (&#176;)",
+            PrimaryPosAngle     => "PA (&#176;)",
+            PrimaryMinADU       => "Min ADU",
+            PrimaryMaxADU       => "Max ADU",
             _                   => "HFR (px)"
         };
 
@@ -599,33 +982,63 @@ namespace NINA.Plugin.NightSummary.Reporting {
             SecAzimuth      => "Azimuth (&#176;)",
             SecSeeingFWHM   => "Seeing FWHM (\")",
             SecMedian       => "Median ADU",
+            SecSkyTemp      => "Sky Temp (&#176;C)",
+            SecSkyBright    => "Brightness (Lux)",
+            SecWindDir      => "Direction (&#176;)",
+            SecWindGust     => "Gust (m/s)",
+            SecMeanADU      => "Mean ADU",
+            SecStDev        => "Std Dev (ADU)",
+            SecMAD          => "MAD (ADU)",
+            SecExposure     => "Exposure (s)",
+            SecGain         => "Gain",
+            SecOffset       => "Offset",
+            SecCoolerSet    => "Setpoint (&#176;C)",
+            SecRotatorPos   => "Rotator (&#176;)",
+            SecPosAngle     => "PA (&#176;)",
+            SecMinADU       => "Min ADU",
+            SecMaxADU       => "Max ADU",
             _               => ""
         };
 
         private static string GetTooltipUnit(int metric, bool isPrimary) {
             int m = isPrimary ? metric : metric - 1;  // secondary indices are offset by 1
             return m switch {
-                0 => " px",       // HFR
-                1 => "\"",        // FWHM
-                2 => "\"",        // Guiding RMS
-                3 => " °C",       // Focuser Temp
-                4 => " °C",       // Ambient Temp
-                5 => "",          // Eccentricity
-                6 => "°",         // Altitude
-                7 => "",          // Airmass
-                8 => "%",         // Humidity
-                9  => " steps",   // Focuser Position
-                10 => " mag/arcsec²", // Sky Quality
-                11 => "%",        // Cloud Cover
-                12 => " °C",      // Camera Temp
-                13 => " °C",      // Dew Point
-                14 => " m/s",     // Wind Speed
-                15 => " hPa",     // Pressure
-                16 => "",         // Star Count
-                17 => "°",        // Azimuth
-                18 => "\"",       // Seeing FWHM
-                19 => " ADU",    // Median
-                _ => ""
+                PrimaryHFR          => " px",
+                PrimaryFWHM         => "\"",
+                PrimaryGuidingRMS   => "\"",
+                PrimaryFocuserTemp  => " °C",
+                PrimaryAmbientTemp  => " °C",
+                PrimaryEccentricity => "",
+                PrimaryAltitude     => "°",
+                PrimaryAirmass      => "",
+                PrimaryHumidity     => "%",
+                PrimaryFocuserPos   => " steps",
+                PrimarySkyQuality   => " mag/arcsec²",
+                PrimaryCloudCover   => "%",
+                PrimaryCameraTemp   => " °C",
+                PrimaryDewPoint     => " °C",
+                PrimaryWindSpeed    => " m/s",
+                PrimaryPressure     => " hPa",
+                PrimaryStarCount    => "",
+                PrimaryAzimuth      => "°",
+                PrimarySeeingFWHM   => "\"",
+                PrimaryMedian       => " ADU",
+                PrimarySkyTemp      => " °C",
+                PrimarySkyBright    => " Lux",
+                PrimaryWindDir      => "°",
+                PrimaryWindGust     => " m/s",
+                PrimaryMeanADU      => " ADU",
+                PrimaryStDev        => " ADU",
+                PrimaryMAD          => " ADU",
+                PrimaryExposure     => " s",
+                PrimaryGain         => "",
+                PrimaryOffset       => "",
+                PrimaryCoolerSet    => " °C",
+                PrimaryRotatorPos   => "°",
+                PrimaryPosAngle     => "°",
+                PrimaryMinADU       => " ADU",
+                PrimaryMaxADU       => " ADU",
+                _                   => ""
             };
         }
 
@@ -638,15 +1051,53 @@ namespace NINA.Plugin.NightSummary.Reporting {
         private static string GetValueFormat(int metric, bool isPrimary) {
             int m = isPrimary ? metric : metric - 1;  // secondary indices offset by 1
             return m switch {
-                6  => "F0",   // Altitude (degrees)
-                8  => "F0",   // Humidity (%)
-                9  => "F0",   // Focuser Position (steps)
-                11 => "F0",   // Cloud Cover (%)
-                15 => "F0",   // Pressure (hPa)
-                16 => "F0",   // Star Count
-                17 => "F0",   // Azimuth (degrees)
-                19 => "F0",   // Median ADU
-                _  => "F1"
+                PrimaryAltitude     => "F0",
+                PrimaryHumidity     => "F0",
+                PrimaryFocuserPos   => "F0",
+                PrimaryCloudCover   => "F0",
+                PrimaryPressure     => "F0",
+                PrimaryStarCount    => "F0",
+                PrimaryAzimuth      => "F0",
+                PrimaryMedian       => "F0",
+                PrimaryWindDir      => "F0",
+                PrimaryMeanADU      => "F0",
+                PrimaryExposure     => "F0",
+                PrimaryGain         => "F0",
+                PrimaryOffset       => "F0",
+                PrimaryMinADU       => "F0",
+                PrimaryMaxADU       => "F0",
+                PrimarySkyBright    => "F3",  // dark sites are 0.01–0.05 Lux
+                _                   => "F1"
+            };
+        }
+
+        /// <summary>
+        /// Returns the format string used in data-point tooltips — always at least as
+        /// precise as <see cref="GetValueFormat"/>, but bumped up for continuous metrics
+        /// so tooltips show full detail (e.g. "1.23 px") while axis ticks stay compact.
+        /// True integers keep F0; coarse metrics (altitude, humidity, etc.) use F1;
+        /// all other continuous metrics (HFR, FWHM, temperatures, …) use F2.
+        /// </summary>
+        private static string GetTooltipFormat(int metric, bool isPrimary) {
+            int m = isPrimary ? metric : metric - 1;  // secondary indices offset by 1
+            return m switch {
+                PrimaryFocuserPos   => "F0",  // integer steps
+                PrimaryStarCount    => "F0",
+                PrimaryMedian       => "F0",
+                PrimaryMeanADU      => "F0",
+                PrimaryExposure     => "F0",
+                PrimaryGain         => "F0",
+                PrimaryOffset       => "F0",
+                PrimaryMinADU       => "F0",
+                PrimaryMaxADU       => "F0",
+                PrimaryAltitude     => "F1",  // coarse continuous
+                PrimaryHumidity     => "F1",
+                PrimaryCloudCover   => "F1",
+                PrimaryPressure     => "F1",
+                PrimaryAzimuth      => "F1",
+                PrimaryWindDir      => "F1",
+                PrimarySkyBright    => "F4",  // dark sites are 0.01–0.05 Lux
+                _                   => "F2"   // HFR, FWHM, temps, airmass, etc.
             };
         }
 
@@ -673,6 +1124,21 @@ namespace NINA.Plugin.NightSummary.Reporting {
             PrimaryAzimuth      => "No azimuth data recorded",
             PrimarySeeingFWHM   => "No seeing FWHM data recorded",
             PrimaryMedian       => "No median ADU data recorded",
+            PrimarySkyTemp      => "No sky temperature data recorded",
+            PrimarySkyBright    => "No sky brightness data recorded",
+            PrimaryWindDir      => "No wind direction data recorded",
+            PrimaryWindGust     => "No wind gust data recorded",
+            PrimaryMeanADU      => "No mean ADU data recorded",
+            PrimaryStDev        => "No standard deviation data recorded",
+            PrimaryMAD          => "No MAD data recorded",
+            PrimaryExposure     => "No exposure duration data recorded",
+            PrimaryGain         => "No gain data recorded",
+            PrimaryOffset       => "No offset data recorded",
+            PrimaryCoolerSet    => "No cooler setpoint data recorded",
+            PrimaryRotatorPos   => "No rotator position data recorded",
+            PrimaryPosAngle     => "No position angle data recorded",
+            PrimaryMinADU       => "No min ADU data recorded",
+            PrimaryMaxADU       => "No max ADU data recorded",
             _                   => "No data available"
         };
 
@@ -689,6 +1155,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
             PrimaryWindSpeed    => "Requires NINA weather data source",
             PrimaryPressure     => "Requires NINA weather data source",
             PrimarySeeingFWHM   => "Requires an ASCOM seeing monitor as a NINA weather data source",
+            PrimarySkyTemp      => "Requires ASCOM ObservingConditions with sky temperature sensor",
+            PrimarySkyBright    => "Requires ASCOM ObservingConditions with sky brightness sensor",
+            PrimaryWindDir      => "Requires ASCOM ObservingConditions with wind direction sensor",
+            PrimaryWindGust     => "Requires ASCOM ObservingConditions with wind gust sensor",
+            PrimaryCoolerSet    => "Requires a cooled camera",
+            PrimaryRotatorPos   => "Requires a rotator connected in NINA",
+            PrimaryPosAngle     => "Requires plate solving during the session",
             _                   => null
         };
 
@@ -713,6 +1186,21 @@ namespace NINA.Plugin.NightSummary.Reporting {
             SecAzimuth      => "No azimuth data recorded",
             SecSeeingFWHM   => "No seeing FWHM data recorded",
             SecMedian       => "No median ADU data recorded",
+            SecSkyTemp      => "No sky temperature data recorded",
+            SecSkyBright    => "No sky brightness data recorded",
+            SecWindDir      => "No wind direction data recorded",
+            SecWindGust     => "No wind gust data recorded",
+            SecMeanADU      => "No mean ADU data recorded",
+            SecStDev        => "No standard deviation data recorded",
+            SecMAD          => "No MAD data recorded",
+            SecExposure     => "No exposure duration data recorded",
+            SecGain         => "No gain data recorded",
+            SecOffset       => "No offset data recorded",
+            SecCoolerSet    => "No cooler setpoint data recorded",
+            SecRotatorPos   => "No rotator position data recorded",
+            SecPosAngle     => "No position angle data recorded",
+            SecMinADU       => "No min ADU data recorded",
+            SecMaxADU       => "No max ADU data recorded",
             _               => ""
         };
 
@@ -729,6 +1217,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
             SecWindSpeed    => "Requires NINA weather data source",
             SecPressure     => "Requires NINA weather data source",
             SecSeeingFWHM   => "Requires an ASCOM seeing monitor as a NINA weather data source",
+            SecSkyTemp      => "Requires ASCOM ObservingConditions with sky temperature sensor",
+            SecSkyBright    => "Requires ASCOM ObservingConditions with sky brightness sensor",
+            SecWindDir      => "Requires ASCOM ObservingConditions with wind direction sensor",
+            SecWindGust     => "Requires ASCOM ObservingConditions with wind gust sensor",
+            SecCoolerSet    => "Requires a cooled camera",
+            SecRotatorPos   => "Requires a rotator connected in NINA",
+            SecPosAngle     => "Requires plate solving during the session",
             _               => null
         };
 

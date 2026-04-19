@@ -9,11 +9,14 @@
             <Expander Header="Night Summary Settings" IsExpanded="False">
                 <StackPanel Margin="10,8,0,8">
 
-                    <TextBlock Text="Report Content" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
-
                     <StackPanel Orientation="Horizontal" Margin="0,5,0,10">
                         <TextBlock Text="Detail Level" Width="200" VerticalAlignment="Top" Margin="0,4,0,0" />
-                        <ComboBox SelectedIndex="{Binding ReportDetailLevel}" MinWidth="160" VerticalAlignment="Top">
+                        <ComboBox SelectedIndex="{Binding ReportDetailLevel}" MinWidth="160" VerticalAlignment="Top" HorizontalContentAlignment="Left">
+                            <ComboBox.ItemContainerStyle>
+                                <Style TargetType="ComboBoxItem">
+                                    <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                                </Style>
+                            </ComboBox.ItemContainerStyle>
                             <ComboBoxItem>Snapshot</ComboBoxItem>
                             <ComboBoxItem>Standard</ComboBoxItem>
                             <ComboBoxItem>Full</ComboBoxItem>
@@ -27,10 +30,75 @@
                         </TextBlock>
                     </StackPanel>
 
+                    <!-- Preview Report: primary action near the top -->
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock Width="200" />
+                        <Button Content="Preview Report" Command="{Binding PreviewReportCommand}" Width="180" />
+                        <TextBlock Text="Opens a preview window to test your report settings"
+                                   Foreground="Gray" FontSize="11" FontStyle="Italic" Margin="12,0,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <!-- Resend / quick actions: high-frequency, near the top -->
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                        <TextBlock Width="200" />
+                        <ComboBox ItemsSource="{Binding AvailableSessions}"
+                                  SelectedItem="{Binding SelectedSession}"
+                                  MinWidth="300" HorizontalContentAlignment="Left">
+                            <ComboBox.ItemContainerStyle>
+                                <Style TargetType="ComboBoxItem">
+                                    <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                                </Style>
+                            </ComboBox.ItemContainerStyle>
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding DisplayLabel}" TextWrapping="NoWrap" TextTrimming="None" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <Button Content="↻" Command="{Binding RefreshSessionsCommand}" Width="30" Margin="6,0,0,0"
+                                ToolTip="Reset to 30 most recent sessions" />
+                        <Button Content="Send Report" Command="{Binding ResendSessionCommand}" Width="120" Margin="6,0,0,0" />
+                        <Button Content="✕ Delete"
+                                Command="{Binding DeleteSessionCommand}"
+                                MinWidth="70" Margin="6,0,0,0"
+                                ToolTip="Delete the selected session and all its data" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                        <TextBlock Width="200" />
+                        <TextBlock Text="{Binding ResendStatus.Text}"
+                                   Foreground="{Binding ResendStatus.Foreground}"
+                                   Visibility="{Binding ResendStatus.Visibility}"
+                                   FontSize="11" />
+                    </StackPanel>
+
+                    <StackPanel Margin="200,4,0,14">
+                        <Expander Header="Search older sessions" IsExpanded="False">
+                            <StackPanel Margin="0,8,0,0">
+                                <StackPanel Orientation="Horizontal" Margin="0,4">
+                                    <TextBlock Text="From" Width="40" VerticalAlignment="Center" />
+                                    <DatePicker SelectedDate="{Binding SearchFrom}" Width="130" />
+                                    <TextBlock Text="To" Width="28" VerticalAlignment="Center" Margin="10,0,0,0" />
+                                    <DatePicker SelectedDate="{Binding SearchTo}" Width="130" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6">
+                                    <Button Content="Search" Command="{Binding SearchSessionsCommand}" Width="80" />
+                                    <Button Content="Clear" Command="{Binding ClearSearchCommand}" Width="60" Margin="8,0,0,0" />
+                                    <TextBlock Text="{Binding SearchResultText}" VerticalAlignment="Center"
+                                               Foreground="Gray" FontSize="11" Margin="10,0,0,0" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Expander>
+                    </StackPanel>
+
+                    <Separator Margin="0,0,0,14" />
+
+                    <TextBlock Text="Report Content" FontSize="16" FontWeight="Bold" Margin="0,0,0,16" />
+
                     <!-- ══ Target Scheduler ══════════════════════════════════════ -->
-                    <Border Margin="0,10,0,20" Padding="0,0,0,0">
+                    <Border Margin="0,0,0,20" Padding="0,0,0,0">
                         <StackPanel>
-                            <TextBlock Text="Target Scheduler" FontSize="12" FontWeight="Bold" Foreground="White" Margin="0,0,0,6"/>
+                            <TextBlock Text="Target Scheduler" FontSize="12" FontWeight="Bold" Foreground="White" Margin="0,6,0,6"/>
 
                             <!-- Section-level status when TS is not installed -->
                             <TextBlock Text="Target Scheduler is not installed — these options are unavailable"
@@ -89,6 +157,20 @@
                                 </StackPanel.Style>
                                 <TextBlock Text="Show Tonight's Preview" Width="200" VerticalAlignment="Center" />
                                 <CheckBox IsChecked="{Binding ShowNextNightPreview}" VerticalAlignment="Center" />
+                                <StackPanel Orientation="Horizontal" Margin="20,0,0,0">
+                                    <StackPanel.Style>
+                                        <Style TargetType="StackPanel">
+                                            <Setter Property="IsEnabled" Value="True"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding ShowNextNightPreview}" Value="False">
+                                                    <Setter Property="IsEnabled" Value="False"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </StackPanel.Style>
+                                    <TextBlock Text="Default to Altitude View" Width="140" VerticalAlignment="Center" />
+                                    <CheckBox IsChecked="{Binding PreviewAltitudeDefault}" VerticalAlignment="Center" />
+                                </StackPanel>
                                 <TextBlock TextWrapping="Wrap" FontSize="11" FontStyle="Italic" Margin="8,0,0,0" VerticalAlignment="Top" MaxWidth="380">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
@@ -117,6 +199,22 @@
                     </Border>
                     <!-- ══════════════════════════════════════════════════════════ -->
 
+                    <!-- Session Timeline: altitude view default; disabled at Snapshot -->
+                    <StackPanel Orientation="Horizontal" Margin="0,4">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="IsEnabled" Value="True"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ReportDetailLevel}" Value="0">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <TextBlock Text="Timeline Default Altitude View" Width="200" VerticalAlignment="Center" />
+                        <CheckBox IsChecked="{Binding TimelineAltitudeDefault}" VerticalAlignment="Center" />
+                    </StackPanel>
+
                     <StackPanel Orientation="Horizontal" Margin="0,4">
                         <TextBlock Text="Show Yield and Overhead Analysis" Width="200" VerticalAlignment="Center" />
                         <CheckBox IsChecked="{Binding ShowOverheadBreakdown}" VerticalAlignment="Center" />
@@ -130,9 +228,9 @@
                     <StackPanel Orientation="Horizontal" Margin="0,4">
                         <TextBlock Text="Show Live Stack Images" Width="200" VerticalAlignment="Center" />
                         <CheckBox IsChecked="{Binding ShowLiveStackImages}" VerticalAlignment="Center" />
+                        <TextBlock Text="Requires the Live Stack plugin to be installed and running during imaging."
+                                   FontStyle="Italic" Foreground="Gray" FontSize="11" Margin="20,0,0,0" MaxWidth="380" TextWrapping="Wrap" VerticalAlignment="Center" />
                     </StackPanel>
-                    <TextBlock Text="Requires the Live Stack plugin to be installed and running during imaging."
-                               FontStyle="Italic" Foreground="Gray" FontSize="11" Margin="24,0,0,0" />
 
                     <!-- Altitude Charts + Moon Curve on one row; whole row disabled at Snapshot -->
                     <StackPanel Orientation="Horizontal" Margin="0,4">
@@ -284,16 +382,6 @@
                         <CheckBox IsChecked="{Binding ShowPerTargetIQ}" VerticalAlignment="Center" />
                     </StackPanel>
 
-                    <StackPanel Orientation="Horizontal" Margin="0,4">
-                        <TextBlock Text="Expand Sections by Default" Width="200" VerticalAlignment="Center" />
-                        <CheckBox IsChecked="{Binding ExpandSectionsDefault}" VerticalAlignment="Center" />
-                    </StackPanel>
-
-                    <StackPanel Orientation="Horizontal" Margin="0,4">
-                        <TextBlock Text="Light Mode Report" Width="200" VerticalAlignment="Center" />
-                        <CheckBox IsChecked="{Binding ReportLightMode}" VerticalAlignment="Center" />
-                    </StackPanel>
-
                     <!-- Session History: disabled at Snapshot and Standard -->
                     <StackPanel Orientation="Horizontal" Margin="0,4">
                         <StackPanel.Style>
@@ -359,8 +447,8 @@
                         <TextBlock Text="Markers only shown when x-axis is set to Time." FontSize="10" Foreground="Gray" Margin="0,2,0,0" />
                     </StackPanel>
 
-                    <!-- Chart metric selectors: disabled at Snapshot/Standard or when Metric Chart is off -->
-                    <StackPanel Margin="200,2,0,2">
+                    <!-- Chart metric selectors + additional charts: same indent as event markers -->
+                    <StackPanel Margin="20,6,0,0">
                         <StackPanel.Style>
                             <Style TargetType="StackPanel">
                                 <Setter Property="IsEnabled" Value="True"/>
@@ -378,136 +466,206 @@
                             </Style>
                         </StackPanel.Style>
 
-                        <StackPanel Orientation="Horizontal" Margin="0,3">
-                            <TextBlock Text="X-Axis" Width="130" VerticalAlignment="Center" />
-                            <ComboBox SelectedIndex="{Binding ChartXAxisMetric}" MinWidth="160">
-                                <ComboBoxItem>Time</ComboBoxItem>
-                                <ComboBoxItem>Frame Index</ComboBoxItem>
-                                <ComboBoxItem>HFR</ComboBoxItem>
-                                <ComboBoxItem>FWHM</ComboBoxItem>
-                                <ComboBoxItem>Guiding RMS</ComboBoxItem>
-                                <ComboBoxItem>Focuser Temp (°C)</ComboBoxItem>
-                                <ComboBoxItem>Ambient Temp (°C)</ComboBoxItem>
-                                <ComboBoxItem>Eccentricity</ComboBoxItem>
-                                <ComboBoxItem>Altitude (°)</ComboBoxItem>
-                                <ComboBoxItem>Airmass</ComboBoxItem>
-                                <ComboBoxItem>Humidity (%)</ComboBoxItem>
-                                <ComboBoxItem>Focuser Position (steps)</ComboBoxItem>
-                                <ComboBoxItem>Sky Quality (mag/arcsec²)</ComboBoxItem>
-                                <ComboBoxItem>Cloud Cover (%)</ComboBoxItem>
-                                <ComboBoxItem>Camera Temp (°C)</ComboBoxItem>
-                                <ComboBoxItem>Dew Point (°C)</ComboBoxItem>
-                                <ComboBoxItem>Wind Speed (m/s)</ComboBoxItem>
-                                <ComboBoxItem>Pressure (hPa)</ComboBoxItem>
-                                <ComboBoxItem>Star Count</ComboBoxItem>
-                                <ComboBoxItem>Azimuth (°)</ComboBoxItem>
-                                <ComboBoxItem>Seeing FWHM (arcsec)</ComboBoxItem>
-                                <ComboBoxItem>Median ADU</ComboBoxItem>
-                            </ComboBox>
-                        </StackPanel>
-
-                        <StackPanel Orientation="Horizontal" Margin="0,3">
-                            <TextBlock Text="Primary Metric" Width="130" VerticalAlignment="Center" />
-                            <ComboBox SelectedIndex="{Binding ChartPrimaryMetric}" MinWidth="160">
-                                <ComboBoxItem>HFR</ComboBoxItem>
-                                <ComboBoxItem>FWHM</ComboBoxItem>
-                                <ComboBoxItem>Guiding RMS</ComboBoxItem>
-                                <ComboBoxItem>Focuser Temp (°C)</ComboBoxItem>
-                                <ComboBoxItem>Ambient Temp (°C)</ComboBoxItem>
-                                <ComboBoxItem>Eccentricity</ComboBoxItem>
-                                <ComboBoxItem>Altitude (°)</ComboBoxItem>
-                                <ComboBoxItem>Airmass</ComboBoxItem>
-                                <ComboBoxItem>Humidity (%)</ComboBoxItem>
-                                <ComboBoxItem>Focuser Position (steps)</ComboBoxItem>
-                                <ComboBoxItem>Sky Quality (mag/arcsec²)</ComboBoxItem>
-                                <ComboBoxItem>Cloud Cover (%)</ComboBoxItem>
-                                <ComboBoxItem>Camera Temp (°C)</ComboBoxItem>
-                                <ComboBoxItem>Dew Point (°C)</ComboBoxItem>
-                                <ComboBoxItem>Wind Speed (m/s)</ComboBoxItem>
-                                <ComboBoxItem>Pressure (hPa)</ComboBoxItem>
-                                <ComboBoxItem>Star Count</ComboBoxItem>
-                                <ComboBoxItem>Azimuth (°)</ComboBoxItem>
-                                <ComboBoxItem>Seeing FWHM (arcsec)</ComboBoxItem>
-                                <ComboBoxItem>Median ADU</ComboBoxItem>
-                            </ComboBox>
-                        </StackPanel>
-
-                        <StackPanel Orientation="Horizontal" Margin="0,3">
-                            <TextBlock Text="Secondary Metric" Width="130" VerticalAlignment="Top" Margin="0,4,0,0" />
-                            <ComboBox SelectedIndex="{Binding ChartSecondaryMetric}" MinWidth="160" VerticalAlignment="Top">
-                                <ComboBoxItem>None</ComboBoxItem>
-                                <ComboBoxItem>HFR</ComboBoxItem>
-                                <ComboBoxItem>FWHM</ComboBoxItem>
-                                <ComboBoxItem>Guiding RMS</ComboBoxItem>
-                                <ComboBoxItem>Focuser Temp (°C)</ComboBoxItem>
-                                <ComboBoxItem>Ambient Temp (°C)</ComboBoxItem>
-                                <ComboBoxItem>Eccentricity</ComboBoxItem>
-                                <ComboBoxItem>Altitude (°)</ComboBoxItem>
-                                <ComboBoxItem>Airmass</ComboBoxItem>
-                                <ComboBoxItem>Humidity (%)</ComboBoxItem>
-                                <ComboBoxItem>Focuser Position (steps)</ComboBoxItem>
-                                <ComboBoxItem>Sky Quality (mag/arcsec²)</ComboBoxItem>
-                                <ComboBoxItem>Cloud Cover (%)</ComboBoxItem>
-                                <ComboBoxItem>Camera Temp (°C)</ComboBoxItem>
-                                <ComboBoxItem>Dew Point (°C)</ComboBoxItem>
-                                <ComboBoxItem>Wind Speed (m/s)</ComboBoxItem>
-                                <ComboBoxItem>Pressure (hPa)</ComboBoxItem>
-                                <ComboBoxItem>Star Count</ComboBoxItem>
-                                <ComboBoxItem>Azimuth (°)</ComboBoxItem>
-                                <ComboBoxItem>Seeing FWHM (arcsec)</ComboBoxItem>
-                                <ComboBoxItem>Median ADU</ComboBoxItem>
-                            </ComboBox>
-                            <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,2,0,0" MaxWidth="320">
+                        <!-- Primary Chart -->
+                        <TextBlock Text="Primary Chart" FontWeight="SemiBold" Margin="0,10,0,4" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <StackPanel Orientation="Horizontal" Margin="0,3">
+                                    <TextBlock Text="X-Axis" Width="180" VerticalAlignment="Center" />
+                                    <ComboBox SelectedIndex="{Binding ChartXAxisMetric}" MinWidth="160" HorizontalContentAlignment="Left">
+                                        <ComboBox.ItemContainerStyle>
+                                            <Style TargetType="ComboBoxItem">
+                                                <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                                            </Style>
+                                        </ComboBox.ItemContainerStyle>
+                                        <ComboBoxItem>Time</ComboBoxItem>
+                                        <ComboBoxItem>Frame Index</ComboBoxItem>
+                                        <ComboBoxItem>HFR</ComboBoxItem>
+                                        <ComboBoxItem>FWHM</ComboBoxItem>
+                                        <ComboBoxItem>Guiding RMS</ComboBoxItem>
+                                        <ComboBoxItem>Eccentricity</ComboBoxItem>
+                                        <ComboBoxItem>Star Count</ComboBoxItem>
+                                        <ComboBoxItem>Focuser Temp (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Ambient Temp (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Camera Temp (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Cooler Setpoint (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Altitude (°)</ComboBoxItem>
+                                        <ComboBoxItem>Azimuth (°)</ComboBoxItem>
+                                        <ComboBoxItem>Airmass</ComboBoxItem>
+                                        <ComboBoxItem>Position Angle (°)</ComboBoxItem>
+                                        <ComboBoxItem>Rotator Position (°)</ComboBoxItem>
+                                        <ComboBoxItem>Focuser Position (steps)</ComboBoxItem>
+                                        <ComboBoxItem>Seeing FWHM (arcsec)</ComboBoxItem>
+                                        <ComboBoxItem>Sky Quality (mag/arcsec²)</ComboBoxItem>
+                                        <ComboBoxItem>Sky Brightness (Lux)</ComboBoxItem>
+                                        <ComboBoxItem>Cloud Cover (%)</ComboBoxItem>
+                                        <ComboBoxItem>Sky Temp (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Humidity (%)</ComboBoxItem>
+                                        <ComboBoxItem>Dew Point (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Wind Speed (m/s)</ComboBoxItem>
+                                        <ComboBoxItem>Wind Gust (m/s)</ComboBoxItem>
+                                        <ComboBoxItem>Wind Direction (°)</ComboBoxItem>
+                                        <ComboBoxItem>Pressure (hPa)</ComboBoxItem>
+                                        <ComboBoxItem>Exposure (s)</ComboBoxItem>
+                                        <ComboBoxItem>Gain</ComboBoxItem>
+                                        <ComboBoxItem>Offset</ComboBoxItem>
+                                        <ComboBoxItem>Median ADU</ComboBoxItem>
+                                        <ComboBoxItem>Mean ADU</ComboBoxItem>
+                                        <ComboBoxItem>Std Deviation (ADU)</ComboBoxItem>
+                                        <ComboBoxItem>MAD (ADU)</ComboBoxItem>
+                                        <ComboBoxItem>Min ADU</ComboBoxItem>
+                                        <ComboBoxItem>Max ADU</ComboBoxItem>
+                                    </ComboBox>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,3">
+                                    <TextBlock Text="Primary Metric" Width="180" VerticalAlignment="Center" />
+                                    <ComboBox SelectedIndex="{Binding ChartPrimaryMetric}" MinWidth="160" HorizontalContentAlignment="Left">
+                                        <ComboBox.ItemContainerStyle>
+                                            <Style TargetType="ComboBoxItem">
+                                                <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                                            </Style>
+                                        </ComboBox.ItemContainerStyle>
+                                        <ComboBoxItem>HFR</ComboBoxItem>
+                                        <ComboBoxItem>FWHM</ComboBoxItem>
+                                        <ComboBoxItem>Guiding RMS</ComboBoxItem>
+                                        <ComboBoxItem>Eccentricity</ComboBoxItem>
+                                        <ComboBoxItem>Star Count</ComboBoxItem>
+                                        <ComboBoxItem>Focuser Temp (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Ambient Temp (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Camera Temp (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Cooler Setpoint (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Altitude (°)</ComboBoxItem>
+                                        <ComboBoxItem>Azimuth (°)</ComboBoxItem>
+                                        <ComboBoxItem>Airmass</ComboBoxItem>
+                                        <ComboBoxItem>Position Angle (°)</ComboBoxItem>
+                                        <ComboBoxItem>Rotator Position (°)</ComboBoxItem>
+                                        <ComboBoxItem>Focuser Position (steps)</ComboBoxItem>
+                                        <ComboBoxItem>Seeing FWHM (arcsec)</ComboBoxItem>
+                                        <ComboBoxItem>Sky Quality (mag/arcsec²)</ComboBoxItem>
+                                        <ComboBoxItem>Sky Brightness (Lux)</ComboBoxItem>
+                                        <ComboBoxItem>Cloud Cover (%)</ComboBoxItem>
+                                        <ComboBoxItem>Sky Temp (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Humidity (%)</ComboBoxItem>
+                                        <ComboBoxItem>Dew Point (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Wind Speed (m/s)</ComboBoxItem>
+                                        <ComboBoxItem>Wind Gust (m/s)</ComboBoxItem>
+                                        <ComboBoxItem>Wind Direction (°)</ComboBoxItem>
+                                        <ComboBoxItem>Pressure (hPa)</ComboBoxItem>
+                                        <ComboBoxItem>Exposure (s)</ComboBoxItem>
+                                        <ComboBoxItem>Gain</ComboBoxItem>
+                                        <ComboBoxItem>Offset</ComboBoxItem>
+                                        <ComboBoxItem>Median ADU</ComboBoxItem>
+                                        <ComboBoxItem>Mean ADU</ComboBoxItem>
+                                        <ComboBoxItem>Std Deviation (ADU)</ComboBoxItem>
+                                        <ComboBoxItem>MAD (ADU)</ComboBoxItem>
+                                        <ComboBoxItem>Min ADU</ComboBoxItem>
+                                        <ComboBoxItem>Max ADU</ComboBoxItem>
+                                    </ComboBox>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,3">
+                                    <TextBlock Text="Secondary Metric" Width="180" VerticalAlignment="Center" />
+                                    <ComboBox SelectedIndex="{Binding ChartSecondaryMetric}" MinWidth="160" HorizontalContentAlignment="Left">
+                                        <ComboBox.ItemContainerStyle>
+                                            <Style TargetType="ComboBoxItem">
+                                                <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                                            </Style>
+                                        </ComboBox.ItemContainerStyle>
+                                        <ComboBoxItem>None</ComboBoxItem>
+                                        <ComboBoxItem>HFR</ComboBoxItem>
+                                        <ComboBoxItem>FWHM</ComboBoxItem>
+                                        <ComboBoxItem>Guiding RMS</ComboBoxItem>
+                                        <ComboBoxItem>Eccentricity</ComboBoxItem>
+                                        <ComboBoxItem>Star Count</ComboBoxItem>
+                                        <ComboBoxItem>Focuser Temp (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Ambient Temp (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Camera Temp (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Cooler Setpoint (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Altitude (°)</ComboBoxItem>
+                                        <ComboBoxItem>Azimuth (°)</ComboBoxItem>
+                                        <ComboBoxItem>Airmass</ComboBoxItem>
+                                        <ComboBoxItem>Position Angle (°)</ComboBoxItem>
+                                        <ComboBoxItem>Rotator Position (°)</ComboBoxItem>
+                                        <ComboBoxItem>Focuser Position (steps)</ComboBoxItem>
+                                        <ComboBoxItem>Seeing FWHM (arcsec)</ComboBoxItem>
+                                        <ComboBoxItem>Sky Quality (mag/arcsec²)</ComboBoxItem>
+                                        <ComboBoxItem>Sky Brightness (Lux)</ComboBoxItem>
+                                        <ComboBoxItem>Cloud Cover (%)</ComboBoxItem>
+                                        <ComboBoxItem>Sky Temp (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Humidity (%)</ComboBoxItem>
+                                        <ComboBoxItem>Dew Point (°C)</ComboBoxItem>
+                                        <ComboBoxItem>Wind Speed (m/s)</ComboBoxItem>
+                                        <ComboBoxItem>Wind Gust (m/s)</ComboBoxItem>
+                                        <ComboBoxItem>Wind Direction (°)</ComboBoxItem>
+                                        <ComboBoxItem>Pressure (hPa)</ComboBoxItem>
+                                        <ComboBoxItem>Exposure (s)</ComboBoxItem>
+                                        <ComboBoxItem>Gain</ComboBoxItem>
+                                        <ComboBoxItem>Offset</ComboBoxItem>
+                                        <ComboBoxItem>Median ADU</ComboBoxItem>
+                                        <ComboBoxItem>Mean ADU</ComboBoxItem>
+                                        <ComboBoxItem>Std Deviation (ADU)</ComboBoxItem>
+                                        <ComboBoxItem>MAD (ADU)</ComboBoxItem>
+                                        <ComboBoxItem>Min ADU</ComboBoxItem>
+                                        <ComboBoxItem>Max ADU</ComboBoxItem>
+                                    </ComboBox>
+                                </StackPanel>
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" TextWrapping="Wrap" Foreground="Gray" FontSize="11"
+                                       Margin="20,0,0,0" MaxWidth="300" VerticalAlignment="Center">
                                 FWHM and Eccentricity require the Hocus Focus plugin. Focuser Temp requires a focuser with a built-in temperature sensor.
                                 Ambient Temp, Humidity, Dew Point, Wind Speed, and Pressure require a device connected as a NINA weather data source (e.g. Pegasus UPB, AAG CloudWatcher).
-                                Sky Quality requires a sky quality meter and Cloud Cover requires a cloud sensor, both connected as NINA weather data sources.
-                                Focuser Position requires a motorized focuser.
+                                Sky Quality, Cloud Cover, Sky Temp, Sky Brightness, Wind Direction, and Wind Gust require an ASCOM ObservingConditions device with the corresponding sensor.
+                                Focuser Position requires a motorized focuser. Rotator Position requires a connected rotator. Cooler Setpoint requires a cooled camera.
+                                Image statistics (Median, Mean, StDev, MAD, Min, Max ADU) are captured automatically from each saved image.
                             </TextBlock>
-                        </StackPanel>
-                    </StackPanel>
+                        </Grid>
 
-                    <!-- Additional metric charts (N charts, up to MaxAdditionalCharts) -->
-                    <StackPanel Margin="200,2,0,6">
-                        <StackPanel.Style>
-                            <Style TargetType="StackPanel">
-                                <Setter Property="IsEnabled" Value="True"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding ReportDetailLevel}" Value="0">
-                                        <Setter Property="IsEnabled" Value="False"/>
-                                    </DataTrigger>
-                                    <DataTrigger Binding="{Binding ReportDetailLevel}" Value="1">
-                                        <Setter Property="IsEnabled" Value="False"/>
-                                    </DataTrigger>
-                                    <DataTrigger Binding="{Binding ShowHFRGraph}" Value="False">
-                                        <Setter Property="IsEnabled" Value="False"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </StackPanel.Style>
-
-                        <!-- One row per additional chart -->
+                        <!-- Additional charts -->
                         <ItemsControl ItemsSource="{Binding AdditionalCharts}" x:Name="AdditionalChartsControl">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <StackPanel Margin="0,3,0,3">
+                                    <StackPanel Margin="0,4,0,0">
+                                        <TextBlock Text="{Binding ChartNumber, StringFormat='Chart {0}'}"
+                                                   FontWeight="SemiBold" Margin="0,0,0,4" />
                                         <StackPanel Orientation="Horizontal" Margin="0,2">
-                                            <TextBlock Text="Primary Metric" Width="130" VerticalAlignment="Center" />
+                                            <TextBlock Text="X-Axis" Width="180" VerticalAlignment="Center" />
+                                            <ComboBox SelectedIndex="{Binding XAxis, Mode=TwoWay}"
+                                                      ItemsSource="{Binding DataContext.XAxisMetricNames, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                      MinWidth="160" HorizontalContentAlignment="Left">
+                                                <ComboBox.ItemContainerStyle>
+                                                    <Style TargetType="ComboBoxItem">
+                                                        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                                                    </Style>
+                                                </ComboBox.ItemContainerStyle>
+                                            </ComboBox>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                                            <TextBlock Text="Primary Metric" Width="180" VerticalAlignment="Center" />
                                             <ComboBox SelectedIndex="{Binding Primary, Mode=TwoWay}"
                                                       ItemsSource="{Binding DataContext.PrimaryMetricNames, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                      MinWidth="160" />
+                                                      MinWidth="160" HorizontalContentAlignment="Left">
+                                                <ComboBox.ItemContainerStyle>
+                                                    <Style TargetType="ComboBoxItem">
+                                                        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                                                    </Style>
+                                                </ComboBox.ItemContainerStyle>
+                                            </ComboBox>
                                             <Button Content="✕" Click="RemoveChart_Click" Margin="8,0,0,0" MinWidth="30" ToolTip="Remove this chart" />
                                         </StackPanel>
                                         <StackPanel Orientation="Horizontal" Margin="0,2">
-                                            <TextBlock Text="Secondary Metric" Width="130" VerticalAlignment="Center" />
+                                            <TextBlock Text="Secondary Metric" Width="180" VerticalAlignment="Center" />
                                             <ComboBox SelectedIndex="{Binding Secondary, Mode=TwoWay}"
                                                       ItemsSource="{Binding DataContext.SecondaryMetricNames, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                      MinWidth="160" />
-                                        </StackPanel>
-                                        <StackPanel Orientation="Horizontal" Margin="0,2">
-                                            <TextBlock Text="X-Axis" Width="130" VerticalAlignment="Center" />
-                                            <ComboBox SelectedIndex="{Binding XAxis, Mode=TwoWay}"
-                                                      ItemsSource="{Binding DataContext.XAxisMetricNames, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                      MinWidth="160" />
+                                                      MinWidth="160" HorizontalContentAlignment="Left">
+                                                <ComboBox.ItemContainerStyle>
+                                                    <Style TargetType="ComboBoxItem">
+                                                        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                                                    </Style>
+                                                </ComboBox.ItemContainerStyle>
+                                            </ComboBox>
                                         </StackPanel>
                                     </StackPanel>
                                 </DataTemplate>
@@ -515,388 +673,430 @@
                         </ItemsControl>
 
                         <Button Content="+ Add Chart" Click="AddChart_Click" IsEnabled="{Binding CanAddChart}"
-                                HorizontalAlignment="Left" Margin="0,4,0,2" MinWidth="110" />
+                                HorizontalAlignment="Left" Margin="0,10,0,2" MinWidth="110" />
                     </StackPanel>
 
-                    <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
-                        <TextBlock Width="200" />
-                        <Button Content="Preview Report" Command="{Binding PreviewReportCommand}" Width="180" />
-                        <TextBlock Text="Opens a preview window to test your report settings" Foreground="Gray" FontSize="11" FontStyle="Italic" Margin="12,0,0,0" VerticalAlignment="Center" />
+                    <!-- ══ Appearance ════════════════════════════════════════════ -->
+                    <TextBlock Text="Appearance" FontSize="12" FontWeight="Bold" Margin="0,14,0,6" />
+
+                    <StackPanel Orientation="Horizontal" Margin="0,4">
+                        <TextBlock Text="Expand Sections by Default" Width="200" VerticalAlignment="Center" />
+                        <CheckBox IsChecked="{Binding ExpandSectionsDefault}" VerticalAlignment="Center" />
                     </StackPanel>
 
-                    <Separator Margin="0,20,0,10" />
-
-                    <TextBlock Text="Equipment Profile" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
-                    <DockPanel Margin="0,0,0,8">
-                        <CheckBox IsChecked="{Binding ShowEquipmentProfile}" DockPanel.Dock="Left" />
-                        <TextBlock Text="Show equipment section in report" VerticalAlignment="Center" Margin="8,0,0,0" />
-                    </DockPanel>
-                    <TextBlock Text="Toggle which equipment types appear in the report. Override names are used instead of NINA's auto-detected names when set."
-                               FontStyle="Italic" Foreground="Gray" FontSize="11" Margin="0,0,0,8" TextWrapping="Wrap" />
-                    <Grid Margin="0,0,0,4">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="120" />
-                            <ColumnDefinition Width="*" MaxWidth="350" />
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-                        <CheckBox  Grid.Row="0"  Grid.Column="0" IsChecked="{Binding ShowCamera}"        VerticalAlignment="Center" Margin="0,2" />
-                        <TextBlock Grid.Row="0"  Grid.Column="1" Text="Camera" VerticalAlignment="Center" Margin="8,2,0,2" />
-                        <TextBox   Grid.Row="0"  Grid.Column="2" Text="{Binding EquipmentCamera, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
-                        <CheckBox  Grid.Row="1"  Grid.Column="0" IsChecked="{Binding ShowTelescope}"     VerticalAlignment="Center" Margin="0,2" />
-                        <TextBlock Grid.Row="1"  Grid.Column="1" Text="Telescope" VerticalAlignment="Center" Margin="8,2,0,2" />
-                        <TextBox   Grid.Row="1"  Grid.Column="2" Text="{Binding EquipmentTelescope, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
-                        <CheckBox  Grid.Row="2"  Grid.Column="0" IsChecked="{Binding ShowMount}"         VerticalAlignment="Center" Margin="0,2" />
-                        <TextBlock Grid.Row="2"  Grid.Column="1" Text="Mount" VerticalAlignment="Center" Margin="8,2,0,2" />
-                        <TextBox   Grid.Row="2"  Grid.Column="2" Text="{Binding EquipmentMount, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
-                        <CheckBox  Grid.Row="3"  Grid.Column="0" IsChecked="{Binding ShowFilterWheel}"   VerticalAlignment="Center" Margin="0,2" />
-                        <TextBlock Grid.Row="3"  Grid.Column="1" Text="Filter Wheel" VerticalAlignment="Center" Margin="8,2,0,2" />
-                        <TextBox   Grid.Row="3"  Grid.Column="2" Text="{Binding EquipmentFilterWheel, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
-                        <CheckBox  Grid.Row="4"  Grid.Column="0" IsChecked="{Binding ShowFocuser}"       VerticalAlignment="Center" Margin="0,2" />
-                        <TextBlock Grid.Row="4"  Grid.Column="1" Text="Focuser" VerticalAlignment="Center" Margin="8,2,0,2" />
-                        <TextBox   Grid.Row="4"  Grid.Column="2" Text="{Binding EquipmentFocuser, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
-                        <CheckBox  Grid.Row="5"  Grid.Column="0" IsChecked="{Binding ShowRotator}"       VerticalAlignment="Center" Margin="0,2" />
-                        <TextBlock Grid.Row="5"  Grid.Column="1" Text="Rotator" VerticalAlignment="Center" Margin="8,2,0,2" />
-                        <TextBox   Grid.Row="5"  Grid.Column="2" Text="{Binding EquipmentRotator, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
-                        <CheckBox  Grid.Row="6"  Grid.Column="0" IsChecked="{Binding ShowGuider}"        VerticalAlignment="Center" Margin="0,2" />
-                        <TextBlock Grid.Row="6"  Grid.Column="1" Text="Guider" VerticalAlignment="Center" Margin="8,2,0,2" />
-                        <TextBox   Grid.Row="6"  Grid.Column="2" Text="{Binding EquipmentGuider, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
-                        <CheckBox  Grid.Row="7"  Grid.Column="0" IsChecked="{Binding ShowDome}"          VerticalAlignment="Center" Margin="0,2" />
-                        <TextBlock Grid.Row="7"  Grid.Column="1" Text="Dome" VerticalAlignment="Center" Margin="8,2,0,2" />
-                        <TextBox   Grid.Row="7"  Grid.Column="2" Text="{Binding EquipmentDome, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
-                        <CheckBox  Grid.Row="8"  Grid.Column="0" IsChecked="{Binding ShowFlatPanel}"     VerticalAlignment="Center" Margin="0,2" />
-                        <TextBlock Grid.Row="8"  Grid.Column="1" Text="Flat Panel" VerticalAlignment="Center" Margin="8,2,0,2" />
-                        <TextBox   Grid.Row="8"  Grid.Column="2" Text="{Binding EquipmentFlatPanel, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
-                        <CheckBox  Grid.Row="9"  Grid.Column="0" IsChecked="{Binding ShowSafetyMonitor}" VerticalAlignment="Center" Margin="0,2" />
-                        <TextBlock Grid.Row="9"  Grid.Column="1" Text="Safety Monitor" VerticalAlignment="Center" Margin="8,2,0,2" />
-                        <TextBox   Grid.Row="9"  Grid.Column="2" Text="{Binding EquipmentSafetyMonitor, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
-                        <CheckBox  Grid.Row="10" Grid.Column="0" IsChecked="{Binding ShowWeather}"       VerticalAlignment="Center" Margin="0,2" />
-                        <TextBlock Grid.Row="10" Grid.Column="1" Text="Weather" VerticalAlignment="Center" Margin="8,2,0,2" />
-                        <TextBox   Grid.Row="10" Grid.Column="2" Text="{Binding EquipmentWeather, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
-                        <CheckBox  Grid.Row="11" Grid.Column="0" IsChecked="{Binding ShowSwitch}"        VerticalAlignment="Center" Margin="0,2" />
-                        <TextBlock Grid.Row="11" Grid.Column="1" Text="Switch" VerticalAlignment="Center" Margin="8,2,0,2" />
-                        <TextBox   Grid.Row="11" Grid.Column="2" Text="{Binding EquipmentSwitch, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
-                    </Grid>
-
-                    <Separator Margin="0,20,0,10" />
-
-                    <TextBlock Text="Report File Naming" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
-
-                    <DockPanel Margin="0,5">
-                        <TextBlock Text="File name pattern" Width="200" VerticalAlignment="Center" DockPanel.Dock="Left" />
-                        <TextBox x:Name="FilePatternTextBox"
-                                 Text="{Binding SaveReportFilePattern, UpdateSourceTrigger=PropertyChanged}"
-                                 MinWidth="300" VerticalAlignment="Center"
-                                 LostFocus="PatternTextBox_LostFocus" />
-                    </DockPanel>
-                    <DockPanel Margin="0,4,0,4">
-                        <TextBlock Text="Pattern preview" Width="200" VerticalAlignment="Center" Foreground="Gray" DockPanel.Dock="Left" />
-                        <TextBox Text="{Binding SaveReportPatternPreview, Mode=OneWay}" IsReadOnly="True"
-                                 MinWidth="300" VerticalAlignment="Center" FontSize="12"
-                                 Background="Transparent" BorderBrush="Gray" BorderThickness="1" />
-                    </DockPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,4,0,2">
-                        <TextBlock Width="200" />
-                        <WrapPanel MaxWidth="400">
-                            <Button Content="$$DATEMINUS12$$" Tag="$$DATEMINUS12$$" Click="InsertPattern_Click"
-                                    Padding="6,2" Margin="0,0,4,4" FontSize="11" />
-                            <Button Content="$$DATE$$" Tag="$$DATE$$" Click="InsertPattern_Click"
-                                    Padding="6,2" Margin="0,0,4,4" FontSize="11" />
-                            <Button Content="$$DATETIME$$" Tag="$$DATETIME$$" Click="InsertPattern_Click"
-                                    Padding="6,2" Margin="0,0,4,4" FontSize="11" />
-                            <Button Content="$$TIME$$" Tag="$$TIME$$" Click="InsertPattern_Click"
-                                    Padding="6,2" Margin="0,0,4,4" FontSize="11" />
-                            <Button Content="$$DATEUTC$$" Tag="$$DATEUTC$$" Click="InsertPattern_Click"
-                                    Padding="6,2" Margin="0,0,4,4" FontSize="11" />
-                            <Button Content="$$TIMEUTC$$" Tag="$$TIMEUTC$$" Click="InsertPattern_Click"
-                                    Padding="6,2" Margin="0,0,4,4" FontSize="11" />
-                            <Button Content="$$CAMERA$$" Tag="$$CAMERA$$" Click="InsertPattern_Click"
-                                    Padding="6,2" Margin="0,0,4,4" FontSize="11" />
-                            <Button Content="$$TELESCOPE$$" Tag="$$TELESCOPE$$" Click="InsertPattern_Click"
-                                    Padding="6,2" Margin="0,0,4,4" FontSize="11" />
-                            <Button Content="$$SEQUENCETITLE$$" Tag="$$SEQUENCETITLE$$" Click="InsertPattern_Click"
-                                    Padding="6,2" Margin="0,0,4,4" FontSize="11" />
-                        </WrapPanel>
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,2,0,4">
-                        <TextBlock Width="200" />
-                        <TextBlock Text="Applies to all delivery channels. Use \ to create subdirectories for local saves."
-                                   TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="350" />
+                    <StackPanel Orientation="Horizontal" Margin="0,4">
+                        <TextBlock Text="Light Mode Report" Width="200" VerticalAlignment="Center" />
+                        <CheckBox IsChecked="{Binding ReportLightMode}" VerticalAlignment="Center" />
                     </StackPanel>
 
                     <Separator Margin="0,20,0,10" />
 
-                    <TextBlock Text="Resend Previous Session" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
-
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                        <TextBlock Width="200" />
-                        <TextBlock Text="Select any previous session and resend its report through all currently enabled notification channels."
-                                   TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="400" />
-                    </StackPanel>
-
-                    <StackPanel Orientation="Horizontal" Margin="0,5">
-                        <TextBlock Width="200" VerticalAlignment="Center" />
-                        <ComboBox ItemsSource="{Binding AvailableSessions}"
-                                  SelectedItem="{Binding SelectedSession}"
-                                  MinWidth="440">
-                            <ComboBox.ItemTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding DisplayLabel}" TextWrapping="NoWrap" TextTrimming="None" />
-                                </DataTemplate>
-                            </ComboBox.ItemTemplate>
-                        </ComboBox>
-                        <Button Content="↻" Command="{Binding RefreshSessionsCommand}" Width="30" Margin="6,0,0,0"
-                                ToolTip="Reset to 30 most recent sessions" />
-                    </StackPanel>
-
-                    <StackPanel Margin="200,4,0,4">
-                        <Expander Header="Search older sessions" IsExpanded="False">
-                            <StackPanel Margin="0,8,0,0">
-                                <StackPanel Orientation="Horizontal" Margin="0,4">
-                                    <TextBlock Text="From" Width="40" VerticalAlignment="Center" />
-                                    <DatePicker SelectedDate="{Binding SearchFrom}" Width="130" />
-                                    <TextBlock Text="To" Width="28" VerticalAlignment="Center" Margin="10,0,0,0" />
-                                    <DatePicker SelectedDate="{Binding SearchTo}" Width="130" />
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,6">
-                                    <Button Content="Search" Command="{Binding SearchSessionsCommand}" Width="80" />
-                                    <Button Content="Clear" Command="{Binding ClearSearchCommand}" Width="60" Margin="8,0,0,0" />
-                                    <TextBlock Text="{Binding SearchResultText}" VerticalAlignment="Center"
-                                               Foreground="Gray" FontSize="11" Margin="10,0,0,0" />
-                                </StackPanel>
+                    <!-- ══ Equipment Profile ══════════════════════════════════════ -->
+                    <Expander IsExpanded="False" Margin="0,4,0,4">
+                        <Expander.Header>
+                            <TextBlock Text="Equipment Profile" FontSize="14" FontWeight="Bold" />
+                        </Expander.Header>
+                        <StackPanel Margin="0,12,0,0">
+                            <DockPanel Margin="0,0,0,8">
+                                <CheckBox IsChecked="{Binding ShowEquipmentProfile}" DockPanel.Dock="Left" />
+                                <TextBlock Text="Show equipment section in report" VerticalAlignment="Center" Margin="8,0,0,0" />
+                            </DockPanel>
+                            <TextBlock Text="Toggle which equipment types appear in the report. Override names are used instead of NINA's auto-detected names when set."
+                                       FontStyle="Italic" Foreground="Gray" FontSize="11" Margin="0,0,0,4" TextWrapping="Wrap" />
+                            <!-- Column headers -->
+                            <StackPanel Orientation="Horizontal" Margin="28,0,0,2">
+                                <TextBlock Text="Equipment" Width="120" Margin="8,0,0,0" FontSize="11" FontWeight="SemiBold" Foreground="Gray" />
+                                <TextBlock Text="Override Name" FontSize="11" FontWeight="SemiBold" Foreground="Gray" />
                             </StackPanel>
-                        </Expander>
-                    </StackPanel>
-
-                    <StackPanel Orientation="Horizontal" Margin="0,8">
-                        <TextBlock Width="200" />
-                        <Button Content="Send Report" Command="{Binding ResendSessionCommand}" Width="180" />
-                        <Button Content="✕ Delete"
-                                Command="{Binding DeleteSessionCommand}"
-                                MinWidth="80" Margin="8,0,0,0"
-                                ToolTip="Delete the selected session and all its data" />
-                        <TextBlock Text="{Binding ResendStatus.Text}"
-                                   Foreground="{Binding ResendStatus.Foreground}"
-                                   Visibility="{Binding ResendStatus.Visibility}"
-                                   VerticalAlignment="Center" Margin="10,0,0,0" />
-                    </StackPanel>
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="120" />
+                                    <ColumnDefinition Width="*" MaxWidth="350" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <CheckBox  Grid.Row="0"  Grid.Column="0" IsChecked="{Binding ShowCamera}"        VerticalAlignment="Center" Margin="0,2" />
+                                <TextBlock Grid.Row="0"  Grid.Column="1" Text="Camera" VerticalAlignment="Center" Margin="8,2,0,2" />
+                                <TextBox   Grid.Row="0"  Grid.Column="2" Text="{Binding EquipmentCamera, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                                <CheckBox  Grid.Row="1"  Grid.Column="0" IsChecked="{Binding ShowTelescope}"     VerticalAlignment="Center" Margin="0,2" />
+                                <TextBlock Grid.Row="1"  Grid.Column="1" Text="Telescope" VerticalAlignment="Center" Margin="8,2,0,2" />
+                                <TextBox   Grid.Row="1"  Grid.Column="2" Text="{Binding EquipmentTelescope, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                                <CheckBox  Grid.Row="2"  Grid.Column="0" IsChecked="{Binding ShowMount}"         VerticalAlignment="Center" Margin="0,2" />
+                                <TextBlock Grid.Row="2"  Grid.Column="1" Text="Mount" VerticalAlignment="Center" Margin="8,2,0,2" />
+                                <TextBox   Grid.Row="2"  Grid.Column="2" Text="{Binding EquipmentMount, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                                <CheckBox  Grid.Row="3"  Grid.Column="0" IsChecked="{Binding ShowFilterWheel}"   VerticalAlignment="Center" Margin="0,2" />
+                                <TextBlock Grid.Row="3"  Grid.Column="1" Text="Filter Wheel" VerticalAlignment="Center" Margin="8,2,0,2" />
+                                <TextBox   Grid.Row="3"  Grid.Column="2" Text="{Binding EquipmentFilterWheel, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                                <CheckBox  Grid.Row="4"  Grid.Column="0" IsChecked="{Binding ShowFocuser}"       VerticalAlignment="Center" Margin="0,2" />
+                                <TextBlock Grid.Row="4"  Grid.Column="1" Text="Focuser" VerticalAlignment="Center" Margin="8,2,0,2" />
+                                <TextBox   Grid.Row="4"  Grid.Column="2" Text="{Binding EquipmentFocuser, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                                <CheckBox  Grid.Row="5"  Grid.Column="0" IsChecked="{Binding ShowRotator}"       VerticalAlignment="Center" Margin="0,2" />
+                                <TextBlock Grid.Row="5"  Grid.Column="1" Text="Rotator" VerticalAlignment="Center" Margin="8,2,0,2" />
+                                <TextBox   Grid.Row="5"  Grid.Column="2" Text="{Binding EquipmentRotator, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                                <CheckBox  Grid.Row="6"  Grid.Column="0" IsChecked="{Binding ShowGuider}"        VerticalAlignment="Center" Margin="0,2" />
+                                <TextBlock Grid.Row="6"  Grid.Column="1" Text="Guider" VerticalAlignment="Center" Margin="8,2,0,2" />
+                                <TextBox   Grid.Row="6"  Grid.Column="2" Text="{Binding EquipmentGuider, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                                <CheckBox  Grid.Row="7"  Grid.Column="0" IsChecked="{Binding ShowDome}"          VerticalAlignment="Center" Margin="0,2" />
+                                <TextBlock Grid.Row="7"  Grid.Column="1" Text="Dome" VerticalAlignment="Center" Margin="8,2,0,2" />
+                                <TextBox   Grid.Row="7"  Grid.Column="2" Text="{Binding EquipmentDome, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                                <CheckBox  Grid.Row="8"  Grid.Column="0" IsChecked="{Binding ShowFlatPanel}"     VerticalAlignment="Center" Margin="0,2" />
+                                <TextBlock Grid.Row="8"  Grid.Column="1" Text="Flat Panel" VerticalAlignment="Center" Margin="8,2,0,2" />
+                                <TextBox   Grid.Row="8"  Grid.Column="2" Text="{Binding EquipmentFlatPanel, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                                <CheckBox  Grid.Row="9"  Grid.Column="0" IsChecked="{Binding ShowSafetyMonitor}" VerticalAlignment="Center" Margin="0,2" />
+                                <TextBlock Grid.Row="9"  Grid.Column="1" Text="Safety Monitor" VerticalAlignment="Center" Margin="8,2,0,2" />
+                                <TextBox   Grid.Row="9"  Grid.Column="2" Text="{Binding EquipmentSafetyMonitor, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                                <CheckBox  Grid.Row="10" Grid.Column="0" IsChecked="{Binding ShowWeather}"       VerticalAlignment="Center" Margin="0,2" />
+                                <TextBlock Grid.Row="10" Grid.Column="1" Text="Weather" VerticalAlignment="Center" Margin="8,2,0,2" />
+                                <TextBox   Grid.Row="10" Grid.Column="2" Text="{Binding EquipmentWeather, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                                <CheckBox  Grid.Row="11" Grid.Column="0" IsChecked="{Binding ShowSwitch}"        VerticalAlignment="Center" Margin="0,2" />
+                                <TextBlock Grid.Row="11" Grid.Column="1" Text="Switch" VerticalAlignment="Center" Margin="8,2,0,2" />
+                                <TextBox   Grid.Row="11" Grid.Column="2" Text="{Binding EquipmentSwitch, UpdateSourceTrigger=LostFocus}" Margin="0,2" />
+                            </Grid>
+                        </StackPanel>
+                    </Expander>
 
                     <Separator Margin="0,20,0,10" />
 
-                    <TextBlock Text="Saved Reports" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
+                    <!-- ══ Delivery Channels ══════════════════════════════════════ -->
+                    <Expander IsExpanded="False">
+                        <Expander.Header>
+                            <TextBlock Text="Delivery Channels" FontSize="14" FontWeight="Bold" />
+                        </Expander.Header>
+                        <StackPanel Margin="0,12,0,0">
 
-                    <StackPanel Orientation="Horizontal" Margin="0,5">
-                        <TextBlock Text="Save Report Locally" Width="200" VerticalAlignment="Center" />
-                        <CheckBox IsChecked="{Binding SaveReportLocally}" VerticalAlignment="Center" />
-                        <TextBlock Text="Saves the HTML report after each session."
-                                   TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,0,0,0" MaxWidth="350" VerticalAlignment="Center" />
-                    </StackPanel>
+                            <!-- Report File Naming -->
+                            <TextBlock Text="Report File Naming" FontSize="12" FontWeight="Bold" Margin="0,0,0,10" />
 
-                    <StackPanel Orientation="Horizontal" Margin="0,5">
-                        <TextBlock Text="Save Path" Width="200" VerticalAlignment="Center" />
-                        <TextBox Text="{Binding SaveReportPath, UpdateSourceTrigger=LostFocus}" Width="300" VerticalAlignment="Center" />
-                        <Button Content="Browse..." Click="BrowseSaveReportPath_Click" Margin="5,0,0,0" MinWidth="70" VerticalAlignment="Center" />
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,2,0,4">
-                        <TextBlock Width="200" />
-                        <TextBlock Text="Leave blank to use the default: Documents\N.I.N.A.\Night Summary\Saved Reports\"
-                                   TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="350" />
-                    </StackPanel>
+                            <DockPanel Margin="0,5">
+                                <TextBlock Text="File name pattern" Width="200" VerticalAlignment="Center" DockPanel.Dock="Left" />
+                                <TextBox x:Name="FilePatternTextBox"
+                                         Text="{Binding SaveReportFilePattern, UpdateSourceTrigger=PropertyChanged}"
+                                         MinWidth="300" VerticalAlignment="Center"
+                                         LostFocus="PatternTextBox_LostFocus" />
+                            </DockPanel>
+                            <DockPanel Margin="0,4,0,4">
+                                <TextBlock Text="Pattern preview" Width="200" VerticalAlignment="Center" Foreground="Gray" DockPanel.Dock="Left" />
+                                <TextBox Text="{Binding SaveReportPatternPreview, Mode=OneWay}" IsReadOnly="True"
+                                         MinWidth="300" VerticalAlignment="Center" FontSize="12"
+                                         Background="Transparent" BorderBrush="Gray" BorderThickness="1" />
+                            </DockPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,4,0,2">
+                                <TextBlock Width="200" />
+                                <WrapPanel MaxWidth="400">
+                                    <Button Content="$$DATEMINUS12$$" Tag="$$DATEMINUS12$$" Click="InsertPattern_Click"
+                                            Padding="6,2" Margin="0,0,4,4" FontSize="11" />
+                                    <Button Content="$$DATE$$" Tag="$$DATE$$" Click="InsertPattern_Click"
+                                            Padding="6,2" Margin="0,0,4,4" FontSize="11" />
+                                    <Button Content="$$DATETIME$$" Tag="$$DATETIME$$" Click="InsertPattern_Click"
+                                            Padding="6,2" Margin="0,0,4,4" FontSize="11" />
+                                    <Button Content="$$TIME$$" Tag="$$TIME$$" Click="InsertPattern_Click"
+                                            Padding="6,2" Margin="0,0,4,4" FontSize="11" />
+                                    <Button Content="$$DATEUTC$$" Tag="$$DATEUTC$$" Click="InsertPattern_Click"
+                                            Padding="6,2" Margin="0,0,4,4" FontSize="11" />
+                                    <Button Content="$$TIMEUTC$$" Tag="$$TIMEUTC$$" Click="InsertPattern_Click"
+                                            Padding="6,2" Margin="0,0,4,4" FontSize="11" />
+                                    <Button Content="$$CAMERA$$" Tag="$$CAMERA$$" Click="InsertPattern_Click"
+                                            Padding="6,2" Margin="0,0,4,4" FontSize="11" />
+                                    <Button Content="$$TELESCOPE$$" Tag="$$TELESCOPE$$" Click="InsertPattern_Click"
+                                            Padding="6,2" Margin="0,0,4,4" FontSize="11" />
+                                    <Button Content="$$SEQUENCETITLE$$" Tag="$$SEQUENCETITLE$$" Click="InsertPattern_Click"
+                                            Padding="6,2" Margin="0,0,4,4" FontSize="11" />
+                                </WrapPanel>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,2,0,4">
+                                <TextBlock Width="200" />
+                                <TextBlock Text="Applies to all delivery channels. Use \ to create subdirectories for local saves."
+                                           TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="350" />
+                            </StackPanel>
 
+                            <Separator Margin="0,14,0,10" />
+
+                            <!-- Saved Reports -->
+                            <TextBlock Text="Saved Reports" FontSize="12" FontWeight="Bold" Margin="0,0,0,10" />
+
+                            <StackPanel Orientation="Horizontal" Margin="0,5">
+                                <TextBlock Text="Save Report Locally" Width="200" VerticalAlignment="Center" />
+                                <CheckBox IsChecked="{Binding SaveReportLocally}" VerticalAlignment="Center" />
+                                <TextBlock Text="Saves the HTML report after each session."
+                                           TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,0,0,0" MaxWidth="350" VerticalAlignment="Center" />
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,5">
+                                <TextBlock Text="Save Path" Width="200" VerticalAlignment="Center" />
+                                <TextBox Text="{Binding SaveReportPath, UpdateSourceTrigger=LostFocus}" Width="300" VerticalAlignment="Center" />
+                                <Button Content="Browse..." Click="BrowseSaveReportPath_Click" Margin="5,0,0,0" MinWidth="70" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,2,0,4">
+                                <TextBlock Width="200" />
+                                <TextBlock Text="Leave blank to use the default: Documents\N.I.N.A.\Night Summary\Saved Reports\"
+                                           TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="350" />
+                            </StackPanel>
+
+                            <Separator Margin="0,14,0,6" />
+
+                            <!-- ── Email ─────────────────────────────────────────── -->
+                            <Expander Margin="0,4,0,4">
+                                <Expander.Header>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Email" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        <TextBlock Margin="8,0,0,0" FontSize="11" VerticalAlignment="Center">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="(disabled)" />
+                                                    <Setter Property="Foreground" Value="Gray" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding EmailEnabled}" Value="True">
+                                                            <Setter Property="Text" Value="(enabled)" />
+                                                            <Setter Property="Foreground" Value="#44AA44" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Expander.Header>
+                                <StackPanel Margin="0,8,0,4">
+
+                                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                                        <TextBlock Text="Enable Email Reports" Width="200" VerticalAlignment="Center" />
+                                        <CheckBox IsChecked="{Binding EmailEnabled}" VerticalAlignment="Center" />
+                                    </StackPanel>
+
+                                    <!-- Provider selection -->
+                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,10">
+                                        <TextBlock Text="Email Provider" Width="200" VerticalAlignment="Center" />
+                                        <RadioButton Content="Gmail" IsChecked="{Binding UseGmailSmtp}"
+                                                     GroupName="EmailProvider" VerticalAlignment="Center" Margin="0,0,20,0" />
+                                        <RadioButton Content="Other provider" IsChecked="{Binding UseCustomSmtp}"
+                                                     GroupName="EmailProvider" VerticalAlignment="Center" />
+                                    </StackPanel>
+
+                                    <!-- Gmail section -->
+                                    <StackPanel>
+                                        <StackPanel.Style>
+                                            <Style TargetType="StackPanel">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding UseGmailSmtp}" Value="False">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </StackPanel.Style>
+
+                                        <StackPanel Orientation="Horizontal" Margin="0,5">
+                                            <TextBlock Text="Gmail Address" Width="200" VerticalAlignment="Center" />
+                                            <TextBox MinWidth="300" Text="{Binding SenderAddress, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+
+                                        <StackPanel Orientation="Horizontal" Margin="0,5">
+                                            <TextBlock Text="App Password" Width="200" VerticalAlignment="Center" />
+                                            <TextBox MinWidth="300" Text="{Binding SmtpPassword, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+
+                                        <StackPanel Orientation="Horizontal" Margin="0,5">
+                                            <TextBlock Text="Recipient Email Address" Width="200" VerticalAlignment="Center" />
+                                            <TextBox MinWidth="300" Text="{Binding RecipientAddress, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+
+                                        <StackPanel Orientation="Horizontal" Margin="0,6,0,10">
+                                            <TextBlock Width="200" />
+                                            <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="420">
+                                                Requires a Gmail App Password — not your regular password.
+                                                Generate one at myaccount.google.com/apppasswords
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <!-- Other provider section -->
+                                    <StackPanel>
+                                        <StackPanel.Style>
+                                            <Style TargetType="StackPanel">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding UseGmailSmtp}" Value="False">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </StackPanel.Style>
+
+                                        <StackPanel Orientation="Horizontal" Margin="0,5">
+                                            <TextBlock Text="Sender Email" Width="200" VerticalAlignment="Center" />
+                                            <TextBox MinWidth="300" Text="{Binding SenderAddress, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+
+                                        <StackPanel Orientation="Horizontal" Margin="0,5">
+                                            <TextBlock Text="App Password / API Key" Width="200" VerticalAlignment="Center" />
+                                            <TextBox MinWidth="300" Text="{Binding SmtpPassword, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+
+                                        <StackPanel Orientation="Horizontal" Margin="0,5">
+                                            <TextBlock Text="Recipient Email Address" Width="200" VerticalAlignment="Center" />
+                                            <TextBox MinWidth="300" Text="{Binding RecipientAddress, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+
+                                        <StackPanel Orientation="Horizontal" Margin="0,5">
+                                            <TextBlock Text="SMTP Server" Width="200" VerticalAlignment="Center" />
+                                            <TextBox MinWidth="300" Text="{Binding SmtpHost, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+
+                                        <StackPanel Orientation="Horizontal" Margin="0,5">
+                                            <TextBlock Text="Port" Width="200" VerticalAlignment="Center" />
+                                            <TextBox Width="60" Text="{Binding SmtpPort, UpdateSourceTrigger=PropertyChanged}" />
+                                            <TextBlock Text="Use TLS/SSL" VerticalAlignment="Center" Margin="20,0,8,0" />
+                                            <CheckBox IsChecked="{Binding SmtpSsl}" VerticalAlignment="Center" />
+                                        </StackPanel>
+
+                                        <StackPanel Orientation="Horizontal" Margin="0,6,0,4">
+                                            <TextBlock Width="200" />
+                                            <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="420">
+                                                <Run FontWeight="Bold">Do not use your regular account password.</Run>
+                                                <Run>Most providers require an App Password or API key for SMTP access.</Run>
+                                                <LineBreak /><LineBreak />
+                                                <Run FontWeight="Bold">Common provider settings:</Run>
+                                                <LineBreak />
+                                                <Run>• Outlook.com — smtp-mail.outlook.com : 587, TLS on. App password: myaccount.microsoft.com → Security → App passwords</Run>
+                                                <LineBreak />
+                                                <Run>• Yahoo — smtp.mail.yahoo.com : 587, TLS on. App password: myaccount.yahoo.com → Security → Generate app password</Run>
+                                                <LineBreak />
+                                                <Run>• iCloud — smtp.mail.me.com : 587, TLS on. App password: appleid.apple.com → Sign-In &amp; Security → App-Specific Passwords</Run>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+                                        <TextBlock Width="200" />
+                                        <Button Content="Test Email" Command="{Binding TestEmailCommand}" Width="180" />
+                                        <TextBlock Text="{Binding EmailTestStatus.Text}"
+                                                   Foreground="{Binding EmailTestStatus.Foreground}"
+                                                   Visibility="{Binding EmailTestStatus.Visibility}"
+                                                   VerticalAlignment="Center" Margin="10,0,0,0" />
+                                        <TextBlock Text="If you don't receive the email, check your spam folder."
+                                                   TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,0,0,0" MaxWidth="250" VerticalAlignment="Center" />
+                                    </StackPanel>
+
+                                </StackPanel>
+                            </Expander>
+
+                            <!-- ── Pushover ────────────────────────────────────────── -->
+                            <Expander Margin="0,4,0,4">
+                                <Expander.Header>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Pushover" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        <TextBlock Margin="8,0,0,0" FontSize="11" VerticalAlignment="Center">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="(disabled)" />
+                                                    <Setter Property="Foreground" Value="Gray" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding PushoverEnabled}" Value="True">
+                                                            <Setter Property="Text" Value="(enabled)" />
+                                                            <Setter Property="Foreground" Value="#44AA44" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Expander.Header>
+                                <StackPanel Margin="0,8,0,4">
+
+                                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                                        <TextBlock Text="Enable Pushover" Width="200" VerticalAlignment="Center" />
+                                        <CheckBox IsChecked="{Binding PushoverEnabled}" VerticalAlignment="Center" />
+                                    </StackPanel>
+
+                                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                                        <TextBlock Text="App Token" Width="200" VerticalAlignment="Center" />
+                                        <TextBox MinWidth="300" Text="{Binding PushoverAppToken, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+
+                                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                                        <TextBlock Text="User Key" Width="200" VerticalAlignment="Center" />
+                                        <TextBox MinWidth="300" Text="{Binding PushoverUserKey, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+
+                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+                                        <TextBlock Width="200" />
+                                        <Button Content="Test Pushover" Command="{Binding TestPushoverCommand}" Width="180" />
+                                        <TextBlock Text="{Binding PushoverTestStatus.Text}"
+                                                   Foreground="{Binding PushoverTestStatus.Foreground}"
+                                                   Visibility="{Binding PushoverTestStatus.Visibility}"
+                                                   VerticalAlignment="Center" Margin="10,0,0,0" />
+                                        <TextBlock Text="Create a Pushover application at pushover.net to get your App Token. Your User Key is on your Pushover dashboard."
+                                                   TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,0,0,0" MaxWidth="300" VerticalAlignment="Center" />
+                                    </StackPanel>
+
+                                </StackPanel>
+                            </Expander>
+
+                            <!-- ── Discord ─────────────────────────────────────────── -->
+                            <Expander Margin="0,4,0,4">
+                                <Expander.Header>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Discord" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        <TextBlock Margin="8,0,0,0" FontSize="11" VerticalAlignment="Center">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="(disabled)" />
+                                                    <Setter Property="Foreground" Value="Gray" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding DiscordEnabled}" Value="True">
+                                                            <Setter Property="Text" Value="(enabled)" />
+                                                            <Setter Property="Foreground" Value="#44AA44" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Expander.Header>
+                                <StackPanel Margin="0,8,0,4">
+
+                                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                                        <TextBlock Text="Enable Discord" Width="200" VerticalAlignment="Center" />
+                                        <CheckBox IsChecked="{Binding DiscordEnabled}" VerticalAlignment="Center" />
+                                    </StackPanel>
+
+                                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                                        <TextBlock Text="Webhook URL" Width="200" VerticalAlignment="Center" />
+                                        <TextBox MinWidth="300" Text="{Binding DiscordWebhookUrl, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+
+                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+                                        <TextBlock Width="200" />
+                                        <Button Content="Test Discord" Command="{Binding TestDiscordCommand}" Width="180" />
+                                        <TextBlock Text="{Binding DiscordTestStatus.Text}"
+                                                   Foreground="{Binding DiscordTestStatus.Foreground}"
+                                                   Visibility="{Binding DiscordTestStatus.Visibility}"
+                                                   VerticalAlignment="Center" Margin="10,0,0,0" />
+                                        <TextBlock Text="In Discord, go to channel Settings → Integrations → Webhooks → New Webhook to get your URL."
+                                                   TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,0,0,0" MaxWidth="300" VerticalAlignment="Center" />
+                                    </StackPanel>
+
+                                </StackPanel>
+                            </Expander>
+
+                        </StackPanel>
+                    </Expander>
 
                     <Separator Margin="0,20,0,10" />
 
-                    <TextBlock Text="Email Report Settings" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
-
-                    <StackPanel Orientation="Horizontal" Margin="0,5">
-                        <TextBlock Text="Enable Email Reports" Width="200" VerticalAlignment="Center" />
-                        <CheckBox IsChecked="{Binding EmailEnabled}" VerticalAlignment="Center" />
-                    </StackPanel>
-
-                    <!-- Provider selection -->
-                    <StackPanel Orientation="Horizontal" Margin="0,8,0,10">
-                        <TextBlock Text="Email Provider" Width="200" VerticalAlignment="Center" />
-                        <RadioButton Content="Gmail" IsChecked="{Binding UseGmailSmtp}"
-                                     GroupName="EmailProvider" VerticalAlignment="Center" Margin="0,0,20,0" />
-                        <RadioButton Content="Other provider" IsChecked="{Binding UseCustomSmtp}"
-                                     GroupName="EmailProvider" VerticalAlignment="Center" />
-                    </StackPanel>
-
-                    <!-- Gmail section -->
-                    <StackPanel>
-                        <StackPanel.Style>
-                            <Style TargetType="StackPanel">
-                                <Setter Property="Visibility" Value="Visible" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding UseGmailSmtp}" Value="False">
-                                        <Setter Property="Visibility" Value="Collapsed" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </StackPanel.Style>
-
-                        <StackPanel Orientation="Horizontal" Margin="0,5">
-                            <TextBlock Text="Gmail Address" Width="200" VerticalAlignment="Center" />
-                            <TextBox MinWidth="300" Text="{Binding SenderAddress, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-
-                        <StackPanel Orientation="Horizontal" Margin="0,5">
-                            <TextBlock Text="App Password" Width="200" VerticalAlignment="Center" />
-                            <TextBox MinWidth="300" Text="{Binding SmtpPassword, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-
-                        <StackPanel Orientation="Horizontal" Margin="0,5">
-                            <TextBlock Text="Recipient Email Address" Width="200" VerticalAlignment="Center" />
-                            <TextBox MinWidth="300" Text="{Binding RecipientAddress, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-
-                        <StackPanel Orientation="Horizontal" Margin="0,6,0,10">
-                            <TextBlock Width="200" />
-                            <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="420">
-                                Requires a Gmail App Password — not your regular password.
-                                Generate one at myaccount.google.com → Security → App Passwords.
-                            </TextBlock>
-                        </StackPanel>
-                    </StackPanel>
-
-                    <!-- Other provider section -->
-                    <StackPanel>
-                        <StackPanel.Style>
-                            <Style TargetType="StackPanel">
-                                <Setter Property="Visibility" Value="Collapsed" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding UseGmailSmtp}" Value="False">
-                                        <Setter Property="Visibility" Value="Visible" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </StackPanel.Style>
-
-                        <StackPanel Orientation="Horizontal" Margin="0,5">
-                            <TextBlock Text="Sender Email" Width="200" VerticalAlignment="Center" />
-                            <TextBox MinWidth="300" Text="{Binding SenderAddress, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-
-                        <StackPanel Orientation="Horizontal" Margin="0,5">
-                            <TextBlock Text="App Password / API Key" Width="200" VerticalAlignment="Center" />
-                            <TextBox MinWidth="300" Text="{Binding SmtpPassword, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-
-                        <StackPanel Orientation="Horizontal" Margin="0,5">
-                            <TextBlock Text="Recipient Email Address" Width="200" VerticalAlignment="Center" />
-                            <TextBox MinWidth="300" Text="{Binding RecipientAddress, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-
-                        <StackPanel Orientation="Horizontal" Margin="0,5">
-                            <TextBlock Text="SMTP Server" Width="200" VerticalAlignment="Center" />
-                            <TextBox MinWidth="300" Text="{Binding SmtpHost, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-
-                        <StackPanel Orientation="Horizontal" Margin="0,5">
-                            <TextBlock Text="Port" Width="200" VerticalAlignment="Center" />
-                            <TextBox Width="60" Text="{Binding SmtpPort, UpdateSourceTrigger=PropertyChanged}" />
-                            <TextBlock Text="Use TLS/SSL" VerticalAlignment="Center" Margin="20,0,8,0" />
-                            <CheckBox IsChecked="{Binding SmtpSsl}" VerticalAlignment="Center" />
-                        </StackPanel>
-
-                        <StackPanel Orientation="Horizontal" Margin="0,6,0,4">
-                            <TextBlock Width="200" />
-                            <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="420">
-                                <Run FontWeight="Bold">Do not use your regular account password.</Run>
-                                <Run>Most providers require an App Password or API key for SMTP access.</Run>
-                                <LineBreak /><LineBreak />
-                                <Run FontWeight="Bold">Common provider settings:</Run>
-                                <LineBreak />
-                                <Run>• Outlook.com — smtp-mail.outlook.com : 587, TLS on. App password: myaccount.microsoft.com → Security → App passwords</Run>
-                                <LineBreak />
-                                <Run>• Yahoo — smtp.mail.yahoo.com : 587, TLS on. App password: myaccount.yahoo.com → Security → Generate app password</Run>
-                                <LineBreak />
-                                <Run>• iCloud — smtp.mail.me.com : 587, TLS on. App password: appleid.apple.com → Sign-In &amp; Security → App-Specific Passwords</Run>
-                            </TextBlock>
-                        </StackPanel>
-                    </StackPanel>
-
-                    <StackPanel Orientation="Horizontal" Margin="0,8,0,10">
-                        <TextBlock Width="200" />
-                        <Button Content="Send Test Email" Command="{Binding TestEmailCommand}" Width="180" />
-                        <TextBlock Text="{Binding EmailTestStatus.Text}"
-                                   Foreground="{Binding EmailTestStatus.Foreground}"
-                                   Visibility="{Binding EmailTestStatus.Visibility}"
-                                   VerticalAlignment="Center" Margin="10,0,0,0" />
-                        <TextBlock Text="If you don't receive the email, check your spam folder."
-                                   TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,0,0,0" MaxWidth="250" VerticalAlignment="Center" />
-                    </StackPanel>
-
-                    <Separator Margin="0,20,0,10" />
-
-                    <TextBlock Text="Pushover Notifications" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
-
-                    <StackPanel Orientation="Horizontal" Margin="0,5">
-                        <TextBlock Text="Enable Pushover" Width="200" VerticalAlignment="Center" />
-                        <CheckBox IsChecked="{Binding PushoverEnabled}" VerticalAlignment="Center" />
-                    </StackPanel>
-
-                    <StackPanel Orientation="Horizontal" Margin="0,5">
-                        <TextBlock Text="App Token" Width="200" VerticalAlignment="Center" />
-                        <TextBox MinWidth="300" Text="{Binding PushoverAppToken, UpdateSourceTrigger=PropertyChanged}" />
-                    </StackPanel>
-
-                    <StackPanel Orientation="Horizontal" Margin="0,5">
-                        <TextBlock Text="User Key" Width="200" VerticalAlignment="Center" />
-                        <TextBox MinWidth="300" Text="{Binding PushoverUserKey, UpdateSourceTrigger=PropertyChanged}" />
-                    </StackPanel>
-
-                    <StackPanel Orientation="Horizontal" Margin="0,10">
-                        <TextBlock Width="200" />
-                        <Button Content="Send Test Notification" Command="{Binding TestPushoverCommand}" Width="180" />
-                        <TextBlock Text="{Binding PushoverTestStatus.Text}"
-                                   Foreground="{Binding PushoverTestStatus.Foreground}"
-                                   Visibility="{Binding PushoverTestStatus.Visibility}"
-                                   VerticalAlignment="Center" Margin="10,0,0,0" />
-                        <TextBlock Text="Create a Pushover application at pushover.net to get your App Token. Your User Key is on your Pushover dashboard."
-                                   TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,0,0,0" MaxWidth="300" VerticalAlignment="Center" />
-                    </StackPanel>
-
-                    <Separator Margin="0,20,0,10" />
-
-                    <TextBlock Text="Discord Notifications" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
-
-                    <StackPanel Orientation="Horizontal" Margin="0,5">
-                        <TextBlock Text="Enable Discord" Width="200" VerticalAlignment="Center" />
-                        <CheckBox IsChecked="{Binding DiscordEnabled}" VerticalAlignment="Center" />
-                    </StackPanel>
-
-                    <StackPanel Orientation="Horizontal" Margin="0,5">
-                        <TextBlock Text="Webhook URL" Width="200" VerticalAlignment="Center" />
-                        <TextBox MinWidth="300" Text="{Binding DiscordWebhookUrl, UpdateSourceTrigger=PropertyChanged}" />
-                    </StackPanel>
-
-                    <StackPanel Orientation="Horizontal" Margin="0,10">
-                        <TextBlock Width="200" />
-                        <Button Content="Send Test Message" Command="{Binding TestDiscordCommand}" Width="180" />
-                        <TextBlock Text="{Binding DiscordTestStatus.Text}"
-                                   Foreground="{Binding DiscordTestStatus.Foreground}"
-                                   Visibility="{Binding DiscordTestStatus.Visibility}"
-                                   VerticalAlignment="Center" Margin="10,0,0,0" />
-                        <TextBlock Text="In Discord, go to channel Settings → Integrations → Webhooks → New Webhook to get your URL."
-                                   TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,0,0,0" MaxWidth="300" VerticalAlignment="Center" />
-                    </StackPanel>
-
-                    <Separator Margin="0,20,0,10" />
-
+                    <!-- ══ Test Report ════════════════════════════════════════════ -->
                     <TextBlock Text="Test Report" FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
 
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,10">

@@ -1,6 +1,34 @@
 # Night Summary — Changelog
 
 
+## v2.11.0
+
+**New features**
+- Per-filter selector on metric charts -- click a filter chip above any metric chart to show only one filter's data points. Y-axes auto-rescale to the visible subset so per-filter trends are visible at maximum resolution -- especially useful for mono LRGB rotating workflows where alternating filters would otherwise mask the underlying trend within each filter. Filters with only a single image show a centered dot rather than a "no data" message. Hover tooltips show values at full precision (e.g. 1.72 px instead of 1.7 px). Applies to the primary chart and any additional charts, dark and light modes, and works on historical sessions via "Resend Previous Session". Note: the interactive filter selector requires JavaScript -- when reports are opened in email attachment previews (Gmail, iOS Quick Look) or other script-restricted environments, charts display as a static view showing all filters combined with a note explaining how to open the report in a browser for the full interactive version.
+- Tonight's Preview now shows a multi-target altitude chart instead of a flat timeline — each scheduled target's altitude curve is plotted over the imaging window with color-coded shading per imaging block and hover tooltips showing the target name and window times. Moon curve shown when enabled. Coordinates are resolved automatically from the Target Scheduler database.
+
+**Improvements**
+- Expanded metric chart options from 20 to 35 metrics — added Sky Temperature (user-requested), Sky Brightness, Wind Direction, Wind Gust, Mean ADU, Std Deviation, MAD, Exposure, Gain, Offset, Cooler Setpoint, Rotator Position, Position Angle, Min ADU, and Max ADU. All available as primary, secondary, or x-axis metrics on the main chart and any additional charts.
+- Now collecting all 12 ASCOM ObservingConditions weather fields (previously 8) — added Sky Brightness, Sky Temperature, Wind Direction, and Wind Gust so the data is stored even before new chart options use it
+- Metric combo boxes reordered by usefulness — most commonly used metrics (HFR, FWHM, Guiding RMS, Star Count) at top, niche metrics (Position Angle, Min/Max ADU) at bottom, grouped by category
+- Reorganized the plugin options page for easier navigation — high-frequency actions (Preview Report, Resend Previous Session) are now surfaced at the top, delivery channel settings and equipment profile are grouped behind collapsible sections, and the layout and labelling of controls is more consistent throughout
+- Gmail app password hint now links directly to myaccount.google.com/apppasswords instead of describing the navigation path
+
+**Bug fixes**
+- Graceful session cleanup when sequence is stopped manually -- if the NINA sequence ends before the Night Summary End instruction runs (manual stop, error, or missing instruction), the session is now finalized automatically with an end time and all listeners are cleaned up. No report is generated or delivered -- use "Resend Previous Session" to get a report from the saved data.
+- Rejected frame tracking -- frames rejected by Target Scheduler grading or manually thumbed-down in NINA's thumbnail panel are now counted and shown in the report. The per-target filter table gains a Rejected column when any rejections exist, with a hover tooltip breaking down rejection reasons and counts (e.g. "HFR too high: 4, Guiding RMS: 1" or "Manual: 2"). The session overview shows a rejected count alongside aborted exposures. Manual rejections are detected automatically via file system watching -- no extra setup required.
+- Fixed event marker hover tooltips on metric charts not responding -- markers (AutoFocus, Meridian Flip, Safe/Unsafe) now reliably show their tooltip on hover
+- Fixed additional chart settings showing dropdowns in a different order than the primary chart -- all chart configurations now show X-Axis, Primary Metric, Secondary Metric in that order
+- Fixed filter chip selector causing a slight layout shift when switching filters -- chips are now consistently bold so toggling the active state no longer changes their width
+- Fixed equipment section showing only a subset of connected equipment -- now captures equipment names on the first saved image instead of at session start, guaranteeing all devices are connected before the snapshot is taken
+- Fixed filter change counts being inflated by no-op filter switches -- the plugin now only counts a filter change when the wheel actually moved, not every time the sequence asked for a filter that was already in position
+- Overhead Analysis accuracy improvements: the full meridian flip window (slew + re-center + re-guide + settle) is now captured instead of slew-only; no-op `StartGuiding` calls (when PHD2 is already guiding) are no longer counted; plate solves internal to Center/CenterAndRotate are no longer double-counted alongside the centering event; sequence items that fail validation mid-run no longer leak as orphaned "in-progress" entries; sequencer-caused `WaitForTimeSpan` delays (e.g. post-unsafe safety buffers) are now categorized as `Wait`; and `WaitUntilSafe` (weather-gated) is no longer counted as overhead, since the rig physically cannot image during that time
+- Fixed rejected count inflating when Target Scheduler had not finished grading by session end -- images still Pending in TS are no longer miscounted as rejected, and hover tooltips for rejections only show reasons for actually-rejected frames
+- Fixed overhead analysis "Overhead Accounted %" dropping below typical values on nights where Target Scheduler had to wait for targets to rise -- idle wait periods are now excluded from the imaging window (the same way roof-closed time already was), so coverage reflects true overhead efficiency
+- Fixed aborted exposures with no matching finish (e.g. sequence cut off by an unsafe trigger and NINA left running) inflating overhead with a ghost event extending to end-of-log -- abort duration is now capped at the requested exposure time plus a small grace, or 10 minutes if the requested duration can't be determined
+- Fixed "Overhead Accounted %" dropping on nights with PHD2 guide-star failures or sequences cancelled mid-run by roof closure -- failed sequence items (StartGuiding retry timeouts, etc.) and items cancelled by WhenUnsafe now have their full wall-clock time credited to overhead instead of being silently dropped
+
+
 ## v2.10.0
 
 **New features**
