@@ -262,8 +262,9 @@ namespace NINA.Plugin.NightSummary.Data {
 
                             // Suppress StartGuiding no-ops (PHD2 already guiding). Real starts log
                             // "Phd2 - Requesting to start guiding" via TryStartGuideCommand between
-                            // the item's Starting and Finishing; no-ops do not.
-                            if (itemName == "StartGuiding" &&
+                            // the item's Starting and Finishing; no-ops do not. ERROR terminations
+                            // (failed guide retries) must still emit so their wall time is credited.
+                            if (itemName == "StartGuiding" && level != "ERROR" &&
                                 (lastGuideStartRequestTimestamp == null || lastGuideStartRequestTimestamp.Value < startTime))
                                 continue;
 
@@ -277,7 +278,7 @@ namespace NINA.Plugin.NightSummary.Data {
                                 StartTime = startTime,
                                 EndTime = timestamp,
                                 DurationSeconds = (timestamp - startTime).TotalSeconds,
-                                Details = ExtractItemDetails(itemName, message)
+                                Details = level == "ERROR" ? "Failed" : ExtractItemDetails(itemName, message)
                             });
                         }
                     }
@@ -379,7 +380,7 @@ namespace NINA.Plugin.NightSummary.Data {
                             StartTime = meridianFlipTriggerStart.Value,
                             EndTime = timestamp,
                             DurationSeconds = (timestamp - meridianFlipTriggerStart.Value).TotalSeconds,
-                            Details = "Trigger-based flip (full window)"
+                            Details = "Trigger-based flip (full window: slew + recenter + reguide + settle)"
                         });
                         meridianFlipTriggerStart = null;
                     }
