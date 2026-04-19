@@ -426,6 +426,8 @@ namespace NINA.Plugin.NightSummary.Data {
             }
             foreach (var pending in pendingStarts)
                 Logger.Warning($"NightSummary: LogParser — unmatched {pending.Key} start at {pending.Value:o}");
+            if (meridianFlipTriggerStart.HasValue)
+                Logger.Warning($"NightSummary: LogParser — unmatched MeridianFlipTrigger start at {meridianFlipTriggerStart.Value:o} (no Exiting meridian flip line found)");
 
             // Cross-check exposure count
             if (expectedImageCount >= 0 && parsedExposureCount != expectedImageCount) {
@@ -434,8 +436,12 @@ namespace NINA.Plugin.NightSummary.Data {
 
             // Summary logging for beta diagnostics
             Logger.Info($"NightSummary: LogParser — parsed {events.Count} timing events from {logPath}");
+            var failedCount    = events.Count(e => e.Details == "Failed");
+            var cancelledCount = events.Count(e => e.Details == "Cancelled");
+            var extraCounts    = (failedCount + cancelledCount) > 0
+                ? $", failed items:{failedCount}, cancelled items:{cancelledCount}" : "";
             Logger.Info($"NightSummary: LogParser — {totalSequenceItemLines} SequenceItem starts, " +
-                $"{parsedExposureCount} exposures, {parsedImageSaveCount} saves, {parsedPlateSolveCount} plate solves");
+                $"{parsedExposureCount} exposures, {parsedImageSaveCount} saves, {parsedPlateSolveCount} plate solves{extraCounts}");
 
             // Per-category breakdown
             var categoryCounts = events
