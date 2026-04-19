@@ -3156,19 +3156,56 @@ function initWaveformScrubber(container) {
 
   if (info) info.addEventListener('click', function(e) { e.stopPropagation(); });
 
-  var touchStartX = 0, touchStartY = 0;
+  var touchStartX = 0, touchStartY = 0, lastTouchX = 0;
+  var scrubbing = false;
+  var longPressTimer = null;
+  var LONG_PRESS_MS = 280;
+
+  function cancelLongPress() {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+  }
+
   svg.addEventListener('touchstart', function(e) {
     if (pinned) hide();
-    touchStartX = e.touches[0].clientX;
+    touchStartX = lastTouchX = e.touches[0].clientX;
     touchStartY = e.touches[0].clientY;
-    showAt(e.touches[0].clientX);
+    scrubbing = false;
+    longPressTimer = setTimeout(function() {
+      longPressTimer = null;
+      scrubbing = true;
+      showAt(lastTouchX);
+    }, LONG_PRESS_MS);
   }, {passive: true});
+
+  svg.addEventListener('touchmove', function(e) {
+    lastTouchX = e.touches[0].clientX;
+    if (scrubbing) {
+      e.preventDefault();
+      showAt(lastTouchX);
+    } else {
+      var dx = Math.abs(lastTouchX - touchStartX);
+      var dy = Math.abs(e.touches[0].clientY - touchStartY);
+      if (dx > 8 || dy > 8) cancelLongPress();
+    }
+  }, {passive: false});
+
   svg.addEventListener('touchend', function(e) {
-    var dx = Math.abs(e.changedTouches[0].clientX - touchStartX);
-    var dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
-    if (dx < 10 && dy < 10) { pin(); } else { hide(); }
+    cancelLongPress();
+    if (scrubbing) {
+      scrubbing = false;
+      pin();
+    } else {
+      var dx = Math.abs(e.changedTouches[0].clientX - touchStartX);
+      var dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
+      if (dx < 10 && dy < 10) { showAt(touchStartX); pin(); }
+    }
   });
-  svg.addEventListener('touchcancel', hide);
+
+  svg.addEventListener('touchcancel', function() {
+    cancelLongPress();
+    scrubbing = false;
+    hide();
+  });
 }
 
 function renderHeroSection(session) {
