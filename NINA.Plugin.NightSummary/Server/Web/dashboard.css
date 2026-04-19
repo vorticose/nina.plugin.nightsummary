@@ -1796,6 +1796,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   font-family: inherit;
 }
 .lw-bar { cursor: pointer; }
+.lw-scroll-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .lw-bar-selected { stroke: #c0d8ff; stroke-width: 1.5; }
 
 .lw-scrubber-info {

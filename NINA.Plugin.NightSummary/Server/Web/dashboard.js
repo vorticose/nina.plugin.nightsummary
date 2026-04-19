@@ -2810,10 +2810,17 @@ function buildActivityWaveform(sessions) {
     var g = uniqueDayMs[gi] - uniqueDayMs[gi - 1];
     if (g > 0 && g < minGapMs) minGapMs = g;
   }
+  // Extend span to today so right edge always = now
+  var DAY_MS = 86400000;
+  var todayObj = new Date();
+  var todayMs = new Date(todayObj.getFullYear(), todayObj.getMonth(), todayObj.getDate()).getTime();
+  if (todayMs > maxD) { maxD = todayMs; dateSpan = maxD - minD || DAY_MS; }
+  var spanDays = Math.ceil(dateSpan / DAY_MS);
+
   var isMobile = window.innerWidth < 720;
-  var W = 680, CHART_H = isMobile ? 160 : 64, LABEL_H = isMobile ? 60 : 28, H = CHART_H + LABEL_H;
-  var availPx = uniqueDayMs.length > 1 ? (minGapMs / dateSpan) * W : W;
-  var BAR_W = Math.max(6, Math.min(Math.floor(availPx * 0.75), 28));
+  var W = Math.max(680, spanDays * 8);
+  var BAR_W = 6;
+  var CHART_H = isMobile ? 160 : 64, LABEL_H = isMobile ? 60 : 28, H = CHART_H + LABEL_H;
 
   // Brightness ramp: near-black navy → bright sky blue (wide contrast)
   function barHeatColor(t) {
@@ -2823,14 +2830,15 @@ function buildActivityWaveform(sessions) {
   var barData = [];
 
   var svg = '<svg class="lifetime-waveform" viewBox="0 0 ' + W + ' ' + H + '" ';
-  svg += 'preserveAspectRatio="xMinYMid meet" ';
-  svg += 'width="' + W + '" height="' + H + '" style="max-width:100%;height:auto">';
+  svg += 'width="' + W + '" height="' + H + '" style="display:block">';
+
+  // Today marker
+  var todayX = ((todayMs - minD) / dateSpan) * (W - BAR_W) + BAR_W / 2;
+  svg += '<line x1="' + todayX.toFixed(1) + '" y1="0" x2="' + todayX.toFixed(1) + '" y2="' + CHART_H + '" stroke="rgba(120,170,255,0.2)" stroke-width="1"/>';
 
   svg += '<line x1="0" y1="' + CHART_H + '" x2="' + W + '" y2="' + CHART_H + '" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>';
 
   // Adaptive x-axis: daily ticks on short spans, weekly on medium, monthly on long
-  var DAY_MS = 86400000;
-  var spanDays = Math.ceil(dateSpan / DAY_MS);
   var tickEveryDays = spanDays > 120 ? 7 : spanDays > 60 ? 2 : 1;
   var tickLabelH = isMobile ? 20 : 12;  // labeled ticks
   var tickMajH   = isMobile ? 15 : 8;   // month-start unlabeled
@@ -3033,7 +3041,7 @@ function renderLifetimeStrip(sessions) {
   html += '</div>';
   html += '</div>';
   if (hasChart) html += '<div class="lifetime-strip-handle"></div>';
-  if (waveform) html += '<div class="lifetime-waveform-slot"><div class="lifetime-chart-label">Session Activity \u00b7 ' + esc(fmtActivityRange(sessions)) + '</div><div class="lw-scrubber-info"></div>' + waveform + '</div>';
+  if (waveform) html += '<div class="lifetime-waveform-slot"><div class="lifetime-chart-label">Session Activity \u00b7 ' + esc(fmtActivityRange(sessions)) + '</div><div class="lw-scrubber-info"></div><div class="lw-scroll-wrap">' + waveform + '</div></div>';
   if (calendar) html += '<div class="lifetime-calendar-slot" style="display:none">' + calendar + '</div>';
   html += '</div>';
   return html;
@@ -3240,6 +3248,9 @@ function renderSessionsV2(el, sub, params) {
   }
 
   el.innerHTML = html;
+
+  var scrollWrap = el.querySelector('.lw-scroll-wrap');
+  if (scrollWrap) scrollWrap.scrollLeft = scrollWrap.scrollWidth;
 
   initWaveformScrubber(el);
 
