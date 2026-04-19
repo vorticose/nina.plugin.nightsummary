@@ -3097,6 +3097,7 @@ function initWaveformScrubber(container) {
         '<span class="lw-si-stats">' + fmt(b.i) + ' \u00b7 ' + b.n + ' images</span>' +
         (b.t ? '<span class="lw-si-tgts">' + esc(b.t) + '</span>' : '');
       info.classList.add('lw-scrubber-active');
+      info.style.top = Math.max(0, slot.offsetTop - info.offsetHeight - 4) + 'px';
     }
   }
 
