@@ -418,19 +418,30 @@ foreach ($target in $targets) {
             $statMax      = RndInt 55000 65535
             $statBitDepth = 16
 
-            # Reject ~5% of frames with plausible reasons
+            # Reject ~10% of frames — mix of TS grading (~5%) and manual thumbs-down (~5%)
+            # so the report reliably exercises both RejectReason paths and the tooltip
+            # layout. Higher than a real session's rate, but the demo DB is small so bumping
+            # the rate guarantees non-zero counts in every bucket for visual QA.
             $accepted      = 1
             $gradingStatus = 1
             $rejectReason  = $null
             $roll = RndInt 1 100
             if ($roll -le 5) {
+                # TS-graded rejection
                 $accepted      = 0
                 $gradingStatus = 2
                 $rejectReason  = @("HFR too high", "Star count below threshold", "Guiding RMS exceeded limit") | Get-Random
-                # Make the bad frame look bad
+                # Make the bad frame look bad so quality metrics justify the reject
                 $hfr   = [math]::Round($hfr   * 1.6 + (Rnd 0.1 0.4), 2)
                 $fwhm  = [math]::Round($fwhm  * 1.5 + (Rnd 0.1 0.3), 2)
                 $stars = RndInt 60 120
+                $rejected++
+            } elseif ($roll -le 10) {
+                # Manual rejection (user thumbs-down in NINA's image history panel).
+                # Quality metrics are unchanged — subjective user call, not auto-detected.
+                $accepted      = 0
+                $gradingStatus = -1
+                $rejectReason  = "Manual"
                 $rejected++
             }
 
