@@ -1721,6 +1721,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   display: flex;
   flex-direction: column;
   gap: 16px;
+  position: relative;
   padding: 18px 22px;
   margin-bottom: 14px;
   background: var(--surface);

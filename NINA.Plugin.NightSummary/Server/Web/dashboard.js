@@ -3068,6 +3068,8 @@ function initWaveformScrubber(container) {
   if (!bars.length) return;
   var cursor = svg.querySelector('.lw-cursor');
   var info = slot.querySelector('.lw-scrubber-info');
+  var strip = slot.closest('.lifetime-strip');
+  if (strip && info) strip.appendChild(info);
   var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
   function findNearest(clientX) {
