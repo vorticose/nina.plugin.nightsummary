@@ -2815,12 +2815,9 @@ function buildActivityWaveform(sessions) {
   var availPx = uniqueDayMs.length > 1 ? (minGapMs / dateSpan) * W : W;
   var BAR_W = Math.max(6, Math.min(Math.floor(availPx * 0.75), 28));
 
-  // Heat color: blue(215°) → purple(307°) → amber(38°) via warm hue path
+  // Brightness ramp: dark navy → bright sky blue
   function barHeatColor(t) {
-    var h = (215 + t * 183) % 360;
-    var s = Math.round(65 + t * 20);
-    var l = Math.round(45 + t * 15);
-    return 'hsl(' + h.toFixed(0) + ',' + s + '%,' + l + '%)';
+    return 'hsl(213,' + Math.round(70 + t * 20) + '%,' + Math.round(28 + t * 40) + '%)';
   }
 
   var svg = '<svg class="lifetime-waveform" viewBox="0 0 ' + W + ' ' + H + '" ';
