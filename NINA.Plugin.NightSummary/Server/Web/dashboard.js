@@ -3092,11 +3092,9 @@ function initWaveformScrubber(container) {
       var dateStr = MONTHS[dt.getMonth()] + ' ' + dt.getDate() + ', ' + dt.getFullYear();
       info.innerHTML =
         '<span class="lw-si-date">' + esc(dateStr) + '</span>' +
-        '<span class="lw-si-dot">\u00b7</span>' +
-        '<span class="lw-si-stat">' + fmt(b.i) + '</span>' +
-        '<span class="lw-si-dot">\u00b7</span>' +
-        '<span class="lw-si-stat">' + b.n + ' images</span>' +
-        (b.t ? '<span class="lw-si-dot">\u00b7</span><span class="lw-si-tgts">' + esc(b.t) + '</span>' : '');
+        '<span class="lw-si-stats">' + fmt(b.i) + ' \u00b7 ' + b.n + ' images</span>' +
+        (b.t ? '<span class="lw-si-tgts">' + esc(b.t) + '</span>' : '');
+      info.style.top = (svg.offsetTop + 8) + 'px';
       info.classList.add('lw-scrubber-active');
     }
   }
