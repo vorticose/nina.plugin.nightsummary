@@ -1855,36 +1855,38 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 :root.light-theme .lifetime-heatmap-cell.intensity-4,
 [data-theme="light"] .lifetime-heatmap-cell.intensity-4 { fill: #1e4a8a; }
 
-.lifetime-expand-btn {
-  display: none;
+.lifetime-expand-icon { display: none; }
+
+.lifetime-chart-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-tertiary);
+  margin-bottom: 6px;
 }
 
 @media (max-width: 720px) {
   .lifetime-strip { padding: 14px 16px; }
-  .lifetime-stats-row { justify-content: center; }
   .lifetime-stats { gap: 6px; flex: 1; }
   .lifetime-card-stat { padding: 8px 6px; flex: 1; text-align: center; }
   .lifetime-heatmap-slot,
   .lifetime-waveform-slot,
   .lifetime-calendar-slot { display: none !important; }
   .lifetime-strip--expanded .lifetime-waveform-slot { display: flex !important; }
-  .lifetime-strip--expanded .lifetime-calendar-slot { display: none !important; }
   .lv-toggle { display: none; }
-  .lifetime-expand-btn {
+  .lifetime-strip-expandable { cursor: pointer; }
+  .lifetime-expand-icon {
     display: flex;
-    width: 100%;
-    justify-content: center;
     align-items: center;
-    background: none;
-    border: none;
+    flex-shrink: 0;
     color: var(--text-tertiary);
-    font-size: 14px;
-    padding: 6px 0 0;
-    cursor: pointer;
-    font-family: inherit;
-    opacity: 0.6;
+    font-size: 13px;
+    opacity: 0.55;
+    padding-left: 8px;
+    transition: transform 0.2s;
   }
-  .lifetime-expand-btn:hover { opacity: 1; }
+  .lifetime-strip--expanded .lifetime-expand-icon { transform: scaleY(-1); }
 }
 
 /* ── Sessions V2: hero card ─────────────────────────────────────────────── */

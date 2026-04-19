@@ -3000,7 +3000,11 @@ function renderLifetimeStrip(sessions) {
   sessions.forEach(function(s) { (s.targets || []).forEach(function(t) { allTargets[t] = true; }); });
   var targetCount = Object.keys(allTargets).length;
 
-  var html = '<div class="lifetime-strip">';
+  var waveform = buildActivityWaveform(sessions);
+  var calendar = buildCalendarHeatmap(sessions);
+  var hasChart = !!(waveform || calendar);
+  var html = '<div class="lifetime-strip' + (hasChart ? ' lifetime-strip-expandable' : '') + '"'
+    + (hasChart ? ' onclick="toggleLifetimeExpand(this)"' : '') + '>';
   html += '<div class="lifetime-stats-row">';
   html += '<div class="lifetime-stats">';
   html += '<div class="card-stat lifetime-card-stat"><div class="card-stat-value">' + totalSessions + '</div><div class="card-stat-label">Sessions</div></div>';
@@ -3012,22 +3016,18 @@ function renderLifetimeStrip(sessions) {
   html += '<button class="lv-toggle-btn lv-toggle-active" onclick="toggleLifetimeView(this,\'waveform\')">Bar</button>';
   html += '<button class="lv-toggle-btn" onclick="toggleLifetimeView(this,\'calendar\')">Calendar</button>';
   html += '</div>';
+  if (hasChart) html += '<span class="lifetime-expand-icon">▾</span>';
   html += '</div>';
-  var waveform = buildActivityWaveform(sessions);
-  var calendar = buildCalendarHeatmap(sessions);
-  if (waveform || calendar) {
-    html += '<button class="lifetime-expand-btn" onclick="toggleLifetimeExpand(this)" aria-label="Show activity chart">▾</button>';
-  }
-  if (waveform) html += '<div class="lifetime-waveform-slot">' + waveform + '</div>';
+  if (waveform) html += '<div class="lifetime-waveform-slot"><div class="lifetime-chart-label">Session Activity</div>' + waveform + '</div>';
   if (calendar) html += '<div class="lifetime-calendar-slot" style="display:none">' + calendar + '</div>';
   html += '</div>';
   return html;
 }
 
-function toggleLifetimeExpand(btn) {
-  var strip = btn.closest('.lifetime-strip');
+function toggleLifetimeExpand(strip) {
   var expanded = strip.classList.toggle('lifetime-strip--expanded');
-  btn.textContent = expanded ? '▴' : '▾';
+  var icon = strip.querySelector('.lifetime-expand-icon');
+  if (icon) icon.textContent = expanded ? '▴' : '▾';
 }
 
 function renderHeroSection(session) {
