@@ -142,6 +142,7 @@ namespace NINA.Plugin.NightSummary.Data {
             var pendingStarts = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
             DateTime? plateSolveStart = null;
             DateTime? meridianFlipSlewStart = null;
+            DateTime? schedulerWaitStart = null;
 
             int parsedExposureCount = 0;
             int parsedImageSaveCount = 0;
@@ -272,6 +273,25 @@ namespace NINA.Plugin.NightSummary.Data {
                             Details = ExtractImageSaveSubTimings(message)
                         });
                         parsedImageSaveCount++;
+                    }
+                }
+
+                // === Symbol.cs|OnMessageReceived — Target Scheduler wait intervals ===
+                // When TS has no target available (all below horizon, filters unavailable, etc.)
+                // it broadcasts "TargetScheduler-WaitStart" and resumes with "TargetScheduler-NewTargetStart".
+                // This is external-dependent idle time, not overhead — subtracted from window in ReportGenerator.
+                else if (source == "Symbol.cs" && member == "OnMessageReceived") {
+                    if (message.Contains("TargetScheduler-WaitStart")) {
+                        schedulerWaitStart = timestamp;
+                    } else if (message.Contains("TargetScheduler-NewTargetStart") && schedulerWaitStart.HasValue) {
+                        events.Add(new TimingEvent {
+                            EventType = "SchedulerWait",
+                            StartTime = schedulerWaitStart.Value,
+                            EndTime = timestamp,
+                            DurationSeconds = (timestamp - schedulerWaitStart.Value).TotalSeconds,
+                            Details = "Target Scheduler waiting for available target"
+                        });
+                        schedulerWaitStart = null;
                     }
                 }
 

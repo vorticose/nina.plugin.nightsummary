@@ -250,6 +250,49 @@ namespace NINA.Plugin.NightSummary.Tests {
         }
 
         [Fact]
+        public void ParsesSchedulerWaitFromSymbolMessages() {
+            // TargetScheduler-WaitStart → TargetScheduler-NewTargetStart bracket an idle wait.
+            var waitLog = @"----------------------------------------------------------------------
+--------------N.I.N.A. - Nighttime Imaging 'N' Astronomy--------------
+--------------------------Version 3.2.0.9001--------------------------
+-------------------------2026-03-30T21:21:13--------------------------
+----------------------------------------------------------------------
+2026-03-30T21:40:00.0000|INFO|Symbol.cs|OnMessageReceived|627|Received message from Target Scheduler re: TargetScheduler-WaitStart
+2026-03-30T21:42:44.0000|INFO|Symbol.cs|OnMessageReceived|627|Received message from Target Scheduler re: TargetScheduler-NewTargetStart
+2026-03-30T21:42:44.0100|INFO|Symbol.cs|OnMessageReceived|627|Received message from Target Scheduler re: TargetScheduler-TargetStart
+";
+            var path = Path.Combine(Path.GetTempPath(), $"wait_{Guid.NewGuid():N}.log");
+            File.WriteAllText(path, waitLog);
+            try {
+                var events = NinaLogParser.ParseFile(path, SessionStart, SessionEnd);
+                var waits = events.Where(e => e.EventType == "SchedulerWait").ToList();
+                Assert.Single(waits);
+                Assert.InRange(waits[0].DurationSeconds, 160, 170); // 2m44s
+            } finally {
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void SchedulerWait_WithoutNewTargetStart_DoesNotEmit() {
+            var orphanLog = @"----------------------------------------------------------------------
+--------------N.I.N.A. - Nighttime Imaging 'N' Astronomy--------------
+--------------------------Version 3.2.0.9001--------------------------
+-------------------------2026-03-30T21:21:13--------------------------
+----------------------------------------------------------------------
+2026-03-30T21:40:00.0000|INFO|Symbol.cs|OnMessageReceived|627|Received message from Target Scheduler re: TargetScheduler-WaitStart
+";
+            var path = Path.Combine(Path.GetTempPath(), $"orphanwait_{Guid.NewGuid():N}.log");
+            File.WriteAllText(path, orphanLog);
+            try {
+                var events = NinaLogParser.ParseFile(path, SessionStart, SessionEnd);
+                Assert.DoesNotContain(events, e => e.EventType == "SchedulerWait");
+            } finally {
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
         public void ParsesAllEventTypesFromTestFixture() {
             var events = NinaLogParser.ParseFile(_logPath, SessionStart, SessionEnd);
 

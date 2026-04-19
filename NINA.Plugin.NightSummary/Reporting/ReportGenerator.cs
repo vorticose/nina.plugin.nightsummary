@@ -80,6 +80,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
         private static bool IsExcluded(string filter) => FilterHelper.IsExcluded(filter);
         private static int FilterSortKey(string filter) => FilterHelper.SortKey(filter);
 
+        // GradingStatus enum (TS): 0=Pending, 1=Accepted, 2=Rejected, -1=unknown/legacy.
+        // Pending images have Accepted=false but are not rejected — exclude from reject counts.
+        private static bool IsRejected(ImageRecord i) => !i.Accepted && i.GradingStatus != 0;
+
         public async Task<string> GenerateHtmlReport(ReportData data) {
             Warnings.Clear();
             FilterHelper.ReloadOverrides();
@@ -315,7 +319,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             sb.AppendLine("<h2>Session Overview</h2>");
             sb.AppendLine($"<div style='display:grid; grid-template-columns:repeat({gridCols},1fr); gap:10px; margin:10px 0;'>");
-            var rejectedCount = data.Images.Count(i => !i.Accepted);
+            var rejectedCount = data.Images.Count(IsRejected);
             var qualityNotes = new System.Text.StringBuilder();
             if (data.SkippedExposures > 0)
                 qualityNotes.Append($"<div style='font-size:12px; font-weight:bold; color:var(--skip-color); margin-bottom:2px;'>{data.SkippedExposures} aborted</div>");
@@ -352,8 +356,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var timingEvents = data.TimingEvents;
             if (timingEvents == null || !timingEvents.Any()) return "";
 
-            // Exclude Exposure events (useful imaging time) and zero-duration events.
-            var overheadEvents = timingEvents.Where(e => e.EventType != "Exposure" && e.DurationSeconds > 0).ToList();
+            // Exclude Exposure events (useful imaging time), SchedulerWait (external idle), and zero-duration events.
+            var overheadEvents = timingEvents.Where(e => e.EventType != "Exposure" && e.EventType != "SchedulerWait" && e.DurationSeconds > 0).ToList();
             if (!overheadEvents.Any()) return "";
 
             // Compute the overhead window from all non-aborted events (AbortedExposure
@@ -371,7 +375,15 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var roofIntervals = RoofClosedHelper.GetIntervals(data.Events, windowStart, windowEnd);
             roofIntervals = RoofClosedHelper.ExtendForAbortedExposures(roofIntervals, timingEvents);
             var roofClosedSec = RoofClosedHelper.TotalSeconds(roofIntervals);
-            var effectiveWindowSec = windowSec - roofClosedSec;
+
+            // Exclude Target Scheduler wait intervals — the scheduler was idle waiting for
+            // an available target (below horizon, filter unavailable, etc.). Not overhead,
+            // not integration, just external-dependent idle time.
+            var schedulerWaitSec = timingEvents
+                .Where(e => e.EventType == "SchedulerWait" && e.DurationSeconds > 0)
+                .Sum(e => e.DurationSeconds);
+
+            var effectiveWindowSec = windowSec - roofClosedSec - schedulerWaitSec;
             var impliedOverheadSec = effectiveWindowSec - totalIntegrationSec;
 
             // Filter out overhead events within roof-closed periods:
@@ -413,7 +425,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var unaccountedSec = Math.Max(0, impliedOverheadSec - mergedOverheadSec);
 
             Logger.Info($"NightSummary: Overhead — window={windowSec:F0}s, integration={totalIntegrationSec:F0}s, " +
-                $"roofClosed={roofClosedSec:F0}s, effective={effectiveWindowSec:F0}s, " +
+                $"roofClosed={roofClosedSec:F0}s, schedulerWait={schedulerWaitSec:F0}s, effective={effectiveWindowSec:F0}s, " +
                 $"implied={impliedOverheadSec:F0}s, merged={mergedOverheadSec:F0}s, " +
                 $"coverage={coveragePct:F1}%, unaccounted={unaccountedSec:F0}s");
 
@@ -714,7 +726,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 }
 
                 // Session filter table
-                bool hasRejections = target.Any(i => !i.Accepted);
+                bool hasRejections = target.Any(IsRejected);
                 sb.AppendLine("<table>");
                 sb.AppendLine(hasRejections
                     ? "<tr><th>Filter</th><th>Images</th><th>Rejected</th><th>Exposure</th><th>Total Time</th></tr>"
@@ -724,12 +736,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     .OrderBy(g => FilterSortKey(g.Key.Filter)).ThenBy(g => g.Key.Filter).ThenBy(g => g.Key.ExposureDuration);
                 foreach (var filterGroup in filterGroups) {
                     var totalTime     = TimeSpan.FromSeconds(filterGroup.Sum(i => i.ExposureDuration));
-                    var rejectedCount = filterGroup.Count(i => !i.Accepted);
+                    var rejectedCount = filterGroup.Count(IsRejected);
                     if (hasRejections) {
                         string rejectedCell;
                         if (rejectedCount > 0) {
                             var reasons = filterGroup
-                                .Where(i => !i.Accepted && !string.IsNullOrEmpty(i.RejectReason))
+                                .Where(i => IsRejected(i) && !string.IsNullOrEmpty(i.RejectReason))
                                 .GroupBy(i => i.RejectReason)
                                 .OrderByDescending(g => g.Count())
                                 .Select(g => $"{System.Net.WebUtility.HtmlEncode(g.Key)}: {g.Count()}");
@@ -745,10 +757,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     }
                 }
                 var targetTotal         = TimeSpan.FromSeconds(target.Sum(i => i.ExposureDuration));
-                var targetRejectedTotal = target.Count(i => !i.Accepted);
+                var targetRejectedTotal = target.Count(IsRejected);
                 if (hasRejections) {
                     var allReasons = target
-                        .Where(i => !i.Accepted && !string.IsNullOrEmpty(i.RejectReason))
+                        .Where(i => IsRejected(i) && !string.IsNullOrEmpty(i.RejectReason))
                         .GroupBy(i => i.RejectReason)
                         .OrderByDescending(g => g.Count())
                         .Select(g => $"{System.Net.WebUtility.HtmlEncode(g.Key)}: {g.Count()}");
