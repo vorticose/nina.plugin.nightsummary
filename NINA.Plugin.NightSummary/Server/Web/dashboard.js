@@ -2883,7 +2883,7 @@ function buildActivityWaveform(sessions) {
     var tooltip = (tgtStr ? tgtStr + '\n' : '') + fmtDate(s.sessionStart) + ' \u00b7 ' + fmt(s.totalIntegrationSeconds || 0) + ' \u00b7 ' + (s.imageCount || 0) + ' images';
     var hColor = barHeatColor(normInteg);
     var glowOpacity = (0.05 + normInteg * 0.25).toFixed(2);
-    barData.push({x: (x + BAR_W / 2).toFixed(1), rx: x.toFixed(1), d: (s.sessionStart || '').substring(0, 10), i: s.totalIntegrationSeconds || 0, n: s.imageCount || 0, t: (s.targets || []).join(', ')});
+    barData.push({x: (x + BAR_W / 2).toFixed(1), rx: x.toFixed(1), d: (s.sessionStart || '').substring(0, 10), i: s.totalIntegrationSeconds || 0, n: s.imageCount || 0, t: (s.targets || []).join(', '), sid: s.sessionId || '', hr: !!s.hasReport});
     svg += '<rect x="' + (x - 2).toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + (BAR_W + 4) + '" height="' + barH.toFixed(1) + '" fill="' + hColor + '" opacity="' + glowOpacity + '" rx="2"/>';
     var bar = '<rect class="lw-bar" x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + BAR_W + '" height="' + barH.toFixed(1) + '" fill="' + hColor + '" rx="2"><title>' + esc(tooltip) + '</title></rect>';
     if (!isMobile && s.sessionId && s.hasReport) {
@@ -3070,6 +3070,8 @@ function initWaveformScrubber(container) {
   if (strip && info) strip.appendChild(info);
   var barRects = Array.prototype.slice.call(svg.querySelectorAll('.lw-bar'));
   var currentBar = null;
+  var currentBarData = null;
+  var pinned = false;
   var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
   function findNearest(clientX) {
@@ -3086,8 +3088,10 @@ function initWaveformScrubber(container) {
   }
 
   function showAt(clientX) {
+    if (pinned) return;
     var b = findNearest(clientX);
     if (!b) return;
+    currentBarData = b;
     if (currentBar) currentBar.classList.remove('lw-bar-selected');
     currentBar = null;
     barRects.forEach(function(r) { if (r.getAttribute('x') === b.rx) currentBar = r; });
@@ -3104,14 +3108,49 @@ function initWaveformScrubber(container) {
     }
   }
 
-  function hide() {
-    if (currentBar) { currentBar.classList.remove('lw-bar-selected'); currentBar = null; }
-    if (info) info.classList.remove('lw-scrubber-active');
+  function pin() {
+    if (!currentBarData || !info) return;
+    pinned = true;
+    var b = currentBarData;
+    var dt = new Date(b.d + 'T12:00:00');
+    var dateStr = MONTHS[dt.getMonth()] + ' ' + dt.getDate() + ', ' + dt.getFullYear();
+    info.innerHTML =
+      '<span class="lw-si-date">' + esc(dateStr) + '</span>' +
+      '<span class="lw-si-stats">' + fmt(b.i) + ' \u00b7 ' + b.n + ' images</span>' +
+      (b.t ? '<span class="lw-si-tgts">' + esc(b.t) + '</span>' : '') +
+      '<div class="lw-si-actions">' +
+      (b.hr
+        ? '<a class="lw-si-report-btn" href="/api/sessions/' + encodeURIComponent(b.sid) + '/report" target="_blank" rel="noopener">Open Report \u2192</a>'
+        : '<span class="lw-si-no-report">No report</span>') +
+      '<button class="lw-si-dismiss">\u00d7</button>' +
+      '</div>';
+    info.classList.add('lw-scrubber-pinned');
+    info.style.pointerEvents = 'auto';
+    requestAnimationFrame(function() {
+      info.style.top = Math.max(0, slot.offsetTop - info.offsetHeight - 4) + 'px';
+    });
+    var dismissBtn = info.querySelector('.lw-si-dismiss');
+    if (dismissBtn) dismissBtn.addEventListener('click', function(e) { e.stopPropagation(); hide(); });
+    var reportBtn = info.querySelector('.lw-si-report-btn');
+    if (reportBtn) reportBtn.addEventListener('click', function(e) { e.stopPropagation(); });
   }
+
+  function hide() {
+    pinned = false;
+    currentBarData = null;
+    if (currentBar) { currentBar.classList.remove('lw-bar-selected'); currentBar = null; }
+    if (info) {
+      info.classList.remove('lw-scrubber-active');
+      info.classList.remove('lw-scrubber-pinned');
+      info.style.pointerEvents = '';
+    }
+  }
+
+  if (info) info.addEventListener('click', function(e) { e.stopPropagation(); });
 
   svg.addEventListener('touchstart', function(e) { e.preventDefault(); showAt(e.touches[0].clientX); }, {passive: false});
   svg.addEventListener('touchmove',  function(e) { e.preventDefault(); showAt(e.touches[0].clientX); }, {passive: false});
-  svg.addEventListener('touchend',    hide);
+  svg.addEventListener('touchend',   function(e) { pin(); });
   svg.addEventListener('touchcancel', hide);
 }
 
