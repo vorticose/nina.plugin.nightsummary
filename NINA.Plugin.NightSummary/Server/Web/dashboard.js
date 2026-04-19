@@ -2811,17 +2811,21 @@ function buildActivityWaveform(sessions) {
     if (g > 0 && g < minGapMs) minGapMs = g;
   }
   var isMobile = window.innerWidth < 720;
-  var W = 680, CHART_H = isMobile ? 110 : 64, LABEL_H = isMobile ? 36 : 28, H = CHART_H + LABEL_H;
+  var W = 680, CHART_H = isMobile ? 160 : 64, LABEL_H = isMobile ? 36 : 28, H = CHART_H + LABEL_H;
   var availPx = uniqueDayMs.length > 1 ? (minGapMs / dateSpan) * W : W;
   var BAR_W = Math.max(6, Math.min(Math.floor(availPx * 0.75), 28));
+
+  // Heat color: blue(215°) → purple(307°) → amber(38°) via warm hue path
+  function barHeatColor(t) {
+    var h = (215 + t * 183) % 360;
+    var s = Math.round(65 + t * 20);
+    var l = Math.round(45 + t * 15);
+    return 'hsl(' + h.toFixed(0) + ',' + s + '%,' + l + '%)';
+  }
 
   var svg = '<svg class="lifetime-waveform" viewBox="0 0 ' + W + ' ' + H + '" ';
   svg += 'preserveAspectRatio="xMinYMid meet" ';
   svg += 'width="' + W + '" height="' + H + '" style="max-width:100%;height:auto">';
-  svg += '<defs><linearGradient id="lw-grad" x1="0" y1="0" x2="0" y2="1">';
-  svg += '<stop offset="0%" stop-color="#79c0ff"/>';
-  svg += '<stop offset="100%" stop-color="#388bfd" stop-opacity="0.7"/>';
-  svg += '</linearGradient></defs>';
 
   svg += '<line x1="0" y1="' + CHART_H + '" x2="' + W + '" y2="' + CHART_H + '" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>';
 
@@ -2874,8 +2878,9 @@ function buildActivityWaveform(sessions) {
     var y = CHART_H - barH;
     var tgtStr = (s.targets && s.targets.length) ? s.targets.join(', ') : '';
     var tooltip = (tgtStr ? tgtStr + '\n' : '') + fmtDate(s.sessionStart) + ' \u00b7 ' + fmt(s.totalIntegrationSeconds || 0) + ' \u00b7 ' + (s.imageCount || 0) + ' images';
-    svg += '<rect x="' + (x - 2).toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + (BAR_W + 4) + '" height="' + barH.toFixed(1) + '" fill="#58a6ff" opacity="0.12" rx="2"/>';
-    var bar = '<rect class="lw-bar" x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + BAR_W + '" height="' + barH.toFixed(1) + '" fill="url(#lw-grad)" rx="2"><title>' + esc(tooltip) + '</title></rect>';
+    var hColor = barHeatColor(normInteg);
+    svg += '<rect x="' + (x - 2).toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + (BAR_W + 4) + '" height="' + barH.toFixed(1) + '" fill="' + hColor + '" opacity="0.18" rx="2"/>';
+    var bar = '<rect class="lw-bar" x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + BAR_W + '" height="' + barH.toFixed(1) + '" fill="' + hColor + '" rx="2"><title>' + esc(tooltip) + '</title></rect>';
     if (s.sessionId && s.hasReport) {
       svg += '<a href="/api/sessions/' + encodeURIComponent(s.sessionId) + '/report" target="_blank" rel="noopener">' + bar + '</a>';
     } else {
