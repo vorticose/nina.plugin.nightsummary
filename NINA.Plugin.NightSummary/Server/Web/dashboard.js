@@ -3014,11 +3014,20 @@ function renderLifetimeStrip(sessions) {
   html += '</div>';
   html += '</div>';
   var waveform = buildActivityWaveform(sessions);
-  if (waveform) html += '<div class="lifetime-waveform-slot">' + waveform + '</div>';
   var calendar = buildCalendarHeatmap(sessions);
+  if (waveform || calendar) {
+    html += '<button class="lifetime-expand-btn" onclick="toggleLifetimeExpand(this)" aria-label="Show activity chart">▾</button>';
+  }
+  if (waveform) html += '<div class="lifetime-waveform-slot">' + waveform + '</div>';
   if (calendar) html += '<div class="lifetime-calendar-slot" style="display:none">' + calendar + '</div>';
   html += '</div>';
   return html;
+}
+
+function toggleLifetimeExpand(btn) {
+  var strip = btn.closest('.lifetime-strip');
+  var expanded = strip.classList.toggle('lifetime-strip--expanded');
+  btn.textContent = expanded ? '▴' : '▾';
 }
 
 function renderHeroSection(session) {

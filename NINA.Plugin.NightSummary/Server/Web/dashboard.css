@@ -1855,14 +1855,36 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 :root.light-theme .lifetime-heatmap-cell.intensity-4,
 [data-theme="light"] .lifetime-heatmap-cell.intensity-4 { fill: #1e4a8a; }
 
+.lifetime-expand-btn {
+  display: none;
+}
+
 @media (max-width: 720px) {
   .lifetime-strip { padding: 14px 16px; }
   .lifetime-stats-row { justify-content: center; }
   .lifetime-stats { gap: 6px; flex: 1; }
   .lifetime-card-stat { padding: 8px 6px; flex: 1; text-align: center; }
   .lifetime-heatmap-slot,
+  .lifetime-waveform-slot,
   .lifetime-calendar-slot { display: none !important; }
+  .lifetime-strip--expanded .lifetime-waveform-slot { display: flex !important; }
+  .lifetime-strip--expanded .lifetime-calendar-slot { display: none !important; }
   .lv-toggle { display: none; }
+  .lifetime-expand-btn {
+    display: flex;
+    width: 100%;
+    justify-content: center;
+    align-items: center;
+    background: none;
+    border: none;
+    color: var(--text-tertiary);
+    font-size: 14px;
+    padding: 6px 0 0;
+    cursor: pointer;
+    font-family: inherit;
+    opacity: 0.6;
+  }
+  .lifetime-expand-btn:hover { opacity: 1; }
 }
 
 /* ── Sessions V2: hero card ─────────────────────────────────────────────── */
