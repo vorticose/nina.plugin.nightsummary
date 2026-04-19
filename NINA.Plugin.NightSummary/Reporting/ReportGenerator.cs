@@ -429,6 +429,43 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 $"implied={impliedOverheadSec:F0}s, merged={mergedOverheadSec:F0}s, " +
                 $"coverage={coveragePct:F1}%, unaccounted={unaccountedSec:F0}s");
 
+            // Diagnostic: find uncovered stretches in [windowStart, windowEnd] — i.e. time
+            // not covered by any overhead event, exposure, or roof-closed interval. Log the
+            // top 5 biggest gaps so we can trace what's happening in the 651s-style unaccounted
+            // time and decide whether to add new parser categories.
+            if (unaccountedSec > 30) {
+                var coveredIntervals = new List<(DateTime start, DateTime end)>();
+                foreach (var e in effectiveOverheadEvents)
+                    coveredIntervals.Add((e.StartTime, e.EndTime));
+                foreach (var e in timingEvents.Where(e => e.EventType == "Exposure" && e.DurationSeconds > 0))
+                    coveredIntervals.Add((e.StartTime, e.EndTime));
+                foreach (var r in roofIntervals)
+                    coveredIntervals.Add((r.start, r.end));
+
+                var merged = MergeIntervalList(coveredIntervals);
+                var gaps = new List<(DateTime start, DateTime end, double sec)>();
+                var cursor = windowStart;
+                foreach (var (s, e) in merged) {
+                    if (s > cursor) {
+                        var gapSec = (s - cursor).TotalSeconds;
+                        if (gapSec >= 5) gaps.Add((cursor, s, gapSec));
+                    }
+                    if (e > cursor) cursor = e;
+                }
+                if (windowEnd > cursor) {
+                    var tail = (windowEnd - cursor).TotalSeconds;
+                    if (tail >= 5) gaps.Add((cursor, windowEnd, tail));
+                }
+
+                var topGaps = gaps.OrderByDescending(g => g.sec).Take(5).ToList();
+                if (topGaps.Any()) {
+                    var gapStr = string.Join(", ",
+                        topGaps.Select(g => $"{g.sec:F0}s@{g.start:HH:mm:ss}→{g.end:HH:mm:ss}"));
+                    Logger.Info($"NightSummary: Overhead — top uncovered gaps (≥5s): {gapStr}");
+                    Logger.Info($"NightSummary: Overhead — total uncovered gap count={gaps.Count}, sum={gaps.Sum(g => g.sec):F0}s");
+                }
+            }
+
             // Summary stat boxes
             sb.AppendLine("<div style='display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:10px 0;'>");
             var infoIcon = "<span style='cursor:help; opacity:0.5; margin-left:4px; font-size:12px;'>&#9432;</span>";
@@ -546,6 +583,30 @@ namespace NINA.Plugin.NightSummary.Reporting {
             totalSeconds += (currentEnd - currentStart).TotalSeconds;
 
             return totalSeconds;
+        }
+
+        /// <summary>
+        /// Merges a list of (start, end) intervals into a sorted, non-overlapping list.
+        /// Used by the overhead-gap diagnostic to compute uncovered stretches.
+        /// </summary>
+        private static List<(DateTime start, DateTime end)> MergeIntervalList(List<(DateTime start, DateTime end)> intervals) {
+            var result = new List<(DateTime start, DateTime end)>();
+            var sorted = intervals.Where(i => i.end > i.start).OrderBy(i => i.start).ToList();
+            if (sorted.Count == 0) return result;
+
+            var curStart = sorted[0].start;
+            var curEnd   = sorted[0].end;
+            for (int i = 1; i < sorted.Count; i++) {
+                if (sorted[i].start <= curEnd) {
+                    if (sorted[i].end > curEnd) curEnd = sorted[i].end;
+                } else {
+                    result.Add((curStart, curEnd));
+                    curStart = sorted[i].start;
+                    curEnd   = sorted[i].end;
+                }
+            }
+            result.Add((curStart, curEnd));
+            return result;
         }
 
         private static string FormatEventTypeName(string eventType) => eventType switch {

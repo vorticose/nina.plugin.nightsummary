@@ -81,6 +81,7 @@ namespace NINA.Plugin.NightSummary.Data {
 
             // Safety
             ["WaitUntilSafe"]           = "SafetyWait",
+            ["WaitForTimeSpan"]         = "Wait",
 
             // Meridian flip
             ["MeridianFlip"]            = "MeridianFlip",
@@ -141,7 +142,7 @@ namespace NINA.Plugin.NightSummary.Data {
             // Generic tracker for all non-exposure SequenceItem Starting/Finishing pairs
             var pendingStarts = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
             DateTime? plateSolveStart = null;
-            DateTime? meridianFlipSlewStart = null;
+            DateTime? meridianFlipTriggerStart = null;
             DateTime? schedulerWaitStart = null;
 
             int parsedExposureCount = 0;
@@ -164,12 +165,32 @@ namespace NINA.Plugin.NightSummary.Data {
                     continue;
 
                 var level = parts[1];
-                if (level != "INFO") continue;
-
                 var source = parts[2];
                 var member = parts[3];
                 // parts[4] is line number — intentionally ignored
                 var message = string.Join("|", parts.Skip(5)); // rejoin in case message contains pipes
+
+                // === SequenceItem.cs|Run ERROR — failed items (no Finishing line is ever emitted) ===
+                // When a SequenceItem fails, NINA logs ERROR instead of Finishing. Without this,
+                // the pendingStart for that item is orphaned and its wall time (often 100s+ for
+                // PHD2 StartGuiding retries) vanishes from the overhead coverage.
+                if (level == "ERROR" && source == "SequenceItem.cs" && member == "Run") {
+                    var failedItem = ExtractItemName(message);
+                    if (failedItem != null && pendingStarts.TryGetValue(failedItem, out var failStart)) {
+                        var failType = ItemCategoryMap.TryGetValue(failedItem, out var failMapped) ? failMapped : failedItem;
+                        events.Add(new TimingEvent {
+                            EventType = failType,
+                            StartTime = failStart,
+                            EndTime = timestamp,
+                            DurationSeconds = (timestamp - failStart).TotalSeconds,
+                            Details = "Failed"
+                        });
+                        pendingStarts.Remove(failedItem);
+                    }
+                    continue;
+                }
+
+                if (level != "INFO") continue;
 
                 // === SequenceItem.cs|Run — Starting/Finishing pairs ===
                 if (source == "SequenceItem.cs" && member == "Run") {
@@ -301,22 +322,44 @@ namespace NINA.Plugin.NightSummary.Data {
                     }
                 }
 
-                // === AscomTelescope.cs|MeridianFlip — internal trigger-based flip ===
-                // When MeridianFlipTrigger fires, the slew + pier flip is handled internally
-                // by NINA, not as a SequenceItem. Track the slew start/end as MeridianFlip overhead.
-                else if (source == "AscomTelescope.cs" && member == "MeridianFlip") {
-                    if (message.StartsWith("Slewing to coordinates")) {
-                        meridianFlipSlewStart = timestamp;
-                    } else if (message.StartsWith("Finished slewing") && meridianFlipSlewStart.HasValue) {
+                // === SequenceTrigger.cs|Run — MeridianFlipTrigger full duration ===
+                // MeridianFlipTrigger runs as a SequenceTrigger (not a SequenceItem), so the
+                // full flip (stop guide → slew → settle → recenter → reguide → settle) never
+                // appears in the Starting/Finishing SequenceItem stream. Track the full span
+                // from trigger start to MeridianFlipVM's "Exiting meridian flip" marker.
+                else if (source == "SequenceTrigger.cs" && member == "Run"
+                         && message.StartsWith("Starting Trigger: MeridianFlipTrigger")) {
+                    meridianFlipTriggerStart = timestamp;
+                }
+                else if (source == "MeridianFlipVM.cs" && member == "DoMeridianFlip"
+                         && message.Contains("Exiting meridian flip") && meridianFlipTriggerStart.HasValue) {
+                    events.Add(new TimingEvent {
+                        EventType = "MeridianFlip",
+                        StartTime = meridianFlipTriggerStart.Value,
+                        EndTime = timestamp,
+                        DurationSeconds = (timestamp - meridianFlipTriggerStart.Value).TotalSeconds,
+                        Details = "Trigger-based flip (slew + recenter + reguide)"
+                    });
+                    meridianFlipTriggerStart = null;
+                }
+
+                // === WhenCommon.cs|InterruptWhen — sequence cancelled (e.g. roof close) ===
+                // When WhenUnsafe/similar triggers an interrupt, any in-flight SequenceItems
+                // (StartGuiding retrying, etc.) never get a Finishing or ERROR line. Flush all
+                // pendingStarts at the cancel timestamp so their wall time is credited.
+                else if (source == "WhenCommon.cs" && member == "InterruptWhen"
+                         && message.StartsWith("Canceling sequence")) {
+                    foreach (var kvp in pendingStarts) {
+                        var cancelType = ItemCategoryMap.TryGetValue(kvp.Key, out var cm) ? cm : kvp.Key;
                         events.Add(new TimingEvent {
-                            EventType = "MeridianFlip",
-                            StartTime = meridianFlipSlewStart.Value,
+                            EventType = cancelType,
+                            StartTime = kvp.Value,
                             EndTime = timestamp,
-                            DurationSeconds = (timestamp - meridianFlipSlewStart.Value).TotalSeconds,
-                            Details = "Trigger-based flip (internal)"
+                            DurationSeconds = (timestamp - kvp.Value).TotalSeconds,
+                            Details = "Cancelled"
                         });
-                        meridianFlipSlewStart = null;
                     }
+                    pendingStarts.Clear();
                 }
             }
 

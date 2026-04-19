@@ -334,5 +334,140 @@ namespace NINA.Plugin.NightSummary.Tests {
             // StarDetection is not parsed (zero-duration, single timestamp)
             Assert.DoesNotContain("StarDetection", types);
         }
+
+        // ── Fix: failed SequenceItem (ERROR line, no Finishing) ──────────────
+        // Real-world trigger: PHD2 StartGuiding fails after 3 retries (~110s). Parser
+        // used to orphan the pendingStart because ERROR lines were filtered out.
+
+        [Fact]
+        public void FailedSequenceItem_EmitsEventFromErrorLine() {
+            var log = @"----------------------------------------------------------------------
+--------------N.I.N.A. - Nighttime Imaging 'N' Astronomy--------------
+--------------------------Version 3.2.0.9001--------------------------
+-------------------------2026-03-30T21:21:13--------------------------
+----------------------------------------------------------------------
+2026-03-30T21:35:00.0000|INFO|SequenceItem.cs|Run|208|Starting Category: Guider, Item: StartGuiding
+2026-03-30T21:36:49.0000|ERROR|SequenceItem.cs|Run|263|Category: Guider, Item: StartGuiding -
+2026-03-30T21:36:49.0100|ERROR|SequenceItem.cs|RunErrorBehavior|195|Instruction Start Guiding failed after 1 attempt. Error behavior is set to ContinueOnError. Continuing.
+";
+            var path = Path.Combine(Path.GetTempPath(), $"failed_{Guid.NewGuid():N}.log");
+            File.WriteAllText(path, log);
+            try {
+                var events = NinaLogParser.ParseFile(path, SessionStart, SessionEnd);
+                var guiding = events.Where(e => e.EventType == "Guiding").ToList();
+                Assert.Single(guiding);
+                Assert.InRange(guiding[0].DurationSeconds, 108, 111);
+                Assert.Equal("Failed", guiding[0].Details);
+            } finally {
+                File.Delete(path);
+            }
+        }
+
+        // ── Fix: sequence cancelled mid-item (WhenUnsafe/roof close) ─────────
+        // When a SequenceItem is pending and the sequence is cancelled by WhenUnsafe
+        // (roof closes mid-guiding-retry), no Finishing or ERROR line is emitted.
+        // Parser flushes pendingStarts at the cancel timestamp.
+
+        [Fact]
+        public void CancelledSequence_FlushesPendingStartsAtCancelTime() {
+            var log = @"----------------------------------------------------------------------
+--------------N.I.N.A. - Nighttime Imaging 'N' Astronomy--------------
+--------------------------Version 3.2.0.9001--------------------------
+-------------------------2026-03-30T21:21:13--------------------------
+----------------------------------------------------------------------
+2026-03-30T21:35:00.0000|INFO|SequenceItem.cs|Run|208|Starting Category: Guider, Item: StartGuiding
+2026-03-30T21:36:43.0000|INFO|WhenCommon.cs|InterruptWhen|332|Canceling sequence...
+";
+            var path = Path.Combine(Path.GetTempPath(), $"cancelled_{Guid.NewGuid():N}.log");
+            File.WriteAllText(path, log);
+            try {
+                var events = NinaLogParser.ParseFile(path, SessionStart, SessionEnd);
+                var guiding = events.Where(e => e.EventType == "Guiding").ToList();
+                Assert.Single(guiding);
+                Assert.InRange(guiding[0].DurationSeconds, 102, 104);
+                Assert.Equal("Cancelled", guiding[0].Details);
+            } finally {
+                File.Delete(path);
+            }
+        }
+
+        // ── Fix: meridian flip trigger full duration ─────────────────────────
+        // MeridianFlipTrigger runs as a SequenceTrigger, not a SequenceItem, so the
+        // full flip (stop guide → slew → settle → recenter → reguide → settle) must
+        // be tracked from SequenceTrigger start to MeridianFlipVM's "Exiting" marker.
+
+        [Fact]
+        public void MeridianFlipTrigger_EmitsEventSpanningFullFlipDuration() {
+            var log = @"----------------------------------------------------------------------
+--------------N.I.N.A. - Nighttime Imaging 'N' Astronomy--------------
+--------------------------Version 3.2.0.9001--------------------------
+-------------------------2026-03-30T21:21:13--------------------------
+----------------------------------------------------------------------
+2026-03-30T21:39:42.8354|INFO|SequenceTrigger.cs|Run|114|Starting Trigger: MeridianFlipTrigger
+2026-03-30T21:39:42.8445|INFO|MeridianFlipVM.cs|DoMeridianFlip|160|Meridian Flip - Initializing Meridian Flip.
+2026-03-30T21:41:33.7062|INFO|MeridianFlipVM.cs|DoMeridianFlip|221|Meridian Flip - Exiting meridian flip
+";
+            var path = Path.Combine(Path.GetTempPath(), $"mf_{Guid.NewGuid():N}.log");
+            File.WriteAllText(path, log);
+            try {
+                var events = NinaLogParser.ParseFile(path, SessionStart, SessionEnd);
+                var mf = events.Where(e => e.EventType == "MeridianFlip").ToList();
+                Assert.Single(mf);
+                // 21:39:42.835 → 21:41:33.706 ≈ 110.9s (full flip, not just slew)
+                Assert.InRange(mf[0].DurationSeconds, 110, 112);
+                Assert.Contains("recenter", mf[0].Details);
+            } finally {
+                File.Delete(path);
+            }
+        }
+
+        // ── Fix: WaitForTimeSpan tracked (OnceSafe recovery waits, etc.) ─────
+
+        // ── End-to-end smoke test against a real-world log ───────────────────
+        // Skipped on machines that don't have the reference log. Verifies the parser
+        // doesn't crash on a real multi-target session and that each of the fixes
+        // above leaves a visible fingerprint (failed guiding, cancelled item, MF).
+        // Overfitting is mitigated by asserting presence, not exact counts.
+
+        private const string ReferenceLogPath =
+            @"K:\Remote Astro\Logs\20260323-205422-3.2.0.9001.10716-202603.log";
+
+        [Fact]
+        public void ReferenceLog_20260323_ParsesWithoutCrash_AndShowsAllFixFingerprints() {
+            if (!File.Exists(ReferenceLogPath)) return; // skip on machines without the log
+
+            // Session bounds generous — just need to cover the full 2026-03-23 night
+            var start = new DateTime(2026, 3, 23, 20, 0, 0);
+            var end   = new DateTime(2026, 3, 24, 6, 0, 0);
+
+            var events = NinaLogParser.ParseFile(ReferenceLogPath, start, end);
+
+            Assert.NotEmpty(events);
+            Assert.Contains(events, e => e.EventType == "Guiding" && e.Details == "Failed");
+            Assert.Contains(events, e => e.EventType == "Guiding" && e.Details == "Cancelled");
+            Assert.Contains(events, e => e.EventType == "MeridianFlip" && e.DurationSeconds > 100);
+        }
+
+        [Fact]
+        public void WaitForTimeSpan_EmitsWaitEvent() {
+            var log = @"----------------------------------------------------------------------
+--------------N.I.N.A. - Nighttime Imaging 'N' Astronomy--------------
+--------------------------Version 3.2.0.9001--------------------------
+-------------------------2026-03-30T21:21:13--------------------------
+----------------------------------------------------------------------
+2026-03-30T21:38:16.2930|INFO|SequenceItem.cs|Run|208|Starting Category: Utility, Item: WaitForTimeSpan, Time: 60s
+2026-03-30T21:39:16.3826|INFO|SequenceItem.cs|Run|254|Finishing Category: Utility, Item: WaitForTimeSpan, Time: 60s
+";
+            var path = Path.Combine(Path.GetTempPath(), $"wait_{Guid.NewGuid():N}.log");
+            File.WriteAllText(path, log);
+            try {
+                var events = NinaLogParser.ParseFile(path, SessionStart, SessionEnd);
+                var waits = events.Where(e => e.EventType == "Wait").ToList();
+                Assert.Single(waits);
+                Assert.InRange(waits[0].DurationSeconds, 59, 61);
+            } finally {
+                File.Delete(path);
+            }
+        }
     }
 }

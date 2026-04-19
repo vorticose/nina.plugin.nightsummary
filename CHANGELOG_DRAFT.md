@@ -23,6 +23,7 @@
 - Fixed rejected count inflating when Target Scheduler had not finished grading by session end -- images still Pending in TS are no longer miscounted as rejected, and hover tooltips for rejections only show reasons for actually-rejected frames.
 - Fixed overhead analysis "Overhead Accounted %" dropping below typical values on nights where Target Scheduler had to wait for targets to rise -- idle wait periods are now excluded from the imaging window (the same way roof-closed time already was), so coverage reflects true overhead efficiency.
 - Fixed aborted exposures with no matching finish (e.g. sequence cut off by an unsafe trigger and NINA left running) inflating overhead with a ghost event extending to end-of-log. Abort duration is now capped at the requested exposure time plus a small grace, or 10 minutes if the requested duration can't be determined.
+- Fixed "Overhead Accounted %" dropping well below typical values on nights with PHD2 guide-star failures, sequences cancelled by roof closure, or meridian flips. Failed sequence items (StartGuiding retry timeouts, etc.) and items cancelled mid-run by WhenUnsafe now have their full wall-clock time credited to overhead instead of being silently dropped, and the meridian flip trigger's full duration (slew + recenter + reguide + settle) is tracked rather than just the slew portion. On a representative session this raised coverage from 81.7% to 97.7%.
 
 
 ## v2.10.0
