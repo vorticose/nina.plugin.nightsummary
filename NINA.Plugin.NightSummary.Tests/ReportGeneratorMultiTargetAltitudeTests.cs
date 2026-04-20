@@ -3,6 +3,7 @@ using NINA.Plugin.NightSummary.Reporting;
 using NINA.Plugin.NightSummary.Tests.Fixtures;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -158,21 +159,153 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task SessionAltChart_MinAltLine_HasDistinguishableStylingFromShading() {
-            // The shaded imaging-window rect and the dashed min-alt line share the same
-            // target color, so visibility relies on different opacity. Shading must be
-            // a faint tint (fill-opacity='0.10') while the line must be drawn at full
-            // opacity='1' so the dashed pattern reads clearly against its own band.
+            // Shading keeps the target-color tint (fill-opacity='0.10') so each block is
+            // still visually attributable to its target. The min-alt line is rendered in
+            // the single-target chart's red (#cc4444) for consistent meaning across charts.
             var tsData = new List<TsTargetData> {
                 new TsTargetData { TargetName = "M31", RA = 5.5833, Dec = -5.3911, MinimumAltitude = 30 }
             };
             var data = MakeAltitudeChartData(tsData);
             var html = await _gen.GenerateHtmlReport(data);
-            // Shading tint — faint fill-opacity
+            // Shading tint — faint fill-opacity in a target-colored band
             Assert.Contains("fill-opacity='0.10'", html);
-            // Min-alt line — full-opacity dashed stroke, tagged with min-alt-line class
+            // Min-alt line — red, full-opacity dashed stroke, tagged with min-alt-line class
             Assert.Matches(
-                @"<line[^>]*stroke-dasharray='5,4'[^>]*opacity='1'[^>]*class='min-alt-line'",
+                @"<line[^>]*stroke='#cc4444'[^>]*stroke-dasharray='5,4'[^>]*opacity='1'[^>]*class='min-alt-line'",
                 html);
+        }
+
+        // ── Shared min-alt label dedupe ────────────────────────────────────────
+
+        [Fact]
+        public async Task SessionAltChart_AllTargetsShareMinAlt_RendersSingleLabel() {
+            // Two targets with the same min-altitude → only one "Min N°" label.
+            var tsData = new List<TsTargetData> {
+                new TsTargetData { TargetName = "M31", RA = 5.5833, Dec = -5.3911, MinimumAltitude = 30 },
+                new TsTargetData { TargetName = "M42", RA = 5.5833, Dec = -5.3911, MinimumAltitude = 30 }
+            };
+            var data = TestDataFactory.MakeReportData(
+                imageCount: 10, targets: new[] { "M31", "M42" },
+                observerLat: 40.7128, observerLon: -74.0060);
+            var baseTime = new DateTime(2025, 1, 15, 22, 0, 0);
+            for (int i = 0; i < data.Images.Count; i++) {
+                data.Images[i].RaHours    = 5.5833;
+                data.Images[i].DecDegrees = -5.3911;
+                data.Images[i].Timestamp  = baseTime.AddMinutes(i * 10);
+            }
+            data.Session.SessionStart = baseTime;
+            data.Session.SessionEnd   = baseTime.AddMinutes(10 * 10 + 10);
+            data.TsData.Clear();
+            data.TsData.AddRange(tsData);
+
+            var html = await _gen.GenerateHtmlReport(data);
+            int labelCount = System.Text.RegularExpressions.Regex
+                .Matches(html, "class='min-alt-label'").Count;
+            Assert.Equal(1, labelCount);
+            // And the single label is the shared value
+            Assert.Contains("Min 30°", html);
+        }
+
+        [Fact]
+        public async Task SessionAltChart_TargetsDifferMinAlt_RendersMultipleLabels() {
+            // Two targets with different min-altitudes → one label per block.
+            var tsData = new List<TsTargetData> {
+                new TsTargetData { TargetName = "M31", RA = 5.5833, Dec = -5.3911, MinimumAltitude = 30 },
+                new TsTargetData { TargetName = "M42", RA = 5.5833, Dec = -5.3911, MinimumAltitude = 45 }
+            };
+            var data = TestDataFactory.MakeReportData(
+                imageCount: 10, targets: new[] { "M31", "M42" },
+                observerLat: 40.7128, observerLon: -74.0060);
+            var baseTime = new DateTime(2025, 1, 15, 22, 0, 0);
+            for (int i = 0; i < data.Images.Count; i++) {
+                data.Images[i].RaHours    = 5.5833;
+                data.Images[i].DecDegrees = -5.3911;
+                data.Images[i].Timestamp  = baseTime.AddMinutes(i * 10);
+            }
+            data.Session.SessionStart = baseTime;
+            data.Session.SessionEnd   = baseTime.AddMinutes(10 * 10 + 10);
+            data.TsData.Clear();
+            data.TsData.AddRange(tsData);
+
+            var html = await _gen.GenerateHtmlReport(data);
+            int labelCount = System.Text.RegularExpressions.Regex
+                .Matches(html, "class='min-alt-label'").Count;
+            Assert.True(labelCount >= 2,
+                $"Expected ≥2 min-alt labels when targets have different min alts, got {labelCount}");
+        }
+
+        // ── Preview altitude chart (reflection-invoked because method is private) ─────
+
+        [Fact]
+        public void PreviewAltChart_AllTargetsShareMinAlt_RendersSingleLabel() {
+            var html = InvokePreviewAltitudeChart(
+                new[] {
+                    ("M31", 30.0),
+                    ("M42", 30.0)
+                });
+            int labelCount = System.Text.RegularExpressions.Regex
+                .Matches(html, "class='min-alt-label'").Count;
+            Assert.Equal(1, labelCount);
+            Assert.Contains("Min 30°", html);
+            // Red color used, matching the single-target chart
+            Assert.Contains("stroke='#cc4444'", html);
+        }
+
+        [Fact]
+        public void PreviewAltChart_TargetsDifferMinAlt_RendersMultipleLabels() {
+            var html = InvokePreviewAltitudeChart(
+                new[] {
+                    ("M31", 30.0),
+                    ("M42", 45.0)
+                });
+            int labelCount = System.Text.RegularExpressions.Regex
+                .Matches(html, "class='min-alt-label'").Count;
+            Assert.True(labelCount >= 2,
+                $"Expected ≥2 min-alt labels when targets have different min alts, got {labelCount}");
+        }
+
+        /// <summary>
+        /// Invokes the private BuildPreviewAltitudeChart with synthesized TS preview entries.
+        /// Each target gets one 60-minute block; all targets share the same RA/Dec so the
+        /// altitude calculator produces a clean curve for chart dimensions.
+        /// </summary>
+        private string InvokePreviewAltitudeChart(IEnumerable<(string Name, double MinAlt)> targets) {
+            var targetList = targets.ToList();
+            var nightStart = new DateTime(2025, 1, 15, 22, 0, 0);
+            var nightEnd   = nightStart.AddHours(targetList.Count + 1);
+
+            var imagingBlocks = new List<TsPreviewEntry>();
+            var colorMap      = new Dictionary<string, string>();
+            var coordLookup   = new Dictionary<string, (double Ra, double Dec)>();
+            var minAltLookup  = new Dictionary<string, double>();
+            string[] palette  = { "#ffd78b", "#92b4f4", "#c3f584", "#ff9b99", "#f0a0ff" };
+
+            for (int i = 0; i < targetList.Count; i++) {
+                var (name, minAlt) = targetList[i];
+                imagingBlocks.Add(new TsPreviewEntry {
+                    Name      = name,
+                    StartTime = nightStart.AddHours(i),
+                    EndTime   = nightStart.AddHours(i + 1)
+                });
+                colorMap[name]     = palette[i % palette.Length];
+                coordLookup[name]  = (5.5833, -5.3911);
+                minAltLookup[name] = minAlt;
+            }
+
+            var method = typeof(ReportGenerator).GetMethod(
+                "BuildPreviewAltitudeChart",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Assert.NotNull(method);
+
+            var result = method.Invoke(_gen, new object[] {
+                imagingBlocks,
+                colorMap,
+                coordLookup,
+                minAltLookup,
+                40.7128, -74.0060,
+                nightStart, nightEnd
+            });
+            return (string)result;
         }
     }
 }

@@ -1745,6 +1745,21 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine($"<text x='{padL - 4}' y='{padT + 4}' text-anchor='end' fill='{svgMuted}'>90°</text>");
             sb.AppendLine($"<text x='{padL - 4}' y='{padT + plotH + 4}' text-anchor='end' fill='{svgMuted}'>0°</text>");
 
+            // Decide whether all blocks with a known min-alt share the same value (within 0.5°).
+            // Matches BuildSessionAltitudeChart: one chart-wide red line + one label instead
+            // of repeating the same label on every target band.
+            const string minAltRed = "#cc4444";
+            const double minAltTol = 0.5;
+            var blockMinAlts = minAltLookup == null
+                ? new List<double>()
+                : imagingBlocks
+                    .Where(b => minAltLookup.ContainsKey(b.Name))
+                    .Select(b => minAltLookup[b.Name])
+                    .ToList();
+            bool allShareMinAlt = blockMinAlts.Count > 0
+                && blockMinAlts.Max() - blockMinAlts.Min() <= minAltTol;
+            double sharedMinAlt = allShareMinAlt ? blockMinAlts[0] : 0;
+
             // Per-target imaging window shading — one vertical band per schedule block
             foreach (var entry in imagingBlocks) {
                 var color = colorMap[entry.Name];
@@ -1753,21 +1768,26 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 if (wStart >= wEnd) continue;
                 double bx1 = X(wStart), bx2 = X(wEnd);
                 sb.AppendLine($"<g><title>{entry.Name}&#10;{wStart:HH:mm} – {wEnd:HH:mm}</title>");
-                // Shading reserved as a faint tint of the target color so the min-alt line
-                // (drawn in the same hue at full opacity) stays clearly visible against it.
+                // Shading reserved as a faint tint of the target color; the red dashed
+                // min-alt line stands out against any target hue.
                 sb.AppendLine($"<rect x='{bx1:F1}' y='{padT}' width='{(bx2 - bx1):F1}' height='{plotH}' fill='{color}' fill-opacity='0.10'/>");
                 sb.AppendLine($"<line x1='{bx1:F1}' y1='{padT}' x2='{bx1:F1}' y2='{padT + plotH}' stroke='{color}' stroke-width='1' opacity='0.5'/>");
                 sb.AppendLine($"<line x1='{bx2:F1}' y1='{padT}' x2='{bx2:F1}' y2='{padT + plotH}' stroke='{color}' stroke-width='1' opacity='0.5'/>");
-                // Min altitude line — drawn inside the target's imaging band in the target's color at full opacity
-                // so it stands out against the 10%-opacity shaded background of the same hue.
-                // See BuildSessionAltitudeChart for the rationale on per-block scoping.
-                if (minAltLookup != null && minAltLookup.TryGetValue(entry.Name, out double tMinAlt)) {
+                // Per-block min altitude line — only when values differ between targets.
+                if (!allShareMinAlt && minAltLookup != null && minAltLookup.TryGetValue(entry.Name, out double tMinAlt)) {
                     double my = Y(tMinAlt);
-                    sb.AppendLine($"<line x1='{bx1:F1}' y1='{my:F1}' x2='{bx2:F1}' y2='{my:F1}' stroke='{color}' stroke-width='1.5' stroke-dasharray='5,4' opacity='1' class='min-alt-line'/>");
+                    sb.AppendLine($"<line x1='{bx1:F1}' y1='{my:F1}' x2='{bx2:F1}' y2='{my:F1}' stroke='{minAltRed}' stroke-width='1.5' stroke-dasharray='5,4' opacity='1' class='min-alt-line'/>");
                     if ((bx2 - bx1) > 50)
-                        sb.AppendLine($"<text x='{bx2 - 2:F1}' y='{my - 3:F1}' text-anchor='end' font-size='9' fill='{color}' opacity='1' class='min-alt-label'>Min {tMinAlt:F0}°</text>");
+                        sb.AppendLine($"<text x='{bx2 - 2:F1}' y='{my - 3:F1}' text-anchor='end' font-size='9' fill='{minAltRed}' opacity='1' class='min-alt-label'>Min {tMinAlt:F0}°</text>");
                 }
                 sb.AppendLine("</g>");
+            }
+
+            // Shared min-alt: single chart-wide dashed red line + one right-anchored label
+            if (allShareMinAlt) {
+                double my = Y(sharedMinAlt);
+                sb.AppendLine($"<line x1='{padL}' y1='{my:F1}' x2='{padL + plotW}' y2='{my:F1}' stroke='{minAltRed}' stroke-width='1.5' stroke-dasharray='5,4' opacity='1' class='min-alt-line'/>");
+                sb.AppendLine($"<text x='{padL + plotW - 2}' y='{my - 3:F1}' text-anchor='end' font-size='9' fill='{minAltRed}' opacity='1' class='min-alt-label'>Min {sharedMinAlt:F0}°</text>");
             }
 
             // Moon altitude curve
@@ -2102,6 +2122,20 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine($"<rect x='{gx1:F1}' y='{padT}' width='{(gx2 - gx1):F1}' height='{plotH}' fill='url(#ns-idle-alt)' opacity='0.4'/>");
             }
 
+            // Decide whether all blocks that have a min-alt share the same value (within 0.5°).
+            // When they do, a single chart-wide red line + one label is far less noisy than
+            // repeating the same label on every block. Matches the single-target chart's
+            // red dashed "Min Alt N°" aesthetic (#cc4444, see single-target altitude chart).
+            const string minAltRed = "#cc4444";
+            const double minAltTol = 0.5;
+            var blockMinAlts = allBlocks
+                .Where(b => minAltLookup.ContainsKey(b.Name))
+                .Select(b => minAltLookup[b.Name])
+                .ToList();
+            bool allShareMinAlt = blockMinAlts.Count > 0
+                && blockMinAlts.Max() - blockMinAlts.Min() <= minAltTol;
+            double sharedMinAlt = allShareMinAlt ? blockMinAlts[0] : 0;
+
             // Per-target imaging window shading — one vertical band per block
             foreach (var block in allBlocks) {
                 var wStart = block.Start < sessionStart ? sessionStart : block.Start;
@@ -2109,23 +2143,30 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 if (wStart >= wEnd) continue;
                 double bx1 = X(wStart), bx2 = X(wEnd);
                 sb.AppendLine($"<g><title>{block.Name}&#10;{wStart:HH:mm} – {wEnd:HH:mm}</title>");
-                // Shading reserved as a faint tint of the target color so the min-alt line
-                // (drawn in the same hue at full opacity) stays clearly visible against it.
+                // Shading reserved as a faint tint of the target color so the red dashed
+                // min-alt line stands out against the per-target band while the bands
+                // themselves remain visually attributable to each target.
                 sb.AppendLine($"<rect x='{bx1:F1}' y='{padT}' width='{(bx2 - bx1):F1}' height='{plotH}' fill='{block.Color}' fill-opacity='0.10'/>");
                 sb.AppendLine($"<line x1='{bx1:F1}' y1='{padT}' x2='{bx1:F1}' y2='{padT + plotH}' stroke='{block.Color}' stroke-width='1' opacity='0.5'/>");
                 sb.AppendLine($"<line x1='{bx2:F1}' y1='{padT}' x2='{bx2:F1}' y2='{padT + plotH}' stroke='{block.Color}' stroke-width='1' opacity='0.5'/>");
-                // Min altitude line — drawn inside the target's imaging band in the target's color at full opacity
-                // so it stands out against the 10%-opacity shaded background of the same hue.
-                // Scoping to the block keeps multiple targets' lines visually distinct even when
-                // min-altitude values overlap, and matches the per-target chart's single red line aesthetic.
-                if (minAltLookup.TryGetValue(block.Name, out double tMinAlt)) {
+                // Per-block min altitude line — only when values differ between targets.
+                // Color is the same red as the single-target chart so the meaning is
+                // obvious regardless of the shaded band's hue.
+                if (!allShareMinAlt && minAltLookup.TryGetValue(block.Name, out double tMinAlt)) {
                     double my = Y(tMinAlt);
-                    sb.AppendLine($"<line x1='{bx1:F1}' y1='{my:F1}' x2='{bx2:F1}' y2='{my:F1}' stroke='{block.Color}' stroke-width='1.5' stroke-dasharray='5,4' opacity='1' class='min-alt-line'/>");
+                    sb.AppendLine($"<line x1='{bx1:F1}' y1='{my:F1}' x2='{bx2:F1}' y2='{my:F1}' stroke='{minAltRed}' stroke-width='1.5' stroke-dasharray='5,4' opacity='1' class='min-alt-line'/>");
                     // Only label lines wide enough to read (avoid clutter in short blocks)
                     if ((bx2 - bx1) > 50)
-                        sb.AppendLine($"<text x='{bx2 - 2:F1}' y='{my - 3:F1}' text-anchor='end' font-size='9' fill='{block.Color}' opacity='1' class='min-alt-label'>Min {tMinAlt:F0}°</text>");
+                        sb.AppendLine($"<text x='{bx2 - 2:F1}' y='{my - 3:F1}' text-anchor='end' font-size='9' fill='{minAltRed}' opacity='1' class='min-alt-label'>Min {tMinAlt:F0}°</text>");
                 }
                 sb.AppendLine("</g>");
+            }
+
+            // Shared min-alt: single chart-wide dashed red line + one right-anchored label
+            if (allShareMinAlt) {
+                double my = Y(sharedMinAlt);
+                sb.AppendLine($"<line x1='{padL}' y1='{my:F1}' x2='{padL + plotW}' y2='{my:F1}' stroke='{minAltRed}' stroke-width='1.5' stroke-dasharray='5,4' opacity='1' class='min-alt-line'/>");
+                sb.AppendLine($"<text x='{padL + plotW - 2}' y='{my - 3:F1}' text-anchor='end' font-size='9' fill='{minAltRed}' opacity='1' class='min-alt-label'>Min {sharedMinAlt:F0}°</text>");
             }
 
             // Moon altitude curve
