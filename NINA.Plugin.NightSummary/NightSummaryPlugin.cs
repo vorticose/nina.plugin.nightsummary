@@ -669,6 +669,16 @@ namespace NINA.Plugin.NightSummary {
             set { S.TimelineAltitudeDefault = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
+        public bool PreviewShowMinAltitude {
+            get => S.PreviewShowMinAltitude;
+            set { S.PreviewShowMinAltitude = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
+        public bool TimelineShowMinAltitude {
+            get => S.TimelineShowMinAltitude;
+            set { S.TimelineShowMinAltitude = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
         public bool IsTsInstalled => TargetSchedulerDatabase.IsPluginInstalled;
 
         public bool IsTsApiEnabled {
