@@ -1440,11 +1440,21 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine($"<text x='{padL - 4}' y='{padT + 4}' text-anchor='end' font-size='10' fill='{altLabel}'>90°</text>");
             sb.AppendLine($"<text x='{padL - 4}' y='{padT + plotH + 4}' text-anchor='end' font-size='10' fill='{altLabel}'>0°</text>");
 
-            // Minimum altitude line (from Target Scheduler)
+            // Minimum altitude line (from Target Scheduler). Label is collected here
+            // but emitted AFTER the curve so the polyline doesn't paint over the text.
+            // Smart placement: flip above/below the dashed line based on where the
+            // target's own curve sits at the label's x (right edge of plot).
+            string minAltLabel = null;
             if (minimumAltitude > 0 && minimumAltitude < maxAlt) {
                 double minAltY = Y(minimumAltitude);
                 sb.AppendLine($"<line x1='{padL}' y1='{minAltY:F1}' x2='{padL + plotW}' y2='{minAltY:F1}' stroke='#cc4444' stroke-width='1.2' stroke-dasharray='5,4' opacity='0.7'/>");
-                sb.AppendLine($"<text x='{padL + plotW - 2}' y='{minAltY - 4:F1}' text-anchor='end' font-size='9' fill='#cc4444' opacity='0.85'>Min Alt {minimumAltitude:F0}°</text>");
+                double labelX = padL + plotW - 2;
+                var anchorTime = dayEnd;  // right edge of plot
+                var curves = new[] { (raHours, decDeg) };
+                var (labelY, _) = PickMinAltLabelPosition(
+                    anchorTime, minAltY, curves, latDeg, lonDeg,
+                    padT, padT + plotH, Y);
+                minAltLabel = $"<text x='{labelX:F1}' y='{labelY:F1}' text-anchor='end' font-size='9' fill='#cc4444' opacity='0.85'>Min Alt {minimumAltitude:F0}°</text>";
             }
 
             // Altitude curve — one polyline per continuous above-horizon segment
@@ -1455,6 +1465,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     pts.Append($"{X(t):F1},{Y(alt):F1} ");
                 sb.AppendLine($"<polyline points='{pts}' fill='none' stroke='{altAccent}' stroke-width='2'/>");
             }
+
+            // Min-alt label emitted after curve so text stays legible
+            if (minAltLabel != null) sb.AppendLine(minAltLabel);
 
             // ── Moon altitude curve ──────────────────────────────────────────────
             if (!SettingsManager.Instance.Current.ShowMoonCurve) goto skipMoon;
