@@ -1798,18 +1798,23 @@ namespace NINA.Plugin.NightSummary.Reporting {
             if (allShareMinAlt) {
                 double my = Y(sharedMinAlt);
                 sb.AppendLine($"<line x1='{padL}' y1='{my:F1}' x2='{padL + plotW}' y2='{my:F1}' stroke='{minAltRed}' stroke-width='1.5' stroke-dasharray='5,4' opacity='1' class='min-alt-line'/>");
-                // Flip label above/below line based on where the target curves sit
-                // at the label's x-position. Shared case: check all visible curves.
+                // Flip label above/below line based on where the target curve sits
+                // at the label's x-position. The shared label anchors at the right edge
+                // of the plot and semantically belongs to no single target, so pick the
+                // rightmost block's target (closest to the label's x). Crossing
+                // unrelated target curves is acceptable — the label's color + dashed
+                // line already communicate "this is a threshold, not part of a curve."
                 double labelX = padL + plotW - 2;
                 var anchorTime = nightEnd;  // right edge of plot
-                var allCurves = imagingBlocks
-                    .Select(e => e.Name)
-                    .Distinct()
-                    .Where(n => coordLookup != null && coordLookup.ContainsKey(n))
-                    .Select(n => (coordLookup[n].Ra, coordLookup[n].Dec))
-                    .ToList();
+                var rightmost = imagingBlocks
+                    .Where(e => coordLookup != null && coordLookup.ContainsKey(e.Name))
+                    .OrderByDescending(e => e.EndTime)
+                    .FirstOrDefault();
+                var curves = rightmost != null
+                    ? new[] { (coordLookup[rightmost.Name].Ra, coordLookup[rightmost.Name].Dec) }
+                    : Array.Empty<(double, double)>();
                 var (labelY, _) = PickMinAltLabelPosition(
-                    anchorTime, my, allCurves, latDeg, lonDeg,
+                    anchorTime, my, curves, latDeg, lonDeg,
                     padT, padT + plotH, Y);
                 sb.AppendLine($"<text x='{labelX:F1}' y='{labelY:F1}' text-anchor='end' font-size='9' fill='{minAltRed}' opacity='1' class='min-alt-label'>Min {sharedMinAlt:F0}°</text>");
             }
@@ -1895,9 +1900,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// <param name="anchorTime">Time corresponding to the label's x-position.</param>
         /// <param name="minAltY">SVG y of the dashed min-alt line.</param>
         /// <param name="curves">
-        /// (raHours, decDeg) pairs for the targets whose curves the label must avoid.
-        /// Pass only the single relevant target for per-block labels, or all
-        /// visible targets for the shared-label case.
+        /// (raHours, decDeg) pairs for the target curves the label should avoid.
+        /// Callers pass only the label's own target: per-block labels use the block's
+        /// target; the shared-label case uses the rightmost block's target (closest
+        /// in x to the label's anchor). Crossing unrelated target curves is
+        /// intentional — the dashed red styling already signals "threshold," and
+        /// restricting the curve set gives the placement heuristic more freedom.
         /// </param>
         /// <param name="latDeg">Observer latitude.</param>
         /// <param name="lonDeg">Observer longitude.</param>
@@ -2268,18 +2276,23 @@ namespace NINA.Plugin.NightSummary.Reporting {
             if (allShareMinAlt) {
                 double my = Y(sharedMinAlt);
                 sb.AppendLine($"<line x1='{padL}' y1='{my:F1}' x2='{padL + plotW}' y2='{my:F1}' stroke='{minAltRed}' stroke-width='1.5' stroke-dasharray='5,4' opacity='1' class='min-alt-line'/>");
-                // Flip label above/below the line based on where the target curves
-                // sit at the label's x. Shared case: check every visible curve so
-                // the label doesn't collide with any of them.
+                // Flip label above/below the line based on where the target curve sits
+                // at the label's x. The shared label anchors at the right edge and
+                // semantically belongs to no single block — pick the rightmost block's
+                // target (closest in x to the anchor). Crossing unrelated target curves
+                // is acceptable; the dashed red styling already reads as a threshold.
                 double labelX = padL + plotW - 2;
                 var anchorTime = sessionEnd;  // right edge of plot
-                var allCurves = targets
-                    .Select(t => t.Name)
-                    .Where(n => coordLookup.ContainsKey(n))
-                    .Select(n => (coordLookup[n].Ra, coordLookup[n].Dec))
+                var rightmostCandidates = allBlocks
+                    .Where(b => coordLookup.ContainsKey(b.Name))
+                    .OrderByDescending(b => b.End)
                     .ToList();
+                var curves = rightmostCandidates.Count > 0
+                    ? new[] { (coordLookup[rightmostCandidates[0].Name].Ra,
+                               coordLookup[rightmostCandidates[0].Name].Dec) }
+                    : Array.Empty<(double, double)>();
                 var (labelY, _) = PickMinAltLabelPosition(
-                    anchorTime, my, allCurves,
+                    anchorTime, my, curves,
                     data.ObserverLatitude, data.ObserverLongitude,
                     padT, padT + plotH, Y);
                 sb.AppendLine($"<text x='{labelX:F1}' y='{labelY:F1}' text-anchor='end' font-size='9' fill='{minAltRed}' opacity='1' class='min-alt-label'>Min {sharedMinAlt:F0}°</text>");

@@ -286,6 +286,71 @@ namespace NINA.Plugin.NightSummary.Tests {
         }
 
         [Fact]
+        public void PreviewAltChart_SharedLabelIgnoresOtherTargetCurves_LabelStaysBelow() {
+            // Regression: the shared-label placement must only consider the label's
+            // own target (the rightmost block) — not every visible target curve. A
+            // low-altitude neighbor passing through the label zone must NOT flip the
+            // label away from its optimal side.
+            //
+            // Setup:
+            //  - Target A (rightmost): Polaris-like (dec≈lat), alt≈41° all night.
+            //    Min-alt=25° → line well below curve, "below the line" is open sky
+            //    → correct placement is BELOW the line.
+            //  - Target B (earlier block, same min-alt=25° so shared-label path fires):
+            //    southern target (dec=-60°) stays very low from lat 40.7. Its curve
+            //    at the right edge would otherwise intrude on the label's below-line
+            //    clearance. With the new behavior this curve is ignored.
+            var nightStart = new DateTime(2025, 1, 15, 22, 0, 0);
+            var nightEnd   = nightStart.AddHours(3);
+
+            var imagingBlocks = new List<TsPreviewEntry> {
+                // Block B runs first (earlier EndTime) — NOT the label's owner
+                new TsPreviewEntry {
+                    Name      = "SouthernB",
+                    StartTime = nightStart,
+                    EndTime   = nightStart.AddHours(2)
+                },
+                // Block A is rightmost (latest EndTime) — owns the shared label
+                new TsPreviewEntry {
+                    Name      = "PolarisA",
+                    StartTime = nightStart.AddHours(1),
+                    EndTime   = nightStart.AddHours(3)
+                }
+            };
+            var colorMap = new Dictionary<string, string> {
+                { "SouthernB", "#92b4f4" },
+                { "PolarisA",  "#ffd78b" }
+            };
+            var coordLookup = new Dictionary<string, (double Ra, double Dec)> {
+                { "SouthernB", (5.5833, -60.0) },   // low from lat 40.7
+                { "PolarisA",  (2.53,   89.26) }    // near-zenith pole, alt≈lat
+            };
+            var minAltLookup = new Dictionary<string, double> {
+                { "SouthernB", 25.0 },
+                { "PolarisA",  25.0 }
+            };
+
+            var method = typeof(ReportGenerator).GetMethod(
+                "BuildPreviewAltitudeChart",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Assert.NotNull(method);
+            var html = (string)method.Invoke(_gen, new object[] {
+                imagingBlocks, colorMap, coordLookup, minAltLookup,
+                40.7128, -74.0060, nightStart, nightEnd
+            });
+
+            // Exactly one label (shared path), and it must sit BELOW the line.
+            int labelCount = System.Text.RegularExpressions.Regex
+                .Matches(html, "class='min-alt-label'").Count;
+            Assert.Equal(1, labelCount);
+            var labelY = ExtractLabelY(html);
+            var lineY  = ExtractLineY(html);
+            Assert.True(labelY > lineY,
+                $"Shared label should stay below line when rightmost target's curve is above it, " +
+                $"regardless of other targets' curve positions (labelY={labelY}, lineY={lineY})");
+        }
+
+        [Fact]
         public void PreviewAltChart_CurveBelowLineNearTop_LabelRendersAbove() {
             // Inverse scenario: Polaris-like target stays near lat altitude
             // (~41°), and min-alt=50° puts the dashed line well above the
