@@ -1760,6 +1760,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 && blockMinAlts.Max() - blockMinAlts.Min() <= minAltTol;
             double sharedMinAlt = allShareMinAlt ? blockMinAlts[0] : 0;
 
+            // Min-alt labels are collected and emitted AFTER target curves so the curves
+            // don't paint over the text. Placement logic only checks the label's own target
+            // curve; crossing unrelated curves visually is acceptable and the later render
+            // ensures the label stays legible on top.
+            var minAltLabels = new List<string>();
+
             // Per-target imaging window shading — one vertical band per schedule block
             foreach (var entry in imagingBlocks) {
                 var color = colorMap[entry.Name];
@@ -1788,7 +1794,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                         var (labelY, _) = PickMinAltLabelPosition(
                             anchorTime, my, curves, latDeg, lonDeg,
                             padT, padT + plotH, Y);
-                        sb.AppendLine($"<text x='{labelX:F1}' y='{labelY:F1}' text-anchor='end' font-size='9' fill='{minAltRed}' opacity='1' class='min-alt-label'>Min {tMinAlt:F0}°</text>");
+                        minAltLabels.Add($"<text x='{labelX:F1}' y='{labelY:F1}' text-anchor='end' font-size='9' fill='{minAltRed}' opacity='1' class='min-alt-label'>Min {tMinAlt:F0}°</text>");
                     }
                 }
                 sb.AppendLine("</g>");
@@ -1816,7 +1822,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var (labelY, _) = PickMinAltLabelPosition(
                     anchorTime, my, curves, latDeg, lonDeg,
                     padT, padT + plotH, Y);
-                sb.AppendLine($"<text x='{labelX:F1}' y='{labelY:F1}' text-anchor='end' font-size='9' fill='{minAltRed}' opacity='1' class='min-alt-label'>Min {sharedMinAlt:F0}°</text>");
+                minAltLabels.Add($"<text x='{labelX:F1}' y='{labelY:F1}' text-anchor='end' font-size='9' fill='{minAltRed}' opacity='1' class='min-alt-label'>Min {sharedMinAlt:F0}°</text>");
             }
 
             // Moon altitude curve
@@ -1855,6 +1861,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 }
                 sb.AppendLine("</g>");
             }
+
+            // Emit min-alt labels on top of curves so text isn't painted over
+            foreach (var lbl in minAltLabels) sb.AppendLine(lbl);
 
             // Time axis labels — edge labels + ticks every 2 hours
             int timeLabelY = padT + plotH + 18;
@@ -2234,6 +2243,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 && blockMinAlts.Max() - blockMinAlts.Min() <= minAltTol;
             double sharedMinAlt = allShareMinAlt ? blockMinAlts[0] : 0;
 
+            // Min-alt labels collected and emitted AFTER curves so curves don't paint
+            // over text. Placement only checks own-target curve; crossing unrelated
+            // curves is allowed and the post-curve render keeps text legible.
+            var minAltLabels = new List<string>();
+
             // Per-target imaging window shading — one vertical band per block
             foreach (var block in allBlocks) {
                 var wStart = block.Start < sessionStart ? sessionStart : block.Start;
@@ -2266,7 +2280,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                             anchorTime, my, curves,
                             data.ObserverLatitude, data.ObserverLongitude,
                             padT, padT + plotH, Y);
-                        sb.AppendLine($"<text x='{labelX:F1}' y='{labelY:F1}' text-anchor='end' font-size='9' fill='{minAltRed}' opacity='1' class='min-alt-label'>Min {tMinAlt:F0}°</text>");
+                        minAltLabels.Add($"<text x='{labelX:F1}' y='{labelY:F1}' text-anchor='end' font-size='9' fill='{minAltRed}' opacity='1' class='min-alt-label'>Min {tMinAlt:F0}°</text>");
                     }
                 }
                 sb.AppendLine("</g>");
@@ -2295,7 +2309,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     anchorTime, my, curves,
                     data.ObserverLatitude, data.ObserverLongitude,
                     padT, padT + plotH, Y);
-                sb.AppendLine($"<text x='{labelX:F1}' y='{labelY:F1}' text-anchor='end' font-size='9' fill='{minAltRed}' opacity='1' class='min-alt-label'>Min {sharedMinAlt:F0}°</text>");
+                minAltLabels.Add($"<text x='{labelX:F1}' y='{labelY:F1}' text-anchor='end' font-size='9' fill='{minAltRed}' opacity='1' class='min-alt-label'>Min {sharedMinAlt:F0}°</text>");
             }
 
             // Moon altitude curve
@@ -2330,6 +2344,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 }
                 sb.AppendLine("</g>");
             }
+
+            // Emit min-alt labels on top of curves so text isn't painted over
+            foreach (var lbl in minAltLabels) sb.AppendLine(lbl);
 
             // Event markers — vertical dashed lines with labels at top + tooltips
             var events = data.Events;

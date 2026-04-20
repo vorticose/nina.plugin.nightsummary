@@ -351,6 +351,26 @@ namespace NINA.Plugin.NightSummary.Tests {
         }
 
         [Fact]
+        public void PreviewAltChart_MinAltLabelRendersAfterTargetCurves() {
+            // Regression: SVG paints in document order. If min-alt labels emit before
+            // the per-target altitude polylines, unrelated curves visually paint over
+            // the label text. Assert the label <text> appears AFTER the last target
+            // curve polyline in the output.
+            var html = InvokePreviewAltitudeChart(
+                new[] { ("PolarisLike", 25.0) },
+                raHours: 2.53, decDegrees: 89.26);
+            int labelIdx = html.IndexOf("class='min-alt-label'",
+                StringComparison.Ordinal);
+            int lastCurveIdx = html.LastIndexOf("stroke-width='2'",
+                StringComparison.Ordinal);
+            Assert.True(labelIdx > 0, "min-alt label not present");
+            Assert.True(lastCurveIdx > 0, "target curve polyline not present");
+            Assert.True(labelIdx > lastCurveIdx,
+                $"Expected min-alt label to emit after target curves " +
+                $"(labelIdx={labelIdx}, lastCurveIdx={lastCurveIdx})");
+        }
+
+        [Fact]
         public void PreviewAltChart_CurveBelowLineNearTop_LabelRendersAbove() {
             // Inverse scenario: Polaris-like target stays near lat altitude
             // (~41°), and min-alt=50° puts the dashed line well above the
