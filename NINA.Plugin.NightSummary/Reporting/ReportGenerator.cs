@@ -1596,7 +1596,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 // Look up RA/Dec + minimum altitude for preview targets from the TS database
                 var coordLookup = new Dictionary<string, (double Ra, double Dec)>(StringComparer.OrdinalIgnoreCase);
                 var pvMinAltLookup = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
-                bool pvShowMinAlt = SettingsManager.Instance.Current.ShowMinAltitude;
+                bool pvShowMinAlt = SettingsManager.Instance.Current.PreviewShowMinAltitude;
                 try {
                     var tsProgress = tsDb.GetProgressForTargets(uniqueTargets, data.ActiveProfileId);
                     foreach (var tt in tsProgress) {
@@ -2171,7 +2171,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             // (only populated for targets that belong to a TS project). The gating
             // setting + same "> 0" skip rule as the per-target altitude chart keeps
             // behavior consistent.
-            bool showMinAlt = SettingsManager.Instance.Current.ShowMinAltitude;
+            bool showMinAlt = SettingsManager.Instance.Current.TimelineShowMinAltitude;
             var minAltLookup = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
             if (showMinAlt && data.TsData != null) {
                 foreach (var tsT in data.TsData) {

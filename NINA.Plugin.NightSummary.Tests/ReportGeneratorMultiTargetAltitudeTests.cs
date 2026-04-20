@@ -35,6 +35,8 @@ namespace NINA.Plugin.NightSummary.Tests {
             SettingsManager.Instance.Current.ShowTSProgressBars     = false;
             SettingsManager.Instance.Current.TimelineAltitudeDefault = true;
             SettingsManager.Instance.Current.ShowMinAltitude        = true;
+            SettingsManager.Instance.Current.TimelineShowMinAltitude = true;
+            SettingsManager.Instance.Current.PreviewShowMinAltitude  = true;
             SettingsManager.Instance.Current.AdditionalChartConfigs = "";
             SettingsManager.Instance.Current.ExpandSectionsDefault  = false;
         }
@@ -108,7 +110,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task SessionAltChart_ShowMinAltitudeDisabled_NoMinAltLine() {
-            SettingsManager.Instance.Current.ShowMinAltitude = false;
+            SettingsManager.Instance.Current.TimelineShowMinAltitude = false;
             var tsData = new List<TsTargetData> {
                 new TsTargetData { TargetName = "M31", RA = 5.5833, Dec = -5.3911, MinimumAltitude = 30 }
             };

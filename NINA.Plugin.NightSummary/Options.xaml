@@ -170,6 +170,8 @@
                                     </StackPanel.Style>
                                     <TextBlock Text="Default to Altitude View" Width="140" VerticalAlignment="Center" />
                                     <CheckBox IsChecked="{Binding PreviewAltitudeDefault}" VerticalAlignment="Center" />
+                                    <TextBlock Text="Show Min Altitude" Width="110" Margin="20,0,0,0" VerticalAlignment="Center" />
+                                    <CheckBox IsChecked="{Binding PreviewShowMinAltitude}" VerticalAlignment="Center" />
                                 </StackPanel>
                                 <TextBlock TextWrapping="Wrap" FontSize="11" FontStyle="Italic" Margin="8,0,0,0" VerticalAlignment="Top" MaxWidth="380">
                                     <TextBlock.Style>
@@ -213,6 +215,8 @@
                         </StackPanel.Style>
                         <TextBlock Text="Timeline Default Altitude View" Width="200" VerticalAlignment="Center" />
                         <CheckBox IsChecked="{Binding TimelineAltitudeDefault}" VerticalAlignment="Center" />
+                        <TextBlock Text="Show Min Altitude" Width="110" Margin="20,0,0,0" VerticalAlignment="Center" />
+                        <CheckBox IsChecked="{Binding TimelineShowMinAltitude}" VerticalAlignment="Center" />
                     </StackPanel>
 
                     <StackPanel Orientation="Horizontal" Margin="0,4">
