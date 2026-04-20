@@ -1,6 +1,12 @@
 # Night Summary — Changelog
 
 
+## v2.11.1
+
+**Improvements**
+- Minimum altitude reference line now renders on the multi-target altitude charts (Session Timeline and Tonight's Preview), matching the per-target altitude chart behavior. When Target Scheduler data is available, each target's min-altitude threshold is drawn as a dashed line in the target's color, scoped to that target's imaging block so stacked curves stay visually distinct.
+
+
 ## v2.11.0
 
 **New features**
