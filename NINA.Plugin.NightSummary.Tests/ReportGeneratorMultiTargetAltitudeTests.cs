@@ -264,12 +264,72 @@ namespace NINA.Plugin.NightSummary.Tests {
                 $"Expected ≥2 min-alt labels when targets have different min alts, got {labelCount}");
         }
 
+        // ── Label position flips to avoid the altitude curve ───────────────────
+
+        // ── Label position flips to avoid the altitude curve ───────────────────
+
+        [Fact]
+        public void PreviewAltChart_CurveAboveLineWithRoomBelow_LabelRendersBelow() {
+            // Typical imaging scenario. Polaris-like target (dec ≈ lat) stays
+            // near the observer's latitude altitude (~41°) all night, so the
+            // curve sits above the min-alt=25° line at the right edge. The
+            // open sky below the line gives more clearance than the gap
+            // between the line and the curve, so the label should render
+            // BELOW the line.
+            var html = InvokePreviewAltitudeChart(
+                new[] { ("PolarisLike", 25.0) },
+                raHours: 2.53, decDegrees: 89.26);
+            var labelY = ExtractLabelY(html);
+            var lineY  = ExtractLineY(html);
+            Assert.True(labelY > lineY,
+                $"Expected label below min-alt line (labelY={labelY}, lineY={lineY})");
+        }
+
+        [Fact]
+        public void PreviewAltChart_CurveBelowLineNearTop_LabelRendersAbove() {
+            // Inverse scenario: Polaris-like target stays near lat altitude
+            // (~41°), and min-alt=50° puts the dashed line well above the
+            // curve. The curve now blocks most of the space BELOW the line,
+            // while there's plenty of empty sky between the line and the top
+            // of the plot. Expected: label flips ABOVE the line.
+            var html = InvokePreviewAltitudeChart(
+                new[] { ("PolarisLike", 50.0) },
+                raHours: 2.53, decDegrees: 89.26);
+            var labelY = ExtractLabelY(html);
+            var lineY  = ExtractLineY(html);
+            Assert.True(labelY < lineY,
+                $"Expected label above min-alt line (labelY={labelY}, lineY={lineY})");
+        }
+
+        private static double ExtractLabelY(string html) {
+            // Match only a single <text ...> element (no '<' between y and class)
+            var m = System.Text.RegularExpressions.Regex.Match(
+                html, @"<text\s+x='[^']+'\s+y='(?<y>[\d.]+)'[^<>]*class='min-alt-label'");
+            Assert.True(m.Success, "min-alt-label <text> element not found");
+            return double.Parse(m.Groups["y"].Value,
+                System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        private static double ExtractLineY(string html) {
+            var m = System.Text.RegularExpressions.Regex.Match(
+                html, @"<line\s+x1='[^']+'\s+y1='(?<y>[\d.]+)'[^<>]*class='min-alt-line'");
+            Assert.True(m.Success, "min-alt-line element not found");
+            return double.Parse(m.Groups["y"].Value,
+                System.Globalization.CultureInfo.InvariantCulture);
+        }
+
         /// <summary>
         /// Invokes the private BuildPreviewAltitudeChart with synthesized TS preview entries.
         /// Each target gets one 60-minute block; all targets share the same RA/Dec so the
         /// altitude calculator produces a clean curve for chart dimensions.
         /// </summary>
         private string InvokePreviewAltitudeChart(IEnumerable<(string Name, double MinAlt)> targets) {
+            return InvokePreviewAltitudeChart(targets, raHours: 5.5833, decDegrees: -5.3911);
+        }
+
+        private string InvokePreviewAltitudeChart(
+            IEnumerable<(string Name, double MinAlt)> targets,
+            double raHours, double decDegrees) {
             var targetList = targets.ToList();
             var nightStart = new DateTime(2025, 1, 15, 22, 0, 0);
             var nightEnd   = nightStart.AddHours(targetList.Count + 1);
@@ -288,7 +348,7 @@ namespace NINA.Plugin.NightSummary.Tests {
                     EndTime   = nightStart.AddHours(i + 1)
                 });
                 colorMap[name]     = palette[i % palette.Length];
-                coordLookup[name]  = (5.5833, -5.3911);
+                coordLookup[name]  = (raHours, decDegrees);
                 minAltLookup[name] = minAlt;
             }
 

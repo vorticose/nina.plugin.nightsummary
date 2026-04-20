@@ -1777,8 +1777,19 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 if (!allShareMinAlt && minAltLookup != null && minAltLookup.TryGetValue(entry.Name, out double tMinAlt)) {
                     double my = Y(tMinAlt);
                     sb.AppendLine($"<line x1='{bx1:F1}' y1='{my:F1}' x2='{bx2:F1}' y2='{my:F1}' stroke='{minAltRed}' stroke-width='1.5' stroke-dasharray='5,4' opacity='1' class='min-alt-line'/>");
-                    if ((bx2 - bx1) > 50)
-                        sb.AppendLine($"<text x='{bx2 - 2:F1}' y='{my - 3:F1}' text-anchor='end' font-size='9' fill='{minAltRed}' opacity='1' class='min-alt-label'>Min {tMinAlt:F0}°</text>");
+                    if ((bx2 - bx1) > 50) {
+                        // Flip label above/below line to avoid overlapping the target curve.
+                        double labelX = bx2 - 2;
+                        double labelFrac = (labelX - padL) / plotW;
+                        var anchorTime = nightStart.AddMinutes(totalMin * Math.Max(0, Math.Min(1, labelFrac)));
+                        var curves = coordLookup != null && coordLookup.TryGetValue(entry.Name, out var c)
+                            ? new[] { (c.Ra, c.Dec) }
+                            : Array.Empty<(double, double)>();
+                        var (labelY, _) = PickMinAltLabelPosition(
+                            anchorTime, my, curves, latDeg, lonDeg,
+                            padT, padT + plotH, Y);
+                        sb.AppendLine($"<text x='{labelX:F1}' y='{labelY:F1}' text-anchor='end' font-size='9' fill='{minAltRed}' opacity='1' class='min-alt-label'>Min {tMinAlt:F0}°</text>");
+                    }
                 }
                 sb.AppendLine("</g>");
             }
@@ -1787,7 +1798,20 @@ namespace NINA.Plugin.NightSummary.Reporting {
             if (allShareMinAlt) {
                 double my = Y(sharedMinAlt);
                 sb.AppendLine($"<line x1='{padL}' y1='{my:F1}' x2='{padL + plotW}' y2='{my:F1}' stroke='{minAltRed}' stroke-width='1.5' stroke-dasharray='5,4' opacity='1' class='min-alt-line'/>");
-                sb.AppendLine($"<text x='{padL + plotW - 2}' y='{my - 3:F1}' text-anchor='end' font-size='9' fill='{minAltRed}' opacity='1' class='min-alt-label'>Min {sharedMinAlt:F0}°</text>");
+                // Flip label above/below line based on where the target curves sit
+                // at the label's x-position. Shared case: check all visible curves.
+                double labelX = padL + plotW - 2;
+                var anchorTime = nightEnd;  // right edge of plot
+                var allCurves = imagingBlocks
+                    .Select(e => e.Name)
+                    .Distinct()
+                    .Where(n => coordLookup != null && coordLookup.ContainsKey(n))
+                    .Select(n => (coordLookup[n].Ra, coordLookup[n].Dec))
+                    .ToList();
+                var (labelY, _) = PickMinAltLabelPosition(
+                    anchorTime, my, allCurves, latDeg, lonDeg,
+                    padT, padT + plotH, Y);
+                sb.AppendLine($"<text x='{labelX:F1}' y='{labelY:F1}' text-anchor='end' font-size='9' fill='{minAltRed}' opacity='1' class='min-alt-label'>Min {sharedMinAlt:F0}°</text>");
             }
 
             // Moon altitude curve
@@ -1852,6 +1876,72 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("</div>");
 
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Picks whether a "Min N°" label should render above or below the dashed
+        /// min-altitude line, based on which side has more clearance from the
+        /// altitude curves at the label's x-position.
+        ///
+        /// Returns the SVG y coordinate for the label (with dominant-baseline
+        /// handled by the caller via offset). Strategy:
+        ///  1. Sample each supplied target's altitude at the anchor time.
+        ///  2. Compute the minimum clearance above and below the line across all
+        ///     curves that pass within the plot's y-range at that x.
+        ///  3. Place the label on whichever side has more room.
+        ///  4. If both sides are very tight (&lt; 8px), fall back to below the line —
+        ///     free space below min-alt is typically empty sky.
+        /// </summary>
+        /// <param name="anchorTime">Time corresponding to the label's x-position.</param>
+        /// <param name="minAltY">SVG y of the dashed min-alt line.</param>
+        /// <param name="curves">
+        /// (raHours, decDeg) pairs for the targets whose curves the label must avoid.
+        /// Pass only the single relevant target for per-block labels, or all
+        /// visible targets for the shared-label case.
+        /// </param>
+        /// <param name="latDeg">Observer latitude.</param>
+        /// <param name="lonDeg">Observer longitude.</param>
+        /// <param name="plotTop">Top of plot area in SVG y.</param>
+        /// <param name="plotBottom">Bottom of plot area in SVG y.</param>
+        /// <param name="yForAlt">Altitude → SVG y projection used by the host chart.</param>
+        /// <returns>Tuple: (labelY for the text element, placeAbove flag).</returns>
+        private static (double LabelY, bool PlaceAbove) PickMinAltLabelPosition(
+            DateTime anchorTime, double minAltY,
+            IEnumerable<(double RaHours, double DecDeg)> curves,
+            double latDeg, double lonDeg,
+            double plotTop, double plotBottom,
+            Func<double, double> yForAlt) {
+
+            const double labelOffset = 3.0;  // gap between line and label baseline
+            const double labelHeight = 9.0;  // approx text height at font-size=9
+            const double tightThreshold = 8.0;
+
+            // Start with "all the room" on each side; any curve that intrudes shrinks it.
+            double clearanceAbove = minAltY - plotTop;
+            double clearanceBelow = plotBottom - minAltY;
+
+            foreach (var (ra, dec) in curves) {
+                if (ra == 0 && dec == 0) continue;
+                double alt = AltitudeCalculator.GetAltitude(ra, dec, latDeg, lonDeg, anchorTime);
+                if (alt < 0) continue;  // curve not rendered below horizon — no conflict
+                double curveY = yForAlt(Math.Min(90.0, alt));
+                if (curveY < minAltY) {
+                    // Curve above line → restricts clearance above
+                    double d = minAltY - curveY;
+                    if (d < clearanceAbove) clearanceAbove = d;
+                } else {
+                    // Curve at/below line → restricts clearance below
+                    double d = curveY - minAltY;
+                    if (d < clearanceBelow) clearanceBelow = d;
+                }
+            }
+
+            bool bothTight = clearanceAbove < tightThreshold && clearanceBelow < tightThreshold;
+            bool placeAbove = !bothTight && clearanceAbove > clearanceBelow;
+            double labelY = placeAbove
+                ? minAltY - labelOffset                       // baseline just above line
+                : minAltY + labelOffset + labelHeight - 2;    // baseline just below line
+            return (labelY, placeAbove);
         }
 
         /// <summary>Splits an altitude point list into continuous above-horizon segments.</summary>
@@ -2156,8 +2246,20 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     double my = Y(tMinAlt);
                     sb.AppendLine($"<line x1='{bx1:F1}' y1='{my:F1}' x2='{bx2:F1}' y2='{my:F1}' stroke='{minAltRed}' stroke-width='1.5' stroke-dasharray='5,4' opacity='1' class='min-alt-line'/>");
                     // Only label lines wide enough to read (avoid clutter in short blocks)
-                    if ((bx2 - bx1) > 50)
-                        sb.AppendLine($"<text x='{bx2 - 2:F1}' y='{my - 3:F1}' text-anchor='end' font-size='9' fill='{minAltRed}' opacity='1' class='min-alt-label'>Min {tMinAlt:F0}°</text>");
+                    if ((bx2 - bx1) > 50) {
+                        // Flip label above/below line to avoid overlapping the target curve.
+                        double labelX = bx2 - 2;
+                        double labelFrac = (labelX - padL) / plotW;
+                        var anchorTime = sessionStart.AddMinutes(totalMin * Math.Max(0, Math.Min(1, labelFrac)));
+                        var curves = coordLookup.TryGetValue(block.Name, out var c)
+                            ? new[] { (c.Ra, c.Dec) }
+                            : Array.Empty<(double, double)>();
+                        var (labelY, _) = PickMinAltLabelPosition(
+                            anchorTime, my, curves,
+                            data.ObserverLatitude, data.ObserverLongitude,
+                            padT, padT + plotH, Y);
+                        sb.AppendLine($"<text x='{labelX:F1}' y='{labelY:F1}' text-anchor='end' font-size='9' fill='{minAltRed}' opacity='1' class='min-alt-label'>Min {tMinAlt:F0}°</text>");
+                    }
                 }
                 sb.AppendLine("</g>");
             }
@@ -2166,7 +2268,21 @@ namespace NINA.Plugin.NightSummary.Reporting {
             if (allShareMinAlt) {
                 double my = Y(sharedMinAlt);
                 sb.AppendLine($"<line x1='{padL}' y1='{my:F1}' x2='{padL + plotW}' y2='{my:F1}' stroke='{minAltRed}' stroke-width='1.5' stroke-dasharray='5,4' opacity='1' class='min-alt-line'/>");
-                sb.AppendLine($"<text x='{padL + plotW - 2}' y='{my - 3:F1}' text-anchor='end' font-size='9' fill='{minAltRed}' opacity='1' class='min-alt-label'>Min {sharedMinAlt:F0}°</text>");
+                // Flip label above/below the line based on where the target curves
+                // sit at the label's x. Shared case: check every visible curve so
+                // the label doesn't collide with any of them.
+                double labelX = padL + plotW - 2;
+                var anchorTime = sessionEnd;  // right edge of plot
+                var allCurves = targets
+                    .Select(t => t.Name)
+                    .Where(n => coordLookup.ContainsKey(n))
+                    .Select(n => (coordLookup[n].Ra, coordLookup[n].Dec))
+                    .ToList();
+                var (labelY, _) = PickMinAltLabelPosition(
+                    anchorTime, my, allCurves,
+                    data.ObserverLatitude, data.ObserverLongitude,
+                    padT, padT + plotH, Y);
+                sb.AppendLine($"<text x='{labelX:F1}' y='{labelY:F1}' text-anchor='end' font-size='9' fill='{minAltRed}' opacity='1' class='min-alt-label'>Min {sharedMinAlt:F0}°</text>");
             }
 
             // Moon altitude curve
