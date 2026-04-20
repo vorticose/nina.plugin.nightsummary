@@ -1753,16 +1753,19 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 if (wStart >= wEnd) continue;
                 double bx1 = X(wStart), bx2 = X(wEnd);
                 sb.AppendLine($"<g><title>{entry.Name}&#10;{wStart:HH:mm} – {wEnd:HH:mm}</title>");
-                sb.AppendLine($"<rect x='{bx1:F1}' y='{padT}' width='{(bx2 - bx1):F1}' height='{plotH}' fill='{color}' opacity='0.15'/>");
+                // Shading reserved as a faint tint of the target color so the min-alt line
+                // (drawn in the same hue at full opacity) stays clearly visible against it.
+                sb.AppendLine($"<rect x='{bx1:F1}' y='{padT}' width='{(bx2 - bx1):F1}' height='{plotH}' fill='{color}' fill-opacity='0.10'/>");
                 sb.AppendLine($"<line x1='{bx1:F1}' y1='{padT}' x2='{bx1:F1}' y2='{padT + plotH}' stroke='{color}' stroke-width='1' opacity='0.5'/>");
                 sb.AppendLine($"<line x1='{bx2:F1}' y1='{padT}' x2='{bx2:F1}' y2='{padT + plotH}' stroke='{color}' stroke-width='1' opacity='0.5'/>");
-                // Min altitude line — drawn inside the target's imaging band in the target's color.
+                // Min altitude line — drawn inside the target's imaging band in the target's color at full opacity
+                // so it stands out against the 10%-opacity shaded background of the same hue.
                 // See BuildSessionAltitudeChart for the rationale on per-block scoping.
                 if (minAltLookup != null && minAltLookup.TryGetValue(entry.Name, out double tMinAlt)) {
                     double my = Y(tMinAlt);
-                    sb.AppendLine($"<line x1='{bx1:F1}' y1='{my:F1}' x2='{bx2:F1}' y2='{my:F1}' stroke='{color}' stroke-width='1.2' stroke-dasharray='5,4' opacity='0.75' class='min-alt-line'/>");
+                    sb.AppendLine($"<line x1='{bx1:F1}' y1='{my:F1}' x2='{bx2:F1}' y2='{my:F1}' stroke='{color}' stroke-width='1.5' stroke-dasharray='5,4' opacity='1' class='min-alt-line'/>");
                     if ((bx2 - bx1) > 50)
-                        sb.AppendLine($"<text x='{bx2 - 2:F1}' y='{my - 3:F1}' text-anchor='end' font-size='9' fill='{color}' opacity='0.9' class='min-alt-label'>Min {tMinAlt:F0}°</text>");
+                        sb.AppendLine($"<text x='{bx2 - 2:F1}' y='{my - 3:F1}' text-anchor='end' font-size='9' fill='{color}' opacity='1' class='min-alt-label'>Min {tMinAlt:F0}°</text>");
                 }
                 sb.AppendLine("</g>");
             }
@@ -2106,18 +2109,21 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 if (wStart >= wEnd) continue;
                 double bx1 = X(wStart), bx2 = X(wEnd);
                 sb.AppendLine($"<g><title>{block.Name}&#10;{wStart:HH:mm} – {wEnd:HH:mm}</title>");
-                sb.AppendLine($"<rect x='{bx1:F1}' y='{padT}' width='{(bx2 - bx1):F1}' height='{plotH}' fill='{block.Color}' opacity='0.15'/>");
+                // Shading reserved as a faint tint of the target color so the min-alt line
+                // (drawn in the same hue at full opacity) stays clearly visible against it.
+                sb.AppendLine($"<rect x='{bx1:F1}' y='{padT}' width='{(bx2 - bx1):F1}' height='{plotH}' fill='{block.Color}' fill-opacity='0.10'/>");
                 sb.AppendLine($"<line x1='{bx1:F1}' y1='{padT}' x2='{bx1:F1}' y2='{padT + plotH}' stroke='{block.Color}' stroke-width='1' opacity='0.5'/>");
                 sb.AppendLine($"<line x1='{bx2:F1}' y1='{padT}' x2='{bx2:F1}' y2='{padT + plotH}' stroke='{block.Color}' stroke-width='1' opacity='0.5'/>");
-                // Min altitude line — drawn inside the target's imaging band in the target's color.
+                // Min altitude line — drawn inside the target's imaging band in the target's color at full opacity
+                // so it stands out against the 10%-opacity shaded background of the same hue.
                 // Scoping to the block keeps multiple targets' lines visually distinct even when
                 // min-altitude values overlap, and matches the per-target chart's single red line aesthetic.
                 if (minAltLookup.TryGetValue(block.Name, out double tMinAlt)) {
                     double my = Y(tMinAlt);
-                    sb.AppendLine($"<line x1='{bx1:F1}' y1='{my:F1}' x2='{bx2:F1}' y2='{my:F1}' stroke='{block.Color}' stroke-width='1.2' stroke-dasharray='5,4' opacity='0.75' class='min-alt-line'/>");
+                    sb.AppendLine($"<line x1='{bx1:F1}' y1='{my:F1}' x2='{bx2:F1}' y2='{my:F1}' stroke='{block.Color}' stroke-width='1.5' stroke-dasharray='5,4' opacity='1' class='min-alt-line'/>");
                     // Only label lines wide enough to read (avoid clutter in short blocks)
                     if ((bx2 - bx1) > 50)
-                        sb.AppendLine($"<text x='{bx2 - 2:F1}' y='{my - 3:F1}' text-anchor='end' font-size='9' fill='{block.Color}' opacity='0.9' class='min-alt-label'>Min {tMinAlt:F0}°</text>");
+                        sb.AppendLine($"<text x='{bx2 - 2:F1}' y='{my - 3:F1}' text-anchor='end' font-size='9' fill='{block.Color}' opacity='1' class='min-alt-label'>Min {tMinAlt:F0}°</text>");
                 }
                 sb.AppendLine("</g>");
             }

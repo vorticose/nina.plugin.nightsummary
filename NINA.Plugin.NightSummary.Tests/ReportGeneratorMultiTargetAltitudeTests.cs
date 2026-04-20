@@ -155,5 +155,24 @@ namespace NINA.Plugin.NightSummary.Tests {
             var html = await _gen.GenerateHtmlReport(data);
             Assert.DoesNotContain("min-alt-line", html);
         }
+
+        [Fact]
+        public async Task SessionAltChart_MinAltLine_HasDistinguishableStylingFromShading() {
+            // The shaded imaging-window rect and the dashed min-alt line share the same
+            // target color, so visibility relies on different opacity. Shading must be
+            // a faint tint (fill-opacity='0.10') while the line must be drawn at full
+            // opacity='1' so the dashed pattern reads clearly against its own band.
+            var tsData = new List<TsTargetData> {
+                new TsTargetData { TargetName = "M31", RA = 5.5833, Dec = -5.3911, MinimumAltitude = 30 }
+            };
+            var data = MakeAltitudeChartData(tsData);
+            var html = await _gen.GenerateHtmlReport(data);
+            // Shading tint — faint fill-opacity
+            Assert.Contains("fill-opacity='0.10'", html);
+            // Min-alt line — full-opacity dashed stroke, tagged with min-alt-line class
+            Assert.Matches(
+                @"<line[^>]*stroke-dasharray='5,4'[^>]*opacity='1'[^>]*class='min-alt-line'",
+                html);
+        }
     }
 }
