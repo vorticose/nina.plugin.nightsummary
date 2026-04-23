@@ -241,24 +241,17 @@ namespace NINA.Plugin.NightSummary.Session {
         }
 
         /// <summary>
-        /// Called when NINA's sequence finishes (normal completion, manual stop, or error).
-        /// If a session is still active (End instruction never ran), finalize the session
-        /// record and clean up listeners — but do NOT generate or deliver a report.
-        /// The user can always resend via "Resend Previous Session" if they want the report.
+        /// SequenceFinished fires on true stops, WhenUnsafe restarts, manual pause/resume,
+        /// and any other cancel-and-restart pattern. We intentionally do nothing here —
+        /// only the End Session instruction ends an active session. This means sessions
+        /// survive restarts cleanly. Sessions where End never runs are left open in the DB
+        /// (orphaned) and the report will note that the End instruction was missing.
         /// </summary>
         private Task OnSequenceFinished(object sender, EventArgs e) {
             var sessionId = collector.GetCurrentSessionId();
             if (sessionId == null) return Task.CompletedTask;
 
-            Logger.Info($"NightSummary: Sequence finished with active session {sessionId} — finalizing without report");
-            try {
-                collector.EndSession();
-                eventCollector.EndSession();
-                liveStackCapture?.StopAndCollect();
-                liveStackCapture = null;
-            } catch (Exception ex) {
-                Logger.Error($"NightSummary: Error during graceful session cleanup: {ex.Message}");
-            }
+            Logger.Warning($"NightSummary: Sequence finished with active session {sessionId} — End Session instruction did not run. Session data preserved; use Resend Previous Session for a report.");
             return Task.CompletedTask;
         }
 

@@ -1,6 +1,12 @@
 # Night Summary — Changelog
 
 
+## v2.11.1
+
+**Bug fixes**
+- Reverted graceful session cleanup logic added in v2.11.0 which resulted in some sessions being ended prematurely by sequence interrupt triggers such as "When Becomes Unsafe". Sessions are now only ended by running the Night Summary End sequence instruction. If the End instruction never ran, the session data is preserved — use "Resend Previous Session" to generate a report. Reports from those sessions include a notice that session duration is approximate and overhead analysis is unavailable.
+
+
 ## v2.11.0
 
 **New features**
