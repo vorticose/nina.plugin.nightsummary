@@ -1,6 +1,12 @@
 # Night Summary — Changelog
 
 
+## v2.11.1
+
+**Bug fixes**
+- Sessions are no longer lost when a safety monitor event interrupts and restarts the sequence mid-night (e.g. WhenUnsafe from the WhenPlugin). Previously, NINA's sequence cancel/restart pattern looked identical to a true manual stop — Night Summary would end the session without sending a report, then the restarted sequence would run without an active session and the End instruction would find nothing to finalize. Night Summary now waits 90 seconds after SequenceFinished before treating it as a true stop; if the sequence restarts in that window the session is kept alive. NINA shutting down during the window is handled immediately so no session data is lost.
+
+
 ## v2.11.0
 
 **New features**

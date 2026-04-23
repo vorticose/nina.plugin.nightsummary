@@ -12,6 +12,7 @@ using System.Collections.Generic;
 using System.ComponentModel.Composition;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace NINA.Plugin.NightSummary.Session {
@@ -38,7 +39,10 @@ namespace NINA.Plugin.NightSummary.Session {
         private readonly ISwitchMediator        switchMediator;
         private readonly IMessageBroker         messageBroker;
         private LiveStackCapture               liveStackCapture;
-        private bool                           sequenceFinishedSubscribed;
+        private bool                           sequenceEventsSubscribed;
+        private Timer                          restartDebounceTimer;
+        private int                            pendingCleanupFlag;
+        private const int                      RestartDebounceMs = 90_000;
 
         private static NightSummarySettings S => SettingsManager.Instance.Current;
 
@@ -142,13 +146,15 @@ namespace NINA.Plugin.NightSummary.Session {
             CaptureEquipmentNames();
             collector.FirstImageSaved += OnFirstImageSaved;
 
-            // Subscribe to SequenceFinished lazily — safe now that sequencer is initialized.
-            if (!sequenceFinishedSubscribed && sequenceMediator != null) {
+            // Subscribe to sequence lifecycle events lazily — safe now that sequencer is initialized.
+            if (!sequenceEventsSubscribed && sequenceMediator != null) {
                 try {
                     sequenceMediator.SequenceFinished += OnSequenceFinished;
-                    sequenceFinishedSubscribed = true;
+                    sequenceMediator.SequenceStarting += OnSequenceStarting;
+                    sequenceEventsSubscribed = true;
+                    SubscribeToApplicationShutdown();
                 } catch (Exception ex) {
-                    Logger.Warning($"NightSummary: Could not subscribe to SequenceFinished: {ex.Message}");
+                    Logger.Warning($"NightSummary: Could not subscribe to sequence events: {ex.Message}");
                 }
             }
 
@@ -240,17 +246,56 @@ namespace NINA.Plugin.NightSummary.Session {
             });
         }
 
+        private void SubscribeToApplicationShutdown() {
+            try {
+                var app = System.Windows.Application.Current;
+                app?.Dispatcher?.BeginInvoke(() => {
+                    if (System.Windows.Application.Current != null)
+                        System.Windows.Application.Current.Exit += (_, _) => ExecutePendingCleanup("application exiting");
+                });
+            } catch { }
+        }
+
         /// <summary>
-        /// Called when NINA's sequence finishes (normal completion, manual stop, or error).
-        /// If a session is still active (End instruction never ran), finalize the session
-        /// record and clean up listeners — but do NOT generate or deliver a report.
-        /// The user can always resend via "Resend Previous Session" if they want the report.
+        /// SequenceFinished fires on both true stops and transient cancel-and-restart patterns
+        /// (e.g. WhenUnsafe). Arm a debounce timer instead of cleaning up immediately — if
+        /// SequenceStarting fires within the window it was a transient restart and the session
+        /// should survive. Application shutdown bypasses the timer for immediate cleanup.
         /// </summary>
         private Task OnSequenceFinished(object sender, EventArgs e) {
             var sessionId = collector.GetCurrentSessionId();
             if (sessionId == null) return Task.CompletedTask;
 
-            Logger.Info($"NightSummary: Sequence finished with active session {sessionId} — finalizing without report");
+            Logger.Info($"NightSummary: Sequence finished with active session {sessionId} — arming {RestartDebounceMs / 1000}s restart window");
+            Interlocked.Exchange(ref pendingCleanupFlag, 1);
+
+            restartDebounceTimer?.Dispose();
+            restartDebounceTimer = new Timer(
+                _ => ExecutePendingCleanup("debounce expired — treating as true stop"),
+                null, RestartDebounceMs, Timeout.Infinite);
+
+            return Task.CompletedTask;
+        }
+
+        private Task OnSequenceStarting(object sender, EventArgs e) {
+            if (Interlocked.CompareExchange(ref pendingCleanupFlag, 0, 1) == 1) {
+                Logger.Info("NightSummary: Sequence restarted within debounce window — keeping session alive (transient interrupt)");
+                restartDebounceTimer?.Dispose();
+                restartDebounceTimer = null;
+            }
+            return Task.CompletedTask;
+        }
+
+        private void ExecutePendingCleanup(string reason) {
+            if (Interlocked.CompareExchange(ref pendingCleanupFlag, 0, 1) != 1) return;
+
+            restartDebounceTimer?.Dispose();
+            restartDebounceTimer = null;
+
+            var sessionId = collector.GetCurrentSessionId();
+            if (sessionId == null) return;
+
+            Logger.Info($"NightSummary: Session cleanup ({reason}) — finalizing session {sessionId} without report");
             try {
                 collector.EndSession();
                 eventCollector.EndSession();
@@ -259,7 +304,6 @@ namespace NINA.Plugin.NightSummary.Session {
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Error during graceful session cleanup: {ex.Message}");
             }
-            return Task.CompletedTask;
         }
 
         private async Task GenerateAndSendAsync(ReportData reportData) {
