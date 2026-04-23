@@ -108,6 +108,22 @@ def load_icon():
             ICON_DATA_URI = "data:image/png;base64," + base64.b64encode(f.read()).decode("ascii")
 
 
+def _normalize_assignments(assignments):
+    """Normalize projectAssignments: old string values → arrays for backward compat."""
+    if not assignments:
+        return {}
+    normalized = {}
+    for k, v in assignments.items():
+        if isinstance(v, str):
+            normalized[k] = [v] if v else []
+        elif isinstance(v, list):
+            normalized[k] = v
+        else:
+            normalized[k] = []
+    # Remove empty entries
+    return {k: v for k, v in normalized.items() if v}
+
+
 class DashboardHandler(BaseHTTPRequestHandler):
     data_dir = ""
     ts_host = "localhost"
@@ -392,7 +408,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             meta = self._load_ts_meta()
             status_overrides    = meta.get("statusOverrides",   {}) or {}
             manual_links        = meta.get("targetLinks",       {}) or {}
-            project_assignments = meta.get("projectAssignments",{}) or {}
+            project_assignments = _normalize_assignments(meta.get("projectAssignments",{}) or {})
             custom_projects     = meta.get("customProjects",    {}) or {}
             target_exclusions   = meta.get("targetExclusions",  {}) or {}
 
@@ -417,52 +433,82 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     if g:
                         ts_by_guid[g] = (p, t)
 
+            # Helper: build a project summary dict for an assigned project GUID
+            def _build_assigned_project_obj(pguid):
+                if pguid in ts_proj_by_guid:
+                    aproj = ts_proj_by_guid[pguid]
+                else:
+                    cproj = custom_projects.get(pguid)
+                    if not cproj:
+                        return None
+                    aproj = {
+                        "guid": pguid,
+                        "name": cproj.get("name", "Custom Project"),
+                        "state": cproj.get("state", "Active"),
+                        "isMosaic": False,
+                        "targets": [],
+                    }
+                raw_state = aproj.get("state") or "Active"
+                override  = status_overrides.get(aproj.get("guid") or "")
+                eff_state = override if override else raw_state
+                eff_src   = "override" if override else "raw"
+                aproj_guid = aproj.get("guid", "")
+                assigned_count = sum(1 for guids in project_assignments.values() if aproj_guid in guids)
+                ts_target_count = len(aproj.get("targets", []))
+                return {
+                    "id":              aproj.get("id"),
+                    "guid":            aproj_guid,
+                    "profileId":       aproj.get("profileId"),
+                    "name":            aproj.get("name"),
+                    "description":     aproj.get("description"),
+                    "rawState":        raw_state,
+                    "state":           eff_state,
+                    "stateSource":     eff_src,
+                    "priority":        aproj.get("priority"),
+                    "isMosaic":        bool(aproj.get("isMosaic")),
+                    "createDate":      aproj.get("createDate"),
+                    "activeDate":      aproj.get("activeDate"),
+                    "inactiveDate":    aproj.get("inactiveDate"),
+                    "minimumAltitude": aproj.get("minimumAltitude") or 0,
+                    "maximumAltitude": aproj.get("maximumAltitude") or 0,
+                    "targetCount":     ts_target_count + assigned_count,
+                    "percentComplete": None,
+                    "isCustom":        aproj_guid.startswith("custom-"),
+                }
+
             enriched = []
             for row in targets:
                 target_name = row.get("target") or ""
+                key = target_name.lower()
                 ts_match = None
                 matched_by = None
-                assigned_project = None
+                assigned_guids = project_assignments.get(key, [])
 
                 # 1. Manual target link wins (links to a specific TS target)
-                linked = manual_links.get(target_name.lower())
+                linked = manual_links.get(key)
                 if linked and linked in ts_by_guid:
                     ts_match = ts_by_guid[linked]
                     matched_by = "manual"
-                # 2. Project assignment (user explicitly assigned to a project)
-                elif target_name.lower() in project_assignments:
-                    pguid_raw = project_assignments[target_name.lower()]
-                    # Values may be a single GUID string or a list (multi-project planned feature);
-                    # use the first GUID only for now.
-                    pguid = pguid_raw[0] if isinstance(pguid_raw, list) else pguid_raw
-                    if pguid in ts_proj_by_guid:
-                        assigned_project = ts_proj_by_guid[pguid]
-                        # Try to find the target within the assigned project so we
-                        # get real goals (not empty). Assignment only overrides which
-                        # project badge/context is shown — goals still come from TS.
-                        for _at in assigned_project.get("targets", []):
-                            if (_at.get("name") or "").lower() == target_name.lower():
-                                ts_match = (assigned_project, _at)
-                                break
-                        # Fallback: target not in assigned project (e.g. it lives in a
-                        # different TS project). Use name-match for goals but keep
-                        # assigned_project for project context.
-                        if not ts_match and target_name.lower() in ts_by_name:
-                            _, _name_tgt = ts_by_name[target_name.lower()]
-                            ts_match = (assigned_project, _name_tgt)
-                        matched_by = "assigned"
-                    elif pguid in custom_projects:
-                        assigned_project = {
-                            "guid": pguid,
-                            "name": custom_projects[pguid].get("name", "Custom Project"),
-                            "state": custom_projects[pguid].get("state", "Active"),
-                            "isMosaic": False,
-                            "targets": [],
-                        }
-                        matched_by = "assigned"
+                # 2. If only project assignments exist (no target link), use first as primary
+                elif assigned_guids:
+                    # Primary project comes from first assignment
+                    primary_guid = assigned_guids[0]
+                    proj_obj = _build_assigned_project_obj(primary_guid)
+                    if proj_obj:
+                        # Check if this is a TS project with a matching target
+                        if primary_guid in ts_proj_by_guid:
+                            # Look for a target in this project that matches by name
+                            p = ts_proj_by_guid[primary_guid]
+                            for t in p.get("targets", []):
+                                if (t.get("name") or "").lower() == key:
+                                    ts_match = (p, t)
+                                    matched_by = "assigned"
+                                    break
+                        if not ts_match:
+                            matched_by = "assigned"
                 # 3. Case-insensitive exact-name auto-match
-                elif target_name.lower() in ts_by_name:
-                    ts_match = ts_by_name[target_name.lower()]
+                if not ts_match and matched_by != "assigned" and key in ts_by_name:
+                    ts_match = ts_by_name[key]
                     matched_by = "name"
 
                 ts_obj = None
@@ -542,53 +588,39 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         "matchedBy": matched_by,
                     }
 
-                # Build synthetic ts_obj for project-assigned targets (no TS target match)
-                if not ts_obj and assigned_project:
-                    aproj = assigned_project
-                    raw_state = aproj.get("state") or "Active"
-                    override  = status_overrides.get(aproj.get("guid") or "")
-                    eff_state = override if override else raw_state
-                    eff_src   = "override" if override else "raw"
-                    # Count how many targets are assigned to this project
-                    aproj_guid = aproj.get("guid", "")
-                    assigned_count = sum(1 for v in project_assignments.values() if v == aproj_guid)
-                    ts_target_count = len(aproj.get("targets", []))
-                    ts_obj = {
-                        "project": {
-                            "id":              None,
-                            "guid":            aproj_guid,
-                            "profileId":       aproj.get("profileId"),
-                            "name":            aproj.get("name"),
-                            "description":     aproj.get("description"),
-                            "rawState":        raw_state,
-                            "state":           eff_state,
-                            "stateSource":     eff_src,
-                            "priority":        aproj.get("priority"),
-                            "isMosaic":        bool(aproj.get("isMosaic")),
-                            "createDate":      aproj.get("createDate"),
-                            "activeDate":      aproj.get("activeDate"),
-                            "inactiveDate":    aproj.get("inactiveDate"),
-                            "minimumAltitude": aproj.get("minimumAltitude") or 0,
-                            "maximumAltitude": aproj.get("maximumAltitude") or 0,
-                            "targetCount":     ts_target_count + assigned_count,
-                            "percentComplete": None,
-                            "isCustom":        aproj_guid.startswith("custom-"),
-                        },
-                        "target": {
-                            "id":       None,
-                            "guid":     None,
-                            "name":     target_name,
-                            "active":   True,
-                            "ra":       0,
-                            "dec":      0,
-                            "rotation": 0,
-                        },
-                        "goals":     [],
-                        "matchedBy": matched_by,
-                    }
+                # Build synthetic ts_obj for assignment-only targets (no TS target match)
+                if not ts_obj and matched_by == "assigned" and assigned_guids:
+                    proj_obj = _build_assigned_project_obj(assigned_guids[0])
+                    if proj_obj:
+                        ts_obj = {
+                            "project": proj_obj,
+                            "target": {
+                                "id":       None,
+                                "guid":     None,
+                                "name":     target_name,
+                                "active":   True,
+                                "ra":       0,
+                                "dec":      0,
+                                "rotation": 0,
+                            },
+                            "goals":     [],
+                            "matchedBy": matched_by,
+                        }
+
+                # Build additional project list (all assigned GUIDs beyond the primary)
+                additional_projects = []
+                primary_guid = ts_obj["project"]["guid"] if ts_obj and ts_obj.get("project") else None
+                for aguid in assigned_guids:
+                    if aguid == primary_guid:
+                        continue
+                    proj_obj = _build_assigned_project_obj(aguid)
+                    if proj_obj:
+                        additional_projects.append(proj_obj)
 
                 enriched_row = dict(row)
                 enriched_row["ts"] = ts_obj
+                if additional_projects:
+                    enriched_row["additionalProjects"] = additional_projects
                 enriched.append(enriched_row)
 
             # Summary of all projects (TS + custom) for picker UIs
@@ -608,7 +640,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 } for p in ts_projects]
             # Append custom projects
             for cguid, cproj in custom_projects.items():
-                assigned_targets = [k for k, v in project_assignments.items() if v == cguid]
+                assigned_targets = [k for k, guids in project_assignments.items() if cguid in guids]
                 ts_projects_summary.append({
                     "guid":        cguid,
                     "name":        cproj.get("name", "Custom Project"),
@@ -675,7 +707,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_json(200, {"ok": True, "sessionTargetName": session_target_name, "tsTargetGuid": ts_target_guid})
 
     def handle_ts_assign(self):
-        """Assign a session target to a project (TS or custom). Stored in projectAssignments."""
+        """Add/remove a project assignment for a target. Supports multi-project arrays."""
         body = self._read_post_body()
         target_name  = body.get("targetName")
         project_guid = body.get("projectGuid")
@@ -683,14 +715,26 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_json(400, {"error": "targetName required"})
             return
         meta = self._load_ts_meta()
-        assignments = meta.setdefault("projectAssignments", {})
+        assignments = _normalize_assignments(meta.setdefault("projectAssignments", {}))
         key = target_name.lower()
         if not project_guid:
+            # Clear all assignments for this target
             assignments.pop(key, None)
         else:
-            assignments[key] = project_guid
+            current = assignments.get(key, [])
+            if project_guid in current:
+                current.remove(project_guid)
+                if not current:
+                    assignments.pop(key, None)
+                else:
+                    assignments[key] = current
+            else:
+                current.append(project_guid)
+                assignments[key] = current
+        meta["projectAssignments"] = assignments
         self._save_ts_meta(meta)
-        self.send_json(200, {"ok": True, "targetName": target_name, "projectGuid": project_guid})
+        self.send_json(200, {"ok": True, "targetName": target_name, "projectGuid": project_guid,
+                             "assignments": assignments.get(key, [])})
 
     def handle_ts_exclude(self):
         """Exclude (or restore) a TS-native target from a project's dashboard display."""
@@ -754,11 +798,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self.send_json(404, {"error": "custom project not found"})
                 return
             del custom[guid]
-            # Also remove any assignments pointing to this project
-            assignments = meta.get("projectAssignments", {})
-            to_remove = [k for k, v in assignments.items() if v == guid]
-            for k in to_remove:
-                del assignments[k]
+            # Remove this GUID from any assignment arrays
+            assignments = _normalize_assignments(meta.get("projectAssignments", {}))
+            for k in list(assignments.keys()):
+                if guid in assignments[k]:
+                    assignments[k].remove(guid)
+                if not assignments[k]:
+                    del assignments[k]
+            meta["projectAssignments"] = assignments
             self._save_ts_meta(meta)
             self.send_json(200, {"ok": True, "guid": guid, "deleted": True})
         else:
@@ -802,6 +849,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
             meta = self._load_ts_meta()
             status_overrides  = meta.get("statusOverrides",  {}) or {}
             target_exclusions = (meta.get("targetExclusions", {}) or {}).get(proj.get("guid", ""), [])
+
+            # Build name→(project, target) lookup for cross-assigned target coords
+            ts_by_name = {}
+            for p in ts_projects:
+                for t in p.get("targets", []):
+                    name = (t.get("name") or "").lower()
+                    if name and name not in ts_by_name:
+                        ts_by_name[name] = (p, t)
 
             # Effective state
             raw_state = proj.get("state") or "Draft"
@@ -870,39 +925,24 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 _detail_cache[sid] = result
                 return result
 
-            panels = []
-            agg_frames = 0
-            agg_seconds = 0.0
-            agg_sessions = 0
-            agg_last_imaged = None
-            agg_first_imaged = None
-
-            for tgt in proj.get("targets", []):
-                tgt_name = tgt.get("name") or ""
-                tgt_lower = tgt_name.lower()
-                if tgt_lower in target_exclusions:
-                    continue
-
-                # Find sessions containing this target (ordered newest-first)
+            # Helper: scan sessions for a target name, return stats dict
+            def _scan_target_sessions(tgt_lower):
                 tgt_session_ids = [
                     s["sessionId"] for s in sorted(all_sessions,
                         key=lambda x: x.get("sessionStart") or "", reverse=True)
                     if tgt_lower in [t.lower() for t in (s.get("targets") or [])]
                 ]
                 latest_sid = tgt_session_ids[0] if tgt_session_ids else None
-
                 total_sec = 0.0
                 total_frames = 0
                 sess_count = 0
                 last_imaged = None
                 first_imaged = None
                 filters_agg = {}
-                best_cam = None  # camera data from the most-recent session with valid info
-
+                best_cam = None
                 for sid in tgt_session_ids:
                     if best_cam is None:
                         best_cam = _get_cam_from_detail(sid)
-
                     images_path = os.path.join(self.data_dir, "sessions", sid, "images.json")
                     if not os.path.isfile(images_path):
                         continue
@@ -925,7 +965,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
                             last_imaged = s_start
                         if first_imaged is None or s_start < first_imaged:
                             first_imaged = s_start
-
                     for i in matching:
                         if not i.get("accepted"):
                             continue
@@ -933,23 +972,42 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         fe = filters_agg.setdefault(fn, {"totalSeconds": 0.0, "frames": 0})
                         fe["totalSeconds"] += float(i.get("exposureDuration") or 0)
                         fe["frames"] += 1
+                return {
+                    "total_sec": total_sec, "total_frames": total_frames,
+                    "sess_count": sess_count, "last_imaged": last_imaged,
+                    "first_imaged": first_imaged, "filters_agg": filters_agg,
+                    "best_cam": best_cam, "latest_sid": latest_sid,
+                }
 
-                agg_seconds  += total_sec
-                agg_frames   += total_frames
-                agg_sessions += sess_count
-                if last_imaged and (agg_last_imaged is None or last_imaged > agg_last_imaged):
-                    agg_last_imaged = last_imaged
-                if first_imaged and (agg_first_imaged is None or first_imaged < agg_first_imaged):
-                    agg_first_imaged = first_imaged
-
-                filters_out = sorted([
-                    {
-                        "filter": fn,
-                        "totalHours": round(fe["totalSeconds"] / 3600.0, 2),
-                        "acceptedFrames": fe["frames"],
-                    }
+            def _filters_out(filters_agg):
+                return sorted([
+                    {"filter": fn, "totalHours": round(fe["totalSeconds"] / 3600.0, 2),
+                     "acceptedFrames": fe["frames"]}
                     for fn, fe in filters_agg.items()
                 ], key=lambda x: -x["totalHours"])
+
+            panels = []
+            agg_frames = 0
+            agg_seconds = 0.0
+            agg_sessions = 0
+            agg_last_imaged = None
+            agg_first_imaged = None
+            panel_names = set()  # track names to avoid duplicates from cross-assignments
+
+            for tgt in proj.get("targets", []):
+                tgt_name = tgt.get("name") or ""
+                tgt_lower = tgt_name.lower()
+                if tgt_lower in target_exclusions:
+                    continue
+
+                stats = _scan_target_sessions(tgt_lower)
+                agg_seconds  += stats["total_sec"]
+                agg_frames   += stats["total_frames"]
+                agg_sessions += stats["sess_count"]
+                if stats["last_imaged"] and (agg_last_imaged is None or stats["last_imaged"] > agg_last_imaged):
+                    agg_last_imaged = stats["last_imaged"]
+                if stats["first_imaged"] and (agg_first_imaged is None or stats["first_imaged"] < agg_first_imaged):
+                    agg_first_imaged = stats["first_imaged"]
 
                 panel = {
                     "guid":     tgt.get("guid"),
@@ -958,14 +1016,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     "ra":       tgt.get("ra") or 0,
                     "dec":      tgt.get("dec") or 0,
                     "rotation": tgt.get("rotation") or 0,
-                    "positionAngle": tgt.get("rotation"),  # use TS rotation as stand-in
-                    "totalIntegrationHours": round(total_sec / 3600.0, 2),
-                    "acceptedFrames": total_frames,
-                    "sessionCount": sess_count,
-                    "lastImaged": last_imaged,
-                    "firstImaged": first_imaged,
-                    "latestSessionId": latest_sid,
-                    "filters": filters_out,
+                    "positionAngle": tgt.get("rotation"),
+                    "totalIntegrationHours": round(stats["total_sec"] / 3600.0, 2),
+                    "acceptedFrames": stats["total_frames"],
+                    "sessionCount": stats["sess_count"],
+                    "lastImaged": stats["last_imaged"],
+                    "firstImaged": stats["first_imaged"],
+                    "latestSessionId": stats["latest_sid"],
+                    "filters": _filters_out(stats["filters_agg"]),
                     "tsGoals": [
                         {
                             "filter":       e.get("filter"),
@@ -978,11 +1036,77 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         for e in tgt.get("exposurePlans", [])
                     ],
                 }
-                if best_cam:
-                    panel.update(best_cam)
+                if stats["best_cam"]:
+                    panel.update(stats["best_cam"])
                 # Skip placeholder panels with unset coordinates
                 if tgt.get("ra") == 0 and tgt.get("dec") == 0:
                     continue
+                panels.append(panel)
+                panel_names.add(tgt_lower)
+
+            # Cross-assigned targets: scan projectAssignments for targets assigned
+            # to this project that aren't native TS targets of this project
+            project_assignments = _normalize_assignments(meta.get("projectAssignments", {}) or {})
+            proj_guid_lower = (proj.get("guid") or "").lower()
+            for tgt_key, guids in project_assignments.items():
+                if tgt_key in panel_names:
+                    continue  # already a native panel
+                if not any(g.lower() == proj_guid_lower for g in guids):
+                    continue  # not assigned to this project
+                # Look up RA/Dec and exposure plans from the target's native TS project
+                ts_entry = ts_by_name.get(tgt_key)
+                tgt_ra = 0
+                tgt_dec = 0
+                tgt_rotation = 0
+                tgt_display_name = tgt_key.title()  # fallback display name
+                tgt_exposure_plans = []
+                if ts_entry:
+                    _, ts_tgt = ts_entry
+                    tgt_ra = ts_tgt.get("ra") or 0
+                    tgt_dec = ts_tgt.get("dec") or 0
+                    tgt_rotation = ts_tgt.get("rotation") or 0
+                    tgt_display_name = ts_tgt.get("name") or tgt_display_name
+                    tgt_exposure_plans = ts_tgt.get("exposurePlans", []) or []
+                stats = _scan_target_sessions(tgt_key)
+                if stats["sess_count"] == 0 and stats["total_frames"] == 0:
+                    continue  # no data for this target
+                agg_seconds  += stats["total_sec"]
+                agg_frames   += stats["total_frames"]
+                agg_sessions += stats["sess_count"]
+                if stats["last_imaged"] and (agg_last_imaged is None or stats["last_imaged"] > agg_last_imaged):
+                    agg_last_imaged = stats["last_imaged"]
+                if stats["first_imaged"] and (agg_first_imaged is None or stats["first_imaged"] < agg_first_imaged):
+                    agg_first_imaged = stats["first_imaged"]
+                panel = {
+                    "guid":     (ts_entry[1].get("guid") if ts_entry else None),
+                    "name":     tgt_display_name,
+                    "active":   True,
+                    "ra":       tgt_ra,
+                    "dec":      tgt_dec,
+                    "rotation": tgt_rotation,
+                    "positionAngle": tgt_rotation,
+                    "totalIntegrationHours": round(stats["total_sec"] / 3600.0, 2),
+                    "acceptedFrames": stats["total_frames"],
+                    "sessionCount": stats["sess_count"],
+                    "lastImaged": stats["last_imaged"],
+                    "firstImaged": stats["first_imaged"],
+                    "latestSessionId": stats["latest_sid"],
+                    "filters": _filters_out(stats["filters_agg"]),
+                    "tsGoals": [
+                        {
+                            "filter":       e.get("filter"),
+                            "templateName": e.get("templateName"),
+                            "exposureSec":  e.get("exposureSec"),
+                            "desired":  int(e.get("desired")  or 0),
+                            "accepted": int(e.get("accepted") or 0),
+                            "acquired": int(e.get("acquired") or 0),
+                        }
+                        for e in tgt_exposure_plans
+                    ],
+                    "crossAssigned": True,
+                }
+                if stats["best_cam"]:
+                    panel.update(stats["best_cam"])
                 panels.append(panel)
 
             self.send_json(200, {
@@ -1041,6 +1165,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 if tgt.get("ra") == 0 and tgt.get("dec") == 0:
                     continue
                 panel_names.append(tgt_name)
+
+            # Also include cross-assigned targets
+            project_assignments = _normalize_assignments(meta.get("projectAssignments", {}) or {})
+            proj_guid_lower = (proj.get("guid") or "").lower()
+            native_lower = set(n.lower() for n in panel_names)
+            for tgt_key, guids in project_assignments.items():
+                if tgt_key in native_lower:
+                    continue
+                if any(g.lower() == proj_guid_lower for g in guids):
+                    panel_names.append(tgt_key.title())  # display name from assignment key
 
             panel_names_lower = [n.lower() for n in panel_names]
 

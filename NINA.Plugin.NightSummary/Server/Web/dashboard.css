@@ -2521,6 +2521,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 .targets-project-thumb-col {
   flex: 1;
   min-width: 0;
+  position: relative;
 }
 .targets-project-thumb-wrap {
   position: relative;
@@ -2535,6 +2536,54 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   height: 100%;
   object-fit: cover;
   display: block;
+}
+/* Multi-target thumbnail grid — square cells inside the standard thumb-wrap */
+.targets-project-thumb-wrap:has(.targets-project-thumb-grid) {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.targets-project-thumb-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2px;
+  width: 100%;
+  margin: auto 0;
+  flex-shrink: 0;
+}
+.targets-project-thumb-cell {
+  position: relative;
+  background: rgba(0,0,0,0.3);
+  overflow: hidden;
+}
+.targets-project-thumb-cell::before {
+  content: '';
+  display: block;
+  padding-bottom: 100%;
+}
+/* Odd last cell (e.g. 3rd of 3, 5th of 5): center under the row above */
+.targets-project-thumb-cell:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+  justify-self: center;
+  width: calc(50% - 1px);
+}
+.targets-project-thumb-cell img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.targets-project-thumb-cell .thumb-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: var(--text-tertiary);
+  z-index: 0;
 }
 .targets-project-last-imaged {
   position: absolute;
@@ -2756,6 +2805,39 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   vertical-align: middle;
   position: relative;
   top: -1px;
+}
+
+/* Additional project pill (multi-project assignment) */
+.target-card-project-pill {
+  position: relative;
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 3px 7px;
+  border-radius: 8px;
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
+  background: rgba(var(--accent-rgb), 0.12);
+  color: var(--accent-light);
+  margin-left: 4px;
+  white-space: nowrap;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  z-index: 3;
+}
+
+/* Project assign picker checkbox style */
+.project-assign-check {
+  font-size: 14px;
+  margin-right: 6px;
+  opacity: 0.7;
+}
+.project-assign-option.selected .project-assign-check { opacity: 1; }
+.project-assign-auto {
+  font-size: 9px;
+  opacity: 0.5;
+  font-style: italic;
 }
 
 /* TS state override dropdown — appended to document.body, positioned in viewport coords */
@@ -3572,8 +3654,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 }
 .tdp-hero-wrap svg {
   position: absolute;
-  top: 0;
-  left: 0;
+  inset: 0;
   width: 100%;
   height: 100%;
   pointer-events: none;
@@ -3979,13 +4060,14 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   scrollbar-color: rgba(255,255,255,0.18) transparent;
 }
 .pdp-multi-thumb-cell {
-  aspect-ratio: 1 / 1;
   background: var(--surface-well);
   overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   position: relative;
+}
+.pdp-multi-thumb-cell::before {
+  content: '';
+  display: block;
+  padding-bottom: 100%;
 }
 .pdp-multi-thumb-cell img {
   position: absolute;
@@ -3995,7 +4077,19 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   object-fit: cover;
   display: block;
 }
+.pdp-multi-thumb-cell svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
 .pdp-cell-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 28px;
   font-weight: 700;
   color: var(--text-quaternary);
@@ -4046,6 +4140,13 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   height: 100%;
   object-fit: cover;
   display: block;
+}
+.pdp-mosaic-thumb-wrap svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 .pdp-mosaic-placeholder {
   font-size: 48px;
