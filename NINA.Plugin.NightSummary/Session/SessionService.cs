@@ -42,7 +42,8 @@ namespace NINA.Plugin.NightSummary.Session {
         private bool                           sequenceEventsSubscribed;
         private Timer                          restartDebounceTimer;
         private int                            pendingCleanupFlag;
-        private const int                      RestartDebounceMs = 90_000;
+        private readonly int                   restartDebounceMs;
+        private const int                      DefaultRestartDebounceMs = 10_000;
 
         private static NightSummarySettings S => SettingsManager.Instance.Current;
 
@@ -90,8 +91,10 @@ namespace NINA.Plugin.NightSummary.Session {
             IWeatherDataMediator   weatherDataMediator,
             ISwitchMediator        switchMediator,
             IMessageBroker         messageBroker,
-            string                 databasePath) {
+            string                 databasePath,
+            int                    restartDebounceMs = DefaultRestartDebounceMs) {
 
+            this.restartDebounceMs     = restartDebounceMs;
             this.profileService        = profileService;
             this.cameraMediator        = cameraMediator;
             this.telescopeMediator     = telescopeMediator;
@@ -173,6 +176,11 @@ namespace NINA.Plugin.NightSummary.Session {
             }
 
             var sessionId = collector.GetCurrentSessionId();
+
+            // Cancel any pending debounce — End instruction is authoritative
+            Interlocked.Exchange(ref pendingCleanupFlag, 0);
+            restartDebounceTimer?.Dispose();
+            restartDebounceTimer = null;
 
             collector.FirstImageSaved -= OnFirstImageSaved;
 
@@ -266,13 +274,13 @@ namespace NINA.Plugin.NightSummary.Session {
             var sessionId = collector.GetCurrentSessionId();
             if (sessionId == null) return Task.CompletedTask;
 
-            Logger.Info($"NightSummary: Sequence finished with active session {sessionId} — arming {RestartDebounceMs / 1000}s restart window");
+            Logger.Info($"NightSummary: Sequence finished with active session {sessionId} — arming {restartDebounceMs / 1000}s restart window");
             Interlocked.Exchange(ref pendingCleanupFlag, 1);
 
             restartDebounceTimer?.Dispose();
             restartDebounceTimer = new Timer(
                 _ => ExecutePendingCleanup("debounce expired — treating as true stop"),
-                null, RestartDebounceMs, Timeout.Infinite);
+                null, restartDebounceMs, Timeout.Infinite);
 
             return Task.CompletedTask;
         }
