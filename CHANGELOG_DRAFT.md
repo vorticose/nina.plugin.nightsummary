@@ -1,11 +1,16 @@
 # Night Summary — Changelog
 
 
+## v2.11.2
+
+**Bug fixes**
+- Fixed overhead analysis showing 100% accounted in sessions that ended with an aborted exposure (e.g. cut short by a safety event). The aborted exposure was being counted toward overhead coverage even though its duration extends past the measurement window, inflating the tracked total above the implied overhead and causing the percentage to be capped at 100%.
+
+
 ## v2.11.1
 
 **Bug fixes**
 - Reverted graceful session cleanup logic added in v2.11.0 which resulted in some sessions being ended prematurely by sequence interrupt triggers such as "When Becomes Unsafe". Sessions are now only ended by running the Night Summary End sequence instruction. If the End instruction never ran, the session data is preserved — use "Resend Previous Session" to generate a report. Reports from those sessions include a notice that session duration is approximate and overhead analysis is unavailable.
-- Fixed overhead analysis showing 100% accounted in sessions that ended with an aborted exposure (e.g. cut short by a safety event). The aborted exposure was being counted toward overhead coverage even though its duration extends past the measurement window, inflating the tracked total above the implied overhead and causing the percentage to be capped at 100%.
 
 
 ## v2.11.0
