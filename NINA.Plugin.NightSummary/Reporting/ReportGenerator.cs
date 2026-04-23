@@ -262,6 +262,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine($"<p><strong>Session Date:</strong> {data.Session.SessionStart:yyyy-MM-dd}</p>");
             var sessionEnd = data.Session.SessionEnd > data.Session.SessionStart ? data.Session.SessionEnd : DateTime.Now;
             var isActive = data.Session.SessionEnd <= data.Session.SessionStart;
+            if (isActive && data.Session.SessionEnd == DateTime.MinValue) {
+                sb.AppendLine("<div style='background-color:var(--warn-bg); border:1px solid var(--warn-border); border-radius:8px; padding:12px 16px; margin:16px 0; color:var(--warn-text);'><strong>&#9888; Note:</strong> This session ended without running the Night Summary End instruction. Session end time and duration are approximate; overhead analysis is unavailable.</div>");
+            }
             sb.AppendLine($"<p><strong>Session Start:</strong> {data.Session.SessionStart:HH:mm:ss} &nbsp;&nbsp; <strong>Session End:</strong> {(isActive ? "In Progress" : sessionEnd.ToString("HH:mm:ss"))}</p>");
             sb.AppendLine($"<p><strong>Duration:</strong> {(sessionEnd - data.Session.SessionStart).TotalHours:F1} hours{(isActive ? " (so far)" : "")}</p>");
             sb.AppendLine($"<p><strong>Profile:</strong> {data.Session.ProfileName}</p>");

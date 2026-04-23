@@ -12,7 +12,6 @@ using System.Collections.Generic;
 using System.ComponentModel.Composition;
 using System.IO;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace NINA.Plugin.NightSummary.Session {
@@ -39,11 +38,7 @@ namespace NINA.Plugin.NightSummary.Session {
         private readonly ISwitchMediator        switchMediator;
         private readonly IMessageBroker         messageBroker;
         private LiveStackCapture               liveStackCapture;
-        private bool                           sequenceEventsSubscribed;
-        private Timer                          restartDebounceTimer;
-        private int                            pendingCleanupFlag;
-        private readonly int                   restartDebounceMs;
-        private const int                      DefaultRestartDebounceMs = 10_000;
+        private bool                           sequenceFinishedSubscribed;
 
         private static NightSummarySettings S => SettingsManager.Instance.Current;
 
@@ -91,10 +86,8 @@ namespace NINA.Plugin.NightSummary.Session {
             IWeatherDataMediator   weatherDataMediator,
             ISwitchMediator        switchMediator,
             IMessageBroker         messageBroker,
-            string                 databasePath,
-            int                    restartDebounceMs = DefaultRestartDebounceMs) {
+            string                 databasePath) {
 
-            this.restartDebounceMs     = restartDebounceMs;
             this.profileService        = profileService;
             this.cameraMediator        = cameraMediator;
             this.telescopeMediator     = telescopeMediator;
@@ -149,15 +142,13 @@ namespace NINA.Plugin.NightSummary.Session {
             CaptureEquipmentNames();
             collector.FirstImageSaved += OnFirstImageSaved;
 
-            // Subscribe to sequence lifecycle events lazily — safe now that sequencer is initialized.
-            if (!sequenceEventsSubscribed && sequenceMediator != null) {
+            // Subscribe to SequenceFinished lazily — safe now that sequencer is initialized.
+            if (!sequenceFinishedSubscribed && sequenceMediator != null) {
                 try {
                     sequenceMediator.SequenceFinished += OnSequenceFinished;
-                    sequenceMediator.SequenceStarting += OnSequenceStarting;
-                    sequenceEventsSubscribed = true;
-                    SubscribeToApplicationShutdown();
+                    sequenceFinishedSubscribed = true;
                 } catch (Exception ex) {
-                    Logger.Warning($"NightSummary: Could not subscribe to sequence events: {ex.Message}");
+                    Logger.Warning($"NightSummary: Could not subscribe to SequenceFinished: {ex.Message}");
                 }
             }
 
@@ -176,11 +167,6 @@ namespace NINA.Plugin.NightSummary.Session {
             }
 
             var sessionId = collector.GetCurrentSessionId();
-
-            // Cancel any pending debounce — End instruction is authoritative
-            Interlocked.Exchange(ref pendingCleanupFlag, 0);
-            restartDebounceTimer?.Dispose();
-            restartDebounceTimer = null;
 
             collector.FirstImageSaved -= OnFirstImageSaved;
 
@@ -254,64 +240,20 @@ namespace NINA.Plugin.NightSummary.Session {
             });
         }
 
-        private void SubscribeToApplicationShutdown() {
-            try {
-                var app = System.Windows.Application.Current;
-                app?.Dispatcher?.BeginInvoke(() => {
-                    if (System.Windows.Application.Current != null)
-                        System.Windows.Application.Current.Exit += (_, _) => ExecutePendingCleanup("application exiting");
-                });
-            } catch { }
-        }
-
         /// <summary>
-        /// SequenceFinished fires on both true stops and transient cancel-and-restart patterns
-        /// (e.g. WhenUnsafe). Arm a debounce timer instead of cleaning up immediately — if
-        /// SequenceStarting fires within the window it was a transient restart and the session
-        /// should survive. Application shutdown bypasses the timer for immediate cleanup.
+        /// SequenceFinished fires on true stops, WhenUnsafe restarts, manual pause/resume,
+        /// and any other cancel-and-restart pattern. We intentionally do nothing here —
+        /// only the End Session instruction ends an active session. This means sessions
+        /// survive restarts cleanly. Sessions where End never runs are left open in the DB
+        /// (orphaned) and the report will note that the End instruction was missing.
         /// </summary>
         private Task OnSequenceFinished(object sender, EventArgs e) {
             var sessionId = collector.GetCurrentSessionId();
             if (sessionId == null) return Task.CompletedTask;
 
-            Logger.Info($"NightSummary: Sequence finished with active session {sessionId} — arming {restartDebounceMs / 1000}s restart window");
-            Interlocked.Exchange(ref pendingCleanupFlag, 1);
-
-            restartDebounceTimer?.Dispose();
-            restartDebounceTimer = new Timer(
-                _ => ExecutePendingCleanup("debounce expired — treating as true stop"),
-                null, restartDebounceMs, Timeout.Infinite);
-
+            Logger.Warning($"NightSummary: Sequence finished with active session {sessionId} — End Session instruction did not run. Session data preserved; use Resend Previous Session for a report.");
+            Notification.ShowWarning("Night Summary: End Session instruction didn't run — session data saved. Use Resend Previous Session for a report.");
             return Task.CompletedTask;
-        }
-
-        private Task OnSequenceStarting(object sender, EventArgs e) {
-            if (Interlocked.CompareExchange(ref pendingCleanupFlag, 0, 1) == 1) {
-                Logger.Info("NightSummary: Sequence restarted within debounce window — keeping session alive (transient interrupt)");
-                restartDebounceTimer?.Dispose();
-                restartDebounceTimer = null;
-            }
-            return Task.CompletedTask;
-        }
-
-        private void ExecutePendingCleanup(string reason) {
-            if (Interlocked.CompareExchange(ref pendingCleanupFlag, 0, 1) != 1) return;
-
-            restartDebounceTimer?.Dispose();
-            restartDebounceTimer = null;
-
-            var sessionId = collector.GetCurrentSessionId();
-            if (sessionId == null) return;
-
-            Logger.Info($"NightSummary: Session cleanup ({reason}) — finalizing session {sessionId} without report");
-            try {
-                collector.EndSession();
-                eventCollector.EndSession();
-                liveStackCapture?.StopAndCollect();
-                liveStackCapture = null;
-            } catch (Exception ex) {
-                Logger.Error($"NightSummary: Error during graceful session cleanup: {ex.Message}");
-            }
         }
 
         private async Task GenerateAndSendAsync(ReportData reportData) {

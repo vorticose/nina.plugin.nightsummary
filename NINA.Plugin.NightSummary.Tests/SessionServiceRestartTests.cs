@@ -3,15 +3,14 @@ using NINA.Plugin.NightSummary.Session;
 using NINA.Plugin.NightSummary.Tests.Mocks;
 using System;
 using System.IO;
-using System.Threading;
 using Xunit;
 
 namespace NINA.Plugin.NightSummary.Tests {
 
     /// <summary>
-    /// Tests for the SequenceFinished debounce logic that distinguishes transient
-    /// cancel-and-restart patterns (e.g. WhenUnsafe) from true manual stops.
-    /// Uses a short debounce timeout (200ms) so expiry tests complete quickly.
+    /// Tests for SequenceFinished behavior: the event must NOT end an active session.
+    /// Only the End Session instruction (EndSession()) terminates a session.
+    /// This design survives WhenUnsafe cancel-and-restart patterns without losing data.
     /// </summary>
     public class SessionServiceRestartTests : IDisposable {
 
@@ -47,8 +46,7 @@ namespace NINA.Plugin.NightSummary.Tests {
                 _cameraMediator,
                 _sequenceMediator,
                 null, null, null, null, null, null, null, null,
-                _dbPath,
-                restartDebounceMs: 200);
+                databasePath: _dbPath);
         }
 
         public void Dispose() {
@@ -71,84 +69,63 @@ namespace NINA.Plugin.NightSummary.Tests {
         }
 
         [Fact]
-        public void SequenceFinished_WithActiveSession_ArmsDebounce_SessionStillActive() {
-            _service.StartSession("Test");
-            Assert.NotNull(_service.GetCurrentSessionId());
-
-            FireSequenceFinished();
-
-            // Session should still be alive immediately after SequenceFinished
-            Assert.NotNull(_service.GetCurrentSessionId());
-        }
-
-        [Fact]
-        public void SequenceStarting_WithinDebounceWindow_KeepsSessionAlive() {
+        public void SequenceFinished_WithActiveSession_DoesNotEndSession() {
             _service.StartSession("Test");
             var sessionId = _service.GetCurrentSessionId();
+            Assert.NotNull(sessionId);
 
             FireSequenceFinished();
-            FireSequenceStarting();  // simulates WhenUnsafe restart
 
-            // Session must survive the restart
+            // SequenceFinished must not end the session — only End Session instruction does
             Assert.Equal(sessionId, _service.GetCurrentSessionId());
         }
 
         [Fact]
-        public void SequenceStarting_WithinDebounceWindow_SubsequentTimerExpiry_DoesNotCleanUp() {
+        public void MultipleSequenceFinished_WithActiveSession_SessionSurvivesAll() {
+            _service.StartSession("Test");
+            var sessionId = _service.GetCurrentSessionId();
+
+            // Simulates multiple WhenUnsafe cancel-restart cycles
+            FireSequenceFinished();
+            FireSequenceStarting();
+            FireSequenceFinished();
+            FireSequenceStarting();
+            FireSequenceFinished();
+
+            Assert.Equal(sessionId, _service.GetCurrentSessionId());
+        }
+
+        [Fact]
+        public void SequenceFinished_ThenStarting_SessionIdUnchanged() {
             _service.StartSession("Test");
             var sessionId = _service.GetCurrentSessionId();
 
             FireSequenceFinished();
             FireSequenceStarting();
 
-            // Wait well past the debounce window — session should still be alive
-            Thread.Sleep(400);
-
             Assert.Equal(sessionId, _service.GetCurrentSessionId());
         }
 
         [Fact]
-        public void DebounceExpiry_WithoutRestart_EndsSession() {
+        public void EndSession_WithActiveSession_EndsSession() {
             _service.StartSession("Test");
             Assert.NotNull(_service.GetCurrentSessionId());
 
-            FireSequenceFinished();
-
-            // Wait for debounce to expire (200ms timeout + buffer)
-            Thread.Sleep(500);
-
-            Assert.Null(_service.GetCurrentSessionId());
-        }
-
-        [Fact]
-        public void SequenceFinished_ThenStarting_ThenFinishedAgain_HandlesCleanly() {
-            _service.StartSession("Test");
-            var sessionId = _service.GetCurrentSessionId();
-
-            // First transient interrupt — session survives
-            FireSequenceFinished();
-            FireSequenceStarting();
-            Assert.Equal(sessionId, _service.GetCurrentSessionId());
-
-            // Second interrupt without restart — debounce expires, session ends
-            FireSequenceFinished();
-            Thread.Sleep(500);
-            Assert.Null(_service.GetCurrentSessionId());
-        }
-
-        [Fact]
-        public void EndSession_DuringDebounceWindow_CancelsDebounce() {
-            _service.StartSession("Test");
-
-            FireSequenceFinished();
-
-            // End Session instruction runs while debounce is pending
             _service.EndSession();
 
-            // Wait past the debounce window — no double-cleanup crash
-            Thread.Sleep(500);
+            Assert.Null(_service.GetCurrentSessionId());
+        }
 
-            // Session ended by the instruction, not the debounce
+        [Fact]
+        public void EndSession_AfterSequenceFinished_EndsSession() {
+            _service.StartSession("Test");
+
+            // SequenceFinished fires but session stays alive
+            FireSequenceFinished();
+            Assert.NotNull(_service.GetCurrentSessionId());
+
+            // End Session instruction is the sole authority
+            _service.EndSession();
             Assert.Null(_service.GetCurrentSessionId());
         }
     }
