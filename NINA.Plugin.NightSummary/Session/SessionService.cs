@@ -252,7 +252,6 @@ namespace NINA.Plugin.NightSummary.Session {
             if (sessionId == null) return Task.CompletedTask;
 
             Logger.Warning($"NightSummary: Sequence finished with active session {sessionId} — End Session instruction did not run. Session data preserved; use Resend Previous Session for a report.");
-            Notification.ShowWarning("Night Summary: End Session instruction didn't run — session data saved. Use Resend Previous Session for a report.");
             return Task.CompletedTask;
         }
 
