@@ -212,5 +212,82 @@ namespace NINA.Plugin.NightSummary.Tests {
             Assert.Contains("Night Summary", report);
             Assert.Contains("N.I.N.A", report);
         }
+
+        // ── Overhead breakdown ────────────────────────────────────────────────
+
+        private static ReportData MakeOverheadReportData(List<TimingEvent> timingEvents) {
+            var baseData = TestDataFactory.MakeReportData(imageCount: 8);
+            // Replace session images with 8×600s exposures starting at a known time
+            var sessionId = baseData.Session.SessionId;
+            var t0 = new DateTime(2026, 4, 22, 22, 0, 0);
+            var images = new List<ImageRecord>();
+            for (int i = 0; i < 8; i++)
+                images.Add(new ImageRecord {
+                    SessionId = sessionId, TargetName = "Cat 91", Filter = "H",
+                    ExposureDuration = 600,
+                    Timestamp = t0.AddSeconds(i * 605 + 5)
+                });
+            return new ReportData {
+                Session = baseData.Session,
+                Images = images,
+                Events = baseData.Events,
+                TsData = baseData.TsData,
+                CumulativeIntegrationSeconds = baseData.CumulativeIntegrationSeconds,
+                SessionHistory = baseData.SessionHistory,
+                TimingEvents = timingEvents
+            };
+        }
+
+        [Fact]
+        public async Task OverheadCoverage_AbortedExposurePastWindowEnd_DoesNotReportHundredPercent() {
+            // Reproduce the bug: AbortedExposure whose end exceeds windowEnd was
+            // included in MergeOverheadIntervals, inflating mergedOverheadSec above
+            // impliedOverheadSec and causing coverage to be capped at 100%.
+            //
+            // Session: 8×600s = 4800s integration; window ~5436s → implied ~636s.
+            // AbortedExposure of 52s is included in the overhead table but must NOT
+            // contribute to the coverage percentage.
+            SettingsManager.Instance.Current.ShowOverheadBreakdown = true;
+
+            var t0 = new DateTime(2026, 4, 22, 21, 58, 43);
+            var timingEvents = new List<TimingEvent> {
+                new() { EventType = "TempCompFocus", StartTime = t0,               EndTime = t0.AddSeconds(7),   DurationSeconds = 7 },
+                new() { EventType = "Dither",        StartTime = t0.AddSeconds(870),  EndTime = t0.AddSeconds(898), DurationSeconds = 28 },
+                new() { EventType = "Dither",        StartTime = t0.AddSeconds(2139), EndTime = t0.AddSeconds(2166), DurationSeconds = 27 },
+                new() { EventType = "StartGuiding",  StartTime = t0.AddSeconds(2200), EndTime = t0.AddSeconds(2309), DurationSeconds = 109 },
+                // Exposure events (8 complete) — excluded from overhead merge
+                new() { EventType = "Exposure",      StartTime = t0.AddSeconds(10),  EndTime = t0.AddSeconds(615), DurationSeconds = 605 },
+                new() { EventType = "Exposure",      StartTime = t0.AddSeconds(620), EndTime = t0.AddSeconds(1225), DurationSeconds = 605 },
+                // AbortedExposure: starts inside window, ends 52s past windowEnd (2309s)
+                // windowEnd = t0+2309, AbortedExposure end = t0+2309+52 = t0+2361
+                new() { EventType = "AbortedExposure", StartTime = t0.AddSeconds(2260), EndTime = t0.AddSeconds(2361), DurationSeconds = 52.3 },
+            };
+
+            var data = MakeOverheadReportData(timingEvents);
+            var report = await _generator.GenerateHtmlReport(data);
+
+            Assert.Contains("Overhead Accounted", report);
+            Assert.DoesNotContain(">100.0%<", report);
+        }
+
+        [Fact]
+        public async Task OverheadCoverage_AbortedExposurePastWindowEnd_IsShownInBreakdownTable() {
+            // AbortedExposure (Skipped Exposure) must still appear in the overhead
+            // breakdown table even though it is excluded from the coverage calculation.
+            SettingsManager.Instance.Current.ShowOverheadBreakdown = true;
+
+            var t0 = new DateTime(2026, 4, 22, 21, 58, 43);
+            var timingEvents = new List<TimingEvent> {
+                new() { EventType = "TempCompFocus",   StartTime = t0,                EndTime = t0.AddSeconds(7),   DurationSeconds = 7 },
+                new() { EventType = "Dither",          StartTime = t0.AddSeconds(870), EndTime = t0.AddSeconds(898), DurationSeconds = 28 },
+                new() { EventType = "Exposure",        StartTime = t0.AddSeconds(10),  EndTime = t0.AddSeconds(615), DurationSeconds = 605 },
+                new() { EventType = "AbortedExposure", StartTime = t0.AddSeconds(900), EndTime = t0.AddSeconds(960), DurationSeconds = 52.3 },
+            };
+
+            var data = MakeOverheadReportData(timingEvents);
+            var report = await _generator.GenerateHtmlReport(data);
+
+            Assert.Contains("Skipped Exposure", report);
+        }
     }
 }
