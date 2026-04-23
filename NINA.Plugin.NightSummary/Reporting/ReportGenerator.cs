@@ -422,7 +422,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             // Merge overhead intervals to compute wall-clock overhead, deduplicating
             // any events that overlap with each other in time.
-            var mergedOverheadSec = MergeOverheadIntervals(effectiveOverheadEvents);
+            // Exclude AbortedExposure: the window end is deliberately capped at the last
+            // non-aborted event, so the aborted exposure's interval extends past windowEnd
+            // and would inflate mergedOverheadSec above impliedOverheadSec (causing >100%).
+            var mergedOverheadSec = MergeOverheadIntervals(
+                effectiveOverheadEvents.Where(e => e.EventType != "AbortedExposure").ToList());
             var coveragePct = impliedOverheadSec > 0
                 ? Math.Min(mergedOverheadSec / impliedOverheadSec * 100.0, 100.0) : 0;
             var unaccountedSec = Math.Max(0, impliedOverheadSec - mergedOverheadSec);
