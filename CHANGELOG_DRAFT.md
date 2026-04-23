@@ -4,7 +4,7 @@
 ## v2.11.1
 
 **Bug fixes**
-- Sessions are no longer lost when a safety monitor interrupts and restarts the sequence mid-night (e.g. WhenUnsafe from the WhenPlugin). Previously, NINA's cancel/restart pattern looked identical to a manual stop — Night Summary would end the session immediately and the End instruction would find nothing to finalize when the sequence resumed. Night Summary now only ends a session when the End Session instruction explicitly runs; `SequenceFinished` events are ignored. If the sequence ends without the End instruction running, a warning toast is shown and the session is preserved in the database — use "Resend Previous Session" to generate and deliver a report from the saved data. Reports generated from sessions where End never ran include a notice that session duration is approximate and overhead analysis is unavailable.
+- Reverted graceful session cleanup logic added in v2.11.0 which resulted in some sessions being ended prematurely by sequence interrupt triggers such as "When Becomes Unsafe". Sessions are now only ended by running the Night Summary End sequence instruction. If the End instruction never ran, the session data is preserved — use "Resend Previous Session" to generate a report. Reports from those sessions include a notice that session duration is approximate and overhead analysis is unavailable.
 
 
 ## v2.11.0
