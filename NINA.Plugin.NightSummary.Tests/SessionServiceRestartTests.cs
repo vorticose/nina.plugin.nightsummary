@@ -1,3 +1,4 @@
+using NINA.Plugin.NightSummary.Data;
 using NINA.Plugin.NightSummary.Session;
 using NINA.Plugin.NightSummary.Tests.Mocks;
 using System;
@@ -57,11 +58,8 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         // ── Helpers ──────────────────────────────────────────────────────────
 
-        private void FireSequenceFinished()
-            => _sequenceMediator.SequenceFinished?.Invoke(this, EventArgs.Empty)?.Wait();
-
-        private void FireSequenceStarting()
-            => _sequenceMediator.SequenceStarting?.Invoke(this, EventArgs.Empty)?.Wait();
+        private void FireSequenceFinished() => _sequenceMediator.FireSequenceFinished();
+        private void FireSequenceStarting() => _sequenceMediator.FireSequenceStarting();
 
         // ── Tests ─────────────────────────────────────────────────────────────
 

@@ -29,6 +29,9 @@ namespace NINA.Plugin.NightSummary.Tests.Mocks {
         public event Func<object, EventArgs, Task> SequenceStarting;
         public event Func<object, EventArgs, Task> SequenceFinished;
 
+        public void FireSequenceStarting() => SequenceStarting?.Invoke(this, EventArgs.Empty)?.Wait();
+        public void FireSequenceFinished() => SequenceFinished?.Invoke(this, EventArgs.Empty)?.Wait();
+
         public IList<IDeepSkyObjectContainer> GetDeepSkyObjectContainerTemplates() => Array.Empty<IDeepSkyObjectContainer>();
         public void SetAdvancedSequence(ISequenceRootContainer container) { }
         public void AddAdvancedTarget(IDeepSkyObjectContainer container) { }
