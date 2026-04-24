@@ -246,10 +246,11 @@ namespace NINA.Plugin.NightSummary.Server {
                         await HandleGetSessionThumbnails(res, sessionId, done);
                     } else if (path.StartsWith("/api/sessions/") && path.Contains("/livestack/")) {
                         // Serve individual live stack image file: /api/sessions/{id}/livestack/{file}.jpg
+                        // Target names can contain spaces (e.g. "M 101_R.jpg") — decode them.
                         var afterSessions = path.Substring("/api/sessions/".Length);
                         var slashIdx = afterSessions.IndexOf('/');
-                        var sessionId = afterSessions.Substring(0, slashIdx);
-                        var filename = afterSessions.Substring(slashIdx + "/livestack/".Length);
+                        var sessionId = Uri.UnescapeDataString(afterSessions.Substring(0, slashIdx));
+                        var filename = Uri.UnescapeDataString(afterSessions.Substring(slashIdx + "/livestack/".Length));
                         await HandleGetLiveStackImage(res, sessionId, filename, done);
                     } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/livestack")) {
                         var sessionId = ExtractSessionId(path, "/livestack");

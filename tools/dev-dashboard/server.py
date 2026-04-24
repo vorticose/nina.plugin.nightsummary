@@ -275,8 +275,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
         # Per-session endpoints: /api/sessions/{id}/...
         # Match: /api/sessions/{id}/livestack/{filename} (6 segments)
         if len(parts) == 6 and parts[1] == "api" and parts[2] == "sessions" and parts[4] == "livestack":
-            session_id = parts[3]
-            filename = parts[5]
+            import urllib.parse
+            session_id = urllib.parse.unquote(parts[3])
+            filename = urllib.parse.unquote(parts[5])
             if ".." in session_id or ".." in filename:
                 self.send_json(400, {"error": "Invalid path"})
                 return

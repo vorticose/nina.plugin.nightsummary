@@ -2697,6 +2697,10 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 .target-card:hover { border-color: rgba(255,255,255,0.15); }
 .target-card.collapsed .target-card-body { display: none; }
 .target-card.collapsed .targets-project-collapse-btn { transform: rotate(-90deg); }
+/* Grid row height is driven by the tallest card in the row, so a collapsed
+   card would otherwise stretch to 600+px of empty background. Align to the
+   row start so it shrinks to its header height. */
+.target-card.collapsed { align-self: start; }
 
 /* Header: name + badges */
 .target-card-header {
