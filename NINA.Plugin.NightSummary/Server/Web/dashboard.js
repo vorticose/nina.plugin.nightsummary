@@ -943,11 +943,12 @@ function renderGroupedTargets(targets, sortKey) {
 }
 
 function initProjectContainers() {
-  // Collapse button toggles collapse
+  // Collapse button toggles nearest collapsible ancestor (target card wins
+  // over its enclosing project container when both are present).
   document.querySelectorAll('.targets-project-collapse-btn').forEach(function(btn) {
     btn.addEventListener('click', function(e) {
       e.stopPropagation();
-      var c = btn.closest('.targets-project-container');
+      var c = btn.closest('.target-card, .targets-project-container');
       if (c) c.classList.toggle('collapsed');
     });
   });
@@ -3771,6 +3772,11 @@ function renderThumbnails(s, thumbs) {
     targetsEl.innerHTML = ordered.map(function(t, i) { return makeTargetBadge(t, i); }).join('');
   }
   setupMobileThumbnailZoom(el);
+  // Live-stack badges are only wired once .card-thumb-wrap elements exist.
+  // If the livestack API resolved before thumbnails rendered, retro-wire now.
+  if (livestackMap[s.sessionId]) {
+    wireLiveStackBadges(s, livestackMap[s.sessionId]);
+  }
 }
 
 function loadThumbnails(sessions) {
