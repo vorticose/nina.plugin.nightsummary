@@ -2180,6 +2180,16 @@ namespace NINA.Plugin.NightSummary.Server {
                 var map = GetTargetExclusions();
                 map.Remove(projectGuid);
                 SetDashboardMeta(TsTargetExclusionsKey, JsonSerializer.Serialize(map));
+
+                var assignments = GetProjectAssignments();
+                var keysToRemove = new List<string>();
+                foreach (var kv in assignments) {
+                    kv.Value.RemoveAll(g => string.Equals(g, projectGuid, StringComparison.OrdinalIgnoreCase));
+                    if (kv.Value.Count == 0) keysToRemove.Add(kv.Key);
+                }
+                foreach (var k in keysToRemove) assignments.Remove(k);
+                SetDashboardMeta(TsProjectAssignmentsKey, JsonSerializer.Serialize(assignments));
+
                 await WriteJson(res, 200, new { ok = true, projectGuid });
                 done?.Invoke(200, $"project reset {projectGuid}");
             } catch (Exception ex) {

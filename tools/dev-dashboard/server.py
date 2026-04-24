@@ -821,7 +821,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_json(200, {"ok": True, "reset": True})
 
     def handle_project_reset(self, project_guid):
-        """Reset only the target exclusions for a single project."""
+        """Reset a single project back to raw TS state: clear exclusions and
+        remove all cross-assigned targets pointing to this project."""
         if not project_guid:
             self.send_json(400, {"error": "projectGuid required"})
             return
@@ -829,6 +830,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
         exclusions = meta.get("targetExclusions") or {}
         exclusions.pop(project_guid, None)
         meta["targetExclusions"] = exclusions
+
+        assignments = _normalize_assignments(meta.get("projectAssignments", {}) or {})
+        for k in list(assignments.keys()):
+            if project_guid in assignments[k]:
+                assignments[k].remove(project_guid)
+            if not assignments[k]:
+                del assignments[k]
+        meta["projectAssignments"] = assignments
+
         self._save_ts_meta(meta)
         self.send_json(200, {"ok": True, "projectGuid": project_guid})
 

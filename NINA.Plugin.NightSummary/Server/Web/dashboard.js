@@ -251,6 +251,8 @@ function route() {
     renderSessionDetail(path.split('/')[2]);
   } else if (path === '/stats') {
     renderStats();
+  } else if (path === '/mockup') {
+    renderSessionList(params);
   } else {
     renderSessionList(params);
   }
@@ -2857,6 +2859,25 @@ var statExpandActiveEl = null;
 var sessionsV2Mode = true;  // false when ?sessionsV1=1
 var heroSessionId = null;   // excluded from the historical list in V2
 
+// Dev mockup: synthetic 365-day sessions for dashboard layout work
+var realSessionsCache = null;
+var mockSessionsCache = null;
+function buildMockSessions() {
+  if (mockSessionsCache) return mockSessionsCache;
+  var DAY = 86400000, now = Date.now();
+  var tgts = ['M 101','Seagull Nebula','Lagoon Nebula','Andromeda','Orion','NGC 7000','Rho Ophiuchi','Rosette','Heart Nebula'];
+  var seed = 42; function rnd(){ seed = (seed*9301+49297)%233280; return seed/233280; }
+  var synth = [];
+  for (var i=0;i<48;i++) {
+    var d = Math.floor(rnd()*365), start = new Date(now - d*DAY);
+    var iSec = Math.floor(1800 + rnd()*24000);
+    synth.push({ sessionId:'mock-'+i, sessionStart:start.toISOString(), sessionEnd:new Date(start.getTime()+iSec*1000).toISOString(), totalIntegrationSeconds:iSec, imageCount:Math.max(1,Math.floor(iSec/600)), targets:[tgts[Math.floor(rnd()*tgts.length)]], hasReport:false });
+  }
+  synth.sort(function(a,b){return new Date(b.sessionStart)-new Date(a.sessionStart);});
+  mockSessionsCache = synth;
+  return synth;
+}
+
 function getAllTargets() {
   var targets = {};
   sessionsCache.forEach(function(s) {
@@ -2896,7 +2917,9 @@ function buildActivityWaveform(sessions) {
   var spanDays = Math.ceil(dateSpan / DAY_MS);
 
   var isMobile = window.innerWidth < 720;
-  var W = Math.max(680, spanDays * 8);
+  // Desktop: stretch waveform to fill the strip (shell max-width 1800, ~100px chrome for shell+strip padding)
+  var availW = isMobile ? 680 : Math.max(680, Math.min(window.innerWidth, 1800) - 100);
+  var W = Math.max(availW, spanDays * 8);
   var BAR_W = 6;
   var CHART_H = isMobile ? 90 : 64, LABEL_H = isMobile ? 33 : 28, H = CHART_H + LABEL_H;
 
@@ -2906,6 +2929,9 @@ function buildActivityWaveform(sessions) {
   }
 
   var barData = [];
+
+  // Most-recent session (by start time) gets a gold "latest" highlight matching the latest-session card
+  var latestStart = Math.max.apply(null, sessions.filter(function(s){return s.imageCount;}).map(function(s){return new Date(s.sessionStart).getTime();}));
 
   var svg = '<svg class="lifetime-waveform" viewBox="0 0 ' + W + ' ' + H + '" ';
   svg += 'width="' + W + '" height="' + H + '" style="display:block">';
@@ -2917,7 +2943,7 @@ function buildActivityWaveform(sessions) {
   svg += '<line x1="0" y1="' + CHART_H + '" x2="' + W + '" y2="' + CHART_H + '" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>';
 
   // Adaptive x-axis: daily ticks on short spans, weekly on medium, monthly on long
-  var tickEveryDays = spanDays > 120 ? 7 : spanDays > 60 ? 2 : 1;
+  var tickEveryDays = 1; // MOCKUP: force daily ticks
   var tickLabelH = isMobile ? 12 : 12;  // labeled ticks
   var tickMajH   = isMobile ? 8  : 8;   // month-start unlabeled
   var tickMinH   = isMobile ? 3  : 3;   // minor unlabeled ticks
@@ -2966,12 +2992,20 @@ function buildActivityWaveform(sessions) {
     var barH = Math.max(2, normInteg * (CHART_H - 4));
     var y = CHART_H - barH;
     var tgtStr = (s.targets && s.targets.length) ? s.targets.join(', ') : '';
-    var tooltip = (tgtStr ? tgtStr + '\n' : '') + fmtDate(s.sessionStart) + ' \u00b7 ' + fmt(s.totalIntegrationSeconds || 0) + ' \u00b7 ' + (s.imageCount || 0) + ' images';
-    var hColor = barHeatColor(normInteg);
+    var isLatest = new Date(s.sessionStart).getTime() === latestStart;
+    var hColor = isLatest ? 'rgb(212,160,106)' : barHeatColor(normInteg);
     var glowOpacity = (0.05 + normInteg * 0.25).toFixed(2);
     barData.push({x: (x + BAR_W / 2).toFixed(1), rx: x.toFixed(1), d: (s.sessionStart || '').substring(0, 10), i: s.totalIntegrationSeconds || 0, n: s.imageCount || 0, t: (s.targets || []).join(', '), sid: s.sessionId || '', hr: !!s.hasReport});
-    svg += '<rect x="' + (x - 2).toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + (BAR_W + 4) + '" height="' + barH.toFixed(1) + '" fill="' + hColor + '" opacity="' + glowOpacity + '" rx="2"/>';
-    var bar = '<rect class="lw-bar" x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + BAR_W + '" height="' + barH.toFixed(1) + '" fill="' + hColor + '" rx="2"><title>' + esc(tooltip) + '</title></rect>';
+    if (isLatest) {
+      // Layered gold glow matching .session-card--latest
+      svg += '<rect x="' + (x - 6).toFixed(1) + '" y="' + (y - 4).toFixed(1) + '" width="' + (BAR_W + 12) + '" height="' + (barH + 8).toFixed(1) + '" fill="rgb(212,160,106)" opacity="0.12" rx="3"/>';
+      svg += '<rect x="' + (x - 3).toFixed(1) + '" y="' + (y - 2).toFixed(1) + '" width="' + (BAR_W + 6) + '" height="' + (barH + 4).toFixed(1) + '" fill="rgb(212,160,106)" opacity="0.28" rx="2.5"/>';
+    } else {
+      svg += '<rect x="' + (x - 2).toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + (BAR_W + 4) + '" height="' + barH.toFixed(1) + '" fill="' + hColor + '" opacity="' + glowOpacity + '" rx="2"/>';
+    }
+    var barClass = isLatest ? 'lw-bar lw-bar-latest' : 'lw-bar';
+    var tipMeta = fmtDate(s.sessionStart) + ' \u00b7 ' + fmt(s.totalIntegrationSeconds || 0) + ' \u00b7 ' + (s.imageCount || 0) + ' images' + (isLatest ? ' \u00b7 latest' : '');
+    var bar = '<rect class="' + barClass + '" x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + BAR_W + '" height="' + barH.toFixed(1) + '" fill="' + hColor + '" rx="2" data-lw-tgt="' + esc(tgtStr) + '" data-lw-meta="' + esc(tipMeta) + '" data-lw-latest="' + (isLatest ? '1' : '0') + '"/>';
     if (!isMobile && s.sessionId && s.hasReport) {
       svg += '<a href="/api/sessions/' + encodeURIComponent(s.sessionId) + '/report" target="_blank" rel="noopener">' + bar + '</a>';
     } else {
@@ -2990,6 +3024,18 @@ function buildCalendarHeatmap(sessions) {
   var allTs = sessions.map(function(s) { return new Date(s.sessionStart).getTime(); });
   var minTs = Math.min.apply(null, allTs), maxTs = Math.max.apply(null, allTs);
 
+  // Pad data span modestly: little data → short range; lots of data → up to 52 weeks.
+  var nowTs = Date.now();
+  if (maxTs < nowTs) maxTs = nowTs;
+  var dataSpanMs = maxTs - minTs;
+  var WEEK_MS = 7 * 86400000;
+  // Minimum 8 weeks of scope so the chart has some room to breathe.
+  var MIN_SPAN = 8 * WEEK_MS;
+  // Cap scope at 52 weeks for heavy users.
+  var MAX_SPAN = 52 * WEEK_MS;
+  var desiredSpan = Math.max(MIN_SPAN, Math.min(MAX_SPAN, dataSpanMs + 2 * WEEK_MS));
+  if (dataSpanMs < desiredSpan) minTs = maxTs - desiredSpan;
+
   // Snap to week boundaries (Sun → Sat)
   var startD = new Date(minTs);
   startD = new Date(startD.getFullYear(), startD.getMonth(), startD.getDate());
@@ -2998,15 +3044,17 @@ function buildCalendarHeatmap(sessions) {
   endD = new Date(endD.getFullYear(), endD.getMonth(), endD.getDate());
   endD.setDate(endD.getDate() + (6 - endD.getDay()));
 
-  var totalWeeks = Math.round((endD - startD) / (7 * 86400000)) + 1;
+  var totalWeeks = Math.round((endD - startD) / WEEK_MS) + 1;
   var DOW_LABELS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   var MNAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   var DOW_W = 28, TOP_H = 18;
 
-  // Auto-size cells to fill ~680px target width
-  var TARGET_W = 680;
+  // Auto-size cells: few weeks → larger cells fill width; many weeks → small cells. Mobile capped at 680.
+  var isMobileCal = typeof window !== 'undefined' && window.innerWidth < 720;
+  var TARGET_W = isMobileCal ? 680 : Math.max(680, Math.min(window.innerWidth || 1400, 1800) - 100);
+  var CELL_MAX = isMobileCal ? 20 : 22;
   var GAP = 2;
-  var CELL = Math.max(9, Math.min(20, Math.floor((TARGET_W - DOW_W - GAP * (totalWeeks - 1)) / totalWeeks)));
+  var CELL = Math.max(9, Math.min(CELL_MAX, Math.floor((TARGET_W - DOW_W - GAP * (totalWeeks - 1)) / totalWeeks)));
   GAP = Math.max(1, Math.min(3, Math.floor(CELL / 5)));
   var STEP = CELL + GAP;
   var svgW = DOW_W + totalWeeks * STEP;
@@ -3014,13 +3062,20 @@ function buildCalendarHeatmap(sessions) {
 
   // Build day buckets: total integration + best session for click-through
   var dayMap = {};
+  var dayImgMap = {};
+  var daySessionStart = {};
   var sessionMap = {};
+  var latestStart = 0, latestDayKey = null;
   sessions.forEach(function(s) {
     if (!s.sessionStart) return;
     var m = String(s.sessionStart).match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (!m) return;
     var dk = m[1] + '-' + m[2] + '-' + m[3];
     dayMap[dk] = (dayMap[dk] || 0) + (s.totalIntegrationSeconds || 0);
+    dayImgMap[dk] = (dayImgMap[dk] || 0) + (s.imageCount || 0);
+    var startMs = new Date(s.sessionStart).getTime();
+    if (!daySessionStart[dk] || startMs < daySessionStart[dk]) daySessionStart[dk] = startMs;
+    if (startMs > latestStart) { latestStart = startMs; latestDayKey = dk; }
     var secs = s.totalIntegrationSeconds || 0, imgs = s.imageCount || 0;
     var cur = sessionMap[dk];
     if (s.sessionId && s.hasReport && (!cur || secs > cur.bestSecs || (secs === cur.bestSecs && imgs > cur.bestImgs))) {
@@ -3064,9 +3119,18 @@ function buildCalendarHeatmap(sessions) {
       var secs = dayMap[dk] || 0;
       var sessInfo = sessionMap[dk];
       var tgtStr = (sessInfo && sessInfo.targets && sessInfo.targets.length) ? sessInfo.targets.join(', ') : '';
-      var tooltip = (tgtStr ? tgtStr + '\n' : '') + dk + (secs ? ' \u00b7 ' + fmt(secs) : ' \u00b7 no session');
+      var isLatest = secs > 0 && dk === latestDayKey;
+      var imgs = dayImgMap[dk] || 0;
+      var tipMeta = secs
+        ? fmtDate(dk) + ' \u00b7 ' + fmt(secs) + ' \u00b7 ' + imgs + ' image' + (imgs === 1 ? '' : 's') + (isLatest ? ' \u00b7 latest' : '')
+        : fmtDate(dk) + ' \u00b7 no session';
       var clickable = sessInfo && sessInfo.id;
-      var rect = '<rect class="lifetime-heatmap-cell' + (clickable ? ' is-clickable' : '') + '" x="' + cx + '" y="' + cy + '" width="' + CELL + '" height="' + CELL + '" rx="2" fill="' + cellColor(secs) + '"><title>' + esc(tooltip) + '</title></rect>';
+      var fillColor = isLatest ? 'rgb(212,160,106)' : cellColor(secs);
+      if (isLatest) {
+        svg += '<rect x="' + (cx - 4) + '" y="' + (cy - 4) + '" width="' + (CELL + 8) + '" height="' + (CELL + 8) + '" fill="rgb(212,160,106)" opacity="0.12" rx="3"/>';
+        svg += '<rect x="' + (cx - 2) + '" y="' + (cy - 2) + '" width="' + (CELL + 4) + '" height="' + (CELL + 4) + '" fill="rgb(212,160,106)" opacity="0.28" rx="2.5"/>';
+      }
+      var rect = '<rect class="lifetime-heatmap-cell lw-bar' + (clickable ? ' is-clickable' : '') + (isLatest ? ' lw-bar-latest' : '') + '" x="' + cx + '" y="' + cy + '" width="' + CELL + '" height="' + CELL + '" rx="2" fill="' + fillColor + '" data-lw-tgt="' + esc(tgtStr) + '" data-lw-meta="' + esc(tipMeta) + '" data-lw-latest="' + (isLatest ? '1' : '0') + '"/>';
       if (clickable) {
         svg += '<a href="/api/sessions/' + encodeURIComponent(sessInfo.id) + '/report" target="_blank" rel="noopener">' + rect + '</a>';
       } else {
@@ -3140,6 +3204,14 @@ function fmtActivityRange(sessions) {
 
 function toggleLifetimeExpand(strip) {
   strip.classList.toggle('lifetime-strip--expanded');
+  if (strip.classList.contains('lifetime-strip--expanded')) {
+    var sw = strip.querySelector('.lw-scroll-wrap');
+    if (sw) {
+      var snap = function() { sw.scrollLeft = sw.scrollWidth; };
+      requestAnimationFrame(function() { requestAnimationFrame(snap); });
+      [50, 200].forEach(function(ms) { setTimeout(snap, ms); });
+    }
+  }
 }
 
 function initWaveformScrubber(container) {
@@ -3374,7 +3446,23 @@ function renderSessionsV2(el, sub, params) {
   el.innerHTML = html;
 
   var scrollWrap = el.querySelector('.lw-scroll-wrap');
-  if (scrollWrap) requestAnimationFrame(function() { scrollWrap.scrollLeft = scrollWrap.scrollWidth; });
+  if (scrollWrap) {
+    var snapEnd = function() {
+      scrollWrap.scrollLeft = scrollWrap.scrollWidth;
+    };
+    requestAnimationFrame(function() { requestAnimationFrame(snapEnd); });
+    [50, 150, 400, 900].forEach(function(ms) { setTimeout(snapEnd, ms); });
+    if (typeof ResizeObserver === 'function') {
+      var ro = new ResizeObserver(function() {
+        snapEnd();
+        if (scrollWrap.scrollWidth > scrollWrap.clientWidth + 4) {
+          ro.disconnect();
+        }
+      });
+      try { ro.observe(scrollWrap.firstElementChild || scrollWrap); } catch (e) {}
+      setTimeout(function() { try { ro.disconnect(); } catch (e) {} }, 2000);
+    }
+  }
 
   initWaveformScrubber(el);
 
@@ -3423,28 +3511,39 @@ function renderSessionList(params) {
   sessionsV2Mode = !v1;
   heroSessionId = null;
 
-  if (sessionsCache.length === 0) {
-    el.innerHTML = '<div class="loading">Loading sessions...</div>';
-    api('/api/sessions').then(function(data) {
-      sessionsCache = data;
-      logInfo('Sessions loaded:', data.length);
-      getAllTargets().forEach(function(t) { selectedTargets[t] = true; });
-      if (v1) {
-        doRenderList(el, sub, fromVal, toVal, sortVal);
-      } else {
-        renderSessionsV2(el, sub, params);
-      }
-    }).catch(function(err) {
-      logError('Failed to load sessions:', err.message);
-      el.innerHTML = '<div class="error">Failed to load sessions: ' + esc(err.message) + '</div>';
-    });
-  } else {
+  var isMockup = location.hash.indexOf('#/mockup') === 0;
+
+  function finish() {
+    getAllTargets().forEach(function(t) { selectedTargets[t] = true; });
     if (v1) {
       doRenderList(el, sub, fromVal, toVal, sortVal);
     } else {
       renderSessionsV2(el, sub, params);
     }
   }
+
+  if (isMockup) {
+    sessionsCache = buildMockSessions();
+    finish();
+    return;
+  }
+
+  if (realSessionsCache) {
+    sessionsCache = realSessionsCache;
+    finish();
+    return;
+  }
+
+  el.innerHTML = '<div class="loading">Loading sessions...</div>';
+  api('/api/sessions').then(function(data) {
+    realSessionsCache = data;
+    sessionsCache = realSessionsCache;
+    logInfo('Sessions loaded:', data.length);
+    finish();
+  }).catch(function(err) {
+    logError('Failed to load sessions:', err.message);
+    el.innerHTML = '<div class="error">Failed to load sessions: ' + esc(err.message) + '</div>';
+  });
 }
 
 function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
@@ -4133,6 +4232,48 @@ var isTouchDevice = 'ontouchstart' in window;
     activeEl = el;
     show(el.dataset.template, el);
     autoHide = setTimeout(function() { hide(); activeEl = null; }, 2500);
+  });
+})();
+
+// ── Waveform bar hover tooltip ───────────────────────────────────────────
+(function() {
+  var tip = document.createElement('div');
+  tip.className = 'lw-bar-tip';
+  document.body.appendChild(tip);
+
+  function show(bar) {
+    var tgt = bar.getAttribute('data-lw-tgt') || '';
+    var meta = bar.getAttribute('data-lw-meta') || '';
+    var latest = bar.getAttribute('data-lw-latest') === '1';
+    var html = '';
+    if (tgt) html += '<div class="lw-tip-tgt">' + tgt + '</div>';
+    html += '<div class="lw-tip-meta">' + meta + '</div>';
+    tip.innerHTML = html;
+    tip.classList.toggle('lw-bar-tip--latest', latest);
+    tip.style.top = '-9999px';
+    tip.style.left = '-9999px';
+    tip.classList.add('visible');
+    var r = bar.getBoundingClientRect();
+    var tw = tip.offsetWidth;
+    var th = tip.offsetHeight;
+    var left = r.left + r.width / 2 - tw / 2;
+    left = Math.max(8, Math.min(left, window.innerWidth - tw - 8));
+    var top = r.top - th - 8;
+    if (top < 8) top = r.bottom + 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  }
+  function hide() { tip.classList.remove('visible'); }
+
+  document.addEventListener('mouseover', function(e) {
+    if (isTouchDevice) return;
+    var bar = e.target.closest('.lw-bar');
+    if (bar) show(bar);
+  });
+  document.addEventListener('mouseout', function(e) {
+    if (isTouchDevice) return;
+    var bar = e.target.closest('.lw-bar');
+    if (bar && !bar.contains(e.relatedTarget)) hide();
   });
 })();
 
@@ -6383,9 +6524,17 @@ function openManageProjectsModal() {
 
   function renderProjectRow(p) {
     var targets = projectTargetList(p);
-    var subtitle = p.isCustom
-      ? (targets.length > 0 ? targets.length + ' assigned target' + (targets.length > 1 ? 's' : '') : 'No targets assigned')
-      : p.targetCount + ' TS target' + (p.targetCount !== 1 ? 's' : '');
+    var excludedCount = (!p.isCustom && statsTargetExclusions) ? (statsTargetExclusions[p.guid] || []).length : 0;
+    var subtitle;
+    if (p.isCustom) {
+      subtitle = targets.length > 0
+        ? targets.length + ' assigned target' + (targets.length > 1 ? 's' : '')
+        : 'No targets assigned';
+    } else {
+      var visible = p.targetCount - excludedCount;
+      subtitle = visible + ' TS target' + (visible !== 1 ? 's' : '');
+      if (excludedCount > 0) subtitle += ' \u00b7 ' + excludedCount + ' hidden';
+    }
     var typeTag = p.isMosaic ? 'Mosaic' : (p.isCustom ? 'Custom' : (p.targetCount > 1 ? 'Multi' : 'Single'));
     var hasTargets = targets.length > 0;
     var hasExclusions = !p.isCustom && statsTargetExclusions && (statsTargetExclusions[p.guid] || []).length > 0;
@@ -6548,7 +6697,8 @@ function openManageProjectsModal() {
     fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   }
 
-  // Restore all hidden targets for one project in-place.
+  // Restore project to raw TS state: re-add excluded targets and drop any
+  // cross-assigned targets that point to this project.
   function handleProjectReset(projectGuid) {
     _manageProjectsDirty = true;
     var proj = (statsTsProjects || []).find(function(p) { return p.guid === projectGuid; });
@@ -6557,7 +6707,21 @@ function openManageProjectsModal() {
     var toRestore = (proj.targets || []).filter(function(t) {
       return excluded.indexOf((t.name || '').toLowerCase()) >= 0;
     });
+    var nativeNames = (proj.targets || []).reduce(function(acc, t) {
+      acc[(t.name || '').toLowerCase()] = true; return acc;
+    }, {});
     var targetList = backdrop.querySelector('.manage-project-targets[data-guid="' + projectGuid + '"]');
+
+    // Remove cross-assigned rows (anything not in the project's native targets)
+    if (targetList) {
+      targetList.querySelectorAll('.manage-project-target').forEach(function(row) {
+        var nameEl = row.querySelector('.manage-project-target-name');
+        var name = nameEl ? (nameEl.textContent || '').toLowerCase() : '';
+        if (name && !nativeNames[name]) row.remove();
+      });
+    }
+
+    // Re-add previously excluded TS targets
     toRestore.forEach(function(t) {
       var row = document.createElement('div');
       row.className = 'manage-project-target';
@@ -6577,7 +6741,17 @@ function openManageProjectsModal() {
       row.appendChild(removeBtn);
       if (targetList) targetList.appendChild(row);
     });
+
     if (statsTargetExclusions) delete statsTargetExclusions[projectGuid];
+    // Drop assignments that point to this project
+    if (statsProjectAssignments) {
+      Object.keys(statsProjectAssignments).forEach(function(k) {
+        var arr = statsProjectAssignments[k] || [];
+        var idx = arr.indexOf(projectGuid);
+        if (idx >= 0) arr.splice(idx, 1);
+        if (arr.length === 0) delete statsProjectAssignments[k];
+      });
+    }
     updateProjectRowMeta(projectGuid);
     fetch('/api/stats/projects/' + encodeURIComponent(projectGuid) + '/reset', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({})

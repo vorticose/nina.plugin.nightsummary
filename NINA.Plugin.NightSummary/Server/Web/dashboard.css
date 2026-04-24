@@ -875,6 +875,10 @@ nav {
   opacity: 0;
 }
 
+@media (max-width: 720px) {
+  .livestack-badge { display: none; }
+}
+
 .livestack-shelf {
   position: absolute;
   transform: translateX(-50%);
@@ -1740,6 +1744,20 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   justify-content: space-between;
   gap: 12px;
 }
+@media (min-width: 721px) {
+  .lifetime-stats-row {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+  }
+  .lifetime-stats-row > .lifetime-stats {
+    grid-column: 2;
+    justify-self: center;
+  }
+  .lifetime-stats-row > .lv-toggle {
+    grid-column: 3;
+    justify-self: end;
+  }
+}
 .lifetime-stats {
   display: flex;
   gap: 8px;
@@ -1783,6 +1801,8 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   align-items: center;
   overflow-x: auto;
 }
+.lifetime-calendar-slot { align-items: center; overflow-x: visible; }
+.lifetime-calendar-slot > svg { margin: 0 auto; }
 /* keep old slot name in case referenced elsewhere */
 .lifetime-heatmap-slot {
   display: flex;
@@ -1796,7 +1816,21 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   font-family: inherit;
 }
 .lw-bar { cursor: pointer; }
-.lw-scroll-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.lw-scroll-wrap {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.18) transparent;
+  -webkit-overflow-scrolling: touch;
+}
+.lw-scroll-wrap::-webkit-scrollbar { height: 8px; }
+.lw-scroll-wrap::-webkit-scrollbar-track { background: transparent; }
+.lw-scroll-wrap::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.18);
+  border-radius: 4px;
+}
+.lw-scroll-wrap::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
 .lw-scroll-wrap svg { user-select: none; -webkit-user-select: none; -webkit-user-drag: none; -webkit-touch-callout: none; }
 .lw-bar-selected { stroke: #c0d8ff; stroke-width: 1.5; }
 
@@ -1905,7 +1939,8 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   .lifetime-strip { padding: 14px 16px; }
   .lw-label { font-size: 12px; }
   .lifetime-stats { gap: 6px; flex: 1; }
-  .lifetime-card-stat { padding: 8px 6px; flex: 1; text-align: center; }
+  .lifetime-stats .lifetime-card-stat { padding: 8px 4px; flex: 1; text-align: center; }
+  .lifetime-stats .lifetime-card-stat .card-stat-label { font-size: 9px; letter-spacing: 0; }
   .lifetime-heatmap-slot,
   .lifetime-waveform-slot,
   .lifetime-calendar-slot { display: none !important; }
@@ -3400,6 +3435,40 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 .ts-bar-tip.visible {
   opacity: 1;
 }
+
+/* Waveform bar hover tooltip — matches ts-bar-tip but allows multi-line */
+.lw-bar-tip {
+  position: fixed;
+  background: var(--surface-well);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: var(--text-primary);
+  font-size: 11px;
+  line-height: 1.45;
+  padding: 7px 11px;
+  border-radius: 6px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s;
+  z-index: 9999;
+  max-width: 280px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+.lw-bar-tip.visible { opacity: 1; }
+.lw-bar-tip .lw-tip-tgt {
+  color: var(--text-primary);
+  font-weight: 600;
+  margin-bottom: 3px;
+  word-break: break-word;
+}
+.lw-bar-tip .lw-tip-meta {
+  color: var(--text-tertiary);
+  font-size: 10px;
+  letter-spacing: 0.3px;
+}
+.lw-bar-tip--latest {
+  border-color: rgba(212,160,106,0.45);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4), 0 0 14px rgba(212,160,106,0.22);
+}
 .tdp-project-actions {
   display: flex;
   gap: 8px;
@@ -4337,6 +4406,8 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   .pdp-session-table .pdp-session-targets { padding-left: 16px; }
   .pdp-session-table tr.tdp-filter-subrow td.pdp-target-subrow-name { padding-right: 28px; }
   /* Sticky View column so it's always visible when scrolling */
+  .tdp-table th:last-child,
+  .tdp-table td:last-child,
   .pdp-session-table th:last-child,
   .pdp-session-table td:last-child {
     position: sticky;
@@ -4344,8 +4415,12 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
     background: var(--surface);
     z-index: 1;
   }
+  .tdp-table tr.tdp-filter-subrow td:last-child,
+  .tdp-table tr.tdp-session-row.tdp-expanded td:last-child,
+  .tdp-table tr.tdp-session-row:hover td:last-child,
   .pdp-session-table tr.tdp-filter-subrow td:last-child,
-  .pdp-session-table tr.tdp-session-row.tdp-expanded td:last-child {
+  .pdp-session-table tr.tdp-session-row.tdp-expanded td:last-child,
+  .pdp-session-table tr.tdp-session-row:hover td:last-child {
     background: color-mix(in srgb, var(--surface) 97%, white);
   }
 }
