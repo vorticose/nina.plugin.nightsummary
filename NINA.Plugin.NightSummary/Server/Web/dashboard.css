@@ -4119,12 +4119,18 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 }
 
 /* ── Multi-project thumbnail grid ──────────────────────────────────────── */
-/* 2 per row matching the project card layout. Grid grows naturally; modal
-   scrolls so each square cell displays its full image uncropped. */
+/* 2 per row matching the project card layout. Cells stay square via the
+   ::before padding trick; container capped at ~one row + peek so downstream
+   PDP content stays above the fold, extra rows scroll inside. */
 .pdp-multi-thumb-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 2px;
+  max-height: min(calc(50vw + 40px), 580px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.18) transparent;
 }
 .pdp-multi-thumb-cell {
   background: var(--surface-well);
