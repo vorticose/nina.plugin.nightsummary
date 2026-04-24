@@ -8,40 +8,42 @@ using NINA.Plugin.NightSummary.Dashboard.Abstractions;
 
 namespace NINA.Plugin.NightSummary.Server;
 
-// Plugin-side data source. Wraps SessionDatabase and TargetSchedulerDatabase.
-// All methods Task-wrap their underlying sync calls -- the existing DB code
-// is sync (System.Data.SQLite) and the dashboard handlers are low-throughput,
-// so there's no benefit to making the underlying code async.
+// Plugin-side data source. Reads via the classlib SqliteSessionReader so prod
+// and dev share one source of truth for SELECT logic. TS reads still go through
+// the plugin's TargetSchedulerDatabase since that lives outside the dashboard
+// SQLite (separate file managed by the TS plugin).
 internal sealed class NinaDashboardDataSource : IDashboardDataSource {
     private readonly string dbPath;
+    private readonly string connectionString;
 
     public NinaDashboardDataSource(string dbPath) {
-        this.dbPath = dbPath;
+        this.dbPath           = dbPath;
+        this.connectionString = $"Data Source={dbPath};Version=3;";
     }
 
-    private SessionDatabase Db() => new SessionDatabase(dbPath);
+    private SqliteSessionReader Reader() => new SqliteSessionReader(connectionString, new NinaDashboardLogger());
     private bool HasDb() => File.Exists(dbPath);
 
     public Task<IReadOnlyList<SessionRecord>> GetAllSessionsAsync(CancellationToken ct = default)
-        => Task.FromResult<IReadOnlyList<SessionRecord>>(HasDb() ? Db().GetAllSessions() : new List<SessionRecord>());
+        => Task.FromResult<IReadOnlyList<SessionRecord>>(HasDb() ? Reader().GetAllSessions() : new List<SessionRecord>());
 
     public Task<SessionRecord?> GetSessionAsync(string sessionId, CancellationToken ct = default)
-        => Task.FromResult(HasDb() ? Db().GetSession(sessionId) : null);
+        => Task.FromResult(HasDb() ? Reader().GetSession(sessionId) : null);
 
     public Task<IReadOnlyList<ImageRecord>> GetImagesAsync(string sessionId, CancellationToken ct = default)
-        => Task.FromResult<IReadOnlyList<ImageRecord>>(HasDb() ? Db().GetImagesForSession(sessionId) : new List<ImageRecord>());
+        => Task.FromResult<IReadOnlyList<ImageRecord>>(HasDb() ? Reader().GetImagesForSession(sessionId) : new List<ImageRecord>());
 
     public Task<IReadOnlyList<SessionEvent>> GetEventsAsync(string sessionId, CancellationToken ct = default)
-        => Task.FromResult<IReadOnlyList<SessionEvent>>(HasDb() ? Db().GetEventsForSession(sessionId) : new List<SessionEvent>());
+        => Task.FromResult<IReadOnlyList<SessionEvent>>(HasDb() ? Reader().GetEventsForSession(sessionId) : new List<SessionEvent>());
 
     public Task<IReadOnlyList<TimingEvent>> GetTimingEventsAsync(string sessionId, CancellationToken ct = default)
-        => Task.FromResult<IReadOnlyList<TimingEvent>>(HasDb() ? Db().GetTimingEventsForSession(sessionId) : new List<TimingEvent>());
+        => Task.FromResult<IReadOnlyList<TimingEvent>>(HasDb() ? Reader().GetTimingEventsForSession(sessionId) : new List<TimingEvent>());
 
     public Task<IReadOnlyList<TargetDetail>> GetTargetDetailsAsync(CancellationToken ct = default)
-        => Task.FromResult<IReadOnlyList<TargetDetail>>(HasDb() ? Db().GetTargetDetails() : new List<TargetDetail>());
+        => Task.FromResult<IReadOnlyList<TargetDetail>>(HasDb() ? Reader().GetTargetDetails() : new List<TargetDetail>());
 
     public Task<IReadOnlyList<TargetSessionDetail>> GetSessionsForTargetAsync(string targetName, CancellationToken ct = default)
-        => Task.FromResult<IReadOnlyList<TargetSessionDetail>>(HasDb() ? Db().GetSessionsForTarget(targetName) : new List<TargetSessionDetail>());
+        => Task.FromResult<IReadOnlyList<TargetSessionDetail>>(HasDb() ? Reader().GetSessionsForTarget(targetName) : new List<TargetSessionDetail>());
 
     public Task<IReadOnlyDictionary<string, double>> GetLatestPositionAnglesAsync(CancellationToken ct = default)
         => Task.FromResult<IReadOnlyDictionary<string, double>>(new Dictionary<string, double>());
