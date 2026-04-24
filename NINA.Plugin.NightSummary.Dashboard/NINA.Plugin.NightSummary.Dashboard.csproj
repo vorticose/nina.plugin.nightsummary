@@ -7,4 +7,19 @@
     <LangVersion>latest</LangVersion>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Web\dashboard.html">
+      <LogicalName>dashboard.html</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Web\dashboard.css">
+      <LogicalName>dashboard.css</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Web\dashboard.js">
+      <LogicalName>dashboard.js</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\assets\plugin-icon.png">
+      <LogicalName>plugin-icon.png</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
 </Project>

@@ -48,18 +48,16 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- plugin-icon.png stays embedded in the plugin assembly because ReportGenerator embeds it
+         into HTML reports. The dashboard classlib also embeds its own copy for the favicon
+         endpoint (separate assembly, separate resource lookup). -->
     <EmbeddedResource Include="..\assets\plugin-icon.png">
       <LogicalName>plugin-icon.png</LogicalName>
     </EmbeddedResource>
-    <EmbeddedResource Include="Server\Web\dashboard.html">
-      <LogicalName>dashboard.html</LogicalName>
-    </EmbeddedResource>
-    <EmbeddedResource Include="Server\Web\dashboard.css">
-      <LogicalName>dashboard.css</LogicalName>
-    </EmbeddedResource>
-    <EmbeddedResource Include="Server\Web\dashboard.js">
-      <LogicalName>dashboard.js</LogicalName>
-    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NINA.Plugin.NightSummary.Dashboard\NINA.Plugin.NightSummary.Dashboard.csproj" />
   </ItemGroup>
 
   <ItemGroup>
