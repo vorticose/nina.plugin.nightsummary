@@ -3432,7 +3432,8 @@ function renderSessionsV2(el, sub, params) {
   if (sub) sub.textContent = fmtDate(hero.sessionStart);
 
   var html = renderLifetimeStrip(sessions);
-  html += renderHeroSection(hero);
+  var heroModeClass = cardViewMode === 'compact' ? ' cards-compact' : '';
+  html += '<div class="cards-container' + heroModeClass + '">' + renderHeroSection(hero) + '</div>';
   if (earlierCount > 0) {
     html += '<div class="sessions-expander">' +
       '<button class="sessions-expander-btn" id="sessions-expander-btn">' +
@@ -5190,6 +5191,11 @@ function bindListEvents() {
       toggle.querySelectorAll('.view-toggle-btn').forEach(function(b) {
         b.classList.toggle('active', b.dataset.view === cardViewMode);
       });
+      // Hero card lives outside #sessions-history — toggle its container class directly
+      var heroCard = document.querySelector('.session-card--latest');
+      if (heroCard && heroCard.parentElement && heroCard.parentElement.classList.contains('cards-container')) {
+        heroCard.parentElement.classList.toggle('cards-compact', cardViewMode === 'compact');
+      }
       setTimeout(refresh, 230);
     });
   });

@@ -271,6 +271,18 @@ namespace NINA.Plugin.NightSummary.Server {
                         var encoded = path.Substring(prefix.Length, path.Length - prefix.Length - suffix.Length);
                         var targetName = WebUtility.UrlDecode(encoded);
                         await HandleGetTargetSessions(res, targetName, done);
+                    } else if (path.StartsWith("/api/stats/projects/") && path.EndsWith("/sessions")) {
+                        var pPrefix = "/api/stats/projects/";
+                        var pSuffix = "/sessions";
+                        var pEncoded = path.Substring(pPrefix.Length, path.Length - pPrefix.Length - pSuffix.Length);
+                        var pGuid = WebUtility.UrlDecode(pEncoded);
+                        await HandleGetProjectSessions(res, pGuid, done);
+                    } else if (path.StartsWith("/api/stats/projects/") && path.EndsWith("/mosaic-thumb")) {
+                        var mPrefix = "/api/stats/projects/";
+                        var mSuffix = "/mosaic-thumb";
+                        var mEncoded = path.Substring(mPrefix.Length, path.Length - mPrefix.Length - mSuffix.Length);
+                        var mGuid = WebUtility.UrlDecode(mEncoded);
+                        await HandleGetProjectMosaicThumb(res, mGuid, done);
                     } else if (path.StartsWith("/api/stats/projects/") && !path.Substring("/api/stats/projects/".Length).Contains("/")) {
                         var projectGuid = WebUtility.UrlDecode(path.Substring("/api/stats/projects/".Length));
                         await HandleGetProjectStats(res, projectGuid, done);
@@ -1272,6 +1284,60 @@ namespace NINA.Plugin.NightSummary.Server {
             var statusOverrides = GetTsStatusOverrides();
             var manualLinks     = GetTsTargetLinks();
 
+            // Cross-project assignments (target name → list of assigned project guids)
+            var projectAssignmentsMap = GetProjectAssignments();
+
+            // Index TS projects by guid for assignment lookups
+            var tsProjectByGuid = new Dictionary<string, TsProjectInfo>(StringComparer.OrdinalIgnoreCase);
+            if (tsProjects != null) {
+                foreach (var p in tsProjects) {
+                    if (!string.IsNullOrEmpty(p.Guid)) tsProjectByGuid[p.Guid] = p;
+                }
+            }
+
+            // Build a summary project object for an assigned project GUID
+            // (mirrors _build_assigned_project_obj in the Python dev server).
+            object BuildAssignedProjectObj(string pguid) {
+                if (string.IsNullOrEmpty(pguid)) return null;
+                if (!tsProjectByGuid.TryGetValue(pguid, out var aproj)) return null;
+                var rawState = aproj.State ?? "Active";
+                string effState;
+                string effSrc;
+                if (statusOverrides.TryGetValue(aproj.Guid ?? "", out var ov) && !string.IsNullOrEmpty(ov)) {
+                    effState = ov;
+                    effSrc   = "override";
+                } else {
+                    effState = rawState;
+                    effSrc   = "raw";
+                }
+                int assignedCount = 0;
+                foreach (var kv in projectAssignmentsMap) {
+                    if (kv.Value != null && kv.Value.Any(g => string.Equals(g, pguid, StringComparison.OrdinalIgnoreCase))) {
+                        assignedCount++;
+                    }
+                }
+                return new {
+                    id              = aproj.Id,
+                    guid            = aproj.Guid,
+                    profileId       = aproj.ProfileId,
+                    name            = aproj.Name,
+                    description     = aproj.Description,
+                    rawState        = rawState,
+                    state           = effState,
+                    stateSource     = effSrc,
+                    priority        = aproj.Priority,
+                    isMosaic        = aproj.IsMosaic,
+                    createDate      = aproj.CreateDate?.ToString("o"),
+                    activeDate      = aproj.ActiveDate?.ToString("o"),
+                    inactiveDate    = aproj.InactiveDate?.ToString("o"),
+                    minimumAltitude = aproj.MinimumAltitude,
+                    maximumAltitude = aproj.MaximumAltitude,
+                    targetCount     = aproj.Targets.Count + assignedCount,
+                    percentComplete = (double?)null,
+                    isCustom        = false,
+                };
+            }
+
             var result = details.Select(t => {
                 (TsProjectInfo project, TsProjectTarget target)? ts = null;
                 string matchedBy = null;
@@ -1369,6 +1435,22 @@ namespace NINA.Plugin.NightSummary.Server {
                     };
                 }
 
+                // Build additionalProjects from cross-assignments (guids beyond primary)
+                List<object> additionalProjects = null;
+                if (projectAssignmentsMap.TryGetValue((t.TargetName ?? "").ToLowerInvariant(), out var assignedGuids)
+                    && assignedGuids != null && assignedGuids.Count > 0) {
+                    string primaryGuid = ts.HasValue ? ts.Value.project.Guid : null;
+                    foreach (var aguid in assignedGuids) {
+                        if (!string.IsNullOrEmpty(primaryGuid) && string.Equals(aguid, primaryGuid, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        var apObj = BuildAssignedProjectObj(aguid);
+                        if (apObj != null) {
+                            if (additionalProjects == null) additionalProjects = new List<object>();
+                            additionalProjects.Add(apObj);
+                        }
+                    }
+                }
+
                 return new {
                     target = t.TargetName,
                     totalIntegrationSeconds = t.TotalIntegrationSeconds,
@@ -1391,6 +1473,7 @@ namespace NINA.Plugin.NightSummary.Server {
                         acceptedCount = f.AcceptedCount
                     }),
                     ts = tsObj,
+                    additionalProjects = additionalProjects,
                 };
             }).ToList();
 
@@ -1415,7 +1498,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 tsStatus,
                 tsError,
                 tsProjects = tsProjectsSummary,
-                projectAssignments = GetProjectAssignments(),
+                projectAssignments = projectAssignmentsMap,
                 targetExclusions   = GetTargetExclusions(),
             });
             done?.Invoke(200, $"{result.Count} targets (ts: {tsStatus})");
@@ -1826,6 +1909,298 @@ namespace NINA.Plugin.NightSummary.Server {
 
             await WriteJson(res, 200, result);
             done?.Invoke(200, $"project '{proj.Name}' ({proj.Targets.Count} panels)");
+        }
+
+        // ── Project sessions (PDP session history + chart) ───────────────────
+        private async Task HandleGetProjectSessions(HttpListenerResponse res, string projectGuid, Action<int, string> done) {
+            if (string.IsNullOrEmpty(projectGuid)) {
+                await WriteJson(res, 400, new { error = "Missing project guid" });
+                done?.Invoke(400, null);
+                return;
+            }
+
+            var tsDb = new TargetSchedulerDatabase();
+            if (!TargetSchedulerDatabase.IsPluginInstalled || !tsDb.IsAvailable) {
+                await WriteJson(res, 404, new { error = "Target Scheduler not available" });
+                done?.Invoke(404, null);
+                return;
+            }
+
+            List<TsProjectInfo> allProjects;
+            try {
+                allProjects = tsDb.GetAllProjects();
+            } catch (Exception ex) {
+                await WriteJson(res, 500, new { error = ex.Message });
+                done?.Invoke(500, ex.Message);
+                return;
+            }
+
+            var proj = allProjects.FirstOrDefault(p =>
+                string.Equals(p.Guid, projectGuid, StringComparison.OrdinalIgnoreCase));
+            if (proj == null) {
+                await WriteJson(res, 404, new { error = $"Project '{projectGuid}' not found" });
+                done?.Invoke(404, null);
+                return;
+            }
+
+            // Panel target names (exclude targetExclusions + zero-coord stubs)
+            var exclusions = GetTargetExclusions();
+            var excList = exclusions.TryGetValue(proj.Guid ?? "", out var ex1) ? ex1 : new List<string>();
+            var panelNames = new List<string>();
+            foreach (var tgt in proj.Targets) {
+                var tname = tgt.Name ?? "";
+                if (excList.Any(e => string.Equals(e, tname, StringComparison.OrdinalIgnoreCase))) continue;
+                if (tgt.RA == 0 && tgt.Dec == 0) continue;
+                panelNames.Add(tname);
+            }
+            // Also include cross-assigned targets (projectAssignments pointing here)
+            var assignments = GetProjectAssignments();
+            foreach (var kv in assignments) {
+                if (panelNames.Any(n => string.Equals(n, kv.Key, StringComparison.OrdinalIgnoreCase))) continue;
+                if ((kv.Value ?? new List<string>()).Any(g => string.Equals(g, proj.Guid, StringComparison.OrdinalIgnoreCase))) {
+                    panelNames.Add(kv.Key);
+                }
+            }
+            var panelSetLower = new HashSet<string>(panelNames.Select(n => n.ToLowerInvariant()));
+
+            if (!File.Exists(dbPath)) {
+                await WriteJson(res, 200, new {
+                    projectGuid, panelNames, totalIntegrationHours = 0.0, totalFrames = 0,
+                    sessionCount = 0, sessions = Array.Empty<object>()
+                });
+                done?.Invoke(200, "0 sessions (no db)");
+                return;
+            }
+
+            var db = new SessionDatabase(dbPath);
+            var allSessions = db.GetAllSessions().OrderByDescending(x => x.SessionStart).ToList();
+            var resultSessions = new List<object>();
+            double totalSec = 0;
+            int totalFrames = 0;
+
+            foreach (var s in allSessions) {
+                if (string.IsNullOrEmpty(s.SessionId)) continue;
+
+                var images = db.GetImagesForSession(s.SessionId);
+                if (images == null || images.Count == 0) continue;
+
+                var matching = images.Where(i => {
+                    var tn = (i.TargetName ?? "").ToLowerInvariant();
+                    if (!panelSetLower.Contains(tn)) return false;
+                    var it = i.ImageType ?? "";
+                    return it == "" || it == "LIGHT";
+                }).ToList();
+                if (matching.Count == 0) continue;
+
+                var accepted = matching.Where(i => i.Accepted).ToList();
+                double integSec = accepted.Sum(i => i.ExposureDuration);
+                var hfrs = accepted.Where(i => i.HFR > 0).Select(i => i.HFR).ToList();
+                var guides = accepted.Where(i => i.GuidingRMSTotal > 0).Select(i => i.GuidingRMSTotal).ToList();
+                double? avgHfr   = hfrs.Count   > 0 ? (double?)Math.Round(hfrs.Average(), 2)   : null;
+                double? avgGuide = guides.Count > 0 ? (double?)Math.Round(guides.Average(), 2) : null;
+
+                var byFilter = matching
+                    .GroupBy(i => i.Filter ?? "Unknown")
+                    .Select(g => {
+                        var acc = g.Where(i => i.Accepted).ToList();
+                        var fHfrs   = acc.Where(i => i.HFR > 0).Select(i => i.HFR).ToList();
+                        var fGuides = acc.Where(i => i.GuidingRMSTotal > 0).Select(i => i.GuidingRMSTotal).ToList();
+                        double fSec = acc.Sum(i => i.ExposureDuration);
+                        return new {
+                            filter             = g.Key,
+                            integrationSeconds = fSec,
+                            integrationHours   = Math.Round(fSec / 3600.0, 2),
+                            frames             = acc.Count,
+                            totalFrames        = g.Count(),
+                            avgHFR             = fHfrs.Count   > 0 ? (double?)Math.Round(fHfrs.Average(), 2)   : null,
+                            avgGuidingRMS      = fGuides.Count > 0 ? (double?)Math.Round(fGuides.Average(), 2) : null,
+                        };
+                    })
+                    .OrderByDescending(f => f.integrationSeconds)
+                    .ToList();
+
+                var targetsInSession = matching
+                    .Select(i => i.TargetName ?? "")
+                    .Where(n => panelSetLower.Contains(n.ToLowerInvariant()))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                int durMin = (int)Math.Round((s.SessionEnd - s.SessionStart).TotalMinutes);
+
+                string moon = null;
+                var reportPath = Path.Combine(reportsDir, $"{s.SessionId}.html");
+                if (File.Exists(reportPath)) {
+                    try {
+                        var html = File.ReadAllText(reportPath);
+                        var moonMatch = Regex.Match(html, @"<div class='stat-value'>(\d+%\s*[^\<]*)</div>\s*<div class='stat-label'>Moon</div>");
+                        if (moonMatch.Success) {
+                            moon = Regex.Replace(
+                                WebUtility.HtmlDecode(moonMatch.Groups[1].Value), @"\s+", " ").Trim();
+                        }
+                    } catch { }
+                }
+
+                resultSessions.Add(new {
+                    sessionId          = s.SessionId,
+                    sessionStart       = s.SessionStart.ToString("o"),
+                    sessionEnd         = s.SessionEnd.ToString("o"),
+                    durationMinutes    = durMin,
+                    integrationHours   = Math.Round(integSec / 3600.0, 2),
+                    integrationSeconds = integSec,
+                    frames             = accepted.Count,
+                    totalFrames        = matching.Count,
+                    avgHFR             = avgHfr,
+                    avgGuidingRMS      = avgGuide,
+                    moonPhase          = moon,
+                    targets            = targetsInSession,
+                    filters            = byFilter,
+                });
+                totalSec    += integSec;
+                totalFrames += accepted.Count;
+            }
+
+            await WriteJson(res, 200, new {
+                projectGuid           = proj.Guid,
+                panelNames,
+                totalIntegrationHours = Math.Round(totalSec / 3600.0, 2),
+                totalFrames,
+                sessionCount          = resultSessions.Count,
+                sessions              = resultSessions,
+            });
+            done?.Invoke(200, $"project sessions '{proj.Name}' ({resultSessions.Count} sessions)");
+        }
+
+        // ── Mosaic HiPS survey thumbnail ─────────────────────────────────────
+        private async Task HandleGetProjectMosaicThumb(HttpListenerResponse res, string projectGuid, Action<int, string> done) {
+            if (string.IsNullOrEmpty(projectGuid)) {
+                await WriteJson(res, 400, new { error = "Missing project guid" });
+                done?.Invoke(400, null);
+                return;
+            }
+
+            var tsDb = new TargetSchedulerDatabase();
+            if (!TargetSchedulerDatabase.IsPluginInstalled || !tsDb.IsAvailable) {
+                await WriteJson(res, 404, new { error = "Target Scheduler not available" });
+                done?.Invoke(404, null);
+                return;
+            }
+
+            TsProjectInfo proj;
+            try {
+                proj = tsDb.GetAllProjects().FirstOrDefault(p =>
+                    string.Equals(p.Guid, projectGuid, StringComparison.OrdinalIgnoreCase));
+            } catch (Exception ex) {
+                await WriteJson(res, 500, new { error = ex.Message });
+                done?.Invoke(500, ex.Message);
+                return;
+            }
+            if (proj == null) {
+                await WriteJson(res, 404, new { error = "Project not found" });
+                done?.Invoke(404, null);
+                return;
+            }
+
+            var coordTargets = proj.Targets
+                .Where(t => !(t.RA == 0 && t.Dec == 0))
+                .ToList();
+            if (coordTargets.Count == 0) {
+                await WriteJson(res, 404, new { error = "No targets with coordinates" });
+                done?.Invoke(404, null);
+                return;
+            }
+
+            // Helper: look up camera FOV (width_deg, height_deg) for a target by its most recent session with valid cam data
+            SessionDatabase camDb = File.Exists(dbPath) ? new SessionDatabase(dbPath) : null;
+            Dictionary<string, SessionRecord> sessionById = camDb != null
+                ? camDb.GetAllSessions().ToDictionary(s => s.SessionId, StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, SessionRecord>(StringComparer.OrdinalIgnoreCase);
+            (double w, double h) GetCam(string tgtName) {
+                if (string.IsNullOrEmpty(tgtName) || camDb == null) return (0, 0);
+                List<TargetSessionDetail> tSessions;
+                try { tSessions = camDb.GetSessionsForTarget(tgtName); }
+                catch { return (0, 0); }
+                foreach (var ts in tSessions.OrderByDescending(x => x.SessionStart)) {
+                    if (!sessionById.TryGetValue(ts.SessionId, out var sr)) continue;
+                    if (sr.CamXSize > 0 && sr.CamYSize > 0 && sr.PixelSizeMicrons > 0 && sr.FocalLengthMm > 0) {
+                        double scale = (sr.PixelSizeMicrons / sr.FocalLengthMm) * 206.265;
+                        return (sr.CamXSize * scale / 3600.0, sr.CamYSize * scale / 3600.0);
+                    }
+                }
+                return (0, 0);
+            }
+
+            // Center on imaged panels only; fall back to all if nothing imaged yet
+            var imaged = coordTargets.Where(t => {
+                var c = GetCam(t.Name ?? "");
+                return c.w > 0 && c.h > 0;
+            }).ToList();
+            var centerSource = imaged.Count > 0 ? imaged : coordTargets;
+
+            double centerRa  = centerSource.Average(t => t.RA * 15.0);
+            double centerDec = centerSource.Average(t => t.Dec);
+            double cosCenter = Math.Cos(centerDec * Math.PI / 180.0);
+
+            const int imgSize = 1024;
+            double maxReach = 0.0;
+            foreach (var t in coordTargets) {
+                double dRa  = (t.RA * 15.0 - centerRa) * cosCenter;
+                double dDec = t.Dec - centerDec;
+                var cam = GetCam(t.Name ?? "");
+                double halfDiag = (cam.w > 0 && cam.h > 0)
+                    ? Math.Sqrt(cam.w * cam.w + cam.h * cam.h) / 2.0
+                    : 0.0;
+                double reach = Math.Sqrt(dRa * dRa + dDec * dDec) + halfDiag;
+                if (reach > maxReach) maxReach = reach;
+            }
+            if (maxReach < 0.5) {
+                var cam = GetCam(centerSource[0].Name ?? "");
+                maxReach = (cam.w > 0 && cam.h > 0)
+                    ? Math.Sqrt(cam.w * cam.w + cam.h * cam.h) / 2.0
+                    : 1.0;
+            }
+            double hipsFov = maxReach * 2.0 * 1.15;
+
+            // Cache key = MD5 of parameter string (auto-invalidates when layout changes)
+            var cacheDir = Path.Combine(dataDir, "hips-cache");
+            Directory.CreateDirectory(cacheDir);
+            var paramStr = string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                "{0:F6}_{1:F6}_{2:F4}_{3}", centerRa, centerDec, hipsFov, imgSize);
+            string cacheKey;
+            using (var md5 = System.Security.Cryptography.MD5.Create()) {
+                var hash = md5.ComputeHash(Encoding.UTF8.GetBytes(paramStr));
+                cacheKey = BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+            }
+            var cachePath = Path.Combine(cacheDir, $"{cacheKey}.jpg");
+
+            byte[] imgBytes;
+            if (File.Exists(cachePath)) {
+                imgBytes = File.ReadAllBytes(cachePath);
+            } else {
+                var url = string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                    "https://alasky.u-strasbg.fr/hips-image-services/hips2fits" +
+                    "?hips=CDS%2FP%2FDSS2%2Fcolor&ra={0:F6}&dec={1:F6}&fov={2:F4}" +
+                    "&width={3}&height={3}&format=jpg&projection=TAN",
+                    centerRa, centerDec, hipsFov, imgSize);
+                try {
+                    using (var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(30) }) {
+                        http.DefaultRequestHeaders.UserAgent.ParseAdd("NightSummary/1.0");
+                        imgBytes = await http.GetByteArrayAsync(url);
+                    }
+                } catch (Exception ex) {
+                    await WriteJson(res, 500, new { error = $"HiPS fetch failed: {ex.Message}" });
+                    done?.Invoke(500, ex.Message);
+                    return;
+                }
+                try { File.WriteAllBytes(cachePath, imgBytes); } catch { }
+            }
+
+            res.StatusCode = 200;
+            res.ContentType = "image/jpeg";
+            res.ContentLength64 = imgBytes.Length;
+            res.Headers["Cache-Control"] = "public, max-age=86400";
+            await res.OutputStream.WriteAsync(imgBytes, 0, imgBytes.Length);
+            res.OutputStream.Close();
+            done?.Invoke(200, $"mosaic-thumb cache={(File.Exists(cachePath) ? "hit" : "miss")} bytes={imgBytes.Length}");
         }
 
         // ── Settings & Regeneration ──────────────────────────────────────────
