@@ -38,6 +38,7 @@ namespace NINA.Plugin.NightSummary.Session {
         private readonly ISwitchMediator        switchMediator;
         private readonly IMessageBroker         messageBroker;
         private LiveStackCapture               liveStackCapture;
+        private bool                           sequenceFinishedSubscribed;
 
         private static NightSummarySettings S => SettingsManager.Instance.Current;
 
@@ -101,10 +102,17 @@ namespace NINA.Plugin.NightSummary.Session {
             this.weatherDataMediator   = weatherDataMediator;
             this.switchMediator        = switchMediator;
             this.messageBroker         = messageBroker;
-            var database             = databasePath != null ? new SessionDatabase(databasePath) : new SessionDatabase();
+            var database        = databasePath != null ? new SessionDatabase(databasePath) : new SessionDatabase();
             this.collector       = new SessionCollector(imageSaveMediator, sequenceMediator, database);
             this.eventCollector  = new SessionEventCollector(database, safetyMonitorMediator, focuserMediator, telescopeMediator);
             this.reportGenerator = new ReportGenerator();
+
+            // NOTE: SequenceFinished subscription happens in StartSession, not here.
+            // At plugin-load time NINA's SequenceMediator has no backing delegate yet and
+            // subscribing NREs inside the mediator's add accessor. By the time the Night
+            // Summary Start instruction runs the sequencer is fully initialized. Nothing
+            // to clean up before the first session begins anyway.
+
             Logger.Info($"NightSummary: SessionService created — messageBroker={messageBroker != null}");
         }
 
@@ -132,6 +140,17 @@ namespace NINA.Plugin.NightSummary.Session {
             }
 
             CaptureEquipmentNames();
+            collector.FirstImageSaved += OnFirstImageSaved;
+
+            // Subscribe to SequenceFinished lazily — safe now that sequencer is initialized.
+            if (!sequenceFinishedSubscribed && sequenceMediator != null) {
+                try {
+                    sequenceMediator.SequenceFinished += OnSequenceFinished;
+                    sequenceFinishedSubscribed = true;
+                } catch (Exception ex) {
+                    Logger.Warning($"NightSummary: Could not subscribe to SequenceFinished: {ex.Message}");
+                }
+            }
 
             if (messageBroker != null && S.ShowLiveStackImages) {
                 liveStackCapture = new LiveStackCapture(messageBroker);
@@ -148,6 +167,8 @@ namespace NINA.Plugin.NightSummary.Session {
             }
 
             var sessionId = collector.GetCurrentSessionId();
+
+            collector.FirstImageSaved -= OnFirstImageSaved;
 
             // Fill in any equipment that wasn't connected at session start
             CaptureEquipmentNames();
@@ -217,6 +238,21 @@ namespace NINA.Plugin.NightSummary.Session {
                     Logger.Error($"NightSummary: Unhandled error in report generation. {ex.Message}");
                 }
             });
+        }
+
+        /// <summary>
+        /// SequenceFinished fires on true stops, WhenUnsafe restarts, manual pause/resume,
+        /// and any other cancel-and-restart pattern. We intentionally do nothing here —
+        /// only the End Session instruction ends an active session. This means sessions
+        /// survive restarts cleanly. Sessions where End never runs are left open in the DB
+        /// (orphaned) and the report will note that the End instruction was missing.
+        /// </summary>
+        private Task OnSequenceFinished(object sender, EventArgs e) {
+            var sessionId = collector.GetCurrentSessionId();
+            if (sessionId == null) return Task.CompletedTask;
+
+            Logger.Warning($"NightSummary: Sequence finished with active session {sessionId} — End Session instruction did not run. Session data preserved; use Resend Previous Session for a report.");
+            return Task.CompletedTask;
         }
 
         private async Task GenerateAndSendAsync(ReportData reportData) {
@@ -291,6 +327,8 @@ namespace NINA.Plugin.NightSummary.Session {
                 var history      = BuildSessionHistory(testDb, images, session.SessionId);
                 var (fovW, fovH) = ComputeCameraFov(session);
                 var (lat, lon)   = GetObserverCoords();
+                // Fallback for test reports when no profile location is configured
+                if (lat == 0 && lon == 0) { lat = 32.9; lon = -105.5; }
 
                 // Always re-parse timing events from logs to pick up parser improvements.
                 // Falls back to cached DB data only if the log file is no longer available.
@@ -303,6 +341,10 @@ namespace NINA.Plugin.NightSummary.Session {
                     }
                 } catch (Exception ex) {
                     Logger.Warning($"NightSummary: Log re-parse failed, using cached data — {ex.Message}");
+                    timingEvents = null;  // fall through to DB lookup below
+                }
+                // If log parsing returned nothing (no log file, or empty), use cached DB data
+                if (timingEvents == null || !timingEvents.Any()) {
                     timingEvents = testDb.GetTimingEventsForSession(session.SessionId);
                 }
 
@@ -1024,6 +1066,11 @@ namespace NINA.Plugin.NightSummary.Session {
             }
         }
 
+        private void OnFirstImageSaved(object sender, EventArgs e) {
+            collector.FirstImageSaved -= OnFirstImageSaved;
+            CaptureEquipmentNames();
+        }
+
         /// Falls back to (1.0, 1.0) if no usable values are found.
         /// </summary>
         private (double widthDeg, double heightDeg) ComputeCameraFov(SessionRecord session = null) {
@@ -1099,6 +1146,9 @@ namespace NINA.Plugin.NightSummary.Session {
                 }
             } catch (Exception ex) {
                 Logger.Warning($"NightSummary: Log re-parse failed, using cached data — {ex.Message}");
+                timingEvents = null;
+            }
+            if (timingEvents == null || !timingEvents.Any()) {
                 timingEvents = db.GetTimingEventsForSession(session.SessionId);
             }
 

@@ -1,0 +1,21 @@
+title: Night Summary
+description: Session reporting plugin for NINA
+remote_theme: just-the-docs/just-the-docs
+url: https://vorticose.github.io
+baseurl: /nina.plugin.nightsummary
+
+color_scheme: nightsummary
+
+aux_links:
+  "GitHub":
+    - "https://github.com/vorticose/nina.plugin.nightsummary"
+
+nav_sort: order
+
+search_enabled: true
+
+footer_content: "Night Summary is an open-source plugin for <a href=\"https://nighttime-imaging.eu/\">N.I.N.A.</a> by Evan Pegors @sleepypuppy15."
+
+exclude:
+  - LIVESTACK_INTEGRATION.md
+  - assets/SCREENSHOT-LIST.md

@@ -151,20 +151,77 @@ work directly to `main`.
 
 ## Release Process
 
+### Changelog rule: stable-to-stable deltas only
+
+When writing the changelog section for a new stable release, only include changes visible
+to users upgrading from the previous stable version. Specifically:
+
+- **Do not list bug fixes that only existed in beta builds.** Users upgrading from the
+  previous stable never experienced them. Entries like "Fixed new settings defaulting to off
+  for upgraders" are confusing noise to stable users.
+- **Do not list iterative improvements to features that are brand-new in this release.**
+  If a feature ships for the first time in this release, fold its capabilities into the
+  feature bullet instead of listing them separately as improvements. Example: don't list
+  "Overhead analysis now excludes roof-closed periods" as an improvement when the overhead
+  analysis feature itself is new in this release.
+- **Do expand feature bullets to describe their full day-one capabilities,** even if parts
+  were added during the beta cycle.
+- **Beta-only release notes** can live in the GitHub release description for the beta tags
+  if you want to preserve them.
+
+The audience for CHANGELOG.md is users upgrading from the previous stable version. Write
+it as if you went directly from the previous stable release to this one without a beta cycle.
+
+### Release steps
+
 To publish a new version:
 
 1. **Run tests** (on Windows machine): `dotnet test NINA.Plugin.NightSummary.Tests` — must be 0 failures before release
 2. **Clean up dev markers** in `AssemblyInfo.cs`:
    - Remove `*** DEV BUILD ***` from `AssemblyDescription`
    - Remove `[assembly: AssemblyInformationalVersion("X.Y.Z-dev")]` line
-3. **Build**: `dotnet build NINA.Plugin.NightSummary.sln -c Release`
-2. **Package**: `cd NINA.Plugin.NightSummary/bin/Release/net8.0-windows && zip -r /tmp/NINA.Plugin.NightSummary.zip . --exclude "*.pdb" --exclude "*.xml"`
-3. **Checksum**: `shasum -a 256 /tmp/NINA.Plugin.NightSummary.zip | awk '{print toupper($1)}'`
-4. **GitHub Release**: Update existing or create new release tagged `vX.Y.Z`, upload ZIP
-5. **Update our repo**: Update `manifest.json` and `repository.json` with new version, URL, checksum
-6. **Update manifest fork**: In `~/nina.plugin.manifests`, sync with upstream, update `manifests/n/Night Summary/3.0.0/manifest.json`
-7. **Validate**: `cd ~/nina.plugin.manifests && npm install && node gather.js` — must show 0 failed
-8. **Submit PR**: to `isbeorn/nina.plugin.manifests` from `vorticose:main`
+3. **Finalize CHANGELOG_DRAFT.md** following the stable-to-stable rule above, then copy the
+   new version's section over the previous version's section in `CHANGELOG.md` on main.
+4. **Merge and tag**: `git checkout main && git merge dev --no-ff && git tag vX.Y.Z && git push origin main vX.Y.Z`
+5. **Build**: `dotnet build NINA.Plugin.NightSummary.sln -c Release`
+6. **Package**: `cd NINA.Plugin.NightSummary/bin/Release/net8.0-windows && zip -r /tmp/NINA.Plugin.NightSummary.zip . --exclude "*.pdb" --exclude "*.xml"`
+   - On Windows when `zip`/`7z` aren't on PATH: use PowerShell `robocopy <src> <stage> /E /XF *.pdb *.xml` + `Compress-Archive -Path "<stage>\*" -DestinationPath <dest>` (staging dir preserves folder structure).
+7. **Checksum**: `shasum -a 256 /tmp/NINA.Plugin.NightSummary.zip | awk '{print toupper($1)}'` (or `Get-FileHash -Algorithm SHA256` on Windows)
+8. **GitHub Release**: `gh release create vX.Y.Z <zip> --title "vX.Y.Z" --notes "<changelog body>"`
+9. **Update our repo**: update `manifest.json` and `repository.json` (Version block, Installer URL, Checksum, and LongDescription if features changed), commit, push main
+10. **Update manifest fork**: in `~/nina.plugin.manifests`, `git checkout main && git fetch upstream && git merge upstream/main --no-ff && git push origin main`, then `git checkout -b night-summary-vX.Y.Z`, update `manifests/n/Night Summary/3.0.0/manifest.json`
+11. **Validate**: `cd ~/nina.plugin.manifests && npm install && node gather.js` — must show 0 failed
+12. **Submit PR**: to `isbeorn/nina.plugin.manifests` from `vorticose:night-summary-vX.Y.Z`
+13. **Discord announcement**: post to NINA community server once PR merges (catalog is live). See format template below.
+14. **Post-release**: merge `main` into `nina-3.3` (`git checkout nina-3.3 && git merge main --no-ff && git push`), update memory — mark release LIVE in `project_v2_XX_progress.md` and the `MEMORY.md` index line.
+
+### Discord announcement format
+
+Plain-text code block (not rendered) so mobile copy-paste preserves markdown syntax. Must fit under 2000 chars. Structure:
+
+```
+## Night Summary vX.Y.Z — <tagline: comma-separated top features>
+
+**New Features**
+- **<Feature name>** — <one-line description>
+...
+
+**Improvements**
+- <plain bullet>
+...
+
+**Bug Fixes**
+- <plain bullet>
+...
+
+https://github.com/vorticose/nina.plugin.nightsummary/releases/tag/vX.Y.Z
+```
+
+- Features: bold-prefix + em-dash + description. Pick 2-4 most user-visible.
+- Improvements/Bug Fixes: plain bullets, no bold-prefix.
+- Trailing URL auto-embeds GitHub release card.
+- Discord supports markdown (`##`, `**bold**`, `-`) since 2023.
+- When drafting via Claude Code, wrap the final message in a triple-backtick code block so mobile remote-control copy-paste captures the raw markdown characters.
 
 ### Manifest fields to keep correct
 - `Author`: must be `"Evan Pegors @sleepypuppy15"` (easy to lose the @sleepypuppy15)

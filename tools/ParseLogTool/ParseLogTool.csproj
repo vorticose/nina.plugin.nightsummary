@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <RootNamespace>ParseLogTool</RootNamespace>
+    <AssemblyName>ParseLogTool</AssemblyName>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <!--
+    Compile-include the parser and TimingEvent from the plugin project so the tool
+    reflects whatever parser exists in THIS worktree. Run the tool in both worktrees
+    (current + baseline) to diff old vs new parser output.
+
+    The stub Logger in Program.cs satisfies the `using NINA.Core.Utility;` import
+    without dragging in the NINA runtime, keeping the tool standalone.
+  -->
+  <ItemGroup>
+    <Compile Include="..\..\NINA.Plugin.NightSummary\Data\NinaLogParser.cs" Link="NinaLogParser.cs" />
+    <Compile Include="..\..\NINA.Plugin.NightSummary\Data\TimingEvent.cs" Link="TimingEvent.cs" />
+  </ItemGroup>
+</Project>

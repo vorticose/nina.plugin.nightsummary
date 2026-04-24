@@ -55,6 +55,8 @@ namespace NINA.Plugin.NightSummary.Data {
         public bool   ShowHFRGraph           { get; set; } = true;
         public bool   ShowPerTargetIQ        { get; set; } = true;
         public bool   ShowNextNightPreview   { get; set; } = true;
+        public bool   PreviewAltitudeDefault { get; set; } = true;
+        public bool   TimelineAltitudeDefault { get; set; } = true;
         public int    ChartPrimaryMetric     { get; set; } = 0;
         public int    ChartSecondaryMetric   { get; set; } = 0;
         public string AdditionalChartConfigs { get; set; } = "";
