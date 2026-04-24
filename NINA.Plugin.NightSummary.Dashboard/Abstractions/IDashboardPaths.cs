@@ -2,9 +2,11 @@ namespace NINA.Plugin.NightSummary.Dashboard.Abstractions;
 
 public interface IDashboardPaths {
     // Base directories
+    string DataDir { get; }
     string ReportsDir { get; }
     string LogsDir { get; }
     string HipsCacheDir { get; }
+    string DatabasePath { get; }
 
     // Per-session paths
     string ReportHtmlPath(string sessionId);

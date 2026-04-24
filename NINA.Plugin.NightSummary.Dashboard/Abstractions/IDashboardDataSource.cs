@@ -15,7 +15,7 @@ public interface IDashboardDataSource {
 
     // --- Targets ---
     Task<IReadOnlyList<TargetDetail>> GetTargetDetailsAsync(CancellationToken ct = default);
-    Task<IReadOnlyList<TargetSessionHistory>> GetSessionsForTargetAsync(string targetName, CancellationToken ct = default);
+    Task<IReadOnlyList<TargetSessionDetail>> GetSessionsForTargetAsync(string targetName, CancellationToken ct = default);
     Task<IReadOnlyDictionary<string, double>> GetLatestPositionAnglesAsync(CancellationToken ct = default);
 
     // --- Target Scheduler ---
@@ -28,16 +28,8 @@ public interface IDashboardDataSource {
     Task<byte[]?> LoadLivestackImageAsync(string sessionId, string filename, CancellationToken ct = default);
     Task<string?> LoadLivestackManifestAsync(string sessionId, CancellationToken ct = default);
 
-    // --- Report regeneration (optional capability) ---
-    bool SupportsReportRegeneration { get; }
-    Task<ReportRegenerationResult> RegenerateReportAsync(
-        string sessionId,
-        IReadOnlyDictionary<string, string?>? overrides,
-        CancellationToken ct = default);
 }
 
 // Carries TS dashboard API server settings (port + enabled flag). Lives in classlib
 // since the dashboard reads it but does not own the underlying TS DB connection.
 public record TsApiSettings(bool Enabled, int Port);
-
-public record ReportRegenerationResult(bool Succeeded, string? Message, string? ReportPath);
