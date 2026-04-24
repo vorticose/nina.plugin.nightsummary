@@ -45,7 +45,7 @@ internal static class Program {
         Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Set(); };
 
         try {
-            await server.StartAsync(opts.Port);
+            await server.StartAsync(opts.Port, "localhost");
             log.Info($"Listening on http://localhost:{opts.Port}/  (Ctrl+C to stop)");
         } catch (Exception ex) {
             log.Error("Failed to start dev dashboard", ex);

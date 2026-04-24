@@ -6,6 +6,23 @@ using NINA.Plugin.NightSummary.Dashboard.Abstractions;
 
 namespace NINA.Plugin.NightSummary.Data;
 
+// Wraps SQLiteDataReader so `reader["MissingCol"]` returns DBNull instead of
+// throwing IndexOutOfRangeException. Lets the reader run against any schema
+// version the plugin has shipped — the dev harness opens older DBs without
+// running migrations, and a backup restored on a newer plugin must not crash.
+internal sealed class SchemaSafeReader : IDisposable {
+    private readonly SQLiteDataReader r;
+    private readonly HashSet<string> cols;
+    public SchemaSafeReader(SQLiteDataReader r) {
+        this.r = r;
+        cols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < r.FieldCount; i++) cols.Add(r.GetName(i));
+    }
+    public object this[string name] => cols.Contains(name) ? r[name] : DBNull.Value;
+    public bool Read() => r.Read();
+    public void Dispose() => r.Dispose();
+}
+
 // Single source of truth for dashboard SELECT queries. Both prod (plugin
 // SessionDatabase) and dev (harness) call here. Schema/migration/writes stay
 // in plugin SessionDatabase. Read errors route through IDashboardLogger so
@@ -26,7 +43,7 @@ public sealed class SqliteSessionReader {
         const string sql = "SELECT * FROM Images WHERE SessionId = @SessionId ORDER BY Timestamp";
         using var cmd = new SQLiteCommand(sql, conn);
         cmd.Parameters.AddWithValue("@SessionId", sessionId);
-        using var reader = cmd.ExecuteReader();
+        using var reader = new SchemaSafeReader(cmd.ExecuteReader());
         while (reader.Read()) {
             images.Add(new ImageRecord {
                 Id               = Convert.ToInt32(reader["Id"]),
@@ -91,7 +108,7 @@ public sealed class SqliteSessionReader {
         const string sql = "SELECT * FROM Sessions WHERE SessionId = @SessionId";
         using var cmd = new SQLiteCommand(sql, conn);
         cmd.Parameters.AddWithValue("@SessionId", sessionId);
-        using var reader = cmd.ExecuteReader();
+        using var reader = new SchemaSafeReader(cmd.ExecuteReader());
         if (reader.Read()) {
             try {
                 return ReadSessionRecord(reader);
@@ -110,7 +127,7 @@ public sealed class SqliteSessionReader {
         const string sql = "SELECT * FROM SessionEvents WHERE SessionId = @SessionId ORDER BY Timestamp";
         using var cmd = new SQLiteCommand(sql, conn);
         cmd.Parameters.AddWithValue("@SessionId", sessionId);
-        using var reader = cmd.ExecuteReader();
+        using var reader = new SchemaSafeReader(cmd.ExecuteReader());
         while (reader.Read()) {
             events.Add(new SessionEvent {
                 Id          = Convert.ToInt32(reader["Id"]),
@@ -132,7 +149,7 @@ public sealed class SqliteSessionReader {
         const string sql = "SELECT * FROM SessionTimingEvents WHERE SessionId = @SessionId ORDER BY StartTime";
         using var cmd = new SQLiteCommand(sql, conn);
         cmd.Parameters.AddWithValue("@SessionId", sessionId);
-        using var reader = cmd.ExecuteReader();
+        using var reader = new SchemaSafeReader(cmd.ExecuteReader());
         while (reader.Read()) {
             events.Add(new TimingEvent {
                 EventType       = reader["EventType"]       == DBNull.Value ? "" : reader["EventType"].ToString(),
@@ -156,7 +173,7 @@ public sealed class SqliteSessionReader {
             GROUP BY TargetName";
         using var cmd = new SQLiteCommand(sql, conn);
         cmd.Parameters.AddWithValue("@SessionId", excludeSessionId ?? "");
-        using var reader = cmd.ExecuteReader();
+        using var reader = new SchemaSafeReader(cmd.ExecuteReader());
         while (reader.Read()) {
             var name  = reader["TargetName"] == DBNull.Value ? "" : reader["TargetName"].ToString();
             var total = reader["TotalSeconds"] == DBNull.Value ? 0 : Convert.ToDouble(reader["TotalSeconds"]);
@@ -191,7 +208,7 @@ public sealed class SqliteSessionReader {
             ORDER BY TotalSeconds DESC";
 
         using (var cmd = new SQLiteCommand(sqlAgg, conn))
-        using (var reader = cmd.ExecuteReader()) {
+        using (var reader = new SchemaSafeReader(cmd.ExecuteReader())) {
             while (reader.Read()) {
                 var name = reader["TargetName"].ToString();
                 if (string.IsNullOrEmpty(name)) continue;
@@ -222,7 +239,7 @@ public sealed class SqliteSessionReader {
             ORDER BY i.TargetName, TotalSeconds DESC";
 
         using (var cmd = new SQLiteCommand(sqlFilters, conn))
-        using (var reader = cmd.ExecuteReader()) {
+        using (var reader = new SchemaSafeReader(cmd.ExecuteReader())) {
             while (reader.Read()) {
                 var name   = reader["TargetName"].ToString();
                 var filter = reader["Filter"] == DBNull.Value ? "" : reader["Filter"].ToString();
@@ -248,7 +265,7 @@ public sealed class SqliteSessionReader {
         var sessionDone = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         using (var cmd = new SQLiteCommand(sqlCoords, conn))
-        using (var reader = cmd.ExecuteReader()) {
+        using (var reader = new SchemaSafeReader(cmd.ExecuteReader())) {
             while (reader.Read()) {
                 var name = reader["TargetName"].ToString();
                 if (string.IsNullOrEmpty(name) || !targets.ContainsKey(name)) continue;
@@ -298,7 +315,7 @@ public sealed class SqliteSessionReader {
         using var cmd = new SQLiteCommand(sql, conn);
         cmd.Parameters.AddWithValue("@TargetName",       targetName       ?? "");
         cmd.Parameters.AddWithValue("@ExcludeSessionId", excludeSessionId ?? "");
-        using var reader = cmd.ExecuteReader();
+        using var reader = new SchemaSafeReader(cmd.ExecuteReader());
         while (reader.Read()) {
             result.Add(new TargetSessionHistory {
                 SessionStart       = reader["SessionStart"]       == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionStart"].ToString()),
@@ -335,7 +352,7 @@ public sealed class SqliteSessionReader {
 
         using (var cmd = new SQLiteCommand(sqlAgg, conn)) {
             cmd.Parameters.AddWithValue("@TargetName", targetName);
-            using var reader = cmd.ExecuteReader();
+            using var reader = new SchemaSafeReader(cmd.ExecuteReader());
             while (reader.Read()) {
                 var sid = reader["SessionId"].ToString();
                 if (string.IsNullOrEmpty(sid)) continue;
@@ -370,7 +387,7 @@ public sealed class SqliteSessionReader {
 
         using (var cmd = new SQLiteCommand(sqlFilters, conn)) {
             cmd.Parameters.AddWithValue("@TargetName", targetName);
-            using var reader = cmd.ExecuteReader();
+            using var reader = new SchemaSafeReader(cmd.ExecuteReader());
             while (reader.Read()) {
                 var sid = reader["SessionId"].ToString();
                 if (!sessions.ContainsKey(sid)) continue;
@@ -396,7 +413,7 @@ public sealed class SqliteSessionReader {
         var sql = SessionListWithCountsSql + " ORDER BY s.SessionStart DESC LIMIT @Limit";
         using var cmd = new SQLiteCommand(sql, conn);
         cmd.Parameters.AddWithValue("@Limit", limit);
-        using var reader = cmd.ExecuteReader();
+        using var reader = new SchemaSafeReader(cmd.ExecuteReader());
         while (reader.Read()) {
             try { result.Add(ReadEnrichedSessionRecord(reader)); }
             catch (Exception ex) { log?.Error($"Error reading session record: {ex.Message}"); }
@@ -413,7 +430,7 @@ public sealed class SqliteSessionReader {
         using var cmd = new SQLiteCommand(sql, conn);
         cmd.Parameters.AddWithValue("@From", from.ToString("o"));
         cmd.Parameters.AddWithValue("@To",   to.Date.AddDays(1).AddSeconds(-1).ToString("o"));
-        using var reader = cmd.ExecuteReader();
+        using var reader = new SchemaSafeReader(cmd.ExecuteReader());
         while (reader.Read()) {
             try { result.Add(ReadEnrichedSessionRecord(reader)); }
             catch (Exception ex) { log?.Error($"Error reading session record: {ex.Message}"); }
@@ -427,7 +444,7 @@ public sealed class SqliteSessionReader {
         conn.Open();
         const string sql = "SELECT * FROM Sessions ORDER BY SessionStart DESC";
         using var cmd = new SQLiteCommand(sql, conn);
-        using var reader = cmd.ExecuteReader();
+        using var reader = new SchemaSafeReader(cmd.ExecuteReader());
         while (reader.Read()) {
             try { result.Add(ReadSessionRecord(reader)); }
             catch (Exception ex) { log?.Error($"Error reading session record: {ex.Message}"); }
@@ -440,7 +457,7 @@ public sealed class SqliteSessionReader {
         conn.Open();
         const string sql = "SELECT * FROM Sessions ORDER BY SessionStart DESC LIMIT 1";
         using var cmd = new SQLiteCommand(sql, conn);
-        using var reader = cmd.ExecuteReader();
+        using var reader = new SchemaSafeReader(cmd.ExecuteReader());
         if (reader.Read()) {
             try {
                 return ReadSessionRecord(reader);
@@ -461,7 +478,7 @@ public sealed class SqliteSessionReader {
             (SELECT COALESCE(SUM(ExposureDuration), 0) FROM Images WHERE SessionId = s.SessionId AND Accepted = 1) AS IntegrationSeconds
         FROM Sessions s";
 
-    private static SessionRecord ReadEnrichedSessionRecord(SQLiteDataReader reader) {
+    private static SessionRecord ReadEnrichedSessionRecord(SchemaSafeReader reader) {
         var record = ReadSessionRecord(reader);
         record.ImageCount         = reader["ImageCount"]         == DBNull.Value ? 0 : Convert.ToInt32(reader["ImageCount"]);
         record.TargetCount        = reader["TargetCount"]        == DBNull.Value ? 0 : Convert.ToInt32(reader["TargetCount"]);
@@ -469,7 +486,7 @@ public sealed class SqliteSessionReader {
         return record;
     }
 
-    private static SessionRecord ReadSessionRecord(SQLiteDataReader reader) {
+    private static SessionRecord ReadSessionRecord(SchemaSafeReader reader) {
         return new SessionRecord {
             Id                = Convert.ToInt32(reader["Id"]),
             SessionId         = reader["SessionId"]         == DBNull.Value ? "" : reader["SessionId"].ToString(),

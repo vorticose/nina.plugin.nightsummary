@@ -159,7 +159,12 @@ namespace NINA.Plugin.NightSummary.Server {
             Directory.CreateDirectory(reportsDir);
         }
 
-        public Task StartAsync(int port) {
+        public Task StartAsync(int port) => StartAsync(port, "+");
+
+        // host = "+" binds all interfaces (prod: needs admin or urlacl reservation;
+        // NINA already has it). host = "localhost" binds loopback only and needs no
+        // privileges - used by the dev harness so contributors can run without UAC.
+        public Task StartAsync(int port, string host) {
             if (IsRunning) return Task.CompletedTask;
 
             try {
@@ -170,7 +175,7 @@ namespace NINA.Plugin.NightSummary.Server {
 
                 cts = new CancellationTokenSource();
                 listener = new HttpListener();
-                listener.Prefixes.Add($"http://+:{port}/");
+                listener.Prefixes.Add($"http://{host}:{port}/");
                 listener.Start();
 
                 var hostname = Dns.GetHostName();
