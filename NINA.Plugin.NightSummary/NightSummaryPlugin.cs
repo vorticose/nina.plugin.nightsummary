@@ -2,6 +2,7 @@ using NINA.Core.Utility;
 using NINA.Core.Utility.Notification;
 using NINA.Plugin;
 using NINA.Plugin.Interfaces;
+using NINA.Plugin.NightSummary.Dashboard.WebAssets;
 using NINA.Plugin.NightSummary.Data;
 using NINA.Plugin.NightSummary.Reporting;
 using NINA.Plugin.NightSummary.Server;
@@ -364,7 +365,14 @@ namespace NINA.Plugin.NightSummary {
 
         private async Task StartLocalServerAsync() {
             if (dashboardServer?.IsRunning == true) return;
-            dashboardServer = new DashboardServer(liveDbPath, this.sessionService);
+            var paths = new NinaDashboardPaths();
+            dashboardServer = new DashboardServer(
+                data:        new NinaDashboardDataSource(paths.DatabasePath),
+                settings:    new NinaPluginSettings(),
+                webAssets:   new EmbeddedWebAssets(),
+                externalLog: new NinaDashboardLogger(),
+                paths:       paths,
+                regen:       new NinaReportRegenerator(this.sessionService, paths.DatabasePath, paths.ReportsDir));
             await dashboardServer.StartAsync(S.LocalServerPort);
         }
 

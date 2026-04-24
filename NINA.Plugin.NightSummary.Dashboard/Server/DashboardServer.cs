@@ -3042,18 +3042,13 @@ private static string FormatSettingsForLog(NightSummarySettings s) {
             if (cachedDashboardHtml != null) return cachedDashboardHtml;
 
             try {
-                var asm = Assembly.GetExecutingAssembly();
-                var html = ReadResource(asm, "dashboard.html");
-                var css = ReadResource(asm, "dashboard.css");
-                var js = ReadResource(asm, "dashboard.js");
-                var iconBase64 = "";
-                using (var iconStream = asm.GetManifestResourceStream("plugin-icon.png")) {
-                    if (iconStream != null) {
-                        var iconBytes = new byte[iconStream.Length];
-                        iconStream.Read(iconBytes, 0, iconBytes.Length);
-                        iconBase64 = "data:image/png;base64," + Convert.ToBase64String(iconBytes);
-                    }
-                }
+                var html = ReadAssetText("dashboard.html");
+                var css  = ReadAssetText("dashboard.css");
+                var js   = ReadAssetText("dashboard.js");
+                var iconBytes = _webAssets.ReadAsync("plugin-icon.png").GetAwaiter().GetResult();
+                var iconBase64 = iconBytes != null
+                    ? "data:image/png;base64," + Convert.ToBase64String(iconBytes)
+                    : "";
                 cachedDashboardHtml = html
                     .Replace("{{STYLES}}", css)
                     .Replace("{{SCRIPTS}}", js)
@@ -3067,11 +3062,10 @@ private static string FormatSettingsForLog(NightSummarySettings s) {
             return cachedDashboardHtml;
         }
 
-        private static string ReadResource(Assembly asm, string name) {
-            using var stream = asm.GetManifestResourceStream(name);
-            if (stream == null) throw new FileNotFoundException($"Embedded resource '{name}' not found");
-            using var reader = new StreamReader(stream);
-            return reader.ReadToEnd();
+        private string ReadAssetText(string name) {
+            var bytes = _webAssets.ReadAsync(name).GetAwaiter().GetResult();
+            if (bytes == null) throw new FileNotFoundException($"Web asset '{name}' not found");
+            return System.Text.Encoding.UTF8.GetString(bytes);
         }
     }
 }
