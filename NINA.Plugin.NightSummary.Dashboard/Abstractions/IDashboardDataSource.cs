@@ -32,4 +32,6 @@ public interface IDashboardDataSource {
 
 // Carries TS dashboard API server settings (port + enabled flag). Lives in classlib
 // since the dashboard reads it but does not own the underlying TS DB connection.
-public record TsApiSettings(bool Enabled, int Port);
+// Host defaults to "localhost" since the prod plugin runs in-process with NINA/TS.
+// Dev harness can override via --ts-api-host to point at a remote rig (e.g. Tailscale IP).
+public record TsApiSettings(bool Enabled, int Port, string Host = "localhost");

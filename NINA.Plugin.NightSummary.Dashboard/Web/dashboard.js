@@ -251,8 +251,6 @@ function route() {
     renderSessionDetail(path.split('/')[2]);
   } else if (path === '/stats') {
     renderStats();
-  } else if (path === '/mockup') {
-    renderSessionList(params);
   } else {
     renderSessionList(params);
   }
@@ -2860,25 +2858,6 @@ var statExpandActiveEl = null;
 var sessionsV2Mode = true;  // false when ?sessionsV1=1
 var heroSessionId = null;   // excluded from the historical list in V2
 
-// Dev mockup: synthetic 365-day sessions for dashboard layout work
-var realSessionsCache = null;
-var mockSessionsCache = null;
-function buildMockSessions() {
-  if (mockSessionsCache) return mockSessionsCache;
-  var DAY = 86400000, now = Date.now();
-  var tgts = ['M 101','Seagull Nebula','Lagoon Nebula','Andromeda','Orion','NGC 7000','Rho Ophiuchi','Rosette','Heart Nebula'];
-  var seed = 42; function rnd(){ seed = (seed*9301+49297)%233280; return seed/233280; }
-  var synth = [];
-  for (var i=0;i<48;i++) {
-    var d = Math.floor(rnd()*365), start = new Date(now - d*DAY);
-    var iSec = Math.floor(1800 + rnd()*24000);
-    synth.push({ sessionId:'mock-'+i, sessionStart:start.toISOString(), sessionEnd:new Date(start.getTime()+iSec*1000).toISOString(), totalIntegrationSeconds:iSec, imageCount:Math.max(1,Math.floor(iSec/600)), targets:[tgts[Math.floor(rnd()*tgts.length)]], hasReport:false });
-  }
-  synth.sort(function(a,b){return new Date(b.sessionStart)-new Date(a.sessionStart);});
-  mockSessionsCache = synth;
-  return synth;
-}
-
 function getAllTargets() {
   var targets = {};
   sessionsCache.forEach(function(s) {
@@ -3513,8 +3492,6 @@ function renderSessionList(params) {
   sessionsV2Mode = !v1;
   heroSessionId = null;
 
-  var isMockup = location.hash.indexOf('#/mockup') === 0;
-
   function finish() {
     getAllTargets().forEach(function(t) { selectedTargets[t] = true; });
     if (v1) {
@@ -3524,22 +3501,14 @@ function renderSessionList(params) {
     }
   }
 
-  if (isMockup) {
-    sessionsCache = buildMockSessions();
-    finish();
-    return;
-  }
-
-  if (realSessionsCache) {
-    sessionsCache = realSessionsCache;
+  if (sessionsCache && sessionsCache.length) {
     finish();
     return;
   }
 
   el.innerHTML = '<div class="loading">Loading sessions...</div>';
   api('/api/sessions').then(function(data) {
-    realSessionsCache = data;
-    sessionsCache = realSessionsCache;
+    sessionsCache = data;
     logInfo('Sessions loaded:', data.length);
     finish();
   }).catch(function(err) {

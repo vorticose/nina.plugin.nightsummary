@@ -44,9 +44,9 @@ namespace NINA.Plugin.NightSummary.Server {
         private List<TargetSessionDetail>        DbSessionsForTarget(string name)    => _data.GetSessionsForTargetAsync(name).GetAwaiter().GetResult().ToList();
         private bool                             TsAvailable()                       => _data.IsTargetSchedulerAvailableAsync().GetAwaiter().GetResult();
         private List<TsProjectInfo>              TsProjects()                        => _data.GetTSProjectsAsync().GetAwaiter().GetResult().ToList();
-        private (bool enabled, int port)         TsApi() {
+        private (bool enabled, int port, string host) TsApi() {
             var s = _data.GetTSApiSettingsAsync().GetAwaiter().GetResult();
-            return s != null ? (s.Enabled, s.Port) : (false, 0);
+            return s != null ? (s.Enabled, s.Port, s.Host) : (false, 0, "localhost");
         }
 
         // Regenerate-all progress tracking
@@ -2367,14 +2367,14 @@ namespace NINA.Plugin.NightSummary.Server {
                     return;
                 }
 
-                var (apiEnabled, apiPort) = TsApi();
+                var (apiEnabled, apiPort, apiHost) = TsApi();
                 if (!apiEnabled) {
                     await WriteJson(res, 200, new { error = "Target Scheduler API is disabled. Enable it in Target Scheduler settings." });
                     done?.Invoke(200, "tonight: ts api disabled");
                     return;
                 }
 
-                var baseUrl = $"http://localhost:{apiPort}/ts/v0";
+                var baseUrl = $"http://{apiHost}:{apiPort}/ts/v0";
                 log?.Info($"Tonight preview: calling TS API at {baseUrl}");
 
                 // Get active profile
@@ -3044,7 +3044,7 @@ private static string FormatSettingsForLog(NightSummarySettings s) {
         // ── Dashboard HTML (from embedded resources) ──────────────────────────
 
         private string GetDashboardHtml() {
-            if (cachedDashboardHtml != null) return cachedDashboardHtml;
+            if (cachedDashboardHtml != null && !_webAssets.HotReload) return cachedDashboardHtml;
 
             try {
                 var html = ReadAssetText("dashboard.html");

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,19 +11,34 @@ namespace NINA.Plugin.NightSummary.Dashboard.WebAssets;
 // on browser refresh without a rebuild.
 //
 // Each ReadAsync call hits the filesystem fresh - no caching - so any save propagates instantly.
+//
+// Search order: webRoot first, then any fallback roots in order. Used so non-Web/ assets
+// like plugin-icon.png (which lives under <repo>/assets/) still resolve.
 public sealed class DiskWebAssets : IWebAssets {
-    private readonly string webRoot;
+    private readonly string[] roots;
 
-    public DiskWebAssets(string webRoot) {
+    public bool HotReload => true;
+
+    public DiskWebAssets(string webRoot, params string[] fallbackRoots) {
         if (string.IsNullOrWhiteSpace(webRoot)) {
             throw new ArgumentException("webRoot must be a non-empty path", nameof(webRoot));
         }
-        this.webRoot = webRoot;
+        var list = new List<string> { webRoot };
+        if (fallbackRoots != null) {
+            foreach (var r in fallbackRoots) {
+                if (!string.IsNullOrWhiteSpace(r)) list.Add(r);
+            }
+        }
+        roots = list.ToArray();
     }
 
     public async Task<byte[]?> ReadAsync(string logicalName, CancellationToken ct = default) {
-        var path = Path.Combine(webRoot, logicalName);
-        if (!File.Exists(path)) return null;
-        return await File.ReadAllBytesAsync(path, ct).ConfigureAwait(false);
+        foreach (var root in roots) {
+            var path = Path.Combine(root, logicalName);
+            if (File.Exists(path)) {
+                return await File.ReadAllBytesAsync(path, ct).ConfigureAwait(false);
+            }
+        }
+        return null;
     }
 }

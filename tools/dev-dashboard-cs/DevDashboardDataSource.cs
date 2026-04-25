@@ -8,17 +8,21 @@ using NINA.Plugin.NightSummary.Dashboard.Abstractions;
 namespace NINA.Plugin.NightSummary.DevHost;
 
 // Dev data source. Hits the same SqliteSessionReader the plugin uses so SELECT
-// logic stays in lockstep. TS-related calls return empty/false because the dev
-// harness does not have access to the TS plugin's separate SQLite file.
+// logic stays in lockstep. TS reads go through DevTsReader against an optional
+// schedulerdb.sqlite path; if absent, TS-related calls return empty/false.
 internal sealed class DevDashboardDataSource : IDashboardDataSource {
     private readonly string dbPath;
     private readonly string connectionString;
     private readonly IDashboardLogger log;
+    private readonly DevTsReader tsReader;
+    private readonly string tsApiHost;
 
-    public DevDashboardDataSource(string dbPath, IDashboardLogger log) {
+    public DevDashboardDataSource(string dbPath, IDashboardLogger log, string? tsDbPath = null, string? tsApiHost = null) {
         this.dbPath           = dbPath;
         this.connectionString = $"Data Source={dbPath};Version=3;";
         this.log              = log;
+        this.tsReader         = new DevTsReader(tsDbPath ?? "");
+        this.tsApiHost        = string.IsNullOrWhiteSpace(tsApiHost) ? "localhost" : tsApiHost;
     }
 
     private SqliteSessionReader Reader() => new SqliteSessionReader(connectionString, log);
@@ -49,13 +53,16 @@ internal sealed class DevDashboardDataSource : IDashboardDataSource {
         => Task.FromResult<IReadOnlyDictionary<string, double>>(new Dictionary<string, double>());
 
     public Task<bool> IsTargetSchedulerAvailableAsync(CancellationToken ct = default)
-        => Task.FromResult(false);
+        => Task.FromResult(tsReader.IsAvailable);
 
     public Task<IReadOnlyList<TsProjectInfo>> GetTSProjectsAsync(CancellationToken ct = default)
-        => Task.FromResult<IReadOnlyList<TsProjectInfo>>(new List<TsProjectInfo>());
+        => Task.FromResult<IReadOnlyList<TsProjectInfo>>(tsReader.GetAllProjects());
 
-    public Task<TsApiSettings?> GetTSApiSettingsAsync(CancellationToken ct = default)
-        => Task.FromResult<TsApiSettings?>(null);
+    public Task<TsApiSettings?> GetTSApiSettingsAsync(CancellationToken ct = default) {
+        if (!tsReader.IsAvailable) return Task.FromResult<TsApiSettings?>(null);
+        var (enabled, port) = tsReader.GetApiSettings();
+        return Task.FromResult<TsApiSettings?>(new TsApiSettings(enabled, port, tsApiHost));
+    }
 
     public Task<string?> LoadReportHtmlAsync(string sessionId, CancellationToken ct = default)
         => Task.FromResult<string?>(null);
