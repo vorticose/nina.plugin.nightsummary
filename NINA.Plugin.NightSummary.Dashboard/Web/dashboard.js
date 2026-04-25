@@ -1423,10 +1423,12 @@ function renderTargetDetailPanel(data, targetName, ts) {
           '<div class="tdp-chart-legend"></div>' +
         '</div>' +
         '<div class="tdp-section-title">Session History</div>' +
-        '<table class="tdp-table">' +
-          '<thead><tr><th>Date</th><th>Integration</th><th>Frames</th><th>HFR</th><th>Guide</th><th>Moon</th><th></th></tr></thead>' +
-          '<tbody>' + rows + '</tbody>' +
-        '</table>' +
+        '<div class="tdp-table-wrap">' +
+          '<table class="tdp-table">' +
+            '<thead><tr><th>Date</th><th>Integration</th><th>Frames</th><th>HFR</th><th>Guide</th><th>Moon</th><th></th></tr></thead>' +
+            '<tbody>' + rows + '</tbody>' +
+          '</table>' +
+        '</div>' +
       '</div>' +
     '</div>';
 }
@@ -1612,6 +1614,15 @@ function bindTargetDetailEvents(backdrop, targetName) {
   // Escape key closes
   _tdpKeyHandler = function(e) { if (e.key === 'Escape') closeTargetDetail(); };
   document.addEventListener('keydown', _tdpKeyHandler);
+
+  // On narrow viewports, scroll the session table to its right edge so the
+  // Moon column isn't hidden under the sticky View pill at scrollLeft=0.
+  if (window.innerWidth <= 600) {
+    var tableWrap = backdrop.querySelector('.tdp-table-wrap');
+    if (tableWrap && tableWrap.scrollWidth > tableWrap.clientWidth) {
+      tableWrap.scrollLeft = tableWrap.scrollWidth - tableWrap.clientWidth;
+    }
+  }
 
   // Expand/collapse session rows
   backdrop.querySelectorAll('tr.tdp-session-row').forEach(function(row) {

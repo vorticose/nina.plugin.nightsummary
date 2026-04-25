@@ -397,7 +397,11 @@ namespace NINA.Plugin.NightSummary.Server {
             }
 
             var sessions = await _data.GetAllSessionsAsync();
-            var result = sessions.Select(s => {
+            // Hide in-progress sessions (SessionEnd unset or before SessionStart) — they have
+            // no finalized data, no report, and no thumbnails. Live status is shown in the
+            // Tonight tab via /api/tonight/preview.
+            var completed = sessions.Where(s => s.SessionEnd > s.SessionStart).ToList();
+            var result = completed.Select(s => {
                 var images = DbImages(s.SessionId);
                 var lightImages = images.Where(i => string.IsNullOrEmpty(i.ImageType) || i.ImageType == "LIGHT").ToList();
                 // Extract moon phase from report if available
