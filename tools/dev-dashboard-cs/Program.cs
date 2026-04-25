@@ -10,8 +10,10 @@ namespace NINA.Plugin.NightSummary.DevHost;
 internal static class Program {
     private const int    DefaultPort = 8182;
     private const string Usage =
-        "Usage: nightsummary-dev-dashboard [--port N] [--db PATH] [--web PATH] [--data PATH] [--reports PATH]\n" +
+        "Usage: nightsummary-dev-dashboard [--port N] [--host H] [--db PATH] [--web PATH] [--data PATH] [--reports PATH]\n" +
         "  --port    Port to bind (default 8182)\n" +
+        "  --host    Bind host: 'localhost' (default, loopback only), '+' / '*' (all interfaces, needs urlacl/admin),\n" +
+        "            or a specific IP (e.g. tailnet IP). Use '+' for LAN/tailnet access.\n" +
         "  --db      Path to nightsummary.sqlite (default %LOCALAPPDATA%/NINA/NightSummary/nightsummary.sqlite)\n" +
         "  --web     Source dir for HTML/CSS/JS (default <repo>/NINA.Plugin.NightSummary.Dashboard/Web)\n" +
         "  --data    Cache + logs root (default ./data under exe)\n" +
@@ -45,8 +47,9 @@ internal static class Program {
         Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Set(); };
 
         try {
-            await server.StartAsync(opts.Port, "localhost");
-            log.Info($"Listening on http://localhost:{opts.Port}/  (Ctrl+C to stop)");
+            await server.StartAsync(opts.Port, opts.Host);
+            var displayHost = opts.Host is "+" or "*" ? "<all-interfaces>" : opts.Host;
+            log.Info($"Listening on http://{displayHost}:{opts.Port}/  (Ctrl+C to stop)");
         } catch (Exception ex) {
             log.Error("Failed to start dev dashboard", ex);
             return 2;
@@ -60,6 +63,7 @@ internal static class Program {
 
     private sealed class Options {
         public int    Port       { get; set; } = DefaultPort;
+        public string Host       { get; set; } = "localhost";
         public string DbPath     { get; set; } = "";
         public string WebDir     { get; set; } = "";
         public string DataDir    { get; set; } = "";
@@ -80,6 +84,7 @@ internal static class Program {
                     if (!int.TryParse(next(), out var p)) return null;
                     opts.Port = p;
                     break;
+                case "--host":    opts.Host       = next() ?? "localhost"; break;
                 case "--db":      opts.DbPath     = next() ?? ""; break;
                 case "--web":     opts.WebDir     = next() ?? ""; break;
                 case "--data":    opts.DataDir    = next() ?? ""; break;

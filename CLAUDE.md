@@ -144,6 +144,20 @@ work directly to `main`.
   cp NINA.Plugin.NightSummary/bin/Release/net8.0-windows/NINA.Plugin.NightSummary.dll /tmp/nina-deploy/
   diskutil unmount /tmp/nina-deploy
   ```
+- **SSH access to RBFocus from dev box** (set up 2026-04-24): the Windows rig runs OpenSSH server,
+  scoped to the Tailscale interface only. Used for DB snapshots, log tailing, and ad-hoc remote
+  PowerShell. Connection: `ssh RBFocus@remotetelescope.taile2b1e6.ts.net`. SCP requires `-O`
+  legacy mode and forward slashes in remote paths:
+  ```
+  scp -O 'RBFocus@remotetelescope.taile2b1e6.ts.net:C:/Users/RBFocus/AppData/Local/NINA/NightSummary/nightsummary.sqlite' /local/dest
+  ```
+  Pubkey lives in `C:\ProgramData\ssh\administrators_authorized_keys` on the remote (admin
+  accounts ignore per-user authorized_keys). Server installed via the
+  `PowerShell/Win32-OpenSSH` MSI from GitHub — `Add-WindowsCapability` returned DownloadSize 0
+  on this build, so WU route was abandoned. SMB shares also exist on RBFocus but `net use`
+  hits System error 67 from this dev box; SSH is the working path. Guardrail: never kill/start
+  NINA, deploy DLLs, or mutate remote state without explicit per-action OK — NINA may be
+  imaging.
 - GitHub raw CDN caches aggressively -- use the Contents API for reliable downloads:
   `Invoke-RestMethod "https://api.github.com/repos/.../contents/..."`
 - PowerShell scripts must be pure ASCII -- no em dashes, box-drawing chars, or
