@@ -3864,6 +3864,9 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   transform: translate(-50%, -50%);
   box-shadow: 0 0 0 1px var(--surface-well);
 }
+.tdp-table-wrap {
+  width: 100%;
+}
 .tdp-table {
   width: 100%;
   border-collapse: collapse;
@@ -3981,8 +3984,15 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
     padding-top: 12px;
     padding-bottom: 12px;
   }
-  /* Safety net: if the table still exceeds the body width, scroll horizontally */
-  .tdp-body { overflow-x: auto; }
+  /* Scroll the table itself, not the whole body — keeps stats/header static.
+     touch-action + overscroll-behavior so the modal's vertical scroll doesn't
+     swallow horizontal swipes on the table. */
+  .tdp-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x pan-y;
+    overscroll-behavior-x: contain;
+  }
 }
 
 /* ── Project Detail Panel (Phase 3c) ─────────────────────────────────────── */
@@ -4423,6 +4433,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
     right: 0;
     background: var(--surface);
     z-index: 1;
+    box-shadow: -6px 0 8px -4px rgba(0,0,0,0.4);
   }
   .tdp-table tr.tdp-filter-subrow td:last-child,
   .tdp-table tr.tdp-session-row.tdp-expanded td:last-child,
