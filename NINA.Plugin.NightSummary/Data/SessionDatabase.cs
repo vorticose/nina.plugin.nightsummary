@@ -25,10 +25,11 @@ namespace NINA.Plugin.NightSummary.Data {
             Directory.CreateDirectory(pluginDataPath);
             dbPath = Path.Combine(pluginDataPath, "nightsummary.sqlite");
 
-            // Migrate from legacy version-specific location if needed
-            if (!File.Exists(dbPath)) {
-                MigrateLegacyDatabase(pluginDataPath);
-            }
+            string pluginsRoot = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "NINA", "Plugins");
+
+            MigrateOrResume(pluginDataPath, pluginsRoot);
 
             Logger.Info($"NightSummary: Database path: {dbPath}");
             Logger.Info($"NightSummary: Database exists: {File.Exists(dbPath)}");
@@ -36,6 +37,33 @@ namespace NINA.Plugin.NightSummary.Data {
             connectionString = $"Data Source={dbPath};Version=3;";
             SeedTestDatabaseIfMissing(pluginDataPath);
             InitializeDatabase();
+        }
+
+        // Test-only constructor: lets tests scaffold a fake plugins root and a
+        // fake new-data path so the migration + resume code can run end-to-end
+        // without touching LocalAppData. Bypasses SeedTestDatabase / version probe.
+        internal SessionDatabase(string dbPath, string newDataPath, string pluginsRoot) {
+            this.dbPath = dbPath;
+            Directory.CreateDirectory(Path.GetDirectoryName(dbPath));
+            MigrateOrResume(newDataPath, pluginsRoot);
+            connectionString = $"Data Source={dbPath};Version=3;";
+            InitializeDatabase();
+        }
+
+        // Migration entry point. Two paths:
+        //   1. dbPath missing → fresh migration (copy primary, merge rest).
+        //   2. dbPath exists + .merge_state exists → previous merge interrupted;
+        //      re-enter the merge so unfinished legacy DBs aren't silently lost.
+        // Without (2), a crash between primary File.Move and merge completion
+        // leaves dbPath populated but missing legacy sessions — and migration
+        // never runs again because the existence check skips it.
+        private void MigrateOrResume(string newDataPath, string pluginsRoot) {
+            if (!File.Exists(dbPath)) {
+                MigrateLegacyDatabase(newDataPath, pluginsRoot);
+            } else if (File.Exists(dbPath + ".merge_state")) {
+                Logger.Warning("NightSummary: Found .merge_state file with existing database — resuming interrupted migration");
+                ResumeInterruptedMerge(pluginsRoot);
+            }
         }
 
         // Read-only queries delegate to the classlib reader so prod and dev share one
@@ -48,45 +76,16 @@ namespace NINA.Plugin.NightSummary.Data {
         /// strategy so dbPath is never left in a partial state, then merges any unique sessions
         /// from older databases. Never deletes or moves source files — all originals are preserved.
         /// </summary>
-        private void MigrateLegacyDatabase(string newDataPath) {
+        private void MigrateLegacyDatabase(string newDataPath, string pluginsRoot) {
             var tempPath = dbPath + ".migration_tmp";
             try {
                 Logger.Info("NightSummary: No database at new location, scanning for legacy databases...");
 
-                var pluginsRoot = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "NINA", "Plugins");
-
-                if (!Directory.Exists(pluginsRoot)) {
-                    Logger.Info($"NightSummary: Plugins directory not found at {pluginsRoot}, skipping migration");
-                    return;
-                }
-
-                var candidates = new List<(string path, DateTime modified)>();
-
-                foreach (var versionDir in Directory.GetDirectories(pluginsRoot)) {
-                    var legacyDb = Path.Combine(versionDir, "NightSummary", "nightsummary.sqlite");
-                    Logger.Info($"NightSummary: Checking legacy path: {legacyDb}");
-                    if (File.Exists(legacyDb)) {
-                        var modified = File.GetLastWriteTimeUtc(legacyDb);
-                        Logger.Info($"NightSummary: Found legacy database at {legacyDb} (modified: {modified:yyyy-MM-dd HH:mm:ss} UTC)");
-                        candidates.Add((legacyDb, modified));
-                    }
-                }
-
-                if (candidates.Count == 0) {
-                    Logger.Info("NightSummary: No legacy databases found, starting fresh");
-                    return;
-                }
-
-                // Filter out corrupt candidates before selecting the base
-                var sorted = candidates
-                    .OrderByDescending(c => c.modified)
-                    .Where(c => VerifySQLiteIntegrity(c.path))
-                    .ToList();
+                var sorted = ScanLegacyDatabases(pluginsRoot);
+                if (sorted == null) return;
 
                 if (sorted.Count == 0) {
-                    Logger.Error("NightSummary: All legacy databases failed integrity check. Skipping migration — starting fresh.");
+                    Logger.Info("NightSummary: No legacy databases found, starting fresh");
                     return;
                 }
 
@@ -135,6 +134,58 @@ namespace NINA.Plugin.NightSummary.Data {
         }
 
         /// <summary>
+        /// Scans plugin version folders for legacy nightsummary.sqlite files and returns
+        /// integrity-verified candidates sorted newest-first. Returns null if pluginsRoot
+        /// doesn't exist (signals "not a fresh-install scenario, abort migration"). Returns
+        /// empty list if scan succeeded but found no legacy DBs.
+        /// </summary>
+        private List<(string path, DateTime modified)> ScanLegacyDatabases(string pluginsRoot) {
+            if (!Directory.Exists(pluginsRoot)) {
+                Logger.Info($"NightSummary: Plugins directory not found at {pluginsRoot}, skipping migration");
+                return null;
+            }
+
+            var candidates = new List<(string path, DateTime modified)>();
+            foreach (var versionDir in Directory.GetDirectories(pluginsRoot)) {
+                var legacyDb = Path.Combine(versionDir, "NightSummary", "nightsummary.sqlite");
+                Logger.Info($"NightSummary: Checking legacy path: {legacyDb}");
+                if (File.Exists(legacyDb)) {
+                    var modified = File.GetLastWriteTimeUtc(legacyDb);
+                    Logger.Info($"NightSummary: Found legacy database at {legacyDb} (modified: {modified:yyyy-MM-dd HH:mm:ss} UTC)");
+                    candidates.Add((legacyDb, modified));
+                }
+            }
+
+            return candidates
+                .OrderByDescending(c => c.modified)
+                .Where(c => VerifySQLiteIntegrity(c.path))
+                .ToList();
+        }
+
+        /// <summary>
+        /// Re-runs the merge phase when a previous migration was interrupted between primary
+        /// install and merge completion. Existence of `.merge_state` is the signal. The merge
+        /// file itself records which legacy DBs already finished, so re-merging is safe and
+        /// only the unfinished DBs are processed.
+        /// </summary>
+        private void ResumeInterruptedMerge(string pluginsRoot) {
+            try {
+                var sorted = ScanLegacyDatabases(pluginsRoot);
+                if (sorted == null || sorted.Count <= 1) {
+                    // Nothing to merge — clean up the orphaned state file
+                    try { File.Delete(dbPath + ".merge_state"); } catch { }
+                    return;
+                }
+
+                var toMerge = sorted.Skip(1).Select(c => c.path).ToList();
+                Logger.Info($"NightSummary: Resuming merge — {toMerge.Count} legacy database(s) candidate for merge (already-merged ones will be skipped via .merge_state)");
+                MergeOlderDatabases(toMerge);
+            } catch (Exception ex) {
+                Logger.Error($"NightSummary: Resume of interrupted merge failed: {ex.Message}. State file kept for next attempt.");
+            }
+        }
+
+        /// <summary>
         /// Merges unique sessions from older legacy databases into the new database.
         /// Skips sessions whose SessionId already exists. Never modifies source databases.
         /// Writes a state file after each successful DB merge so interrupted runs can resume.
@@ -150,7 +201,10 @@ namespace NINA.Plugin.NightSummary.Data {
                 Logger.Warning($"NightSummary: Could not create pre-merge backup: {ex.Message}. Proceeding without backup.");
             }
 
-            // Load merge state file so interrupted runs can skip already-completed databases
+            // Load merge state file so interrupted runs can skip already-completed databases.
+            // Touch the file first so it always exists for the duration of the merge — its
+            // presence at next startup is the resume signal for crashes that interrupt this loop
+            // before any individual DB write completes.
             var mergeLogPath = dbPath + ".merge_state";
             var alreadyMerged = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             if (File.Exists(mergeLogPath)) {
@@ -159,6 +213,8 @@ namespace NINA.Plugin.NightSummary.Data {
                         if (!string.IsNullOrWhiteSpace(line)) alreadyMerged.Add(line.Trim());
                     Logger.Info($"NightSummary: Resuming partial migration — {alreadyMerged.Count} database(s) already merged");
                 } catch { /* non-fatal — will just re-attempt previously merged databases */ }
+            } else {
+                try { File.Create(mergeLogPath).Dispose(); } catch { /* non-fatal */ }
             }
 
             // Collect existing SessionIds once upfront to avoid redundant queries
@@ -588,16 +644,22 @@ namespace NINA.Plugin.NightSummary.Data {
 
         /// <summary>
         /// Adds a column to an existing table if it doesn't already exist.
-        /// SQLite does not support ALTER TABLE ADD COLUMN IF NOT EXISTS,
-        /// so we attempt the ALTER and swallow the error if the column is already there.
+        /// SQLite has no ALTER TABLE ADD COLUMN IF NOT EXISTS, so we pre-check via
+        /// PRAGMA table_info instead of swallowing all exceptions — that previous
+        /// catch-all also masked real errors (disk-full, schema lock, corruption).
+        /// Any exception now propagates up to InitializeDatabase.
         /// </summary>
         private void MigrateAddColumn(SQLiteConnection conn, string table, string column, string definition) {
-            try {
-                using (var cmd = new SQLiteCommand($"ALTER TABLE {table} ADD COLUMN {column} {definition}", conn))
-                    cmd.ExecuteNonQuery();
-            } catch {
-                // Column already exists — nothing to do
+            using (var probe = new SQLiteCommand($"PRAGMA table_info({table})", conn))
+            using (var reader = probe.ExecuteReader()) {
+                while (reader.Read()) {
+                    // table_info column 1 is the column name
+                    if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase))
+                        return;
+                }
             }
+            using (var cmd = new SQLiteCommand($"ALTER TABLE {table} ADD COLUMN {column} {definition}", conn))
+                cmd.ExecuteNonQuery();
         }
 
         /// <summary>

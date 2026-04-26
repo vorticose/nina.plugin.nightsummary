@@ -94,11 +94,17 @@ namespace NINA.Plugin.NightSummary.Reporting {
             foreach (var target in targets) {
                 var sb = new StringBuilder();
 
-                var filterGroups = target.GroupBy(i => i.Filter)
-                                         .OrderBy(g => FilterHelper.SortKey(g.Key)).ThenBy(g => g.Key);
+                // Group by (Filter, ExposureDuration) like the HTML report does, otherwise
+                // a filter shot at multiple durations (e.g. 50\u00d7300s + 30\u00d7600s of Ha)
+                // collapses into one line that reports `80\u00d7300s` \u2014 count is right,
+                // duration label is misleading. Render one line per unique duration.
+                var filterGroups = target.GroupBy(i => new { i.Filter, i.ExposureDuration })
+                                         .OrderBy(g => FilterHelper.SortKey(g.Key.Filter))
+                                         .ThenBy(g => g.Key.Filter)
+                                         .ThenBy(g => g.Key.ExposureDuration);
                 foreach (var fg in filterGroups) {
                     var totalTime = TimeSpan.FromSeconds(fg.Sum(i => i.ExposureDuration));
-                    sb.AppendLine($"{fg.Key}: {fg.Count()}\u00d7{fg.First().ExposureDuration:F0}s ({totalTime.TotalHours:F1}h)");
+                    sb.AppendLine($"{fg.Key.Filter}: {fg.Count()}\u00d7{fg.Key.ExposureDuration:F0}s ({totalTime.TotalHours:F1}h)");
                 }
 
                 var targetTotal = TimeSpan.FromSeconds(target.Sum(i => i.ExposureDuration));

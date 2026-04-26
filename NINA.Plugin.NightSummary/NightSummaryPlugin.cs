@@ -342,9 +342,12 @@ namespace NINA.Plugin.NightSummary {
             LoadSessions();
             LoadFilterClassifications();
 
-            // Auto-start local dashboard if enabled
+            // Auto-start local dashboard if enabled. Track the Task so Teardown can
+            // wait for the start to finish before tearing down — without this, NINA
+            // closing during a slow port-bind could orphan the listener and cause
+            // "port already in use" on the next launch.
             if (S.LocalServerEnabled) {
-                _ = Task.Run(async () => {
+                _serverStartTask = Task.Run(async () => {
                     try {
                         await StartLocalServerAsync();
                     } catch (Exception ex) {
@@ -356,7 +359,20 @@ namespace NINA.Plugin.NightSummary {
             Logger.Info("NightSummary: Plugin initialized successfully");
         }
 
+        // Holds the auto-start Task so Teardown can await it before stopping.
+        private Task _serverStartTask;
+
         public override async Task Teardown() {
+            if (_serverStartTask != null) {
+                try { await _serverStartTask; } catch { /* already logged in the start path */ }
+            }
+            // Let any in-flight EndSession report-generation finish so a quick
+            // close-after-session doesn't drop the email/Discord send mid-flight.
+            try {
+                await sessionService.WaitForPendingReportsAsync(TimeSpan.FromSeconds(30));
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Error waiting for in-flight reports: {ex.Message}");
+            }
             await StopLocalServerAsync();
             SettingsManager.Instance.Save();
             Logger.Info("NightSummary: Plugin torn down");
@@ -1026,6 +1042,11 @@ namespace NINA.Plugin.NightSummary {
             CanExecuteChanged?.Invoke(this, EventArgs.Empty);
             try {
                 await execute();
+            } catch (Exception ex) {
+                // async-void exceptions otherwise vanish into the SynchronizationContext.
+                // Log here so a failed Delete/Search command surfaces in the NINA log
+                // instead of looking like a silent no-op in the UI.
+                Logger.Error($"NightSummary: RelayCommand failed. {ex}");
             } finally {
                 isExecuting = false;
                 CanExecuteChanged?.Invoke(this, EventArgs.Empty);

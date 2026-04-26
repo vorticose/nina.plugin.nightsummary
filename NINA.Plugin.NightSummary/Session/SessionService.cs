@@ -12,6 +12,7 @@ using System.Collections.Generic;
 using System.ComponentModel.Composition;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace NINA.Plugin.NightSummary.Session {
@@ -39,6 +40,12 @@ namespace NINA.Plugin.NightSummary.Session {
         private readonly IMessageBroker         messageBroker;
         private LiveStackCapture               liveStackCapture;
         private bool                           sequenceFinishedSubscribed;
+
+        // Tracks fire-and-forget report-generation Tasks spawned from EndSession so
+        // Teardown can wait for in-flight reports rather than dropping them when NINA
+        // closes immediately after a session ends.
+        private readonly object _pendingReportsLock = new object();
+        private readonly List<Task> _pendingReports = new List<Task>();
 
         private static NightSummarySettings S => SettingsManager.Instance.Current;
 
@@ -231,13 +238,33 @@ namespace NINA.Plugin.NightSummary.Session {
                 LiveStackImages              = liveStackImages
             };
 
-            _ = Task.Run(async () => {
+            var generation = Task.Run(async () => {
                 try {
                     await GenerateAndSendAsync(reportData);
                 } catch (Exception ex) {
                     Logger.Error($"NightSummary: Unhandled error in report generation. {ex.Message}");
                 }
             });
+            lock (_pendingReportsLock) _pendingReports.Add(generation);
+            // Self-cleanup so the list doesn't grow unbounded across many sessions.
+            _ = generation.ContinueWith(t => {
+                lock (_pendingReportsLock) _pendingReports.Remove(t);
+            }, TaskScheduler.Default);
+        }
+
+        /// <summary>
+        /// Awaits any outstanding fire-and-forget report-generation Tasks (up to a timeout)
+        /// so plugin Teardown can let post-session reports finish sending instead of
+        /// abandoning them when NINA closes.
+        /// </summary>
+        public async Task WaitForPendingReportsAsync(TimeSpan timeout) {
+            Task[] snapshot;
+            lock (_pendingReportsLock) snapshot = _pendingReports.ToArray();
+            if (snapshot.Length == 0) return;
+            Logger.Info($"NightSummary: Waiting for {snapshot.Length} in-flight report(s) before teardown (timeout {timeout.TotalSeconds:F0}s)");
+            try {
+                await Task.WhenAny(Task.WhenAll(snapshot), Task.Delay(timeout));
+            } catch { /* individual tasks already log their own errors */ }
         }
 
         /// <summary>
@@ -1121,11 +1148,13 @@ namespace NINA.Plugin.NightSummary.Session {
         /// <summary>
         /// Builds ReportData from a database without sending. Used by the preview window.
         /// </summary>
-        public async Task<ReportData> BuildReportDataAsync(string dbPath, string sessionId = null) {
+        public async Task<ReportData> BuildReportDataAsync(string dbPath, string sessionId = null, CancellationToken ct = default) {
+            ct.ThrowIfCancellationRequested();
             var db      = new SessionDatabase(dbPath);
             var session = sessionId != null ? db.GetSession(sessionId) : db.GetLatestSession();
             if (session == null) return null;
 
+            ct.ThrowIfCancellationRequested();
             var images     = db.GetImagesForSession(session.SessionId);
             var events     = db.GetEventsForSession(session.SessionId);
             var profileId  = profileService?.ActiveProfile?.Id.ToString();
@@ -1181,7 +1210,8 @@ namespace NINA.Plugin.NightSummary.Session {
         /// <summary>
         /// Generates HTML from existing ReportData without sending. Used by the preview window for re-renders.
         /// </summary>
-        public async Task<string> GenerateHtmlAsync(ReportData reportData) {
+        public async Task<string> GenerateHtmlAsync(ReportData reportData, CancellationToken ct = default) {
+            ct.ThrowIfCancellationRequested();
             return await reportGenerator.GenerateHtmlReport(reportData);
         }
 

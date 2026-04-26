@@ -30,15 +30,22 @@ internal sealed class NinaReportRegenerator : IReportRegenerator {
 
     public async Task<string?> RegenerateAsync(string sessionId, CancellationToken ct = default) {
         try {
-            var reportData = await sessionService.BuildReportDataAsync(dbPath, sessionId);
+            ct.ThrowIfCancellationRequested();
+            var reportData = await sessionService.BuildReportDataAsync(dbPath, sessionId, ct);
             if (reportData == null) return "Session not found";
 
-            var html       = await sessionService.GenerateHtmlAsync(reportData);
+            ct.ThrowIfCancellationRequested();
+            var html       = await sessionService.GenerateHtmlAsync(reportData, ct);
             var reportPath = Path.Combine(reportsDir, $"{sessionId}.html");
             Directory.CreateDirectory(reportsDir);
             await File.WriteAllTextAsync(reportPath, html, ct);
             SaveLiveStackMasters(sessionId, reportData);
             return null;
+        } catch (OperationCanceledException) {
+            // Surface cancellation to the caller separately so the bulk-regen loop
+            // (or any other coordinator) can short-circuit instead of treating it
+            // as a per-session failure.
+            throw;
         } catch (Exception ex) {
             Logger.Error($"NightSummary: Regenerate failed for {sessionId}. {ex.Message}");
             return ex.Message;
