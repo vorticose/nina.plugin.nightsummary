@@ -3503,6 +3503,11 @@ function renderSessionsV2(el, sub, params) {
 
   el.innerHTML = html;
 
+  // Initial pass to fit any "INTEGRATION"-class long labels into their
+  // narrow stat boxes — JS guarantees no overflow even at the tightest
+  // viewports where CSS clamp() is just a hair too generous.
+  el.querySelectorAll('.session-card').forEach(fitStatLabels);
+
   var scrollWrap = el.querySelector('.lw-scroll-wrap');
   if (scrollWrap) {
     var snapEnd = function() {
@@ -3824,7 +3829,42 @@ function renderThumbnails(s, thumbs) {
     wireLiveStackBadges(s, livestackMap[s.sessionId]);
   }
   setupThumbsScrollMode(el);
+  // Fit stat labels for this card (CSS clamp gets close, but truly narrow
+  // boxes — iPad Pro 11" landscape ≈ 75px content — still need a JS pass
+  // to shrink "INTEGRATION" the last few pixels until it fits its slot).
+  var card = el.closest('.session-card');
+  if (card) fitStatLabels(card);
 }
+
+// Shrink each card-stat-label's font-size until it fits its parent's
+// content-box width. CSS clamp() handles the bulk of the scaling; this is
+// the last-mile guarantee that nothing overflows. Re-run on resize via the
+// global handler below.
+function fitStatLabels(card) {
+  if (!card) return;
+  card.querySelectorAll('.card-stat').forEach(function(stat) {
+    var label = stat.querySelector('.card-stat-label');
+    if (!label) return;
+    label.style.fontSize = ''; // reset so we measure CSS-default first
+    var available = stat.clientWidth - 4; // small inner gutter
+    var guard = 20;
+    while (label.scrollWidth > available && guard-- > 0) {
+      var current = parseFloat(getComputedStyle(label).fontSize);
+      if (current <= 7) break;
+      label.style.fontSize = (current - 0.5) + 'px';
+    }
+  });
+}
+
+// Re-fit all stat labels on window resize (debounced) — viewport changes
+// alter the per-stat width via the responsive card layout.
+var _fitStatsDebounce = null;
+window.addEventListener('resize', function() {
+  if (_fitStatsDebounce) clearTimeout(_fitStatsDebounce);
+  _fitStatsDebounce = setTimeout(function() {
+    document.querySelectorAll('.session-card').forEach(fitStatLabels);
+  }, 120);
+});
 
 // Toggles .card-thumbs--scroll when the thumbs would wrap to a 2nd row.
 // Watches the container with ResizeObserver so window resize re-evaluates.
@@ -4058,7 +4098,17 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
         zoomImg.src = img.url;
         zoomImg.alt = img.label;
         overlay.appendChild(zoomImg);
-        overlay.addEventListener('click', function() {
+        // Close on tap. touchend with preventDefault stops the synthetic
+        // click from bubbling further to body listeners that would dismiss
+        // the underlying shelf — closing the hero view should return to
+        // the shelf, not all the way back to the card.
+        overlay.addEventListener('touchend', function(ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          overlay.remove();
+        }, { passive: false });
+        overlay.addEventListener('click', function(ev) {
+          ev.stopPropagation();
           overlay.remove();
         });
         document.body.appendChild(overlay);

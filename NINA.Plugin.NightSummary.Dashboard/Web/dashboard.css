@@ -1014,7 +1014,10 @@ nav {
 .livestack-shelf {
   position: absolute;
   transform: translateX(-50%);
-  z-index: 20;
+  /* z-index high enough to render above the sticky page header when the
+     shelf is placed above the thumb. Header sits at z-index ~100; pick
+     a clearly higher value but still below the zoom overlay (z-index 200). */
+  z-index: 150;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1294,14 +1297,14 @@ nav {
    wide desktops they take their natural full size. */
 @media (min-width: 1101px) {
   .card-stat-label {
-    font-size: clamp(9px, 0.7vw, 11px);
-    letter-spacing: clamp(0.3px, 0.07vw, 1px);
+    font-size: clamp(8px, 0.7vw, 11px);
+    letter-spacing: clamp(0px, 0.05vw, 1px);
   }
   .card-stat-value {
     font-size: clamp(18px, 1.5vw, 23px);
   }
   .card-stat {
-    padding: clamp(8px, 0.9vw, 12px) clamp(6px, 1vw, 16px);
+    padding: clamp(8px, 0.9vw, 12px) clamp(4px, 0.7vw, 16px);
   }
 }
 
