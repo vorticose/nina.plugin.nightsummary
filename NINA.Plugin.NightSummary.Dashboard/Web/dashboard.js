@@ -5008,6 +5008,12 @@ function fixChartTextDistortion(container) {
     if (!ctm || ctm.a === 0) return;
     var ratio = ctm.d / ctm.a; // yScale / xScale
     if (Math.abs(ratio - 1) < 0.02) return; // Already uniform, skip
+    // Cap at 2.0 — beyond that, text right-anchored at plotL-4 extends so far
+    // leftward (counter-scale × natural width > available left margin) that
+    // digit prefixes spill off the SVG's left edge and get clipped, leaving
+    // labels reading "0°" "0°" "0°" instead of "90° 60° 30°". Slight residual
+    // squish at extreme aspect ratios is more readable than clipped digits.
+    if (ratio > 2.0) ratio = 2.0;
     svg.querySelectorAll('text').forEach(function(t) {
       var x = parseFloat(t.getAttribute('x') || '0');
       var y = parseFloat(t.getAttribute('y') || '0');
@@ -5016,6 +5022,48 @@ function fixChartTextDistortion(container) {
     });
   });
 }
+
+// Tablet/laptop breakpoint matches the @media (max-width: 1100px) in dashboard.css
+// where .card-stats becomes a 3-col grid and the card-content slot grows tall
+// enough that the chart no longer needs the pull-up trick. Keep both in sync.
+var CARD_DESKTOP_MIN_WIDTH = 1101;
+
+// The chart SVG uses preserveAspectRatio="none" so it stretches to fit. The
+// pull-up was designed for desktop layout where card-content was a single
+// short row of 6 stats; pulling the chart up into the header area claimed
+// the otherwise-blank space above it. With the new 3-col grid (<=1100px),
+// card-content is two rows tall, so card-altitude is naturally as tall as
+// the card-body — pulling it further up overflows above the card and
+// collides with the target pills.
+function applyChartPullUp(el) {
+  var card = el.closest('.session-card');
+  var header = card ? card.querySelector('.card-header') : null;
+  if (!header) return;
+  if (window.innerWidth < CARD_DESKTOP_MIN_WIDTH) {
+    el.style.marginTop = '0px';
+    return;
+  }
+  var headerH = header.offsetHeight;
+  var headerMargin = 4;
+  var cardPadTop = 8;
+  var lastChild = header.lastElementChild;
+  var textRight = lastChild ? lastChild.getBoundingClientRect().right : 0;
+  var svgWrap = el.querySelector('.chart-svg-wrap');
+  var chartLeft = svgWrap ? svgWrap.getBoundingClientRect().left : el.getBoundingClientRect().left;
+  var singleRowH = 32;
+  var multiRow = headerH > singleRowH + 4;
+  var overlapsChart = textRight > chartLeft - 15;
+  var clearance = multiRow ? 48 : (overlapsChart ? 32 : 0);
+  var latestLabel = card.querySelector('.latest-label');
+  var extraPullUp = latestLabel
+    ? latestLabel.offsetHeight + parseFloat(getComputedStyle(latestLabel).marginBottom || 0)
+    : 0;
+  var pullUp = Math.max(0, headerH + headerMargin - cardPadTop - clearance + extraPullUp);
+  el.style.marginTop = '-' + pullUp + 'px';
+}
+
+// Track ResizeObservers per chart element so we can disconnect on re-render.
+var _chartResizeObservers = new WeakMap();
 
 function renderAltitudeChart(s, data) {
   var el = document.getElementById('altitude-' + s.sessionId);
@@ -5026,33 +5074,28 @@ function renderAltitudeChart(s, data) {
   setupCurveAnimation(el);
   setupChartCrosshair(el);
   fixChartTextDistortion(el);
-  // Dynamically extend chart upward based on header height
-  var card = el.closest('.session-card');
-  var header = card ? card.querySelector('.card-header') : null;
-  if (header) {
-    var headerH = header.offsetHeight;
-    var headerMargin = 4;
-    var cardPadTop = 8;
-    var lastChild = header.lastElementChild;
-    var textRight = lastChild ? lastChild.getBoundingClientRect().right : 0;
-    var svgWrap = el.querySelector('.chart-svg-wrap');
-    var chartLeft = svgWrap ? svgWrap.getBoundingClientRect().left : el.getBoundingClientRect().left;
-    // Bigger clearance when the header has wrapped to multiple rows (target
-    // pills overflowing toward the chart) so the last pill row doesn't sit
-    // flush against the chart top edge.
-    var singleRowH = 32;
-    var multiRow = headerH > singleRowH + 4;
-    var overlapsChart = textRight > chartLeft - 15;
-    var clearance = multiRow ? 48 : (overlapsChart ? 32 : 0);
-    var latestLabel = card.querySelector('.latest-label');
-    var extraPullUp = latestLabel
-      ? latestLabel.offsetHeight + parseFloat(getComputedStyle(latestLabel).marginBottom || 0)
-      : 0;
-    var pullUp = Math.max(0, headerH + headerMargin - cardPadTop - clearance + extraPullUp);
-    el.style.marginTop = '-' + pullUp + 'px';
-  }
+  applyChartPullUp(el);
   var body = el.parentElement;
   if (body) body.classList.add('has-chart');
+
+  // ResizeObserver re-runs the text-distortion counter-scale and the pull-up
+  // when the chart container changes size (window resize, layout reflow,
+  // breakpoint switch). Without this, both go stale and the chart stretches.
+  if (typeof ResizeObserver === 'function') {
+    var prev = _chartResizeObservers.get(el);
+    if (prev) prev.disconnect();
+    var svgWrap = el.querySelector('.chart-svg-wrap');
+    if (svgWrap) {
+      var first = true;
+      var ro = new ResizeObserver(function() {
+        if (first) { first = false; return; } // skip initial fire
+        fixChartTextDistortion(el);
+        applyChartPullUp(el);
+      });
+      ro.observe(svgWrap);
+      _chartResizeObservers.set(el, ro);
+    }
+  }
 }
 
 function fetchAltitudeChart(s) {
