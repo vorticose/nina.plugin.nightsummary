@@ -3870,8 +3870,10 @@ function setupScrollHoverClones(el) {
     var rect = wrap.getBoundingClientRect();
     var clone = wrap.cloneNode(true);
     clone.classList.add('card-thumb-wrap--clone');
-    // Pin clone over the live thumb at 1x; on next frame ramp to 1.67x so
-    // the CSS transition animates instead of snapping.
+    // Match the in-row hover animation exactly: 450ms cubic-bezier with a
+    // 150ms delay (--t-medium 150ms). Pin at scale(1) on append, ramp to
+    // 1.67x on next frame so the CSS transition fires.
+    var TIMING = '450ms cubic-bezier(0.22, 1, 0.36, 1) 150ms';
     clone.style.cssText =
       'position:fixed !important;' +
       'left:' + rect.left + 'px !important;' +
@@ -3880,17 +3882,25 @@ function setupScrollHoverClones(el) {
       'height:' + rect.height + 'px !important;' +
       'transform:scale(1) !important;' +
       'transform-origin:center center !important;' +
-      'transition:transform 200ms ease-out !important;' +
+      'transition:transform ' + TIMING + ' !important;' +
       'z-index:2000 !important;' +
       'pointer-events:none !important;' +
       'margin:0 !important;';
-    // Force the label visible inside the clone — the original's :hover rule
-    // doesn't apply here (clone has pointer-events:none, mouse hovers original).
+    // Original :hover rules don't reach a pointer-events:none clone, so
+    // mirror their effects here: label fades in, livestack badge fades out
+    // (matching .card-thumb-wrap:hover .thumb-label / .livestack-badge).
     var label = clone.querySelector('.thumb-label');
-    if (label) label.style.setProperty('opacity', '1', 'important');
+    if (label) {
+      label.style.setProperty('opacity', '1', 'important');
+      label.style.setProperty('transition', 'opacity ' + TIMING + ' !important', 'important');
+    }
+    var badges = clone.querySelectorAll('.livestack-badge');
+    for (var i = 0; i < badges.length; i++) {
+      badges[i].style.setProperty('opacity', '0', 'important');
+    }
     document.body.appendChild(clone);
     activeClone = clone;
-    // Trigger animation on next frame.
+    // Trigger scale animation on next frame.
     requestAnimationFrame(function() {
       if (clone === activeClone) {
         clone.style.setProperty('transform', 'scale(1.67)', 'important');
