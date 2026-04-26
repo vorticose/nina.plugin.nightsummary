@@ -4888,12 +4888,11 @@ function setupChartCrosshair(container) {
 // ── Mobile thumbnail zoom (scroll-to-center) ────────────────────────────
 
 function setupMobileThumbnailZoom(thumbsContainer) {
-  // Tap-to-zoom on touch devices below the desktop breakpoint. Above 1100
-  // the livestack hover model takes over (badges + shelf) — running both
-  // would conflict because tapping a thumb fires both the tap-zoom preview
-  // AND the sticky :hover that opens the livestack shelf.
+  // Tap-to-zoom on every touch viewport. At narrow viewports (<1100)
+  // livestack is hidden so this is the only thumb interaction. At wider
+  // viewports livestack thumbs are owned by setupLiveStackHover; the
+  // touchend handler below skips them by checking for the .livestack-badge.
   if (!thumbsContainer || !IS_TOUCH) return;
-  if (window.innerWidth >= CARD_DESKTOP_MIN_WIDTH) return;
 
   var preview = null;
   var activeThumb = null; // currently expanded thumbnail
@@ -4990,6 +4989,9 @@ function setupMobileThumbnailZoom(thumbsContainer) {
     if (touchMoved) return; // was a scroll, not a tap
     var thumbWrap = e.target.closest('.card-thumb-wrap');
     if (!thumbWrap) return;
+    // Livestack thumbs are owned by setupLiveStackHover's touch handler —
+    // it shows the multi-frame shelf instead of the single-image preview.
+    if (thumbWrap.querySelector('.livestack-badge')) return;
     e.preventDefault(); // prevent the delayed click from firing card navigation
 
     if (activeThumb === thumbWrap) {

@@ -1064,7 +1064,12 @@ nav {
      overscroll-behavior:contain so a finger drag scrolls the shelf,
      not the page below. */
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  /* minmax(160, 220) instead of (160, 1fr) so a single frame doesn't
+     stretch to fill the shelf's max-width — cells cap at 220px wide and
+     the shelf shrinks to the actual content size. With 4+ frames the
+     cells shrink (down to 160) to stay within the shelf's max-width. */
+  grid-template-columns: repeat(auto-fit, minmax(160px, 220px));
+  justify-content: center;
   gap: 8px;
   max-height: 65vh;
   overflow-y: auto;
