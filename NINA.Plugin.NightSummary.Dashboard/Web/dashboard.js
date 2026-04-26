@@ -4126,25 +4126,20 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
     }
   }
 
-  thumbWrap.addEventListener('mouseenter', function() {
-    clearTimeout(shelfLeaveTimer);
-    hoverTimer = setTimeout(showShelf, 200);
-  });
-
-  thumbWrap.addEventListener('mouseleave', function(e) {
-    clearTimeout(hoverTimer);
-    // Don't hide immediately if mouse moved into the shelf — give a grace period
-    if (shelf && shelf.contains(e.relatedTarget)) return;
-    shelfLeaveTimer = setTimeout(hideShelf, 100);
-  });
-
-  // Touch dismiss: on iPad/touch laptops the shelf opens via sticky :hover
-  // when the user taps the thumb, but mouseleave never fires reliably on a
-  // subsequent tap elsewhere. Listen at the document level — any tap outside
-  // both the shelf and the originating thumb closes the shelf, and
-  // preventDefault stops the synthetic click from bubbling to the card and
-  // opening the report.
   if (IS_TOUCH) {
+    // Touch model: tap toggles the shelf and preventDefault stops the
+    // synthetic click from bubbling to the card (which would open the
+    // report). Don't wire mouseenter — on iOS Safari sticky :hover from a
+    // tap fires mouseenter alongside touchend, opening the shelf AND
+    // letting the click through.
+    thumbWrap.addEventListener('touchend', function(e) {
+      e.preventDefault();
+      if (shelf) hideShelf();
+      else showShelf();
+    }, { passive: false });
+    // Document-level dismiss: any tap outside the shelf and the originating
+    // thumb closes the shelf and suppresses the synthetic click. Without
+    // this, tapping the card background would open the report.
     document.addEventListener('touchend', function(e) {
       if (!shelf) return;
       if (shelf.contains(e.target)) return;
@@ -4152,6 +4147,17 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
       e.preventDefault();
       hideShelf();
     }, { passive: false });
+  } else {
+    thumbWrap.addEventListener('mouseenter', function() {
+      clearTimeout(shelfLeaveTimer);
+      hoverTimer = setTimeout(showShelf, 200);
+    });
+    thumbWrap.addEventListener('mouseleave', function(e) {
+      clearTimeout(hoverTimer);
+      // Don't hide immediately if mouse moved into the shelf — grace period
+      if (shelf && shelf.contains(e.relatedTarget)) return;
+      shelfLeaveTimer = setTimeout(hideShelf, 100);
+    });
   }
 }
 

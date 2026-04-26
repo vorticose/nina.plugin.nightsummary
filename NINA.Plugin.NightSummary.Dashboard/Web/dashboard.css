@@ -1057,13 +1057,14 @@ nav {
 }
 
 .livestack-shelf-images {
-  /* Grid wraps multiple frames per row up to the shelf max-width. Each
-     frame has a min cell size of 160px and grows to fill the row evenly,
-     so 4 frames fill the row and a 5th wraps below. Cap height + scroll
-     inside this container with overscroll-behavior:contain so a finger
-     drag on a frame scrolls the shelf, not the page below. */
+  /* auto-fit collapses empty grid tracks so 1 frame renders as one 160px
+     cell (shelf shrinks to fit), 4 frames fill a wider shelf row, etc.
+     auto-fill kept reserving 4 columns even with a single item, making
+     the shelf needlessly wide. Cap height + scroll inside with
+     overscroll-behavior:contain so a finger drag scrolls the shelf,
+     not the page below. */
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 8px;
   max-height: 65vh;
   overflow-y: auto;
