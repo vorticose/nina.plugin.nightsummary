@@ -383,7 +383,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 log?.Error($"Request error: {req.HttpMethod} {path}", ex);
                 _external.Error($"NightSummary: Dashboard request error for {req.Url}. {ex.Message}");
                 done?.Invoke(500, ex.Message);
-                try { await WriteJson(res, 500, new { error = ex.Message }); } catch { res.Close(); }
+                try { await WriteJson(res, 500, new { error = "Internal server error" }); } catch { res.Close(); }
             }
         }
 
@@ -1642,7 +1642,7 @@ namespace NINA.Plugin.NightSummary.Server {
             try {
                 allProjects = TsProjects();
             } catch (Exception ex) {
-                await WriteJson(res, 500, new { error = ex.Message });
+                await WriteJson(res, 500, new { error = "Internal server error" });
                 done?.Invoke(500, ex.Message);
                 return;
             }
@@ -1975,7 +1975,7 @@ namespace NINA.Plugin.NightSummary.Server {
             try {
                 allProjects = TsProjects();
             } catch (Exception ex) {
-                await WriteJson(res, 500, new { error = ex.Message });
+                await WriteJson(res, 500, new { error = "Internal server error" });
                 done?.Invoke(500, ex.Message);
                 return;
             }
@@ -2133,7 +2133,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 proj = TsProjects().FirstOrDefault(p =>
                     string.Equals(p.Guid, projectGuid, StringComparison.OrdinalIgnoreCase));
             } catch (Exception ex) {
-                await WriteJson(res, 500, new { error = ex.Message });
+                await WriteJson(res, 500, new { error = "Internal server error" });
                 done?.Invoke(500, ex.Message);
                 return;
             }
@@ -2230,7 +2230,8 @@ namespace NINA.Plugin.NightSummary.Server {
                         imgBytes = await http.GetByteArrayAsync(url);
                     }
                 } catch (Exception ex) {
-                    await WriteJson(res, 500, new { error = $"HiPS fetch failed: {ex.Message}" });
+                    log?.Warn($"HiPS fetch failed: {ex.Message}");
+                    await WriteJson(res, 500, new { error = "HiPS thumbnail fetch failed" });
                     done?.Invoke(500, ex.Message);
                     return;
                 }
@@ -2270,6 +2271,7 @@ namespace NINA.Plugin.NightSummary.Server {
         private async Task HandleGetSettings(HttpListenerResponse res) {
             var s = _settings.Current;
             await WriteJson(res, 200, new {
+                tsAvailable            = TsAvailable(),
                 reportDetailLevel      = s.ReportDetailLevel,
                 reportLightMode        = s.ReportLightMode,
                 expandSectionsDefault  = s.ExpandSectionsDefault,
@@ -2403,7 +2405,8 @@ namespace NINA.Plugin.NightSummary.Server {
                 try {
                     profilesJson = await TonightApiClient.GetStringAsync($"{baseUrl}/profiles");
                 } catch (Exception ex) {
-                    await WriteJson(res, 200, new { error = $"Could not reach Target Scheduler API: {ex.Message}" });
+                    log?.Info($"Tonight preview: TS API unreachable: {ex.Message}");
+                    await WriteJson(res, 200, new { error = "Could not reach Target Scheduler API. Make sure NINA is running with Target Scheduler installed and the API is enabled." });
                     done?.Invoke(200, "tonight: ts api unreachable");
                     return;
                 }
@@ -2431,7 +2434,8 @@ namespace NINA.Plugin.NightSummary.Server {
                 try {
                     previewJson = await TonightApiClient.GetStringAsync(previewUrl);
                 } catch (Exception ex) {
-                    await WriteJson(res, 200, new { error = $"Target Scheduler preview failed: {ex.Message}" });
+                    log?.Info($"Tonight preview: TS preview call failed: {ex.Message}");
+                    await WriteJson(res, 200, new { error = "Target Scheduler preview failed. Check the NINA log for details." });
                     done?.Invoke(200, $"tonight: preview error: {ex.Message}");
                     return;
                 }
@@ -2483,7 +2487,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 done?.Invoke(200, $"tonight preview: {entries.Count} entries");
             } catch (Exception ex) {
                 log?.Error("HandleGetTonightPreview", ex);
-                await WriteJson(res, 500, new { error = ex.Message });
+                await WriteJson(res, 500, new { error = "Internal server error" });
                 done?.Invoke(500, ex.Message);
             }
         }
@@ -2516,7 +2520,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 await WriteJson(res, 200, new { ok = true, projectGuid, status });
                 done?.Invoke(200, $"ts override {projectGuid}={status ?? "(cleared)"}");
             } catch (Exception ex) {
-                await WriteJson(res, 500, new { error = ex.Message });
+                await WriteJson(res, 500, new { error = "Internal server error" });
                 done?.Invoke(500, ex.Message);
             }
         }
@@ -2539,7 +2543,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 await WriteJson(res, 200, new { ok = true, sessionTargetName, tsTargetGuid });
                 done?.Invoke(200, $"ts link '{sessionTargetName}' -> {tsTargetGuid ?? "(cleared)"}");
             } catch (Exception ex) {
-                await WriteJson(res, 500, new { error = ex.Message });
+                await WriteJson(res, 500, new { error = "Internal server error" });
                 done?.Invoke(500, ex.Message);
             }
         }
@@ -2561,7 +2565,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 await WriteJson(res, 200, new { ok = true, targetName, projectGuid });
                 done?.Invoke(200, $"ts assign '{targetName}' -> {projectGuid ?? "(cleared)"}");
             } catch (Exception ex) {
-                await WriteJson(res, 500, new { error = ex.Message });
+                await WriteJson(res, 500, new { error = "Internal server error" });
                 done?.Invoke(500, ex.Message);
             }
         }
@@ -2584,7 +2588,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 await WriteJson(res, 200, new { ok = true, targetName, projectGuid, excluded = exclude });
                 done?.Invoke(200, $"ts exclude '{targetName}' from {projectGuid}: {exclude}");
             } catch (Exception ex) {
-                await WriteJson(res, 500, new { error = ex.Message });
+                await WriteJson(res, 500, new { error = "Internal server error" });
                 done?.Invoke(500, ex.Message);
             }
         }
@@ -2598,7 +2602,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 await WriteJson(res, 200, new { ok = true, reset = true });
                 done?.Invoke(200, "projects reset");
             } catch (Exception ex) {
-                await WriteJson(res, 500, new { error = ex.Message });
+                await WriteJson(res, 500, new { error = "Internal server error" });
                 done?.Invoke(500, ex.Message);
             }
         }
@@ -2626,7 +2630,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 await WriteJson(res, 200, new { ok = true, projectGuid });
                 done?.Invoke(200, $"project reset {projectGuid}");
             } catch (Exception ex) {
-                await WriteJson(res, 500, new { error = ex.Message });
+                await WriteJson(res, 500, new { error = "Internal server error" });
                 done?.Invoke(500, ex.Message);
             }
         }
@@ -2685,7 +2689,7 @@ namespace NINA.Plugin.NightSummary.Server {
             } catch (Exception ex) {
                 log?.Error($"Regeneration failed for {sessionId}", ex);
                 _external.Error($"NightSummary: Dashboard report regeneration failed. {ex.Message}");
-                await WriteJson(res, 500, new { error = ex.Message });
+                await WriteJson(res, 500, new { error = "Internal server error" });
                 done?.Invoke(500, ex.Message);
             }
         }
@@ -2786,7 +2790,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 regenAllError = ex.Message;
                 log?.Error("Bulk regeneration failed to start", ex);
                 _external.Error($"NightSummary: Dashboard bulk regeneration failed. {ex.Message}");
-                await WriteJson(res, 500, new { error = ex.Message });
+                await WriteJson(res, 500, new { error = "Internal server error" });
                 done?.Invoke(500, ex.Message);
             }
         }
@@ -3170,8 +3174,8 @@ private static string FormatSettingsForLog(NightSummarySettings s) {
                     .Replace("{{ICON}}", iconBase64);
             } catch (Exception ex) {
                 _external.Error($"NightSummary: Failed to load dashboard resources. {ex.Message}");
-                cachedDashboardHtml = "<!DOCTYPE html><html><body><h1>Dashboard failed to load</h1><p>" +
-                    System.Net.WebUtility.HtmlEncode(ex.Message) + "</p></body></html>";
+                cachedDashboardHtml = "<!DOCTYPE html><html><body><h1>Dashboard failed to load</h1>" +
+                    "<p>Check the NINA log for details.</p></body></html>";
             }
 
             return cachedDashboardHtml;

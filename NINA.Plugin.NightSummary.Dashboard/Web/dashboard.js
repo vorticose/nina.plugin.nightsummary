@@ -5367,8 +5367,18 @@ function buildSettingsPanel(settings, filters) {
   var filterClass = parseFilterClassifications(s.filterClassifications);
   var filterTypes = parseFilterClassifications(s.filterTypeOverrides || '');
   var eqOverrides = parseEquipmentOverrides(s.equipmentOverrides);
+  // tsAvailable defaults to true when the field is missing (older cached responses);
+  // only hides TS-specific UI when the server explicitly reports false.
+  var tsAvailable = s.tsAvailable !== false;
 
-  var html = '<div id="settings-panel" class="settings-panel" style="display:none">';
+  var html = '<div id="settings-panel" class="settings-panel' + (tsAvailable ? '' : ' no-ts') + '" style="display:none">';
+
+  if (!tsAvailable) {
+    html += '<div class="settings-ts-banner">' +
+      '<strong>Target Scheduler not detected.</strong> ' +
+      'TS Progress Bars, Min Altitude line, and Tonight\'s Preview will have no effect until Target Scheduler is installed and its API is enabled.' +
+      '</div>';
+  }
 
   // Row 1: Detail level + theme
   html += '<div class="settings-row">' +

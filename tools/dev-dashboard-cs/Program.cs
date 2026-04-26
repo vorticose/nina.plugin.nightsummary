@@ -10,13 +10,14 @@ namespace NINA.Plugin.NightSummary.DevHost;
 internal static class Program {
     private const int    DefaultPort = 8182;
     private const string Usage =
-        "Usage: nightsummary-dev-dashboard [--port N] [--host H] [--db PATH] [--ts-db PATH] [--ts-api-host H] [--web PATH] [--data PATH] [--reports PATH]\n" +
+        "Usage: nightsummary-dev-dashboard [--port N] [--host H] [--db PATH] [--ts-db PATH] [--ts-api-host H] [--no-ts] [--web PATH] [--data PATH] [--reports PATH]\n" +
         "  --port         Port to bind (default 8182)\n" +
         "  --host         Bind host: 'localhost' (default, loopback only), '+' / '*' (all interfaces, needs urlacl/admin),\n" +
         "                 or a specific IP (e.g. tailnet IP). Use '+' for LAN/tailnet access.\n" +
         "  --db           Path to nightsummary.sqlite (default %LOCALAPPDATA%/NINA/NightSummary/nightsummary.sqlite)\n" +
         "  --ts-db        Path to Target Scheduler schedulerdb.sqlite (default %LOCALAPPDATA%/NINA/SchedulerPlugin/schedulerdb.sqlite)\n" +
         "  --ts-api-host  Hostname/IP for TS API calls (default 'localhost'). Use rig's tailnet IP when TS runs on a remote box.\n" +
+        "  --no-ts        Hide Target Scheduler from the dashboard (simulates a non-TS user). Overrides --ts-db / --ts-api-host.\n" +
         "  --web          Source dir for HTML/CSS/JS (default <repo>/NINA.Plugin.NightSummary.Dashboard/Web)\n" +
         "  --data         Cache + logs root (default ./data under exe)\n" +
         "  --reports      Reports dir (default %LOCALAPPDATA%/NINA/NightSummary/reports)";
@@ -33,7 +34,7 @@ internal static class Program {
 
         var log      = new DevDashboardLogger();
         var paths    = new DevDashboardPaths(opts.DataDir, opts.ReportsDir, opts.DbPath);
-        var data     = new DevDashboardDataSource(opts.DbPath, log, opts.TsDbPath, opts.TsApiHost);
+        var data     = new DevDashboardDataSource(opts.DbPath, log, opts.TsDbPath, opts.TsApiHost, opts.NoTs);
         var settings = new DevPluginSettings();
         var assets   = new DiskWebAssets(opts.WebDir, opts.AssetsDir);
         var regen    = new DevReportRegenerator();
@@ -41,8 +42,12 @@ internal static class Program {
         var server = new DashboardServer(data, settings, assets, log, paths, regen);
 
         log.Info($"DB:      {opts.DbPath} (exists: {File.Exists(opts.DbPath)})");
-        log.Info($"TS DB:   {opts.TsDbPath} (exists: {File.Exists(opts.TsDbPath)})");
-        log.Info($"TS API:  host={opts.TsApiHost}");
+        if (opts.NoTs) {
+            log.Info("TS:      DISABLED via --no-ts (simulates non-TS user)");
+        } else {
+            log.Info($"TS DB:   {opts.TsDbPath} (exists: {File.Exists(opts.TsDbPath)})");
+            log.Info($"TS API:  host={opts.TsApiHost}");
+        }
         log.Info($"Web:     {opts.WebDir} (exists: {Directory.Exists(opts.WebDir)})");
         log.Info($"Assets:  {opts.AssetsDir} (exists: {Directory.Exists(opts.AssetsDir)})");
         log.Info($"Data:    {opts.DataDir}");
@@ -72,6 +77,7 @@ internal static class Program {
         public string DbPath     { get; set; } = "";
         public string TsDbPath   { get; set; } = "";
         public string TsApiHost  { get; set; } = "localhost";
+        public bool   NoTs       { get; set; } = false;
         public string WebDir     { get; set; } = "";
         public string AssetsDir  { get; set; } = "";
         public string DataDir    { get; set; } = "";
@@ -96,6 +102,7 @@ internal static class Program {
                 case "--db":      opts.DbPath     = next() ?? ""; break;
                 case "--ts-db":   opts.TsDbPath   = next() ?? ""; break;
                 case "--ts-api-host": opts.TsApiHost = next() ?? "localhost"; break;
+                case "--no-ts":   opts.NoTs       = true; break;
                 case "--web":     opts.WebDir     = next() ?? ""; break;
                 case "--assets":  opts.AssetsDir  = next() ?? ""; break;
                 case "--data":    opts.DataDir    = next() ?? ""; break;
