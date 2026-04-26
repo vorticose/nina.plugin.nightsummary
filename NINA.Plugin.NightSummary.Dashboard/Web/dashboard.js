@@ -276,6 +276,10 @@ function route() {
   // Toggle report-view mode on body to kill outer scroll
   var isReport = path.match(/^\/sessions\/[^/]+$/);
   document.body.classList.toggle('report-view', !!isReport);
+  // Reset html scroll: report-view sets body overflow:hidden but a
+  // pre-existing documentElement.scrollTop (carried over from the taller
+  // session list) leaves the sticky header covering .report-nav.
+  if (isReport) window.scrollTo(0, 0);
 
   if (path === '/sessions') {
     renderSessionList(params);
