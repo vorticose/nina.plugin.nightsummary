@@ -3836,6 +3836,7 @@ function setupThumbsScrollMode(el) {
     if (el.children.length > 1) total += GAP * (el.children.length - 1);
     el.classList.toggle('card-thumbs--scroll', total > el.clientWidth + 1);
     updateAtEnd();
+    setupScrollHoverClones(el);
   };
   if (typeof ResizeObserver !== 'undefined') {
     if (el._thumbsScrollObs) el._thumbsScrollObs.disconnect();
@@ -3848,6 +3849,59 @@ function setupThumbsScrollMode(el) {
     el._thumbsScrollListener = true;
   }
   requestAnimationFrame(measure);
+}
+
+// In scroll mode the in-row hover-expand transform would clip against the
+// overflow:auto scroll container, so we suppress the transform via CSS and
+// pop a position:fixed clone above everything instead. The clone follows the
+// hovered thumb's viewport position; its CSS class handles the scale and
+// shadow.
+function setupScrollHoverClones(el) {
+  if (!el || !el.classList.contains('card-thumbs--scroll')) return;
+  if (el._scrollHoverWired) return;
+  el._scrollHoverWired = true;
+
+  var activeClone = null;
+  var activeWrap = null;
+
+  function showClone(wrap) {
+    if (activeClone) hideClone();
+    activeWrap = wrap;
+    var rect = wrap.getBoundingClientRect();
+    var clone = wrap.cloneNode(true);
+    clone.classList.add('card-thumb-wrap--clone');
+    clone.style.left = rect.left + 'px';
+    clone.style.top = rect.top + 'px';
+    clone.style.width = rect.width + 'px';
+    clone.style.height = rect.height + 'px';
+    document.body.appendChild(clone);
+    activeClone = clone;
+  }
+
+  function hideClone() {
+    if (activeClone && activeClone.parentNode) {
+      activeClone.parentNode.removeChild(activeClone);
+    }
+    activeClone = null;
+    activeWrap = null;
+  }
+
+  // Delegated mouseover/out so newly-cloned/added thumbs are picked up.
+  el.addEventListener('mouseover', function(e) {
+    if (!el.classList.contains('card-thumbs--scroll')) return;
+    var wrap = e.target.closest('.card-thumb-wrap');
+    if (!wrap || !el.contains(wrap) || wrap === activeWrap) return;
+    showClone(wrap);
+  });
+  el.addEventListener('mouseout', function(e) {
+    var wrap = e.target.closest('.card-thumb-wrap');
+    if (!wrap) return;
+    if (e.relatedTarget && wrap.contains(e.relatedTarget)) return;
+    hideClone();
+  });
+  // If the row scrolls while a clone is showing, the clone would drift away
+  // from the (moving) thumb. Cheapest fix: hide on scroll.
+  el.addEventListener('scroll', hideClone, { passive: true });
 }
 
 function loadThumbnails(sessions) {

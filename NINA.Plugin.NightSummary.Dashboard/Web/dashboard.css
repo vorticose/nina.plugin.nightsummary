@@ -784,6 +784,29 @@ nav {
   -webkit-mask-image: none;
   mask-image: none;
 }
+
+/* In scroll mode the in-container hover-expand would clip against the
+   overflow:auto container. Suppress the CSS transform on the original and
+   let JS render a position:fixed clone above everything (see
+   setupScrollHoverClones). */
+.card-thumbs--scroll .card-thumb-wrap:hover,
+.card-thumbs--scroll .card-thumb-wrap.shelf-active {
+  transform: none;
+  z-index: 1;
+}
+
+/* Body-attached clone used only in scroll mode. Same look as the in-row
+   thumb but unconstrained by ancestor overflow. */
+.card-thumb-wrap--clone {
+  position: fixed;
+  z-index: 2000;
+  pointer-events: none;
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.55), 0 2px 6px rgba(0,0,0,0.4);
+  transform-origin: center center;
+  transform: scale(1.67);
+  transition: transform 200ms;
+}
 .card-thumbs--scroll::-webkit-scrollbar { height: 11px; }
 .card-thumbs--scroll::-webkit-scrollbar-track { background: rgba(255,255,255,0.04); border-radius: 5px; }
 .card-thumbs--scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.28); border-radius: 5px; min-width: 40px; }
