@@ -5147,10 +5147,10 @@ function dedupChartXLabels(svg) {
   }
 }
 
-// Tablet/laptop breakpoint matches the @media (max-width: 1200px) in dashboard.css
+// Tablet/laptop breakpoint matches the @media (max-width: 1100px) in dashboard.css
 // where .card-stats becomes a 3-col grid and the card-content slot grows tall
 // enough that the chart no longer needs the pull-up trick. Keep both in sync.
-var CARD_DESKTOP_MIN_WIDTH = 1201;
+var CARD_DESKTOP_MIN_WIDTH = 1101;
 
 // The chart SVG uses preserveAspectRatio="none" so it stretches to fit. The
 // pull-up was designed for desktop layout where card-content was a single

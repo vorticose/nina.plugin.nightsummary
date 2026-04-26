@@ -1006,7 +1006,7 @@ nav {
    :hover fires on tap, opening the shelf alongside the mobile thumb
    preview). Above 1100 the desktop hover model takes over and the
    tap-zoom is disabled in JS. */
-@media (max-width: 1200px) {
+@media (max-width: 1100px) {
   .livestack-badge { display: none; }
   .livestack-shelf { display: none; }
 }
@@ -1273,7 +1273,7 @@ nav {
    grid that wraps to 2 rows of 3 (matching mobile), while keeping the chart
    side-by-side with the content column. Phones (<=700px) keep their own block
    that also stacks the chart below. */
-@media (max-width: 1200px) {
+@media (max-width: 1100px) {
   .card-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
   .card-stat { padding: 8px 6px; }
   .card-stat-value { font-size: 18px; }
@@ -1286,12 +1286,13 @@ nav {
   .stat-guiding     { order: 6; }
 }
 
-/* Narrow-desktop range (1201–1500): 6 stats stay in a single row but each
-   box is only ~95–110px wide, not enough for the default 11px
+/* Narrow-desktop range (1101–1500): 6 stats stay in a single row but each
+   box is only ~75–110px wide, not enough for the default 11px
    "INTEGRATION" label with letter-spacing 1px. Trim padding-x and label
-   font/spacing so labels fit without overflow. Above 1500 default sizing
-   has plenty of room. */
-@media (min-width: 1201px) and (max-width: 1500px) {
+   font/spacing so labels fit without overflow at the narrow end (iPad
+   Pro 11" landscape ≈ 1194). Above 1500 default sizing has plenty of
+   room. */
+@media (min-width: 1101px) and (max-width: 1500px) {
   .card-stat { padding: 12px 6px; }
   .card-stat-label { font-size: 9px; letter-spacing: 0.3px; }
   .card-stat-value { font-size: 20px; }
