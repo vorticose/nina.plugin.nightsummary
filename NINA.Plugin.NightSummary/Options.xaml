@@ -441,7 +441,7 @@
                             <CheckBox IsChecked="{Binding ShowChartFlipMarkers}" VerticalAlignment="Center" />
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,2">
-                            <TextBlock Text="Show Roof Event Markers" Width="180" VerticalAlignment="Center" />
+                            <TextBlock Text="Show Safety Event Markers" Width="180" VerticalAlignment="Center" />
                             <CheckBox IsChecked="{Binding ShowChartRoofMarkers}" VerticalAlignment="Center" />
                         </StackPanel>
                         <TextBlock Text="Markers only shown when x-axis is set to Time." FontSize="10" Foreground="Gray" Margin="0,2,0,0" />
