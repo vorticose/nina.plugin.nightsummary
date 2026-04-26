@@ -4959,7 +4959,7 @@ function renderAltitudeChart(s, data) {
     var singleRowH = 32;
     var multiRow = headerH > singleRowH + 4;
     var overlapsChart = textRight > chartLeft - 15;
-    var clearance = multiRow ? 30 : (overlapsChart ? 18 : 0);
+    var clearance = multiRow ? 48 : (overlapsChart ? 32 : 0);
     var latestLabel = card.querySelector('.latest-label');
     var extraPullUp = latestLabel
       ? latestLabel.offsetHeight + parseFloat(getComputedStyle(latestLabel).marginBottom || 0)
