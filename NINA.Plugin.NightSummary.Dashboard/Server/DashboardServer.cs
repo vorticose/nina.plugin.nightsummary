@@ -2416,14 +2416,10 @@ namespace NINA.Plugin.NightSummary.Server {
                     return;
                 }
 
-                // Compute start time: now if in observing window (18:00-06:00), else 22:00 tonight
-                var now = DateTime.Now;
-                DateTime startTime;
-                if (now.Hour >= 18 || now.Hour < 6) {
-                    startTime = now;
-                } else {
-                    startTime = now.Date.AddHours(22);
-                }
+                // Anchor at today 13:00 server-local — matches TS native preview default,
+                // gives a full-night view, and is stable across refreshes.
+                var now       = DateTime.Now;
+                var startTime = now.Date.AddHours(13);
 
                 var encodedStart = Uri.EscapeDataString(startTime.ToString("o"));
                 var previewUrl = $"{baseUrl}/profiles/{active.Id}/preview?startTime={encodedStart}";
@@ -2442,20 +2438,41 @@ namespace NINA.Plugin.NightSummary.Server {
                 var entries = JsonSerializer.Deserialize<List<TsPreviewEntry>>(previewJson, options);
                 if (entries == null) entries = new List<Data.TsPreviewEntry>();
 
+                // Re-parse the raw TS JSON to recover original DateTimeOffset values for each
+                // entry. Going through TsPreviewEntry's DateTime members coerces times to the
+                // dashboard server's local TZ, which discards the rig's offset when those
+                // differ (e.g. dev harness on a different TZ than the rig).
+                var rawOffsets = new List<(DateTimeOffset start, DateTimeOffset end)>();
+                using (var doc = JsonDocument.Parse(previewJson)) {
+                    foreach (var el in doc.RootElement.EnumerateArray()) {
+                        DateTimeOffset s = default, en = default;
+                        if (el.TryGetProperty("StartTime", out var sEl) && sEl.ValueKind == JsonValueKind.String)
+                            DateTimeOffset.TryParse(sEl.GetString(), out s);
+                        if (el.TryGetProperty("EndTime", out var eEl) && eEl.ValueKind == JsonValueKind.String)
+                            DateTimeOffset.TryParse(eEl.GetString(), out en);
+                        rawOffsets.Add((s, en));
+                    }
+                }
+
+                int tzOffsetMinutes = rawOffsets.Count > 0
+                    ? (int)rawOffsets[0].start.Offset.TotalMinutes
+                    : (int)TimeZoneInfo.Local.GetUtcOffset(now).TotalMinutes;
+
                 var responseObj = new {
-                    entries = entries.Select(e => new {
+                    entries = entries.Select((e, i) => new {
                         id         = e.Id,
                         name       = e.Name,
                         waitPeriod = e.WaitPeriod,
-                        startTime  = e.StartTime.ToString("o"),
-                        endTime    = e.EndTime.ToString("o"),
+                        startTime  = (i < rawOffsets.Count ? rawOffsets[i].start : new DateTimeOffset(e.StartTime)).ToString("o"),
+                        endTime    = (i < rawOffsets.Count ? rawOffsets[i].end   : new DateTimeOffset(e.EndTime  )).ToString("o"),
                         exposurePlan = e.ExposurePlan.Select(ep => new {
                             filterName = ep.FilterName,
                             exposure   = ep.Exposure,
                             count      = ep.Count
                         }).ToList()
                     }).ToList(),
-                    startTime = startTime.ToString("o")
+                    startTime       = startTime.ToString("o"),
+                    tzOffsetMinutes = tzOffsetMinutes
                 };
 
                 _tonightPreviewJson = JsonSerializer.Serialize(responseObj, JsonOpts);

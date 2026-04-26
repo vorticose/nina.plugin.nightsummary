@@ -5912,6 +5912,9 @@ function renderStatsTabContent(tabId) {
 var TONIGHT_COLORS = ['#5b9cf6','#66c2a5','#fc8d62','#e78ac3','#a6d854','#ffd92f','#e5c494','#b3b3b3'];
 var tonightPreviewCache = null;
 var tonightPreviewCacheTime = 0;
+// UTC offset (minutes) of the NINA/observatory machine; null = fall back to browser TZ.
+// Set from /api/tonight/preview response so times render in observatory time, not viewer's.
+var tonightTzOffsetMin = null;
 
 function fmtDuration(totalSec) {
   var s = Math.round(totalSec);
@@ -5923,9 +5926,32 @@ function fmtDuration(totalSec) {
 }
 
 function fmtTimeHHMM(d) {
-  var h = d.getHours().toString().padStart(2, '0');
-  var m = d.getMinutes().toString().padStart(2, '0');
+  if (tonightTzOffsetMin == null) {
+    var hL = d.getHours().toString().padStart(2, '0');
+    var mL = d.getMinutes().toString().padStart(2, '0');
+    return hL + ':' + mL;
+  }
+  var shifted = new Date(d.getTime() + tonightTzOffsetMin * 60000);
+  var h = shifted.getUTCHours().toString().padStart(2, '0');
+  var m = shifted.getUTCMinutes().toString().padStart(2, '0');
   return h + ':' + m;
+}
+
+// Returns Date of next tick-aligned boundary strictly after `after`,
+// aligned to observatory hour boundaries when tonightTzOffsetMin is set.
+function tonightNextTick(after, intervalMin) {
+  if (tonightTzOffsetMin == null) {
+    var t = new Date(after);
+    t.setMinutes(0, 0, 0);
+    t = new Date(t.getTime() + intervalMin * 60000);
+    while (t <= after) t = new Date(t.getTime() + intervalMin * 60000);
+    return t;
+  }
+  var offsetMs = tonightTzOffsetMin * 60000;
+  var floored  = Math.floor((after.getTime() + offsetMs) / 3600000) * 3600000;
+  var firstUtc = floored - offsetMs + intervalMin * 60000;
+  while (firstUtc <= after.getTime()) firstUtc += intervalMin * 60000;
+  return new Date(firstUtc);
 }
 
 function renderTonightTab(container) {
@@ -5957,6 +5983,7 @@ function renderTonightTab(container) {
 }
 
 function renderTonightContent(container, data) {
+  tonightTzOffsetMin = (typeof data.tzOffsetMinutes === 'number') ? data.tzOffsetMinutes : null;
   var entries = data.entries || [];
 
   // Targets = non-wait-period entries with a name
@@ -5984,9 +6011,16 @@ function renderTonightContent(container, data) {
   var colorMap = {};
   uniqueNames.forEach(function(name, i) { colorMap[name] = TONIGHT_COLORS[i % TONIGHT_COLORS.length]; });
 
-  // Date header
+  // Date header (in observatory TZ when offset is known)
   var pd = new Date(targets[0].startTime);
-  var dateStr = pd.toLocaleDateString(undefined, {month: 'long', day: 'numeric', year: 'numeric'});
+  var dateStr;
+  if (tonightTzOffsetMin != null) {
+    var pdShifted = new Date(pd.getTime() + tonightTzOffsetMin * 60000);
+    var monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    dateStr = monthNames[pdShifted.getUTCMonth()] + ' ' + pdShifted.getUTCDate() + ', ' + pdShifted.getUTCFullYear();
+  } else {
+    dateStr = pd.toLocaleDateString(undefined, {month: 'long', day: 'numeric', year: 'numeric'});
+  }
   var startStr = fmtTimeHHMM(timelineStart);
   var endStr   = fmtTimeHHMM(timelineEnd);
 
@@ -6216,10 +6250,7 @@ function buildTonightAltitudeChart(data, uniqueNames, colorMap, targets, timelin
   s += '<text x="' + plotL + '" y="' + tickLabelY + '" fill="#888">' + fmtTimeHHMM(timelineStart) + '</text>';
   s += '<text x="' + plotR  + '" y="' + tickLabelY + '" fill="#888" text-anchor="end">' + fmtTimeHHMM(timelineEnd) + '</text>';
 
-  var tickT = new Date(timelineStart);
-  tickT.setMinutes(0, 0, 0);
-  tickT = new Date(tickT.getTime() + tickIntervalMin * 60000);
-  while (tickT <= timelineStart) tickT = new Date(tickT.getTime() + tickIntervalMin * 60000);
+  var tickT = tonightNextTick(timelineStart, tickIntervalMin);
   while (tickT < timelineEnd) {
     var tx = timeToX(tickT);
     if (tx - plotL > 40 && plotR - tx > 40) {
@@ -6295,10 +6326,7 @@ function buildTonightTimeline(entries, targets, colorMap, uniqueNames, timelineS
   s += '<text x="' + (svgW - rightPad) + '" y="' + tickLabelY + '" fill="#888" text-anchor="end">' + fmtTimeHHMM(timelineEnd) + '</text>';
 
   // Tick marks
-  var tickMs = new Date(timelineStart);
-  tickMs.setMinutes(0, 0, 0);
-  tickMs = new Date(tickMs.getTime() + tickIntervalMin * 60000);
-  while (tickMs <= timelineStart) tickMs = new Date(tickMs.getTime() + tickIntervalMin * 60000);
+  var tickMs = tonightNextTick(timelineStart, tickIntervalMin);
 
   while (tickMs < timelineEnd) {
     var tx = timeToX(tickMs);
