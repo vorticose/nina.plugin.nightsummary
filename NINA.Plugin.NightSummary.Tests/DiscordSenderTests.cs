@@ -245,5 +245,43 @@ namespace NINA.Plugin.NightSummary.Tests {
             Assert.Contains("Mean", json);
             Assert.Contains("CV", json);
         }
+
+        // ── Mixed exposure durations per filter ───────────────────────────────
+
+        [Fact]
+        public void Payload_PerTarget_MixedDurationsForSameFilter_RendersOneLinePerDuration() {
+            // Two distinct exposure durations for the same filter must surface as two
+            // lines so the user sees both groups, not one collapsed line that mislabels
+            // the duration. Pre-fix the embed read `80×300s` for `50×300s + 30×600s`.
+            var sessionId = Guid.NewGuid().ToString();
+            var session   = TestDataFactory.MakeSession(sessionId);
+
+            var images = new List<ImageRecord>();
+            for (int i = 0; i < 5; i++) {
+                var img = TestDataFactory.MakeImage(sessionId, target: "M31", filter: "Ha");
+                img.ExposureDuration = 300;
+                images.Add(img);
+            }
+            for (int i = 0; i < 3; i++) {
+                var img = TestDataFactory.MakeImage(sessionId, target: "M31", filter: "Ha");
+                img.ExposureDuration = 600;
+                images.Add(img);
+            }
+
+            var data = new ReportData {
+                Session = session, Images = images, Events = new List<SessionEvent>(),
+                TsData  = new List<TsTargetData>(),
+                CumulativeIntegrationSeconds = new Dictionary<string, double>(),
+                SessionHistory = new Dictionary<string, List<TargetSessionHistory>>()
+            };
+            var json = PayloadJson(data);
+
+            // Both per-duration lines must render — the JSON encoder emits × as ×,
+            // so we look for it literally between count and exposure-time.
+            Assert.Contains("Ha: 5\\u00D7300s", json);
+            Assert.Contains("Ha: 3\\u00D7600s", json);
+            Assert.DoesNotContain("Ha: 8\\u00D7300s", json);
+            Assert.DoesNotContain("Ha: 8\\u00D7600s", json);
+        }
     }
 }
