@@ -1001,8 +1001,14 @@ nav {
   }
 }
 
-@media (max-width: 720px) {
+/* Hide livestack badges + shelf below the desktop breakpoint. The shelf
+   is hover-driven and conflicts with tap-zoom on touch devices (sticky
+   :hover fires on tap, opening the shelf alongside the mobile thumb
+   preview). Above 1100 the desktop hover model takes over and the
+   tap-zoom is disabled in JS. */
+@media (max-width: 1100px) {
   .livestack-badge { display: none; }
+  .livestack-shelf { display: none; }
 }
 
 .livestack-shelf {
@@ -4811,8 +4817,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   .chart-svg-wrap { height: 140px; flex: none; }
   .chart-legend { display: none; }
 
-  /* ── Livestack shelf: hide on mobile ── */
-  .livestack-shelf { display: none; }
+  /* livestack-shelf hidden globally below 1100 — see rule near .livestack-shelf */
 
   /* ── Dropdowns: constrain to viewport ── */
   .target-dropdown-menu { width: min(360px, calc(100vw - 24px)); }

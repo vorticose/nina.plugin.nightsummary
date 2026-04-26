@@ -3978,7 +3978,14 @@ function loadThumbnails(sessions) {
   return promises;
 }
 
+// Livestack thumbs are hover-driven via setupLiveStackHover. On touch
+// devices the sticky :hover that fires on tap conflicts with the tap-zoom
+// preview, producing inconsistent shelves that fail to dismiss. Gate the
+// whole feature on viewport size — at <=1100 the CSS hides the badge and
+// shelf and the JS skips wiring entirely; at >1100 the desktop hover
+// model takes over and tap-zoom (setupMobileThumbnailZoom) is suppressed.
 function wireLiveStackBadges(s, data) {
+  if (window.innerWidth < CARD_DESKTOP_MIN_WIDTH) return;
   var thumbsEl = document.getElementById('thumbs-' + s.sessionId);
   if (!thumbsEl) return;
   var wraps = thumbsEl.querySelectorAll('.card-thumb-wrap');
@@ -4859,9 +4866,12 @@ function setupChartCrosshair(container) {
 // ── Mobile thumbnail zoom (scroll-to-center) ────────────────────────────
 
 function setupMobileThumbnailZoom(thumbsContainer) {
-  // Tap-to-zoom on any touch device, regardless of viewport — tablets in
-  // landscape (iPad 1024+) and touch laptops use the same gesture as phones.
+  // Tap-to-zoom on touch devices below the desktop breakpoint. Above 1100
+  // the livestack hover model takes over (badges + shelf) — running both
+  // would conflict because tapping a thumb fires both the tap-zoom preview
+  // AND the sticky :hover that opens the livestack shelf.
   if (!thumbsContainer || !IS_TOUCH) return;
+  if (window.innerWidth >= CARD_DESKTOP_MIN_WIDTH) return;
 
   var preview = null;
   var activeThumb = null; // currently expanded thumbnail
