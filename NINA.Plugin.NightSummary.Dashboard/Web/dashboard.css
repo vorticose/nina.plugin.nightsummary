@@ -778,6 +778,12 @@ nav {
   -webkit-mask-image: linear-gradient(to right, black calc(100% - 36px), transparent 100%);
   mask-image: linear-gradient(to right, black calc(100% - 36px), transparent 100%);
 }
+/* Drop the right-edge fade once the user has scrolled to the end so the
+   last thumb is fully visible — toggled by setupThumbsScrollMode. */
+.card-thumbs--scroll.card-thumbs--at-end {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
 .card-thumbs--scroll::-webkit-scrollbar { height: 11px; }
 .card-thumbs--scroll::-webkit-scrollbar-track { background: rgba(255,255,255,0.04); border-radius: 5px; }
 .card-thumbs--scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.28); border-radius: 5px; min-width: 40px; }

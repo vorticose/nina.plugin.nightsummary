@@ -3820,6 +3820,14 @@ function renderThumbnails(s, thumbs) {
 function setupThumbsScrollMode(el) {
   if (!el) return;
   var GAP = 6; // matches .card-thumbs gap
+  var updateAtEnd = function() {
+    if (!el.classList.contains('card-thumbs--scroll')) {
+      el.classList.remove('card-thumbs--at-end');
+      return;
+    }
+    var atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 2;
+    el.classList.toggle('card-thumbs--at-end', atEnd);
+  };
   var measure = function() {
     var total = 0;
     for (var i = 0; i < el.children.length; i++) {
@@ -3827,12 +3835,17 @@ function setupThumbsScrollMode(el) {
     }
     if (el.children.length > 1) total += GAP * (el.children.length - 1);
     el.classList.toggle('card-thumbs--scroll', total > el.clientWidth + 1);
+    updateAtEnd();
   };
   if (typeof ResizeObserver !== 'undefined') {
     if (el._thumbsScrollObs) el._thumbsScrollObs.disconnect();
     var ro = new ResizeObserver(measure);
     ro.observe(el);
     el._thumbsScrollObs = ro;
+  }
+  if (!el._thumbsScrollListener) {
+    el.addEventListener('scroll', updateAtEnd, { passive: true });
+    el._thumbsScrollListener = true;
   }
   requestAnimationFrame(measure);
 }
