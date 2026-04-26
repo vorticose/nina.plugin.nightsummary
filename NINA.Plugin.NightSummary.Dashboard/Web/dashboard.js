@@ -3259,7 +3259,13 @@ function toggleLifetimeExpand(strip) {
 }
 
 function initWaveformScrubber(container) {
-  if (window.innerWidth >= 720) return;
+  // Tie to touch capability rather than viewport size: tablets in landscape
+  // (1024+ wide) and touch-screen laptops still want the long-press scrubber,
+  // while a regular desktop with a mouse uses the existing hover crosshair.
+  // Both touchstart and maxTouchPoints handle quirks: iOS Safari requires the
+  // event-based check; Windows touch devices report maxTouchPoints reliably.
+  var hasTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+  if (!hasTouch) return;
   var slot = container.querySelector('.lifetime-waveform-slot');
   if (!slot) return;
   var svg = slot.querySelector('svg.lifetime-waveform');
