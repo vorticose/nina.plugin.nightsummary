@@ -865,11 +865,20 @@ nav {
   z-index: 3;
 }
 
-.card-thumb-wrap:hover,
 .card-thumb-wrap.shelf-active {
   transform: scale(1.67);
   z-index: 10;
   transition: transform var(--t-medium) 150ms, z-index 0s 150ms;
+}
+/* Hover-expand only on devices with a real pointer. Touch devices fire :hover
+   on tap (sticky hover), which would compete with setupMobileThumbnailZoom's
+   tap-to-expand and re-trigger the report-open click. */
+@media (hover: hover) {
+  .card-thumb-wrap:hover {
+    transform: scale(1.67);
+    z-index: 10;
+    transition: transform var(--t-medium) 150ms, z-index 0s 150ms;
+  }
 }
 
 .thumb-label {
@@ -899,8 +908,10 @@ nav {
   pointer-events: none;
 }
 
-.card-thumb-wrap:hover .thumb-label {
-  opacity: 1;
+@media (hover: hover) {
+  .card-thumb-wrap:hover .thumb-label {
+    opacity: 1;
+  }
 }
 
 .card-thumb-wrap svg {
@@ -940,9 +951,13 @@ nav {
   transition: opacity var(--t-fast);
 }
 
-.card-thumb-wrap:hover .livestack-badge,
 .card-thumb-wrap.shelf-active .livestack-badge {
   opacity: 0;
+}
+@media (hover: hover) {
+  .card-thumb-wrap:hover .livestack-badge {
+    opacity: 0;
+  }
 }
 
 @media (max-width: 720px) {

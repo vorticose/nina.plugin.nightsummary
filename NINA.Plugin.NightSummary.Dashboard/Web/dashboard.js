@@ -9,6 +9,16 @@ function logInfo()  { console.info.apply(console, [LOG_PREFIX].concat(Array.prot
 function logWarn()  { console.warn.apply(console, [LOG_PREFIX].concat(Array.prototype.slice.call(arguments))); }
 function logError() { console.error.apply(console, [LOG_PREFIX].concat(Array.prototype.slice.call(arguments))); }
 
+// ── Capability detection ──────────────────────────────────────────────────
+
+// True for any device with touch input — phones, tablets, touch-screen
+// laptops. Used to gate touch-specific UX (long-press scrubber, tap-to-zoom
+// thumbnails) so it kicks in regardless of viewport size, and to suppress
+// hover-driven UI that fights with tap interactions on the same surfaces.
+// `'ontouchstart' in window` covers iOS Safari; `maxTouchPoints > 0` is the
+// reliable signal on Windows touch devices.
+var IS_TOUCH = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+
 // ── Utilities ──────────────────────────────────────────────────────────────
 
 function fmt(seconds) {
@@ -3260,12 +3270,9 @@ function toggleLifetimeExpand(strip) {
 
 function initWaveformScrubber(container) {
   // Tie to touch capability rather than viewport size: tablets in landscape
-  // (1024+ wide) and touch-screen laptops still want the long-press scrubber,
-  // while a regular desktop with a mouse uses the existing hover crosshair.
-  // Both touchstart and maxTouchPoints handle quirks: iOS Safari requires the
-  // event-based check; Windows touch devices report maxTouchPoints reliably.
-  var hasTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
-  if (!hasTouch) return;
+  // and touch-screen laptops still want the long-press scrubber, while a
+  // regular mouse-only desktop uses the existing hover crosshair.
+  if (!IS_TOUCH) return;
   var slot = container.querySelector('.lifetime-waveform-slot');
   if (!slot) return;
   var svg = slot.querySelector('svg.lifetime-waveform');
@@ -3864,6 +3871,12 @@ function setupThumbsScrollMode(el) {
 // shadow.
 function setupScrollHoverClones(el) {
   if (!el || !el.classList.contains('card-thumbs--scroll')) return;
+  // Touch devices use setupMobileThumbnailZoom for tap-to-expand, which
+  // owns the touch lifecycle (touchstart/move/end) on the same elements.
+  // The hover-clone path is mouse-only, otherwise tapping a thumb on an
+  // iPad fires the hover clone AND the tap zoom, then the synthetic click
+  // bubbles to the card and opens the report.
+  if (IS_TOUCH) return;
   if (el._scrollHoverWired) return;
   el._scrollHoverWired = true;
 
@@ -4846,7 +4859,9 @@ function setupChartCrosshair(container) {
 // ── Mobile thumbnail zoom (scroll-to-center) ────────────────────────────
 
 function setupMobileThumbnailZoom(thumbsContainer) {
-  if (!thumbsContainer || window.innerWidth > 700) return;
+  // Tap-to-zoom on any touch device, regardless of viewport — tablets in
+  // landscape (iPad 1024+) and touch laptops use the same gesture as phones.
+  if (!thumbsContainer || !IS_TOUCH) return;
 
   var preview = null;
   var activeThumb = null; // currently expanded thumbnail
