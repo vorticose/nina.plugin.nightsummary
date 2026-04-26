@@ -98,7 +98,7 @@ function esc(str) {
 // disable storage. Wrap writes so a benign settings flip doesn't bubble an
 // uncaught exception out of an event handler.
 function safeSetItem(key, value) {
-  try { safeSetItem(key, value); } catch (_) { /* storage unavailable */ }
+  try { localStorage.setItem(key, value); } catch (_) { /* storage unavailable */ }
 }
 
 function sanitizeSvgInPlace(root) {
