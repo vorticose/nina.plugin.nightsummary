@@ -644,16 +644,22 @@ namespace NINA.Plugin.NightSummary.Data {
 
         /// <summary>
         /// Adds a column to an existing table if it doesn't already exist.
-        /// SQLite does not support ALTER TABLE ADD COLUMN IF NOT EXISTS,
-        /// so we attempt the ALTER and swallow the error if the column is already there.
+        /// SQLite has no ALTER TABLE ADD COLUMN IF NOT EXISTS, so we pre-check via
+        /// PRAGMA table_info instead of swallowing all exceptions — that previous
+        /// catch-all also masked real errors (disk-full, schema lock, corruption).
+        /// Any exception now propagates up to InitializeDatabase.
         /// </summary>
         private void MigrateAddColumn(SQLiteConnection conn, string table, string column, string definition) {
-            try {
-                using (var cmd = new SQLiteCommand($"ALTER TABLE {table} ADD COLUMN {column} {definition}", conn))
-                    cmd.ExecuteNonQuery();
-            } catch {
-                // Column already exists — nothing to do
+            using (var probe = new SQLiteCommand($"PRAGMA table_info({table})", conn))
+            using (var reader = probe.ExecuteReader()) {
+                while (reader.Read()) {
+                    // table_info column 1 is the column name
+                    if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase))
+                        return;
+                }
             }
+            using (var cmd = new SQLiteCommand($"ALTER TABLE {table} ADD COLUMN {column} {definition}", conn))
+                cmd.ExecuteNonQuery();
         }
 
         /// <summary>
