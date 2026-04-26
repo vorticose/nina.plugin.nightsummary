@@ -41,6 +41,12 @@ namespace NINA.Plugin.NightSummary.Session {
         private LiveStackCapture               liveStackCapture;
         private bool                           sequenceFinishedSubscribed;
 
+        // Tracks fire-and-forget report-generation Tasks spawned from EndSession so
+        // Teardown can wait for in-flight reports rather than dropping them when NINA
+        // closes immediately after a session ends.
+        private readonly object _pendingReportsLock = new object();
+        private readonly List<Task> _pendingReports = new List<Task>();
+
         private static NightSummarySettings S => SettingsManager.Instance.Current;
 
         [ImportingConstructor]
@@ -232,13 +238,33 @@ namespace NINA.Plugin.NightSummary.Session {
                 LiveStackImages              = liveStackImages
             };
 
-            _ = Task.Run(async () => {
+            var generation = Task.Run(async () => {
                 try {
                     await GenerateAndSendAsync(reportData);
                 } catch (Exception ex) {
                     Logger.Error($"NightSummary: Unhandled error in report generation. {ex.Message}");
                 }
             });
+            lock (_pendingReportsLock) _pendingReports.Add(generation);
+            // Self-cleanup so the list doesn't grow unbounded across many sessions.
+            _ = generation.ContinueWith(t => {
+                lock (_pendingReportsLock) _pendingReports.Remove(t);
+            }, TaskScheduler.Default);
+        }
+
+        /// <summary>
+        /// Awaits any outstanding fire-and-forget report-generation Tasks (up to a timeout)
+        /// so plugin Teardown can let post-session reports finish sending instead of
+        /// abandoning them when NINA closes.
+        /// </summary>
+        public async Task WaitForPendingReportsAsync(TimeSpan timeout) {
+            Task[] snapshot;
+            lock (_pendingReportsLock) snapshot = _pendingReports.ToArray();
+            if (snapshot.Length == 0) return;
+            Logger.Info($"NightSummary: Waiting for {snapshot.Length} in-flight report(s) before teardown (timeout {timeout.TotalSeconds:F0}s)");
+            try {
+                await Task.WhenAny(Task.WhenAll(snapshot), Task.Delay(timeout));
+            } catch { /* individual tasks already log their own errors */ }
         }
 
         /// <summary>
