@@ -688,9 +688,8 @@ nav {
 }
 
 .card-content {
-  flex: 0 1 auto;
+  flex: 0 0 750px;
   min-width: 0;
-  max-width: 750px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -1110,6 +1109,8 @@ nav {
 }
 
 .card-stat {
+  flex: 1 1 0;
+  min-width: 0;
   background: linear-gradient(to bottom, rgba(255,255,255,0.04) 0%, transparent 60%), var(--surface-well);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 6px;
