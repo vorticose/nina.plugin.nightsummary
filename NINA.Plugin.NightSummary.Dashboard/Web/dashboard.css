@@ -1161,6 +1161,25 @@ nav {
     0 1px 2px rgba(0,0,0,0.2);
 }
 
+/* Tablet / narrow-laptop: card-content gets ~half the card via the 50/50 flex
+   split with .card-altitude. Below ~1100px viewport, 6 stat boxes in a single
+   row no longer fit — labels collide ("INTEGRATIONHFR"). Drop to a 3-column
+   grid that wraps to 2 rows of 3 (matching mobile), while keeping the chart
+   side-by-side with the content column. Phones (<=700px) keep their own block
+   that also stacks the chart below. */
+@media (max-width: 1100px) {
+  .card-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
+  .card-stat { padding: 8px 6px; }
+  .card-stat-value { font-size: 18px; }
+  .card-stat-label { font-size: 10px; letter-spacing: 0.6px; }
+  .stat-images      { order: 1; }
+  .stat-integration { order: 2; }
+  .stat-moon        { order: 3; }
+  .stat-hfr         { order: 4; }
+  .stat-fwhm        { order: 5; }
+  .stat-guiding     { order: 6; }
+}
+
 .card-stat-value {
   font-size: 23px;
   color: var(--text-primary);
@@ -4846,7 +4865,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   /* ── Touch-friendly tap targets (44px minimum) ── */
   .report-btn, .back-btn { min-height: 44px; display: inline-flex; align-items: center; }
   .nav-link { min-height: 44px; display: inline-flex; align-items: center; }
-  .theme-toggle { width: 44px; height: 44px; }
+  .theme-toggle { width: 44px; height: 44px; flex-shrink: 0; }
   .target-dropdown-btn { min-height: 36px; }
   .sort-dropdown-btn { min-height: 36px; }
 
