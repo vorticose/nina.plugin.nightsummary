@@ -943,13 +943,13 @@ nav {
   transition: transform var(--t-medium);
 }
 
-/* Zoomed live stack image — fixed overlay centered in viewport */
+/* Zoomed live stack image — fixed overlay centered in viewport.
+   Use `inset: 0` instead of 100vw/vh: viewport units include the scrollbar
+   width, so opening the overlay would push the page horizontally on
+   platforms with persistent scrollbars. */
 .livestack-zoom-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
+  inset: 0;
   background: rgba(0,0,0,0.7);
   display: flex;
   align-items: center;

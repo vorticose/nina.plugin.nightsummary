@@ -94,6 +94,13 @@ function esc(str) {
 // the live DOM. Strips <script> elements, on*-handler attributes, and javascript:
 // hrefs so a compromised backend (or future Phase 2 cloud surface) can't smuggle
 // JS through API-supplied SVG content.
+// localStorage.setItem can throw on quota-exceeded or in privacy modes that
+// disable storage. Wrap writes so a benign settings flip doesn't bubble an
+// uncaught exception out of an event handler.
+function safeSetItem(key, value) {
+  try { safeSetItem(key, value); } catch (_) { /* storage unavailable */ }
+}
+
 function sanitizeSvgInPlace(root) {
   if (!root) return;
   var nodes = [root].concat(Array.prototype.slice.call(root.querySelectorAll('*')));
@@ -241,7 +248,7 @@ function initTheme() {
 function toggleTheme() {
   document.documentElement.classList.toggle('light');
   var isLight = document.documentElement.classList.contains('light');
-  localStorage.setItem('ns-theme', isLight ? 'light' : 'dark');
+  safeSetItem('ns-theme', isLight ? 'light' : 'dark');
   updateThemeButton();
 }
 
@@ -339,7 +346,7 @@ function initTabBar(onSwitch) {
       btn.classList.add('active');
       positionThumb(btn, true);
       var tabId = btn.getAttribute('data-tab');
-      localStorage.setItem('ns-stats-tab', tabId);
+      safeSetItem('ns-stats-tab', tabId);
       if (onSwitch) onSwitch(tabId);
     });
   });
@@ -521,7 +528,7 @@ function getTargetStatusFilter() {
 }
 
 function setTargetStatusFilter(arr) {
-  localStorage.setItem('ns-targets-status-filter', JSON.stringify(arr));
+  safeSetItem('ns-targets-status-filter', JSON.stringify(arr));
 }
 
 var TARGET_TYPE_OPTIONS = [
@@ -539,7 +546,7 @@ function getTargetTypeFilter() {
 }
 
 function setTargetTypeFilter(arr) {
-  localStorage.setItem('ns-targets-type-filter', JSON.stringify(arr));
+  safeSetItem('ns-targets-type-filter', JSON.stringify(arr));
 }
 
 // Returns 'single' | 'multi' | 'mosaic' for a TS project
@@ -598,14 +605,14 @@ function initTargetsControlBar() {
     pill.addEventListener('click', function() {
       var key = pill.getAttribute('data-sort-key');
       if (!key || key === getTargetSortKey()) return;
-      localStorage.setItem('ns-targets-sort', key);
+      safeSetItem('ns-targets-sort', key);
       renderStatsTabContent('targets');
     });
   });
   var grpBtn = document.querySelector('.targets-group-pill');
   if (grpBtn) {
     grpBtn.addEventListener('click', function() {
-      localStorage.setItem('ns-targets-group', getTargetGroupBy() === 'project' ? 'flat' : 'project');
+      safeSetItem('ns-targets-group', getTargetGroupBy() === 'project' ? 'flat' : 'project');
       renderStatsTabContent('targets');
     });
   }
@@ -653,7 +660,7 @@ function initTargetsControlBar() {
   if (targetsFovEl) {
     targetsFovEl.addEventListener('change', function() {
       showFovOverlay = this.checked;
-      localStorage.setItem('ns-show-fov', showFovOverlay ? 'true' : 'false');
+      safeSetItem('ns-show-fov', showFovOverlay ? 'true' : 'false');
       document.querySelectorAll('.mosaic-fov-svg').forEach(function(svg) {
         svg.style.display = showFovOverlay ? '' : 'none';
       });
@@ -1799,6 +1806,9 @@ function openTargetDetail(targetName, latestSessionId) {
     var sessions = data.sessions || [];
     requestAnimationFrame(function() { renderChartIntoPanel(backdrop, sessions); });
     // Re-render chart on window resize (debounced) so it stays full-width.
+    // Detach any prior handler first; opening the panel twice would otherwise
+    // attach a second listener and the close-time remove only catches the latest.
+    if (_tdpResizeHandler) window.removeEventListener('resize', _tdpResizeHandler);
     _tdpResizeHandler = function() {
       if (_tdpResizeDebounce) clearTimeout(_tdpResizeDebounce);
       _tdpResizeDebounce = setTimeout(function() {
@@ -3510,11 +3520,11 @@ function renderSessionsV2(el, sub, params) {
       var nowOpen = histEl.style.display !== 'none';
       if (nowOpen) {
         histEl.style.display = 'none';
-        localStorage.setItem('ns-sessions-expander', 'closed');
+        safeSetItem('ns-sessions-expander', 'closed');
         expanderBtn.textContent = 'Earlier sessions (' + earlierCount + ') \u25bc';
       } else {
         histEl.style.display = '';
-        localStorage.setItem('ns-sessions-expander', 'open');
+        safeSetItem('ns-sessions-expander', 'open');
         expanderBtn.textContent = 'Earlier sessions (' + earlierCount + ') \u25b2';
         if (!histEl.querySelector('.filter-bar')) {
           doRenderList(histEl, null, fromVal, toVal, sortVal);
@@ -3976,7 +3986,7 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
 
 function hideSession(sessionId) {
   hiddenSessions[sessionId] = true;
-  localStorage.setItem('ns-hidden-sessions', JSON.stringify(hiddenSessions));
+  safeSetItem('ns-hidden-sessions', JSON.stringify(hiddenSessions));
 
   var btn = document.querySelector('.hide-btn[data-session="' + sessionId + '"]');
   var card = btn ? btn.closest('.session-card') : null;
@@ -4005,7 +4015,7 @@ function hideSession(sessionId) {
       unhideBtn2.addEventListener('click', function() {
         hiddenSessions = {};
         showHidden = false;
-        localStorage.setItem('ns-hidden-sessions', '{}');
+        safeSetItem('ns-hidden-sessions', '{}');
         var from = document.getElementById('filter-from');
         var to = document.getElementById('filter-to');
         var sort = document.getElementById('filter-sort');
@@ -5099,7 +5109,7 @@ function bindListEvents() {
     sortMenu.querySelectorAll('.sort-option').forEach(function(btn) {
       btn.addEventListener('click', function() {
         currentSort = this.dataset.sort;
-        localStorage.setItem('ns-sort', currentSort);
+        safeSetItem('ns-sort', currentSort);
         sortDropdownOpen = false;
         refresh();
       });
@@ -5131,7 +5141,7 @@ function bindListEvents() {
   if (fovEl) {
     fovEl.addEventListener('change', function() {
       showFovOverlay = this.checked;
-      localStorage.setItem('ns-show-fov', showFovOverlay ? 'true' : 'false');
+      safeSetItem('ns-show-fov', showFovOverlay ? 'true' : 'false');
       document.querySelectorAll('.card-thumb-wrap svg, .target-card-thumb svg, .pdp-multi-thumb-cell svg, #pdp-thumb-wrap svg, #tdp-hero-wrap svg').forEach(function(svg) {
         svg.style.display = showFovOverlay ? '' : 'none';
       });
@@ -5146,7 +5156,7 @@ function bindListEvents() {
   if (altEl) {
     altEl.addEventListener('change', function() {
       showAltitude = this.checked;
-      localStorage.setItem('ns-show-altitude', showAltitude ? 'true' : 'false');
+      safeSetItem('ns-show-altitude', showAltitude ? 'true' : 'false');
       document.querySelectorAll('.card-altitude').forEach(function(el) {
         el.style.display = showAltitude ? '' : 'none';
       });
@@ -5166,7 +5176,7 @@ function bindListEvents() {
     unhideEl.addEventListener('click', function() {
       hiddenSessions = {};
       showHidden = false;
-      localStorage.setItem('ns-hidden-sessions', '{}');
+      safeSetItem('ns-hidden-sessions', '{}');
       refresh();
     });
   }
@@ -5209,7 +5219,7 @@ function bindListEvents() {
     btn.addEventListener('click', function() {
       if (cardViewMode === this.dataset.view) return;
       cardViewMode = this.dataset.view;
-      localStorage.setItem('ns-card-view', cardViewMode);
+      safeSetItem('ns-card-view', cardViewMode);
       var toggle = this.closest('.view-toggle');
       toggle.classList.toggle('is-compact', cardViewMode === 'compact');
       toggle.classList.toggle('is-expanded', cardViewMode === 'expanded');
