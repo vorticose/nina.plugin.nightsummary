@@ -3927,18 +3927,21 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
 
     shelf.appendChild(imagesDiv);
 
-    // Position relative to the thumb — append to .card-thumbs container
+    // Append to <body> with position:fixed so the shelf escapes any overflow
+    // clipping on ancestor containers (e.g. when .card-thumbs goes into
+    // overflow-x:auto scroll mode for cards with many thumbnails).
     var thumbsContainer = thumbWrap.closest('.card-thumbs');
     if (!thumbsContainer) { shelf = null; return; }
     thumbWrap.classList.add('shelf-active');
-    thumbsContainer.appendChild(shelf);
+    shelf.style.position = 'fixed';
+    document.body.appendChild(shelf);
 
-    // Calculate position: center shelf below the hovered thumb
-    // Account for the transform:scale(1.67) on hover — the visual size is larger
+    // Center the shelf horizontally under the hovered thumb in viewport
+    // coords; CSS .livestack-shelf already applies transform:translateX(-50%).
+    // Vertical offset of 75px gives clearance for the scale(1.67) hover effect.
     var wrapRect = thumbWrap.getBoundingClientRect();
-    var containerRect = thumbsContainer.getBoundingClientRect();
-    var centerX = (wrapRect.left + wrapRect.width / 2) - containerRect.left;
-    var topY = wrapRect.bottom - containerRect.top + 75;
+    var centerX = wrapRect.left + wrapRect.width / 2;
+    var topY = wrapRect.bottom + 75;
 
     shelf.style.left = centerX + 'px';
     shelf.style.top = topY + 'px';
