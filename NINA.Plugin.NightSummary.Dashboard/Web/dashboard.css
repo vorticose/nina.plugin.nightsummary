@@ -1021,6 +1021,11 @@ nav {
   padding: 10px;
   box-shadow: 0 6px 20px rgba(0,0,0,0.4);
   animation: shelf-reveal 200ms ease-out forwards;
+  /* Cap so a session with many livestack frames doesn't span the whole
+     viewport — items inside wrap to multiple columns. overflow stays
+     visible on the shelf itself so the up-arrow pseudo-elements aren't
+     clipped; the inner .livestack-shelf-images is the scroll container. */
+  max-width: min(720px, calc(100vw - 24px));
   overflow: visible;
 }
 
@@ -1052,22 +1057,30 @@ nav {
 }
 
 .livestack-shelf-images {
-  display: flex;
+  /* Grid wraps multiple frames per row up to the shelf max-width. Each
+     frame has a min cell size of 160px and grows to fill the row evenly,
+     so 4 frames fill the row and a 5th wraps below. Cap height + scroll
+     inside this container with overscroll-behavior:contain so a finger
+     drag on a frame scrolls the shelf, not the page below. */
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 8px;
-  flex-wrap: wrap;
-  justify-content: center;
-  overflow: visible;
+  max-height: 65vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .livestack-shelf-item {
-  width: 300px;
   text-align: center;
   opacity: 0;
   animation: shelf-item-in 200ms ease-out forwards;
+  min-width: 0;
 }
 
 .livestack-shelf-img {
-  width: 300px;
+  width: 100%;
   height: auto;
   border-radius: 6px;
   border: 1px solid var(--border);

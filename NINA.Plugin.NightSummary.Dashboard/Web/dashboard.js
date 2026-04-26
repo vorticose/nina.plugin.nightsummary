@@ -4137,6 +4137,22 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
     if (shelf && shelf.contains(e.relatedTarget)) return;
     shelfLeaveTimer = setTimeout(hideShelf, 100);
   });
+
+  // Touch dismiss: on iPad/touch laptops the shelf opens via sticky :hover
+  // when the user taps the thumb, but mouseleave never fires reliably on a
+  // subsequent tap elsewhere. Listen at the document level — any tap outside
+  // both the shelf and the originating thumb closes the shelf, and
+  // preventDefault stops the synthetic click from bubbling to the card and
+  // opening the report.
+  if (IS_TOUCH) {
+    document.addEventListener('touchend', function(e) {
+      if (!shelf) return;
+      if (shelf.contains(e.target)) return;
+      if (thumbWrap.contains(e.target)) return;
+      e.preventDefault();
+      hideShelf();
+    }, { passive: false });
+  }
 }
 
 function hideSession(sessionId) {
@@ -4984,13 +5000,16 @@ function setupMobileThumbnailZoom(thumbsContainer) {
     }
   });
 
-  // Dismiss when tapping outside the thumbs row
+  // Dismiss when tapping outside the thumbs row. preventDefault stops the
+  // synthetic click so it can't bubble to the card and open the report —
+  // a tap-anywhere-while-preview-open is treated as a dismiss gesture only.
   document.addEventListener('touchend', function(e) {
     if (!activeThumb) return;
     if (!thumbsContainer.contains(e.target) && !(preview && preview.contains(e.target))) {
+      e.preventDefault();
       hidePreview();
     }
-  });
+  }, { passive: false });
 }
 
 // ── Animated curve drawing on scroll ──────────────────────────────────────
