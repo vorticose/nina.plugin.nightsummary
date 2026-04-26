@@ -56,24 +56,6 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
         }
 
-        // Lazily-loaded metric-chart.js renderer source (embedded resource)
-        private static string? _metricChartJs;
-        private static string MetricChartJs {
-            get {
-                if (_metricChartJs != null) return _metricChartJs;
-                try {
-                    using var stream = Assembly.GetExecutingAssembly()
-                                               .GetManifestResourceStream("metric-chart.js");
-                    if (stream == null) { _metricChartJs = ""; return _metricChartJs; }
-                    using var reader = new System.IO.StreamReader(stream);
-                    _metricChartJs = reader.ReadToEnd();
-                } catch {
-                    _metricChartJs = "";
-                }
-                return _metricChartJs;
-            }
-        }
-
         // Filter classification and sorting delegated to FilterHelper
         private static bool IsBroadband(string filter) => FilterHelper.IsBroadband(filter);
         private static bool IsNarrowband(string filter) => FilterHelper.IsNarrowband(filter);
@@ -207,9 +189,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             if (!data.Images.Any()) {
                 sb.AppendLine("<p><em>No images were recorded during this session.</em></p>");
-                if (detailLevel >= 2) sb.Append(BuildNextNightPreviewSection(data));
+                if (detailLevel >= 2) sb.Append(await BuildNextNightPreviewSection(data));
                 sb.Append(BuildFooter());
-                // AppendChartRendererScript(sb); // JS renderer deactivated — CSS chip selector used instead (dead code, kept for v3 dashboard)
                 sb.AppendLine("</body></html>");
                 return sb.ToString();
             }
@@ -224,10 +205,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
             sb.Append(await BuildTargetSection(data, detailLevel, detailsOpen));
             if (detailLevel >= 1) sb.Append(BuildImageQualitySection(data, detailLevel, detailsOpen));
-            if (detailLevel >= 2) sb.Append(BuildNextNightPreviewSection(data));
+            if (detailLevel >= 2) sb.Append(await BuildNextNightPreviewSection(data));
             sb.Append(BuildFooter());
 
-            // AppendChartRendererScript(sb); // JS renderer deactivated — CSS chip selector used instead (dead code, kept for v3 dashboard)
             sb.AppendLine("</body></html>");
 
             // Replace placeholder with warnings banner if any were collected during generation
@@ -1177,12 +1157,6 @@ namespace NINA.Plugin.NightSummary.Reporting {
             WriteIndented = false
         };
 
-        /// <summary>
-        /// Emits one metric chart as a <c>&lt;div data-chart='...'&gt;</c> container
-        /// consumed by the metric-chart.js renderer. The JSON model carries all
-        /// points, axis metadata, event markers, and the distinct filter list for
-        /// the per-filter selector.
-        /// </summary>
         // Sanitize a filter name for use as a CSS ID fragment — replaces every
         // non-alphanumeric character with an underscore.
         private static string ChartSafeId(string filter) =>
@@ -1193,8 +1167,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// Each visible state is a pre-rendered C# SVG (axes auto-scaled to that
         /// filter's data), toggled by hidden radio inputs + CSS sibling selectors.
         /// Works in every HTML viewer including Gmail and iOS Quick Look — no JS
-        /// required. The JS renderer (metric-chart.js) is kept as dead code for
-        /// the future v3 dashboard.
+        /// required.
         /// </summary>
         private void EmitMetricChart(
                 StringBuilder sb,
@@ -1273,19 +1246,6 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-{ChartSafeId(f)}\" style=\"display:none\">{filterSvgs[f]}</div>");
 
             sb.AppendLine("</div>"); // metric-chart-container
-        }
-
-        /// <summary>
-        /// Appends the metric-chart.js renderer source inside a &lt;script&gt; tag.
-        /// Called once, just before &lt;/body&gt;. The IIFE inside the renderer
-        /// auto-initializes all <c>[data-chart]</c> containers on DOMContentLoaded.
-        /// </summary>
-        private static void AppendChartRendererScript(StringBuilder sb) {
-            var js = MetricChartJs;
-            if (string.IsNullOrEmpty(js)) return;
-            sb.AppendLine("<script>");
-            sb.Append(js);
-            sb.AppendLine("</script>");
         }
 
         /// <summary>
@@ -1464,29 +1424,29 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             // ── Moon altitude curve ──────────────────────────────────────────────
-            if (!SettingsManager.Instance.Current.ShowMoonCurve) goto skipMoon;
-            var moonPoints = AltitudeCalculator.GetMoonAltitudeCurve(latDeg, lonDeg, dayStart, dayEnd, stepMinutes: 5);
-            var moonSegments = new List<List<(DateTime t, double alt)>>();
-            List<(DateTime t, double alt)> moonSeg = null;
-            foreach (var (t, alt) in moonPoints) {
-                if (alt >= 0) {
-                    if (moonSeg == null) { moonSeg = new List<(DateTime, double)>(); moonSegments.Add(moonSeg); }
-                    moonSeg.Add((t, Math.Min(maxAlt, alt)));
-                } else {
-                    moonSeg = null;
+            if (SettingsManager.Instance.Current.ShowMoonCurve) {
+                var moonPoints = AltitudeCalculator.GetMoonAltitudeCurve(latDeg, lonDeg, dayStart, dayEnd, stepMinutes: 5);
+                var moonSegments = new List<List<(DateTime t, double alt)>>();
+                List<(DateTime t, double alt)> moonSeg = null;
+                foreach (var (t, alt) in moonPoints) {
+                    if (alt >= 0) {
+                        if (moonSeg == null) { moonSeg = new List<(DateTime, double)>(); moonSegments.Add(moonSeg); }
+                        moonSeg.Add((t, Math.Min(maxAlt, alt)));
+                    } else {
+                        moonSeg = null;
+                    }
+                }
+                foreach (var seg in moonSegments) {
+                    if (seg.Count < 2) continue;
+                    var pts = new StringBuilder();
+                    foreach (var (t, alt) in seg)
+                        pts.Append($"{X(t):F1},{Y(alt):F1} ");
+                    sb.AppendLine("<g><title>Moon Position</title>");
+                    sb.AppendLine($"<polyline points='{pts}' fill='none' stroke='transparent' stroke-width='12'/>");
+                    sb.AppendLine($"<polyline points='{pts}' fill='none' stroke='{svgMoonStroke}' stroke-width='1.5' stroke-dasharray='5,4' opacity='{svgMoonOpacity}'/>");
+                    sb.AppendLine("</g>");
                 }
             }
-            foreach (var seg in moonSegments) {
-                if (seg.Count < 2) continue;
-                var pts = new StringBuilder();
-                foreach (var (t, alt) in seg)
-                    pts.Append($"{X(t):F1},{Y(alt):F1} ");
-                sb.AppendLine("<g><title>Moon Position</title>");
-                sb.AppendLine($"<polyline points='{pts}' fill='none' stroke='transparent' stroke-width='12'/>");
-                sb.AppendLine($"<polyline points='{pts}' fill='none' stroke='{svgMoonStroke}' stroke-width='1.5' stroke-dasharray='5,4' opacity='{svgMoonOpacity}'/>");
-                sb.AppendLine("</g>");
-            }
-            skipMoon:;
 
             // Session start line with tooltip
             sb.AppendLine("<g>");
@@ -1531,7 +1491,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             return $"<div class='target-section'><h2>Tonight's Preview</h2><p style='color:var(--muted);font-style:italic;'>{message}</p></div>";
         }
 
-        private string BuildNextNightPreviewSection(ReportData data) {
+        private async Task<string> BuildNextNightPreviewSection(ReportData data) {
             if (!SettingsManager.Instance.Current.ShowNextNightPreview) return "";
 
             var tsDb = new TargetSchedulerDatabase();
@@ -1551,7 +1511,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 
                 // Step 1: Get active profile ID
-                var profilesJson = TsApiClient.GetStringAsync($"{baseUrl}/profiles").Result;
+                var profilesJson = await TsApiClient.GetStringAsync($"{baseUrl}/profiles");
                 var profiles = JsonSerializer.Deserialize<List<TsProfileInfo>>(profilesJson, options);
                 var active = profiles?.FirstOrDefault(p => p.Active);
                 if (active == null)
@@ -1567,7 +1527,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var encodedStart = Uri.EscapeDataString(startTime.ToString("o"));
                 var previewUrl = $"{baseUrl}/profiles/{active.Id}/preview?startTime={encodedStart}";
 
-                var previewJson = TsApiClient.GetStringAsync(previewUrl).Result;
+                var previewJson = await TsApiClient.GetStringAsync(previewUrl);
                 var entries = JsonSerializer.Deserialize<List<TsPreviewEntry>>(previewJson, options);
                 if (entries == null || !entries.Any())
                     return PreviewNotice("Target Scheduler returned an empty preview — no targets scheduled for tonight.");
