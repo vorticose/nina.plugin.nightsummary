@@ -4895,15 +4895,9 @@ function fixChartTextDistortion(container) {
 function renderAltitudeChart(s, data) {
   var el = document.getElementById('altitude-' + s.sessionId);
   if (!el) return;
-  var legendHtml = '';
-  if (data.legend && data.legend.length > 0) {
-    legendHtml = '<div class="chart-legend">' + data.legend.map(function(l) {
-      return '<div class="chart-legend-item">' +
-        '<span class="chart-legend-swatch" style="background:' + l.color + '"></span>' +
-        '<span style="color:' + l.color + '">' + esc(l.name) + '</span></div>';
-    }).join('') + '</div>';
-  }
-  el.innerHTML = legendHtml + '<div class="chart-svg-wrap">' + data.svg + '</div>';
+  // Legend intentionally omitted — color-matched target pills in the card
+  // header serve as the legend, freeing the chart to fill the full width.
+  el.innerHTML = '<div class="chart-svg-wrap">' + data.svg + '</div>';
   setupCurveAnimation(el);
   setupChartCrosshair(el);
   fixChartTextDistortion(el);
