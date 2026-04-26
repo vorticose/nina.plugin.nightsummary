@@ -868,7 +868,10 @@ nav {
 .card-thumb-wrap.shelf-active {
   transform: scale(1.67);
   z-index: 10;
-  transition: transform var(--t-medium) 150ms, z-index 0s 150ms;
+  /* No delay — sync with the shelf reveal animation which also starts at
+     t=0 with the same 450ms cubic-bezier easing so the two come up in
+     lockstep. */
+  transition: transform var(--t-medium), z-index 0s;
 }
 
 /* Touch tap-to-zoom preview — applies on every viewport that has touch
@@ -1023,7 +1026,11 @@ nav {
   border-radius: 8px;
   padding: 10px;
   box-shadow: 0 6px 20px rgba(0,0,0,0.4);
-  animation: shelf-reveal 200ms ease-out forwards;
+  /* Match thumb's .shelf-active transition exactly: var(--t-medium) =
+     450ms cubic-bezier(0.22, 1, 0.36, 1). Thumb scale and shelf reveal
+     start in the same frame (no delay) so they finish together — no more
+     "shelf appears then thumb scales a beat later". */
+  animation: shelf-reveal 450ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
   /* Cap so a session with many livestack frames doesn't span the whole
      viewport — items inside wrap to multiple columns. overflow stays
      visible on the shelf itself so the up-arrow pseudo-elements aren't
@@ -1297,8 +1304,8 @@ nav {
    wide desktops they take their natural full size. */
 @media (min-width: 1101px) {
   .card-stat-label {
-    font-size: clamp(8px, 0.7vw, 11px);
-    letter-spacing: clamp(0px, 0.05vw, 1px);
+    font-size: clamp(7px, 0.65vw, 11px);
+    letter-spacing: clamp(0px, 0.04vw, 1px);
   }
   .card-stat-value {
     font-size: clamp(18px, 1.5vw, 23px);
@@ -1331,6 +1338,11 @@ nav {
   letter-spacing: 1px;
   font-weight: 600;
   margin-top: 2px;
+  /* letter-spacing applies to every character including the last one,
+     adding trailing space that pushes text-align:center off-center to
+     the left. Compensate by shifting content right by the same amount. */
+  text-indent: 1px;
+  text-align: center;
 }
 
 .card-stat-expandable {
@@ -1594,6 +1606,13 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   gap: 16px;
   margin-bottom: 8px;
   flex-wrap: wrap;
+  /* In report-view the parent #content is a flex column with overflow:hidden;
+     without an explicit flex-shrink:0 + padding, the report-viewer below
+     (which is flex:1) can collapse this nav row to 0 height on certain
+     viewports (notably iPad landscape) so the back/settings buttons
+     "disappear". Reserve real layout space here unconditionally. */
+  flex-shrink: 0;
+  padding: 8px 16px 0;
 }
 
 .report-nav-info {
