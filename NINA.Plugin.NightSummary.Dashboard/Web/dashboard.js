@@ -3870,22 +3870,32 @@ function setupScrollHoverClones(el) {
     var rect = wrap.getBoundingClientRect();
     var clone = wrap.cloneNode(true);
     clone.classList.add('card-thumb-wrap--clone');
-    // Explicit inline overrides defeat any inherited transition / transform
-    // and pin the clone where the live thumb sits.
+    // Pin clone over the live thumb at 1x; on next frame ramp to 1.67x so
+    // the CSS transition animates instead of snapping.
     clone.style.cssText =
       'position:fixed !important;' +
       'left:' + rect.left + 'px !important;' +
       'top:' + rect.top + 'px !important;' +
       'width:' + rect.width + 'px !important;' +
       'height:' + rect.height + 'px !important;' +
-      'transform:scale(1.67) !important;' +
+      'transform:scale(1) !important;' +
       'transform-origin:center center !important;' +
-      'transition:none !important;' +
+      'transition:transform 200ms ease-out !important;' +
       'z-index:2000 !important;' +
       'pointer-events:none !important;' +
       'margin:0 !important;';
+    // Force the label visible inside the clone — the original's :hover rule
+    // doesn't apply here (clone has pointer-events:none, mouse hovers original).
+    var label = clone.querySelector('.thumb-label');
+    if (label) label.style.setProperty('opacity', '1', 'important');
     document.body.appendChild(clone);
     activeClone = clone;
+    // Trigger animation on next frame.
+    requestAnimationFrame(function() {
+      if (clone === activeClone) {
+        clone.style.setProperty('transform', 'scale(1.67)', 'important');
+      }
+    });
   }
 
   function hideClone() {
