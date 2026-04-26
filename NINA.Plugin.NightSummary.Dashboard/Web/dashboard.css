@@ -1497,6 +1497,34 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   cursor: pointer;
 }
 
+/* ── Collapsible sections (Charts / Filters / Equipment) ── */
+.settings-expander {
+  border-top: 1px solid var(--border);
+  margin-top: 10px;
+  padding-top: 8px;
+}
+.settings-expander[open] { padding-bottom: 6px; }
+.settings-expander-summary {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  padding: 4px 0;
+}
+.settings-expander-summary::-webkit-details-marker { display: none; }
+.settings-expander-summary::before {
+  content: '▸';
+  display: inline-block;
+  width: 14px;
+  font-size: 10px;
+  transition: transform 0.15s ease;
+}
+.settings-expander[open] > .settings-expander-summary::before { transform: rotate(90deg); }
+.settings-expander-body { padding-top: 8px; }
+
 .settings-actions {
   display: flex;
   align-items: center;
@@ -4758,7 +4786,29 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   .remove-chart-btn { justify-self: end; }
 
   /* ── Equipment grid single column ── */
-  .equipment-grid { grid-template-columns: 1fr; }
+  .equipment-grid { grid-template-columns: 1fr; gap: 10px; }
+  /* Stack the override input under the show/name row so neither has to fight for width */
+  .equipment-row { flex-wrap: wrap; gap: 4px 8px; }
+  .equipment-row .settings-check { min-width: 0; flex: 1; }
+  .equipment-row .settings-input-sm { flex: 1 1 100%; }
+
+  /* ── Filter classification grid: keep filter name + both selects on one row ── */
+  .filter-class-grid { gap: 6px 0; }
+  .filter-class-row { flex-wrap: nowrap; gap: 6px; }
+  .filter-class-name { min-width: 32px; flex: 0 0 auto; }
+  .filter-class-row .settings-select { flex: 1 1 0; min-width: 0; }
+
+  /* ── Larger tap targets for inputs/selects/checkboxes in the settings panel ── */
+  .settings-panel .settings-select,
+  .settings-panel .settings-input-sm {
+    font-size: 13px;
+    padding: 8px 10px;
+    min-height: 36px;
+    box-sizing: border-box;
+  }
+  .settings-panel .settings-check { padding: 4px 0; min-height: 32px; font-size: 13px; }
+  .settings-panel .settings-check input { width: 18px; height: 18px; }
+  .settings-panel .settings-checks { gap: 4px 14px; }
 
   /* ── Project progress: wrap to second row on mobile ── */
   .targets-project-header,

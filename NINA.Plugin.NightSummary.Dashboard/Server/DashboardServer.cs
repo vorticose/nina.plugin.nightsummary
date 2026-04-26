@@ -2288,6 +2288,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 showChartRoofMarkers   = s.ShowChartRoofMarkers,
                 showPerTargetIQ        = s.ShowPerTargetIQ,
                 showEquipmentProfile   = s.ShowEquipmentProfile,
+                timelineAltitudeDefault = s.TimelineAltitudeDefault,
                 chartXAxisMetric       = s.ChartXAxisMetric,
                 chartPrimaryMetric     = s.ChartPrimaryMetric,
                 chartSecondaryMetric   = s.ChartSecondaryMetric,
@@ -2656,7 +2657,10 @@ namespace NINA.Plugin.NightSummary.Server {
 
                 try {
                     ApplyOverrides(s, overrides);
-                    s.ShowNextNightPreview = false; // Always off for dashboard
+                    // Tonight's Preview lives on the dashboard's Stats > Tonight tab,
+                    // so the embedded report section is redundant when viewed in-dashboard.
+                    // Not exposed in the per-report settings panel either.
+                    s.ShowNextNightPreview = false;
                     log?.Debug($"Regenerate {sessionId} effective settings: {FormatSettingsForLog(s)}");
 
                     var err = await _regen.RegenerateAsync(sessionId);
@@ -2741,7 +2745,7 @@ namespace NINA.Plugin.NightSummary.Server {
                     var saved = SnapshotSettings(s);
                     try {
                         ApplyOverrides(s, overrides);
-                        s.ShowNextNightPreview = false;
+                        s.ShowNextNightPreview = false; // see HandleRegenerate for rationale
 
                         for (int i = 0; i < sessions.Count; i++) {
                             regenAllCurrent = i + 1;
@@ -2802,6 +2806,7 @@ namespace NINA.Plugin.NightSummary.Server {
             var settingsPath = Path.Combine(reportsDir, $"{sessionId}.settings.json");
             if (File.Exists(settingsPath)) {
                 var json = await File.ReadAllTextAsync(settingsPath);
+                json = AugmentSidecarWithDefaults(json);
                 log?.Debug($"Settings for {sessionId} (sidecar): {json}");
                 res.StatusCode = 200;
                 res.ContentType = "application/json; charset=utf-8";
@@ -2815,6 +2820,31 @@ namespace NINA.Plugin.NightSummary.Server {
                 log?.Debug($"Settings for {sessionId} (no sidecar, using plugin defaults): {FormatSettingsForLog(_settings.Current)}");
                 await HandleGetSettings(res);
                 done?.Invoke(200, $"{sessionId} (plugin defaults — no sidecar)");
+            }
+        }
+
+        /// <summary>
+        /// Sidecar files written before a setting was introduced lack that key, which
+        /// would render the panel checkbox unchecked regardless of the user's actual
+        /// preference. Patch missing keys with the current plugin default so old reports
+        /// open with sensible defaults instead of phantom-off toggles.
+        /// </summary>
+        private string AugmentSidecarWithDefaults(string sidecarJson) {
+            try {
+                using var doc = JsonDocument.Parse(sidecarJson);
+                var dict = new Dictionary<string, JsonElement>();
+                foreach (var p in doc.RootElement.EnumerateObject()) dict[p.Name] = p.Value.Clone();
+                bool patched = false;
+                if (!dict.ContainsKey("timelineAltitudeDefault")) {
+                    var node = JsonSerializer.SerializeToElement(_settings.Current.TimelineAltitudeDefault);
+                    dict["timelineAltitudeDefault"] = node;
+                    patched = true;
+                }
+                if (!patched) return sidecarJson;
+                return JsonSerializer.Serialize(dict, JsonOpts);
+            } catch (Exception ex) {
+                log?.Warn($"AugmentSidecarWithDefaults: failed to parse, returning raw — {ex.Message}");
+                return sidecarJson;
             }
         }
 
@@ -2844,6 +2874,7 @@ namespace NINA.Plugin.NightSummary.Server {
                     showChartRoofMarkers   = s.ShowChartRoofMarkers,
                     showPerTargetIQ        = s.ShowPerTargetIQ,
                     showEquipmentProfile   = s.ShowEquipmentProfile,
+                    timelineAltitudeDefault = s.TimelineAltitudeDefault,
                     chartXAxisMetric       = s.ChartXAxisMetric,
                     chartPrimaryMetric     = s.ChartPrimaryMetric,
                     chartSecondaryMetric   = s.ChartSecondaryMetric,
@@ -2913,6 +2944,7 @@ private static string FormatSettingsForLog(NightSummarySettings s) {
                 ["ShowPerTargetIQ"]       = s.ShowPerTargetIQ,
                 ["ShowNextNightPreview"]  = s.ShowNextNightPreview,
                 ["ShowEquipmentProfile"]  = s.ShowEquipmentProfile,
+                ["TimelineAltitudeDefault"] = s.TimelineAltitudeDefault,
                 ["ChartXAxisMetric"]      = s.ChartXAxisMetric,
                 ["ChartPrimaryMetric"]    = s.ChartPrimaryMetric,
                 ["ChartSecondaryMetric"]  = s.ChartSecondaryMetric,
@@ -2944,6 +2976,7 @@ private static string FormatSettingsForLog(NightSummarySettings s) {
             s.ShowPerTargetIQ       = (bool)saved["ShowPerTargetIQ"];
             s.ShowNextNightPreview  = (bool)saved["ShowNextNightPreview"];
             s.ShowEquipmentProfile  = (bool)saved["ShowEquipmentProfile"];
+            s.TimelineAltitudeDefault = (bool)(saved.ContainsKey("TimelineAltitudeDefault") ? saved["TimelineAltitudeDefault"] : true);
             s.ChartXAxisMetric      = (int)saved["ChartXAxisMetric"];
             s.ChartPrimaryMetric    = (int)saved["ChartPrimaryMetric"];
             s.ChartSecondaryMetric  = (int)saved["ChartSecondaryMetric"];
@@ -2976,6 +3009,7 @@ private static string FormatSettingsForLog(NightSummarySettings s) {
                     case "showChartRoofMarkers":   s.ShowChartRoofMarkers  = kv.Value.GetBoolean(); break;
                     case "showPerTargetIQ":        s.ShowPerTargetIQ       = kv.Value.GetBoolean(); break;
                     case "showEquipmentProfile":   s.ShowEquipmentProfile  = kv.Value.GetBoolean(); break;
+                    case "timelineAltitudeDefault": s.TimelineAltitudeDefault = kv.Value.GetBoolean(); break;
                     case "chartXAxisMetric":       s.ChartXAxisMetric      = kv.Value.GetInt32(); break;
                     case "chartPrimaryMetric":     s.ChartPrimaryMetric    = kv.Value.GetInt32(); break;
                     case "chartSecondaryMetric":   s.ChartSecondaryMetric  = kv.Value.GetInt32(); break;

@@ -8,6 +8,11 @@
 - Fixed Tonight's Preview showing target window times in the viewer's browser timezone instead of the telescope's local timezone. Now all times (header, summary table, timeline ruler, altitude chart axis) render in the observatory's local time regardless of where the dashboard is opened from.
 - Tonight's Preview now anchors planning at 13:00 local (matching Target Scheduler's native preview default) instead of using the current time. This produces a stable, full-night view that no longer shifts as the night progresses and matches what users see in the TS planner UI.
 
+**Improvements**
+- Dashboard report-viewer settings panel now exposes the Timeline Altitude View default toggle to match the plugin Options. Old reports written before this setting existed default to the plugin's current value when opened, instead of appearing unchecked.
+- Charts, Filter Classifications & Types, and Equipment sections of the report-viewer settings panel are now collapsible — most users only adjust the top-level toggles, so the expanders shorten the panel by default and reduce scroll on phones.
+- Mobile-only layout polish on the settings panel: tap targets enlarged to ~36px on selects/inputs/checkboxes, equipment override inputs now stack cleanly under their show/hide row instead of fighting for horizontal space, and per-filter classification/type rows stay on one line by trimming their minimum widths.
+
 
 ## v2.11.1
 

@@ -5399,12 +5399,13 @@ function buildSettingsPanel(settings, filters) {
       settingsCheckbox('s-roofMarkers', 'Roof Markers', s.showChartRoofMarkers) +
       settingsCheckbox('s-perTargetIQ', 'Per-Target IQ', s.showPerTargetIQ) +
       settingsCheckbox('s-equipment', 'Equipment Profile', s.showEquipmentProfile) +
+      settingsCheckbox('s-timelineAlt', 'Timeline Altitude View', s.timelineAltitudeDefault) +
       settingsCheckbox('s-expand', 'Expand Sections', s.expandSectionsDefault) +
     '</div></div></div>';
 
-  // Row 3: Charts (main + additional in aligned grid)
-  html += '<div class="settings-row"><div class="settings-group" style="width:100%">' +
-    '<label class="settings-label">Charts</label>' +
+  // Row 3: Charts (collapsible)
+  html += '<details class="settings-expander"><summary class="settings-expander-summary">Charts</summary>' +
+    '<div class="settings-expander-body">' +
     '<div class="chart-grid">' +
       '<div class="chart-grid-headers">' +
         '<span></span><span>X-Axis</span><span>Primary</span><span>Secondary</span><span></span>' +
@@ -5428,14 +5429,14 @@ function buildSettingsPanel(settings, filters) {
   });
   html += '</div>' +
     '<button id="btn-add-chart" class="filter-link" style="margin-top:6px">+ Add Chart</button>' +
-    '</div></div></div>';
+    '</div></details>';
 
-  // Row 5: Filter classifications + types
+  // Row 5: Filter classifications + types (collapsible)
   if (filters && filters.length > 0) {
     var TYPE_OPTIONS = ['Auto', 'L', 'R', 'G', 'B', 'H', 'S', 'O'];
     var TYPE_CODES   = ['A',    'L', 'R', 'G', 'B', 'H', 'S', 'O'];
-    html += '<div class="settings-row"><div class="settings-group">' +
-      '<label class="settings-label">Filter Classifications &amp; Types</label>' +
+    html += '<details class="settings-expander"><summary class="settings-expander-summary">Filter Classifications &amp; Types</summary>' +
+      '<div class="settings-expander-body">' +
       '<div class="filter-class-headers">' +
         '<span class="filter-class-name"></span>' +
         '<span class="filter-class-col-hdr">Classification</span>' +
@@ -5460,12 +5461,12 @@ function buildSettingsPanel(settings, filters) {
       });
       html += '</select></div>';
     });
-    html += '</div></div></div>';
+    html += '</div></div></details>';
   }
 
-  // Row 6: Equipment (checkbox + override per field)
-  html += '<div class="settings-row"><div class="settings-group" style="width:100%">' +
-    '<label class="settings-label">Equipment</label>' +
+  // Row 6: Equipment (collapsible)
+  html += '<details class="settings-expander"><summary class="settings-expander-summary">Equipment</summary>' +
+    '<div class="settings-expander-body">' +
     '<div class="equipment-grid">';
   EQUIPMENT_FIELDS.forEach(function(f) {
     var visible = visibleFields.indexOf(f) >= 0;
@@ -5477,7 +5478,7 @@ function buildSettingsPanel(settings, filters) {
       '<input type="text" class="eq-override settings-input-sm" data-field="' + esc(f) + '" value="' + esc(override) + '" placeholder="Override name">' +
     '</div>';
   });
-  html += '</div></div></div>';
+  html += '</div></div></details>';
 
   // Regenerate buttons
   html += '<div class="settings-actions">' +
@@ -5546,6 +5547,7 @@ function collectSettings() {
     showChartRoofMarkers:  document.getElementById('s-roofMarkers').checked,
     showPerTargetIQ:       document.getElementById('s-perTargetIQ').checked,
     showEquipmentProfile:  document.getElementById('s-equipment').checked,
+    timelineAltitudeDefault: document.getElementById('s-timelineAlt').checked,
     chartXAxisMetric:      parseInt(document.getElementById('s-xAxis').value),
     chartPrimaryMetric:    parseInt(document.getElementById('s-primary').value),
     chartSecondaryMetric:  parseInt(document.getElementById('s-secondary').value),
