@@ -700,6 +700,9 @@ nav {
   min-width: 0;
   display: flex;
   gap: 4px;
+  /* Right inset so the chart's rounded indent stays clear of the .hide-btn
+     icon at top-right of the card. */
+  padding-right: 22px;
 }
 
 .chart-legend {
