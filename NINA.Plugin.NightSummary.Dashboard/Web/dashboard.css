@@ -635,7 +635,12 @@ nav {
   background: var(--surface);
   border: none;
   border-radius: 8px;
-  padding: 8px 28px 12px 14px;
+  /* padding-right reduced from 28→8 so the chart extends close to the card's
+     right edge (matching the 8px card-body gap on the chart's left side).
+     X-icon (.hide-btn) is position:absolute at right:6 — it floats above the
+     chart visually at the top-right corner where the chart's pull-up brings
+     it. */
+  padding: 8px 8px 12px 14px;
   box-shadow:
     0px 0px 0px 1px rgba(255,255,255,0.07),
     0px 2px 4px rgba(0,0,0,0.3),
@@ -700,12 +705,9 @@ nav {
   min-width: 0;
   display: flex;
   gap: 4px;
-  /* Symmetric spacing around the hide-btn. The X glyph is centered in a
-     button at right:6 with padding-x:6, so glyph-right sits 12px from the
-     card edge. Chart-indent should sit 12px from glyph-left (~22px from
-     card edge), i.e. 34px from card-right. Card padding-right is 28, so
-     inset = 6px gives matching gaps on both sides of the X. */
-  padding-right: 6px;
+  /* No right padding — .session-card now uses padding-right: 8 globally so
+     the chart extends to that boundary directly. */
+  padding-right: 0;
 }
 
 .chart-legend {
@@ -750,15 +752,26 @@ nav {
     inset 0 3px 10px rgba(0,0,0,0.45),
     inset 0 0 0 1px rgba(0,0,0,0.35),
     0 1px 0 rgba(255,255,255,0.06);
+  /* Reserve a small left gutter for Y-axis labels. SVG is shifted right by
+     the same amount; labels overflow the SVG's left edge (overflow:visible
+     on the SVG) and land in this gutter — the gutter has the dark indent
+     background, so labels read as inside the chart indent. The wrap clips
+     anything past its own left edge so labels can't spill into the
+     card-body gap. 8px is enough to fit a counter-scaled "90°" label at
+     typical chart widths with only a hair of breathing room from the
+     indent edge. */
+  padding-left: 8px;
+  overflow: hidden;
 }
 
 .chart-svg-wrap svg {
   position: absolute;
   top: 10px;
-  left: 0;
-  width: 100%;
+  left: 8px;
+  width: calc(100% - 8px);
   height: calc(100% - 10px);
   display: block;
+  overflow: visible;
 }
 
 .card-thumbs {
@@ -1178,14 +1191,6 @@ nav {
   .stat-hfr         { order: 4; }
   .stat-fwhm        { order: 5; }
   .stat-guiding     { order: 6; }
-  /* Pull the chart closer to the card's right edge so the right gap (chart
-     to card border) matches the left gap (stats to chart = card-body gap = 8).
-     Pull-up is disabled below 1100, so the chart sits below the header and
-     can extend rightward under the X-icon area without overlap.
-     Default card padding-right is 28px (X-icon clearance for desktop pull-up
-     mode); drop to 8 here to match the inner-gap spacing. */
-  .session-card { padding-right: 8px; }
-  .card-altitude { padding-right: 0; }
 }
 
 .card-stat-value {

@@ -5008,26 +5008,55 @@ function fixChartTextDistortion(container) {
     if (!ctm || ctm.a === 0) return;
     var ratio = ctm.d / ctm.a; // yScale / xScale
     if (Math.abs(ratio - 1) < 0.02) return; // Already uniform, skip
-    // Cap at 2.0 — two competing constraints meet here:
-    //   (1) Y labels (text-anchor=end at plotL-4) must stay within the SVG
-    //       left edge after counter-scale. At plotL=38 / SVG width 950, with
-    //       a 15-SVG-unit "90°" label, ratio×15 must fit in plotL-4 = 34
-    //       → ratio ≤ ~2.27.
-    //   (2) X labels (last hourly tick + chart-end label) sit ~1 hour apart
-    //       in SVG coords (~84 SVG units at this viewBox). The middle-anchored
-    //       hourly extends half its width right; the end-anchored chart-end
-    //       extends its full width left. To avoid collision: 1.5×label_width
-    //       < 84 → label_width < 56 SVG → ratio×25 < 56 → ratio ≤ 2.24.
-    // Both converge near 2.2; pick 2.0 for a small safety margin (sessions
-    // ending closer to a half-hour boundary have even tighter X gaps).
-    if (ratio > 2.0) ratio = 2.0;
+    // Full counter-scale — Y labels overflow the SVG's left edge into the
+    // 30px gutter on .chart-svg-wrap (overflow:visible on the SVG, padding
+    // and overflow:hidden on the wrap). X label collisions are handled by
+    // dedupChartXLabels() below, not by capping the ratio here.
     svg.querySelectorAll('text').forEach(function(t) {
       var x = parseFloat(t.getAttribute('x') || '0');
       var y = parseFloat(t.getAttribute('y') || '0');
       t.setAttribute('transform',
         'translate(' + x + ',' + y + ') scale(' + ratio.toFixed(4) + ',1) translate(' + (-x) + ',' + (-y) + ')');
     });
+    dedupChartXLabels(svg);
   });
+}
+
+// At narrow viewports, the X-axis has fixed-spacing hourly ticks plus a
+// chart-end label that may sit within an hour of the last tick. With full
+// counter-scale, those labels overlap. Greedy left-to-right pass: walk by
+// screen position and hide any label whose left edge crosses the previous
+// kept label's right edge (with a small gap). Y labels are filtered out by
+// looking at y position — X labels live near the bottom of the viewBox.
+function dedupChartXLabels(svg) {
+  var vb = (svg.getAttribute('viewBox') || '').split(/\s+/);
+  var vbY = parseFloat(vb[1] || '0');
+  var vbH = parseFloat(vb[3] || '0');
+  if (!vbH) return;
+  // 0.95 — Y "0°" label sits at y=224 (just below plot bottom 220), X-axis
+  // ticks sit at y=238 (further below). Threshold of 0.95 (vbY + 0.95*vbH =
+  // 14 + 220 = 234) excludes the "0°" label and includes the X ticks.
+  var bottomThreshold = vbY + vbH * 0.95;
+  var labels = [];
+  svg.querySelectorAll('text').forEach(function(t) {
+    if (t.style.display === 'none') t.style.display = ''; // reset prior pass
+    var y = parseFloat(t.getAttribute('y') || '0');
+    if (y < bottomThreshold) return;
+    var rect = t.getBoundingClientRect();
+    if (!rect.width) return;
+    labels.push({ el: t, left: rect.left, right: rect.right });
+  });
+  labels.sort(function(a, b) { return a.left - b.left; });
+  var GAP = 4; // minimum screen px between adjacent kept labels
+  var prevRight = -Infinity;
+  for (var i = 0; i < labels.length; i++) {
+    var lbl = labels[i];
+    if (lbl.left < prevRight + GAP) {
+      lbl.el.style.display = 'none';
+    } else {
+      prevRight = lbl.right;
+    }
+  }
 }
 
 // Tablet/laptop breakpoint matches the @media (max-width: 1100px) in dashboard.css
