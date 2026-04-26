@@ -4084,23 +4084,47 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
     shelf.style.position = 'fixed';
     document.body.appendChild(shelf);
 
-    // Center the shelf horizontally under the hovered thumb in viewport
-    // coords; CSS .livestack-shelf already applies transform:translateX(-50%).
-    // Vertical offset of 75px gives clearance for the scale(1.67) hover effect.
+    // Compute explicit shelf width based on image count so the inner flex
+    // grid can wrap to multiple columns. Without this the shelf is sized
+    // to its intrinsic content (single column of 200px items) and never
+    // expands. Cap at 4 columns for a balanced grid; cap shelf width at
+    // viewport - 24 so it doesn't run off-screen on iPad.
+    var ITEM_W = 180;
+    var GAP = 8;
+    var SHELF_PAD = 20; // 10px each side
+    var MAX_COLS = 4;
+    var maxShelfW = window.innerWidth - 24;
+    var cols = Math.min(images.length, MAX_COLS);
+    var desiredW = cols * ITEM_W + (cols - 1) * GAP + SHELF_PAD;
+    var shelfW = Math.min(desiredW, maxShelfW);
+    shelf.style.width = shelfW + 'px';
+
+    // Smart placement: prefer below the thumb, but flip above when the
+    // shelf would clip off the bottom and there's more room above.
     var wrapRect = thumbWrap.getBoundingClientRect();
     var centerX = wrapRect.left + wrapRect.width / 2;
-    var topY = wrapRect.bottom + 75;
-
+    var GAP_FROM_THUMB = 20;
     shelf.style.left = centerX + 'px';
-    shelf.style.top = topY + 'px';
+    shelf.style.top = (wrapRect.bottom + GAP_FROM_THUMB) + 'px';
 
-    // Clamp so shelf doesn't overflow past left edge of viewport
+    // Measure on the next frame, then re-place if needed and clamp x to viewport.
     requestAnimationFrame(function() {
       if (!shelf) return;
       var shelfRect = shelf.getBoundingClientRect();
+      var shelfH = shelfRect.height;
+      var spaceBelow = window.innerHeight - wrapRect.bottom;
+      var spaceAbove = wrapRect.top;
+      // Flip above if below clips and above has more room
+      if (spaceBelow < shelfH + GAP_FROM_THUMB && spaceAbove > spaceBelow) {
+        shelf.classList.add('livestack-shelf--above');
+        shelf.style.top = (wrapRect.top - shelfH - GAP_FROM_THUMB) + 'px';
+      }
+      // Clamp horizontally so the shelf stays inside the viewport
+      shelfRect = shelf.getBoundingClientRect();
       if (shelfRect.left < 12) {
-        var shift = 12 - shelfRect.left;
-        shelf.style.left = (centerX + shift) + 'px';
+        shelf.style.left = (centerX + (12 - shelfRect.left)) + 'px';
+      } else if (shelfRect.right > window.innerWidth - 12) {
+        shelf.style.left = (centerX - (shelfRect.right - (window.innerWidth - 12))) + 'px';
       }
     });
 
@@ -5123,10 +5147,10 @@ function dedupChartXLabels(svg) {
   }
 }
 
-// Tablet/laptop breakpoint matches the @media (max-width: 1100px) in dashboard.css
+// Tablet/laptop breakpoint matches the @media (max-width: 1200px) in dashboard.css
 // where .card-stats becomes a 3-col grid and the card-content slot grows tall
 // enough that the chart no longer needs the pull-up trick. Keep both in sync.
-var CARD_DESKTOP_MIN_WIDTH = 1101;
+var CARD_DESKTOP_MIN_WIDTH = 1201;
 
 // The chart SVG uses preserveAspectRatio="none" so it stretches to fit. The
 // pull-up was designed for desktop layout where card-content was a single

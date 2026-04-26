@@ -1006,7 +1006,7 @@ nav {
    :hover fires on tap, opening the shelf alongside the mobile thumb
    preview). Above 1100 the desktop hover model takes over and the
    tap-zoom is disabled in JS. */
-@media (max-width: 1100px) {
+@media (max-width: 1200px) {
   .livestack-badge { display: none; }
   .livestack-shelf { display: none; }
 }
@@ -1056,19 +1056,30 @@ nav {
   border-bottom: 5px solid var(--surface);
 }
 
+/* When the shelf is placed above the thumb (smart placement when there's
+   not enough room below), flip the arrow to point down. Override the top
+   placement and swap border-bottom for border-top. */
+.livestack-shelf--above::before {
+  top: auto;
+  bottom: -6px;
+  border-bottom: none;
+  border-top: 6px solid var(--border);
+}
+.livestack-shelf--above::after {
+  top: auto;
+  bottom: -5px;
+  border-bottom: none;
+  border-top: 5px solid var(--surface);
+}
+
 .livestack-shelf-images {
-  /* auto-fit collapses empty grid tracks so 1 frame renders as one 160px
-     cell (shelf shrinks to fit), 4 frames fill a wider shelf row, etc.
-     auto-fill kept reserving 4 columns even with a single item, making
-     the shelf needlessly wide. Cap height + scroll inside with
-     overscroll-behavior:contain so a finger drag scrolls the shelf,
+  /* Flex wrap with fixed-width items: shelf width is set explicitly in JS
+     based on image count (capped at viewport-24 / 4 columns), so a row of
+     up to 4 items fits and a 5th wraps below. Cap height + scroll inside
+     with overscroll-behavior:contain so a finger drag scrolls the shelf,
      not the page below. */
-  display: grid;
-  /* minmax(160, 220) instead of (160, 1fr) so a single frame doesn't
-     stretch to fill the shelf's max-width — cells cap at 220px wide and
-     the shelf shrinks to the actual content size. With 4+ frames the
-     cells shrink (down to 160) to stay within the shelf's max-width. */
-  grid-template-columns: repeat(auto-fit, minmax(160px, 220px));
+  display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   gap: 8px;
   max-height: 65vh;
@@ -1079,6 +1090,7 @@ nav {
 }
 
 .livestack-shelf-item {
+  width: 180px;
   text-align: center;
   opacity: 0;
   animation: shelf-item-in 200ms ease-out forwards;
@@ -1261,7 +1273,7 @@ nav {
    grid that wraps to 2 rows of 3 (matching mobile), while keeping the chart
    side-by-side with the content column. Phones (<=700px) keep their own block
    that also stacks the chart below. */
-@media (max-width: 1100px) {
+@media (max-width: 1200px) {
   .card-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
   .card-stat { padding: 8px 6px; }
   .card-stat-value { font-size: 18px; }
@@ -1274,14 +1286,15 @@ nav {
   .stat-guiding     { order: 6; }
 }
 
-/* Narrow desktop / iPad-Pro-landscape range: 6 stats stay in a single row
-   but each box is only ~95px wide, not enough for the default 11px label
-   "INTEGRATION" with letter-spacing 1px (~76px content needed in 66px
-   available). Trim padding-x and label font/spacing so labels fit
-   without overflow. */
-@media (min-width: 1101px) and (max-width: 1400px) {
-  .card-stat { padding: 12px 8px; }
-  .card-stat-label { font-size: 10px; letter-spacing: 0.5px; }
+/* Narrow-desktop range (1201–1500): 6 stats stay in a single row but each
+   box is only ~95–110px wide, not enough for the default 11px
+   "INTEGRATION" label with letter-spacing 1px. Trim padding-x and label
+   font/spacing so labels fit without overflow. Above 1500 default sizing
+   has plenty of room. */
+@media (min-width: 1201px) and (max-width: 1500px) {
+  .card-stat { padding: 12px 6px; }
+  .card-stat-label { font-size: 9px; letter-spacing: 0.3px; }
+  .card-stat-value { font-size: 20px; }
 }
 
 .card-stat-value {
