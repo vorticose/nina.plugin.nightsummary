@@ -4080,6 +4080,11 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
     // overflow-x:auto scroll mode for cards with many thumbnails).
     var thumbsContainer = thumbWrap.closest('.card-thumbs');
     if (!thumbsContainer) { shelf = null; return; }
+    // Snapshot the thumb's natural bounds BEFORE applying .shelf-active —
+    // that class triggers a scale(1.67) transform, and getBoundingClientRect
+    // during the transition can return either pre- or post-transform values
+    // depending on browser timing. We compute the overhang manually.
+    var wrapRect = thumbWrap.getBoundingClientRect();
     thumbWrap.classList.add('shelf-active');
     shelf.style.position = 'fixed';
     document.body.appendChild(shelf);
@@ -4101,23 +4106,27 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
 
     // Smart placement: prefer below the thumb, but flip above when the
     // shelf would clip off the bottom and there's more room above.
-    var wrapRect = thumbWrap.getBoundingClientRect();
+    // Account for the .shelf-active scale(1.67) overhang so the shelf
+    // doesn't land on top of the now-larger thumb.
     var centerX = wrapRect.left + wrapRect.width / 2;
-    var GAP_FROM_THUMB = 20;
+    var SCALE_OVERHANG = wrapRect.height * 0.34; // (scale-1)/2 for scale 1.67
+    var GAP_FROM_THUMB = 12;
     shelf.style.left = centerX + 'px';
-    shelf.style.top = (wrapRect.bottom + GAP_FROM_THUMB) + 'px';
+    shelf.style.top = (wrapRect.bottom + SCALE_OVERHANG + GAP_FROM_THUMB) + 'px';
 
     // Measure on the next frame, then re-place if needed and clamp x to viewport.
     requestAnimationFrame(function() {
       if (!shelf) return;
       var shelfRect = shelf.getBoundingClientRect();
       var shelfH = shelfRect.height;
-      var spaceBelow = window.innerHeight - wrapRect.bottom;
-      var spaceAbove = wrapRect.top;
-      // Flip above if below clips and above has more room
+      var spaceBelow = window.innerHeight - (wrapRect.bottom + SCALE_OVERHANG);
+      var spaceAbove = wrapRect.top - SCALE_OVERHANG;
+      // Flip above if below clips and above has more room. Subtract the
+      // same scale overhang from the top so the shelf clears the scaled
+      // thumb's top edge.
       if (spaceBelow < shelfH + GAP_FROM_THUMB && spaceAbove > spaceBelow) {
         shelf.classList.add('livestack-shelf--above');
-        shelf.style.top = (wrapRect.top - shelfH - GAP_FROM_THUMB) + 'px';
+        shelf.style.top = (wrapRect.top - SCALE_OVERHANG - shelfH - GAP_FROM_THUMB) + 'px';
       }
       // Clamp horizontally so the shelf stays inside the viewport
       shelfRect = shelf.getBoundingClientRect();
