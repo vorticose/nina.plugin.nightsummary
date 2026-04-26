@@ -765,6 +765,26 @@ nav {
 
 .card-thumbs:empty { display: none; }
 
+/* Toggled on by setupThumbsScrollMode when thumbs would wrap to a 2nd row.
+   Switches to single-row scroll with a right-edge fade hint. Hover-expand on
+   leftmost/rightmost visible thumbs may clip slightly because overflow-x:auto
+   forces overflow-y:auto per CSS spec — middle thumbs are unaffected. */
+.card-thumbs--scroll {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 6px;
+  scrollbar-width: auto;
+  scrollbar-color: rgba(255,255,255,0.28) transparent;
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 36px), transparent 100%);
+  mask-image: linear-gradient(to right, black calc(100% - 36px), transparent 100%);
+}
+.card-thumbs--scroll::-webkit-scrollbar { height: 11px; }
+.card-thumbs--scroll::-webkit-scrollbar-track { background: rgba(255,255,255,0.04); border-radius: 5px; }
+.card-thumbs--scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.28); border-radius: 5px; min-width: 40px; }
+.card-thumbs--scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.45); }
+.card-thumbs--scroll::-webkit-scrollbar-thumb:active { background: rgba(255,255,255,0.55); }
+
 .card-thumb-wrap {
   position: relative;
   width: 120px;

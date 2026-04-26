@@ -3810,6 +3810,31 @@ function renderThumbnails(s, thumbs) {
   if (livestackMap[s.sessionId]) {
     wireLiveStackBadges(s, livestackMap[s.sessionId]);
   }
+  setupThumbsScrollMode(el);
+}
+
+// Toggles .card-thumbs--scroll when the thumbs would wrap to a 2nd row.
+// Watches the container with ResizeObserver so window resize re-evaluates.
+// In wrap mode scrollWidth always equals clientWidth, so we sum child
+// offsetWidths plus gaps to compute the real intrinsic width.
+function setupThumbsScrollMode(el) {
+  if (!el) return;
+  var GAP = 6; // matches .card-thumbs gap
+  var measure = function() {
+    var total = 0;
+    for (var i = 0; i < el.children.length; i++) {
+      total += el.children[i].offsetWidth;
+    }
+    if (el.children.length > 1) total += GAP * (el.children.length - 1);
+    el.classList.toggle('card-thumbs--scroll', total > el.clientWidth + 1);
+  };
+  if (typeof ResizeObserver !== 'undefined') {
+    if (el._thumbsScrollObs) el._thumbsScrollObs.disconnect();
+    var ro = new ResizeObserver(measure);
+    ro.observe(el);
+    el._thumbsScrollObs = ro;
+  }
+  requestAnimationFrame(measure);
 }
 
 function loadThumbnails(sessions) {
