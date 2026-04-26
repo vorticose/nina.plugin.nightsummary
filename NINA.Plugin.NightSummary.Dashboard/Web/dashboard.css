@@ -759,7 +759,15 @@ nav {
   width: 100%;
   height: calc(100% - 10px);
   display: block;
+  /* SVG content (axis labels) needs to render past the SVG's left edge at
+     narrow widths where fixChartTextDistortion's counter-scale stretches
+     Y-labels well beyond the plotL gutter. The card-body has an 8px gap
+     between content and altitude — that's where the overflowed label tails
+     end up. Without `overflow: visible` they'd be clipped to the SVG box. */
+  overflow: visible;
 }
+
+.chart-svg-wrap { overflow: visible; }
 
 .card-thumbs {
   display: flex;
