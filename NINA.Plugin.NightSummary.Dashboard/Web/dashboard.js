@@ -5400,7 +5400,7 @@ function buildSettingsPanel(settings, filters) {
       settingsCheckbox('s-hfr', 'Metric Chart', s.showHFRGraph) +
       settingsCheckbox('s-afMarkers', 'AF Markers', s.showChartAfMarkers) +
       settingsCheckbox('s-flipMarkers', 'Flip Markers', s.showChartFlipMarkers) +
-      settingsCheckbox('s-roofMarkers', 'Roof Markers', s.showChartRoofMarkers) +
+      settingsCheckbox('s-roofMarkers', 'Safety Markers', s.showChartRoofMarkers) +
       settingsCheckbox('s-perTargetIQ', 'Per-Target IQ', s.showPerTargetIQ) +
       settingsCheckbox('s-equipment', 'Equipment Profile', s.showEquipmentProfile) +
       settingsCheckbox('s-timelineAlt', 'Timeline Altitude View', s.timelineAltitudeDefault) +

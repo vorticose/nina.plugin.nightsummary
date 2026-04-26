@@ -330,6 +330,20 @@ cd docs && bundle install && bundle exec jekyll serve
 **Worktree:** There's a worktree at `.claude/worktrees/docs-preview` checked out to
 `feature/docs-site`. Use that worktree for docs work to avoid branch conflicts.
 
+## Settings: keep three places in sync
+
+Adding or renaming a user-facing plugin setting touches **three** files. Skip any one and the dashboard silently disagrees with what the report was actually generated with (see the marker-checkboxes-out-of-sync bug, 2026-04-26).
+
+1. **Property** — `NINA.Plugin.NightSummary/NightSummaryPlugin.cs` (settings property + initialization) and the backing `NightSummarySettings`.
+2. **Sidecar write** — `NINA.Plugin.NightSummary/Session/SessionService.cs` ~L568 anonymous object that gets serialized to `{sessionId}.settings.json`. **Every setting the dashboard reads or writes must be in this object.** Missing fields → checkbox shows defaulted state, not what the report actually used.
+3. **Dashboard** — `NINA.Plugin.NightSummary.Dashboard/Web/dashboard.js`:
+   - `buildSettingsPanel()` (~L5359) reads it
+   - the form-collect block (~L5535) writes it back
+
+Also update `Options.xaml` for the WPF label, and `DashboardServer.cs` if there's a typed read/augment path.
+
+When in doubt, grep the existing setting name across the repo — every hit is a place the new setting probably needs to land too.
+
 ## UI Standards (Options.xaml)
 
 - **Inline utility buttons** (Browse, + Add Chart, ✕ Remove, etc.): use `MinWidth` to ensure horizontal breathing room — NINA's ControlTemplate ignores `Padding`. No fixed Width.
