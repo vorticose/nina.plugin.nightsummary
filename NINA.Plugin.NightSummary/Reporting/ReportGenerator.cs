@@ -1256,7 +1256,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
         private string BuildEventTimelineSection(ReportData data) {
             if (!data.Images.Any()) return string.Empty;
 
-            var simpleHtml = EventTimelineGenerator.GenerateTimeline(data.Session, data.Images, data.Events ?? new List<SessionEvent>());
+            var simpleHtml = EventTimelineGenerator.GenerateTimeline(data.Session, data.Images, FilterEventsBySettings(data.Events));
             if (string.IsNullOrEmpty(simpleHtml)) return string.Empty;
 
             var altitudeHtml = BuildSessionAltitudeChart(data);
@@ -2085,7 +2085,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             // Event markers — vertical dashed lines with labels at top + tooltips
-            var events = data.Events;
+            var events = FilterEventsBySettings(data.Events);
             if (events != null) {
                 foreach (var evt in events) {
                     if (evt.Timestamp < sessionStart || evt.Timestamp > sessionEnd) continue;
@@ -2154,6 +2154,17 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("</div>");
 
             return sb.ToString();
+        }
+
+        private static List<SessionEvent> FilterEventsBySettings(List<SessionEvent> events) {
+            if (events == null) return new List<SessionEvent>();
+            var s = SettingsManager.Instance.Current;
+            return events.Where(e => e.EventType switch {
+                "AutoFocus"                  => s.ShowChartAfMarkers,
+                "MeridianFlip"               => s.ShowChartFlipMarkers,
+                "RoofOpen" or "RoofClosed"   => s.ShowChartRoofMarkers,
+                _                            => true
+            }).ToList();
         }
 
         private string BuildFooter() {
