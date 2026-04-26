@@ -688,7 +688,7 @@ nav {
 }
 
 .card-content {
-  flex: 6 0 0;
+  flex: 1 0 0;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -696,7 +696,7 @@ nav {
 }
 
 .card-altitude {
-  flex: 4 0 0;
+  flex: 1 0 0;
   min-width: 0;
   display: flex;
   gap: 4px;
