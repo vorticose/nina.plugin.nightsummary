@@ -4953,7 +4953,13 @@ function renderAltitudeChart(s, data) {
     var textRight = lastChild ? lastChild.getBoundingClientRect().right : 0;
     var svgWrap = el.querySelector('.chart-svg-wrap');
     var chartLeft = svgWrap ? svgWrap.getBoundingClientRect().left : el.getBoundingClientRect().left;
-    var clearance = (textRight > chartLeft - 15) ? 18 : 0;
+    // Bigger clearance when the header has wrapped to multiple rows (target
+    // pills overflowing toward the chart) so the last pill row doesn't sit
+    // flush against the chart top edge.
+    var singleRowH = 32;
+    var multiRow = headerH > singleRowH + 4;
+    var overlapsChart = textRight > chartLeft - 15;
+    var clearance = multiRow ? 30 : (overlapsChart ? 18 : 0);
     var latestLabel = card.querySelector('.latest-label');
     var extraPullUp = latestLabel
       ? latestLabel.offsetHeight + parseFloat(getComputedStyle(latestLabel).marginBottom || 0)
