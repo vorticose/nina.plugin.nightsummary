@@ -700,9 +700,12 @@ nav {
   min-width: 0;
   display: flex;
   gap: 4px;
-  /* Symmetric spacing around the hide-btn: chart-indent -> X glyph gap
-     matches X glyph -> card right-edge gap. */
-  padding-right: 14px;
+  /* Symmetric spacing around the hide-btn. The X glyph is centered in a
+     button at right:6 with padding-x:6, so glyph-right sits 12px from the
+     card edge. Chart-indent should sit 12px from glyph-left (~22px from
+     card edge), i.e. 34px from card-right. Card padding-right is 28, so
+     inset = 6px gives matching gaps on both sides of the X. */
+  padding-right: 6px;
 }
 
 .chart-legend {
