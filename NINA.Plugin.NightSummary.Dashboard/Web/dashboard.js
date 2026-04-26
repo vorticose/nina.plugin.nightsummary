@@ -3870,10 +3870,20 @@ function setupScrollHoverClones(el) {
     var rect = wrap.getBoundingClientRect();
     var clone = wrap.cloneNode(true);
     clone.classList.add('card-thumb-wrap--clone');
-    clone.style.left = rect.left + 'px';
-    clone.style.top = rect.top + 'px';
-    clone.style.width = rect.width + 'px';
-    clone.style.height = rect.height + 'px';
+    // Explicit inline overrides defeat any inherited transition / transform
+    // and pin the clone where the live thumb sits.
+    clone.style.cssText =
+      'position:fixed !important;' +
+      'left:' + rect.left + 'px !important;' +
+      'top:' + rect.top + 'px !important;' +
+      'width:' + rect.width + 'px !important;' +
+      'height:' + rect.height + 'px !important;' +
+      'transform:scale(1.67) !important;' +
+      'transform-origin:center center !important;' +
+      'transition:none !important;' +
+      'z-index:2000 !important;' +
+      'pointer-events:none !important;' +
+      'margin:0 !important;';
     document.body.appendChild(clone);
     activeClone = clone;
   }

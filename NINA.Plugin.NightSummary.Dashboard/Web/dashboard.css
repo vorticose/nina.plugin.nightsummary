@@ -796,16 +796,19 @@ nav {
 }
 
 /* Body-attached clone used only in scroll mode. Same look as the in-row
-   thumb but unconstrained by ancestor overflow. */
+   thumb but unconstrained by ancestor overflow. !important defeats the
+   inherited .card-thumb-wrap transition that would animate from scale(1)
+   to scale(1.67) and could appear stuck mid-animation. */
 .card-thumb-wrap--clone {
-  position: fixed;
-  z-index: 2000;
-  pointer-events: none;
-  border-radius: 6px;
-  box-shadow: 0 6px 20px rgba(0,0,0,0.55), 0 2px 6px rgba(0,0,0,0.4);
-  transform-origin: center center;
-  transform: scale(1.67);
-  transition: transform 200ms;
+  position: fixed !important;
+  z-index: 2000 !important;
+  pointer-events: none !important;
+  border-radius: 6px !important;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.55), 0 2px 6px rgba(0,0,0,0.4) !important;
+  transform-origin: center center !important;
+  transform: scale(1.67) !important;
+  transition: none !important;
+  margin: 0 !important;
 }
 .card-thumbs--scroll::-webkit-scrollbar { height: 11px; }
 .card-thumbs--scroll::-webkit-scrollbar-track { background: rgba(255,255,255,0.04); border-radius: 5px; }
