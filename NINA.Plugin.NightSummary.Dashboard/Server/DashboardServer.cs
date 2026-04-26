@@ -49,8 +49,10 @@ namespace NINA.Plugin.NightSummary.Server {
             return s != null ? (s.Enabled, s.Port, s.Host) : (false, 0, "localhost");
         }
 
-        // Regenerate-all progress tracking
-        private volatile bool regenAllRunning;
+        // Regenerate-all progress tracking. regenAllRunning is an int so we can use
+        // Interlocked.CompareExchange for an atomic check-and-set gate — concurrent
+        // POSTs would otherwise both pass the bool check before either flipped it.
+        private int regenAllRunning;
         private volatile int regenAllCurrent;
         private volatile int regenAllTotal;
         private volatile int regenAllGenerated;
@@ -2661,7 +2663,10 @@ namespace NINA.Plugin.NightSummary.Server {
                 return;
             }
 
-            if (regenAllRunning) {
+            // Atomic check-and-set: only the caller that flips 0→1 wins. Without this
+            // two simultaneous POSTs could both observe regenAllRunning==0, both pass
+            // the gate, and run two concurrent regenerate-all loops corrupting counters.
+            if (Interlocked.CompareExchange(ref regenAllRunning, 1, 0) != 0) {
                 await WriteJson(res, 409, new { error = "Regeneration already in progress" });
                 done?.Invoke(409, "already running");
                 return;
@@ -2676,6 +2681,7 @@ namespace NINA.Plugin.NightSummary.Server {
                     JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(body);
 
                 if (!File.Exists(dbPath)) {
+                    Interlocked.Exchange(ref regenAllRunning, 0);
                     await WriteJson(res, 404, new { error = "Database not found" });
                     done?.Invoke(404, "no db");
                     return;
@@ -2684,7 +2690,6 @@ namespace NINA.Plugin.NightSummary.Server {
                     var sessions = DbSessions();
 
                 // Initialize progress
-                regenAllRunning = true;
                 regenAllCurrent = 0;
                 regenAllTotal = sessions.Count;
                 regenAllGenerated = 0;
@@ -2736,11 +2741,11 @@ namespace NINA.Plugin.NightSummary.Server {
                         _external.Error($"NightSummary: Dashboard bulk regeneration failed. {ex.Message}");
                     } finally {
                         RestoreSettings(s, saved);
-                        regenAllRunning = false;
+                        Interlocked.Exchange(ref regenAllRunning, 0);
                     }
                 });
             } catch (Exception ex) {
-                regenAllRunning = false;
+                Interlocked.Exchange(ref regenAllRunning, 0);
                 regenAllStatus = "error";
                 regenAllError = ex.Message;
                 log?.Error("Bulk regeneration failed to start", ex);

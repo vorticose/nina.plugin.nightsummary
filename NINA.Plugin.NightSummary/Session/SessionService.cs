@@ -12,6 +12,7 @@ using System.Collections.Generic;
 using System.ComponentModel.Composition;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace NINA.Plugin.NightSummary.Session {
@@ -1121,11 +1122,13 @@ namespace NINA.Plugin.NightSummary.Session {
         /// <summary>
         /// Builds ReportData from a database without sending. Used by the preview window.
         /// </summary>
-        public async Task<ReportData> BuildReportDataAsync(string dbPath, string sessionId = null) {
+        public async Task<ReportData> BuildReportDataAsync(string dbPath, string sessionId = null, CancellationToken ct = default) {
+            ct.ThrowIfCancellationRequested();
             var db      = new SessionDatabase(dbPath);
             var session = sessionId != null ? db.GetSession(sessionId) : db.GetLatestSession();
             if (session == null) return null;
 
+            ct.ThrowIfCancellationRequested();
             var images     = db.GetImagesForSession(session.SessionId);
             var events     = db.GetEventsForSession(session.SessionId);
             var profileId  = profileService?.ActiveProfile?.Id.ToString();
@@ -1181,7 +1184,8 @@ namespace NINA.Plugin.NightSummary.Session {
         /// <summary>
         /// Generates HTML from existing ReportData without sending. Used by the preview window for re-renders.
         /// </summary>
-        public async Task<string> GenerateHtmlAsync(ReportData reportData) {
+        public async Task<string> GenerateHtmlAsync(ReportData reportData, CancellationToken ct = default) {
+            ct.ThrowIfCancellationRequested();
             return await reportGenerator.GenerateHtmlReport(reportData);
         }
 
