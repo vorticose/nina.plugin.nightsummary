@@ -1,6 +1,7 @@
 using NINA.Plugin.NightSummary.Data;
 using NINA.Plugin.NightSummary.Dashboard.Abstractions;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data.SQLite;
 using System.IO;
@@ -61,7 +62,10 @@ namespace NINA.Plugin.NightSummary.Server {
         private volatile string regenAllError;
 
         // Thumbnail cache: sessionId -> list of (target, dataUri)
-        private readonly Dictionary<string, List<ThumbnailEntry>> thumbnailCache = new Dictionary<string, List<ThumbnailEntry>>();
+        // ConcurrentDictionary because multiple HTTP threads can hit Remove/TryGetValue
+        // simultaneously; the previous Dictionary made check-then-remove non-atomic and
+        // produced sporadic cache corruption under load.
+        private readonly ConcurrentDictionary<string, List<ThumbnailEntry>> thumbnailCache = new();
 
         private class ThumbnailEntry {
             public string target { get; set; }
@@ -70,10 +74,10 @@ namespace NINA.Plugin.NightSummary.Server {
         }
 
         // Altitude chart cache: sessionId -> { svg, legend }
-        private readonly Dictionary<string, object> altitudeChartCache = new Dictionary<string, object>();
+        private readonly ConcurrentDictionary<string, object> altitudeChartCache = new();
 
         // Live stack cache: sessionId -> { target -> list of entries }
-        private readonly Dictionary<string, Dictionary<string, List<LiveStackEntry>>> livestackCache = new Dictionary<string, Dictionary<string, List<LiveStackEntry>>>();
+        private readonly ConcurrentDictionary<string, Dictionary<string, List<LiveStackEntry>>> livestackCache = new();
 
         private class LiveStackEntry {
             public string target { get; set; }
@@ -308,22 +312,22 @@ namespace NINA.Plugin.NightSummary.Server {
                         var prefix = "/api/stats/targets/";
                         var suffix = "/sessions";
                         var encoded = path.Substring(prefix.Length, path.Length - prefix.Length - suffix.Length);
-                        var targetName = WebUtility.UrlDecode(encoded);
+                        var targetName = Uri.UnescapeDataString(encoded);
                         await HandleGetTargetSessions(res, targetName, done);
                     } else if (path.StartsWith("/api/stats/projects/") && path.EndsWith("/sessions")) {
                         var pPrefix = "/api/stats/projects/";
                         var pSuffix = "/sessions";
                         var pEncoded = path.Substring(pPrefix.Length, path.Length - pPrefix.Length - pSuffix.Length);
-                        var pGuid = WebUtility.UrlDecode(pEncoded);
+                        var pGuid = Uri.UnescapeDataString(pEncoded);
                         await HandleGetProjectSessions(res, pGuid, done);
                     } else if (path.StartsWith("/api/stats/projects/") && path.EndsWith("/mosaic-thumb")) {
                         var mPrefix = "/api/stats/projects/";
                         var mSuffix = "/mosaic-thumb";
                         var mEncoded = path.Substring(mPrefix.Length, path.Length - mPrefix.Length - mSuffix.Length);
-                        var mGuid = WebUtility.UrlDecode(mEncoded);
+                        var mGuid = Uri.UnescapeDataString(mEncoded);
                         await HandleGetProjectMosaicThumb(res, mGuid, done);
                     } else if (path.StartsWith("/api/stats/projects/") && !path.Substring("/api/stats/projects/".Length).Contains("/")) {
-                        var projectGuid = WebUtility.UrlDecode(path.Substring("/api/stats/projects/".Length));
+                        var projectGuid = Uri.UnescapeDataString(path.Substring("/api/stats/projects/".Length));
                         await HandleGetProjectStats(res, projectGuid, done);
                     } else if (path == "/api/stats/summary") {
                         await HandleGetStatsSummary(res, done);
@@ -363,7 +367,7 @@ namespace NINA.Plugin.NightSummary.Server {
                     } else if (path == "/api/stats/projects/reset") {
                         await HandleProjectsReset(req, res, done);
                     } else if (path.StartsWith("/api/stats/projects/") && path.EndsWith("/reset")) {
-                        var pguid = WebUtility.UrlDecode(path.Substring("/api/stats/projects/".Length,
+                        var pguid = Uri.UnescapeDataString(path.Substring("/api/stats/projects/".Length,
                             path.Length - "/api/stats/projects/".Length - "/reset".Length));
                         await HandleProjectReset(req, res, pguid, done);
                     } else {
@@ -690,14 +694,24 @@ namespace NINA.Plugin.NightSummary.Server {
         }
 
         private async Task HandleGetLiveStackImage(HttpListenerResponse res, string sessionId, string filename, Action<int, string> done) {
-            // Sanitize filename to prevent path traversal
-            if (filename.Contains("..") || filename.Contains("/") || filename.Contains("\\")) {
+            // Belt-and-suspenders against path traversal: strip any directory components,
+            // then verify the resolved path is still under the livestack root. The earlier
+            // Contains("..") check missed URL-encoded variants and unusual separators.
+            var safeName = Path.GetFileName(filename ?? "");
+            if (string.IsNullOrEmpty(safeName) || safeName != filename) {
                 await WriteJson(res, 400, new { error = "Invalid filename" });
                 done?.Invoke(400, "invalid filename");
                 return;
             }
 
-            var filePath = Path.Combine(reportsDir, "livestack", sessionId, filename);
+            var liveRoot = Path.GetFullPath(Path.Combine(reportsDir, "livestack", sessionId));
+            var filePath = Path.GetFullPath(Path.Combine(liveRoot, safeName));
+            if (!filePath.StartsWith(liveRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) &&
+                !filePath.Equals(liveRoot, StringComparison.OrdinalIgnoreCase)) {
+                await WriteJson(res, 400, new { error = "Invalid filename" });
+                done?.Invoke(400, "path escape");
+                return;
+            }
             if (!File.Exists(filePath)) {
                 await WriteJson(res, 404, new { error = "Image not found" });
                 done?.Invoke(404, filename);
@@ -2458,8 +2472,8 @@ namespace NINA.Plugin.NightSummary.Server {
 
         private async Task HandleTsStatusOverride(HttpListenerRequest req, HttpListenerResponse res, Action<int, string> done) {
             try {
-                string body;
-                using (var reader = new StreamReader(req.InputStream, req.ContentEncoding)) body = await reader.ReadToEndAsync();
+                var body = await ReadBodyCappedAsync(req, res, done);
+                if (body == null) return;
                 using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
                 var root = doc.RootElement;
                 var projectGuid = root.TryGetProperty("projectGuid", out var pg) && pg.ValueKind == JsonValueKind.String ? pg.GetString() : null;
@@ -2491,8 +2505,8 @@ namespace NINA.Plugin.NightSummary.Server {
 
         private async Task HandleTsTargetLink(HttpListenerRequest req, HttpListenerResponse res, Action<int, string> done) {
             try {
-                string body;
-                using (var reader = new StreamReader(req.InputStream, req.ContentEncoding)) body = await reader.ReadToEndAsync();
+                var body = await ReadBodyCappedAsync(req, res, done);
+                if (body == null) return;
                 using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
                 var root = doc.RootElement;
                 var sessionTargetName = root.TryGetProperty("sessionTargetName", out var sn) && sn.ValueKind == JsonValueKind.String ? sn.GetString() : null;
@@ -2514,8 +2528,8 @@ namespace NINA.Plugin.NightSummary.Server {
 
         private async Task HandleTsAssign(HttpListenerRequest req, HttpListenerResponse res, Action<int, string> done) {
             try {
-                string body;
-                using (var reader = new StreamReader(req.InputStream, req.ContentEncoding)) body = await reader.ReadToEndAsync();
+                var body = await ReadBodyCappedAsync(req, res, done);
+                if (body == null) return;
                 using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
                 var root = doc.RootElement;
                 var targetName  = root.TryGetProperty("targetName",  out var tn) && tn.ValueKind == JsonValueKind.String ? tn.GetString() : null;
@@ -2536,8 +2550,8 @@ namespace NINA.Plugin.NightSummary.Server {
 
         private async Task HandleTsExclude(HttpListenerRequest req, HttpListenerResponse res, Action<int, string> done) {
             try {
-                string body;
-                using (var reader = new StreamReader(req.InputStream, req.ContentEncoding)) body = await reader.ReadToEndAsync();
+                var body = await ReadBodyCappedAsync(req, res, done);
+                if (body == null) return;
                 using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
                 var root = doc.RootElement;
                 var targetName  = root.TryGetProperty("targetName",  out var tn) && tn.ValueKind == JsonValueKind.String ? tn.GetString() : null;
@@ -2610,9 +2624,8 @@ namespace NINA.Plugin.NightSummary.Server {
                 log?.Info($"Regenerating report for {sessionId}");
 
                 // Read settings overrides from POST body
-                string body = "";
-                using (var reader = new StreamReader(req.InputStream, req.ContentEncoding))
-                    body = await reader.ReadToEndAsync();
+                var body = await ReadBodyCappedAsync(req, res, done);
+                if (body == null) return;
 
                 var overrides = string.IsNullOrEmpty(body) ? null :
                     JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(body);
@@ -2637,10 +2650,10 @@ namespace NINA.Plugin.NightSummary.Server {
                     }
                     await SaveSessionSettings(sessionId, s);
 
-                    thumbnailCache.Remove(sessionId);
-                    altitudeChartCache.Remove(sessionId);
+                    thumbnailCache.TryRemove(sessionId, out _);
+                    altitudeChartCache.TryRemove(sessionId, out _);
                     DeleteCachedChartJson(sessionId);
-                    livestackCache.Remove(sessionId);
+                    livestackCache.TryRemove(sessionId, out _);
                     log?.Info($"Regenerated report for {sessionId}");
                     _external.Info($"NightSummary: Dashboard regenerated report for {sessionId}");
                     await WriteJson(res, 200, new { status = "ok", sessionId });
@@ -2673,9 +2686,11 @@ namespace NINA.Plugin.NightSummary.Server {
             }
 
             try {
-                string body = "";
-                using (var reader = new StreamReader(req.InputStream, req.ContentEncoding))
-                    body = await reader.ReadToEndAsync();
+                var body = await ReadBodyCappedAsync(req, res, done);
+                if (body == null) {
+                    Interlocked.Exchange(ref regenAllRunning, 0);
+                    return;
+                }
 
                 var overrides = string.IsNullOrEmpty(body) ? null :
                     JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(body);
@@ -2718,10 +2733,10 @@ namespace NINA.Plugin.NightSummary.Server {
                                 if (err != null) { regenAllFailed++; continue; }
 
                                 await SaveSessionSettings(sessions[i].SessionId, s);
-                                thumbnailCache.Remove(sessions[i].SessionId);
-                                altitudeChartCache.Remove(sessions[i].SessionId);
+                                thumbnailCache.TryRemove(sessions[i].SessionId, out _);
+                                altitudeChartCache.TryRemove(sessions[i].SessionId, out _);
                                 DeleteCachedChartJson(sessions[i].SessionId);
-                                livestackCache.Remove(sessions[i].SessionId);
+                                livestackCache.TryRemove(sessions[i].SessionId, out _);
                                 regenAllGenerated++;
                                 log?.Debug($"Bulk regen {regenAllCurrent}/{sessions.Count}: {sessions[i].SessionId} OK");
                             } catch (Exception ex) {
@@ -2954,6 +2969,41 @@ private static string FormatSettingsForLog(NightSummarySettings s) {
                     case "equipmentOverrides":     s.EquipmentOverrides    = kv.Value.GetString(); break;
                 }
             }
+        }
+
+        // 10MB cap on POST bodies — keeps a malicious LAN client (or future Phase 2
+        // public surface) from OOMing the server with an unbounded ReadToEndAsync.
+        private const int MaxRequestBodyBytes = 10 * 1024 * 1024;
+
+        // Reads the request body up to MaxRequestBodyBytes. Writes 413 + done callback
+        // and returns null if Content-Length advertises overflow or the unknown-length
+        // body exceeds the cap mid-read. Callers must early-return on null.
+        private static async Task<string> ReadBodyCappedAsync(
+            HttpListenerRequest req, HttpListenerResponse res, Action<int, string> done) {
+            if (req.ContentLength64 > MaxRequestBodyBytes) {
+                await WriteJson(res, 413, new { error = "Request body too large" });
+                done?.Invoke(413, $"body {req.ContentLength64} > cap {MaxRequestBodyBytes}");
+                return null;
+            }
+            using var reader = new StreamReader(req.InputStream, req.ContentEncoding);
+            if (req.ContentLength64 >= 0) {
+                return await reader.ReadToEndAsync();
+            }
+            // Unknown length (chunked) — read in chunks and abort if we go over the cap.
+            var buf = new char[16 * 1024];
+            var sb = new StringBuilder();
+            int total = 0;
+            int n;
+            while ((n = await reader.ReadAsync(buf, 0, buf.Length)) > 0) {
+                total += n;
+                if (total > MaxRequestBodyBytes) {
+                    await WriteJson(res, 413, new { error = "Request body too large" });
+                    done?.Invoke(413, $"body exceeded cap {MaxRequestBodyBytes}");
+                    return null;
+                }
+                sb.Append(buf, 0, n);
+            }
+            return sb.ToString();
         }
 
         // ── Response Helpers ──────────────────────────────────────────────────
