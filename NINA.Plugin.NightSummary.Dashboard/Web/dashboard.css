@@ -759,15 +759,7 @@ nav {
   width: 100%;
   height: calc(100% - 10px);
   display: block;
-  /* SVG content (axis labels) needs to render past the SVG's left edge at
-     narrow widths where fixChartTextDistortion's counter-scale stretches
-     Y-labels well beyond the plotL gutter. The card-body has an 8px gap
-     between content and altitude — that's where the overflowed label tails
-     end up. Without `overflow: visible` they'd be clipped to the SVG box. */
-  overflow: visible;
 }
-
-.chart-svg-wrap { overflow: visible; }
 
 .card-thumbs {
   display: flex;
@@ -1186,6 +1178,14 @@ nav {
   .stat-hfr         { order: 4; }
   .stat-fwhm        { order: 5; }
   .stat-guiding     { order: 6; }
+  /* Pull the chart closer to the card's right edge so the right gap (chart
+     to card border) matches the left gap (stats to chart = card-body gap = 8).
+     Pull-up is disabled below 1100, so the chart sits below the header and
+     can extend rightward under the X-icon area without overlap.
+     Default card padding-right is 28px (X-icon clearance for desktop pull-up
+     mode); drop to 8 here to match the inner-gap spacing. */
+  .session-card { padding-right: 8px; }
+  .card-altitude { padding-right: 0; }
 }
 
 .card-stat-value {

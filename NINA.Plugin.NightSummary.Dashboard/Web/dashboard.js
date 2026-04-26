@@ -5008,28 +5008,24 @@ function fixChartTextDistortion(container) {
     if (!ctm || ctm.a === 0) return;
     var ratio = ctm.d / ctm.a; // yScale / xScale
     if (Math.abs(ratio - 1) < 0.02) return; // Already uniform, skip
-    // Y-axis labels (text-anchor="end" at small x — left of plot) get the full
-    // counter-scale. Their leftward overflow is absorbed by the card-body gap
-    // via `overflow: visible` on the SVG and .chart-svg-wrap.
-    //
-    // Other labels (X-axis ticks, the right-edge timestamp which is also
-    // text-anchor="end" but at large x) cap at ~2.2 — the tick spacing in SVG
-    // coords is fixed regardless of viewport width, so a full counter-scale at
-    // narrow viewports widens each label past the gap to its neighbour and
-    // they collide ("06:00 07:40" → "0607:40"). The residual squish trades a
-    // little distortion for keeping labels distinct.
-    var vb = (svg.getAttribute('viewBox') || '').split(/\s+/);
-    var vbW = parseFloat(vb[2] || '0');
-    var leftThreshold = vbW * 0.25; // anchor x must be in left quarter to count as Y-axis
-    var X_LABEL_RATIO_CAP = 1.8;
+    // Cap at 2.0 — two competing constraints meet here:
+    //   (1) Y labels (text-anchor=end at plotL-4) must stay within the SVG
+    //       left edge after counter-scale. At plotL=38 / SVG width 950, with
+    //       a 15-SVG-unit "90°" label, ratio×15 must fit in plotL-4 = 34
+    //       → ratio ≤ ~2.27.
+    //   (2) X labels (last hourly tick + chart-end label) sit ~1 hour apart
+    //       in SVG coords (~84 SVG units at this viewBox). The middle-anchored
+    //       hourly extends half its width right; the end-anchored chart-end
+    //       extends its full width left. To avoid collision: 1.5×label_width
+    //       < 84 → label_width < 56 SVG → ratio×25 < 56 → ratio ≤ 2.24.
+    // Both converge near 2.2; pick 2.0 for a small safety margin (sessions
+    // ending closer to a half-hour boundary have even tighter X gaps).
+    if (ratio > 2.0) ratio = 2.0;
     svg.querySelectorAll('text').forEach(function(t) {
       var x = parseFloat(t.getAttribute('x') || '0');
       var y = parseFloat(t.getAttribute('y') || '0');
-      var anchor = t.getAttribute('text-anchor') || 'start';
-      var isYLabel = anchor === 'end' && x < leftThreshold;
-      var r = isYLabel ? ratio : Math.min(ratio, X_LABEL_RATIO_CAP);
       t.setAttribute('transform',
-        'translate(' + x + ',' + y + ') scale(' + r.toFixed(4) + ',1) translate(' + (-x) + ',' + (-y) + ')');
+        'translate(' + x + ',' + y + ') scale(' + ratio.toFixed(4) + ',1) translate(' + (-x) + ',' + (-y) + ')');
     });
   });
 }
