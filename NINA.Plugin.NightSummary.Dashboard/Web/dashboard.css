@@ -1274,6 +1274,16 @@ nav {
   .stat-guiding     { order: 6; }
 }
 
+/* Narrow desktop / iPad-Pro-landscape range: 6 stats stay in a single row
+   but each box is only ~95px wide, not enough for the default 11px label
+   "INTEGRATION" with letter-spacing 1px (~76px content needed in 66px
+   available). Trim padding-x and label font/spacing so labels fit
+   without overflow. */
+@media (min-width: 1101px) and (max-width: 1400px) {
+  .card-stat { padding: 12px 8px; }
+  .card-stat-label { font-size: 10px; letter-spacing: 0.5px; }
+}
+
 .card-stat-value {
   font-size: 23px;
   color: var(--text-primary);

@@ -4144,6 +4144,12 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
       if (!shelf) return;
       if (shelf.contains(e.target)) return;
       if (thumbWrap.contains(e.target)) return;
+      // Don't dismiss the shelf when tapping the fullscreen zoom overlay —
+      // its own click handler removes the overlay only. Without this guard
+      // the body touchend would preventDefault the synthetic click, so the
+      // first tap silently dismisses the shelf and the second tap is
+      // needed to actually close the overlay.
+      if (e.target.closest('.livestack-zoom-overlay')) return;
       e.preventDefault();
       hideShelf();
     }, { passive: false });
