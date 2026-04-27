@@ -6125,6 +6125,12 @@ function renderSessionDetail(sessionId) {
     }
 
     el.innerHTML = html;
+    // Scroll reset after render: tablet uses body overflow:auto so scroll anchoring
+    // can drift the position when heavy report content is injected. Reset here in the
+    // same synchronous tick as the DOM change so both land in the same paint frame.
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
 
     if (detail.hasReport && isMobile) {
       loadReportIntoShadow(sessionId);
