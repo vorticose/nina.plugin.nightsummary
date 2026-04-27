@@ -4127,7 +4127,7 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
       imgEl.className = 'livestack-shelf-img';
       imgEl.src = img.url;
       imgEl.alt = img.label;
-      imgEl.loading = 'lazy';
+      imgEl.loading = 'eager'; // load immediately — shelf is about to be shown
       imgEl.style.cursor = 'pointer';
       imgEl.addEventListener('click', function(e) {
         e.stopPropagation();
@@ -4234,16 +4234,44 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
       if (_isAbove) {
         var spaceAbove = vpTop - 12 - CHROME;
         if (imagesEl) imagesEl.style.maxHeight = Math.max(80, spaceAbove) + 'px';
-        // Re-place after lazy images load — above shelf grows upward.
-        shelf.querySelectorAll('.livestack-shelf-img').forEach(function(img) {
-          img.addEventListener('load', function() { if (shelf) placeShelf(); }, { once: true });
-        });
+        // Above-shelf position depends on shelf height (vpTop - h - 12). If we
+        // reveal before images load, h is ~0 so the shelf appears too close to
+        // the thumb and snaps upward when images arrive. Instead, wait for all
+        // images to load (or error) before placing and revealing. The
+        // shelf-reveal animation keeps running hidden; when we remove
+        // visibility:hidden the shelf fades in at its current animation frame —
+        // no extra delay, no snap.
+        var imgs = shelf.querySelectorAll('.livestack-shelf-img');
+        var remaining = imgs.length;
+        var revealTimer = null;
+        function revealAbove() {
+          if (!shelf) return;
+          clearTimeout(revealTimer);
+          placeShelf();
+          shelf.style.visibility = '';
+        }
+        if (remaining === 0) {
+          revealAbove();
+        } else {
+          revealTimer = setTimeout(revealAbove, 800); // fallback for slow/failed loads
+          imgs.forEach(function(img) {
+            function onDone() { if (--remaining <= 0) revealAbove(); }
+            if (img.complete) { onDone(); }
+            else {
+              img.addEventListener('load',  onDone, { once: true });
+              img.addEventListener('error', onDone, { once: true });
+            }
+          });
+        }
       } else {
+        // Below-shelf top is fixed (vpBottom + 12) regardless of height — safe
+        // to reveal immediately; images fill in downward within the maxHeight
+        // scroll container without shifting the shelf position.
         var spaceBelow = window.innerHeight - vpBottom - 12 - CHROME;
         if (imagesEl) imagesEl.style.maxHeight = Math.max(80, spaceBelow) + 'px';
+        placeShelf();
+        shelf.style.visibility = '';
       }
-      placeShelf();
-      shelf.style.visibility = '';
     });
 
     // rAF-batched scroll tracking so the shelf stays anchored to the thumb.
