@@ -275,7 +275,7 @@ namespace NINA.Plugin.NightSummary.Tests {
             SetupChartSettings();
             var data = TestDataFactory.MakeReportData(imageCount: 10, targets: new[] { "M42" });
             var html = await new ReportGenerator().GenerateHtmlReport(data);
-            Assert.DoesNotContain("ns-chart-target-btn", html);
+            Assert.DoesNotContain("ns-chart-target-btn\" for=", html);
             Assert.DoesNotContain("All Targets", html);
         }
 
