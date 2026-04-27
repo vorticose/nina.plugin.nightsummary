@@ -4069,6 +4069,10 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
   var shelfLeaveTimer = null;
   var _isAbove = false;
   var _scrollHandler = null;
+  // True while the fullscreen zoom overlay is open — suppresses shelf dismiss
+  // on mouseleave (the overlay appearing under the cursor fires mouseleave on
+  // the shelf even though the user didn't intentionally leave it).
+  var _zoomOpen = false;
   // Document-coordinate anchors set in showShelf — stable through scroll and
   // immune to mid-animation getBoundingClientRect jitter on the thumb.
   var _docAnchorBottom = 0; // doc-Y of scaled-thumb bottom edge
@@ -4120,12 +4124,17 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
       imgEl.style.cursor = 'pointer';
       imgEl.addEventListener('click', function(e) {
         e.stopPropagation();
+        _zoomOpen = true;
         var overlay = document.createElement('div');
         overlay.className = 'livestack-zoom-overlay';
         var zoomImg = document.createElement('img');
         zoomImg.src = img.url;
         zoomImg.alt = img.label;
         overlay.appendChild(zoomImg);
+        function closeOverlay() {
+          _zoomOpen = false;
+          overlay.remove();
+        }
         // Close on tap. touchend with preventDefault stops the synthetic
         // click from bubbling further to body listeners that would dismiss
         // the underlying shelf — closing the hero view should return to
@@ -4133,11 +4142,11 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
         overlay.addEventListener('touchend', function(ev) {
           ev.preventDefault();
           ev.stopPropagation();
-          overlay.remove();
+          closeOverlay();
         }, { passive: false });
         overlay.addEventListener('click', function(ev) {
           ev.stopPropagation();
-          overlay.remove();
+          closeOverlay();
         });
         document.body.appendChild(overlay);
       });
@@ -4251,6 +4260,9 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
     shelf.addEventListener('mouseleave', function(e) {
       // Hide unless mouse went back to the thumb
       if (thumbWrap.contains(e.relatedTarget)) return;
+      // Overlay appearing under the cursor fires mouseleave on the shelf even
+      // though the user didn't intentionally leave — keep shelf alive.
+      if (_zoomOpen) return;
       hideShelf();
     });
   }
