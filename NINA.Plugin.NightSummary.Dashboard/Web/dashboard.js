@@ -286,8 +286,15 @@ function route() {
   // Toggle report-view mode on body to kill outer scroll
   var isReport = path.match(/^\/sessions\/[^/]+$/);
   document.body.classList.toggle('report-view', !!isReport);
-  // Remove the report nav from the header when leaving report view
-  if (!isReport) {
+  if (isReport) {
+    // Reset body scroll carried over from the sessions list.
+    // On tablet the CSS fix (body overflow:hidden + shell scroll) is the
+    // primary guard; on desktop this scrollTo is the only guard.
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  } else {
+    // Remove the report nav from the header when leaving report view
     var existingNav = document.getElementById('header-report-nav');
     if (existingNav) existingNav.remove();
     document.documentElement.style.removeProperty('--header-h');
