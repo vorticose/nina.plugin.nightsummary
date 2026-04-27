@@ -1322,6 +1322,7 @@ nav {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
   white-space: nowrap;
+  text-align: center;
 }
 
 .card-stat-unit {
@@ -2031,8 +2032,10 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 }
 .lifetime-card-stat {
   padding: 10px 20px;
-  min-width: 0;
+  min-width: 110px;
+  text-align: center;
 }
+.lifetime-card-stat .card-stat-label { font-size: 9px; letter-spacing: 0; text-indent: 0; }
 
 /* View toggle (Bar / Calendar) */
 .lv-toggle {
