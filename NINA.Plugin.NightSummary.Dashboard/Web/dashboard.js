@@ -17,7 +17,7 @@ function logError() { console.error.apply(console, [LOG_PREFIX].concat(Array.pro
 // hover-driven UI that fights with tap interactions on the same surfaces.
 // `'ontouchstart' in window` covers iOS Safari; `maxTouchPoints > 0` is the
 // reliable signal on Windows touch devices.
-var IS_TOUCH = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+var IS_TOUCH = !window.matchMedia('(hover: hover)').matches;
 
 // ── Utilities ──────────────────────────────────────────────────────────────
 
@@ -4067,6 +4067,34 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
   var hoverTimer = null;
   var shelf = null;
   var shelfLeaveTimer = null;
+  var _isAbove = false;
+  var _scrollHandler = null;
+  // Document-coordinate anchors set in showShelf — stable through scroll and
+  // immune to mid-animation getBoundingClientRect jitter on the thumb.
+  var _docAnchorBottom = 0; // doc-Y of scaled-thumb bottom edge
+  var _docAnchorTop = 0;    // doc-Y of scaled-thumb top edge
+  var _cx = 0;              // viewport-X center of thumb (unchanged by scroll)
+
+  // Reposition shelf using stored doc-coordinate anchors. No live thumb
+  // BoundingClientRect so scroll fires can't observe mid-animation values.
+  function placeShelf() {
+    if (!shelf) return;
+    var vpBottom = _docAnchorBottom - window.scrollY;
+    var vpTop    = _docAnchorTop    - window.scrollY;
+    if (_isAbove) {
+      var h = shelf.getBoundingClientRect().height;
+      shelf.style.top = (vpTop - h - 12) + 'px';
+    } else {
+      shelf.style.top = (vpBottom + 12) + 'px';
+    }
+    shelf.style.left = _cx + 'px';
+    var sr = shelf.getBoundingClientRect();
+    if (sr.left < 12) {
+      shelf.style.left = (_cx + (12 - sr.left)) + 'px';
+    } else if (sr.right > window.innerWidth - 12) {
+      shelf.style.left = (_cx - (sr.right - (window.innerWidth - 12))) + 'px';
+    }
+  }
 
   function showShelf() {
     if (shelf) return;
@@ -4154,38 +4182,67 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
     var shelfW = Math.min(desiredW, maxShelfW);
     shelf.style.width = shelfW + 'px';
 
-    // Smart placement: prefer below the thumb, but flip above when the
-    // shelf would clip off the bottom and there's more room above.
-    // Account for the .shelf-active scale(1.67) overhang so the shelf
-    // doesn't land on top of the now-larger thumb.
-    var centerX = wrapRect.left + wrapRect.width / 2;
-    var SCALE_OVERHANG = wrapRect.height * 0.34; // (scale-1)/2 for scale 1.67
-    var GAP_FROM_THUMB = 12;
-    shelf.style.left = centerX + 'px';
-    shelf.style.top = (wrapRect.bottom + SCALE_OVERHANG + GAP_FROM_THUMB) + 'px';
+    // In scroll mode (.card-thumbs--scroll) the CSS overrides shelf-active to
+    // transform:none — the thumb doesn't scale, so overhang is zero. Using the
+    // non-zero value in scroll mode causes the shelf to start too low by ~40px
+    // and then jump up on first scroll when placeShelf() measures the unscaled
+    // thumb.
+    var isScrollMode = !!thumbWrap.closest('.card-thumbs--scroll');
+    var SCALE_OVERHANG = isScrollMode ? 0 : wrapRect.height * 0.34; // (scale-1)/2 for scale(1.67)
+    _cx = wrapRect.left + wrapRect.width / 2;
+    // shelf padding (20px) + border (2px) + arrow pseudo-element (~6px)
+    var CHROME = 28;
+    // Choose above/below by which side has more available space. This is more
+    // robust than a fixed 60%-of-viewport threshold, which can flip on minor
+    // differences in browser chrome height between machines.
+    var snapSpaceBelow = window.innerHeight - (wrapRect.bottom + SCALE_OVERHANG) - 12 - CHROME;
+    var snapSpaceAbove = (wrapRect.top    - SCALE_OVERHANG) - 12 - CHROME;
+    _isAbove = snapSpaceAbove > snapSpaceBelow;
+    if (_isAbove) shelf.classList.add('livestack-shelf--above');
+    // Store doc-coordinate anchors now — immutable through scroll and immune
+    // to mid-animation BoundingClientRect drift on the thumb.
+    _docAnchorBottom = wrapRect.bottom + SCALE_OVERHANG + window.scrollY;
+    _docAnchorTop    = wrapRect.top    - SCALE_OVERHANG + window.scrollY;
 
-    // Measure on the next frame, then re-place if needed and clamp x to viewport.
+    // Initial hidden placement — rAF corrects final position after layout.
+    shelf.style.visibility = 'hidden';
+    shelf.style.left = _cx + 'px';
+    shelf.style.top = '0px';
+
+    // rAF: DOM has laid out — clamp images to available space, then place.
     requestAnimationFrame(function() {
       if (!shelf) return;
-      var shelfRect = shelf.getBoundingClientRect();
-      var shelfH = shelfRect.height;
-      var spaceBelow = window.innerHeight - (wrapRect.bottom + SCALE_OVERHANG);
-      var spaceAbove = wrapRect.top - SCALE_OVERHANG;
-      // Flip above if below clips and above has more room. Subtract the
-      // same scale overhang from the top so the shelf clears the scaled
-      // thumb's top edge.
-      if (spaceBelow < shelfH + GAP_FROM_THUMB && spaceAbove > spaceBelow) {
-        shelf.classList.add('livestack-shelf--above');
-        shelf.style.top = (wrapRect.top - SCALE_OVERHANG - shelfH - GAP_FROM_THUMB) + 'px';
+      var imagesEl = shelf.querySelector('.livestack-shelf-images');
+      var vpBottom = _docAnchorBottom - window.scrollY;
+      var vpTop    = _docAnchorTop    - window.scrollY;
+      if (_isAbove) {
+        var spaceAbove = vpTop - 12 - CHROME;
+        if (imagesEl) imagesEl.style.maxHeight = Math.max(80, spaceAbove) + 'px';
+        // Re-place after lazy images load — above shelf grows upward.
+        shelf.querySelectorAll('.livestack-shelf-img').forEach(function(img) {
+          img.addEventListener('load', function() { if (shelf) placeShelf(); }, { once: true });
+        });
+      } else {
+        var spaceBelow = window.innerHeight - vpBottom - 12 - CHROME;
+        if (imagesEl) imagesEl.style.maxHeight = Math.max(80, spaceBelow) + 'px';
       }
-      // Clamp horizontally so the shelf stays inside the viewport
-      shelfRect = shelf.getBoundingClientRect();
-      if (shelfRect.left < 12) {
-        shelf.style.left = (centerX + (12 - shelfRect.left)) + 'px';
-      } else if (shelfRect.right > window.innerWidth - 12) {
-        shelf.style.left = (centerX - (shelfRect.right - (window.innerWidth - 12))) + 'px';
-      }
+      placeShelf();
+      shelf.style.visibility = '';
     });
+
+    // rAF-batched scroll tracking so the shelf stays anchored to the thumb.
+    // placeShelf() uses live getBoundingClientRect — correct post-animation.
+    // Batching to one update per frame prevents jank.
+    var _rafPending = false;
+    _scrollHandler = function() {
+      if (_rafPending) return;
+      _rafPending = true;
+      requestAnimationFrame(function() {
+        _rafPending = false;
+        placeShelf();
+      });
+    };
+    window.addEventListener('scroll', _scrollHandler, { passive: true });
 
     // Shelf hover: keep alive when mouse enters shelf
     shelf.addEventListener('mouseenter', function() {
@@ -4201,6 +4258,10 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
   function hideShelf() {
     clearTimeout(shelfLeaveTimer);
     thumbWrap.classList.remove('shelf-active');
+    if (_scrollHandler) {
+      window.removeEventListener('scroll', _scrollHandler);
+      _scrollHandler = null;
+    }
     if (shelf) {
       shelf.classList.add('shelf-hiding');
       var s = shelf;
