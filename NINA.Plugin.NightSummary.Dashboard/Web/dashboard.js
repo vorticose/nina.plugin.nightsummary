@@ -286,29 +286,11 @@ function route() {
   // Toggle report-view mode on body to kill outer scroll
   var isReport = path.match(/^\/sessions\/[^/]+$/);
   document.body.classList.toggle('report-view', !!isReport);
-  // Reset html scroll: report-view sets body overflow:hidden but a
-  // pre-existing documentElement.scrollTop (carried over from the taller
-  // session list) leaves the sticky header covering .report-nav.
-  // On iOS Safari and inside iframes the browser's own hash-navigation scroll
-  // fires AFTER the hashchange handler returns, overriding the synchronous
-  // call below. The deferred setTimeout fires after that browser scroll and
-  // wins. Both are kept so the reset is instant where it can be.
-  if (isReport) {
-    // Measure compact header height (after report-view class is applied) and
-    // expose it as --report-nav-top so the sticky .report-nav sits flush below.
-    var hdr = document.querySelector('header');
-    if (hdr) {
-      hdr.getBoundingClientRect(); // force style recalc to get compact height
-      document.documentElement.style.setProperty('--report-nav-top', hdr.offsetHeight + 'px');
-    }
-    window.scrollTo(0, 0);
-    document.documentElement.scrollTop = 0;
-    document.body.scrollTop = 0;
-    setTimeout(function() {
-      window.scrollTo(0, 0);
-      document.documentElement.scrollTop = 0;
-      document.body.scrollTop = 0;
-    }, 0);
+  // Remove the report nav from the header when leaving report view
+  if (!isReport) {
+    var existingNav = document.getElementById('header-report-nav');
+    if (existingNav) existingNav.remove();
+    document.documentElement.style.removeProperty('--header-h');
   }
 
   if (path === '/sessions') {
@@ -6109,7 +6091,7 @@ function renderSessionDetail(sessionId) {
     var targets = detail.targets.map(function(t) { return t.target; }).join(', ') || 'Unknown';
     sub.textContent = fmtDate(detail.sessionStart) + ' \u2014 ' + targets;
 
-    var html = '<div class="report-nav">' +
+    var navHtml = '<div class="report-nav" id="header-report-nav">' +
       '<a class="back-btn" href="#/sessions">\u2190 Sessions</a>' +
       '<div class="report-nav-info">' +
         '<span class="report-nav-date">' + fmtDate(detail.sessionStart) + '</span>' +
@@ -6119,12 +6101,21 @@ function renderSessionDetail(sessionId) {
         '<button class="report-btn" id="btn-settings">\u2699 Settings</button>';
 
     if (detail.hasReport) {
-      html += '<a href="/api/sessions/' + sessionId + '/report" target="_blank" class="report-btn">Open in New Tab \u2192</a>';
+      navHtml += '<a href="/api/sessions/' + sessionId + '/report" target="_blank" class="report-btn">Open in New Tab \u2192</a>';
     }
 
-    html += '</div></div>';
+    navHtml += '</div></div>';
 
-    html += buildSettingsPanel(currentSettings, cachedFilters);
+    var existingNav = document.getElementById('header-report-nav');
+    if (existingNav) existingNav.remove();
+    var hdr = document.querySelector('header');
+    if (hdr) {
+      hdr.insertAdjacentHTML('beforeend', navHtml);
+      hdr.getBoundingClientRect(); // force layout so offsetHeight is accurate
+      document.documentElement.style.setProperty('--header-h', hdr.offsetHeight + 'px');
+    }
+
+    var html = buildSettingsPanel(currentSettings, cachedFilters);
 
     var isMobile = window.innerWidth <= 700;
 
@@ -6145,12 +6136,6 @@ function renderSessionDetail(sessionId) {
     }
 
     el.innerHTML = html;
-    // Scroll reset after render: tablet uses body overflow:auto so scroll anchoring
-    // can drift the position when heavy report content is injected. Reset here in the
-    // same synchronous tick as the DOM change so both land in the same paint frame.
-    window.scrollTo(0, 0);
-    document.documentElement.scrollTop = 0;
-    document.body.scrollTop = 0;
 
     if (detail.hasReport && isMobile) {
       loadReportIntoShadow(sessionId);
