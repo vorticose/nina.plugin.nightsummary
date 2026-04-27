@@ -661,9 +661,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
                 foreach (var target in targets) {
                     var tsT = data.TsData?.FirstOrDefault(t =>
-                        string.Equals(t.TargetName, target.Key, StringComparison.OrdinalIgnoreCase));
+                        string.Equals(t.TargetName, target.Key, StringComparison.OrdinalIgnoreCase)
+                        && (t.RA != 0 || t.Dec != 0));
                     double ra = 0, dec = 0;
-                    if (tsT != null && (tsT.RA != 0 || tsT.Dec != 0)) { ra = tsT.RA; dec = tsT.Dec; }
+                    if (tsT != null) { ra = tsT.RA; dec = tsT.Dec; }
                     else { var ci = target.FirstOrDefault(i => i.RaHours != 0 || i.DecDegrees != 0); if (ci != null) { ra = ci.RaHours; dec = ci.DecDegrees; } }
 
                     if (ra == 0 && dec == 0) continue;
@@ -688,13 +689,16 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             foreach (var target in targets) {
-                var tsTarget = data.TsData?.FirstOrDefault(t =>
-                    string.Equals(t.TargetName, target.Key, StringComparison.OrdinalIgnoreCase));
+                // All TS entries for this target — may span multiple projects
+                var tsTargets = data.TsData?.Where(t =>
+                    string.Equals(t.TargetName, target.Key, StringComparison.OrdinalIgnoreCase)).ToList()
+                    ?? new System.Collections.Generic.List<TsTargetData>();
+                var tsFirst = tsTargets.FirstOrDefault(t => t.RA != 0 || t.Dec != 0) ?? tsTargets.FirstOrDefault();
 
                 // Resolve RA/Dec: prefer TS data, fall back to image metadata
                 double raH = 0, decD = 0;
-                if (tsTarget != null && (tsTarget.RA != 0 || tsTarget.Dec != 0)) {
-                    raH = tsTarget.RA; decD = tsTarget.Dec;
+                if (tsFirst != null && (tsFirst.RA != 0 || tsFirst.Dec != 0)) {
+                    raH = tsFirst.RA; decD = tsFirst.Dec;
                 } else {
                     var coordImg = target.FirstOrDefault(i => i.RaHours != 0 || i.DecDegrees != 0);
                     if (coordImg != null) { raH = coordImg.RaHours; decD = coordImg.DecDegrees; }
@@ -707,7 +711,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 // Build subtitle for the h3 heading: start/end times, coords, moon separation
                 var timePart   = $"Start: {targetImgStart:HH:mm} &nbsp;&#8594;&nbsp; End: {targetImgEnd:HH:mm}";
                 // Sky position angle: prefer TS data, fall back to plate solve PA from images
-                double rotation = (tsTarget != null && tsTarget.Rotation != 0) ? tsTarget.Rotation
+                double rotation = (tsFirst != null && tsFirst.Rotation != 0) ? tsFirst.Rotation
                     : target.Where(i => i.PositionAngle.HasValue && i.PositionAngle.Value != 0)
                             .Select(i => i.PositionAngle.Value).DefaultIfEmpty(0).Average();
 
@@ -759,7 +763,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     sb.AppendLine("<div class='ts-target-header'>");
                     sb.Append(thumbHtml);
                     if (showSideBySideChart) {
-                        double minAlt = SettingsManager.Instance.Current.ShowMinAltitude ? (tsTarget?.MinimumAltitude ?? 0) : 0;
+                        double minAlt = SettingsManager.Instance.Current.ShowMinAltitude ? (tsFirst?.MinimumAltitude ?? 0) : 0;
                         var altChart = BuildAltitudeChart(raH, decD, data.ObserverLatitude, data.ObserverLongitude,
                                                           targetImgStart, targetImgEnd, width: 500,
                                                           minimumAltitude: minAlt);
@@ -907,62 +911,68 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     }
                 }
 
-                if (tsTarget == null && detailLevel >= 1 && SettingsManager.Instance.Current.ShowTSProgressBars && TargetSchedulerDatabase.IsPluginInstalled) {
+                if (!tsTargets.Any() && detailLevel >= 1 && SettingsManager.Instance.Current.ShowTSProgressBars && TargetSchedulerDatabase.IsPluginInstalled) {
                     if (data.TsData != null && data.TsData.Count > 0) {
                         // TS is installed but this specific target wasn't found in it
                         Warnings.Add($"Target Scheduler progress bars unavailable for {target.Key} — target not found in Target Scheduler");
                     }
                     // If TS isn't installed at all, silently skip — the Options UI already shows it's unavailable
                 }
-                if (tsTarget != null && detailLevel >= 1 && SettingsManager.Instance.Current.ShowTSProgressBars && TargetSchedulerDatabase.IsPluginInstalled) {
-                    // TS progress bars — one per exposure plan row (template + filter)
+                if (tsTargets.Any() && detailLevel >= 1 && SettingsManager.Instance.Current.ShowTSProgressBars && TargetSchedulerDatabase.IsPluginInstalled) {
+                    // TS progress bars — one section per (project, target) pair; label project when multiple exist
+                    var multiProject = tsTargets.Count > 1;
                     sb.AppendLine("<p style='margin: 12px 0 4px; font-size: 13px; color: var(--accent-light);'><strong>Target Scheduler Progress</strong></p>");
-                    double totalIntegrationSec = 0;
-                    foreach (var f in tsTarget.Filters.OrderBy(f => FilterSortKey(f.Filter)).ThenBy(f => f.Filter).ThenBy(f => f.TemplateName)) {
-                        var desired     = f.Desired;
-                        var accepted    = f.Accepted;
-                        var acceptedPct = desired > 0 ? (double)accepted / desired * 100.0 : 0;
-                        var pctLabel    = desired > 0 ? $" ({acceptedPct:F0}%)" : "";
+                    foreach (var tsTarget in tsTargets) {
+                        if (multiProject && !string.IsNullOrEmpty(tsTarget.ProjectName)) {
+                            sb.AppendLine($"<p style='margin: 8px 0 2px; font-size: 12px; color: var(--muted);'>{System.Net.WebUtility.HtmlEncode(tsTarget.ProjectName)}</p>");
+                        }
+                        double totalIntegrationSec = 0;
+                        foreach (var f in tsTarget.Filters.OrderBy(f => FilterSortKey(f.Filter)).ThenBy(f => f.Filter).ThenBy(f => f.TemplateName)) {
+                            var desired     = f.Desired;
+                            var accepted    = f.Accepted;
+                            var acceptedPct = desired > 0 ? (double)accepted / desired * 100.0 : 0;
+                            var pctLabel    = desired > 0 ? $" ({acceptedPct:F0}%)" : "";
 
-                        // Tonight's contribution: images captured this session for this filter (match by exposure duration too to handle multiple templates per filter)
-                        var tonightImages = target.Where(i => string.Equals(i.Filter, f.Filter, StringComparison.OrdinalIgnoreCase)
-                                                           && (f.ExposureSec <= 0 || Math.Abs(i.ExposureDuration - f.ExposureSec) < 1.0)).ToList();
-                        var tonightCount  = tonightImages.Count;
+                            // Tonight's contribution: images captured this session for this filter (match by exposure duration too to handle multiple templates per filter)
+                            var tonightImages = target.Where(i => string.Equals(i.Filter, f.Filter, StringComparison.OrdinalIgnoreCase)
+                                                               && (f.ExposureSec <= 0 || Math.Abs(i.ExposureDuration - f.ExposureSec) < 1.0)).ToList();
+                            var tonightCount  = tonightImages.Count;
 
-                        // When grading is pending (accepted=0 but acquired>0), use acquired so tonight's bar is visible
-                        var gradingPending  = accepted == 0 && f.Acquired > 0;
-                        var effectiveFilled = gradingPending ? f.Acquired : accepted;
+                            // When grading is pending (accepted=0 but acquired>0), use acquired so tonight's bar is visible
+                            var gradingPending  = accepted == 0 && f.Acquired > 0;
+                            var effectiveFilled = gradingPending ? f.Acquired : accepted;
 
-                        // Integration: use effectiveFilled so grading-pending frames are included
-                        totalIntegrationSec += effectiveFilled * f.ExposureSec;
-                        var tonightBar = Math.Min(tonightCount, effectiveFilled);
-                        var priorBar   = Math.Max(0, effectiveFilled - tonightBar);
-                        var priorPct   = desired > 0 ? (double)priorBar   / desired * 100.0 : 0;
-                        var tonightPct = desired > 0 ? (double)tonightBar / desired * 100.0 : 0;
+                            // Integration: use effectiveFilled so grading-pending frames are included
+                            totalIntegrationSec += effectiveFilled * f.ExposureSec;
+                            var tonightBar = Math.Min(tonightCount, effectiveFilled);
+                            var priorBar   = Math.Max(0, effectiveFilled - tonightBar);
+                            var priorPct   = desired > 0 ? (double)priorBar   / desired * 100.0 : 0;
+                            var tonightPct = desired > 0 ? (double)tonightBar / desired * 100.0 : 0;
 
-                        var expLabel  = f.ExposureSec > 0 ? $" ({f.ExposureSec:F0}s)" : "";
-                        var barLabel  = !string.IsNullOrEmpty(f.TemplateName) ? $"{f.TemplateName}{expLabel}" : $"{f.Filter}{expLabel}";
-                        var tooltip   = tonightCount > 0
-                            ? (gradingPending ? $"+{tonightCount} images tonight (grading pending)" : $"+{tonightCount} images tonight")
-                            : "";
+                            var expLabel  = f.ExposureSec > 0 ? $" ({f.ExposureSec:F0}s)" : "";
+                            var barLabel  = !string.IsNullOrEmpty(f.TemplateName) ? $"{f.TemplateName}{expLabel}" : $"{f.Filter}{expLabel}";
+                            var tooltip   = tonightCount > 0
+                                ? (gradingPending ? $"+{tonightCount} images tonight (grading pending)" : $"+{tonightCount} images tonight")
+                                : "";
 
-                        sb.AppendLine("<div class='ts-filter-row'>");
-                        sb.AppendLine($"  <span class='ts-filter-name'>{barLabel}</span>");
-                        sb.AppendLine($"  <div class='ts-bar-track' title='{tooltip}'>");
-                        sb.AppendLine($"    <div class='ts-bar-accepted' style='width:{priorPct:F1}%'></div>");
-                        sb.AppendLine($"    <div class='ts-bar-acquired' style='left:{priorPct:F1}%;width:{tonightPct:F1}%'></div>");
-                        sb.AppendLine($"  </div>");
-                        var barRightLabel = gradingPending
-                            ? $"{f.Acquired}/{desired} acquired ({(desired > 0 ? (double)f.Acquired / desired * 100.0 : 0):F0}%)"
-                            : $"{accepted}/{desired} accepted{pctLabel}";
-                        sb.AppendLine($"  <span class='ts-bar-label'>{barRightLabel}</span>");
-                        sb.AppendLine("</div>");
+                            sb.AppendLine("<div class='ts-filter-row'>");
+                            sb.AppendLine($"  <span class='ts-filter-name'>{barLabel}</span>");
+                            sb.AppendLine($"  <div class='ts-bar-track' title='{tooltip}'>");
+                            sb.AppendLine($"    <div class='ts-bar-accepted' style='width:{priorPct:F1}%'></div>");
+                            sb.AppendLine($"    <div class='ts-bar-acquired' style='left:{priorPct:F1}%;width:{tonightPct:F1}%'></div>");
+                            sb.AppendLine($"  </div>");
+                            var barRightLabel = gradingPending
+                                ? $"{f.Acquired}/{desired} acquired ({(desired > 0 ? (double)f.Acquired / desired * 100.0 : 0):F0}%)"
+                                : $"{accepted}/{desired} accepted{pctLabel}";
+                            sb.AppendLine($"  <span class='ts-bar-label'>{barRightLabel}</span>");
+                            sb.AppendLine("</div>");
+                        }
+
+                        // Cumulative integration estimate per project
+                        var totalHours   = totalIntegrationSec / 3600.0;
+                        var integTooltip = "Estimated from TS accepted frames (or acquired if grading is pending) × configured exposure time per template. Reduce the TS accepted count manually to account for culled images.";
+                        sb.AppendLine($"<p class='ts-cumulative' title='{integTooltip}' style='cursor:help;'>Total integration (all sessions, estimate): ~{totalHours:F1}h</p>");
                     }
-
-                    // Cumulative integration estimate
-                    var totalHours    = totalIntegrationSec / 3600.0;
-                    var integTooltip  = "Estimated from TS accepted frames (or acquired if grading is pending) × configured exposure time per template. Reduce the TS accepted count manually to account for culled images.";
-                    sb.AppendLine($"<p class='ts-cumulative' title='{integTooltip}' style='cursor:help;'>Total integration (all sessions, estimate): ~{totalHours:F1}h</p>");
                 }
 
 

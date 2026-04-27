@@ -149,6 +149,7 @@ namespace NINA.Plugin.NightSummary.Data {
             var sql = @"
                 SELECT
                     t.name        AS TargetName,
+                    p.name        AS ProjectName,
                     t.ra          AS RA,
                     t.dec         AS Dec,
                     t.rotation    AS Rotation,
@@ -165,9 +166,9 @@ namespace NINA.Plugin.NightSummary.Data {
                 JOIN exposuretemplate et ON et.Id = ep.exposureTemplateId
                 WHERE ep.desired > 0" +
                 (profileId != null ? " AND p.ProfileId = @ProfileId" : "") +
-                " ORDER BY t.name, et.filtername, et.name";
+                " ORDER BY p.name, t.name, et.filtername, et.name";
 
-            var rows = new List<(string Name, double RA, double Dec, double Rotation, double MinimumAltitude, string TemplateName, string Filter, double ExposureSec, int Desired, int Acquired, int Accepted)>();
+            var rows = new List<(string Name, string ProjectName, double RA, double Dec, double Rotation, double MinimumAltitude, string TemplateName, string Filter, double ExposureSec, int Desired, int Acquired, int Accepted)>();
 
             using (var cmd = new SQLiteCommand(sql, conn)) {
                 if (profileId != null) cmd.Parameters.AddWithValue("@ProfileId", profileId);
@@ -177,27 +178,29 @@ namespace NINA.Plugin.NightSummary.Data {
                         if (!nameSet.Contains(name)) continue;
 
                         rows.Add((
-                            Name:         name,
-                            RA:           Convert.ToDouble(reader["RA"]),
-                            Dec:          Convert.ToDouble(reader["Dec"]),
-                            Rotation:     reader["Rotation"]   == DBNull.Value ? 0 : Convert.ToDouble(reader["Rotation"]),
+                            Name:            name,
+                            ProjectName:     reader["ProjectName"].ToString() ?? "",
+                            RA:              Convert.ToDouble(reader["RA"]),
+                            Dec:             Convert.ToDouble(reader["Dec"]),
+                            Rotation:        reader["Rotation"]        == DBNull.Value ? 0 : Convert.ToDouble(reader["Rotation"]),
                             MinimumAltitude: reader["MinimumAltitude"] == DBNull.Value ? 0 : Convert.ToDouble(reader["MinimumAltitude"]),
-                            TemplateName: reader["TemplateName"].ToString() ?? "",
-                            Filter:       reader["Filter"].ToString() ?? "",
-                            ExposureSec:  reader["ExposureSec"] == DBNull.Value ? 0 : Convert.ToDouble(reader["ExposureSec"]),
-                            Desired:      Convert.ToInt32(reader["Desired"]),
-                            Acquired:     Convert.ToInt32(reader["Acquired"]),
-                            Accepted:     Convert.ToInt32(reader["Accepted"])
+                            TemplateName:    reader["TemplateName"].ToString() ?? "",
+                            Filter:          reader["Filter"].ToString() ?? "",
+                            ExposureSec:     reader["ExposureSec"] == DBNull.Value ? 0 : Convert.ToDouble(reader["ExposureSec"]),
+                            Desired:         Convert.ToInt32(reader["Desired"]),
+                            Acquired:        Convert.ToInt32(reader["Acquired"]),
+                            Accepted:        Convert.ToInt32(reader["Accepted"])
                         ));
                     }
                 }
             }
 
-            // Group by target only — each exposure plan row is its own bar (one per template+filter)
+            // Group by (project, target) — same target name in different projects = separate progress sections
             return rows
-                .GroupBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
+                .GroupBy(r => (r.ProjectName, r.Name))
                 .Select(g => new TsTargetData {
-                    TargetName      = g.Key,
+                    TargetName      = g.Key.Name,
+                    ProjectName     = g.Key.ProjectName,
                     RA              = g.First().RA,
                     Dec             = g.First().Dec,
                     Rotation        = g.First().Rotation,

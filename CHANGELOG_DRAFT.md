@@ -5,6 +5,8 @@
 
 **Bug fixes**
 - Fixed overhead analysis showing 100% accounted in sessions that ended with an aborted exposure (e.g. cut short by a safety event). The aborted exposure was being counted toward overhead coverage even though its duration extends past the measurement window, inflating the tracked total above the implied overhead and causing the percentage to be capped at 100%.
+- Fixed Target Scheduler progress bars showing duplicate or phantom exposure plans when the same target exists in multiple TS projects. Each project now renders as a separate labeled section.
+
 
 
 ## v2.11.1
