@@ -193,7 +193,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine(".ns-chart-filter-bar { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 0 auto 8px; }");
             sb.AppendLine(".ns-chart-filter-btn { background: var(--surface); color: var(--muted); border: 1px solid var(--border); border-radius: 18px; padding: 5px 18px; font-size: 18px; font-family: inherit; font-weight: bold; cursor: pointer; transition: all 0.15s; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;}");
             sb.AppendLine(".ns-chart-filter-btn:hover { border-color: var(--accent-light); color: var(--text); }");
-            sb.AppendLine(".ns-chart-filter-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }");
+            sb.AppendLine(".ns-chart-filter-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: bold; }");
+            sb.AppendLine(".ns-chart-filter-btn.ns-chart-target-btn { max-width: 180px; }");
             sb.AppendLine(".ns-chart-svg { width: 100%; }");
             sb.AppendLine("svg g:has(> title), svg circle:has(> title), svg line:has(> title), svg [data-tip] { cursor: pointer; }");
             sb.AppendLine("</style></head><body>");
@@ -1204,11 +1205,16 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 int xAxis,
                 List<(DateTime timestamp, string eventType, string description)>? markers) {
 
-            // Use BuildChartModel only for the sorted filter list
-            var filters = ChartGenerator.BuildChartModel(images, primary, secondary, xAxis, markers).Filters;
+            var model   = ChartGenerator.BuildChartModel(images, primary, secondary, xAxis, markers);
+            var filters = model.Filters;
+            var targets = model.Targets;
 
-            // No chip selector when there's only one filter or none
-            if (filters.Count < 2) {
+            var settings    = SettingsManager.Instance.Current;
+            bool hasFilters = filters.Count >= 2 && settings.ShowChartFilterChips;
+            bool hasTargets = targets.Count >= 2 && settings.ShowChartTargetChips;
+
+            // No chip selectors needed — emit a single SVG
+            if (!hasFilters && !hasTargets) {
                 var svg = ChartGenerator.GenerateMetricChart(images, primary, secondary, xAxis, markers);
                 sb.AppendLine($"<div class=\"metric-chart-container\"><div class=\"ns-chart-svg\">{svg}</div></div>");
                 return;
@@ -1217,60 +1223,104 @@ namespace NINA.Plugin.NightSummary.Reporting {
             int ci = _chartIndex++;
             string pfx = $"nsc{ci}";
 
-            // Pre-render one SVG per visible state: "All filters" + one per filter
-            var allSvg = ChartGenerator.GenerateMetricChart(images, primary, secondary, xAxis, markers);
-            var filterSvgs = filters.ToDictionary(
-                f => f,
-                f => ChartGenerator.GenerateMetricChart(
-                    images.Where(i => i.Filter == f).ToList(),
-                    primary, secondary, xAxis, markers));
+            // Local helpers for consistent ID generation
+            string TgtId(string t) => string.IsNullOrEmpty(t) ? "all" : ChartSafeId(t);
+            string FltId(string f) => string.IsNullOrEmpty(f) ? "all" : ChartSafeId(f);
+            string SvgId(string t, string f) => $"{pfx}-svg-{TgtId(t)}-{FltId(f)}";
+
+            // "" = the "all" sentinel; named entries are the specific values
+            var tgtKeys = hasTargets ? new[] { "" }.Concat(targets).ToList() : new List<string> { "" };
+            var fltKeys = hasFilters ? new[] { "" }.Concat(filters).ToList() : new List<string> { "" };
+
+            // Pre-render one SVG per (target, filter) combination
+            var svgs = new Dictionary<(string, string), string>();
+            foreach (var tgt in tgtKeys) {
+                var tgtImages = string.IsNullOrEmpty(tgt)
+                    ? images
+                    : images.Where(i => string.Equals(i.TargetName, tgt, StringComparison.OrdinalIgnoreCase)).ToList();
+                foreach (var flt in fltKeys) {
+                    var subset = string.IsNullOrEmpty(flt)
+                        ? tgtImages
+                        : tgtImages.Where(i => i.Filter == flt).ToList();
+                    svgs[(tgt, flt)] = ChartGenerator.GenerateMetricChart(subset, primary, secondary, xAxis, markers);
+                }
+            }
 
             // ── Per-chart CSS ────────────────────────────────────────────────
             // Active chip: whichever radio is :checked highlights its paired label.
-            // SVG visibility: only the selected state's container is display:block.
+            // SVG visibility: CSS sibling selectors on both radio groups show the
+            // correct (target × filter) prerendered SVG. All SVGs start hidden via
+            // inline style; !important overrides when the matching radios are checked.
             sb.AppendLine("<style>");
 
-            // Active chip highlight rules
-            var activeSelectors = new[] { $"#{pfx}-all:checked ~ .{pfx}-bar label[for=\"{pfx}-all\"]" }
-                .Concat(filters.Select(f =>
-                    $"#{pfx}-{ChartSafeId(f)}:checked ~ .{pfx}-bar label[for=\"{pfx}-{ChartSafeId(f)}\"]"));
-            sb.AppendLine(string.Join(",\n", activeSelectors));
-            sb.AppendLine("{ background: var(--accent); color: var(--bg); border-color: var(--accent); }");
+            if (hasTargets) {
+                sb.AppendLine(string.Join(",\n", tgtKeys.Select(t =>
+                    $"#{pfx}-tgt-{TgtId(t)}:checked ~ .{pfx}-tgt-bar label[for=\"{pfx}-tgt-{TgtId(t)}\"]")));
+                sb.AppendLine("{ background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: bold; }");
+            }
 
-            // Hide all per-filter SVG containers by default (shown individually below)
-            sb.AppendLine(string.Join(", ", filters.Select(f => $"#{pfx}-svg-{ChartSafeId(f)}"))
-                + " { display: none; }");
+            if (hasFilters) {
+                sb.AppendLine(string.Join(",\n", fltKeys.Select(f =>
+                    $"#{pfx}-flt-{FltId(f)}:checked ~ .{pfx}-flt-bar label[for=\"{pfx}-flt-{FltId(f)}\"]")));
+                sb.AppendLine("{ background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: bold; }");
+            }
 
-            // Show/hide rules per filter chip
-            foreach (var f in filters) {
-                string fid = ChartSafeId(f);
-                sb.AppendLine($"#{pfx}-{fid}:checked ~ #{pfx}-svg-all {{ display: none; }}");
-                // !important needed to override the inline style="display:none" on per-filter containers
-                sb.AppendLine($"#{pfx}-{fid}:checked ~ #{pfx}-svg-{fid} {{ display: block !important; }}");
+            // Show rule for each (target, filter) combination
+            foreach (var tgt in tgtKeys) {
+                foreach (var flt in fltKeys) {
+                    string tgtSel  = $"#{pfx}-tgt-{TgtId(tgt)}:checked";
+                    string fltSel  = $"#{pfx}-flt-{FltId(flt)}:checked";
+                    string selector = (hasTargets && hasFilters) ? $"{tgtSel} ~ {fltSel} ~ #{SvgId(tgt, flt)}"
+                                    : hasTargets                 ? $"{tgtSel} ~ #{SvgId(tgt, flt)}"
+                                                                 : $"{fltSel} ~ #{SvgId(tgt, flt)}";
+                    sb.AppendLine($"{selector} {{ display: block !important; }}");
+                }
             }
             sb.AppendLine("</style>");
 
             // ── HTML structure ───────────────────────────────────────────────
+            // All radio inputs MUST precede the chip bars and SVG containers so
+            // the CSS general sibling combinator (~) can reach them.
             sb.AppendLine($"<div class=\"metric-chart-container\">");
 
-            // Radio inputs — hidden but still toggled by their paired labels
-            sb.AppendLine($"<input type=\"radio\" name=\"{pfx}\" id=\"{pfx}-all\" checked style=\"display:none\">");
-            foreach (var f in filters)
-                sb.AppendLine($"<input type=\"radio\" name=\"{pfx}\" id=\"{pfx}-{ChartSafeId(f)}\" style=\"display:none\">");
-
-            // Chip bar (labels styled identically to the old JS buttons)
-            sb.Append($"<div class=\"ns-chart-filter-bar {pfx}-bar\">");
-            sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-all\">All</label>");
-            foreach (var f in filters) {
-                var encoded = WebUtility.HtmlEncode(f);
-                sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-{ChartSafeId(f)}\" title=\"{encoded}\">{encoded}</label>");
+            if (hasTargets) {
+                sb.AppendLine($"<input type=\"radio\" name=\"{pfx}-tgt\" id=\"{pfx}-tgt-all\" checked style=\"display:none\">");
+                foreach (var t in targets)
+                    sb.AppendLine($"<input type=\"radio\" name=\"{pfx}-tgt\" id=\"{pfx}-tgt-{ChartSafeId(t)}\" style=\"display:none\">");
             }
-            sb.AppendLine("</div>");
 
-            // SVG containers — "All" visible by default, per-filter hidden
-            sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-all\">{allSvg}</div>");
-            foreach (var f in filters)
-                sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-{ChartSafeId(f)}\" style=\"display:none\">{filterSvgs[f]}</div>");
+            if (hasFilters) {
+                sb.AppendLine($"<input type=\"radio\" name=\"{pfx}-flt\" id=\"{pfx}-flt-all\" checked style=\"display:none\">");
+                foreach (var f in filters)
+                    sb.AppendLine($"<input type=\"radio\" name=\"{pfx}-flt\" id=\"{pfx}-flt-{ChartSafeId(f)}\" style=\"display:none\">");
+            }
+
+            if (hasTargets) {
+                sb.Append($"<div class=\"ns-chart-filter-bar {pfx}-tgt-bar\">");
+                sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-tgt-all\">All Targets</label>");
+                foreach (var t in targets) {
+                    var encoded = WebUtility.HtmlEncode(t);
+                    sb.Append($"<label class=\"ns-chart-filter-btn ns-chart-target-btn\" for=\"{pfx}-tgt-{ChartSafeId(t)}\" title=\"{encoded}\">{encoded}</label>");
+                }
+                sb.AppendLine("</div>");
+            }
+
+            if (hasFilters) {
+                sb.Append($"<div class=\"ns-chart-filter-bar {pfx}-flt-bar\">");
+                sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-flt-all\">All</label>");
+                foreach (var f in filters) {
+                    var encoded = WebUtility.HtmlEncode(f);
+                    sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-flt-{ChartSafeId(f)}\" title=\"{encoded}\">{encoded}</label>");
+                }
+                sb.AppendLine("</div>");
+            }
+
+            // All SVGs start hidden; CSS show rules (above) override with !important
+            foreach (var tgt in tgtKeys) {
+                foreach (var flt in fltKeys) {
+                    sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{SvgId(tgt, flt)}\" style=\"display:none\">{svgs[(tgt, flt)]}</div>");
+                }
+            }
 
             sb.AppendLine("</div>"); // metric-chart-container
         }

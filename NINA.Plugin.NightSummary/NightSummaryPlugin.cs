@@ -435,6 +435,8 @@ namespace NINA.Plugin.NightSummary {
                 S.ShowSessionHistory    = true;
                 S.ShowStarCountCV       = true;
                 S.ShowHFRGraph          = true;
+                S.ShowChartTargetChips  = true;
+                S.ShowChartFilterChips  = true;
                 S.ShowChartAfMarkers    = true;
                 S.ShowChartFlipMarkers  = true;
                 S.ShowChartRoofMarkers  = false;
@@ -454,6 +456,8 @@ namespace NINA.Plugin.NightSummary {
                 RaisePropertyChanged(nameof(ShowSessionHistory));
                 RaisePropertyChanged(nameof(ShowStarCountCV));
                 RaisePropertyChanged(nameof(ShowHFRGraph));
+                RaisePropertyChanged(nameof(ShowChartTargetChips));
+                RaisePropertyChanged(nameof(ShowChartFilterChips));
                 RaisePropertyChanged(nameof(ShowChartAfMarkers));
                 RaisePropertyChanged(nameof(ShowChartFlipMarkers));
                 RaisePropertyChanged(nameof(ShowChartRoofMarkers));
@@ -522,6 +526,16 @@ namespace NINA.Plugin.NightSummary {
         public bool ShowChartFlipMarkers {
             get => S.ShowChartFlipMarkers;
             set { S.ShowChartFlipMarkers = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
+        public bool ShowChartTargetChips {
+            get => S.ShowChartTargetChips;
+            set { S.ShowChartTargetChips = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
+        public bool ShowChartFilterChips {
+            get => S.ShowChartFilterChips;
+            set { S.ShowChartFilterChips = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public bool ShowChartRoofMarkers {
