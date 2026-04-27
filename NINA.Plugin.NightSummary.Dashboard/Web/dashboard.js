@@ -294,6 +294,13 @@ function route() {
   // call below. The deferred setTimeout fires after that browser scroll and
   // wins. Both are kept so the reset is instant where it can be.
   if (isReport) {
+    // Measure compact header height (after report-view class is applied) and
+    // expose it as --report-nav-top so the sticky .report-nav sits flush below.
+    var hdr = document.querySelector('header');
+    if (hdr) {
+      hdr.getBoundingClientRect(); // force style recalc to get compact height
+      document.documentElement.style.setProperty('--report-nav-top', hdr.offsetHeight + 'px');
+    }
     window.scrollTo(0, 0);
     document.documentElement.scrollTop = 0;
     document.body.scrollTop = 0;

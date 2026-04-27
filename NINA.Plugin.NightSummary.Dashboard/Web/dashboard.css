@@ -4972,7 +4972,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   body.report-view header h1 { font-size: 16px; gap: 6px; }
   body.report-view .header-icon { width: 22px; height: 22px; }
   body.report-view .subtitle { display: none; }
-  body.report-view .report-nav { padding: 8px 12px; margin-bottom: 6px; flex-direction: row; align-items: center; justify-content: center; gap: 8px; }
+  body.report-view .report-nav { padding: 8px 12px; margin-bottom: 0; flex-direction: row; align-items: center; justify-content: center; gap: 8px; position: sticky; top: var(--report-nav-top, 44px); z-index: 99; background: var(--bg); border-bottom: 1px solid var(--border); }
   body.report-view .report-nav-info { display: none; }
   body.report-view .report-nav-actions { gap: 8px; }
   body.report-view .report-btn, body.report-view .back-btn { min-height: 36px; padding: 4px 12px; font-size: 12px; }
