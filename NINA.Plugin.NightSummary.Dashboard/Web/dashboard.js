@@ -3068,7 +3068,7 @@ function buildActivityWaveform(sessions) {
     var barClass = isLatest ? 'lw-bar lw-bar-latest' : 'lw-bar';
     var tipMeta = fmtDate(s.sessionStart) + ' \u00b7 ' + fmt(s.totalIntegrationSeconds || 0) + ' \u00b7 ' + (s.imageCount || 0) + ' images' + (isLatest ? ' \u00b7 latest' : '');
     var bar = '<rect class="' + barClass + '" x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + BAR_W + '" height="' + barH.toFixed(1) + '" fill="' + hColor + '" rx="2" data-lw-tgt="' + esc(tgtStr) + '" data-lw-meta="' + esc(tipMeta) + '" data-lw-latest="' + (isLatest ? '1' : '0') + '"/>';
-    if (!isMobile && s.sessionId && s.hasReport) {
+    if (!isMobile && !IS_TOUCH && s.sessionId && s.hasReport) {
       svg += '<a href="/api/sessions/' + encodeURIComponent(s.sessionId) + '/report" target="_blank" rel="noopener">' + bar + '</a>';
     } else {
       svg += bar;
@@ -3193,7 +3193,7 @@ function buildCalendarHeatmap(sessions) {
         svg += '<rect x="' + (cx - 2) + '" y="' + (cy - 2) + '" width="' + (CELL + 4) + '" height="' + (CELL + 4) + '" fill="rgb(212,160,106)" opacity="0.28" rx="2.5"/>';
       }
       var rect = '<rect class="lifetime-heatmap-cell lw-bar' + (clickable ? ' is-clickable' : '') + (isLatest ? ' lw-bar-latest' : '') + '" x="' + cx + '" y="' + cy + '" width="' + CELL + '" height="' + CELL + '" rx="2" fill="' + fillColor + '" data-lw-tgt="' + esc(tgtStr) + '" data-lw-meta="' + esc(tipMeta) + '" data-lw-latest="' + (isLatest ? '1' : '0') + '"/>';
-      if (clickable) {
+      if (clickable && !IS_TOUCH) {
         svg += '<a href="/api/sessions/' + encodeURIComponent(sessInfo.id) + '/report" target="_blank" rel="noopener">' + rect + '</a>';
       } else {
         svg += rect;
@@ -3289,8 +3289,8 @@ function initWaveformScrubber(container) {
   try { bars = JSON.parse(svg.getAttribute('data-bars') || '[]'); } catch (e) {}
   if (!bars.length) return;
   var info = slot.querySelector('.lw-scrubber-info');
-  var strip = slot.closest('.lifetime-strip');
-  if (strip && info) strip.appendChild(info);
+  // Move popup to body so iOS scroll-container touch capture can't block it.
+  if (info) document.body.appendChild(info);
   var barRects = Array.prototype.slice.call(svg.querySelectorAll('.lw-bar'));
   var currentBar = null;
   var currentBarData = null;
@@ -3327,7 +3327,8 @@ function initWaveformScrubber(container) {
         '<span class="lw-si-stats">' + fmt(b.i) + ' \u00b7 ' + b.n + ' images</span>' +
         (b.t ? '<span class="lw-si-tgts">' + esc(b.t) + '</span>' : '');
       info.classList.add('lw-scrubber-active');
-      info.style.top = Math.max(0, slot.offsetTop - info.offsetHeight - 4) + 'px';
+      var slotRect = slot.getBoundingClientRect();
+      info.style.top = Math.max(0, slotRect.top - info.offsetHeight - 4) + 'px';
     }
   }
 
@@ -3343,19 +3344,45 @@ function initWaveformScrubber(container) {
       (b.t ? '<span class="lw-si-tgts">' + esc(b.t) + '</span>' : '') +
       '<div class="lw-si-actions">' +
       (b.hr
-        ? '<a class="lw-si-report-btn" href="/api/sessions/' + encodeURIComponent(b.sid) + '/report" target="_blank" rel="noopener">Open Report \u2192</a>'
+        ? '<button class="lw-si-report-btn">Open Report \u2192</button>'
         : '<span class="lw-si-no-report">No report</span>') +
       '<button class="lw-si-dismiss">\u00d7</button>' +
       '</div>';
     info.classList.add('lw-scrubber-pinned');
     info.style.pointerEvents = 'auto';
     requestAnimationFrame(function() {
-      info.style.top = Math.max(0, slot.offsetTop - info.offsetHeight - 4) + 'px';
+      var slotRect = slot.getBoundingClientRect();
+      info.style.top = Math.max(0, slotRect.top - info.offsetHeight - 4) + 'px';
     });
     var dismissBtn = info.querySelector('.lw-si-dismiss');
-    if (dismissBtn) dismissBtn.addEventListener('click', function(e) { e.stopPropagation(); hide(); });
+    if (dismissBtn) {
+      dismissBtn.addEventListener('touchend', function(e) { e.stopPropagation(); e.preventDefault(); hide(); }, {passive: false});
+      dismissBtn.addEventListener('click', function(e) { e.stopPropagation(); hide(); });
+    }
     var reportBtn = info.querySelector('.lw-si-report-btn');
-    if (reportBtn) reportBtn.addEventListener('click', function(e) { e.stopPropagation(); });
+    if (reportBtn) {
+      reportBtn.addEventListener('touchend', function(e) {
+        e.stopPropagation();
+        e.preventDefault();
+        hide();
+        navigate('#/sessions/' + b.sid);
+      }, {passive: false});
+      reportBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        e.preventDefault();
+        hide();
+        navigate('#/sessions/' + b.sid);
+      });
+    }
+    // Close on outside tap. Deferred one tick so the touchend that triggered
+    // pin() doesn't fire its own synthetic click and immediately dismiss.
+    setTimeout(function() {
+      function outsideHandler() {
+        if (pinned) hide();
+        document.removeEventListener('click', outsideHandler);
+      }
+      document.addEventListener('click', outsideHandler);
+    }, 0);
   }
 
   function hide() {
@@ -3373,6 +3400,7 @@ function initWaveformScrubber(container) {
 
   var touchStartX = 0, touchStartY = 0, lastTouchX = 0;
   var scrubbing = false;
+  var dismissing = false;
   var longPressTimer = null;
   var LONG_PRESS_MS = 280;
 
@@ -3381,6 +3409,7 @@ function initWaveformScrubber(container) {
   }
 
   svg.addEventListener('touchstart', function(e) {
+    dismissing = pinned;  // flag: this touch is dismissing, not selecting
     if (pinned) hide();
     touchStartX = lastTouchX = e.touches[0].clientX;
     touchStartY = e.touches[0].clientY;
@@ -3408,17 +3437,19 @@ function initWaveformScrubber(container) {
     cancelLongPress();
     if (scrubbing) {
       scrubbing = false;
-      pin();
-    } else {
+      if (!dismissing) pin();
+    } else if (!dismissing) {
       var dx = Math.abs(e.changedTouches[0].clientX - touchStartX);
       var dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
       if (dx < 10 && dy < 10) { showAt(touchStartX); pin(); }
     }
+    dismissing = false;
   });
 
   svg.addEventListener('touchcancel', function() {
     cancelLongPress();
     scrubbing = false;
+    dismissing = false;
     hide();
   });
 }
@@ -7877,7 +7908,7 @@ function buildActivityHeatmap(sessions, firstSessionIso) {
     var rect = '<rect class="' + cls + '" x="' + x + '" y="' + y + '" ' +
                'width="' + cellSize + '" height="' + cellSize + '" rx="2"><title>' +
                esc(tooltip) + '</title></rect>';
-    if (c.sessionId) {
+    if (c.sessionId && !IS_TOUCH) {
       svg += '<a href="/api/sessions/' + encodeURIComponent(c.sessionId) + '/report" target="_blank" rel="noopener">' + rect + '</a>';
     } else {
       svg += rect;
