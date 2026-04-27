@@ -289,7 +289,20 @@ function route() {
   // Reset html scroll: report-view sets body overflow:hidden but a
   // pre-existing documentElement.scrollTop (carried over from the taller
   // session list) leaves the sticky header covering .report-nav.
-  if (isReport) window.scrollTo(0, 0);
+  // On iOS Safari and inside iframes the browser's own hash-navigation scroll
+  // fires AFTER the hashchange handler returns, overriding the synchronous
+  // call below. The deferred setTimeout fires after that browser scroll and
+  // wins. Both are kept so the reset is instant where it can be.
+  if (isReport) {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    setTimeout(function() {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    }, 0);
+  }
 
   if (path === '/sessions') {
     renderSessionList(params);
