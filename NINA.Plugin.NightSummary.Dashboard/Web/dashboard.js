@@ -4063,6 +4063,10 @@ function loadLiveStacks(sessions) {
   });
 }
 
+// One shelf at a time: holds the hideShelf fn of whichever shelf is currently
+// open so a new hover can close it before opening its own.
+var _activeShelfHide = null;
+
 function setupLiveStackHover(thumbWrap, sessionId, targetName) {
   var hoverTimer = null;
   var shelf = null;
@@ -4102,6 +4106,9 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
 
   function showShelf() {
     if (shelf) return;
+    // Close any other open shelf before opening this one.
+    if (_activeShelfHide && _activeShelfHide !== hideShelf) _activeShelfHide();
+    _activeShelfHide = hideShelf;
     var images = livestackMap[sessionId] && livestackMap[sessionId][targetName];
     if (!images || images.length === 0) return;
 
@@ -4269,6 +4276,7 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
 
   function hideShelf() {
     clearTimeout(shelfLeaveTimer);
+    if (_activeShelfHide === hideShelf) _activeShelfHide = null;
     thumbWrap.classList.remove('shelf-active');
     if (_scrollHandler) {
       window.removeEventListener('scroll', _scrollHandler);
