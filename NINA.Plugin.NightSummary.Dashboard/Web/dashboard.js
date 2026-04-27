@@ -7964,6 +7964,7 @@ function renderStats() {
 
 // ── Init ───────────────────────────────────────────────────────────────────
 
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 logInfo('Dashboard initializing');
 initTheme();
 document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
