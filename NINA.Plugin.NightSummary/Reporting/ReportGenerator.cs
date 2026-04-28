@@ -86,7 +86,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             sb.AppendLine("<!DOCTYPE html>");
-            sb.AppendLine("<html><head><meta charset='UTF-8'><style>");
+            sb.AppendLine($"<html data-theme='{(lightMode ? "light" : "dark")}'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><style>");
 
             // Theme colors via CSS custom properties
             if (lightMode) {
@@ -95,6 +95,39 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine(":root { --bg: #1a1a2e; --text: #e0e0e0; --accent: #7eb8f7; --accent-light: #a0c4ff; --accent-lighter: #c0d8ff; --surface: #16213e; --border: #2d2d5e; --muted: #888; --dim: #555; --chart-bg: #0d1117; --chart-dark: #0f0f23; --bar-acquired: #3a5a7a; --warn-bg: #3a2a00; --warn-border: #b8860b; --warn-text: #f0c040; --warn-item: #d4a850; --skip-color: #cc6666; }");
             }
 
+            // SVG chart color overrides keyed on data-theme — allows JS or future toggle to switch themes
+            // Dark report → light view
+            sb.AppendLine("html[data-theme='light'] svg rect[fill='#0d1117'] { fill: #e8eef5; }");
+            sb.AppendLine("html[data-theme='light'] svg [stroke='#2d2d5e'] { stroke: #c0c8d4; }");
+            sb.AppendLine("html[data-theme='light'] svg [fill='#2d2d5e'] { fill: #c0c8d4; }");
+            sb.AppendLine("html[data-theme='light'] svg text[fill='#888'] { fill: #666; }");
+            sb.AppendLine("html[data-theme='light'] svg [stroke='#c0c0c0'] { stroke: #7a8a9e; }");
+            sb.AppendLine("html[data-theme='light'] svg [stroke='#7eb8f7'] { stroke: #2563b8; }");
+            sb.AppendLine("html[data-theme='light'] svg rect[fill='#1a1a2e'] { fill: #f5f5f5; }");
+            sb.AppendLine("html[data-theme='light'] svg [stroke='#2a2a4a'] { stroke: #c8cdd4; }");
+            sb.AppendLine("html[data-theme='light'] svg [stroke='#555577'] { stroke: #666688; }");
+            sb.AppendLine("html[data-theme='light'] svg text[fill='#aaaacc'] { fill: #555577; }");
+            sb.AppendLine("html[data-theme='light'] svg circle[fill='#a8d4ff'] { fill: #1a4f9e; }");
+            sb.AppendLine("html[data-theme='light'] svg circle[fill='#ffd4a8'] { fill: #b85c10; }");
+            sb.AppendLine("html[data-theme='light'] svg rect[fill='#3a1e00'] { fill: #fff3cd; }");
+            sb.AppendLine("html[data-theme='light'] svg text[fill='#e0e0e0'] { fill: #1a1a2e; }"); // timeline legend text
+            // Light report → dark view
+            sb.AppendLine("html[data-theme='dark'] svg rect[fill='#e8eef5'] { fill: #0d1117; }");
+            sb.AppendLine("html[data-theme='dark'] svg [stroke='#c0c8d4'] { stroke: #2d2d5e; }");
+            sb.AppendLine("html[data-theme='dark'] svg [fill='#c0c8d4'] { fill: #2d2d5e; }");
+            sb.AppendLine("html[data-theme='dark'] svg text[fill='#666'] { fill: #888; }");
+            sb.AppendLine("html[data-theme='dark'] svg [stroke='#7a8a9e'] { stroke: #c0c0c0; }");
+            sb.AppendLine("html[data-theme='dark'] svg [stroke='#2563b8'] { stroke: #7eb8f7; }");
+            sb.AppendLine("html[data-theme='dark'] svg rect[fill='#f5f5f5'] { fill: #1a1a2e; }");
+            sb.AppendLine("html[data-theme='dark'] svg [stroke='#c8cdd4'] { stroke: #2a2a4a; }");
+            sb.AppendLine("html[data-theme='dark'] svg [stroke='#666688'] { stroke: #555577; }");
+            sb.AppendLine("html[data-theme='dark'] svg text[fill='#555577'] { fill: #aaaacc; }");
+            sb.AppendLine("html[data-theme='dark'] svg circle[fill='#1a4f9e'] { fill: #a8d4ff; }");
+            sb.AppendLine("html[data-theme='dark'] svg circle[fill='#b85c10'] { fill: #ffd4a8; }");
+            sb.AppendLine("html[data-theme='dark'] svg rect[fill='#fff3cd'] { fill: #3a1e00; }");
+            sb.AppendLine("html[data-theme='dark'] svg text[fill='#1a1a2e'] { fill: #e0e0e0; }"); // timeline legend text
+
+            sb.AppendLine("html { background-color: var(--bg); }");
             sb.AppendLine("body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background-color: var(--bg); color: var(--text); }");
             sb.AppendLine("h1 { color: var(--accent); border-bottom: 2px solid var(--accent); padding-bottom: 10px; }");
             sb.AppendLine("h2 { color: var(--accent-light); margin-top: 30px; }");
@@ -1834,7 +1867,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("<div style='margin-top:8px;display:flex;flex-wrap:wrap;gap:12px;'>");
             foreach (var name in uniqueTargets) {
                 var color = colorMap[name];
-                sb.AppendLine($"<span style='display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);'>" +
+                sb.AppendLine($"<span style='display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text);'>" +
                               $"<span style='display:inline-block;width:16px;height:3px;background:{color};border-radius:2px;flex-shrink:0;'></span>" +
                               $"{name}</span>");
             }

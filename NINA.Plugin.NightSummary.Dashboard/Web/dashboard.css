@@ -74,7 +74,46 @@
 :root.light .chart-svg-wrap svg [stroke='#7eb8f7'] { stroke: #2563b8; }
 :root.light .chart-legend { background: rgba(238, 240, 245, 0.9); }
 
+/* Light mode — target/project cards */
+:root.light .target-card,
+:root.light .targets-project-container {
+  background: rgba(0,0,0,0.04);
+  border-color: rgba(0,0,0,0.12);
+}
+:root.light .target-card:hover { border-color: rgba(0,0,0,0.22); }
+:root.light .targets-project-container[data-guid]:hover { border-color: rgba(0,0,0,0.22); }
+:root.light .targets-project-header { background: rgba(0,0,0,0.04); }
+
+/* Light mode — session history row separators (TDP + PDP) */
+:root.light .tdp-table th,
+:root.light .tdp-table td { border-bottom-color: rgba(0,0,0,0.10); }
+:root.light .tdp-table tr.tdp-filter-subrow td { border-bottom-color: rgba(0,0,0,0.05); }
+:root.light .tdp-table tr.tdp-filter-subrow + tr.tdp-session-row td,
+:root.light .tdp-table tr.tdp-filter-subrow:last-child td { border-top-color: rgba(0,0,0,0.10); }
+
+/* Light mode — target/project card progress bar */
+:root.light .targets-project-progress-overall-track { background: rgba(0,0,0,0.10); }
+:root.light .targets-project-progress-overall-fill { background: var(--accent); }
+
+/* Light mode — TDP/PDP overall TS progress bar + separator */
+:root.light .tdp-overall-bar-fill { background: var(--accent); box-shadow: none; }
+:root.light .tdp-overall-separator { background: rgba(0,0,0,0.08); }
+
+/* Light mode — manage projects button */
+:root.light .targets-manage-projects-btn { border-color: rgba(0,0,0,0.18); }
+:root.light .targets-manage-projects-btn:hover { border-color: rgba(0,0,0,0.35); }
+
+/* Light mode — TDP/PDP session row hover + expanded + subrow backgrounds */
+:root.light .tdp-table tr.tdp-session-row:hover td { background: rgba(0,0,0,0.04); }
+:root.light .tdp-table tr.tdp-session-row.tdp-expanded { background: rgba(0,0,0,0.03); }
+:root.light .tdp-table tr.tdp-filter-subrow { background: rgba(0,0,0,0.03); }
+
+/* Light mode — PDP panel card hover */
+:root.light .pdp-panel-card:hover { border-color: rgba(0,0,0,0.20); background: rgba(0,0,0,0.04); }
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { background: var(--bg); }
 
 body {
   font-family: Arial, sans-serif;
@@ -3319,6 +3358,11 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   cursor: pointer;
   transition: color var(--t-fast), border-color var(--t-fast);
   flex-shrink: 0;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.28),
+    inset 0 -1px 0 rgba(0,0,0,0.2),
+    0 2px 6px rgba(0,0,0,0.4),
+    0 1px 2px rgba(0,0,0,0.3);
 }
 .targets-manage-projects-btn:hover {
   color: var(--text-primary);
@@ -3642,6 +3686,11 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   border: 1px solid;
   cursor: pointer;
   transition: transform var(--t-fast);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.28),
+    inset 0 -1px 0 rgba(0,0,0,0.2),
+    0 2px 6px rgba(0,0,0,0.4),
+    0 1px 2px rgba(0,0,0,0.3);
 }
 .tdp-project-state-pill:hover { transform: scale(1.03); }
 .tdp-project-state-pill[data-state="Active"]    { background: rgba(102,187,106,0.18); border-color: rgba(102,187,106,0.50); color: #A5D6A7; }

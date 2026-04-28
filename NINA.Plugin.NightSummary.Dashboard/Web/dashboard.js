@@ -260,6 +260,55 @@ function toggleTheme() {
   var isLight = document.documentElement.classList.contains('light');
   safeSetItem('ns-theme', isLight ? 'light' : 'dark');
   updateThemeButton();
+  syncReportTheme();
+}
+
+var REPORT_THEME_LIGHT = ':root { --bg: #f5f5f5; --text: #1a1a2e; --accent: #2563b8; --accent-light: #3b7dd8; --accent-lighter: #5a9ae6; --surface: #e8ecf1; --border: #c0c8d4; --muted: #666; --dim: #888; --chart-bg: #e0e4ea; --chart-dark: #d0d4da; --bar-acquired: #8bb0d4; --warn-bg: #fff3cd; --warn-border: #d4a850; --warn-text: #856404; --warn-item: #6d5200; --skip-color: #cc3333; }' +
+  /* altitude chart SVG — hardcoded dark hex overrides */
+  'svg rect[fill="#0d1117"] { fill: #e8eef5; }' +
+  'svg [stroke="#2d2d5e"] { stroke: #c0c8d4; }' +
+  'svg [fill="#2d2d5e"] { fill: #c0c8d4; }' +
+  'svg text[fill="#888"] { fill: #666; }' +
+  'svg [stroke="#c0c0c0"] { stroke: #7a8a9e; }' +
+  'svg [stroke="#7eb8f7"] { stroke: #2563b8; }' +
+  /* metric chart SVG — hardcoded dark hex overrides */
+  'svg rect[fill="#1a1a2e"] { fill: #f5f5f5; }' +
+  'svg [stroke="#2a2a4a"] { stroke: #c8cdd4; }' +
+  'svg [stroke="#555577"] { stroke: #666688; }' +
+  'svg text[fill="#aaaacc"] { fill: #555577; }' +
+  'svg circle[fill="#a8d4ff"] { fill: #1a4f9e; }' +
+  'svg circle[fill="#ffd4a8"] { fill: #b85c10; }' +
+  'svg rect[fill="#3a1e00"] { fill: #fff3cd; }' +
+  /* timeline legend text — dark-generated reports viewed in light mode */
+  'svg text[fill="#e0e0e0"] { fill: #1a1a2e; }';
+var REPORT_THEME_DARK  = ':root { --bg: #1a1a2e; --text: #e0e0e0; --accent: #7eb8f7; --accent-light: #a0c4ff; --accent-lighter: #c0d8ff; --surface: #16213e; --border: #2d2d5e; --muted: #888; --dim: #555; --chart-bg: #0d1117; --chart-dark: #0f0f23; --bar-acquired: #3a5a7a; --warn-bg: #3a2a00; --warn-border: #b8860b; --warn-text: #f0c040; --warn-item: #d4a850; --skip-color: #cc6666; }' +
+  /* restore dark chart colors when switching back */
+  'svg rect[fill="#e8eef5"] { fill: #0d1117; }' +
+  'svg rect[fill="#f5f5f5"] { fill: #1a1a2e; }' +
+  /* timeline legend text — light-generated reports viewed in dark mode */
+  'svg text[fill="#1a1a2e"] { fill: #e0e0e0; }';
+
+function syncReportTheme() {
+  var iframe = document.getElementById('report-iframe');
+  if (!iframe) return;
+  try {
+    var d = iframe.contentDocument;
+    if (!d || !d.head) return;
+    var isLight = document.documentElement.classList.contains('light');
+    // Set data-theme — new reports use embedded CSS rules keyed on this attribute
+    d.documentElement.setAttribute('data-theme', isLight ? 'light' : 'dark');
+    // Inject :root + SVG overrides for old reports that predate the embedded CSS rules
+    var existing = d.getElementById('ns-theme-override');
+    if (existing) existing.remove();
+    var style = d.createElement('style');
+    style.id = 'ns-theme-override';
+    style.textContent = isLight ? REPORT_THEME_LIGHT : REPORT_THEME_DARK;
+    d.head.appendChild(style);
+    // Override hardcoded inline style on <html> from older disk-patched reports
+    d.documentElement.style.backgroundColor = isLight ? '#f5f5f5' : '#1a1a2e';
+    // Prevent iOS bounce on the iframe content (only needed in dashboard context, not NINA preview)
+    d.documentElement.style.overscrollBehavior = 'none';
+  } catch(e) {}
 }
 
 function updateThemeButton() {
@@ -3437,6 +3486,8 @@ function initWaveformScrubber(container) {
       }
       document.addEventListener('click', outsideHandler);
     }, 0);
+    // Dismiss on scroll — iOS position:fixed breaks once chart scrolls off-screen
+    window.addEventListener('scroll', hide, { passive: true, capture: true, once: true });
   }
 
   function hide() {
@@ -3619,6 +3670,8 @@ function initCalendarScrubber(container) {
       function outsideHandler() { if (pinned) hide(); document.removeEventListener('click', outsideHandler); }
       document.addEventListener('click', outsideHandler);
     }, 0);
+    // Dismiss on scroll — iOS position:fixed breaks once chart scrolls off-screen
+    window.addEventListener('scroll', hide, { passive: true, capture: true, once: true });
   }
 
   function hide() {
@@ -5294,10 +5347,10 @@ function setupChartCrosshair(container) {
       markers[i].dot.style.display = '';
       var alt = yToAlt(y).toFixed(0) + '\u00b0';
       markers[i].label.textContent = alt;
-      // Position label to the right, offset to avoid overlap; counter-transform text
+      // Position label just above the dot; counter-transform text
       var labelGap = isMobile ? 10 : 5;
       var labelSpacing = isMobile ? 20 : 10;
-      var lx = sx + labelGap, ly2 = y - 4 - i * labelSpacing;
+      var lx = sx + labelGap, ly2 = y - 4 - labelSpacing;
       markers[i].label.setAttribute('x', lx);
       markers[i].label.setAttribute('y', ly2);
       markers[i].label.setAttribute('transform', 'translate(' + lx + ',' + ly2 + ') ' + textTransform + ' translate(' + (-lx) + ',' + (-ly2) + ')');
@@ -6367,7 +6420,7 @@ function renderSessionDetail(sessionId) {
     logDebug('Settings received:', JSON.stringify(currentSettings, null, 2));
 
     var targets = detail.targets.map(function(t) { return t.target; }).join(', ') || 'Unknown';
-    sub.textContent = fmtDate(detail.sessionStart) + ' \u2014 ' + targets;
+    if (sub) sub.textContent = getSubtitleText();
 
     var navHtml = '<div class="report-nav" id="header-report-nav">' +
       '<a class="back-btn" href="#/sessions">\u2190 Sessions</a>' +
@@ -6404,7 +6457,7 @@ function renderSessionDetail(sessionId) {
         html += '<div class="report-viewer"><div id="report-shadow-host" class="report-shadow-host"></div></div>';
       } else {
         html += '<div class="report-viewer">' +
-          '<iframe id="report-iframe" class="report-iframe" src="/api/sessions/' + sessionId + '/report" sandbox="allow-same-origin"></iframe>' +
+          '<iframe id="report-iframe" class="report-iframe" src="/api/sessions/' + sessionId + '/report?theme=' + (document.documentElement.classList.contains('light') ? 'light' : 'dark') + '" sandbox="allow-same-origin"></iframe>' +
         '</div>';
       }
     } else {
@@ -6418,6 +6471,9 @@ function renderSessionDetail(sessionId) {
     if (detail.hasReport && isMobile) {
       loadReportIntoShadow(sessionId);
     }
+
+    var iframeEl = document.getElementById('report-iframe');
+    if (iframeEl) iframeEl.addEventListener('load', syncReportTheme);
 
     bindDetailEvents(sessionId);
   }).catch(function(err) {
@@ -6493,7 +6549,7 @@ function bindDetailEvents(sessionId) {
           var iframe = document.getElementById('report-iframe');
           var shadowHost = document.getElementById('report-shadow-host');
           if (iframe) {
-            iframe.src = '/api/sessions/' + sessionId + '/report?t=' + Date.now();
+            iframe.src = '/api/sessions/' + sessionId + '/report?theme=' + (document.documentElement.classList.contains('light') ? 'light' : 'dark') + '&t=' + Date.now();
           } else if (shadowHost) {
             loadReportIntoShadow(sessionId);
           } else {

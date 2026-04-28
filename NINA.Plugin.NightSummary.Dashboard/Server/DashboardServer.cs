@@ -282,7 +282,7 @@ namespace NINA.Plugin.NightSummary.Server {
                         await HandleGetSessionTiming(res, sessionId, done);
                     } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/report")) {
                         var sessionId = ExtractSessionId(path, "/report");
-                        await HandleGetSessionReport(res, sessionId, done);
+                        await HandleGetSessionReport(res, sessionId, req.QueryString["theme"], done);
                     } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/thumbnails")) {
                         var sessionId = ExtractSessionId(path, "/thumbnails");
                         await HandleGetSessionThumbnails(res, sessionId, done);
@@ -619,7 +619,7 @@ namespace NINA.Plugin.NightSummary.Server {
             done?.Invoke(200, $"{result.Count} timing events for {sessionId}");
         }
 
-        private async Task HandleGetSessionReport(HttpListenerResponse res, string sessionId, Action<int, string> done) {
+        private async Task HandleGetSessionReport(HttpListenerResponse res, string sessionId, string theme, Action<int, string> done) {
             var reportPath = Path.Combine(reportsDir, $"{sessionId}.html");
             if (!File.Exists(reportPath)) {
                 await WriteJson(res, 404, new { error = "Report not found" });
@@ -627,6 +627,49 @@ namespace NINA.Plugin.NightSummary.Server {
                 return;
             }
             var html = File.ReadAllText(reportPath);
+            if (theme == "light" || theme == "dark") {
+                // Inject data-theme attribute and CSS variable override so initial render matches dashboard theme
+                html = System.Text.RegularExpressions.Regex.Replace(html,
+                    @"<html(\s[^>]*)?>",
+                    m => {
+                        var attrs = System.Text.RegularExpressions.Regex.Replace(m.Value, @"\s*data-theme=['""][^'""]*['""]", "");
+                        return attrs.Replace("<html", $"<html data-theme='{theme}'");
+                    });
+                const string lightSvgOverrides =
+                    "svg rect[fill='#0d1117'] { fill: #e8eef5; }" +
+                    "svg [stroke='#2d2d5e'] { stroke: #c0c8d4; }" +
+                    "svg [fill='#2d2d5e'] { fill: #c0c8d4; }" +
+                    "svg text[fill='#888'] { fill: #666; }" +
+                    "svg [stroke='#c0c0c0'] { stroke: #7a8a9e; }" +
+                    "svg [stroke='#7eb8f7'] { stroke: #2563b8; }" +
+                    "svg rect[fill='#1a1a2e'] { fill: #f5f5f5; }" +
+                    "svg [stroke='#2a2a4a'] { stroke: #c8cdd4; }" +
+                    "svg [stroke='#555577'] { stroke: #666688; }" +
+                    "svg text[fill='#aaaacc'] { fill: #555577; }" +
+                    "svg circle[fill='#a8d4ff'] { fill: #1a4f9e; }" +
+                    "svg circle[fill='#ffd4a8'] { fill: #b85c10; }" +
+                    "svg rect[fill='#3a1e00'] { fill: #fff3cd; }" +
+                    "svg text[fill='#e0e0e0'] { fill: #1a1a2e; }";
+                const string darkSvgOverrides =
+                    "svg rect[fill='#e8eef5'] { fill: #0d1117; }" +
+                    "svg rect[fill='#f5f5f5'] { fill: #1a1a2e; }" +
+                    "svg text[fill='#1a1a2e'] { fill: #e0e0e0; }";
+                var (bg, lightCss, darkCss) = theme == "light"
+                    ? ("#f5f5f5",
+                       ":root { --bg: #f5f5f5; --text: #1a1a2e; --accent: #2563b8; --accent-light: #3b7dd8; --accent-lighter: #5a9ae6; --surface: #e8ecf1; --border: #c0c8d4; --muted: #666; --dim: #888; --chart-bg: #e0e4ea; --chart-dark: #d0d4da; --bar-acquired: #8bb0d4; --warn-bg: #fff3cd; --warn-border: #d4a850; --warn-text: #856404; --warn-item: #6d5200; --skip-color: #cc3333; }" + lightSvgOverrides,
+                       "")
+                    : ("#1a1a2e",
+                       "",
+                       ":root { --bg: #1a1a2e; --text: #e0e0e0; --accent: #7eb8f7; --accent-light: #a0c4ff; --accent-lighter: #c0d8ff; --surface: #16213e; --border: #2d2d5e; --muted: #888; --dim: #555; --chart-bg: #0d1117; --chart-dark: #0f0f23; --bar-acquired: #3a5a7a; --warn-bg: #3a2a00; --warn-border: #b8860b; --warn-text: #f0c040; --warn-item: #d4a850; --skip-color: #cc6666; }" + darkSvgOverrides);
+                // Prevent iOS bounce on iframe content (not baked into report HTML — only injected when served via dashboard)
+                const string iframeOnlyCss = "html { overscroll-behavior: none; }";
+                var overrideStyle = $"<style id='ns-theme-override'>{lightCss}{darkCss}{iframeOnlyCss}</style>";
+                html = html.Replace("</head>", overrideStyle + "</head>");
+                // Also patch any hardcoded inline html background
+                html = System.Text.RegularExpressions.Regex.Replace(html,
+                    @"(<html[^>]*style=['""][^'""]*background-color:)[^;'""]+",
+                    "$1" + bg);
+            }
             await WriteHtml(res, 200, html);
             done?.Invoke(200, $"{sessionId} ({html.Length / 1024}KB)");
         }
