@@ -716,7 +716,12 @@
                     <!-- ══ Local Dashboard ═══════════════════════════════════════ -->
                     <Expander IsExpanded="False" Margin="0,4,0,4">
                         <Expander.Header>
-                            <TextBlock Text="Local Dashboard" FontSize="14" FontWeight="Bold" />
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="Local Dashboard" FontSize="14" FontWeight="Bold" VerticalAlignment="Center" />
+                                <Border Background="#E8A020" CornerRadius="3" Margin="10,0,0,0" Padding="6,2" VerticalAlignment="Center">
+                                    <TextBlock Text="BETA" FontSize="10" FontWeight="Bold" Foreground="White" />
+                                </Border>
+                            </StackPanel>
                         </Expander.Header>
                         <StackPanel Margin="0,12,0,0">
 
