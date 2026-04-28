@@ -42,6 +42,24 @@ cd .claude/worktrees/<name>
 - Deploy scripts in `scripts/` — `dev-v3-deploy.ps1` (local Windows), `deploy.ps1` / `deploy-remote.ps1` (remote)
 - Git is used for source control; GitHub CLI (`gh`) is authenticated for push
 
+## Dev Dashboard Server
+
+**Always start via the script — never run the exe directly:**
+
+```powershell
+.\scripts\start-dev.ps1           # normal launch (hot-reload JS/CSS, no rebuild)
+.\scripts\start-dev.ps1 -Rebuild  # rebuild C# server first (only needed when tools/dev-dashboard-cs changes)
+```
+
+Key facts every agent must know:
+- **Port: 8183** (urlacl reservation exists only for 8183 — default 8182 will fail with Access Denied)
+- **Host: `+`** (all interfaces — required for Tailscale/iPad access; default `localhost` is loopback only)
+- **DB: `~/Documents/ns-snapshot/nightsummary.sqlite`** (dev snapshot, not the production NINA DB)
+- **URL: `http://100.126.185.10:8183/`** (Tailscale IP, used to test from iPad)
+- **Hot reload**: JS/CSS in `NINA.Plugin.NightSummary.Dashboard/Web/` is served live from source — edit and refresh, no rebuild
+- **Worktree-aware**: the script derives `--web` from `$PSScriptRoot`, so running it from any worktree's `scripts/` always serves that worktree's files
+- **Stale instance**: the script kills any existing instance automatically
+
 ## Architecture Notes
 
 - `SessionDatabase.cs` handles all SQLite access and the legacy migration logic

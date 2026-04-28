@@ -8,4 +8,5 @@ namespace NINA.Plugin.NightSummary.Dashboard.Abstractions;
 public interface IPluginSettings {
     NightSummarySettings Current { get; }
     void Save();
+    string PluginVersion { get; }
 }

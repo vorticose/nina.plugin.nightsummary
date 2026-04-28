@@ -1,0 +1,117 @@
+<!doctype html>
+<html><head><meta charset=utf-8>
+<title>Viewport Mockup — Night Summary</title>
+<style>
+  html,body{margin:0;background:#1a1a1a;color:#ddd;font-family:-apple-system,Segoe UI,sans-serif;height:100%}
+  body{display:flex;flex-direction:column;overflow:hidden}
+  header{padding:8px 12px;background:#0e0e0e;border-bottom:1px solid #333;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .group{display:flex;gap:4px;align-items:center}
+  .lbl{font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-right:4px}
+  button{background:#222;color:#ccc;border:1px solid #444;border-radius:4px;padding:6px 10px;font-size:12px;cursor:pointer;font-family:inherit}
+  button:hover{background:#2c2c2c;border-color:#5b9bd5}
+  button.active{background:#1d3a5e;border-color:#5b9bd5;color:#a8cdf2}
+  .info{font-size:11px;color:#666;margin-left:auto;font-family:monospace}
+  .stage{flex:1;overflow:auto;display:flex;justify-content:center;align-items:flex-start;padding:32px 16px 16px;background:repeating-linear-gradient(45deg,#181818,#181818 10px,#1d1d1d 10px,#1d1d1d 20px)}
+  .frame{position:relative;background:#000;border:2px solid #444;border-radius:6px;box-shadow:0 8px 32px rgba(0,0,0,.5);transition:width .25s ease,height .25s ease}
+  .frame.portrait{border-radius:18px}
+  iframe{border:0;width:100%;height:100%;display:block;border-radius:4px}
+  .badge{position:absolute;top:-26px;left:0;font-size:11px;color:#888;font-family:monospace}
+  .ctrl{display:flex;gap:6px;align-items:center}
+  input[type=number]{background:#222;color:#ccc;border:1px solid #444;border-radius:4px;padding:5px 6px;font-size:12px;width:60px;font-family:monospace}
+  input[type=text]{background:#222;color:#ccc;border:1px solid #444;border-radius:4px;padding:5px 8px;font-size:12px;width:240px;font-family:monospace}
+</style></head>
+<body>
+  <header>
+    <span class=lbl>URL</span>
+    <input id=url type=text value="http://100.126.185.10:8183/">
+    <button id=load>Load</button>
+    <span class=lbl style="margin-left:8px">Phone</span>
+    <div class=group>
+      <button data-w=320 data-h=568>320</button>
+      <button data-w=360 data-h=740 class=active>360</button>
+      <button data-w=375 data-h=812>375</button>
+      <button data-w=390 data-h=844>390</button>
+      <button data-w=414 data-h=896>414</button>
+    </div>
+    <span class=lbl style="margin-left:8px">Tablet</span>
+    <div class=group>
+      <button data-w=600 data-h=960>600</button>
+      <button data-w=768 data-h=1024>768</button>
+      <button data-w=820 data-h=1180>820</button>
+      <button data-w=1024 data-h=768>1024</button>
+    </div>
+    <span class=lbl style="margin-left:8px">Laptop / Desktop</span>
+    <div class=group>
+      <button data-w=1280 data-h=720>1280</button>
+      <button data-w=1366 data-h=768>1366</button>
+      <button data-w=1440 data-h=900>1440</button>
+      <button data-w=1600 data-h=900>1600</button>
+      <button data-w=1920 data-h=1080>1920</button>
+    </div>
+    <span class=lbl style="margin-left:8px">Custom</span>
+    <div class=ctrl>
+      <input id=cw type=number min=200 max=2400 value=360 step=10>
+      <span style="color:#666">×</span>
+      <input id=ch type=number min=200 max=2400 value=740 step=10>
+      <button id=apply>Apply</button>
+      <button id=rotate title="Rotate (swap w/h)">⇄</button>
+      <button id=reload title="Reload iframe">↻</button>
+    </div>
+    <span class=info id=info></span>
+  </header>
+  <div class=stage>
+    <div class=frame id=frame style="width:360px;height:740px">
+      <span class=badge id=badge>360 × 740</span>
+      <iframe id=if src="http://100.126.185.10:8183/"></iframe>
+    </div>
+  </div>
+<script>
+  var frame=document.getElementById('frame');
+  var ifrm=document.getElementById('if');
+  var badge=document.getElementById('badge');
+  var info=document.getElementById('info');
+  var cw=document.getElementById('cw'),ch=document.getElementById('ch');
+  var url=document.getElementById('url');
+  function reloadAt(w,h){
+    // Set frame size first so the iframe viewport is correct when content loads
+    frame.style.width=w+'px';
+    frame.style.height=h+'px';
+    frame.classList.toggle('portrait',h>w);
+    badge.textContent=w+' × '+h;
+    cw.value=w;ch.value=h;
+    info.textContent='viewport: '+w+'×'+h;
+    var u=url.value;
+    ifrm.src=u+(u.indexOf('?')<0?'?':'&')+'_='+Date.now();
+  }
+  function setSize(w,h){
+    w=parseInt(w);h=parseInt(h);
+    frame.style.width=w+'px';
+    frame.style.height=h+'px';
+    frame.classList.toggle('portrait',h>w);
+    badge.textContent=w+' × '+h;
+    cw.value=w;ch.value=h;
+    info.textContent='viewport: '+w+'×'+h;
+  }
+  document.querySelectorAll('header button[data-w]').forEach(function(b){
+    b.addEventListener('click',function(){
+      document.querySelectorAll('header button[data-w]').forEach(function(x){x.classList.remove('active')});
+      b.classList.add('active');
+      reloadAt(parseInt(b.dataset.w),parseInt(b.dataset.h));
+    });
+  });
+  document.getElementById('apply').addEventListener('click',function(){
+    document.querySelectorAll('header button[data-w]').forEach(function(x){x.classList.remove('active')});
+    reloadAt(parseInt(cw.value),parseInt(ch.value));
+  });
+  document.getElementById('rotate').addEventListener('click',function(){
+    var w=parseInt(cw.value),h=parseInt(ch.value);reloadAt(h,w);
+  });
+  document.getElementById('reload').addEventListener('click',function(){
+    var u=url.value;ifrm.src=u+(u.indexOf('?')<0?'?':'&')+'_='+Date.now();
+  });
+  document.getElementById('load').addEventListener('click',function(){
+    ifrm.src=url.value;
+  });
+  setSize(360,740);
+</script>
+</body></html>

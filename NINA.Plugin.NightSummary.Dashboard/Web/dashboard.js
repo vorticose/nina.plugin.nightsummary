@@ -9,6 +9,16 @@ function logInfo()  { console.info.apply(console, [LOG_PREFIX].concat(Array.prot
 function logWarn()  { console.warn.apply(console, [LOG_PREFIX].concat(Array.prototype.slice.call(arguments))); }
 function logError() { console.error.apply(console, [LOG_PREFIX].concat(Array.prototype.slice.call(arguments))); }
 
+// ── Capability detection ──────────────────────────────────────────────────
+
+// True for any device with touch input — phones, tablets, touch-screen
+// laptops. Used to gate touch-specific UX (long-press scrubber, tap-to-zoom
+// thumbnails) so it kicks in regardless of viewport size, and to suppress
+// hover-driven UI that fights with tap interactions on the same surfaces.
+// `'ontouchstart' in window` covers iOS Safari; `maxTouchPoints > 0` is the
+// reliable signal on Windows touch devices.
+var IS_TOUCH = !window.matchMedia('(hover: hover)').matches;
+
 // ── Utilities ──────────────────────────────────────────────────────────────
 
 function fmt(seconds) {
@@ -272,14 +282,23 @@ function route() {
     el.classList.toggle('active', hash.startsWith('#' + el.getAttribute('href').slice(1)) ||
       path.startsWith('/' + el.dataset.page));
   });
+  updateStatsNavLabel();
 
   // Toggle report-view mode on body to kill outer scroll
   var isReport = path.match(/^\/sessions\/[^/]+$/);
   document.body.classList.toggle('report-view', !!isReport);
-  // Reset html scroll: report-view sets body overflow:hidden but a
-  // pre-existing documentElement.scrollTop (carried over from the taller
-  // session list) leaves the sticky header covering .report-nav.
-  if (isReport) window.scrollTo(0, 0);
+  if (isReport) {
+    // Shell is the scroll container in report-view; reset it so content
+    // always starts at top regardless of prior body scroll position.
+    // window.scrollTo is unreliable on iOS Safari after a hashchange.
+    var shellEl = document.querySelector('.shell');
+    if (shellEl) shellEl.scrollTop = 0;
+  } else {
+    // Remove the report nav from the header when leaving report view
+    var existingNav = document.getElementById('header-report-nav');
+    if (existingNav) existingNav.remove();
+    document.documentElement.style.removeProperty('--header-h');
+  }
 
   if (path === '/sessions') {
     renderSessionList(params);
@@ -291,6 +310,14 @@ function route() {
     renderSessionList(params);
   }
   repositionViewToggle();
+}
+
+function updateStatsNavLabel() {
+  var link = document.querySelector('.nav-link[data-page="stats"]');
+  if (!link) return;
+  if (statsTsStatus === 'available') link.textContent = 'Projects';
+  else if (statsTsStatus !== null) link.textContent = 'Targets';
+  // statsTsStatus === null means not yet loaded — leave as HTML default ("Targets")
 }
 
 function navigate(hash) {
@@ -314,7 +341,8 @@ function renderTabBar(tabs, activeTab) {
   for (var i = 0; i < tabs.length; i++) {
     var t = tabs[i];
     var cls = t.id === activeTab ? ' active' : '';
-    html += '<button class="stats-tab-btn' + cls + '" data-tab="' + t.id + '">' + esc(t.label) + '</button>';
+    var gated = t.disabled ? ' ts-gated' : '';
+    html += '<button class="stats-tab-btn' + cls + gated + '" data-tab="' + t.id + '"' + (t.disabled ? ' title="No projects yet"' : '') + '>' + esc(t.label) + '</button>';
   }
   html += '</div>';
   return html;
@@ -378,6 +406,8 @@ function fmtCoord(raH, decD) {
   return 'RA ' + rH + 'h' + (rM < 10 ? '0' : '') + rM + 'm  Dec ' + dSign + dD + '\u00b0' + (dM < 10 ? '0' : '') + dM + "'";
 }
 
+function plural(n, word) { return n === 1 ? word : word + 's'; }
+
 function renderTargetCard(t, index) {
   var initial = t.target ? t.target.charAt(0).toUpperCase() : '?';
   var sessionCount = t.sessionCount || 0;
@@ -425,7 +455,7 @@ function renderTargetCard(t, index) {
   }
 
   html += '<div class="target-card-header-right">';
-  html += '<button type="button" class="target-card-assign-btn" data-target="' + esc(t.target) + '" title="Assign to project">&#x1F4C1;</button>';
+  if (statsTsStatus === 'available') html += '<button type="button" class="target-card-assign-btn' + (!statsTsProjects || statsTsProjects.length === 0 ? ' ts-gated' : '') + '" data-target="' + esc(t.target) + '" title="Assign to project">&#x1F4C1;</button>';
   html += '<button type="button" class="targets-project-collapse-btn" aria-label="Collapse"></button>';
   html += '</div>';
   html += '</div>'; // .target-card-header
@@ -448,11 +478,11 @@ function renderTargetCard(t, index) {
   var frames = t.acceptedFrames != null ? t.acceptedFrames : '--';
   html += '<div class="target-card-stat-boxes">';
   html += '<div class="stat-box"><div class="stat-value">' + sessionCount +
-          '</div><div class="stat-label">Sessions</div></div>';
+          '</div><div class="stat-label">' + plural(sessionCount, 'Session') + '</div></div>';
   html += '<div class="stat-box"><div class="stat-value">' + esc(String(hours)) +
           '<span class="unit">h</span></div><div class="stat-label">Integration</div></div>';
   html += '<div class="stat-box"><div class="stat-value">' + esc(String(frames)) +
-          '</div><div class="stat-label">Frames</div></div>';
+          '</div><div class="stat-label">' + plural(frames, 'Frame') + '</div></div>';
   html += '<div class="stat-box"><div class="stat-value">' + (t.avgHFR ? t.avgHFR.toFixed(2) : '--') +
           '<span class="unit">px</span></div><div class="stat-label">Avg HFR</div></div>';
   html += '</div>'; // .target-card-stat-boxes
@@ -563,15 +593,18 @@ function projectType(isMosaic, targetCount) {
 // Renders the full control bar: sort pills + optional group toggle + optional filter row
 function renderTargetsControlBar(sortKey, groupBy) {
   var tsAvail = statsTsStatus === 'available';
+  var tsNoProjects = tsAvail && (!statsTsProjects || statsTsProjects.length === 0);
+
   var html = '<div class="targets-control-bar">';
   html += '<div class="targets-sort-bar"><span class="targets-sort-label">Sort</span>';
   // Group by project first — commonly used
   if (tsAvail || (statsTsProjects && statsTsProjects.some(function(p) { return p.isCustom; }))) {
-    var grpCls = 'targets-group-pill' + (groupBy === 'project' ? ' active' : '');
+    var grpCls = 'targets-group-pill' + (groupBy === 'project' ? ' active' : '') + (tsNoProjects ? ' ts-gated' : '');
     html += '<button type="button" class="' + grpCls + '" data-action="toggle-group">Group by project</button>';
   }
   TARGET_SORT_OPTIONS.forEach(function(opt) {
-    var cls = 'targets-sort-pill' + (opt.key === sortKey ? ' active' : '');
+    if (opt.key === 'type' && !tsAvail) return;
+    var cls = 'targets-sort-pill' + (opt.key === sortKey ? ' active' : '') + (opt.key === 'type' && tsNoProjects ? ' ts-gated' : '');
     html += '<button type="button" class="' + cls + '" data-sort-key="' + opt.key + '">' + esc(opt.label) + '</button>';
   });
   html += '</div>';
@@ -580,7 +613,7 @@ function renderTargetsControlBar(sortKey, groupBy) {
     var enabledTypes  = getTargetTypeFilter();
     var allStatesOn = TS_STATE_ORDER.every(function(s) { return enabledStates.indexOf(s) >= 0; });
     var allTypesOn  = TARGET_TYPE_OPTIONS.every(function(o) { return enabledTypes.indexOf(o.key) >= 0; });
-    html += '<div class="targets-filter-row"><span class="targets-sort-label">Filter</span>';
+    html += '<div class="targets-filter-row' + (tsNoProjects ? ' ts-gated' : '') + '"><span class="targets-sort-label">Filter</span>';
     html += '<button type="button" class="targets-status-chip' + (allStatesOn && allTypesOn ? ' active' : '') + '" data-filter-state="__all__">All</button>';
     TS_STATE_ORDER.forEach(function(state) {
       var on = enabledStates.indexOf(state) >= 0;
@@ -770,9 +803,9 @@ function renderProjectContainer(info) {
     html += '<div class="stat-box"><div class="stat-value">' + totalHours.toFixed(1) +
             '<span class="unit">h</span></div><div class="stat-label">Integration</div></div>';
     html += '<div class="stat-box"><div class="stat-value">' + totalFrames +
-            '</div><div class="stat-label">Frames</div></div>';
+            '</div><div class="stat-label">' + plural(totalFrames, 'Frame') + '</div></div>';
     html += '<div class="stat-box"><div class="stat-value">' + totalSessions +
-            '</div><div class="stat-label">Sessions</div></div>';
+            '</div><div class="stat-label">' + plural(totalSessions, 'Session') + '</div></div>';
     html += '</div>'; // .targets-project-stat-boxes
   } else if (info.targets.length >= 2) {
     // Non-mosaic multi-target — 2x2 grid of target thumbnails inside the standard thumb-wrap
@@ -816,11 +849,11 @@ function renderProjectContainer(info) {
 
     html += '<div class="targets-project-stat-boxes">';
     html += '<div class="stat-box"><div class="stat-value">' + totalSessions +
-            '</div><div class="stat-label">Sessions</div></div>';
+            '</div><div class="stat-label">' + plural(totalSessions, 'Session') + '</div></div>';
     html += '<div class="stat-box"><div class="stat-value">' + totalHours.toFixed(1) +
             '<span class="unit">h</span></div><div class="stat-label">Integration</div></div>';
     html += '<div class="stat-box"><div class="stat-value">' + totalFrames +
-            '</div><div class="stat-label">Frames</div></div>';
+            '</div><div class="stat-label">' + plural(totalFrames, 'Frame') + '</div></div>';
     html += '<div class="stat-box"><div class="stat-value">' + (hfrCount > 0 ? (avgHFR / hfrCount).toFixed(2) : '--') +
             '<span class="unit">px</span></div><div class="stat-label">Avg HFR</div></div>';
     html += '</div>'; // .targets-project-stat-boxes
@@ -1063,7 +1096,7 @@ window.addEventListener('resize', function() {
 // ── Target Detail Panel (Phase 2) ────────────────────────────────────────
 
 // Filter ordering for stacked bars — consistent across all bars in a chart
-var TDP_FILTER_STACK_ORDER = ['L', 'R', 'G', 'B', 'H', 'O', 'S', 'N'];
+var TDP_FILTER_STACK_ORDER = ['L', 'R', 'G', 'B', 'H', 'S', 'O', 'N'];
 
 function tdpFmtDuration(mins) {
   if (!mins || mins <= 0) return '--';
@@ -1072,6 +1105,12 @@ function tdpFmtDuration(mins) {
   if (h === 0) return m + 'm';
   if (m === 0) return h + 'h';
   return h + 'h ' + m + 'm';
+}
+function tdpFmtFilterSecs(secs) {
+  if (secs == null || isNaN(secs) || secs < 0) return '--';
+  if (secs < 60) return Math.round(secs) + 's';
+  if (secs < 3600) return Math.round(secs / 60) + 'm';
+  return (secs / 3600).toFixed(1) + 'h';
 }
 
 function tdpFmtDate(iso) {
@@ -1293,10 +1332,9 @@ function renderTargetDetailPanel(data, targetName, ts) {
       .map(function(f) {
         var fHFR = f.avgHFR != null ? f.avgHFR.toFixed(2) : '--';
         var fGuide = f.avgGuidingRMS != null ? f.avgGuidingRMS.toFixed(2) + '"' : '--';
-        var fMin = Math.round((f.integrationSeconds || 0) / 60);
         return '<tr class="tdp-filter-subrow" data-for="' + idx + '" style="display:none">' +
           '<td></td>' +
-          '<td class="pdp-subrow-integration">' + filterTypePill(f.filter) + '<span>' + esc(tdpFmtDuration(fMin)) + '</span></td>' +
+          '<td class="pdp-subrow-integration">' + filterTypePill(f.filter) + '<span>' + esc(tdpFmtFilterSecs(f.integrationSeconds || 0)) + '</span></td>' +
           '<td>' + (f.frames || 0) + '</td>' +
           '<td>' + esc(fHFR) + '</td>' +
           '<td>' + esc(fGuide) + '</td>' +
@@ -1326,14 +1364,14 @@ function renderTargetDetailPanel(data, targetName, ts) {
   var titlePills = '';
   if (ts && ts.project) {
     var proj = ts.project;
+    var pType = projectType(!!proj.isMosaic, proj.targetCount);
+    var typeLabel = pType === 'single' ? 'Single' : pType === 'multi' ? 'Multi' : 'Mosaic';
+    titlePills += '<span class="targets-project-type-badge">' + typeLabel + '</span>';
     titlePills += '<span class="tdp-project-state-pill" data-state="' + esc(proj.state || 'Draft') +
       '" data-project-guid="' + esc(proj.guid || '') + '" title="Click to override status">' +
       esc(proj.state || 'Draft') +
-      (proj.stateSource === 'override' ? ' \u00b7' : '') +
+      (proj.stateSource === 'override' ? '<span class="override-mark" title="User override active"></span>' : '') +
       '</span>';
-    if (proj.isMosaic) {
-      titlePills += '<span class="tdp-type-pill">Mosaic Panel</span>';
-    }
   }
 
   // ── TS Progress bars ─────────────────────────────────────────────────────
@@ -1404,6 +1442,7 @@ function renderTargetDetailPanel(data, targetName, ts) {
     if (goalRows || overallRow) {
       tdpProgressHtml = '<div class="tdp-progress-section">' +
         '<div class="tdp-project-progress-grid">' + goalRows + overallRow + '</div>' +
+        '<div class="tdp-progress-hint">TS-reported progress · may include frames captured before Night Summary was active</div>' +
       '</div>';
     }
   }
@@ -1961,8 +2000,10 @@ function renderProjectDetailPanel(data) {
   html += '<div class="pdp-header">';
   html += '<div class="pdp-header-title-row">';
   html += '<h2 class="pdp-title">' + esc(proj.name || 'Project') + '</h2>';
+  var pType = projectType(!!proj.isMosaic, panels.length);
+  var typeLabel = pType === 'single' ? 'Single' : pType === 'multi' ? 'Multi' : 'Mosaic';
+  html += '<span class="targets-project-type-badge">' + typeLabel + '</span>';
   html += '<span class="target-card-ts-badge" data-state="' + esc(proj.state || '') + '">' + esc(proj.state || '') + '</span>';
-  if (proj.isMosaic) html += '<span class="targets-project-mosaic-badge">Mosaic</span>';
   html += '</div>';
 
   // Date row
@@ -2105,6 +2146,7 @@ function renderProjectDetailPanel(data) {
     html += '<div class="pdp-ts-progress-section">';
     html += '<div class="pdp-section-title">TS Progress</div>';
     html += '<div class="tdp-project-progress-grid">' + pdpProgressRows + pdpOverallRow + '</div>';
+    html += '<div class="tdp-progress-hint">TS-reported progress · may include frames captured before Night Summary was active</div>';
     html += '</div>';
   }
 
@@ -2297,7 +2339,7 @@ function renderPdpPanelCard(panel, idx, tsTarget) {
     html += '<div class="pdp-panel-filters">';
     panel.filters.forEach(function(f) {
       html += '<span class="pdp-panel-filter-item">' + filterTypePill(f.filter) +
-        '<span class="pdp-panel-filter-hrs">' + (f.totalHours || 0).toFixed(1) + 'h</span></span>';
+        '<span class="pdp-panel-filter-hrs">' + tdpFmtFilterSecs(f.totalSeconds != null ? f.totalSeconds : (f.totalHours || 0) * 3600) + '</span></span>';
     });
     html += '</div>';
   }
@@ -2343,7 +2385,6 @@ function buildPdpSessionTable(sessions, showTargetCol) {
     var subRows = sortedFilters.map(function(f, fi) {
       var fHFR = f.avgHFR != null ? f.avgHFR.toFixed(2) : '--';
       var fGuide = f.avgGuidingRMS != null ? f.avgGuidingRMS.toFixed(2) + '"' : '--';
-      var fMin = Math.round((f.integrationSeconds || 0) / 60);
       var firstCell = '<td></td>';
       if (showTargetCol) {
         var tgtName = fi < targets.length ? targets[fi] : '';
@@ -2351,7 +2392,7 @@ function buildPdpSessionTable(sessions, showTargetCol) {
       }
       return '<tr class="tdp-filter-subrow" data-for="' + idx + '" style="display:none">' +
         firstCell +
-        '<td class="pdp-subrow-integration">' + filterTypePill(f.filter) + '<span>' + esc(tdpFmtDuration(fMin)) + '</span></td>' +
+        '<td class="pdp-subrow-integration">' + filterTypePill(f.filter) + '<span>' + esc(tdpFmtFilterSecs(f.integrationSeconds || 0)) + '</span></td>' +
         '<td>' + (f.frames || 0) + '</td>' +
         '<td>' + esc(fHFR) + '</td>' +
         '<td>' + esc(fGuide) + '</td>' +
@@ -2538,14 +2579,14 @@ function renderPdpPanelDrillDown(data, panelName, panelData, projectData, projec
   var ts = panelData ? findTsForTarget(panelName) : null;
   if (ts && ts.project) {
     var proj = ts.project;
+    var pType = projectType(!!proj.isMosaic, proj.targetCount);
+    var typeLabel = pType === 'single' ? 'Single' : pType === 'multi' ? 'Multi' : 'Mosaic';
+    titlePills += '<span class="targets-project-type-badge">' + typeLabel + '</span>';
     titlePills += '<span class="tdp-project-state-pill" data-state="' + esc(proj.state || 'Draft') +
       '" data-project-guid="' + esc(proj.guid || '') + '">' +
       esc(proj.state || 'Draft') +
-      (proj.stateSource === 'override' ? ' \u00b7' : '') +
+      (proj.stateSource === 'override' ? '<span class="override-mark" title="User override active"></span>' : '') +
       '</span>';
-    if (proj.isMosaic) {
-      titlePills += '<span class="tdp-type-pill">Mosaic Panel</span>';
-    }
   }
 
   // ── TS Progress bars ─────────────────────────────────────────────────
@@ -2599,7 +2640,7 @@ function renderPdpPanelDrillDown(data, panelName, panelData, projectData, projec
         '</div>';
     }
     if (goalRows || overallRow) {
-      progressHtml = '<div class="tdp-progress-section"><div class="tdp-project-progress-grid">' + goalRows + overallRow + '</div></div>';
+      progressHtml = '<div class="tdp-progress-section"><div class="tdp-project-progress-grid">' + goalRows + overallRow + '</div><div class="tdp-progress-hint">TS-reported progress · may include frames captured before Night Summary was active</div></div>';
     }
   }
 
@@ -2897,6 +2938,8 @@ function loadTargetThumbnails() {
 // ── Sessions List Page ─────────────────────────────────────────────────────
 
 var sessionsCache = [];
+var SESSION_PAGE_SIZE = 25;
+var visibleSessionCount = SESSION_PAGE_SIZE;
 var initialLoadDone = false; // true after first successful render; skip fade on subsequent renders
 var selectedTargets = {}; // target name -> boolean (true = selected)
 var showEmptySessions = false; // hide 0-image sessions by default
@@ -2928,6 +2971,20 @@ function getAllTargets() {
     s.targets.forEach(function(t) { targets[t] = true; });
   });
   return Object.keys(targets).sort();
+}
+
+function getSubtitleText() {
+  var visible = sessionsCache.filter(function(s) { return !hiddenSessions[s.sessionId]; });
+  var targets = {};
+  visible.forEach(function(s) { s.targets.forEach(function(t) { targets[t] = true; }); });
+  var tc = Object.keys(targets).length;
+  var sc = visible.length;
+  return tc + ' ' + plural(tc, 'target') + ' · ' + sc + ' ' + plural(sc, 'session');
+}
+
+function updateSubtitle() {
+  var sub = document.getElementById('page-subtitle');
+  if (sub) sub.textContent = getSubtitleText();
 }
 
 // ── Sessions V2: trophy case + hero card + historical expander ──────────────
@@ -3050,7 +3107,7 @@ function buildActivityWaveform(sessions) {
     var barClass = isLatest ? 'lw-bar lw-bar-latest' : 'lw-bar';
     var tipMeta = fmtDate(s.sessionStart) + ' \u00b7 ' + fmt(s.totalIntegrationSeconds || 0) + ' \u00b7 ' + (s.imageCount || 0) + ' images' + (isLatest ? ' \u00b7 latest' : '');
     var bar = '<rect class="' + barClass + '" x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + BAR_W + '" height="' + barH.toFixed(1) + '" fill="' + hColor + '" rx="2" data-lw-tgt="' + esc(tgtStr) + '" data-lw-meta="' + esc(tipMeta) + '" data-lw-latest="' + (isLatest ? '1' : '0') + '"/>';
-    if (!isMobile && s.sessionId && s.hasReport) {
+    if (!isMobile && !IS_TOUCH && s.sessionId && s.hasReport) {
       svg += '<a href="/api/sessions/' + encodeURIComponent(s.sessionId) + '/report" target="_blank" rel="noopener">' + bar + '</a>';
     } else {
       svg += bar;
@@ -3141,13 +3198,12 @@ function buildCalendarHeatmap(sessions) {
     return 'hsl(215,' + sat + '%,' + lit + '%)';
   }
 
-  var svg = '<svg class="lifetime-calendar" viewBox="0 0 ' + svgW + ' ' + svgH + '" ';
-  svg += 'preserveAspectRatio="xMinYMid meet" ';
-  svg += 'width="' + svgW + '" height="' + svgH + '" style="max-width:100%;height:auto">';
+  var cellData = [];
+  var svgBody = '';
 
   // DOW labels (all 7)
   DOW_LABELS.forEach(function(label, i) {
-    svg += '<text class="lifetime-heatmap-dow" x="' + (DOW_W - 4) + '" y="' + (TOP_H + i * STEP + Math.floor(CELL * 0.75)) + '" text-anchor="end">' + esc(label) + '</text>';
+    svgBody += '<text class="lifetime-heatmap-dow" x="' + (DOW_W - 4) + '" y="' + (TOP_H + i * STEP + Math.floor(CELL * 0.75)) + '" text-anchor="end">' + esc(label) + '</text>';
   });
 
   // Cells + month labels
@@ -3171,24 +3227,32 @@ function buildCalendarHeatmap(sessions) {
       var clickable = sessInfo && sessInfo.id;
       var fillColor = isLatest ? 'rgb(212,160,106)' : cellColor(secs);
       if (isLatest) {
-        svg += '<rect x="' + (cx - 4) + '" y="' + (cy - 4) + '" width="' + (CELL + 8) + '" height="' + (CELL + 8) + '" fill="rgb(212,160,106)" opacity="0.12" rx="3"/>';
-        svg += '<rect x="' + (cx - 2) + '" y="' + (cy - 2) + '" width="' + (CELL + 4) + '" height="' + (CELL + 4) + '" fill="rgb(212,160,106)" opacity="0.28" rx="2.5"/>';
+        svgBody += '<rect x="' + (cx - 4) + '" y="' + (cy - 4) + '" width="' + (CELL + 8) + '" height="' + (CELL + 8) + '" fill="rgb(212,160,106)" opacity="0.12" rx="3"/>';
+        svgBody += '<rect x="' + (cx - 2) + '" y="' + (cy - 2) + '" width="' + (CELL + 4) + '" height="' + (CELL + 4) + '" fill="rgb(212,160,106)" opacity="0.28" rx="2.5"/>';
       }
       var rect = '<rect class="lifetime-heatmap-cell lw-bar' + (clickable ? ' is-clickable' : '') + (isLatest ? ' lw-bar-latest' : '') + '" x="' + cx + '" y="' + cy + '" width="' + CELL + '" height="' + CELL + '" rx="2" fill="' + fillColor + '" data-lw-tgt="' + esc(tgtStr) + '" data-lw-meta="' + esc(tipMeta) + '" data-lw-latest="' + (isLatest ? '1' : '0') + '"/>';
-      if (clickable) {
-        svg += '<a href="/api/sessions/' + encodeURIComponent(sessInfo.id) + '/report" target="_blank" rel="noopener">' + rect + '</a>';
+      if (clickable && !IS_TOUCH) {
+        svgBody += '<a href="/api/sessions/' + encodeURIComponent(sessInfo.id) + '/report" target="_blank" rel="noopener">' + rect + '</a>';
       } else {
-        svg += rect;
+        svgBody += rect;
+      }
+      if (secs > 0) {
+        cellData.push({x: cx, y: cy, w: CELL, h: CELL, d: dk, i: secs, n: imgs, t: tgtStr,
+          sid: (sessInfo && sessInfo.id) || '', hr: !!(sessInfo && sessInfo.id)});
       }
       if (dow === 0 && mo !== prevMonth) {
         var mlabel = MNAMES[mo] + (mo === 0 ? ' ' + yr : '');
-        svg += '<text class="lifetime-heatmap-month" x="' + cx + '" y="' + (TOP_H - 5) + '">' + esc(mlabel) + '</text>';
+        svgBody += '<text class="lifetime-heatmap-month" x="' + cx + '" y="' + (TOP_H - 5) + '">' + esc(mlabel) + '</text>';
         prevMonth = mo;
       }
     }
   }
 
-  svg += '</svg>';
+  var svg = '<svg class="lifetime-calendar" viewBox="0 0 ' + svgW + ' ' + svgH + '" ' +
+    'preserveAspectRatio="xMinYMid meet" ' +
+    'width="' + svgW + '" height="' + svgH + '" ' +
+    'data-cells=\'' + JSON.stringify(cellData).replace(/'/g, '&#39;') + '\' ' +
+    'style="max-width:100%;height:auto">' + svgBody + '</svg>';
   return svg;
 }
 
@@ -3216,9 +3280,9 @@ function renderLifetimeStrip(sessions) {
     + (hasChart ? ' onclick="toggleLifetimeExpand(this)"' : '') + '>';
   html += '<div class="lifetime-stats-row">';
   html += '<div class="lifetime-stats">';
-  html += '<div class="card-stat lifetime-card-stat"><div class="card-stat-value">' + totalSessions + '</div><div class="card-stat-label">Sessions</div></div>';
-  html += '<div class="card-stat lifetime-card-stat"><div class="card-stat-value">' + targetCount + '</div><div class="card-stat-label">Targets</div></div>';
-  html += '<div class="card-stat lifetime-card-stat"><div class="card-stat-value">' + totalImages + '</div><div class="card-stat-label">Images</div></div>';
+  html += '<div class="card-stat lifetime-card-stat"><div class="card-stat-value">' + totalSessions + '</div><div class="card-stat-label">' + plural(totalSessions, 'Session') + '</div></div>';
+  html += '<div class="card-stat lifetime-card-stat"><div class="card-stat-value">' + targetCount + '</div><div class="card-stat-label">' + plural(targetCount, 'Target') + '</div></div>';
+  html += '<div class="card-stat lifetime-card-stat"><div class="card-stat-value">' + totalImages + '</div><div class="card-stat-label">' + plural(totalImages, 'Image') + '</div></div>';
   html += '<div class="card-stat lifetime-card-stat"><div class="card-stat-value">' + (totalIntegSec / 3600).toFixed(1) + '<span class="card-stat-unit">h</span></div><div class="card-stat-label">Integration</div></div>';
   html += '</div>';
   html += '<div class="lv-toggle">';
@@ -3258,8 +3322,19 @@ function toggleLifetimeExpand(strip) {
   }
 }
 
+function positionPopup(infoEl, anchorX, refEl) {
+  var w = infoEl.offsetWidth;
+  var rawLeft = anchorX - w / 2;
+  infoEl.style.left = Math.max(8, Math.min(rawLeft, window.innerWidth - w - 8)) + 'px';
+  var r = refEl.getBoundingClientRect();
+  infoEl.style.top = Math.max(0, r.top - infoEl.offsetHeight - 4) + 'px';
+}
+
 function initWaveformScrubber(container) {
-  if (window.innerWidth >= 720) return;
+  // Tie to touch capability rather than viewport size: tablets in landscape
+  // and touch-screen laptops still want the long-press scrubber, while a
+  // regular mouse-only desktop uses the existing hover crosshair.
+  if (!IS_TOUCH) return;
   var slot = container.querySelector('.lifetime-waveform-slot');
   if (!slot) return;
   var svg = slot.querySelector('svg.lifetime-waveform');
@@ -3268,8 +3343,8 @@ function initWaveformScrubber(container) {
   try { bars = JSON.parse(svg.getAttribute('data-bars') || '[]'); } catch (e) {}
   if (!bars.length) return;
   var info = slot.querySelector('.lw-scrubber-info');
-  var strip = slot.closest('.lifetime-strip');
-  if (strip && info) strip.appendChild(info);
+  // Move popup to body so iOS scroll-container touch capture can't block it.
+  if (info) document.body.appendChild(info);
   var barRects = Array.prototype.slice.call(svg.querySelectorAll('.lw-bar'));
   var currentBar = null;
   var currentBarData = null;
@@ -3306,7 +3381,8 @@ function initWaveformScrubber(container) {
         '<span class="lw-si-stats">' + fmt(b.i) + ' \u00b7 ' + b.n + ' images</span>' +
         (b.t ? '<span class="lw-si-tgts">' + esc(b.t) + '</span>' : '');
       info.classList.add('lw-scrubber-active');
-      info.style.top = Math.max(0, slot.offsetTop - info.offsetHeight - 4) + 'px';
+      var anchorX = currentBar ? currentBar.getBoundingClientRect().left + currentBar.getBoundingClientRect().width / 2 : clientX;
+      positionPopup(info, anchorX, slot);
     }
   }
 
@@ -3322,19 +3398,45 @@ function initWaveformScrubber(container) {
       (b.t ? '<span class="lw-si-tgts">' + esc(b.t) + '</span>' : '') +
       '<div class="lw-si-actions">' +
       (b.hr
-        ? '<a class="lw-si-report-btn" href="/api/sessions/' + encodeURIComponent(b.sid) + '/report" target="_blank" rel="noopener">Open Report \u2192</a>'
+        ? '<button class="lw-si-report-btn">Open Report \u2192</button>'
         : '<span class="lw-si-no-report">No report</span>') +
       '<button class="lw-si-dismiss">\u00d7</button>' +
       '</div>';
     info.classList.add('lw-scrubber-pinned');
     info.style.pointerEvents = 'auto';
     requestAnimationFrame(function() {
-      info.style.top = Math.max(0, slot.offsetTop - info.offsetHeight - 4) + 'px';
+      var anchorX = currentBar ? currentBar.getBoundingClientRect().left + currentBar.getBoundingClientRect().width / 2 : window.innerWidth / 2;
+      positionPopup(info, anchorX, slot);
     });
     var dismissBtn = info.querySelector('.lw-si-dismiss');
-    if (dismissBtn) dismissBtn.addEventListener('click', function(e) { e.stopPropagation(); hide(); });
+    if (dismissBtn) {
+      dismissBtn.addEventListener('touchend', function(e) { e.stopPropagation(); e.preventDefault(); hide(); }, {passive: false});
+      dismissBtn.addEventListener('click', function(e) { e.stopPropagation(); hide(); });
+    }
     var reportBtn = info.querySelector('.lw-si-report-btn');
-    if (reportBtn) reportBtn.addEventListener('click', function(e) { e.stopPropagation(); });
+    if (reportBtn) {
+      reportBtn.addEventListener('touchend', function(e) {
+        e.stopPropagation();
+        e.preventDefault();
+        hide();
+        navigate('#/sessions/' + b.sid);
+      }, {passive: false});
+      reportBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        e.preventDefault();
+        hide();
+        navigate('#/sessions/' + b.sid);
+      });
+    }
+    // Close on outside tap. Deferred one tick so the touchend that triggered
+    // pin() doesn't fire its own synthetic click and immediately dismiss.
+    setTimeout(function() {
+      function outsideHandler() {
+        if (pinned) hide();
+        document.removeEventListener('click', outsideHandler);
+      }
+      document.addEventListener('click', outsideHandler);
+    }, 0);
   }
 
   function hide() {
@@ -3352,6 +3454,7 @@ function initWaveformScrubber(container) {
 
   var touchStartX = 0, touchStartY = 0, lastTouchX = 0;
   var scrubbing = false;
+  var dismissing = false;
   var longPressTimer = null;
   var LONG_PRESS_MS = 280;
 
@@ -3360,12 +3463,14 @@ function initWaveformScrubber(container) {
   }
 
   svg.addEventListener('touchstart', function(e) {
+    dismissing = pinned;  // flag: this touch is dismissing, not selecting
     if (pinned) hide();
     touchStartX = lastTouchX = e.touches[0].clientX;
     touchStartY = e.touches[0].clientY;
     scrubbing = false;
     longPressTimer = setTimeout(function() {
       longPressTimer = null;
+      dismissing = false; // committed to new scrub, not just dismissing old pin
       scrubbing = true;
       showAt(lastTouchX);
     }, LONG_PRESS_MS);
@@ -3387,18 +3492,194 @@ function initWaveformScrubber(container) {
     cancelLongPress();
     if (scrubbing) {
       scrubbing = false;
-      pin();
-    } else {
+      if (!dismissing) pin();
+    } else if (!dismissing) {
       var dx = Math.abs(e.changedTouches[0].clientX - touchStartX);
       var dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
       if (dx < 10 && dy < 10) { showAt(touchStartX); pin(); }
     }
+    dismissing = false;
   });
 
   svg.addEventListener('touchcancel', function() {
     cancelLongPress();
     scrubbing = false;
+    dismissing = false;
     hide();
+  });
+}
+
+function initCalendarScrubber(container) {
+  if (!IS_TOUCH) return;
+  var slot = container.querySelector('.lifetime-calendar-slot');
+  if (!slot) return;
+  var svg = slot.querySelector('svg.lifetime-calendar');
+  if (!svg) return;
+  var cells = [];
+  try { cells = JSON.parse(svg.getAttribute('data-cells') || '[]'); } catch (e) {}
+  if (!cells.length) return;
+
+  var latestCell = null;
+  cells.forEach(function(c) { if (!latestCell || c.d > latestCell.d) latestCell = c; });
+
+  var info = document.createElement('div');
+  info.className = 'lw-scrubber-info';
+  document.body.appendChild(info);
+
+  var currentCell = null;
+  var currentCellEl = null;
+  var pinned = false;
+  var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  function findNearest(clientX, clientY) {
+    var svgRect = svg.getBoundingClientRect();
+    var vb = (svg.getAttribute('viewBox') || '0 0 680 200').split(' ');
+    var svgW = parseFloat(vb[2]) || 680, svgH = parseFloat(vb[3]) || 200;
+    var tx = ((clientX - svgRect.left) / svgRect.width) * svgW;
+    var ty = ((clientY - svgRect.top) / svgRect.height) * svgH;
+    var best = null, bestDist = Infinity;
+    cells.forEach(function(c) {
+      var dx = (c.x + c.w / 2) - tx, dy = (c.y + c.h / 2) - ty;
+      var d = Math.sqrt(dx * dx + dy * dy);
+      if (d < bestDist) { bestDist = d; best = c; }
+    });
+    return best;
+  }
+
+  function getCellEl(c) {
+    var rects = svg.querySelectorAll('.lw-bar');
+    for (var i = 0; i < rects.length; i++) {
+      if (parseFloat(rects[i].getAttribute('x')) === c.x && parseFloat(rects[i].getAttribute('y')) === c.y) return rects[i];
+    }
+    return null;
+  }
+
+  function renderCell(c, anchorX) {
+    if (currentCellEl) currentCellEl.classList.remove('lw-bar-selected');
+    currentCell = c;
+    currentCellEl = getCellEl(c);
+    if (currentCellEl) currentCellEl.classList.add('lw-bar-selected');
+    var dt = new Date(c.d + 'T12:00:00');
+    var dateStr = MONTHS[dt.getMonth()] + ' ' + dt.getDate() + ', ' + dt.getFullYear();
+    info.innerHTML =
+      '<span class="lw-si-date">' + esc(dateStr) + '</span>' +
+      '<span class="lw-si-stats">' + fmt(c.i) + ' · ' + c.n + ' images</span>' +
+      (c.t ? '<span class="lw-si-tgts">' + esc(c.t) + '</span>' : '');
+    info.classList.add('lw-scrubber-active');
+    var ax = anchorX != null ? anchorX : (currentCellEl ? currentCellEl.getBoundingClientRect().left + currentCellEl.getBoundingClientRect().width / 2 : window.innerWidth / 2);
+    positionPopup(info, ax, slot);
+  }
+
+  function showAt(clientX, clientY) {
+    if (pinned) return;
+    var c = findNearest(clientX, clientY);
+    if (c) renderCell(c, clientX);
+  }
+
+  function showCell(c) {
+    if (pinned || !c) return;
+    renderCell(c, null);
+  }
+
+  function pin() {
+    if (!currentCell || !info) return;
+    pinned = true;
+    var c = currentCell;
+    var dt = new Date(c.d + 'T12:00:00');
+    var dateStr = MONTHS[dt.getMonth()] + ' ' + dt.getDate() + ', ' + dt.getFullYear();
+    info.innerHTML =
+      '<span class="lw-si-date">' + esc(dateStr) + '</span>' +
+      '<span class="lw-si-stats">' + fmt(c.i) + ' · ' + c.n + ' images</span>' +
+      (c.t ? '<span class="lw-si-tgts">' + esc(c.t) + '</span>' : '') +
+      '<div class="lw-si-actions">' +
+      (c.hr ? '<button class="lw-si-report-btn">Open Report →</button>' : '<span class="lw-si-no-report">No report</span>') +
+      '<button class="lw-si-dismiss">×</button>' +
+      '</div>';
+    info.classList.add('lw-scrubber-pinned');
+    info.style.pointerEvents = 'auto';
+    requestAnimationFrame(function() {
+      var ax = currentCellEl ? currentCellEl.getBoundingClientRect().left + currentCellEl.getBoundingClientRect().width / 2 : window.innerWidth / 2;
+      positionPopup(info, ax, slot);
+    });
+    var dismissBtn = info.querySelector('.lw-si-dismiss');
+    if (dismissBtn) {
+      dismissBtn.addEventListener('touchend', function(e) { e.stopPropagation(); e.preventDefault(); hide(); }, {passive: false});
+      dismissBtn.addEventListener('click', function(e) { e.stopPropagation(); hide(); });
+    }
+    var reportBtn = info.querySelector('.lw-si-report-btn');
+    if (reportBtn) {
+      reportBtn.addEventListener('touchend', function(e) {
+        e.stopPropagation(); e.preventDefault(); hide(); navigate('#/sessions/' + c.sid);
+      }, {passive: false});
+      reportBtn.addEventListener('click', function(e) {
+        e.stopPropagation(); e.preventDefault(); hide(); navigate('#/sessions/' + c.sid);
+      });
+    }
+    setTimeout(function() {
+      function outsideHandler() { if (pinned) hide(); document.removeEventListener('click', outsideHandler); }
+      document.addEventListener('click', outsideHandler);
+    }, 0);
+  }
+
+  function hide() {
+    pinned = false;
+    currentCell = null;
+    if (currentCellEl) { currentCellEl.classList.remove('lw-bar-selected'); currentCellEl = null; }
+    info.classList.remove('lw-scrubber-active');
+    info.classList.remove('lw-scrubber-pinned');
+    info.style.pointerEvents = '';
+  }
+
+  info.addEventListener('click', function(e) { e.stopPropagation(); });
+
+  var touchStartX = 0, touchStartY = 0, lastTouchX = 0, lastTouchY = 0;
+  var scrubbing = false, dismissing = false, longPressTimer = null;
+  var LONG_PRESS_MS = 280;
+
+  function cancelLongPress() {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+  }
+
+  svg.addEventListener('touchstart', function(e) {
+    dismissing = pinned;
+    if (pinned) hide();
+    touchStartX = lastTouchX = e.touches[0].clientX;
+    touchStartY = lastTouchY = e.touches[0].clientY;
+    scrubbing = false;
+    longPressTimer = setTimeout(function() {
+      longPressTimer = null;
+      scrubbing = true;
+      showCell(latestCell);
+    }, LONG_PRESS_MS);
+  }, {passive: true});
+
+  svg.addEventListener('touchmove', function(e) {
+    lastTouchX = e.touches[0].clientX;
+    lastTouchY = e.touches[0].clientY;
+    if (scrubbing) {
+      e.preventDefault();
+      showAt(lastTouchX, lastTouchY);
+    } else {
+      var dx = Math.abs(lastTouchX - touchStartX), dy = Math.abs(lastTouchY - touchStartY);
+      if (dx > 8 || dy > 8) cancelLongPress();
+    }
+  }, {passive: false});
+
+  svg.addEventListener('touchend', function(e) {
+    cancelLongPress();
+    if (scrubbing) {
+      scrubbing = false;
+      if (!dismissing) pin();
+    } else if (!dismissing) {
+      var dx = Math.abs(e.changedTouches[0].clientX - touchStartX);
+      var dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
+      if (dx < 10 && dy < 10) { showAt(touchStartX, touchStartY); pin(); }
+    }
+    dismissing = false;
+  });
+
+  svg.addEventListener('touchcancel', function() {
+    cancelLongPress(); scrubbing = false; dismissing = false; hide();
   });
 }
 
@@ -3415,7 +3696,7 @@ function renderHeroSection(session) {
     ' &middot; FWHM <span class="stat-val">' + fmtNum(s.avgFwhm) + '</span>&Prime;' +
     ' &middot; <span class="stat-val">' + fmtNum(s.avgGuiding) + '&Prime;</span> guiding';
   var statBoxes = '<div class="card-stats">' +
-    '<div class="card-stat card-stat-expandable stat-images" data-stat-type="images" data-session-id="' + s.sessionId + '"><div class="card-stat-value">' + s.imageCount + '</div><div class="card-stat-label">Images</div></div>' +
+    '<div class="card-stat card-stat-expandable stat-images" data-stat-type="images" data-session-id="' + s.sessionId + '"><div class="card-stat-value">' + s.imageCount + '</div><div class="card-stat-label">' + plural(s.imageCount, 'Image') + '</div></div>' +
     '<div class="card-stat card-stat-expandable stat-integration" data-stat-type="integration" data-session-id="' + s.sessionId + '"><div class="card-stat-value">' + fmt(s.totalIntegrationSeconds) + '</div><div class="card-stat-label">Integration</div></div>' +
     '<div class="card-stat stat-hfr"><div class="card-stat-value">' + fmtNum(s.avgHfr) + 'px</div><div class="card-stat-label">HFR</div></div>' +
     '<div class="card-stat stat-fwhm"><div class="card-stat-value">' + fmtNum(s.avgFwhm) + '&Prime;</div><div class="card-stat-label">FWHM</div></div>' +
@@ -3473,7 +3754,7 @@ function renderSessionsV2(el, sub, params) {
   var earlierCount = sessions.length - 1;
   var isOpen = localStorage.getItem('ns-sessions-expander') !== 'closed';
 
-  if (sub) sub.textContent = fmtDate(hero.sessionStart);
+  if (sub) sub.textContent = getSubtitleText();
 
   var html = renderLifetimeStrip(sessions);
   var heroModeClass = cardViewMode === 'compact' ? ' cards-compact' : '';
@@ -3489,6 +3770,11 @@ function renderSessionsV2(el, sub, params) {
   }
 
   el.innerHTML = html;
+
+  // Initial pass to fit any "INTEGRATION"-class long labels into their
+  // narrow stat boxes — JS guarantees no overflow even at the tightest
+  // viewports where CSS clamp() is just a hair too generous.
+  el.querySelectorAll('.session-card').forEach(fitStatLabels);
 
   var scrollWrap = el.querySelector('.lw-scroll-wrap');
   if (scrollWrap) {
@@ -3510,6 +3796,7 @@ function renderSessionsV2(el, sub, params) {
   }
 
   initWaveformScrubber(el);
+  initCalendarScrubber(el);
 
   // Load hero card assets
   loadThumbnails([hero]);
@@ -3581,7 +3868,8 @@ function renderSessionList(params) {
   });
 }
 
-function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
+function doRenderList(el, sub, fromFilter, toFilter, sortBy, keepPage) {
+  if (!keepPage) visibleSessionCount = SESSION_PAGE_SIZE;
   // Build target dropdown filter
   var allTargets = getAllTargets();
   var activeCount = allTargets.filter(function(t) { return selectedTargets[t] !== false; }).length;
@@ -3680,7 +3968,9 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
     return b.sessionStart.localeCompare(a.sessionStart); // date-desc default
   });
 
-  if (sub) sub.textContent = filtered.length + ' of ' + sessionsCache.length + ' sessions';
+  var visible = filtered.slice(0, visibleSessionCount);
+
+  if (sub) sub.textContent = getSubtitleText();
 
   if (sessionsCache.length === 0) {
     el.innerHTML = filterHtml + '<div class="empty">No sessions recorded yet.</div>';
@@ -3694,7 +3984,7 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
     return;
   }
 
-  var cards = filtered.map(function(s) {
+  var cards = visible.map(function(s) {
     var targetsText = s.targets.length > 0
       ? s.targets.map(function(t, i) { return makeTargetBadge(t, i); }).join('')
       : '<span style="color:var(--text-quaternary);font-size:12px">No targets</span>';
@@ -3710,7 +4000,7 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
       ' &middot; <span class="stat-val">' + fmtNum(s.avgGuiding) + '&Prime;</span> guiding';
 
     var statBoxes = '<div class="card-stats">' +
-      '<div class="card-stat card-stat-expandable stat-images" data-stat-type="images" data-session-id="' + s.sessionId + '"><div class="card-stat-value">' + s.imageCount + '</div><div class="card-stat-label">Images</div></div>' +
+      '<div class="card-stat card-stat-expandable stat-images" data-stat-type="images" data-session-id="' + s.sessionId + '"><div class="card-stat-value">' + s.imageCount + '</div><div class="card-stat-label">' + plural(s.imageCount, 'Image') + '</div></div>' +
       '<div class="card-stat card-stat-expandable stat-integration" data-stat-type="integration" data-session-id="' + s.sessionId + '"><div class="card-stat-value">' + fmt(s.totalIntegrationSeconds) + '</div><div class="card-stat-label">Integration</div></div>' +
       '<div class="card-stat stat-hfr"><div class="card-stat-value">' + fmtNum(s.avgHfr) + 'px</div><div class="card-stat-label">HFR</div></div>' +
       '<div class="card-stat stat-fwhm"><div class="card-stat-value">' + fmtNum(s.avgFwhm) + '&Prime;</div><div class="card-stat-label">FWHM</div></div>' +
@@ -3743,10 +4033,18 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
     ? 'opacity:0;transition:opacity 400ms cubic-bezier(0.22,1,0.36,1)'
     : 'opacity:1';
 
-  el.innerHTML = filterHtml + '<div class="cards-container' + modeClass + '" style="' + fadeStyle + '">' + cards + '</div>';
+  var remaining = filtered.length - visible.length;
+  var loadMoreHtml = remaining > 0
+    ? '<div class="load-more-wrap">' +
+        '<button class="load-more-btn">Load ' + Math.min(SESSION_PAGE_SIZE, remaining) + ' more</button>' +
+        '<span class="load-more-label">Showing ' + visible.length + ' of ' + filtered.length + '</span>' +
+      '</div>'
+    : '';
+
+  el.innerHTML = filterHtml + '<div class="cards-container' + modeClass + '" style="' + fadeStyle + '">' + cards + '</div>' + loadMoreHtml;
   bindListEvents();
 
-  loadLiveStacks(filtered);
+  loadLiveStacks(visible);
 
   if (!initialLoadDone && cardViewMode === 'expanded') {
     // First load only: hold opacity:0 until all assets are fetched, then reveal together
@@ -3754,7 +4052,7 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
       var container = el.querySelector('.cards-container');
       if (container) container.style.opacity = '1';
     }
-    var pending = loadThumbnails(filtered).concat(loadAltitudeCharts(filtered));
+    var pending = loadThumbnails(visible).concat(loadAltitudeCharts(visible));
     if (pending.length === 0) {
       requestAnimationFrame(revealContainer);
     } else {
@@ -3766,15 +4064,15 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
     }
     initialLoadDone = true;
   } else {
-    loadThumbnails(filtered);
+    loadThumbnails(visible);
     // Re-render cached charts directly (works even after navigation destroyed the old divs)
-    filtered.forEach(function(s) {
+    visible.forEach(function(s) {
       if (altitudeChartCache[s.sessionId]) {
         renderAltitudeChart(s, altitudeChartCache[s.sessionId]);
       }
     });
     // IO observer for any uncached charts (lazy-loads as they scroll into view)
-    setupAltitudeObserver(filtered);
+    setupAltitudeObserver(visible);
   }
 }
 
@@ -3810,6 +4108,169 @@ function renderThumbnails(s, thumbs) {
   if (livestackMap[s.sessionId]) {
     wireLiveStackBadges(s, livestackMap[s.sessionId]);
   }
+  setupThumbsScrollMode(el);
+  // Fit stat labels for this card (CSS clamp gets close, but truly narrow
+  // boxes — iPad Pro 11" landscape ≈ 75px content — still need a JS pass
+  // to shrink "INTEGRATION" the last few pixels until it fits its slot).
+  var card = el.closest('.session-card');
+  if (card) fitStatLabels(card);
+}
+
+// Shrink each card-stat-label's font-size until it fits its parent's
+// content-box width. CSS clamp() handles the bulk of the scaling; this is
+// the last-mile guarantee that nothing overflows. Re-run on resize via the
+// global handler below.
+function fitStatLabels(card) {
+  if (!card) return;
+  card.querySelectorAll('.card-stat').forEach(function(stat) {
+    var label = stat.querySelector('.card-stat-label');
+    if (!label) return;
+    label.style.fontSize = ''; // reset so we measure CSS-default first
+    var available = stat.clientWidth - 4; // small inner gutter
+    var guard = 20;
+    while (label.scrollWidth > available && guard-- > 0) {
+      var current = parseFloat(getComputedStyle(label).fontSize);
+      if (current <= 7) break;
+      label.style.fontSize = (current - 0.5) + 'px';
+    }
+  });
+}
+
+// Re-fit all stat labels on window resize (debounced) — viewport changes
+// alter the per-stat width via the responsive card layout.
+var _fitStatsDebounce = null;
+window.addEventListener('resize', function() {
+  if (_fitStatsDebounce) clearTimeout(_fitStatsDebounce);
+  _fitStatsDebounce = setTimeout(function() {
+    document.querySelectorAll('.session-card').forEach(fitStatLabels);
+  }, 120);
+});
+
+// Toggles .card-thumbs--scroll when the thumbs would wrap to a 2nd row.
+// Watches the container with ResizeObserver so window resize re-evaluates.
+// In wrap mode scrollWidth always equals clientWidth, so we sum child
+// offsetWidths plus gaps to compute the real intrinsic width.
+function setupThumbsScrollMode(el) {
+  if (!el) return;
+  var GAP = 6; // matches .card-thumbs gap
+  var updateAtEnd = function() {
+    if (!el.classList.contains('card-thumbs--scroll')) {
+      el.classList.remove('card-thumbs--at-end');
+      return;
+    }
+    var atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 2;
+    el.classList.toggle('card-thumbs--at-end', atEnd);
+  };
+  var measure = function() {
+    var total = 0;
+    for (var i = 0; i < el.children.length; i++) {
+      total += el.children[i].offsetWidth;
+    }
+    if (el.children.length > 1) total += GAP * (el.children.length - 1);
+    el.classList.toggle('card-thumbs--scroll', total > el.clientWidth + 1);
+    updateAtEnd();
+    setupScrollHoverClones(el);
+  };
+  if (typeof ResizeObserver !== 'undefined') {
+    if (el._thumbsScrollObs) el._thumbsScrollObs.disconnect();
+    var ro = new ResizeObserver(measure);
+    ro.observe(el);
+    el._thumbsScrollObs = ro;
+  }
+  if (!el._thumbsScrollListener) {
+    el.addEventListener('scroll', updateAtEnd, { passive: true });
+    el._thumbsScrollListener = true;
+  }
+  requestAnimationFrame(measure);
+}
+
+// In scroll mode the in-row hover-expand transform would clip against the
+// overflow:auto scroll container, so we suppress the transform via CSS and
+// pop a position:fixed clone above everything instead. The clone follows the
+// hovered thumb's viewport position; its CSS class handles the scale and
+// shadow.
+function setupScrollHoverClones(el) {
+  if (!el || !el.classList.contains('card-thumbs--scroll')) return;
+  // Touch devices use setupMobileThumbnailZoom for tap-to-expand, which
+  // owns the touch lifecycle (touchstart/move/end) on the same elements.
+  // The hover-clone path is mouse-only, otherwise tapping a thumb on an
+  // iPad fires the hover clone AND the tap zoom, then the synthetic click
+  // bubbles to the card and opens the report.
+  if (IS_TOUCH) return;
+  if (el._scrollHoverWired) return;
+  el._scrollHoverWired = true;
+
+  var activeClone = null;
+  var activeWrap = null;
+
+  function showClone(wrap) {
+    if (activeClone) hideClone();
+    activeWrap = wrap;
+    var rect = wrap.getBoundingClientRect();
+    var clone = wrap.cloneNode(true);
+    clone.classList.add('card-thumb-wrap--clone');
+    // Match the in-row hover animation exactly: 450ms cubic-bezier with a
+    // 150ms delay (--t-medium 150ms). Pin at scale(1) on append, ramp to
+    // 1.67x on next frame so the CSS transition fires.
+    var TIMING = '450ms cubic-bezier(0.22, 1, 0.36, 1) 150ms';
+    clone.style.cssText =
+      'position:fixed !important;' +
+      'left:' + rect.left + 'px !important;' +
+      'top:' + rect.top + 'px !important;' +
+      'width:' + rect.width + 'px !important;' +
+      'height:' + rect.height + 'px !important;' +
+      'transform:scale(1) !important;' +
+      'transform-origin:center center !important;' +
+      'transition:transform ' + TIMING + ' !important;' +
+      'z-index:2000 !important;' +
+      'pointer-events:none !important;' +
+      'margin:0 !important;';
+    // Original :hover rules don't reach a pointer-events:none clone, so
+    // mirror their effects here: label fades in, livestack badge fades out
+    // (matching .card-thumb-wrap:hover .thumb-label / .livestack-badge).
+    var label = clone.querySelector('.thumb-label');
+    if (label) {
+      label.style.setProperty('opacity', '1', 'important');
+      label.style.setProperty('transition', 'opacity ' + TIMING + ' !important', 'important');
+    }
+    var badges = clone.querySelectorAll('.livestack-badge');
+    for (var i = 0; i < badges.length; i++) {
+      badges[i].style.setProperty('opacity', '0', 'important');
+    }
+    document.body.appendChild(clone);
+    activeClone = clone;
+    // Trigger scale animation on next frame.
+    requestAnimationFrame(function() {
+      if (clone === activeClone) {
+        clone.style.setProperty('transform', 'scale(1.67)', 'important');
+      }
+    });
+  }
+
+  function hideClone() {
+    if (activeClone && activeClone.parentNode) {
+      activeClone.parentNode.removeChild(activeClone);
+    }
+    activeClone = null;
+    activeWrap = null;
+  }
+
+  // Delegated mouseover/out so newly-cloned/added thumbs are picked up.
+  el.addEventListener('mouseover', function(e) {
+    if (!el.classList.contains('card-thumbs--scroll')) return;
+    var wrap = e.target.closest('.card-thumb-wrap');
+    if (!wrap || !el.contains(wrap) || wrap === activeWrap) return;
+    showClone(wrap);
+  });
+  el.addEventListener('mouseout', function(e) {
+    var wrap = e.target.closest('.card-thumb-wrap');
+    if (!wrap) return;
+    if (e.relatedTarget && wrap.contains(e.relatedTarget)) return;
+    hideClone();
+  });
+  // If the row scrolls while a clone is showing, the clone would drift away
+  // from the (moving) thumb. Cheapest fix: hide on scroll.
+  el.addEventListener('scroll', hideClone, { passive: true });
 }
 
 function loadThumbnails(sessions) {
@@ -3837,7 +4298,14 @@ function loadThumbnails(sessions) {
   return promises;
 }
 
+// Livestack thumbs are hover-driven via setupLiveStackHover. On touch
+// devices the sticky :hover that fires on tap conflicts with the tap-zoom
+// preview, producing inconsistent shelves that fail to dismiss. Gate the
+// whole feature on viewport size — at <=1100 the CSS hides the badge and
+// shelf and the JS skips wiring entirely; at >1100 the desktop hover
+// model takes over and tap-zoom (setupMobileThumbnailZoom) is suppressed.
 function wireLiveStackBadges(s, data) {
+  if (window.innerWidth < CARD_DESKTOP_MIN_WIDTH) return;
   var thumbsEl = document.getElementById('thumbs-' + s.sessionId);
   if (!thumbsEl) return;
   var wraps = thumbsEl.querySelectorAll('.card-thumb-wrap');
@@ -3875,13 +4343,50 @@ function loadLiveStacks(sessions) {
   });
 }
 
+// One shelf at a time: holds the hideShelf fn of whichever shelf is currently
+// open so a new hover can close it before opening its own.
+var _activeShelfHide = null;
+
 function setupLiveStackHover(thumbWrap, sessionId, targetName) {
   var hoverTimer = null;
   var shelf = null;
   var shelfLeaveTimer = null;
+  var _isAbove = false;
+  var _scrollHandler = null;
+  // True while the fullscreen zoom overlay is open — suppresses shelf dismiss
+  // on mouseleave (the overlay appearing under the cursor fires mouseleave on
+  // the shelf even though the user didn't intentionally leave it).
+  var _zoomOpen = false;
+  // Document-coordinate anchors set in showShelf — stable through scroll and
+  // immune to mid-animation getBoundingClientRect jitter on the thumb.
+  var _docAnchorBottom = 0; // doc-Y of scaled-thumb bottom edge
+  var _docAnchorTop = 0;    // doc-Y of scaled-thumb top edge
+  var _cx = 0;              // viewport-X center of thumb (unchanged by scroll)
+
+  // Reposition shelf using stored doc-coordinate anchors. No live thumb
+  // BoundingClientRect so scroll fires can't observe mid-animation values.
+  function placeShelf() {
+    if (!shelf) return;
+    if (_isAbove) {
+      var h = shelf.getBoundingClientRect().height;
+      shelf.style.top = (_docAnchorTop - h - 12) + 'px';
+    } else {
+      shelf.style.top = (_docAnchorBottom + 12) + 'px';
+    }
+    shelf.style.left = _cx + 'px';
+    var sr = shelf.getBoundingClientRect();
+    if (sr.left < 12) {
+      shelf.style.left = (_cx + (12 - sr.left)) + 'px';
+    } else if (sr.right > window.innerWidth - 12) {
+      shelf.style.left = (_cx - (sr.right - (window.innerWidth - 12))) + 'px';
+    }
+  }
 
   function showShelf() {
     if (shelf) return;
+    // Close any other open shelf before opening this one.
+    if (_activeShelfHide && _activeShelfHide !== hideShelf) _activeShelfHide();
+    _activeShelfHide = hideShelf;
     var images = livestackMap[sessionId] && livestackMap[sessionId][targetName];
     if (!images || images.length === 0) return;
 
@@ -3900,18 +4405,33 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
       imgEl.className = 'livestack-shelf-img';
       imgEl.src = img.url;
       imgEl.alt = img.label;
-      imgEl.loading = 'lazy';
+      imgEl.loading = 'eager'; // load immediately — shelf is about to be shown
       imgEl.style.cursor = 'pointer';
       imgEl.addEventListener('click', function(e) {
         e.stopPropagation();
+        _zoomOpen = true;
         var overlay = document.createElement('div');
         overlay.className = 'livestack-zoom-overlay';
         var zoomImg = document.createElement('img');
         zoomImg.src = img.url;
         zoomImg.alt = img.label;
         overlay.appendChild(zoomImg);
-        overlay.addEventListener('click', function() {
+        function closeOverlay() {
+          _zoomOpen = false;
           overlay.remove();
+        }
+        // Close on tap. touchend with preventDefault stops the synthetic
+        // click from bubbling further to body listeners that would dismiss
+        // the underlying shelf — closing the hero view should return to
+        // the shelf, not all the way back to the card.
+        overlay.addEventListener('touchend', function(ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          closeOverlay();
+        }, { passive: false });
+        overlay.addEventListener('click', function(ev) {
+          ev.stopPropagation();
+          closeOverlay();
         });
         document.body.appendChild(overlay);
       });
@@ -3927,31 +4447,113 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
 
     shelf.appendChild(imagesDiv);
 
-    // Position relative to the thumb — append to .card-thumbs container
+    // Append to <body> with position:fixed so the shelf escapes any overflow
+    // clipping on ancestor containers (e.g. when .card-thumbs goes into
+    // overflow-x:auto scroll mode for cards with many thumbnails).
     var thumbsContainer = thumbWrap.closest('.card-thumbs');
     if (!thumbsContainer) { shelf = null; return; }
-    thumbWrap.classList.add('shelf-active');
-    thumbsContainer.appendChild(shelf);
-
-    // Calculate position: center shelf below the hovered thumb
-    // Account for the transform:scale(1.67) on hover — the visual size is larger
+    // Snapshot the thumb's natural bounds BEFORE applying .shelf-active —
+    // that class triggers a scale(1.67) transform, and getBoundingClientRect
+    // during the transition can return either pre- or post-transform values
+    // depending on browser timing. We compute the overhang manually.
     var wrapRect = thumbWrap.getBoundingClientRect();
-    var containerRect = thumbsContainer.getBoundingClientRect();
-    var centerX = (wrapRect.left + wrapRect.width / 2) - containerRect.left;
-    var topY = wrapRect.bottom - containerRect.top + 75;
+    thumbWrap.classList.add('shelf-active');
+    shelf.style.position = 'absolute';
+    document.body.appendChild(shelf);
 
-    shelf.style.left = centerX + 'px';
-    shelf.style.top = topY + 'px';
+    // Compute explicit shelf width based on image count so the inner flex
+    // grid can wrap to multiple columns. Without this the shelf is sized
+    // to its intrinsic content (single column of 200px items) and never
+    // expands. Cap at 4 columns for a balanced grid; cap shelf width at
+    // viewport - 24 so it doesn't run off-screen on iPad.
+    var ITEM_W = 180;
+    var GAP = 8;
+    var SHELF_PAD = 20; // 10px each side
+    var MAX_COLS = 4;
+    var maxShelfW = window.innerWidth - 24;
+    var cols = Math.min(images.length, MAX_COLS);
+    var desiredW = cols * ITEM_W + (cols - 1) * GAP + SHELF_PAD;
+    var shelfW = Math.min(desiredW, maxShelfW);
+    shelf.style.width = shelfW + 'px';
 
-    // Clamp so shelf doesn't overflow past left edge of viewport
+    // In scroll mode (.card-thumbs--scroll) the CSS overrides shelf-active to
+    // transform:none — the thumb doesn't scale, so overhang is zero. Using the
+    // non-zero value in scroll mode causes the shelf to start too low by ~40px
+    // and then jump up on first scroll when placeShelf() measures the unscaled
+    // thumb.
+    var isScrollMode = !!thumbWrap.closest('.card-thumbs--scroll');
+    var SCALE_OVERHANG = isScrollMode ? 0 : wrapRect.height * 0.34; // (scale-1)/2 for scale(1.67)
+    _cx = wrapRect.left + wrapRect.width / 2;
+    // shelf padding (20px) + border (2px) + arrow pseudo-element (~6px)
+    var CHROME = 28;
+    // Choose above/below by which side has more available space. This is more
+    // robust than a fixed 60%-of-viewport threshold, which can flip on minor
+    // differences in browser chrome height between machines.
+    var snapSpaceBelow = window.innerHeight - (wrapRect.bottom + SCALE_OVERHANG) - 12 - CHROME;
+    var snapSpaceAbove = (wrapRect.top    - SCALE_OVERHANG) - 12 - CHROME;
+    _isAbove = snapSpaceAbove > snapSpaceBelow;
+    if (_isAbove) shelf.classList.add('livestack-shelf--above');
+    // Store doc-coordinate anchors now — immutable through scroll and immune
+    // to mid-animation BoundingClientRect drift on the thumb.
+    _docAnchorBottom = wrapRect.bottom + SCALE_OVERHANG + window.scrollY;
+    _docAnchorTop    = wrapRect.top    - SCALE_OVERHANG + window.scrollY;
+
+    // Initial hidden placement — rAF corrects final position after layout.
+    shelf.style.visibility = 'hidden';
+    shelf.style.left = _cx + 'px';
+    shelf.style.top = '0px';
+
+    // rAF: DOM has laid out — clamp images to available space, then place.
     requestAnimationFrame(function() {
       if (!shelf) return;
-      var shelfRect = shelf.getBoundingClientRect();
-      if (shelfRect.left < 12) {
-        var shift = 12 - shelfRect.left;
-        shelf.style.left = (centerX + shift) + 'px';
+      var imagesEl = shelf.querySelector('.livestack-shelf-images');
+      var vpBottom = _docAnchorBottom - window.scrollY;
+      var vpTop    = _docAnchorTop    - window.scrollY;
+      if (_isAbove) {
+        var spaceAbove = vpTop - 12 - CHROME;
+        if (imagesEl) imagesEl.style.maxHeight = Math.max(80, spaceAbove) + 'px';
+        // Above-shelf position depends on shelf height (vpTop - h - 12). If we
+        // reveal before images load, h is ~0 so the shelf appears too close to
+        // the thumb and snaps upward when images arrive. Instead, wait for all
+        // images to load (or error) before placing and revealing. The
+        // shelf-reveal animation keeps running hidden; when we remove
+        // visibility:hidden the shelf fades in at its current animation frame —
+        // no extra delay, no snap.
+        var imgs = shelf.querySelectorAll('.livestack-shelf-img');
+        var remaining = imgs.length;
+        var revealTimer = null;
+        function revealAbove() {
+          if (!shelf) return;
+          clearTimeout(revealTimer);
+          placeShelf();
+          shelf.style.visibility = '';
+        }
+        if (remaining === 0) {
+          revealAbove();
+        } else {
+          revealTimer = setTimeout(revealAbove, 800); // fallback for slow/failed loads
+          imgs.forEach(function(img) {
+            function onDone() { if (--remaining <= 0) revealAbove(); }
+            if (img.complete) { onDone(); }
+            else {
+              img.addEventListener('load',  onDone, { once: true });
+              img.addEventListener('error', onDone, { once: true });
+            }
+          });
+        }
+      } else {
+        // Below-shelf top is fixed (vpBottom + 12) regardless of height — safe
+        // to reveal immediately; images fill in downward within the maxHeight
+        // scroll container without shifting the shelf position.
+        var spaceBelow = window.innerHeight - vpBottom - 12 - CHROME;
+        if (imagesEl) imagesEl.style.maxHeight = Math.max(80, spaceBelow) + 'px';
+        placeShelf();
+        shelf.style.visibility = '';
       }
     });
+
+    // position:absolute on body means the shelf lives in document coordinates —
+    // scroll moves it with the page naturally, no tracking needed.
 
     // Shelf hover: keep alive when mouse enters shelf
     shelf.addEventListener('mouseenter', function() {
@@ -3960,13 +4562,21 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
     shelf.addEventListener('mouseleave', function(e) {
       // Hide unless mouse went back to the thumb
       if (thumbWrap.contains(e.relatedTarget)) return;
+      // Overlay appearing under the cursor fires mouseleave on the shelf even
+      // though the user didn't intentionally leave — keep shelf alive.
+      if (_zoomOpen) return;
       hideShelf();
     });
   }
 
   function hideShelf() {
     clearTimeout(shelfLeaveTimer);
+    if (_activeShelfHide === hideShelf) _activeShelfHide = null;
     thumbWrap.classList.remove('shelf-active');
+    if (_scrollHandler) {
+      window.removeEventListener('scroll', _scrollHandler);
+      _scrollHandler = null;
+    }
     if (shelf) {
       shelf.classList.add('shelf-hiding');
       var s = shelf;
@@ -3975,17 +4585,45 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
     }
   }
 
-  thumbWrap.addEventListener('mouseenter', function() {
-    clearTimeout(shelfLeaveTimer);
-    hoverTimer = setTimeout(showShelf, 200);
-  });
-
-  thumbWrap.addEventListener('mouseleave', function(e) {
-    clearTimeout(hoverTimer);
-    // Don't hide immediately if mouse moved into the shelf — give a grace period
-    if (shelf && shelf.contains(e.relatedTarget)) return;
-    shelfLeaveTimer = setTimeout(hideShelf, 100);
-  });
+  if (IS_TOUCH) {
+    // Touch model: tap toggles the shelf and preventDefault stops the
+    // synthetic click from bubbling to the card (which would open the
+    // report). Don't wire mouseenter — on iOS Safari sticky :hover from a
+    // tap fires mouseenter alongside touchend, opening the shelf AND
+    // letting the click through.
+    thumbWrap.addEventListener('touchend', function(e) {
+      e.preventDefault();
+      if (shelf) hideShelf();
+      else showShelf();
+    }, { passive: false });
+    // Document-level dismiss: any tap outside the shelf and the originating
+    // thumb closes the shelf and suppresses the synthetic click. Without
+    // this, tapping the card background would open the report.
+    document.addEventListener('touchend', function(e) {
+      if (!shelf) return;
+      if (shelf.contains(e.target)) return;
+      if (thumbWrap.contains(e.target)) return;
+      // Don't dismiss the shelf when tapping the fullscreen zoom overlay —
+      // its own click handler removes the overlay only. Without this guard
+      // the body touchend would preventDefault the synthetic click, so the
+      // first tap silently dismisses the shelf and the second tap is
+      // needed to actually close the overlay.
+      if (e.target.closest('.livestack-zoom-overlay')) return;
+      e.preventDefault();
+      hideShelf();
+    }, { passive: false });
+  } else {
+    thumbWrap.addEventListener('mouseenter', function() {
+      clearTimeout(shelfLeaveTimer);
+      hoverTimer = setTimeout(showShelf, 200);
+    });
+    thumbWrap.addEventListener('mouseleave', function(e) {
+      clearTimeout(hoverTimer);
+      // Don't hide immediately if mouse moved into the shelf — grace period
+      if (shelf && shelf.contains(e.relatedTarget)) return;
+      shelfLeaveTimer = setTimeout(hideShelf, 100);
+    });
+  }
 }
 
 function hideSession(sessionId) {
@@ -3999,8 +4637,7 @@ function hideSession(sessionId) {
     // Update subtitle
     var sub = document.getElementById('page-subtitle');
     if (sub) {
-      var visible = document.querySelectorAll('.session-card').length;
-      sub.textContent = visible + ' of ' + sessionsCache.length + ' sessions';
+      sub.textContent = getSubtitleText();
     }
 
     // Update or create unhide-all button in the filter bar
@@ -4715,7 +5352,11 @@ function setupChartCrosshair(container) {
 // ── Mobile thumbnail zoom (scroll-to-center) ────────────────────────────
 
 function setupMobileThumbnailZoom(thumbsContainer) {
-  if (!thumbsContainer || window.innerWidth > 700) return;
+  // Tap-to-zoom on every touch viewport. At narrow viewports (<1100)
+  // livestack is hidden so this is the only thumb interaction. At wider
+  // viewports livestack thumbs are owned by setupLiveStackHover; the
+  // touchend handler below skips them by checking for the .livestack-badge.
+  if (!thumbsContainer || !IS_TOUCH) return;
 
   var preview = null;
   var activeThumb = null; // currently expanded thumbnail
@@ -4812,6 +5453,9 @@ function setupMobileThumbnailZoom(thumbsContainer) {
     if (touchMoved) return; // was a scroll, not a tap
     var thumbWrap = e.target.closest('.card-thumb-wrap');
     if (!thumbWrap) return;
+    // Livestack thumbs are owned by setupLiveStackHover's touch handler —
+    // it shows the multi-frame shelf instead of the single-image preview.
+    if (thumbWrap.querySelector('.livestack-badge')) return;
     e.preventDefault(); // prevent the delayed click from firing card navigation
 
     if (activeThumb === thumbWrap) {
@@ -4828,13 +5472,16 @@ function setupMobileThumbnailZoom(thumbsContainer) {
     }
   });
 
-  // Dismiss when tapping outside the thumbs row
+  // Dismiss when tapping outside the thumbs row. preventDefault stops the
+  // synthetic click so it can't bubble to the card and open the report —
+  // a tap-anywhere-while-preview-open is treated as a dismiss gesture only.
   document.addEventListener('touchend', function(e) {
     if (!activeThumb) return;
     if (!thumbsContainer.contains(e.target) && !(preview && preview.contains(e.target))) {
+      e.preventDefault();
       hidePreview();
     }
-  });
+  }, { passive: false });
 }
 
 // ── Animated curve drawing on scroll ──────────────────────────────────────
@@ -4883,51 +5530,130 @@ function fixChartTextDistortion(container) {
     if (!ctm || ctm.a === 0) return;
     var ratio = ctm.d / ctm.a; // yScale / xScale
     if (Math.abs(ratio - 1) < 0.02) return; // Already uniform, skip
+    // Full counter-scale — Y labels overflow the SVG's left edge into the
+    // 30px gutter on .chart-svg-wrap (overflow:visible on the SVG, padding
+    // and overflow:hidden on the wrap). X label collisions are handled by
+    // dedupChartXLabels() below, not by capping the ratio here.
     svg.querySelectorAll('text').forEach(function(t) {
       var x = parseFloat(t.getAttribute('x') || '0');
       var y = parseFloat(t.getAttribute('y') || '0');
       t.setAttribute('transform',
         'translate(' + x + ',' + y + ') scale(' + ratio.toFixed(4) + ',1) translate(' + (-x) + ',' + (-y) + ')');
     });
+    dedupChartXLabels(svg);
   });
 }
+
+// At narrow viewports, the X-axis has fixed-spacing hourly ticks plus a
+// chart-end label that may sit within an hour of the last tick. With full
+// counter-scale, those labels overlap. Greedy left-to-right pass: walk by
+// screen position and hide any label whose left edge crosses the previous
+// kept label's right edge (with a small gap). Y labels are filtered out by
+// looking at y position — X labels live near the bottom of the viewBox.
+function dedupChartXLabels(svg) {
+  var vb = (svg.getAttribute('viewBox') || '').split(/\s+/);
+  var vbY = parseFloat(vb[1] || '0');
+  var vbH = parseFloat(vb[3] || '0');
+  if (!vbH) return;
+  // 0.95 — Y "0°" label sits at y=224 (just below plot bottom 220), X-axis
+  // ticks sit at y=238 (further below). Threshold of 0.95 (vbY + 0.95*vbH =
+  // 14 + 220 = 234) excludes the "0°" label and includes the X ticks.
+  var bottomThreshold = vbY + vbH * 0.95;
+  var labels = [];
+  svg.querySelectorAll('text').forEach(function(t) {
+    if (t.style.display === 'none') t.style.display = ''; // reset prior pass
+    var y = parseFloat(t.getAttribute('y') || '0');
+    if (y < bottomThreshold) return;
+    var rect = t.getBoundingClientRect();
+    if (!rect.width) return;
+    labels.push({ el: t, left: rect.left, right: rect.right });
+  });
+  labels.sort(function(a, b) { return a.left - b.left; });
+  var GAP = 4; // minimum screen px between adjacent kept labels
+  var prevRight = -Infinity;
+  for (var i = 0; i < labels.length; i++) {
+    var lbl = labels[i];
+    if (lbl.left < prevRight + GAP) {
+      lbl.el.style.display = 'none';
+    } else {
+      prevRight = lbl.right;
+    }
+  }
+}
+
+// Tablet/laptop breakpoint matches the @media (max-width: 1100px) in dashboard.css
+// where .card-stats becomes a 3-col grid and the card-content slot grows tall
+// enough that the chart no longer needs the pull-up trick. Keep both in sync.
+var CARD_DESKTOP_MIN_WIDTH = 1101;
+
+// The chart SVG uses preserveAspectRatio="none" so it stretches to fit. The
+// pull-up was designed for desktop layout where card-content was a single
+// short row of 6 stats; pulling the chart up into the header area claimed
+// the otherwise-blank space above it. With the new 3-col grid (<=1100px),
+// card-content is two rows tall, so card-altitude is naturally as tall as
+// the card-body — pulling it further up overflows above the card and
+// collides with the target pills.
+function applyChartPullUp(el) {
+  var card = el.closest('.session-card');
+  var header = card ? card.querySelector('.card-header') : null;
+  if (!header) return;
+  if (window.innerWidth < CARD_DESKTOP_MIN_WIDTH) {
+    el.style.marginTop = '0px';
+    return;
+  }
+  var headerH = header.offsetHeight;
+  var headerMargin = 4;
+  var cardPadTop = 8;
+  var lastChild = header.lastElementChild;
+  var textRight = lastChild ? lastChild.getBoundingClientRect().right : 0;
+  var svgWrap = el.querySelector('.chart-svg-wrap');
+  var chartLeft = svgWrap ? svgWrap.getBoundingClientRect().left : el.getBoundingClientRect().left;
+  var singleRowH = 32;
+  var multiRow = headerH > singleRowH + 4;
+  var overlapsChart = textRight > chartLeft - 15;
+  var clearance = multiRow ? 48 : (overlapsChart ? 32 : 0);
+  var latestLabel = card.querySelector('.latest-label');
+  var extraPullUp = latestLabel
+    ? latestLabel.offsetHeight + parseFloat(getComputedStyle(latestLabel).marginBottom || 0)
+    : 0;
+  var pullUp = Math.max(0, headerH + headerMargin - cardPadTop - clearance + extraPullUp);
+  el.style.marginTop = '-' + pullUp + 'px';
+}
+
+// Track ResizeObservers per chart element so we can disconnect on re-render.
+var _chartResizeObservers = new WeakMap();
 
 function renderAltitudeChart(s, data) {
   var el = document.getElementById('altitude-' + s.sessionId);
   if (!el) return;
-  var legendHtml = '';
-  if (data.legend && data.legend.length > 0) {
-    legendHtml = '<div class="chart-legend">' + data.legend.map(function(l) {
-      return '<div class="chart-legend-item">' +
-        '<span class="chart-legend-swatch" style="background:' + l.color + '"></span>' +
-        '<span style="color:' + l.color + '">' + esc(l.name) + '</span></div>';
-    }).join('') + '</div>';
-  }
-  el.innerHTML = legendHtml + '<div class="chart-svg-wrap">' + data.svg + '</div>';
+  // Legend intentionally omitted — color-matched target pills in the card
+  // header serve as the legend, freeing the chart to fill the full width.
+  el.innerHTML = '<div class="chart-svg-wrap">' + data.svg + '</div>';
   setupCurveAnimation(el);
   setupChartCrosshair(el);
   fixChartTextDistortion(el);
-  // Dynamically extend chart upward based on header height
-  var card = el.closest('.session-card');
-  var header = card ? card.querySelector('.card-header') : null;
-  if (header) {
-    var headerH = header.offsetHeight;
-    var headerMargin = 4;
-    var cardPadTop = 8;
-    var lastChild = header.lastElementChild;
-    var textRight = lastChild ? lastChild.getBoundingClientRect().right : 0;
-    var svgWrap = el.querySelector('.chart-svg-wrap');
-    var chartLeft = svgWrap ? svgWrap.getBoundingClientRect().left : el.getBoundingClientRect().left;
-    var clearance = (textRight > chartLeft - 15) ? 18 : 0;
-    var latestLabel = card.querySelector('.latest-label');
-    var extraPullUp = latestLabel
-      ? latestLabel.offsetHeight + parseFloat(getComputedStyle(latestLabel).marginBottom || 0)
-      : 0;
-    var pullUp = Math.max(0, headerH + headerMargin - cardPadTop - clearance + extraPullUp);
-    el.style.marginTop = '-' + pullUp + 'px';
-  }
+  applyChartPullUp(el);
   var body = el.parentElement;
   if (body) body.classList.add('has-chart');
+
+  // ResizeObserver re-runs the text-distortion counter-scale and the pull-up
+  // when the chart container changes size (window resize, layout reflow,
+  // breakpoint switch). Without this, both go stale and the chart stretches.
+  if (typeof ResizeObserver === 'function') {
+    var prev = _chartResizeObservers.get(el);
+    if (prev) prev.disconnect();
+    var svgWrap = el.querySelector('.chart-svg-wrap');
+    if (svgWrap) {
+      var first = true;
+      var ro = new ResizeObserver(function() {
+        if (first) { first = false; return; } // skip initial fire
+        fixChartTextDistortion(el);
+        applyChartPullUp(el);
+      });
+      ro.observe(svgWrap);
+      _chartResizeObservers.set(el, ro);
+    }
+  }
 }
 
 function fetchAltitudeChart(s) {
@@ -5239,6 +5965,20 @@ function bindListEvents() {
     });
   });
 
+  // Load more button
+  var loadMoreBtn = document.querySelector('.load-more-btn');
+  if (loadMoreBtn) {
+    loadMoreBtn.addEventListener('click', function() {
+      visibleSessionCount += SESSION_PAGE_SIZE;
+      var f = getFilters();
+      var sub = document.getElementById('page-subtitle');
+      var listEl = sessionsV2Mode
+        ? (document.getElementById('sessions-history') || document.getElementById('content'))
+        : document.getElementById('content');
+      doRenderList(listEl, sub, f.from, f.to, f.sort, true);
+    });
+  }
+
   // On mobile, move the view toggle into the header area
   repositionViewToggle();
 }
@@ -5367,8 +6107,18 @@ function buildSettingsPanel(settings, filters) {
   var filterClass = parseFilterClassifications(s.filterClassifications);
   var filterTypes = parseFilterClassifications(s.filterTypeOverrides || '');
   var eqOverrides = parseEquipmentOverrides(s.equipmentOverrides);
+  // tsAvailable defaults to true when the field is missing (older cached responses);
+  // only hides TS-specific UI when the server explicitly reports false.
+  var tsAvailable = s.tsAvailable !== false;
 
-  var html = '<div id="settings-panel" class="settings-panel" style="display:none">';
+  var html = '<div id="settings-panel" class="settings-panel' + (tsAvailable ? '' : ' no-ts') + '" style="display:none">';
+
+  if (!tsAvailable) {
+    html += '<div class="settings-ts-banner">' +
+      '<strong>Target Scheduler not detected.</strong> ' +
+      'TS Progress Bars, Min Altitude line, and Tonight\'s Preview will have no effect until Target Scheduler is installed and its API is enabled.' +
+      '</div>';
+  }
 
   // Row 1: Detail level + theme
   html += '<div class="settings-row">' +
@@ -5619,7 +6369,7 @@ function renderSessionDetail(sessionId) {
     var targets = detail.targets.map(function(t) { return t.target; }).join(', ') || 'Unknown';
     sub.textContent = fmtDate(detail.sessionStart) + ' \u2014 ' + targets;
 
-    var html = '<div class="report-nav">' +
+    var navHtml = '<div class="report-nav" id="header-report-nav">' +
       '<a class="back-btn" href="#/sessions">\u2190 Sessions</a>' +
       '<div class="report-nav-info">' +
         '<span class="report-nav-date">' + fmtDate(detail.sessionStart) + '</span>' +
@@ -5629,12 +6379,21 @@ function renderSessionDetail(sessionId) {
         '<button class="report-btn" id="btn-settings">\u2699 Settings</button>';
 
     if (detail.hasReport) {
-      html += '<a href="/api/sessions/' + sessionId + '/report" target="_blank" class="report-btn">Open in New Tab \u2192</a>';
+      navHtml += '<a href="/api/sessions/' + sessionId + '/report" target="_blank" class="report-btn">Open in New Tab \u2192</a>';
     }
 
-    html += '</div></div>';
+    navHtml += '</div></div>';
 
-    html += buildSettingsPanel(currentSettings, cachedFilters);
+    var existingNav = document.getElementById('header-report-nav');
+    if (existingNav) existingNav.remove();
+    var hdr = document.querySelector('header');
+    if (hdr) {
+      hdr.insertAdjacentHTML('beforeend', navHtml);
+      hdr.getBoundingClientRect(); // force layout so offsetHeight is accurate
+      document.documentElement.style.setProperty('--header-h', hdr.offsetHeight + 'px');
+    }
+
+    var html = buildSettingsPanel(currentSettings, cachedFilters);
 
     var isMobile = window.innerWidth <= 700;
 
@@ -5837,7 +6596,7 @@ function pollRegenAllProgress(sessionId, regenBtn, regenAllBtn, statusEl) {
 
 var statsTargetData = null;
 // Phase 3a: Target Scheduler integration state (populated by renderStats on each load)
-var statsTsStatus   = null;   // "available" | "not_installed" | "error" | null
+var statsTsStatus   = localStorage.getItem('ns-ts-status') || null;   // "available" | "not_installed" | "error" | null
 var statsTsError    = null;   // string or null
 var statsTsProjects = null;   // array of { guid, name, state, isMosaic, isCustom, targetCount, targets: [{guid,name}] }
 var statsProjectAssignments = null; // { "target name (lowercase)": ["project-guid", ...] }
@@ -6360,6 +7119,10 @@ function buildTonightTimeline(entries, targets, colorMap, uniqueNames, timelineS
 // ── Phase 3a: TS status banner ─────────────────────────────────────────────
 
 function renderTsStatusBanner() {
+  var nativeTsProjects = statsTsProjects ? statsTsProjects.filter(function(p) { return !p.isCustom; }) : [];
+  if (statsTsStatus === 'available' && nativeTsProjects.length === 0) {
+    return '<div class="ts-status-banner info">No Target Scheduler projects found — TS features (completion tracking, exposure plans) unavailable. Create a project in Target Scheduler, or use Manage Projects to add a manual project.</div>';
+  }
   if (statsTsStatus === 'available' || statsTsStatus == null) return '';
   if (statsTsStatus === 'not_installed') {
     // Silent when TS isn't installed — no banner, no clutter
@@ -7390,7 +8153,7 @@ function buildActivityHeatmap(sessions, firstSessionIso) {
     var rect = '<rect class="' + cls + '" x="' + x + '" y="' + y + '" ' +
                'width="' + cellSize + '" height="' + cellSize + '" rx="2"><title>' +
                esc(tooltip) + '</title></rect>';
-    if (c.sessionId) {
+    if (c.sessionId && !IS_TOUCH) {
       svg += '<a href="/api/sessions/' + encodeURIComponent(c.sessionId) + '/report" target="_blank" rel="noopener">' + rect + '</a>';
     } else {
       svg += rect;
@@ -7426,7 +8189,7 @@ function buildActivityHeatmap(sessions, firstSessionIso) {
 function renderStats() {
   var el = document.getElementById('content');
   var sub = document.getElementById('page-subtitle');
-  sub.textContent = 'Lifetime Statistics';
+  if (sub) sub.textContent = getSubtitleText();
 
   el.innerHTML = '<div class="loading">Loading stats...</div>';
 
@@ -7440,9 +8203,11 @@ function renderStats() {
     var summary    = results[1];
     var settings   = results[2];
     var sessions   = results[3] || [];
+    if (sessions.length > 0) sessionsCache = sessions;
     var targets = targetData.targets || [];
     statsTargetData = targets;
     statsTsStatus   = targetData.tsStatus   || null;
+    if (statsTsStatus) safeSetItem('ns-ts-status', statsTsStatus);
     statsTsError    = targetData.tsError    || null;
     statsTsProjects = targetData.tsProjects || null;
     statsProjectAssignments = normalizeAssignments(targetData.projectAssignments || {});
@@ -7459,33 +8224,34 @@ function renderStats() {
 
     logInfo('Stats loaded:', summary.totalSessions, 'sessions,', targets.length, 'targets');
 
-    sub.textContent = targets.length + ' target' + (targets.length !== 1 ? 's' : '') +
-      ' \u00b7 ' + summary.totalSessions + ' session' + (summary.totalSessions !== 1 ? 's' : '');
+    if (sub) sub.textContent = getSubtitleText();
 
     var html = '';
 
     // Tab bar + content
-    var tabs = [{id: 'targets', label: 'Targets'}, {id: 'tonight', label: 'Tonight'}];
-    var activeTab = localStorage.getItem('ns-stats-tab') || 'targets';
-    if (!tabs.some(function(t) { return t.id === activeTab; })) activeTab = 'targets';
+    var tsOn = statsTsStatus === 'available';
+    updateStatsNavLabel();
 
-    html += '<div class="stats-tab-row">';
-    html += renderTabBar(tabs, activeTab);
-    html += '<button type="button" class="targets-manage-projects-btn" data-action="manage-projects">Manage Projects</button>';
-    html += '</div>';
-    html += '<div id="stats-tab-content"></div>';
-
-    el.innerHTML = html;
-
-    initTabBar(renderStatsTabContent);
-
-    // Manage Projects button — lives in the tab row, not the targets control bar
-    var manageBtn = el.querySelector('.targets-manage-projects-btn');
-    if (manageBtn) {
-      manageBtn.addEventListener('click', function() { openManageProjectsModal(); });
+    if (tsOn) {
+      var tsNoProjects = !statsTsProjects || statsTsProjects.length === 0;
+      var tabs = [{id: 'targets', label: 'Targets'}, {id: 'tonight', label: 'Tonight', disabled: tsNoProjects}];
+      var activeTab = localStorage.getItem('ns-stats-tab') || 'targets';
+      if (!tabs.some(function(t) { return t.id === activeTab; })) activeTab = 'targets';
+      html += '<div class="stats-tab-row">';
+      html += renderTabBar(tabs, activeTab);
+      html += '<button type="button" class="targets-manage-projects-btn" data-action="manage-projects">Manage Projects</button>';
+      html += '</div>';
+      html += '<div id="stats-tab-content"></div>';
+      el.innerHTML = html;
+      initTabBar(renderStatsTabContent);
+      var manageBtn = el.querySelector('.targets-manage-projects-btn');
+      if (manageBtn) manageBtn.addEventListener('click', function() { openManageProjectsModal(); });
+      renderStatsTabContent(activeTab);
+    } else {
+      html += '<div id="stats-tab-content"></div>';
+      el.innerHTML = html;
+      renderStatsTabContent('targets');
     }
-
-    renderStatsTabContent(activeTab);
   }).catch(function(err) {
     logError('Failed to load stats:', err.message);
     el.innerHTML = '<div class="error">Failed to load stats: ' + esc(err.message) + '</div>';
@@ -7494,6 +8260,7 @@ function renderStats() {
 
 // ── Init ───────────────────────────────────────────────────────────────────
 
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 logInfo('Dashboard initializing');
 initTheme();
 document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
