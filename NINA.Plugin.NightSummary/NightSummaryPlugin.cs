@@ -301,6 +301,8 @@ namespace NINA.Plugin.NightSummary {
                     RaisePropertyChanged(nameof(LocalServerUrl));
                     RaisePropertyChanged(nameof(TailscaleUrl));
                     RaisePropertyChanged(nameof(HasTailscaleUrl));
+                    RaisePropertyChanged(nameof(ZeroTierUrl));
+                    RaisePropertyChanged(nameof(HasZeroTierUrl));
                 } catch (Exception ex) {
                     LocalServerStatus.Text = $"✗ {ex.Message}";
                 }
@@ -320,6 +322,8 @@ namespace NINA.Plugin.NightSummary {
                 RaisePropertyChanged(nameof(LocalServerUrl));
                 RaisePropertyChanged(nameof(TailscaleUrl));
                 RaisePropertyChanged(nameof(HasTailscaleUrl));
+                RaisePropertyChanged(nameof(ZeroTierUrl));
+                RaisePropertyChanged(nameof(HasZeroTierUrl));
             });
 
             GenerateAllDashboardReportsCommand = new RelayCommand(async () => {
@@ -591,6 +595,8 @@ namespace NINA.Plugin.NightSummary {
         public string LocalServerUrl => dashboardServer?.Url ?? "";
         public string TailscaleUrl => dashboardServer?.TailscaleUrl ?? "";
         public bool HasTailscaleUrl => !string.IsNullOrEmpty(dashboardServer?.TailscaleUrl);
+        public string ZeroTierUrl => dashboardServer?.ZeroTierUrl ?? "";
+        public bool HasZeroTierUrl => !string.IsNullOrEmpty(dashboardServer?.ZeroTierUrl);
         public ButtonStatus LocalServerStatus { get; } = new ButtonStatus();
 
         public ICommand CopyLocalUrlCommand => new RelayCommand(async () => {
@@ -601,6 +607,11 @@ namespace NINA.Plugin.NightSummary {
         public ICommand CopyTailscaleUrlCommand => new RelayCommand(async () => {
             if (!string.IsNullOrEmpty(TailscaleUrl))
                 System.Windows.Clipboard.SetText(TailscaleUrl);
+        });
+
+        public ICommand CopyZeroTierUrlCommand => new RelayCommand(async () => {
+            if (!string.IsNullOrEmpty(ZeroTierUrl))
+                System.Windows.Clipboard.SetText(ZeroTierUrl);
         });
 
         public int ReportDetailLevel {

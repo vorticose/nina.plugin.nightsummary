@@ -142,6 +142,7 @@ namespace NINA.Plugin.NightSummary.Server {
         public bool IsRunning { get; private set; }
         public string Url { get; private set; }
         public string TailscaleUrl { get; private set; }
+        public string ZeroTierUrl { get; private set; }
 
         public DashboardServer(
             IDashboardDataSource data,
@@ -187,6 +188,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 var hostname = Dns.GetHostName();
                 Url = $"http://{hostname}:{port}";
                 TailscaleUrl = GetTailscaleUrl(port);
+                ZeroTierUrl  = GetZeroTierUrl(port);
                 IsRunning = true;
 
                 // Fire-and-forget the request loop
@@ -199,13 +201,16 @@ namespace NINA.Plugin.NightSummary.Server {
                 _ = Task.Run(() => WarmAltitudeChartCache(cts.Token));
 
                 log.Info($"Server started on port {port} — local: {Url}" +
-                    (TailscaleUrl != null ? $", tailnet: {TailscaleUrl}" : ""));
+                    (TailscaleUrl != null ? $", tailnet: {TailscaleUrl}" : "") +
+                    (ZeroTierUrl  != null ? $", zerotier: {ZeroTierUrl}" : ""));
                 log.Info($"DB: {dbPath}");
                 log.Info($"Reports: {reportsDir}");
 
                 _external.Info($"NightSummary: Local dashboard started at {Url}");
                 if (TailscaleUrl != null)
                     _external.Info($"NightSummary: Tailnet URL: {TailscaleUrl}");
+                if (ZeroTierUrl != null)
+                    _external.Info($"NightSummary: ZeroTier URL: {ZeroTierUrl}");
             } catch (Exception ex) {
                 _external.Error($"NightSummary: Failed to start local dashboard. {ex.Message}");
                 log?.Error("Server failed to start", ex);
@@ -227,6 +232,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 IsRunning = false;
                 Url = null;
                 TailscaleUrl = null;
+                ZeroTierUrl  = null;
                 log?.Info("Server stopped");
                 _external.Info("NightSummary: Local dashboard stopped");
                 DashboardLog.Shutdown();
@@ -3317,6 +3323,24 @@ private static string FormatSettingsForLog(NightSummarySettings s) {
                 }
             } catch {
                 // Tailscale not installed or not running — silently ignore
+            }
+            return null;
+        }
+
+        // ── ZeroTier Detection ───────────────────────────────────────────────────
+
+        private static string GetZeroTierUrl(int port) {
+            try {
+                foreach (var nic in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()) {
+                    if (nic.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up) continue;
+                    if (!nic.Name.Contains("ZeroTier") && !nic.Description.Contains("ZeroTier")) continue;
+                    foreach (var addr in nic.GetIPProperties().UnicastAddresses) {
+                        if (addr.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                            return $"http://{addr.Address}:{port}";
+                    }
+                }
+            } catch {
+                // ZeroTier not installed or not running — silently ignore
             }
             return null;
         }
