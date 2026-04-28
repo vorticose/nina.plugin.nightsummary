@@ -128,34 +128,41 @@ The filter bar sits below the latest session card, inside the **Earlier Sessions
 
 ## Stats Tab
 
-The Stats tab shows lifetime statistics aggregated across all sessions.
+The Stats tab shows lifetime statistics aggregated across all sessions. The tab has two sub-tabs: **Targets** (or **Projects** if Target Scheduler is installed) and **Tonight**.
 
-### Targets Sub-Tab
+### Targets / Projects Sub-Tab
+
+When Target Scheduler is installed, the tab label changes from **Targets** to **Projects** to reflect the project-based view. The core target cards work the same either way.
 
 Each target you've ever imaged gets a card showing:
 
 - Total integration time and image count across all sessions
 - Sky thumbnail
-- Target status (from Target Scheduler, if installed)
 - A compact per-session history chart
+- Target status badge (requires Target Scheduler)
 
 **Controls:**
 
-| Control | What it does |
-|---------|-------------|
-| Sort pills | Sort by: Integration, Images, Last imaged, Name |
-| Group toggle | Group by Target Scheduler project (requires TS) |
-| Status filter chips | Filter by TS project status (Active, Inactive, etc.) |
+| Control | Requires TS? | What it does |
+|---------|-------------|--------------|
+| Sort pills | No | Sort by: Integration, Images, Last imaged, Name |
+| Group toggle | Yes | Group target cards by Target Scheduler project |
+| Status filter chips | Yes | Filter by TS project status (Active, Inactive, etc.) |
+| Manage Projects | Yes | Link targets to TS projects to enable grouping and status filtering |
 
 Click a target card to open a detail panel with the full session-by-session breakdown, per-filter stats, and the altitude chart history.
 
-If Target Scheduler is installed, targets can be linked to TS projects using the **Manage Projects** button. This enables grouping and project-based status filtering.
+{: .note }
+> Without Target Scheduler, the Targets sub-tab still shows all your targets with integration totals, thumbnails, and session history — only the project-based grouping and status filtering are unavailable.
 
 ### Tonight Sub-Tab
 
 Shows what Target Scheduler plans to image tonight — same as Tonight's Preview in reports, but always up-to-date without waiting for a new report.
 
 Requires Target Scheduler to be installed with the **API enabled**. See [Target Scheduler Integration]({% link target-scheduler-integration.md %}) for setup instructions.
+
+{: .note }
+> The Tonight sub-tab is hidden entirely when Target Scheduler is not installed or its API is not enabled.
 
 ---
 
