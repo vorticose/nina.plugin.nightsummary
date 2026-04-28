@@ -18,19 +18,24 @@
     <div class="header-right">
       <nav id="nav">
         <a href="#/sessions" class="nav-link active" data-page="sessions">Sessions</a>
-        <a href="#/stats" class="nav-link" data-page="stats">Stats</a>
+        <a href="#/stats" class="nav-link" data-page="stats">Targets</a>
       </nav>
       <button class="theme-toggle" id="theme-toggle" title="Toggle light/dark mode"></button>
     </div>
+  </div>
+  <div class="header-meta">
+    <span>v{{VERSION}} &mdash; by Evan Pegors &bull; @sleepypuppy15</span>
+    <span class="header-meta-links">
+      <a class="header-meta-btn" href="https://github.com/vorticose/nina.plugin.nightsummary/issues/new?template=bug_report.yml" target="_blank" rel="noopener">Report a Bug</a>
+      <a class="header-meta-btn" href="https://github.com/vorticose/nina.plugin.nightsummary/issues/new?template=feature_request.yml" target="_blank" rel="noopener">Suggest a Feature</a>
+    </span>
   </div>
 </header>
 <div class="shell">
   <div id="content">
     <div class="loading">Loading...</div>
   </div>
-  <footer class="footnote">
-    Night Summary Dashboard
-  </footer>
+  <footer class="footnote"></footer>
 </div>
 <script>
 {{SCRIPTS}}

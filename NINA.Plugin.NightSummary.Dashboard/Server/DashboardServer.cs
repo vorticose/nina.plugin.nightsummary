@@ -364,6 +364,8 @@ namespace NINA.Plugin.NightSummary.Server {
                         await HandleTsAssign(req, res, done);
                     } else if (path == "/api/stats/ts/exclude") {
                         await HandleTsExclude(req, res, done);
+                    } else if (path == "/api/stats/projects/custom") {
+                        await HandleCustomProjects(req, res, done);
                     } else if (path == "/api/stats/projects/reset") {
                         await HandleProjectsReset(req, res, done);
                     } else if (path.StartsWith("/api/stats/projects/") && path.EndsWith("/reset")) {
@@ -948,6 +950,20 @@ namespace NINA.Plugin.NightSummary.Server {
         private const string TsTargetLinksKey        = "ts.targetLinks";
         private const string TsProjectAssignmentsKey = "ts.projectAssignments";
         private const string TsTargetExclusionsKey   = "ts.targetExclusions";
+        private const string TsCustomProjectsKey     = "ts.customProjects";
+
+        private record CustomProjectRecord(string Guid, string Name);
+
+        private List<CustomProjectRecord> GetCustomProjects() {
+            var raw = GetDashboardMeta(TsCustomProjectsKey);
+            if (string.IsNullOrEmpty(raw)) return new List<CustomProjectRecord>();
+            try { return JsonSerializer.Deserialize<List<CustomProjectRecord>>(raw) ?? new List<CustomProjectRecord>(); }
+            catch { return new List<CustomProjectRecord>(); }
+        }
+
+        private void SaveCustomProjects(List<CustomProjectRecord> projects) {
+            SetDashboardMeta(TsCustomProjectsKey, JsonSerializer.Serialize(projects));
+        }
 
         private Dictionary<string, string> GetTsStatusOverrides() {
             var raw = GetDashboardMeta(TsStatusOverridesKey);
@@ -1305,6 +1321,18 @@ namespace NINA.Plugin.NightSummary.Server {
                 }
             }
 
+            // Merge in NS custom projects (not from TS DB)
+            var customProjectsList = GetCustomProjects();
+            var customGuids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (tsStatus == "available") {
+                foreach (var cp in customProjectsList) {
+                    if (string.IsNullOrEmpty(cp.Guid)) continue;
+                    if (tsProjects == null) tsProjects = new List<TsProjectInfo>();
+                    tsProjects.Add(new TsProjectInfo { Guid = cp.Guid, Name = cp.Name, State = "Active", IsMosaic = false });
+                    customGuids.Add(cp.Guid);
+                }
+            }
+
             // Build a case-insensitive lookup from target name → (project, target)
             // Also index targets by Guid for manual-link resolution.
             var tsTargetByNameLower = new Dictionary<string, (TsProjectInfo project, TsProjectTarget target)>(StringComparer.OrdinalIgnoreCase);
@@ -1383,8 +1411,17 @@ namespace NINA.Plugin.NightSummary.Server {
                     maximumAltitude = aproj.MaximumAltitude,
                     targetCount     = aproj.Targets.Count + assignedCount,
                     percentComplete = (double?)null,
-                    isCustom        = false,
+                    isCustom        = customGuids.Contains(aproj.Guid ?? ""),
                 };
+            }
+
+            // Pre-compute NS target count per custom project from assignments
+            var customProjectTargetCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in projectAssignmentsMap) {
+                if (kv.Value == null) continue;
+                foreach (var g in kv.Value)
+                    if (customGuids.Contains(g))
+                        customProjectTargetCounts[g] = (customProjectTargetCounts.ContainsKey(g) ? customProjectTargetCounts[g] : 0) + 1;
             }
 
             var result = details.Select(t => {
@@ -1404,6 +1441,7 @@ namespace NINA.Plugin.NightSummary.Server {
                     matchedBy = "name";
                 }
 
+                string customPrimaryGuid = null;
                 object tsObj = null;
                 if (ts.HasValue) {
                     var proj = ts.Value.project;
@@ -1482,13 +1520,43 @@ namespace NINA.Plugin.NightSummary.Server {
                         goals,
                         matchedBy,
                     };
+                } else if (projectAssignmentsMap.TryGetValue((t.TargetName ?? "").ToLowerInvariant(), out var customAssignGuids) && customAssignGuids != null) {
+                    var cg = customAssignGuids.FirstOrDefault(g => customGuids.Contains(g));
+                    if (cg != null && tsProjectByGuid.TryGetValue(cg, out var cp)) {
+                        customPrimaryGuid = cp.Guid;
+                        tsObj = new {
+                            project = new {
+                                id              = 0,
+                                guid            = cp.Guid,
+                                profileId       = (string)null,
+                                name            = cp.Name,
+                                description     = (string)null,
+                                rawState        = "Active",
+                                state           = "Active",
+                                stateSource     = "raw",
+                                priority        = (string)null,
+                                isMosaic        = false,
+                                createDate      = (string)null,
+                                activeDate      = (string)null,
+                                inactiveDate    = (string)null,
+                                minimumAltitude = 0.0,
+                                maximumAltitude = 0.0,
+                                targetCount     = customProjectTargetCounts.ContainsKey(cp.Guid) ? customProjectTargetCounts[cp.Guid] : 0,
+                                percentComplete = (double?)null,
+                                isCustom        = true,
+                            },
+                            target    = (object)null,
+                            goals     = (object)null,
+                            matchedBy = "assigned",
+                        };
+                    }
                 }
 
                 // Build additionalProjects from cross-assignments (guids beyond primary)
                 List<object> additionalProjects = null;
                 if (projectAssignmentsMap.TryGetValue((t.TargetName ?? "").ToLowerInvariant(), out var assignedGuids)
                     && assignedGuids != null && assignedGuids.Count > 0) {
-                    string primaryGuid = ts.HasValue ? ts.Value.project.Guid : null;
+                    string primaryGuid = ts.HasValue ? ts.Value.project.Guid : customPrimaryGuid;
                     foreach (var aguid in assignedGuids) {
                         if (!string.IsNullOrEmpty(primaryGuid) && string.Equals(aguid, primaryGuid, StringComparison.OrdinalIgnoreCase))
                             continue;
@@ -1532,9 +1600,12 @@ namespace NINA.Plugin.NightSummary.Server {
                 tsProjectsSummary = tsProjects.Select(p => new {
                     guid        = p.Guid,
                     name        = p.Name,
-                    state       = p.State,
+                    state       = statusOverrides.TryGetValue(p.Guid ?? "", out var ovState) && !string.IsNullOrEmpty(ovState) ? ovState : p.State,
                     isMosaic    = p.IsMosaic,
-                    targetCount = p.Targets.Count,
+                    isCustom    = customGuids.Contains(p.Guid ?? ""),
+                    targetCount = customGuids.Contains(p.Guid ?? "")
+                        ? (customProjectTargetCounts.ContainsKey(p.Guid ?? "") ? customProjectTargetCounts[p.Guid] : 0)
+                        : p.Targets.Count,
                     targets = p.Targets.Select(tt => new {
                         guid = tt.Guid,
                         name = tt.Name,
@@ -1646,6 +1717,9 @@ namespace NINA.Plugin.NightSummary.Server {
                 done?.Invoke(500, ex.Message);
                 return;
             }
+            foreach (var cp in GetCustomProjects())
+                if (!string.IsNullOrEmpty(cp.Guid) && !allProjects.Any(p => string.Equals(p.Guid, cp.Guid, StringComparison.OrdinalIgnoreCase)))
+                    allProjects.Add(new TsProjectInfo { Guid = cp.Guid, Name = cp.Name, State = "Active", IsMosaic = false });
 
             var proj = allProjects.FirstOrDefault(p =>
                 string.Equals(p.Guid, projectGuid, StringComparison.OrdinalIgnoreCase));
@@ -1802,6 +1876,7 @@ namespace NINA.Plugin.NightSummary.Server {
                         .GroupBy(f => f.Filter)
                         .Select(g => new {
                             filter             = g.Key,
+                            totalSeconds       = g.Sum(f => f.IntegrationSeconds),
                             totalHours         = Math.Round(g.Sum(f => f.IntegrationSeconds) / 3600.0, 2),
                             acceptedFrames     = g.Sum(f => f.AcceptedFrames),
                         })
@@ -1824,6 +1899,16 @@ namespace NINA.Plugin.NightSummary.Server {
             // target's native TS project so the cumulative TS progress bars in the UI include them.
             var projectAssignments = GetProjectAssignments();
             var projGuidLower = proj.Guid ?? "";
+
+            // Proper-case name lookup: projectAssignments keys are lowercase, so fall back
+            // to the NS Images table to recover the original casing for custom projects.
+            var properNameByLower = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (haveDb) {
+                foreach (var td in DbTargetDetails())
+                    if (!string.IsNullOrEmpty(td.TargetName))
+                        properNameByLower[td.TargetName.ToLowerInvariant()] = td.TargetName;
+            }
+
             foreach (var kv in projectAssignments) {
                 var tgtKey = kv.Key ?? "";
                 var guids = kv.Value ?? new List<string>();
@@ -1835,7 +1920,8 @@ namespace NINA.Plugin.NightSummary.Server {
                     .SelectMany(p => p.Targets)
                     .FirstOrDefault(x => string.Equals(x.Name, tgtKey, StringComparison.OrdinalIgnoreCase));
 
-                var displayName = nativeTarget?.Name ?? tgtKey;
+                var displayName = nativeTarget?.Name
+                    ?? (properNameByLower.TryGetValue(tgtKey, out var pn) ? pn : tgtKey);
                 List<TargetSessionDetail> caSessions = haveDb
                     ? DbSessionsForTarget(displayName)
                     : new List<TargetSessionDetail>();
@@ -1903,6 +1989,7 @@ namespace NINA.Plugin.NightSummary.Server {
                         .GroupBy(f => f.Filter)
                         .Select(g => new {
                             filter         = g.Key,
+                            totalSeconds   = g.Sum(f => f.IntegrationSeconds),
                             totalHours     = Math.Round(g.Sum(f => f.IntegrationSeconds) / 3600.0, 2),
                             acceptedFrames = g.Sum(f => f.AcceptedFrames),
                         })
@@ -1979,6 +2066,9 @@ namespace NINA.Plugin.NightSummary.Server {
                 done?.Invoke(500, ex.Message);
                 return;
             }
+            foreach (var cp in GetCustomProjects())
+                if (!string.IsNullOrEmpty(cp.Guid) && !allProjects.Any(p => string.Equals(p.Guid, cp.Guid, StringComparison.OrdinalIgnoreCase)))
+                    allProjects.Add(new TsProjectInfo { Guid = cp.Guid, Name = cp.Name, State = "Active", IsMosaic = false });
 
             var proj = allProjects.FirstOrDefault(p =>
                 string.Equals(p.Guid, projectGuid, StringComparison.OrdinalIgnoreCase));
@@ -2593,6 +2683,39 @@ namespace NINA.Plugin.NightSummary.Server {
             }
         }
 
+        private async Task HandleCustomProjects(HttpListenerRequest req, HttpListenerResponse res, Action<int, string> done) {
+            var body = await ReadBodyCappedAsync(req, res, done);
+            if (body == null) return;
+            try {
+                using var doc = JsonDocument.Parse(body);
+                var root   = doc.RootElement;
+                var action = root.TryGetProperty("action", out var a) ? a.GetString() : null;
+                if (action == "create") {
+                    var name = root.TryGetProperty("name", out var n) ? n.GetString()?.Trim() : null;
+                    if (string.IsNullOrEmpty(name)) { await WriteJson(res, 400, new { error = "name required" }); return; }
+                    var guid     = "custom-" + System.Guid.NewGuid().ToString("N").Substring(0, 8);
+                    var projects = GetCustomProjects();
+                    projects.Add(new CustomProjectRecord(guid, name));
+                    SaveCustomProjects(projects);
+                    await WriteJson(res, 200, new { guid, name });
+                    done?.Invoke(200, $"created custom project '{name}'");
+                } else if (action == "delete") {
+                    var guid = root.TryGetProperty("guid", out var g) ? g.GetString() : null;
+                    if (string.IsNullOrEmpty(guid)) { await WriteJson(res, 400, new { error = "guid required" }); return; }
+                    var projects = GetCustomProjects();
+                    projects.RemoveAll(p => string.Equals(p.Guid, guid, StringComparison.OrdinalIgnoreCase));
+                    SaveCustomProjects(projects);
+                    await WriteJson(res, 200, new { ok = true });
+                    done?.Invoke(200, $"deleted custom project {guid}");
+                } else {
+                    await WriteJson(res, 400, new { error = "unknown action" });
+                }
+            } catch (Exception ex) {
+                await WriteJson(res, 500, new { error = "Internal server error" });
+                done?.Invoke(500, ex.Message);
+            }
+        }
+
         private async Task HandleProjectsReset(HttpListenerRequest req, HttpListenerResponse res, Action<int, string> done) {
             try {
                 SetDashboardMeta(TsProjectAssignmentsKey, null);
@@ -3171,7 +3294,8 @@ private static string FormatSettingsForLog(NightSummarySettings s) {
                 cachedDashboardHtml = html
                     .Replace("{{STYLES}}", css)
                     .Replace("{{SCRIPTS}}", js)
-                    .Replace("{{ICON}}", iconBase64);
+                    .Replace("{{ICON}}", iconBase64)
+                    .Replace("{{VERSION}}", _settings.PluginVersion ?? "");
             } catch (Exception ex) {
                 _external.Error($"NightSummary: Failed to load dashboard resources. {ex.Message}");
                 cachedDashboardHtml = "<!DOCTYPE html><html><body><h1>Dashboard failed to load</h1>" +

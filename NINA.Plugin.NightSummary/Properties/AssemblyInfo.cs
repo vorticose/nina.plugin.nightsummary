@@ -7,7 +7,7 @@ using System.Runtime.InteropServices;
 [assembly: Guid("682531D1-5A23-4627-B961-0794282ECB4E")]
 // AssemblyVersion and AssemblyFileVersion are auto-generated at build time
 // from VersionPrefix in the .csproj + git commit count (see SetGitBuildNumber target)
-[assembly: AssemblyInformationalVersion("3.0.0-dev")]
+[assembly: AssemblyInformationalVersion("3.0.0")]
 [assembly: AssemblyTitle("Night Summary")]
 [assembly: AssemblyDescription("*** BETA *** Records your imaging session and delivers a detailed HTML report via email, Discord, or Pushover when your sequence ends.\n\nTo update: download the latest release from the link above and extract the zip to your existing NightSummary plugin folder, overwriting existing files.")]
 [assembly: AssemblyCompany("Evan Pegors")]

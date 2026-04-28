@@ -103,5 +103,6 @@ Use the **Search older sessions** expander to find sessions by date range.
 ## Next Steps
 
 - [Report Sections]({% link report-sections.md %}) — understand what each part of the report shows
+- [Live Dashboard]({% link dashboard.md %}) — enable the browser-based dashboard to browse sessions and stats from any device
 - [Settings Reference]({% link settings-reference.md %}) — full list of every setting and what it does
 - [Delivery Channels]({% link delivery-channels.md %}) — detailed setup for email, Discord, Pushover, and local save

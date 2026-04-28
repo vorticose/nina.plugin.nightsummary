@@ -282,6 +282,7 @@ function route() {
     el.classList.toggle('active', hash.startsWith('#' + el.getAttribute('href').slice(1)) ||
       path.startsWith('/' + el.dataset.page));
   });
+  updateStatsNavLabel();
 
   // Toggle report-view mode on body to kill outer scroll
   var isReport = path.match(/^\/sessions\/[^/]+$/);
@@ -311,6 +312,14 @@ function route() {
   repositionViewToggle();
 }
 
+function updateStatsNavLabel() {
+  var link = document.querySelector('.nav-link[data-page="stats"]');
+  if (!link) return;
+  if (statsTsStatus === 'available') link.textContent = 'Projects';
+  else if (statsTsStatus !== null) link.textContent = 'Targets';
+  // statsTsStatus === null means not yet loaded — leave as HTML default ("Targets")
+}
+
 function navigate(hash) {
   location.hash = hash;
 }
@@ -332,7 +341,8 @@ function renderTabBar(tabs, activeTab) {
   for (var i = 0; i < tabs.length; i++) {
     var t = tabs[i];
     var cls = t.id === activeTab ? ' active' : '';
-    html += '<button class="stats-tab-btn' + cls + '" data-tab="' + t.id + '">' + esc(t.label) + '</button>';
+    var gated = t.disabled ? ' ts-gated' : '';
+    html += '<button class="stats-tab-btn' + cls + gated + '" data-tab="' + t.id + '"' + (t.disabled ? ' title="No projects yet"' : '') + '>' + esc(t.label) + '</button>';
   }
   html += '</div>';
   return html;
@@ -396,6 +406,8 @@ function fmtCoord(raH, decD) {
   return 'RA ' + rH + 'h' + (rM < 10 ? '0' : '') + rM + 'm  Dec ' + dSign + dD + '\u00b0' + (dM < 10 ? '0' : '') + dM + "'";
 }
 
+function plural(n, word) { return n === 1 ? word : word + 's'; }
+
 function renderTargetCard(t, index) {
   var initial = t.target ? t.target.charAt(0).toUpperCase() : '?';
   var sessionCount = t.sessionCount || 0;
@@ -443,7 +455,7 @@ function renderTargetCard(t, index) {
   }
 
   html += '<div class="target-card-header-right">';
-  html += '<button type="button" class="target-card-assign-btn" data-target="' + esc(t.target) + '" title="Assign to project">&#x1F4C1;</button>';
+  if (statsTsStatus === 'available') html += '<button type="button" class="target-card-assign-btn' + (!statsTsProjects || statsTsProjects.length === 0 ? ' ts-gated' : '') + '" data-target="' + esc(t.target) + '" title="Assign to project">&#x1F4C1;</button>';
   html += '<button type="button" class="targets-project-collapse-btn" aria-label="Collapse"></button>';
   html += '</div>';
   html += '</div>'; // .target-card-header
@@ -466,11 +478,11 @@ function renderTargetCard(t, index) {
   var frames = t.acceptedFrames != null ? t.acceptedFrames : '--';
   html += '<div class="target-card-stat-boxes">';
   html += '<div class="stat-box"><div class="stat-value">' + sessionCount +
-          '</div><div class="stat-label">Sessions</div></div>';
+          '</div><div class="stat-label">' + plural(sessionCount, 'Session') + '</div></div>';
   html += '<div class="stat-box"><div class="stat-value">' + esc(String(hours)) +
           '<span class="unit">h</span></div><div class="stat-label">Integration</div></div>';
   html += '<div class="stat-box"><div class="stat-value">' + esc(String(frames)) +
-          '</div><div class="stat-label">Frames</div></div>';
+          '</div><div class="stat-label">' + plural(frames, 'Frame') + '</div></div>';
   html += '<div class="stat-box"><div class="stat-value">' + (t.avgHFR ? t.avgHFR.toFixed(2) : '--') +
           '<span class="unit">px</span></div><div class="stat-label">Avg HFR</div></div>';
   html += '</div>'; // .target-card-stat-boxes
@@ -581,15 +593,18 @@ function projectType(isMosaic, targetCount) {
 // Renders the full control bar: sort pills + optional group toggle + optional filter row
 function renderTargetsControlBar(sortKey, groupBy) {
   var tsAvail = statsTsStatus === 'available';
+  var tsNoProjects = tsAvail && (!statsTsProjects || statsTsProjects.length === 0);
+
   var html = '<div class="targets-control-bar">';
   html += '<div class="targets-sort-bar"><span class="targets-sort-label">Sort</span>';
   // Group by project first — commonly used
   if (tsAvail || (statsTsProjects && statsTsProjects.some(function(p) { return p.isCustom; }))) {
-    var grpCls = 'targets-group-pill' + (groupBy === 'project' ? ' active' : '');
+    var grpCls = 'targets-group-pill' + (groupBy === 'project' ? ' active' : '') + (tsNoProjects ? ' ts-gated' : '');
     html += '<button type="button" class="' + grpCls + '" data-action="toggle-group">Group by project</button>';
   }
   TARGET_SORT_OPTIONS.forEach(function(opt) {
-    var cls = 'targets-sort-pill' + (opt.key === sortKey ? ' active' : '');
+    if (opt.key === 'type' && !tsAvail) return;
+    var cls = 'targets-sort-pill' + (opt.key === sortKey ? ' active' : '') + (opt.key === 'type' && tsNoProjects ? ' ts-gated' : '');
     html += '<button type="button" class="' + cls + '" data-sort-key="' + opt.key + '">' + esc(opt.label) + '</button>';
   });
   html += '</div>';
@@ -598,7 +613,7 @@ function renderTargetsControlBar(sortKey, groupBy) {
     var enabledTypes  = getTargetTypeFilter();
     var allStatesOn = TS_STATE_ORDER.every(function(s) { return enabledStates.indexOf(s) >= 0; });
     var allTypesOn  = TARGET_TYPE_OPTIONS.every(function(o) { return enabledTypes.indexOf(o.key) >= 0; });
-    html += '<div class="targets-filter-row"><span class="targets-sort-label">Filter</span>';
+    html += '<div class="targets-filter-row' + (tsNoProjects ? ' ts-gated' : '') + '"><span class="targets-sort-label">Filter</span>';
     html += '<button type="button" class="targets-status-chip' + (allStatesOn && allTypesOn ? ' active' : '') + '" data-filter-state="__all__">All</button>';
     TS_STATE_ORDER.forEach(function(state) {
       var on = enabledStates.indexOf(state) >= 0;
@@ -788,9 +803,9 @@ function renderProjectContainer(info) {
     html += '<div class="stat-box"><div class="stat-value">' + totalHours.toFixed(1) +
             '<span class="unit">h</span></div><div class="stat-label">Integration</div></div>';
     html += '<div class="stat-box"><div class="stat-value">' + totalFrames +
-            '</div><div class="stat-label">Frames</div></div>';
+            '</div><div class="stat-label">' + plural(totalFrames, 'Frame') + '</div></div>';
     html += '<div class="stat-box"><div class="stat-value">' + totalSessions +
-            '</div><div class="stat-label">Sessions</div></div>';
+            '</div><div class="stat-label">' + plural(totalSessions, 'Session') + '</div></div>';
     html += '</div>'; // .targets-project-stat-boxes
   } else if (info.targets.length >= 2) {
     // Non-mosaic multi-target — 2x2 grid of target thumbnails inside the standard thumb-wrap
@@ -834,11 +849,11 @@ function renderProjectContainer(info) {
 
     html += '<div class="targets-project-stat-boxes">';
     html += '<div class="stat-box"><div class="stat-value">' + totalSessions +
-            '</div><div class="stat-label">Sessions</div></div>';
+            '</div><div class="stat-label">' + plural(totalSessions, 'Session') + '</div></div>';
     html += '<div class="stat-box"><div class="stat-value">' + totalHours.toFixed(1) +
             '<span class="unit">h</span></div><div class="stat-label">Integration</div></div>';
     html += '<div class="stat-box"><div class="stat-value">' + totalFrames +
-            '</div><div class="stat-label">Frames</div></div>';
+            '</div><div class="stat-label">' + plural(totalFrames, 'Frame') + '</div></div>';
     html += '<div class="stat-box"><div class="stat-value">' + (hfrCount > 0 ? (avgHFR / hfrCount).toFixed(2) : '--') +
             '<span class="unit">px</span></div><div class="stat-label">Avg HFR</div></div>';
     html += '</div>'; // .targets-project-stat-boxes
@@ -1081,7 +1096,7 @@ window.addEventListener('resize', function() {
 // ── Target Detail Panel (Phase 2) ────────────────────────────────────────
 
 // Filter ordering for stacked bars — consistent across all bars in a chart
-var TDP_FILTER_STACK_ORDER = ['L', 'R', 'G', 'B', 'H', 'O', 'S', 'N'];
+var TDP_FILTER_STACK_ORDER = ['L', 'R', 'G', 'B', 'H', 'S', 'O', 'N'];
 
 function tdpFmtDuration(mins) {
   if (!mins || mins <= 0) return '--';
@@ -1090,6 +1105,12 @@ function tdpFmtDuration(mins) {
   if (h === 0) return m + 'm';
   if (m === 0) return h + 'h';
   return h + 'h ' + m + 'm';
+}
+function tdpFmtFilterSecs(secs) {
+  if (secs == null || isNaN(secs) || secs < 0) return '--';
+  if (secs < 60) return Math.round(secs) + 's';
+  if (secs < 3600) return Math.round(secs / 60) + 'm';
+  return (secs / 3600).toFixed(1) + 'h';
 }
 
 function tdpFmtDate(iso) {
@@ -1311,10 +1332,9 @@ function renderTargetDetailPanel(data, targetName, ts) {
       .map(function(f) {
         var fHFR = f.avgHFR != null ? f.avgHFR.toFixed(2) : '--';
         var fGuide = f.avgGuidingRMS != null ? f.avgGuidingRMS.toFixed(2) + '"' : '--';
-        var fMin = Math.round((f.integrationSeconds || 0) / 60);
         return '<tr class="tdp-filter-subrow" data-for="' + idx + '" style="display:none">' +
           '<td></td>' +
-          '<td class="pdp-subrow-integration">' + filterTypePill(f.filter) + '<span>' + esc(tdpFmtDuration(fMin)) + '</span></td>' +
+          '<td class="pdp-subrow-integration">' + filterTypePill(f.filter) + '<span>' + esc(tdpFmtFilterSecs(f.integrationSeconds || 0)) + '</span></td>' +
           '<td>' + (f.frames || 0) + '</td>' +
           '<td>' + esc(fHFR) + '</td>' +
           '<td>' + esc(fGuide) + '</td>' +
@@ -1344,14 +1364,14 @@ function renderTargetDetailPanel(data, targetName, ts) {
   var titlePills = '';
   if (ts && ts.project) {
     var proj = ts.project;
+    var pType = projectType(!!proj.isMosaic, proj.targetCount);
+    var typeLabel = pType === 'single' ? 'Single' : pType === 'multi' ? 'Multi' : 'Mosaic';
+    titlePills += '<span class="targets-project-type-badge">' + typeLabel + '</span>';
     titlePills += '<span class="tdp-project-state-pill" data-state="' + esc(proj.state || 'Draft') +
       '" data-project-guid="' + esc(proj.guid || '') + '" title="Click to override status">' +
       esc(proj.state || 'Draft') +
-      (proj.stateSource === 'override' ? ' \u00b7' : '') +
+      (proj.stateSource === 'override' ? '<span class="override-mark" title="User override active"></span>' : '') +
       '</span>';
-    if (proj.isMosaic) {
-      titlePills += '<span class="tdp-type-pill">Mosaic Panel</span>';
-    }
   }
 
   // ── TS Progress bars ─────────────────────────────────────────────────────
@@ -1422,6 +1442,7 @@ function renderTargetDetailPanel(data, targetName, ts) {
     if (goalRows || overallRow) {
       tdpProgressHtml = '<div class="tdp-progress-section">' +
         '<div class="tdp-project-progress-grid">' + goalRows + overallRow + '</div>' +
+        '<div class="tdp-progress-hint">TS-reported progress · may include frames captured before Night Summary was active</div>' +
       '</div>';
     }
   }
@@ -1979,8 +2000,10 @@ function renderProjectDetailPanel(data) {
   html += '<div class="pdp-header">';
   html += '<div class="pdp-header-title-row">';
   html += '<h2 class="pdp-title">' + esc(proj.name || 'Project') + '</h2>';
+  var pType = projectType(!!proj.isMosaic, panels.length);
+  var typeLabel = pType === 'single' ? 'Single' : pType === 'multi' ? 'Multi' : 'Mosaic';
+  html += '<span class="targets-project-type-badge">' + typeLabel + '</span>';
   html += '<span class="target-card-ts-badge" data-state="' + esc(proj.state || '') + '">' + esc(proj.state || '') + '</span>';
-  if (proj.isMosaic) html += '<span class="targets-project-mosaic-badge">Mosaic</span>';
   html += '</div>';
 
   // Date row
@@ -2123,6 +2146,7 @@ function renderProjectDetailPanel(data) {
     html += '<div class="pdp-ts-progress-section">';
     html += '<div class="pdp-section-title">TS Progress</div>';
     html += '<div class="tdp-project-progress-grid">' + pdpProgressRows + pdpOverallRow + '</div>';
+    html += '<div class="tdp-progress-hint">TS-reported progress · may include frames captured before Night Summary was active</div>';
     html += '</div>';
   }
 
@@ -2315,7 +2339,7 @@ function renderPdpPanelCard(panel, idx, tsTarget) {
     html += '<div class="pdp-panel-filters">';
     panel.filters.forEach(function(f) {
       html += '<span class="pdp-panel-filter-item">' + filterTypePill(f.filter) +
-        '<span class="pdp-panel-filter-hrs">' + (f.totalHours || 0).toFixed(1) + 'h</span></span>';
+        '<span class="pdp-panel-filter-hrs">' + tdpFmtFilterSecs(f.totalSeconds != null ? f.totalSeconds : (f.totalHours || 0) * 3600) + '</span></span>';
     });
     html += '</div>';
   }
@@ -2361,7 +2385,6 @@ function buildPdpSessionTable(sessions, showTargetCol) {
     var subRows = sortedFilters.map(function(f, fi) {
       var fHFR = f.avgHFR != null ? f.avgHFR.toFixed(2) : '--';
       var fGuide = f.avgGuidingRMS != null ? f.avgGuidingRMS.toFixed(2) + '"' : '--';
-      var fMin = Math.round((f.integrationSeconds || 0) / 60);
       var firstCell = '<td></td>';
       if (showTargetCol) {
         var tgtName = fi < targets.length ? targets[fi] : '';
@@ -2369,7 +2392,7 @@ function buildPdpSessionTable(sessions, showTargetCol) {
       }
       return '<tr class="tdp-filter-subrow" data-for="' + idx + '" style="display:none">' +
         firstCell +
-        '<td class="pdp-subrow-integration">' + filterTypePill(f.filter) + '<span>' + esc(tdpFmtDuration(fMin)) + '</span></td>' +
+        '<td class="pdp-subrow-integration">' + filterTypePill(f.filter) + '<span>' + esc(tdpFmtFilterSecs(f.integrationSeconds || 0)) + '</span></td>' +
         '<td>' + (f.frames || 0) + '</td>' +
         '<td>' + esc(fHFR) + '</td>' +
         '<td>' + esc(fGuide) + '</td>' +
@@ -2556,14 +2579,14 @@ function renderPdpPanelDrillDown(data, panelName, panelData, projectData, projec
   var ts = panelData ? findTsForTarget(panelName) : null;
   if (ts && ts.project) {
     var proj = ts.project;
+    var pType = projectType(!!proj.isMosaic, proj.targetCount);
+    var typeLabel = pType === 'single' ? 'Single' : pType === 'multi' ? 'Multi' : 'Mosaic';
+    titlePills += '<span class="targets-project-type-badge">' + typeLabel + '</span>';
     titlePills += '<span class="tdp-project-state-pill" data-state="' + esc(proj.state || 'Draft') +
       '" data-project-guid="' + esc(proj.guid || '') + '">' +
       esc(proj.state || 'Draft') +
-      (proj.stateSource === 'override' ? ' \u00b7' : '') +
+      (proj.stateSource === 'override' ? '<span class="override-mark" title="User override active"></span>' : '') +
       '</span>';
-    if (proj.isMosaic) {
-      titlePills += '<span class="tdp-type-pill">Mosaic Panel</span>';
-    }
   }
 
   // ── TS Progress bars ─────────────────────────────────────────────────
@@ -2617,7 +2640,7 @@ function renderPdpPanelDrillDown(data, panelName, panelData, projectData, projec
         '</div>';
     }
     if (goalRows || overallRow) {
-      progressHtml = '<div class="tdp-progress-section"><div class="tdp-project-progress-grid">' + goalRows + overallRow + '</div></div>';
+      progressHtml = '<div class="tdp-progress-section"><div class="tdp-project-progress-grid">' + goalRows + overallRow + '</div><div class="tdp-progress-hint">TS-reported progress · may include frames captured before Night Summary was active</div></div>';
     }
   }
 
@@ -2915,6 +2938,8 @@ function loadTargetThumbnails() {
 // ── Sessions List Page ─────────────────────────────────────────────────────
 
 var sessionsCache = [];
+var SESSION_PAGE_SIZE = 25;
+var visibleSessionCount = SESSION_PAGE_SIZE;
 var initialLoadDone = false; // true after first successful render; skip fade on subsequent renders
 var selectedTargets = {}; // target name -> boolean (true = selected)
 var showEmptySessions = false; // hide 0-image sessions by default
@@ -2946,6 +2971,20 @@ function getAllTargets() {
     s.targets.forEach(function(t) { targets[t] = true; });
   });
   return Object.keys(targets).sort();
+}
+
+function getSubtitleText() {
+  var visible = sessionsCache.filter(function(s) { return !hiddenSessions[s.sessionId]; });
+  var targets = {};
+  visible.forEach(function(s) { s.targets.forEach(function(t) { targets[t] = true; }); });
+  var tc = Object.keys(targets).length;
+  var sc = visible.length;
+  return tc + ' ' + plural(tc, 'target') + ' · ' + sc + ' ' + plural(sc, 'session');
+}
+
+function updateSubtitle() {
+  var sub = document.getElementById('page-subtitle');
+  if (sub) sub.textContent = getSubtitleText();
 }
 
 // ── Sessions V2: trophy case + hero card + historical expander ──────────────
@@ -3159,13 +3198,12 @@ function buildCalendarHeatmap(sessions) {
     return 'hsl(215,' + sat + '%,' + lit + '%)';
   }
 
-  var svg = '<svg class="lifetime-calendar" viewBox="0 0 ' + svgW + ' ' + svgH + '" ';
-  svg += 'preserveAspectRatio="xMinYMid meet" ';
-  svg += 'width="' + svgW + '" height="' + svgH + '" style="max-width:100%;height:auto">';
+  var cellData = [];
+  var svgBody = '';
 
   // DOW labels (all 7)
   DOW_LABELS.forEach(function(label, i) {
-    svg += '<text class="lifetime-heatmap-dow" x="' + (DOW_W - 4) + '" y="' + (TOP_H + i * STEP + Math.floor(CELL * 0.75)) + '" text-anchor="end">' + esc(label) + '</text>';
+    svgBody += '<text class="lifetime-heatmap-dow" x="' + (DOW_W - 4) + '" y="' + (TOP_H + i * STEP + Math.floor(CELL * 0.75)) + '" text-anchor="end">' + esc(label) + '</text>';
   });
 
   // Cells + month labels
@@ -3189,24 +3227,32 @@ function buildCalendarHeatmap(sessions) {
       var clickable = sessInfo && sessInfo.id;
       var fillColor = isLatest ? 'rgb(212,160,106)' : cellColor(secs);
       if (isLatest) {
-        svg += '<rect x="' + (cx - 4) + '" y="' + (cy - 4) + '" width="' + (CELL + 8) + '" height="' + (CELL + 8) + '" fill="rgb(212,160,106)" opacity="0.12" rx="3"/>';
-        svg += '<rect x="' + (cx - 2) + '" y="' + (cy - 2) + '" width="' + (CELL + 4) + '" height="' + (CELL + 4) + '" fill="rgb(212,160,106)" opacity="0.28" rx="2.5"/>';
+        svgBody += '<rect x="' + (cx - 4) + '" y="' + (cy - 4) + '" width="' + (CELL + 8) + '" height="' + (CELL + 8) + '" fill="rgb(212,160,106)" opacity="0.12" rx="3"/>';
+        svgBody += '<rect x="' + (cx - 2) + '" y="' + (cy - 2) + '" width="' + (CELL + 4) + '" height="' + (CELL + 4) + '" fill="rgb(212,160,106)" opacity="0.28" rx="2.5"/>';
       }
       var rect = '<rect class="lifetime-heatmap-cell lw-bar' + (clickable ? ' is-clickable' : '') + (isLatest ? ' lw-bar-latest' : '') + '" x="' + cx + '" y="' + cy + '" width="' + CELL + '" height="' + CELL + '" rx="2" fill="' + fillColor + '" data-lw-tgt="' + esc(tgtStr) + '" data-lw-meta="' + esc(tipMeta) + '" data-lw-latest="' + (isLatest ? '1' : '0') + '"/>';
       if (clickable && !IS_TOUCH) {
-        svg += '<a href="/api/sessions/' + encodeURIComponent(sessInfo.id) + '/report" target="_blank" rel="noopener">' + rect + '</a>';
+        svgBody += '<a href="/api/sessions/' + encodeURIComponent(sessInfo.id) + '/report" target="_blank" rel="noopener">' + rect + '</a>';
       } else {
-        svg += rect;
+        svgBody += rect;
+      }
+      if (secs > 0) {
+        cellData.push({x: cx, y: cy, w: CELL, h: CELL, d: dk, i: secs, n: imgs, t: tgtStr,
+          sid: (sessInfo && sessInfo.id) || '', hr: !!(sessInfo && sessInfo.id)});
       }
       if (dow === 0 && mo !== prevMonth) {
         var mlabel = MNAMES[mo] + (mo === 0 ? ' ' + yr : '');
-        svg += '<text class="lifetime-heatmap-month" x="' + cx + '" y="' + (TOP_H - 5) + '">' + esc(mlabel) + '</text>';
+        svgBody += '<text class="lifetime-heatmap-month" x="' + cx + '" y="' + (TOP_H - 5) + '">' + esc(mlabel) + '</text>';
         prevMonth = mo;
       }
     }
   }
 
-  svg += '</svg>';
+  var svg = '<svg class="lifetime-calendar" viewBox="0 0 ' + svgW + ' ' + svgH + '" ' +
+    'preserveAspectRatio="xMinYMid meet" ' +
+    'width="' + svgW + '" height="' + svgH + '" ' +
+    'data-cells=\'' + JSON.stringify(cellData).replace(/'/g, '&#39;') + '\' ' +
+    'style="max-width:100%;height:auto">' + svgBody + '</svg>';
   return svg;
 }
 
@@ -3234,9 +3280,9 @@ function renderLifetimeStrip(sessions) {
     + (hasChart ? ' onclick="toggleLifetimeExpand(this)"' : '') + '>';
   html += '<div class="lifetime-stats-row">';
   html += '<div class="lifetime-stats">';
-  html += '<div class="card-stat lifetime-card-stat"><div class="card-stat-value">' + totalSessions + '</div><div class="card-stat-label">Sessions</div></div>';
-  html += '<div class="card-stat lifetime-card-stat"><div class="card-stat-value">' + targetCount + '</div><div class="card-stat-label">Targets</div></div>';
-  html += '<div class="card-stat lifetime-card-stat"><div class="card-stat-value">' + totalImages + '</div><div class="card-stat-label">Images</div></div>';
+  html += '<div class="card-stat lifetime-card-stat"><div class="card-stat-value">' + totalSessions + '</div><div class="card-stat-label">' + plural(totalSessions, 'Session') + '</div></div>';
+  html += '<div class="card-stat lifetime-card-stat"><div class="card-stat-value">' + targetCount + '</div><div class="card-stat-label">' + plural(targetCount, 'Target') + '</div></div>';
+  html += '<div class="card-stat lifetime-card-stat"><div class="card-stat-value">' + totalImages + '</div><div class="card-stat-label">' + plural(totalImages, 'Image') + '</div></div>';
   html += '<div class="card-stat lifetime-card-stat"><div class="card-stat-value">' + (totalIntegSec / 3600).toFixed(1) + '<span class="card-stat-unit">h</span></div><div class="card-stat-label">Integration</div></div>';
   html += '</div>';
   html += '<div class="lv-toggle">';
@@ -3274,6 +3320,14 @@ function toggleLifetimeExpand(strip) {
       [50, 200].forEach(function(ms) { setTimeout(snap, ms); });
     }
   }
+}
+
+function positionPopup(infoEl, anchorX, refEl) {
+  var w = infoEl.offsetWidth;
+  var rawLeft = anchorX - w / 2;
+  infoEl.style.left = Math.max(8, Math.min(rawLeft, window.innerWidth - w - 8)) + 'px';
+  var r = refEl.getBoundingClientRect();
+  infoEl.style.top = Math.max(0, r.top - infoEl.offsetHeight - 4) + 'px';
 }
 
 function initWaveformScrubber(container) {
@@ -3327,8 +3381,8 @@ function initWaveformScrubber(container) {
         '<span class="lw-si-stats">' + fmt(b.i) + ' \u00b7 ' + b.n + ' images</span>' +
         (b.t ? '<span class="lw-si-tgts">' + esc(b.t) + '</span>' : '');
       info.classList.add('lw-scrubber-active');
-      var slotRect = slot.getBoundingClientRect();
-      info.style.top = Math.max(0, slotRect.top - info.offsetHeight - 4) + 'px';
+      var anchorX = currentBar ? currentBar.getBoundingClientRect().left + currentBar.getBoundingClientRect().width / 2 : clientX;
+      positionPopup(info, anchorX, slot);
     }
   }
 
@@ -3351,8 +3405,8 @@ function initWaveformScrubber(container) {
     info.classList.add('lw-scrubber-pinned');
     info.style.pointerEvents = 'auto';
     requestAnimationFrame(function() {
-      var slotRect = slot.getBoundingClientRect();
-      info.style.top = Math.max(0, slotRect.top - info.offsetHeight - 4) + 'px';
+      var anchorX = currentBar ? currentBar.getBoundingClientRect().left + currentBar.getBoundingClientRect().width / 2 : window.innerWidth / 2;
+      positionPopup(info, anchorX, slot);
     });
     var dismissBtn = info.querySelector('.lw-si-dismiss');
     if (dismissBtn) {
@@ -3416,6 +3470,7 @@ function initWaveformScrubber(container) {
     scrubbing = false;
     longPressTimer = setTimeout(function() {
       longPressTimer = null;
+      dismissing = false; // committed to new scrub, not just dismissing old pin
       scrubbing = true;
       showAt(lastTouchX);
     }, LONG_PRESS_MS);
@@ -3454,6 +3509,180 @@ function initWaveformScrubber(container) {
   });
 }
 
+function initCalendarScrubber(container) {
+  if (!IS_TOUCH) return;
+  var slot = container.querySelector('.lifetime-calendar-slot');
+  if (!slot) return;
+  var svg = slot.querySelector('svg.lifetime-calendar');
+  if (!svg) return;
+  var cells = [];
+  try { cells = JSON.parse(svg.getAttribute('data-cells') || '[]'); } catch (e) {}
+  if (!cells.length) return;
+
+  var latestCell = null;
+  cells.forEach(function(c) { if (!latestCell || c.d > latestCell.d) latestCell = c; });
+
+  var info = document.createElement('div');
+  info.className = 'lw-scrubber-info';
+  document.body.appendChild(info);
+
+  var currentCell = null;
+  var currentCellEl = null;
+  var pinned = false;
+  var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  function findNearest(clientX, clientY) {
+    var svgRect = svg.getBoundingClientRect();
+    var vb = (svg.getAttribute('viewBox') || '0 0 680 200').split(' ');
+    var svgW = parseFloat(vb[2]) || 680, svgH = parseFloat(vb[3]) || 200;
+    var tx = ((clientX - svgRect.left) / svgRect.width) * svgW;
+    var ty = ((clientY - svgRect.top) / svgRect.height) * svgH;
+    var best = null, bestDist = Infinity;
+    cells.forEach(function(c) {
+      var dx = (c.x + c.w / 2) - tx, dy = (c.y + c.h / 2) - ty;
+      var d = Math.sqrt(dx * dx + dy * dy);
+      if (d < bestDist) { bestDist = d; best = c; }
+    });
+    return best;
+  }
+
+  function getCellEl(c) {
+    var rects = svg.querySelectorAll('.lw-bar');
+    for (var i = 0; i < rects.length; i++) {
+      if (parseFloat(rects[i].getAttribute('x')) === c.x && parseFloat(rects[i].getAttribute('y')) === c.y) return rects[i];
+    }
+    return null;
+  }
+
+  function renderCell(c, anchorX) {
+    if (currentCellEl) currentCellEl.classList.remove('lw-bar-selected');
+    currentCell = c;
+    currentCellEl = getCellEl(c);
+    if (currentCellEl) currentCellEl.classList.add('lw-bar-selected');
+    var dt = new Date(c.d + 'T12:00:00');
+    var dateStr = MONTHS[dt.getMonth()] + ' ' + dt.getDate() + ', ' + dt.getFullYear();
+    info.innerHTML =
+      '<span class="lw-si-date">' + esc(dateStr) + '</span>' +
+      '<span class="lw-si-stats">' + fmt(c.i) + ' · ' + c.n + ' images</span>' +
+      (c.t ? '<span class="lw-si-tgts">' + esc(c.t) + '</span>' : '');
+    info.classList.add('lw-scrubber-active');
+    var ax = anchorX != null ? anchorX : (currentCellEl ? currentCellEl.getBoundingClientRect().left + currentCellEl.getBoundingClientRect().width / 2 : window.innerWidth / 2);
+    positionPopup(info, ax, slot);
+  }
+
+  function showAt(clientX, clientY) {
+    if (pinned) return;
+    var c = findNearest(clientX, clientY);
+    if (c) renderCell(c, clientX);
+  }
+
+  function showCell(c) {
+    if (pinned || !c) return;
+    renderCell(c, null);
+  }
+
+  function pin() {
+    if (!currentCell || !info) return;
+    pinned = true;
+    var c = currentCell;
+    var dt = new Date(c.d + 'T12:00:00');
+    var dateStr = MONTHS[dt.getMonth()] + ' ' + dt.getDate() + ', ' + dt.getFullYear();
+    info.innerHTML =
+      '<span class="lw-si-date">' + esc(dateStr) + '</span>' +
+      '<span class="lw-si-stats">' + fmt(c.i) + ' · ' + c.n + ' images</span>' +
+      (c.t ? '<span class="lw-si-tgts">' + esc(c.t) + '</span>' : '') +
+      '<div class="lw-si-actions">' +
+      (c.hr ? '<button class="lw-si-report-btn">Open Report →</button>' : '<span class="lw-si-no-report">No report</span>') +
+      '<button class="lw-si-dismiss">×</button>' +
+      '</div>';
+    info.classList.add('lw-scrubber-pinned');
+    info.style.pointerEvents = 'auto';
+    requestAnimationFrame(function() {
+      var ax = currentCellEl ? currentCellEl.getBoundingClientRect().left + currentCellEl.getBoundingClientRect().width / 2 : window.innerWidth / 2;
+      positionPopup(info, ax, slot);
+    });
+    var dismissBtn = info.querySelector('.lw-si-dismiss');
+    if (dismissBtn) {
+      dismissBtn.addEventListener('touchend', function(e) { e.stopPropagation(); e.preventDefault(); hide(); }, {passive: false});
+      dismissBtn.addEventListener('click', function(e) { e.stopPropagation(); hide(); });
+    }
+    var reportBtn = info.querySelector('.lw-si-report-btn');
+    if (reportBtn) {
+      reportBtn.addEventListener('touchend', function(e) {
+        e.stopPropagation(); e.preventDefault(); hide(); navigate('#/sessions/' + c.sid);
+      }, {passive: false});
+      reportBtn.addEventListener('click', function(e) {
+        e.stopPropagation(); e.preventDefault(); hide(); navigate('#/sessions/' + c.sid);
+      });
+    }
+    setTimeout(function() {
+      function outsideHandler() { if (pinned) hide(); document.removeEventListener('click', outsideHandler); }
+      document.addEventListener('click', outsideHandler);
+    }, 0);
+  }
+
+  function hide() {
+    pinned = false;
+    currentCell = null;
+    if (currentCellEl) { currentCellEl.classList.remove('lw-bar-selected'); currentCellEl = null; }
+    info.classList.remove('lw-scrubber-active');
+    info.classList.remove('lw-scrubber-pinned');
+    info.style.pointerEvents = '';
+  }
+
+  info.addEventListener('click', function(e) { e.stopPropagation(); });
+
+  var touchStartX = 0, touchStartY = 0, lastTouchX = 0, lastTouchY = 0;
+  var scrubbing = false, dismissing = false, longPressTimer = null;
+  var LONG_PRESS_MS = 280;
+
+  function cancelLongPress() {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+  }
+
+  svg.addEventListener('touchstart', function(e) {
+    dismissing = pinned;
+    if (pinned) hide();
+    touchStartX = lastTouchX = e.touches[0].clientX;
+    touchStartY = lastTouchY = e.touches[0].clientY;
+    scrubbing = false;
+    longPressTimer = setTimeout(function() {
+      longPressTimer = null;
+      scrubbing = true;
+      showCell(latestCell);
+    }, LONG_PRESS_MS);
+  }, {passive: true});
+
+  svg.addEventListener('touchmove', function(e) {
+    lastTouchX = e.touches[0].clientX;
+    lastTouchY = e.touches[0].clientY;
+    if (scrubbing) {
+      e.preventDefault();
+      showAt(lastTouchX, lastTouchY);
+    } else {
+      var dx = Math.abs(lastTouchX - touchStartX), dy = Math.abs(lastTouchY - touchStartY);
+      if (dx > 8 || dy > 8) cancelLongPress();
+    }
+  }, {passive: false});
+
+  svg.addEventListener('touchend', function(e) {
+    cancelLongPress();
+    if (scrubbing) {
+      scrubbing = false;
+      if (!dismissing) pin();
+    } else if (!dismissing) {
+      var dx = Math.abs(e.changedTouches[0].clientX - touchStartX);
+      var dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
+      if (dx < 10 && dy < 10) { showAt(touchStartX, touchStartY); pin(); }
+    }
+    dismissing = false;
+  });
+
+  svg.addEventListener('touchcancel', function() {
+    cancelLongPress(); scrubbing = false; dismissing = false; hide();
+  });
+}
+
 function renderHeroSection(session) {
   var s = session;
   var sessionTimes = fmtTime(s.sessionStart) + ' \u2013 ' + fmtTime(s.sessionEnd);
@@ -3467,7 +3696,7 @@ function renderHeroSection(session) {
     ' &middot; FWHM <span class="stat-val">' + fmtNum(s.avgFwhm) + '</span>&Prime;' +
     ' &middot; <span class="stat-val">' + fmtNum(s.avgGuiding) + '&Prime;</span> guiding';
   var statBoxes = '<div class="card-stats">' +
-    '<div class="card-stat card-stat-expandable stat-images" data-stat-type="images" data-session-id="' + s.sessionId + '"><div class="card-stat-value">' + s.imageCount + '</div><div class="card-stat-label">Images</div></div>' +
+    '<div class="card-stat card-stat-expandable stat-images" data-stat-type="images" data-session-id="' + s.sessionId + '"><div class="card-stat-value">' + s.imageCount + '</div><div class="card-stat-label">' + plural(s.imageCount, 'Image') + '</div></div>' +
     '<div class="card-stat card-stat-expandable stat-integration" data-stat-type="integration" data-session-id="' + s.sessionId + '"><div class="card-stat-value">' + fmt(s.totalIntegrationSeconds) + '</div><div class="card-stat-label">Integration</div></div>' +
     '<div class="card-stat stat-hfr"><div class="card-stat-value">' + fmtNum(s.avgHfr) + 'px</div><div class="card-stat-label">HFR</div></div>' +
     '<div class="card-stat stat-fwhm"><div class="card-stat-value">' + fmtNum(s.avgFwhm) + '&Prime;</div><div class="card-stat-label">FWHM</div></div>' +
@@ -3525,7 +3754,7 @@ function renderSessionsV2(el, sub, params) {
   var earlierCount = sessions.length - 1;
   var isOpen = localStorage.getItem('ns-sessions-expander') !== 'closed';
 
-  if (sub) sub.textContent = fmtDate(hero.sessionStart);
+  if (sub) sub.textContent = getSubtitleText();
 
   var html = renderLifetimeStrip(sessions);
   var heroModeClass = cardViewMode === 'compact' ? ' cards-compact' : '';
@@ -3567,6 +3796,7 @@ function renderSessionsV2(el, sub, params) {
   }
 
   initWaveformScrubber(el);
+  initCalendarScrubber(el);
 
   // Load hero card assets
   loadThumbnails([hero]);
@@ -3638,7 +3868,8 @@ function renderSessionList(params) {
   });
 }
 
-function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
+function doRenderList(el, sub, fromFilter, toFilter, sortBy, keepPage) {
+  if (!keepPage) visibleSessionCount = SESSION_PAGE_SIZE;
   // Build target dropdown filter
   var allTargets = getAllTargets();
   var activeCount = allTargets.filter(function(t) { return selectedTargets[t] !== false; }).length;
@@ -3737,7 +3968,9 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
     return b.sessionStart.localeCompare(a.sessionStart); // date-desc default
   });
 
-  if (sub) sub.textContent = filtered.length + ' of ' + sessionsCache.length + ' sessions';
+  var visible = filtered.slice(0, visibleSessionCount);
+
+  if (sub) sub.textContent = getSubtitleText();
 
   if (sessionsCache.length === 0) {
     el.innerHTML = filterHtml + '<div class="empty">No sessions recorded yet.</div>';
@@ -3751,7 +3984,7 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
     return;
   }
 
-  var cards = filtered.map(function(s) {
+  var cards = visible.map(function(s) {
     var targetsText = s.targets.length > 0
       ? s.targets.map(function(t, i) { return makeTargetBadge(t, i); }).join('')
       : '<span style="color:var(--text-quaternary);font-size:12px">No targets</span>';
@@ -3767,7 +4000,7 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
       ' &middot; <span class="stat-val">' + fmtNum(s.avgGuiding) + '&Prime;</span> guiding';
 
     var statBoxes = '<div class="card-stats">' +
-      '<div class="card-stat card-stat-expandable stat-images" data-stat-type="images" data-session-id="' + s.sessionId + '"><div class="card-stat-value">' + s.imageCount + '</div><div class="card-stat-label">Images</div></div>' +
+      '<div class="card-stat card-stat-expandable stat-images" data-stat-type="images" data-session-id="' + s.sessionId + '"><div class="card-stat-value">' + s.imageCount + '</div><div class="card-stat-label">' + plural(s.imageCount, 'Image') + '</div></div>' +
       '<div class="card-stat card-stat-expandable stat-integration" data-stat-type="integration" data-session-id="' + s.sessionId + '"><div class="card-stat-value">' + fmt(s.totalIntegrationSeconds) + '</div><div class="card-stat-label">Integration</div></div>' +
       '<div class="card-stat stat-hfr"><div class="card-stat-value">' + fmtNum(s.avgHfr) + 'px</div><div class="card-stat-label">HFR</div></div>' +
       '<div class="card-stat stat-fwhm"><div class="card-stat-value">' + fmtNum(s.avgFwhm) + '&Prime;</div><div class="card-stat-label">FWHM</div></div>' +
@@ -3800,10 +4033,18 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
     ? 'opacity:0;transition:opacity 400ms cubic-bezier(0.22,1,0.36,1)'
     : 'opacity:1';
 
-  el.innerHTML = filterHtml + '<div class="cards-container' + modeClass + '" style="' + fadeStyle + '">' + cards + '</div>';
+  var remaining = filtered.length - visible.length;
+  var loadMoreHtml = remaining > 0
+    ? '<div class="load-more-wrap">' +
+        '<button class="load-more-btn">Load ' + Math.min(SESSION_PAGE_SIZE, remaining) + ' more</button>' +
+        '<span class="load-more-label">Showing ' + visible.length + ' of ' + filtered.length + '</span>' +
+      '</div>'
+    : '';
+
+  el.innerHTML = filterHtml + '<div class="cards-container' + modeClass + '" style="' + fadeStyle + '">' + cards + '</div>' + loadMoreHtml;
   bindListEvents();
 
-  loadLiveStacks(filtered);
+  loadLiveStacks(visible);
 
   if (!initialLoadDone && cardViewMode === 'expanded') {
     // First load only: hold opacity:0 until all assets are fetched, then reveal together
@@ -3811,7 +4052,7 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
       var container = el.querySelector('.cards-container');
       if (container) container.style.opacity = '1';
     }
-    var pending = loadThumbnails(filtered).concat(loadAltitudeCharts(filtered));
+    var pending = loadThumbnails(visible).concat(loadAltitudeCharts(visible));
     if (pending.length === 0) {
       requestAnimationFrame(revealContainer);
     } else {
@@ -3823,15 +4064,15 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy) {
     }
     initialLoadDone = true;
   } else {
-    loadThumbnails(filtered);
+    loadThumbnails(visible);
     // Re-render cached charts directly (works even after navigation destroyed the old divs)
-    filtered.forEach(function(s) {
+    visible.forEach(function(s) {
       if (altitudeChartCache[s.sessionId]) {
         renderAltitudeChart(s, altitudeChartCache[s.sessionId]);
       }
     });
     // IO observer for any uncached charts (lazy-loads as they scroll into view)
-    setupAltitudeObserver(filtered);
+    setupAltitudeObserver(visible);
   }
 }
 
@@ -4126,13 +4367,11 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
   // BoundingClientRect so scroll fires can't observe mid-animation values.
   function placeShelf() {
     if (!shelf) return;
-    var vpBottom = _docAnchorBottom - window.scrollY;
-    var vpTop    = _docAnchorTop    - window.scrollY;
     if (_isAbove) {
       var h = shelf.getBoundingClientRect().height;
-      shelf.style.top = (vpTop - h - 12) + 'px';
+      shelf.style.top = (_docAnchorTop - h - 12) + 'px';
     } else {
-      shelf.style.top = (vpBottom + 12) + 'px';
+      shelf.style.top = (_docAnchorBottom + 12) + 'px';
     }
     shelf.style.left = _cx + 'px';
     var sr = shelf.getBoundingClientRect();
@@ -4219,7 +4458,7 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
     // depending on browser timing. We compute the overhang manually.
     var wrapRect = thumbWrap.getBoundingClientRect();
     thumbWrap.classList.add('shelf-active');
-    shelf.style.position = 'fixed';
+    shelf.style.position = 'absolute';
     document.body.appendChild(shelf);
 
     // Compute explicit shelf width based on image count so the inner flex
@@ -4313,19 +4552,8 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
       }
     });
 
-    // rAF-batched scroll tracking so the shelf stays anchored to the thumb.
-    // placeShelf() uses live getBoundingClientRect — correct post-animation.
-    // Batching to one update per frame prevents jank.
-    var _rafPending = false;
-    _scrollHandler = function() {
-      if (_rafPending) return;
-      _rafPending = true;
-      requestAnimationFrame(function() {
-        _rafPending = false;
-        placeShelf();
-      });
-    };
-    window.addEventListener('scroll', _scrollHandler, { passive: true });
+    // position:absolute on body means the shelf lives in document coordinates —
+    // scroll moves it with the page naturally, no tracking needed.
 
     // Shelf hover: keep alive when mouse enters shelf
     shelf.addEventListener('mouseenter', function() {
@@ -4409,8 +4637,7 @@ function hideSession(sessionId) {
     // Update subtitle
     var sub = document.getElementById('page-subtitle');
     if (sub) {
-      var visible = document.querySelectorAll('.session-card').length;
-      sub.textContent = visible + ' of ' + sessionsCache.length + ' sessions';
+      sub.textContent = getSubtitleText();
     }
 
     // Update or create unhide-all button in the filter bar
@@ -5738,6 +5965,20 @@ function bindListEvents() {
     });
   });
 
+  // Load more button
+  var loadMoreBtn = document.querySelector('.load-more-btn');
+  if (loadMoreBtn) {
+    loadMoreBtn.addEventListener('click', function() {
+      visibleSessionCount += SESSION_PAGE_SIZE;
+      var f = getFilters();
+      var sub = document.getElementById('page-subtitle');
+      var listEl = sessionsV2Mode
+        ? (document.getElementById('sessions-history') || document.getElementById('content'))
+        : document.getElementById('content');
+      doRenderList(listEl, sub, f.from, f.to, f.sort, true);
+    });
+  }
+
   // On mobile, move the view toggle into the header area
   repositionViewToggle();
 }
@@ -6355,7 +6596,7 @@ function pollRegenAllProgress(sessionId, regenBtn, regenAllBtn, statusEl) {
 
 var statsTargetData = null;
 // Phase 3a: Target Scheduler integration state (populated by renderStats on each load)
-var statsTsStatus   = null;   // "available" | "not_installed" | "error" | null
+var statsTsStatus   = localStorage.getItem('ns-ts-status') || null;   // "available" | "not_installed" | "error" | null
 var statsTsError    = null;   // string or null
 var statsTsProjects = null;   // array of { guid, name, state, isMosaic, isCustom, targetCount, targets: [{guid,name}] }
 var statsProjectAssignments = null; // { "target name (lowercase)": ["project-guid", ...] }
@@ -6878,6 +7119,10 @@ function buildTonightTimeline(entries, targets, colorMap, uniqueNames, timelineS
 // ── Phase 3a: TS status banner ─────────────────────────────────────────────
 
 function renderTsStatusBanner() {
+  var nativeTsProjects = statsTsProjects ? statsTsProjects.filter(function(p) { return !p.isCustom; }) : [];
+  if (statsTsStatus === 'available' && nativeTsProjects.length === 0) {
+    return '<div class="ts-status-banner info">No Target Scheduler projects found — TS features (completion tracking, exposure plans) unavailable. Create a project in Target Scheduler, or use Manage Projects to add a manual project.</div>';
+  }
   if (statsTsStatus === 'available' || statsTsStatus == null) return '';
   if (statsTsStatus === 'not_installed') {
     // Silent when TS isn't installed — no banner, no clutter
@@ -7944,7 +8189,7 @@ function buildActivityHeatmap(sessions, firstSessionIso) {
 function renderStats() {
   var el = document.getElementById('content');
   var sub = document.getElementById('page-subtitle');
-  sub.textContent = 'Lifetime Statistics';
+  if (sub) sub.textContent = getSubtitleText();
 
   el.innerHTML = '<div class="loading">Loading stats...</div>';
 
@@ -7958,9 +8203,11 @@ function renderStats() {
     var summary    = results[1];
     var settings   = results[2];
     var sessions   = results[3] || [];
+    if (sessions.length > 0) sessionsCache = sessions;
     var targets = targetData.targets || [];
     statsTargetData = targets;
     statsTsStatus   = targetData.tsStatus   || null;
+    if (statsTsStatus) safeSetItem('ns-ts-status', statsTsStatus);
     statsTsError    = targetData.tsError    || null;
     statsTsProjects = targetData.tsProjects || null;
     statsProjectAssignments = normalizeAssignments(targetData.projectAssignments || {});
@@ -7977,33 +8224,34 @@ function renderStats() {
 
     logInfo('Stats loaded:', summary.totalSessions, 'sessions,', targets.length, 'targets');
 
-    sub.textContent = targets.length + ' target' + (targets.length !== 1 ? 's' : '') +
-      ' \u00b7 ' + summary.totalSessions + ' session' + (summary.totalSessions !== 1 ? 's' : '');
+    if (sub) sub.textContent = getSubtitleText();
 
     var html = '';
 
     // Tab bar + content
-    var tabs = [{id: 'targets', label: 'Targets'}, {id: 'tonight', label: 'Tonight'}];
-    var activeTab = localStorage.getItem('ns-stats-tab') || 'targets';
-    if (!tabs.some(function(t) { return t.id === activeTab; })) activeTab = 'targets';
+    var tsOn = statsTsStatus === 'available';
+    updateStatsNavLabel();
 
-    html += '<div class="stats-tab-row">';
-    html += renderTabBar(tabs, activeTab);
-    html += '<button type="button" class="targets-manage-projects-btn" data-action="manage-projects">Manage Projects</button>';
-    html += '</div>';
-    html += '<div id="stats-tab-content"></div>';
-
-    el.innerHTML = html;
-
-    initTabBar(renderStatsTabContent);
-
-    // Manage Projects button — lives in the tab row, not the targets control bar
-    var manageBtn = el.querySelector('.targets-manage-projects-btn');
-    if (manageBtn) {
-      manageBtn.addEventListener('click', function() { openManageProjectsModal(); });
+    if (tsOn) {
+      var tsNoProjects = !statsTsProjects || statsTsProjects.length === 0;
+      var tabs = [{id: 'targets', label: 'Targets'}, {id: 'tonight', label: 'Tonight', disabled: tsNoProjects}];
+      var activeTab = localStorage.getItem('ns-stats-tab') || 'targets';
+      if (!tabs.some(function(t) { return t.id === activeTab; })) activeTab = 'targets';
+      html += '<div class="stats-tab-row">';
+      html += renderTabBar(tabs, activeTab);
+      html += '<button type="button" class="targets-manage-projects-btn" data-action="manage-projects">Manage Projects</button>';
+      html += '</div>';
+      html += '<div id="stats-tab-content"></div>';
+      el.innerHTML = html;
+      initTabBar(renderStatsTabContent);
+      var manageBtn = el.querySelector('.targets-manage-projects-btn');
+      if (manageBtn) manageBtn.addEventListener('click', function() { openManageProjectsModal(); });
+      renderStatsTabContent(activeTab);
+    } else {
+      html += '<div id="stats-tab-content"></div>';
+      el.innerHTML = html;
+      renderStatsTabContent('targets');
     }
-
-    renderStatsTabContent(activeTab);
   }).catch(function(err) {
     logError('Failed to load stats:', err.message);
     el.innerHTML = '<div class="error">Failed to load stats: ' + esc(err.message) + '</div>';

@@ -11,6 +11,7 @@ namespace NINA.Plugin.NightSummary.DevHost;
 // logic stays in lockstep. TS reads go through DevTsReader against an optional
 // schedulerdb.sqlite path; if absent, TS-related calls return empty/false.
 // When noTs is set, TS is reported unavailable regardless of DB/API config.
+// When emptyProjects is set, TS is available but returns 0 projects (simulates TS installed, never configured).
 internal sealed class DevDashboardDataSource : IDashboardDataSource {
     private readonly string dbPath;
     private readonly string connectionString;
@@ -18,14 +19,16 @@ internal sealed class DevDashboardDataSource : IDashboardDataSource {
     private readonly DevTsReader tsReader;
     private readonly string tsApiHost;
     private readonly bool noTs;
+    private readonly bool emptyProjects;
 
-    public DevDashboardDataSource(string dbPath, IDashboardLogger log, string? tsDbPath = null, string? tsApiHost = null, bool noTs = false) {
+    public DevDashboardDataSource(string dbPath, IDashboardLogger log, string? tsDbPath = null, string? tsApiHost = null, bool noTs = false, bool emptyProjects = false) {
         this.dbPath           = dbPath;
         this.connectionString = $"Data Source={dbPath};Version=3;";
         this.log              = log;
         this.tsReader         = new DevTsReader(tsDbPath ?? "");
         this.tsApiHost        = string.IsNullOrWhiteSpace(tsApiHost) ? "localhost" : tsApiHost;
         this.noTs             = noTs;
+        this.emptyProjects    = emptyProjects;
     }
 
     private SqliteSessionReader Reader() => new SqliteSessionReader(connectionString, log);
@@ -59,10 +62,10 @@ internal sealed class DevDashboardDataSource : IDashboardDataSource {
         => Task.FromResult(!noTs && tsReader.IsAvailable);
 
     public Task<IReadOnlyList<TsProjectInfo>> GetTSProjectsAsync(CancellationToken ct = default)
-        => Task.FromResult<IReadOnlyList<TsProjectInfo>>(noTs ? new List<TsProjectInfo>() : tsReader.GetAllProjects());
+        => Task.FromResult<IReadOnlyList<TsProjectInfo>>(noTs || emptyProjects ? new List<TsProjectInfo>() : tsReader.GetAllProjects());
 
     public Task<TsApiSettings?> GetTSApiSettingsAsync(CancellationToken ct = default) {
-        if (noTs || !tsReader.IsAvailable) return Task.FromResult<TsApiSettings?>(null);
+        if (noTs || emptyProjects || !tsReader.IsAvailable) return Task.FromResult<TsApiSettings?>(null);
         var (enabled, port) = tsReader.GetApiSettings();
         return Task.FromResult<TsApiSettings?>(new TsApiSettings(enabled, port, tsApiHost));
     }

@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Night Summary Docs — v3 Preview</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --sidebar-w: 260px;
+    --sidebar-bg: #1b1d2e;
+    --sidebar-border: #2d2d5e;
+    --sidebar-text: #b0b4c8;
+    --sidebar-active: #7eb8f7;
+    --sidebar-active-bg: rgba(126,184,247,0.1);
+    --bg: #f7f8fc;
+    --surface: #ffffff;
+    --text: #24292f;
+    --text-muted: #57606a;
+    --accent: #2563b8;
+    --border: #d0d7de;
+    --code-bg: #f0f2f6;
+    --new-bg: #e6f4ea;
+    --new-border: #2da44e;
+    --new-text: #1a7f37;
+    --changed-bg: #fff8e1;
+    --changed-border: #d29922;
+    --changed-text: #9a6700;
+    --note-bg: #ddf4ff;
+    --note-border: #54aeff;
+    --important-bg: #fff3cd;
+    --important-border: #d29922;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--text);
+    background: var(--bg);
+    display: flex;
+    min-height: 100vh;
+  }
+
+  /* ── Sidebar ── */
+  #sidebar {
+    width: var(--sidebar-w);
+    min-width: var(--sidebar-w);
+    background: var(--sidebar-bg);
+    border-right: 1px solid var(--sidebar-border);
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sidebar-header {
+    padding: 20px 16px 12px;
+    border-bottom: 1px solid var(--sidebar-border);
+  }
+
+  .sidebar-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: #e0e4f0;
+    letter-spacing: 0.3px;
+  }
+
+  .sidebar-version {
+    font-size: 11px;
+    color: var(--sidebar-active);
+    margin-top: 3px;
+    font-weight: 500;
+  }
+
+  .sidebar-preview-badge {
+    display: inline-block;
+    background: rgba(126,184,247,0.15);
+    border: 1px solid rgba(126,184,247,0.35);
+    color: var(--sidebar-active);
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 7px;
+    border-radius: 100px;
+    letter-spacing: 0.5px;
+    margin-top: 6px;
+  }
+
+  .sidebar-nav { padding: 8px 0; flex: 1; }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 16px;
+    font-size: 13px;
+    color: var(--sidebar-text);
+    text-decoration: none;
+    cursor: pointer;
+    border-left: 2px solid transparent;
+    transition: background 0.1s, color 0.1s;
+  }
+
+  .nav-item:hover {
+    background: rgba(255,255,255,0.05);
+    color: #d0d4e8;
+  }
+
+  .nav-item.active {
+    background: var(--sidebar-active-bg);
+    color: var(--sidebar-active);
+    border-left-color: var(--sidebar-active);
+    font-weight: 600;
+  }
+
+  .nav-new-badge {
+    background: #2da44e;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 100px;
+    letter-spacing: 0.5px;
+    margin-left: auto;
+  }
+
+  .nav-changed-badge {
+    background: #d29922;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 100px;
+    letter-spacing: 0.5px;
+    margin-left: auto;
+  }
+
+  /* ── Main ── */
+  #main {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+  }
+
+  .page-section {
+    display: none;
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 40px 36px 60px;
+  }
+
+  .page-section.visible { display: block; }
+
+  /* ── Content typography ── */
+  h1 { font-size: 28px; font-weight: 700; margin-bottom: 16px; color: #1a1d2e; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+  h2 { font-size: 20px; font-weight: 700; margin: 36px 0 12px; color: #1a1d2e; }
+  h3 { font-size: 16px; font-weight: 700; margin: 24px 0 8px; color: #24292f; }
+  p { margin-bottom: 14px; }
+  ul, ol { margin: 0 0 14px 22px; }
+  li { margin-bottom: 5px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-size: 13px; font-family: 'Cascadia Code', 'Consolas', monospace; }
+  strong { font-weight: 700; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 28px 0; }
+
+  /* ── Tables ── */
+  table { width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 14px; }
+  th { background: var(--code-bg); text-align: left; padding: 8px 12px; border: 1px solid var(--border); font-weight: 600; font-size: 13px; }
+  td { padding: 7px 12px; border: 1px solid var(--border); vertical-align: top; }
+  tr:nth-child(even) td { background: #fafbfd; }
+
+  /* ── Callouts ── */
+  .callout {
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: 14px 0;
+    font-size: 14px;
+  }
+  .callout-note { background: var(--note-bg); border-left: 4px solid var(--note-border); }
+  .callout-important { background: var(--important-bg); border-left: 4px solid var(--important-border); }
+  .callout strong { display: block; margin-bottom: 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #555; }
+
+  /* ── NEW / CHANGED highlight blocks ── */
+  .new-block {
+    border: 1.5px solid var(--new-border);
+    border-radius: 8px;
+    margin: 20px -8px;
+    padding: 0 8px;
+    position: relative;
+  }
+
+  .new-block-label {
+    position: absolute;
+    top: -10px;
+    left: 12px;
+    background: var(--new-border);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 8px;
+    border-radius: 100px;
+    letter-spacing: 0.5px;
+  }
+
+  .changed-block {
+    border: 1.5px solid var(--changed-border);
+    border-radius: 8px;
+    margin: 20px -8px;
+    padding: 0 8px;
+    position: relative;
+  }
+
+  .changed-block-label {
+    position: absolute;
+    top: -10px;
+    left: 12px;
+    background: var(--changed-border);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 8px;
+    border-radius: 100px;
+    letter-spacing: 0.5px;
+  }
+
+  .new-block > *, .changed-block > * { margin-top: 14px; }
+
+  /* ── Page intro banner ── */
+  .page-banner {
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-bottom: 28px;
+    font-size: 14px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .banner-new { background: var(--new-bg); border: 1px solid var(--new-border); }
+  .banner-changed { background: var(--changed-bg); border: 1px solid var(--changed-border); }
+  .banner-icon { font-size: 18px; line-height: 1.4; flex-shrink: 0; }
+  .banner-text { line-height: 1.5; }
+  .banner-text strong { color: var(--new-text); }
+  .banner-changed .banner-text strong { color: var(--changed-text); }
+
+  /* ── Legend ── */
+  .legend {
+    display: flex;
+    gap: 16px;
+    padding: 10px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+  .legend-dot-new { background: var(--new-border); }
+  .legend-dot-changed { background: var(--changed-border); }
+  .legend-dot-existing { background: var(--border); }
+  .legend-label { color: var(--text-muted); font-weight: 500; }
+
+  /* ── Breadcrumb ── */
+  .breadcrumb {
+    padding: 12px 36px;
+    font-size: 12px;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .breadcrumb span { color: var(--text-muted); margin: 0 6px; }
+
+  /* ── Scrollable wrapper ── */
+  #content-area {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div id="sidebar">
+  <div class="sidebar-header">
+    <div class="sidebar-title">Night Summary</div>
+    <div class="sidebar-version">v3.0 Beta</div>
+    <div class="sidebar-preview-badge">DOCS PREVIEW</div>
+  </div>
+  <nav class="sidebar-nav">
+    <a class="nav-item" onclick="show('home')">Home</a>
+    <a class="nav-item" onclick="show('getting-started')">Getting Started <span class="nav-changed-badge">UPDATED</span></a>
+    <a class="nav-item" onclick="show('report-sections')">Report Sections</a>
+    <a class="nav-item active" onclick="show('dashboard')">Live Dashboard <span class="nav-new-badge">NEW</span></a>
+    <a class="nav-item" onclick="show('delivery-channels')">Delivery Channels</a>
+    <a class="nav-item" onclick="show('settings-reference')">Settings Reference <span class="nav-changed-badge">UPDATED</span></a>
+    <a class="nav-item" onclick="show('equipment-profile')">Equipment Profile</a>
+    <a class="nav-item" onclick="show('overhead-breakdown')">Yield and Overhead Analysis</a>
+    <a class="nav-item" onclick="show('file-naming-patterns')">File Naming Patterns</a>
+    <a class="nav-item" onclick="show('live-stack-integration')">Live Stack Integration</a>
+    <a class="nav-item" onclick="show('target-scheduler-integration')">Target Scheduler Integration</a>
+    <a class="nav-item" onclick="show('metric-charts')">Metric Charts</a>
+    <a class="nav-item" onclick="show('faq')">FAQ &amp; Troubleshooting <span class="nav-changed-badge">UPDATED</span></a>
+  </nav>
+</div>
+
+<!-- Main content -->
+<div id="main">
+  <div class="legend">
+    <strong style="font-size:12px;color:#444">Changes for v3 beta:</strong>
+    <div class="legend-item"><div class="legend-dot legend-dot-new"></div><span class="legend-label">New content</span></div>
+    <div class="legend-item"><div class="legend-dot legend-dot-changed"></div><span class="legend-label">Updated content</span></div>
+    <div class="legend-item"><div class="legend-dot legend-dot-existing"></div><span class="legend-label">Unchanged</span></div>
+  </div>
+
+  <div id="content-area">
+
+    <!-- ══ HOME ══ -->
+    <div id="page-home" class="page-section">
+      <div class="page-banner banner-changed">
+        <div class="banner-icon">✏️</div>
+        <div class="banner-text"><strong>Updated page</strong> — Added "Live dashboard" to Key Features list and bumped version to v3.0+.</div>
+      </div>
+
+      <h1>Night Summary</h1>
+      <p><strong>Night Summary</strong> is a plugin for <a href="#">N.I.N.A.</a> that automatically records your imaging sessions and generates detailed HTML reports when your sequence ends.</p>
+      <p>Whether you run a remote observatory or image from your backyard, Night Summary gives you a comprehensive look at what happened overnight — saved locally or delivered to your email, Discord, or Pushover.</p>
+
+      <h2>Key Features</h2>
+      <ul>
+        <li><strong>Session recording</strong> — captures every exposure with full metadata (HFR, guiding RMS, star count, filter, temperature, and more), plus autofocus runs, meridian flips, and safety monitor events</li>
+        <li><strong>Rich HTML reports</strong> — event timelines, yield/overhead breakdowns, altitude charts, sky thumbnails, image quality tables, metric charts and more</li>
+
+        <div class="changed-block">
+          <span class="changed-block-label">NEW BULLET</span>
+          <li><strong>Live dashboard</strong> — browser-based dashboard running on your NINA machine; browse session history, explore lifetime target stats, and view full reports from any device on your network</li>
+        </div>
+
+        <li><strong>Multiple delivery channels</strong> — email, Discord webhook, Pushover notifications, or local file save</li>
+        <li><strong>Live Stack integration</strong> — includes live-stacked thumbnails from the Live Stack plugin (if installed and enabled) in your report</li>
+        <li><strong>Target Scheduler integration</strong> — shows acquisition progress bars, minimum altitude lines, and a preview of tonight's imaging plan when Target Scheduler is installed</li>
+        <li><strong>Metric charts</strong> — plot any combination of HFR, FWHM, guiding RMS, temperature, humidity, and 15+ other metrics</li>
+        <li><strong>Yield and imaging overhead analysis</strong> — parses NINA logs to show exactly where your non-imaging time went</li>
+        <li><strong>Equipment profile</strong> — collapsible section showing all connected equipment with customizable display names</li>
+        <li><strong>Session history</strong> — cumulative integration time per target across all sessions</li>
+        <li><strong>Customizable detail levels</strong> — Snapshot, Standard, or Full reports to match your preference</li>
+
+        <div class="changed-block">
+          <span class="changed-block-label">UPDATED</span>
+          <li><strong>Light and dark mode</strong> — reports <em>and dashboard</em> render in your choice of color scheme</li>
+        </div>
+
+        <li><strong>File naming patterns</strong> — use NINA-style <code>$$PATTERN$$</code> variables in report filenames</li>
+      </ul>
+
+      <hr>
+
+      <div class="changed-block">
+        <span class="changed-block-label">UPDATED</span>
+        <p style="padding:8px 0 4px"><em>This documentation covers <strong>Night Summary v3.0+</strong> for NINA 3.2+.</em></p>
+      </div>
+    </div>
+
+    <!-- ══ GETTING STARTED ══ -->
+    <div id="page-getting-started" class="page-section">
+      <div class="page-banner banner-changed">
+        <div class="banner-icon">✏️</div>
+        <div class="banner-text"><strong>Updated page</strong> — Added Live Dashboard link to the Next Steps section.</div>
+      </div>
+
+      <h1>Getting Started</h1>
+      <p>This guide walks you through installing Night Summary, configuring basic settings, and generating your first report.</p>
+
+      <p style="color:var(--text-muted);font-style:italic">[… Install, How It Works, Basic Configuration sections unchanged …]</p>
+
+      <hr>
+
+      <h2>Next Steps</h2>
+      <ul>
+        <li><a href="#">Report Sections</a> — understand what each part of the report shows</li>
+
+        <div class="changed-block">
+          <span class="changed-block-label">NEW LINK</span>
+          <li><a href="#">Live Dashboard</a> — enable the browser-based dashboard to browse sessions and stats from any device</li>
+        </div>
+
+        <li><a href="#">Settings Reference</a> — full list of every setting and what it does</li>
+        <li><a href="#">Delivery Channels</a> — detailed setup for email, Discord, Pushover, and local save</li>
+      </ul>
+    </div>
+
+    <!-- ══ REPORT SECTIONS (stub) ══ -->
+    <div id="page-report-sections" class="page-section">
+      <h1>Report Sections</h1>
+      <p style="color:var(--text-muted);font-style:italic">No changes in this release. Content unchanged from v2.11.</p>
+    </div>
+
+    <!-- ══ DASHBOARD (NEW) ══ -->
+    <div id="page-dashboard" class="page-section">
+      <div class="page-banner banner-new">
+        <div class="banner-icon">🆕</div>
+        <div class="banner-text"><strong>New page</strong> — This entire page is new for v3. Documents the built-in local web dashboard.</div>
+      </div>
+
+      <div class="new-block">
+        <span class="new-block-label">NEW PAGE</span>
+
+        <h1>Live Dashboard</h1>
+        <p>Night Summary v3 includes a built-in web dashboard that runs on your NINA machine and is accessible from any browser on your network — a desktop, laptop, tablet, or phone.</p>
+        <p>The dashboard gives you a live view of all your recorded sessions and lifetime imaging statistics, with the ability to open any full report directly in your browser without needing Night Summary to regenerate or deliver it.</p>
+
+        <hr>
+
+        <h2>Enabling the Dashboard</h2>
+        <ol>
+          <li>Open <strong>Options &gt; Night Summary Settings</strong> and scroll to the <strong>Local Dashboard</strong> section</li>
+          <li>Check <strong>Enable Local Dashboard</strong></li>
+          <li>Set a port (default: <strong>8181</strong>) — any unused port works</li>
+          <li>Click <strong>Start Server</strong></li>
+        </ol>
+        <p>The URL appears in the settings panel when the server is running. It looks like <code>http://&lt;your-machine-name&gt;:8181</code>.</p>
+
+        <div class="callout callout-note">
+          <strong>Note</strong>
+          Night Summary starts the local dashboard server automatically when NINA launches, as long as <strong>Enable Local Dashboard</strong> is checked. The <strong>Start/Stop</strong> buttons let you restart it without restarting NINA.
+        </div>
+
+        <h3>Accessing from another device on your local network</h3>
+        <p>The server binds to all network interfaces, so any device on the same local network can access it. Use the machine name or local IP address shown in the settings panel — for example, <code>http://astro-pc:8181</code> from a tablet on the same Wi-Fi.</p>
+
+        <h3>Accessing from a remote device (VPN)</h3>
+        <p>If your NINA machine is at a remote observatory or you want to check in from outside your home network, a VPN is the cleanest solution. A VPN creates a private, encrypted tunnel between your devices so your remote phone or laptop appears to be on the same local network as the imaging machine — no port forwarding, no public IP required.</p>
+        <p>Two popular options that work well for this:</p>
+        <ul>
+          <li><strong><a href="https://tailscale.com/" target="_blank">Tailscale</a></strong> — installs as a lightweight app on each device and assigns each one a stable private IP on your tailnet. Night Summary detects when Tailscale is running and shows a Tailnet URL directly in the settings panel next to the local URL.</li>
+          <li><strong><a href="https://www.zerotier.com/" target="_blank">ZeroTier</a></strong> — similar concept, creating a virtual private network across your devices. Once both machines are joined to the same ZeroTier network, the dashboard URL is reachable using the ZeroTier-assigned IP address.</li>
+        </ul>
+        <p>Both services have free tiers that are more than sufficient for personal use. See their respective documentation for setup instructions.</p>
+
+        <hr>
+
+        <h2>Generating Reports</h2>
+        <p>The dashboard displays data from <strong>saved HTML reports</strong>. Before browsing session history, make sure reports exist for your past sessions:</p>
+        <ol>
+          <li>In Settings &gt; Local Dashboard, click <strong>Generate All Reports</strong></li>
+          <li>Night Summary generates HTML for every session that doesn't already have a report file — this may take a minute for large histories</li>
+        </ol>
+        <p>After this one-time step, new sessions generate reports automatically at the end of each sequence (as long as <strong>Save Report Locally</strong> is enabled in Saved Reports settings).</p>
+
+        <div class="callout callout-important">
+          <strong>Important</strong>
+          If <strong>Save Report Locally</strong> is off, the dashboard can show session cards with stats but won't be able to display the full report view for that session.
+        </div>
+
+        <hr>
+
+        <h2>Sessions Tab</h2>
+        <p>The Sessions tab is the main view. Each imaging session appears as a card in reverse chronological order.</p>
+
+        <h3>Session Cards</h3>
+        <p>Each card shows:</p>
+        <ul>
+          <li><strong>Date and time</strong> — session start/end times</li>
+          <li><strong>Target badges</strong> — color-coded pill for each target imaged, matching the altitude chart lines</li>
+          <li><strong>Thumbnails</strong> — sky survey thumbnails per target with optional FOV overlay</li>
+          <li><strong>Stat boxes</strong> — FRAMES, INTEGRATION, HFR, GUIDING, MOON at a glance</li>
+          <li><strong>Altitude chart</strong> — multi-target composite chart with animated curve drawing</li>
+        </ul>
+
+        <p><strong>Hover interactions:</strong></p>
+        <table>
+          <thead><tr><th>Action</th><th>Result</th></tr></thead>
+          <tbody>
+            <tr><td>Hover stat box</td><td>Per-filter breakdown popup</td></tr>
+            <tr><td>Hover thumbnail</td><td>Target name label</td></tr>
+            <tr><td>Dwell on thumbnail (with Live Stack data)</td><td>Live Stack image shelf — all captured stacks for that target</td></tr>
+            <tr><td>Hover altitude chart</td><td>Crosshair with time readout and altitude tooltip for the active target</td></tr>
+          </tbody>
+        </table>
+
+        <p><strong>Clicking a card</strong> opens the full HTML report embedded in the dashboard.</p>
+
+        <h3>Compact vs. Expanded View</h3>
+        <table>
+          <thead><tr><th>Mode</th><th>What's shown</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Expanded</strong></td><td>Thumbnails, stat boxes, altitude chart — full card</td></tr>
+            <tr><td><strong>Compact</strong></td><td>Inline summary line (frames · integration · HFR · guiding), no thumbnails or chart</td></tr>
+          </tbody>
+        </table>
+        <p>Compact mode is useful for scanning a long session list quickly. Your preference is saved per browser.</p>
+        <p>At screen widths below 700px (phone portrait), the dashboard automatically collapses to compact-style layout regardless of the toggle.</p>
+
+        <h3>Viewing a Full Report</h3>
+        <p>Click anywhere on a session card to open the embedded report view. The full HTML report renders inside the dashboard with a navigation bar at the top. Use the <strong>← Sessions</strong> back link to return to the card list.</p>
+
+        <h3>Hiding Sessions</h3>
+        <p>Each card has a subtle <strong>×</strong> button in the top-right corner (visible on hover). Click it to hide a session from the list without deleting any data. Hidden sessions can be revealed using the <strong>Show hidden (N)</strong> toggle in the filter bar.</p>
+
+        <hr>
+
+        <h2>Filter Bar</h2>
+        <p>The filter bar sits below the header. All filters apply immediately without a page reload.</p>
+        <table>
+          <thead><tr><th>Control</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Target picker</strong></td><td>Searchable 2-column popover — check/uncheck targets to show only those sessions</td></tr>
+            <tr><td><strong>Date from / Date to</strong></td><td>Date range filter — click the field to open the native date picker</td></tr>
+            <tr><td><strong>Show empty</strong></td><td>When off (default), hides sessions with zero images</td></tr>
+            <tr><td><strong>Show FOV</strong></td><td>Toggles the FOV overlay rectangle on all thumbnails</td></tr>
+            <tr><td><strong>Compact / Expanded</strong></td><td>Switches the card layout (see above)</td></tr>
+            <tr><td><strong>Sort order</strong></td><td>Newest-first or oldest-first</td></tr>
+            <tr><td><strong>Show hidden (N)</strong></td><td>Reveals hidden sessions (only shown when hidden sessions exist)</td></tr>
+            <tr><td><strong>Clear filters</strong></td><td>Resets all filters and unhides hidden sessions</td></tr>
+          </tbody>
+        </table>
+
+        <hr>
+
+        <h2>Stats Tab</h2>
+        <p>The Stats tab shows lifetime statistics aggregated across all sessions.</p>
+
+        <h3>Targets Sub-Tab</h3>
+        <p>Each target you've ever imaged gets a card showing:</p>
+        <ul>
+          <li>Total integration time and image count across all sessions</li>
+          <li>Sky thumbnail</li>
+          <li>Target status (from Target Scheduler, if installed)</li>
+          <li>A compact per-session history chart</li>
+        </ul>
+        <table>
+          <thead><tr><th>Control</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td>Sort pills</td><td>Sort by: Integration, Images, Last imaged, Name</td></tr>
+            <tr><td>Group toggle</td><td>Group by Target Scheduler project (requires TS)</td></tr>
+            <tr><td>Status filter chips</td><td>Filter by TS project status (Active, Inactive, etc.)</td></tr>
+          </tbody>
+        </table>
+        <p>Click a target card to open a detail panel with the full session-by-session breakdown, per-filter stats, and the altitude chart history.</p>
+        <p>If Target Scheduler is installed, targets can be linked to TS projects using the <strong>Manage Projects</strong> button.</p>
+
+        <h3>Tonight Sub-Tab</h3>
+        <p>Shows what Target Scheduler plans to image tonight — same as Tonight's Preview in reports, but always up-to-date without waiting for a new report.</p>
+        <p>Requires Target Scheduler to be installed with the <strong>API enabled</strong>. See <a href="#">Target Scheduler Integration</a> for setup instructions.</p>
+
+        <hr>
+
+        <h2>Light and Dark Mode</h2>
+        <p>A toggle button in the top-right header switches between dark mode (default) and light mode. The preference is saved per browser.</p>
+
+        <hr>
+
+        <h2>Tips</h2>
+        <ul>
+          <li><strong>Bookmark the URL</strong> — once the server is running, the dashboard URL stays the same between sessions</li>
+          <li><strong>iPad / phone</strong> — the dashboard is mobile-optimized; use the Tailnet URL if your imaging machine is remote</li>
+          <li><strong>After a long break</strong> — if you've been away from imaging, use <strong>Generate All Reports</strong> to catch up on any sessions that don't have reports yet</li>
+        </ul>
+
+      </div><!-- /new-block -->
+    </div>
+
+    <!-- ══ DELIVERY CHANNELS (stub) ══ -->
+    <div id="page-delivery-channels" class="page-section">
+      <h1>Delivery Channels</h1>
+      <p style="color:var(--text-muted);font-style:italic">No changes in this release. Content unchanged from v2.11.</p>
+    </div>
+
+    <!-- ══ SETTINGS REFERENCE ══ -->
+    <div id="page-settings-reference" class="page-section">
+      <div class="page-banner banner-changed">
+        <div class="banner-icon">✏️</div>
+        <div class="banner-text"><strong>Updated page</strong> — Added new <em>Local Dashboard</em> section at the end.</div>
+      </div>
+
+      <h1>Settings Reference</h1>
+      <p>All Night Summary settings are found under <strong>Options &gt; Night Summary Settings</strong> in NINA.</p>
+
+      <p style="color:var(--text-muted);font-style:italic">[… Report Content, Equipment Profile, Report File Naming, Resend Previous Session, Saved Reports, Email, Pushover, Discord, Test Report sections unchanged …]</p>
+
+      <hr>
+
+      <div class="new-block">
+        <span class="new-block-label">NEW SECTION</span>
+
+        <h2>Local Dashboard</h2>
+        <p>Controls the built-in web dashboard. See <a href="#">Live Dashboard</a> for a full feature walkthrough.</p>
+
+        <table>
+          <thead><tr><th>Setting</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td>Enable Local Dashboard</td><td>Off</td><td>Start the dashboard server when NINA launches</td></tr>
+            <tr><td>Port</td><td>8181</td><td>Port the server listens on. Change if 8181 conflicts with another service.</td></tr>
+          </tbody>
+        </table>
+
+        <p>The <strong>Start Server</strong> and <strong>Stop Server</strong> buttons let you restart the server without restarting NINA.</p>
+        <p>When the server is running, the <strong>Local URL</strong> (e.g. <code>http://your-machine:8181</code>) and, if Tailscale is installed, a <strong>Tailnet URL</strong> are shown with copy buttons.</p>
+
+        <h3>Generate All Reports</h3>
+        <p>Creates HTML report files for all sessions that don't already have one. Run this once after enabling the dashboard to populate historical sessions. New sessions generate reports automatically at sequence end (requires <strong>Save Report Locally</strong> to be on).</p>
+        <p>Progress is shown inline: <em>Generating N/total...</em></p>
+
+      </div>
+    </div>
+
+    <!-- ══ EQUIPMENT PROFILE (stub) ══ -->
+    <div id="page-equipment-profile" class="page-section">
+      <h1>Equipment Profile</h1>
+      <p style="color:var(--text-muted);font-style:italic">No changes in this release. Content unchanged from v2.11.</p>
+    </div>
+
+    <!-- ══ OVERHEAD (stub) ══ -->
+    <div id="page-overhead-breakdown" class="page-section">
+      <h1>Yield and Overhead Analysis</h1>
+      <p style="color:var(--text-muted);font-style:italic">No changes in this release. Content unchanged from v2.11.</p>
+    </div>
+
+    <!-- ══ FILE NAMING (stub) ══ -->
+    <div id="page-file-naming-patterns" class="page-section">
+      <h1>File Naming Patterns</h1>
+      <p style="color:var(--text-muted);font-style:italic">No changes in this release. Content unchanged from v2.11.</p>
+    </div>
+
+    <!-- ══ LIVE STACK (stub) ══ -->
+    <div id="page-live-stack-integration" class="page-section">
+      <h1>Live Stack Integration</h1>
+      <p style="color:var(--text-muted);font-style:italic">No changes in this release. Content unchanged from v2.11.</p>
+    </div>
+
+    <!-- ══ TS INTEGRATION (stub) ══ -->
+    <div id="page-target-scheduler-integration" class="page-section">
+      <h1>Target Scheduler Integration</h1>
+      <p style="color:var(--text-muted);font-style:italic">No changes in this release. Content unchanged from v2.11.</p>
+    </div>
+
+    <!-- ══ METRIC CHARTS (stub) ══ -->
+    <div id="page-metric-charts" class="page-section">
+      <h1>Metric Charts</h1>
+      <p style="color:var(--text-muted);font-style:italic">No changes in this release. Content unchanged from v2.11.</p>
+    </div>
+
+    <!-- ══ FAQ ══ -->
+    <div id="page-faq" class="page-section">
+      <div class="page-banner banner-changed">
+        <div class="banner-icon">✏️</div>
+        <div class="banner-text"><strong>Updated page</strong> — Added new <em>Live Dashboard</em> troubleshooting section.</div>
+      </div>
+
+      <h1>FAQ &amp; Troubleshooting</h1>
+      <p style="color:var(--text-muted);font-style:italic">[… General, Report Issues, Email, Target Scheduler sections unchanged …]</p>
+
+      <hr>
+
+      <div class="new-block">
+        <span class="new-block-label">NEW SECTION</span>
+
+        <h2>Live Dashboard</h2>
+
+        <h3>The dashboard won't start / shows "port in use"</h3>
+        <p>Port 8181 may be taken by another application. Change the port in <strong>Options &gt; Night Summary Settings &gt; Local Dashboard</strong> to any unused port (e.g. 8182, 8280) and click <strong>Start Server</strong>.</p>
+
+        <h3>The dashboard is accessible on my NINA machine but not from another device</h3>
+        <p>Make sure no firewall is blocking the port. On Windows, you may need to add an inbound firewall rule for the port you chose. In <strong>Windows Defender Firewall &gt; Advanced Settings</strong>, add an inbound rule allowing TCP on the dashboard port (default 8181).</p>
+
+        <h3>Sessions have cards but can't open the report view</h3>
+        <p>The session has no saved HTML report. Click <strong>Generate All Reports</strong> in <strong>Options &gt; Local Dashboard</strong> to create report files for historical sessions. New sessions generate reports automatically when the sequence ends (requires <strong>Save Report Locally</strong> to be enabled).</p>
+
+        <h3>The dashboard shows old data after a sequence completes</h3>
+        <p>The dashboard fetches fresh data on every page load. Reload the page (or navigate away and back) to pick up the latest session.</p>
+
+      </div>
+
+      <hr>
+      <p style="color:var(--text-muted);font-style:italic">[… Live Stack, Performance sections unchanged …]</p>
+    </div>
+
+  </div><!-- /content-area -->
+</div><!-- /main -->
+
+<script>
+  var current = 'dashboard';
+
+  function show(page) {
+    // Hide all
+    document.querySelectorAll('.page-section').forEach(function(el) {
+      el.classList.remove('visible');
+    });
+    // Show target
+    var target = document.getElementById('page-' + page);
+    if (target) target.classList.add('visible');
+
+    // Update sidebar
+    document.querySelectorAll('.nav-item').forEach(function(el) {
+      el.classList.remove('active');
+    });
+    event.currentTarget.classList.add('active');
+    current = page;
+
+    // Scroll to top
+    document.getElementById('content-area').scrollTop = 0;
+    window.scrollTo(0, 0);
+  }
+
+  // Show default on load
+  document.getElementById('page-dashboard').classList.add('visible');
+</script>
+</body>
+</html>
