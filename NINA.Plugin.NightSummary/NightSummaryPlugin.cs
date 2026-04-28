@@ -394,6 +394,8 @@ namespace NINA.Plugin.NightSummary {
                 paths:       paths,
                 regen:       new NinaReportRegenerator(this.sessionService, paths.DatabasePath, paths.ReportsDir));
             await dashboardServer.StartAsync(S.LocalServerPort);
+            var notifyUrl = dashboardServer.TailscaleUrl ?? dashboardServer.ZeroTierUrl ?? dashboardServer.Url;
+            Notification.ShowInformation($"Night Summary dashboard live: {notifyUrl}");
         }
 
         private async Task StopLocalServerAsync() {
