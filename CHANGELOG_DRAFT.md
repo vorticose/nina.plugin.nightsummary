@@ -7,6 +7,7 @@
 - Fixed overhead analysis showing 100% accounted in sessions that ended with an aborted exposure (e.g. cut short by a safety event). The aborted exposure was being counted toward overhead coverage even though its duration extends past the measurement window, inflating the tracked total above the implied overhead and causing the percentage to be capped at 100%.
 - Fixed Tonight's Preview showing target window times in the viewer's browser timezone instead of the telescope's local timezone. Now all times (header, summary table, timeline ruler, altitude chart axis) render in the observatory's local time regardless of where the dashboard is opened from.
 - Tonight's Preview now anchors planning at 13:00 local (matching Target Scheduler's native preview default) instead of using the current time. This produces a stable, full-night view that no longer shifts as the night progresses and matches what users see in the TS planner UI.
+- Fixed Target Scheduler progress bars showing duplicate or phantom exposure plans when the same target exists in multiple TS projects. Each project now renders as a separate labeled section.
 
 **Improvements**
 - Dashboard report-viewer settings panel now exposes the Timeline Altitude View default toggle to match the plugin Options. Old reports written before this setting existed default to the plugin's current value when opened, instead of appearing unchecked.

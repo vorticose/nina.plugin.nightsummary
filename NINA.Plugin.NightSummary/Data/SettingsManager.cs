@@ -83,6 +83,12 @@ namespace NINA.Plugin.NightSummary.Data {
         private static void ApplyNewFieldDefaults(NightSummarySettings settings, string json) {
             var defaults = new NightSummarySettings();
 
+            // v2.11.0 additions
+            if (!json.Contains("ShowChartTargetChips"))
+                settings.ShowChartTargetChips = defaults.ShowChartTargetChips;
+            if (!json.Contains("ShowChartFilterChips"))
+                settings.ShowChartFilterChips = defaults.ShowChartFilterChips;
+
             // v2.10.0 additions
             if (!json.Contains("ShowOverheadBreakdown"))
                 settings.ShowOverheadBreakdown = defaults.ShowOverheadBreakdown;

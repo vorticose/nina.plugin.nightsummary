@@ -420,6 +420,28 @@
                         <CheckBox IsChecked="{Binding ShowHFRGraph}" VerticalAlignment="Center" />
                     </StackPanel>
 
+                    <!-- Per-target / per-filter chip selectors: disabled when Metric Chart is off -->
+                    <StackPanel Margin="20,2,0,0">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="IsEnabled" Value="True"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ShowHFRGraph}" Value="False">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                            <TextBlock Text="Per-Target Chart Filtering" Width="180" VerticalAlignment="Center" />
+                            <CheckBox IsChecked="{Binding ShowChartTargetChips}" VerticalAlignment="Center" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                            <TextBlock Text="Per-Filter Chart Filtering" Width="180" VerticalAlignment="Center" />
+                            <CheckBox IsChecked="{Binding ShowChartFilterChips}" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </StackPanel>
+
                     <!-- Chart event markers: disabled when Metric Chart is off -->
                     <StackPanel Margin="20,2,0,0">
                         <StackPanel.Style>

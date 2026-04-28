@@ -26,7 +26,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
         [JsonPropertyName("eventMarkers")]  public List<ChartEventMarker> EventMarkers { get; set; } = new();
 
         /// <summary>Distinct filter names that appear in the data, in filter sort order.</summary>
-        [JsonPropertyName("filters")]       public List<string> Filters { get; set; } = new();
+        [JsonPropertyName("filters")]       public List<string> Filters  { get; set; } = new();
+        /// <summary>Distinct target names that appear in the data, in chronological order of first appearance.</summary>
+        [JsonPropertyName("targets")]       public List<string> Targets  { get; set; } = new();
     }
 
     /// <summary>
@@ -61,6 +63,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
         [JsonPropertyName("x")]         public double X { get; set; }
         [JsonPropertyName("y")]         public double Y { get; set; }
         [JsonPropertyName("filter")]    public string Filter { get; set; } = "";
+        [JsonPropertyName("target")]    public string Target { get; set; } = "";
         /// <summary>ISO timestamp for tooltip display and for event marker alignment.</summary>
         [JsonPropertyName("timestamp")] public DateTime Timestamp { get; set; }
     }

@@ -257,6 +257,66 @@ namespace NINA.Plugin.NightSummary.Tests {
             };
         }
 
+        // ── Per-target chip bar presence/absence ─────────────────────────────
+
+        [Fact]
+        public async Task MultiTargetSession_ShowsTargetChipBar() {
+            SetupChartSettings();
+            var data = TestDataFactory.MakeReportData(imageCount: 10, targets: new[] { "M42", "Orion Nebula" });
+            var html = await new ReportGenerator().GenerateHtmlReport(data);
+            Assert.Contains("ns-chart-target-btn", html);
+            Assert.Contains("All Targets", html);
+            Assert.Contains("M42", html);
+            Assert.Contains("Orion Nebula", html);
+        }
+
+        [Fact]
+        public async Task SingleTargetSession_NoTargetChipBar() {
+            SetupChartSettings();
+            var data = TestDataFactory.MakeReportData(imageCount: 10, targets: new[] { "M42" });
+            var html = await new ReportGenerator().GenerateHtmlReport(data);
+            Assert.DoesNotContain("ns-chart-target-btn\" for=", html);
+            Assert.DoesNotContain("All Targets", html);
+        }
+
+        [Fact]
+        public async Task MultiTargetMultiFilter_ShowsBothChipBars() {
+            SetupChartSettings();
+            // Build images across two targets and two filters manually
+            var sessionId = Guid.NewGuid().ToString();
+            var t0 = new DateTime(2025, 1, 15, 22, 0, 0);
+            var images = new List<ImageRecord>();
+            foreach (var (tgt, flt, offset) in new[] {
+                ("M42", "Ha",   0), ("M42",   "Ha",  5), ("M42",   "OIII", 10),
+                ("Orion", "Ha", 15), ("Orion", "OIII", 20) }) {
+                var img = TestDataFactory.MakeImage(sessionId, target: tgt, filter: flt);
+                img.Timestamp = t0.AddMinutes(offset);
+                images.Add(img);
+            }
+            var data = new ReportData {
+                Session = TestDataFactory.MakeSession(sessionId),
+                Images = images,
+                Events = new List<SessionEvent>(),
+                TsData = new List<TsTargetData>(),
+                CumulativeIntegrationSeconds = new Dictionary<string, double>(),
+                SessionHistory = new Dictionary<string, List<TargetSessionHistory>>(),
+            };
+            var html = await new ReportGenerator().GenerateHtmlReport(data);
+            Assert.Contains("ns-chart-target-btn", html);  // target bar
+            Assert.Contains("ns-chart-filter-bar",  html);  // filter bar
+            Assert.Contains("All Targets", html);
+            Assert.Contains("All", html);
+        }
+
+        private static void SetupChartSettings() {
+            SettingsManager.Instance.Current.ShowHFRGraph         = true;
+            SettingsManager.Instance.Current.ReportDetailLevel    = 2;
+            SettingsManager.Instance.Current.ChartPrimaryMetric   = ChartGenerator.PrimaryHFR;
+            SettingsManager.Instance.Current.ChartSecondaryMetric = ChartGenerator.SecNone;
+            SettingsManager.Instance.Current.ChartXAxisMetric     = ChartGenerator.XAxisTime;
+            SettingsManager.Instance.Current.AdditionalChartConfigs = "";
+        }
+
         /// <summary>
         /// Walks up from the test bin directory until it finds the worktree root
         /// (identified by the presence of <c>NINA.Plugin.NightSummary.sln</c>).
