@@ -5969,7 +5969,10 @@ function bindListEvents() {
       getAllTargets().forEach(function(t) { selectedTargets[t] = true; });
       showEmptySessions = false;
       showHidden = false;
-      var el = document.getElementById('content');
+      currentSort = 'date-desc';
+      var el = sessionsV2Mode
+        ? (document.getElementById('sessions-history') || document.getElementById('content'))
+        : document.getElementById('content');
       var sub = document.getElementById('page-subtitle');
       doRenderList(el, sub, '', '', 'date-desc');
     });

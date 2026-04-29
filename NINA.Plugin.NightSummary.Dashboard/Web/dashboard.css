@@ -327,6 +327,17 @@ nav {
   pointer-events: none;
 }
 
+/* On touch devices showPicker() isn't reliable — make the input cover the
+   label so the native date picker opens on tap. Opacity stays 0 (invisible). */
+@media (hover: none) and (pointer: coarse) {
+  .date-input-wrap input[type="date"] {
+    width: 100%;
+    height: 100%;
+    pointer-events: auto;
+    z-index: 1;
+  }
+}
+
 .date-input-wrap .date-label {
   background: rgba(230,232,240,0.06);
   border: 1px solid rgba(230,232,240,0.12);
