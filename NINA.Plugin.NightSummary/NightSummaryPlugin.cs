@@ -312,12 +312,7 @@ namespace NINA.Plugin.NightSummary {
                 LocalServerStatus.Text = "";
                 await StopLocalServerAsync();
                 LocalServerStatus.Text = "Stopped";
-                // Clear the auto-start flag too so the server stays off across restarts.
-                if (S.LocalServerEnabled) {
-                    S.LocalServerEnabled = false;
-                    SaveSettings();
-                    RaisePropertyChanged(nameof(LocalServerEnabled));
-                }
+                Notification.ShowInformation("Night Summary dashboard stopped");
                 RaisePropertyChanged(nameof(IsLocalServerRunning));
                 RaisePropertyChanged(nameof(LocalServerUrl));
                 RaisePropertyChanged(nameof(TailscaleUrl));

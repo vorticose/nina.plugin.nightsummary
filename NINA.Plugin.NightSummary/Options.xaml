@@ -730,6 +730,8 @@
                                 <CheckBox IsChecked="{Binding LocalServerEnabled}" VerticalAlignment="Center" />
                             </StackPanel>
 
+                            <StackPanel IsEnabled="{Binding LocalServerEnabled}">
+
                             <StackPanel Orientation="Horizontal" Margin="0,5">
                                 <TextBlock Text="Port" Width="200" VerticalAlignment="Center" />
                                 <TextBox MinWidth="80" Text="{Binding LocalServerPort, UpdateSourceTrigger=PropertyChanged}" />
@@ -794,6 +796,8 @@
                                 <TextBlock Width="200" />
                                 <TextBlock Text="Generates viewable reports for all past sessions that don't already have one. Run this once after enabling the dashboard to backfill historical reports."
                                            TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="400" VerticalAlignment="Center" />
+                            </StackPanel>
+
                             </StackPanel>
 
                         </StackPanel>
