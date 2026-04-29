@@ -3955,13 +3955,13 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy, keepPage) {
       '<div class="date-input-wrap">' +
         '<span class="date-label' + (fromFilter ? '' : ' empty') + '">' + (fromFilter ? fmtDate(fromFilter) : 'From') + '</span>' +
         '<input type="date" id="filter-from" value="' + esc(fromFilter) + '" tabindex="-1">' +
-        (fromFilter ? '<button class="date-clear" data-target="filter-from" title="Clear">\u00d7</button>' : '') +
       '</div>' +
+      (fromFilter ? '<button class="date-clear" data-target="filter-from" title="Clear">\u00d7</button>' : '') +
       '<div class="date-input-wrap">' +
         '<span class="date-label' + (toFilter ? '' : ' empty') + '">' + (toFilter ? fmtDate(toFilter) : 'To') + '</span>' +
         '<input type="date" id="filter-to" value="' + esc(toFilter) + '" tabindex="-1">' +
-        (toFilter ? '<button class="date-clear" data-target="filter-to" title="Clear">\u00d7</button>' : '') +
       '</div>' +
+      (toFilter ? '<button class="date-clear" data-target="filter-to" title="Clear">\u00d7</button>' : '') +
     '</div>' +
     '<div class="filter-sort" id="sort-dropdown">' +
       '<button class="sort-dropdown-btn" id="sort-dropdown-btn">' + esc(SORT_LABELS[currentSort]) + ' \u25be</button>' +
@@ -5855,13 +5855,14 @@ function bindListEvents() {
     }
   }
 
-  // Date picker — on desktop, click anywhere on wrapper calls showPicker().
-  // On touch: CSS makes the input full-size so native tap opens the picker
-  // directly; calling showPicker() programmatically on mobile can auto-commit
-  // today's date before the user makes a selection.
+  // Date picker — desktop: click on wrapper calls showPicker(), change applies filter.
+  // Touch: CSS makes the input full-size so native tap opens the picker. We listen
+  // to blur (picker dismissed) instead of change — on iOS, change fires immediately
+  // when the picker opens with no value set (auto-commits today), which would re-render
+  // the DOM and close the picker before the user can scroll to their chosen date.
   var touchDevice = window.matchMedia && window.matchMedia('(hover: none) and (pointer: coarse)').matches;
   if (fromEl) {
-    fromEl.addEventListener('change', refresh);
+    fromEl.addEventListener(touchDevice ? 'blur' : 'change', refresh);
     if (!touchDevice) {
       fromEl.parentElement.addEventListener('click', function(e) {
         if (e.target.classList.contains('date-clear')) return;
@@ -5870,7 +5871,7 @@ function bindListEvents() {
     }
   }
   if (toEl) {
-    toEl.addEventListener('change', refresh);
+    toEl.addEventListener(touchDevice ? 'blur' : 'change', refresh);
     if (!touchDevice) {
       toEl.parentElement.addEventListener('click', function(e) {
         if (e.target.classList.contains('date-clear')) return;
