@@ -5860,6 +5860,7 @@ function bindListEvents() {
     fromEl.addEventListener('change', refresh);
     fromEl.parentElement.addEventListener('click', function(e) {
       if (e.target.classList.contains('date-clear')) return;
+      if (e.target === fromEl) return; // native tap on input already opens picker
       fromEl.showPicker && fromEl.showPicker();
     });
   }
@@ -5867,6 +5868,7 @@ function bindListEvents() {
     toEl.addEventListener('change', refresh);
     toEl.parentElement.addEventListener('click', function(e) {
       if (e.target.classList.contains('date-clear')) return;
+      if (e.target === toEl) return; // native tap on input already opens picker
       toEl.showPicker && toEl.showPicker();
     });
   }
@@ -6076,21 +6078,30 @@ function repositionViewToggle() {
 
 var currentSettings = null;
 
-// X-axis options: Time, Frame Index, then all metrics (matches plugin's ChartXAxisMetric index)
+// X-axis options: Time(0), Frame Index(1), then primary metrics offset by 2
+// Indices must match ChartGenerator.XAxisTime/XAxisFrameIndex/XAxisMetricOffset constants
 var XAXIS_OPTIONS = [
-  'Time', 'Frame Index', 'HFR', 'FWHM', 'Guiding RMS', 'Focuser Temp',
-  'Ambient Temp', 'Eccentricity', 'Altitude', 'Airmass', 'Humidity',
-  'Focuser Position', 'Sky Quality', 'Cloud Cover', 'Camera Temp',
-  'Dew Point', 'Wind Speed', 'Pressure', 'Star Count', 'Azimuth', 'Seeing FWHM'
+  'Time', 'Frame Index',
+  'HFR', 'FWHM', 'Guiding RMS', 'Eccentricity', 'Star Count',
+  'Focuser Temp', 'Ambient Temp', 'Camera Temp', 'Cooler Setpoint',
+  'Altitude', 'Azimuth', 'Airmass', 'Position Angle', 'Rotator Position', 'Focuser Position',
+  'Seeing FWHM', 'Sky Quality', 'Sky Brightness', 'Cloud Cover', 'Sky Temp',
+  'Humidity', 'Dew Point', 'Wind Speed', 'Wind Gust', 'Wind Direction', 'Pressure',
+  'Exposure', 'Gain', 'Offset',
+  'Median ADU', 'Mean ADU', 'Std Deviation', 'MAD', 'Min ADU', 'Max ADU'
 ];
 
 // Primary/secondary options: metrics only, no Time/Frame Index
-// (matches plugin's ChartPrimaryMetric / ChartSecondaryMetric index)
+// Index must match ChartGenerator.PrimaryXxx constants (0=HFR, 1=FWHM, ...)
+// Secondary uses these same indices but offset by 1 (index 0 = None) via includeNone=true
 var PRIMARY_OPTIONS = [
-  'HFR', 'FWHM', 'Guiding RMS', 'Focuser Temp',
-  'Ambient Temp', 'Eccentricity', 'Altitude', 'Airmass', 'Humidity',
-  'Focuser Position', 'Sky Quality', 'Cloud Cover', 'Camera Temp',
-  'Dew Point', 'Wind Speed', 'Pressure', 'Star Count', 'Azimuth', 'Seeing FWHM'
+  'HFR', 'FWHM', 'Guiding RMS', 'Eccentricity', 'Star Count',
+  'Focuser Temp', 'Ambient Temp', 'Camera Temp', 'Cooler Setpoint',
+  'Altitude', 'Azimuth', 'Airmass', 'Position Angle', 'Rotator Position', 'Focuser Position',
+  'Seeing FWHM', 'Sky Quality', 'Sky Brightness', 'Cloud Cover', 'Sky Temp',
+  'Humidity', 'Dew Point', 'Wind Speed', 'Wind Gust', 'Wind Direction', 'Pressure',
+  'Exposure', 'Gain', 'Offset',
+  'Median ADU', 'Mean ADU', 'Std Deviation', 'MAD', 'Min ADU', 'Max ADU'
 ];
 
 var EQUIPMENT_FIELDS = [

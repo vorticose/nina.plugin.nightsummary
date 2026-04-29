@@ -3124,11 +3124,17 @@ namespace NINA.Plugin.NightSummary.Server {
                 var dict = new Dictionary<string, JsonElement>();
                 foreach (var p in doc.RootElement.EnumerateObject()) dict[p.Name] = p.Value.Clone();
                 bool patched = false;
-                if (!dict.ContainsKey("timelineAltitudeDefault")) {
-                    var node = JsonSerializer.SerializeToElement(_settings.Current.TimelineAltitudeDefault);
-                    dict["timelineAltitudeDefault"] = node;
-                    patched = true;
+                void PatchBool(string key, bool def) {
+                    if (!dict.ContainsKey(key)) { dict[key] = JsonSerializer.SerializeToElement(def); patched = true; }
                 }
+                void PatchInt(string key, int def) {
+                    if (!dict.ContainsKey(key)) { dict[key] = JsonSerializer.SerializeToElement(def); patched = true; }
+                }
+                var s = _settings.Current;
+                PatchBool("timelineAltitudeDefault", s.TimelineAltitudeDefault);
+                PatchInt("chartXAxisMetric",   s.ChartXAxisMetric);
+                PatchInt("chartPrimaryMetric", s.ChartPrimaryMetric);
+                PatchInt("chartSecondaryMetric", s.ChartSecondaryMetric);
                 if (!patched) return sidecarJson;
                 return JsonSerializer.Serialize(dict, JsonOpts);
             } catch (Exception ex) {
