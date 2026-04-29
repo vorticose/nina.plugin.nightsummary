@@ -5855,22 +5855,28 @@ function bindListEvents() {
     }
   }
 
-  // Date picker — click anywhere on wrapper opens the picker
+  // Date picker — on desktop, click anywhere on wrapper calls showPicker().
+  // On touch: CSS makes the input full-size so native tap opens the picker
+  // directly; calling showPicker() programmatically on mobile can auto-commit
+  // today's date before the user makes a selection.
+  var touchDevice = window.matchMedia && window.matchMedia('(hover: none) and (pointer: coarse)').matches;
   if (fromEl) {
     fromEl.addEventListener('change', refresh);
-    fromEl.parentElement.addEventListener('click', function(e) {
-      if (e.target.classList.contains('date-clear')) return;
-      if (e.target === fromEl) return; // native tap on input already opens picker
-      fromEl.showPicker && fromEl.showPicker();
-    });
+    if (!touchDevice) {
+      fromEl.parentElement.addEventListener('click', function(e) {
+        if (e.target.classList.contains('date-clear')) return;
+        fromEl.showPicker && fromEl.showPicker();
+      });
+    }
   }
   if (toEl) {
     toEl.addEventListener('change', refresh);
-    toEl.parentElement.addEventListener('click', function(e) {
-      if (e.target.classList.contains('date-clear')) return;
-      if (e.target === toEl) return; // native tap on input already opens picker
-      toEl.showPicker && toEl.showPicker();
-    });
+    if (!touchDevice) {
+      toEl.parentElement.addEventListener('click', function(e) {
+        if (e.target.classList.contains('date-clear')) return;
+        toEl.showPicker && toEl.showPicker();
+      });
+    }
   }
   // Sort dropdown
   var sortBtn = document.getElementById('sort-dropdown-btn');
