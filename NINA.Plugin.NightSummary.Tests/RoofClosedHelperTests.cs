@@ -170,6 +170,36 @@ namespace NINA.Plugin.NightSummary.Tests {
         }
 
         [Fact]
+        public void MultipleAbortedExposures_ExtendsToMostRecentNotEarliest() {
+            // Two aborted exposures within the 10-min causal window. The most recent one
+            // is the one physically interrupted by the closing roof; extending back to
+            // the earlier one would over-attribute idle time to weather rather than
+            // imaging window.
+            var roofIntervals = new List<(DateTime start, DateTime end)> {
+                (T0.AddMinutes(15), T0.AddMinutes(30))
+            };
+            var timingEvents = new List<TimingEvent> {
+                new TimingEvent {
+                    EventType = "AbortedExposure",
+                    StartTime = T0.AddMinutes(8),    // 7 min before closure — earlier abort
+                    EndTime   = T0.AddMinutes(13),
+                    DurationSeconds = 300
+                },
+                new TimingEvent {
+                    EventType = "AbortedExposure",
+                    StartTime = T0.AddMinutes(13),   // 2 min before closure — the actual cut
+                    EndTime   = T0.AddMinutes(15),
+                    DurationSeconds = 120
+                }
+            };
+
+            var extended = RoofClosedHelper.ExtendForAbortedExposures(roofIntervals, timingEvents);
+            Assert.Single(extended);
+            Assert.Equal(T0.AddMinutes(13), extended[0].start);
+            Assert.Equal(T0.AddMinutes(30), extended[0].end);
+        }
+
+        [Fact]
         public void AbortedExposure_FarFromRoofClosed_NotExtended() {
             var roofIntervals = new List<(DateTime start, DateTime end)> {
                 (T0.AddMinutes(30), T0.AddMinutes(50))

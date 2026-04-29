@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Settings Reference
-nav_order: 5
+nav_order: 6
 ---
 
 # Settings Reference
@@ -175,3 +175,24 @@ Not a persistent setting — a utility for resending reports from past sessions 
 ## Test Report
 
 Generates and sends a full report through all currently enabled channels using a test database. Night Summary ships with built-in test data so this works out of the box. If you want to test with your own data, replace the `nightsummary.sqlite` file in the `test` subfolder of the Night Summary plugin data directory.
+
+---
+
+## Local Dashboard
+
+Controls the built-in web dashboard. See [Live Dashboard]({% link dashboard.md %}) for a full feature walkthrough.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Enable Local Dashboard | Off | Start the dashboard server when NINA launches |
+| Port | 8181 | Port the server listens on. Change if 8181 conflicts with another service. |
+
+The **Start Server** and **Stop Server** buttons let you restart the server without restarting NINA.
+
+When the server is running, the **Local URL** (e.g. `http://your-machine:8181`) and, if Tailscale is installed, a **Tailnet URL** are shown with copy buttons.
+
+### Generate All Reports
+
+Creates HTML report files for all sessions that don't already have one. Run this once after enabling the dashboard to populate historical sessions. New sessions generate reports automatically at sequence end (requires **Save Report Locally** to be on).
+
+Progress is shown inline: *Generating N/total...*

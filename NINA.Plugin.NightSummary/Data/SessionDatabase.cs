@@ -1,4 +1,5 @@
 ﻿using NINA.Core.Utility;
+using NINA.Plugin.NightSummary.Server;
 using System;
 using System.Collections.Generic;
 using System.Data.SQLite;
@@ -24,10 +25,11 @@ namespace NINA.Plugin.NightSummary.Data {
             Directory.CreateDirectory(pluginDataPath);
             dbPath = Path.Combine(pluginDataPath, "nightsummary.sqlite");
 
-            // Migrate from legacy version-specific location if needed
-            if (!File.Exists(dbPath)) {
-                MigrateLegacyDatabase(pluginDataPath);
-            }
+            string pluginsRoot = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "NINA", "Plugins");
+
+            MigrateOrResume(pluginDataPath, pluginsRoot);
 
             Logger.Info($"NightSummary: Database path: {dbPath}");
             Logger.Info($"NightSummary: Database exists: {File.Exists(dbPath)}");
@@ -37,51 +39,53 @@ namespace NINA.Plugin.NightSummary.Data {
             InitializeDatabase();
         }
 
+        // Test-only constructor: lets tests scaffold a fake plugins root and a
+        // fake new-data path so the migration + resume code can run end-to-end
+        // without touching LocalAppData. Bypasses SeedTestDatabase / version probe.
+        internal SessionDatabase(string dbPath, string newDataPath, string pluginsRoot) {
+            this.dbPath = dbPath;
+            Directory.CreateDirectory(Path.GetDirectoryName(dbPath));
+            MigrateOrResume(newDataPath, pluginsRoot);
+            connectionString = $"Data Source={dbPath};Version=3;";
+            InitializeDatabase();
+        }
+
+        // Migration entry point. Two paths:
+        //   1. dbPath missing → fresh migration (copy primary, merge rest).
+        //   2. dbPath exists + .merge_state exists → previous merge interrupted;
+        //      re-enter the merge so unfinished legacy DBs aren't silently lost.
+        // Without (2), a crash between primary File.Move and merge completion
+        // leaves dbPath populated but missing legacy sessions — and migration
+        // never runs again because the existence check skips it.
+        private void MigrateOrResume(string newDataPath, string pluginsRoot) {
+            if (!File.Exists(dbPath)) {
+                MigrateLegacyDatabase(newDataPath, pluginsRoot);
+            } else if (File.Exists(dbPath + ".merge_state")) {
+                Logger.Warning("NightSummary: Found .merge_state file with existing database — resuming interrupted migration");
+                ResumeInterruptedMerge(pluginsRoot);
+            }
+        }
+
+        // Read-only queries delegate to the classlib reader so prod and dev share one
+        // source of truth for SELECT logic. Schema/migration/writes stay here.
+        private SqliteSessionReader Reader() => new SqliteSessionReader(connectionString, new NinaDashboardLogger());
+
         /// <summary>
         /// Scans legacy version-specific plugin folders for existing databases,
         /// copies the most recent verified one as the base using an atomic temp-then-rename
         /// strategy so dbPath is never left in a partial state, then merges any unique sessions
         /// from older databases. Never deletes or moves source files — all originals are preserved.
         /// </summary>
-        private void MigrateLegacyDatabase(string newDataPath) {
+        private void MigrateLegacyDatabase(string newDataPath, string pluginsRoot) {
             var tempPath = dbPath + ".migration_tmp";
             try {
                 Logger.Info("NightSummary: No database at new location, scanning for legacy databases...");
 
-                var pluginsRoot = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "NINA", "Plugins");
-
-                if (!Directory.Exists(pluginsRoot)) {
-                    Logger.Info($"NightSummary: Plugins directory not found at {pluginsRoot}, skipping migration");
-                    return;
-                }
-
-                var candidates = new List<(string path, DateTime modified)>();
-
-                foreach (var versionDir in Directory.GetDirectories(pluginsRoot)) {
-                    var legacyDb = Path.Combine(versionDir, "NightSummary", "nightsummary.sqlite");
-                    Logger.Info($"NightSummary: Checking legacy path: {legacyDb}");
-                    if (File.Exists(legacyDb)) {
-                        var modified = File.GetLastWriteTimeUtc(legacyDb);
-                        Logger.Info($"NightSummary: Found legacy database at {legacyDb} (modified: {modified:yyyy-MM-dd HH:mm:ss} UTC)");
-                        candidates.Add((legacyDb, modified));
-                    }
-                }
-
-                if (candidates.Count == 0) {
-                    Logger.Info("NightSummary: No legacy databases found, starting fresh");
-                    return;
-                }
-
-                // Filter out corrupt candidates before selecting the base
-                var sorted = candidates
-                    .OrderByDescending(c => c.modified)
-                    .Where(c => VerifySQLiteIntegrity(c.path))
-                    .ToList();
+                var sorted = ScanLegacyDatabases(pluginsRoot);
+                if (sorted == null) return;
 
                 if (sorted.Count == 0) {
-                    Logger.Error("NightSummary: All legacy databases failed integrity check. Skipping migration — starting fresh.");
+                    Logger.Info("NightSummary: No legacy databases found, starting fresh");
                     return;
                 }
 
@@ -130,6 +134,58 @@ namespace NINA.Plugin.NightSummary.Data {
         }
 
         /// <summary>
+        /// Scans plugin version folders for legacy nightsummary.sqlite files and returns
+        /// integrity-verified candidates sorted newest-first. Returns null if pluginsRoot
+        /// doesn't exist (signals "not a fresh-install scenario, abort migration"). Returns
+        /// empty list if scan succeeded but found no legacy DBs.
+        /// </summary>
+        private List<(string path, DateTime modified)> ScanLegacyDatabases(string pluginsRoot) {
+            if (!Directory.Exists(pluginsRoot)) {
+                Logger.Info($"NightSummary: Plugins directory not found at {pluginsRoot}, skipping migration");
+                return null;
+            }
+
+            var candidates = new List<(string path, DateTime modified)>();
+            foreach (var versionDir in Directory.GetDirectories(pluginsRoot)) {
+                var legacyDb = Path.Combine(versionDir, "NightSummary", "nightsummary.sqlite");
+                Logger.Info($"NightSummary: Checking legacy path: {legacyDb}");
+                if (File.Exists(legacyDb)) {
+                    var modified = File.GetLastWriteTimeUtc(legacyDb);
+                    Logger.Info($"NightSummary: Found legacy database at {legacyDb} (modified: {modified:yyyy-MM-dd HH:mm:ss} UTC)");
+                    candidates.Add((legacyDb, modified));
+                }
+            }
+
+            return candidates
+                .OrderByDescending(c => c.modified)
+                .Where(c => VerifySQLiteIntegrity(c.path))
+                .ToList();
+        }
+
+        /// <summary>
+        /// Re-runs the merge phase when a previous migration was interrupted between primary
+        /// install and merge completion. Existence of `.merge_state` is the signal. The merge
+        /// file itself records which legacy DBs already finished, so re-merging is safe and
+        /// only the unfinished DBs are processed.
+        /// </summary>
+        private void ResumeInterruptedMerge(string pluginsRoot) {
+            try {
+                var sorted = ScanLegacyDatabases(pluginsRoot);
+                if (sorted == null || sorted.Count <= 1) {
+                    // Nothing to merge — clean up the orphaned state file
+                    try { File.Delete(dbPath + ".merge_state"); } catch { }
+                    return;
+                }
+
+                var toMerge = sorted.Skip(1).Select(c => c.path).ToList();
+                Logger.Info($"NightSummary: Resuming merge — {toMerge.Count} legacy database(s) candidate for merge (already-merged ones will be skipped via .merge_state)");
+                MergeOlderDatabases(toMerge);
+            } catch (Exception ex) {
+                Logger.Error($"NightSummary: Resume of interrupted merge failed: {ex.Message}. State file kept for next attempt.");
+            }
+        }
+
+        /// <summary>
         /// Merges unique sessions from older legacy databases into the new database.
         /// Skips sessions whose SessionId already exists. Never modifies source databases.
         /// Writes a state file after each successful DB merge so interrupted runs can resume.
@@ -145,7 +201,10 @@ namespace NINA.Plugin.NightSummary.Data {
                 Logger.Warning($"NightSummary: Could not create pre-merge backup: {ex.Message}. Proceeding without backup.");
             }
 
-            // Load merge state file so interrupted runs can skip already-completed databases
+            // Load merge state file so interrupted runs can skip already-completed databases.
+            // Touch the file first so it always exists for the duration of the merge — its
+            // presence at next startup is the resume signal for crashes that interrupt this loop
+            // before any individual DB write completes.
             var mergeLogPath = dbPath + ".merge_state";
             var alreadyMerged = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             if (File.Exists(mergeLogPath)) {
@@ -154,6 +213,8 @@ namespace NINA.Plugin.NightSummary.Data {
                         if (!string.IsNullOrWhiteSpace(line)) alreadyMerged.Add(line.Trim());
                     Logger.Info($"NightSummary: Resuming partial migration — {alreadyMerged.Count} database(s) already merged");
                 } catch { /* non-fatal — will just re-attempt previously merged databases */ }
+            } else {
+                try { File.Create(mergeLogPath).Dispose(); } catch { /* non-fatal */ }
             }
 
             // Collect existing SessionIds once upfront to avoid redundant queries
@@ -583,16 +644,22 @@ namespace NINA.Plugin.NightSummary.Data {
 
         /// <summary>
         /// Adds a column to an existing table if it doesn't already exist.
-        /// SQLite does not support ALTER TABLE ADD COLUMN IF NOT EXISTS,
-        /// so we attempt the ALTER and swallow the error if the column is already there.
+        /// SQLite has no ALTER TABLE ADD COLUMN IF NOT EXISTS, so we pre-check via
+        /// PRAGMA table_info instead of swallowing all exceptions — that previous
+        /// catch-all also masked real errors (disk-full, schema lock, corruption).
+        /// Any exception now propagates up to InitializeDatabase.
         /// </summary>
         private void MigrateAddColumn(SQLiteConnection conn, string table, string column, string definition) {
-            try {
-                using (var cmd = new SQLiteCommand($"ALTER TABLE {table} ADD COLUMN {column} {definition}", conn))
-                    cmd.ExecuteNonQuery();
-            } catch {
-                // Column already exists — nothing to do
+            using (var probe = new SQLiteCommand($"PRAGMA table_info({table})", conn))
+            using (var reader = probe.ExecuteReader()) {
+                while (reader.Read()) {
+                    // table_info column 1 is the column name
+                    if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase))
+                        return;
+                }
             }
+            using (var cmd = new SQLiteCommand($"ALTER TABLE {table} ADD COLUMN {column} {definition}", conn))
+                cmd.ExecuteNonQuery();
         }
 
         /// <summary>
@@ -802,98 +869,12 @@ namespace NINA.Plugin.NightSummary.Data {
         /// <summary>
         /// Retrieves all image records for a given session.
         /// </summary>
-        public List<ImageRecord> GetImagesForSession(string sessionId) {
-            var images = new List<ImageRecord>();
-            using (var conn = new SQLiteConnection(connectionString)) {
-                conn.Open();
-                string sql = "SELECT * FROM Images WHERE SessionId = @SessionId ORDER BY Timestamp";
-                using (var cmd = new SQLiteCommand(sql, conn)) {
-                    cmd.Parameters.AddWithValue("@SessionId", sessionId);
-                    using (var reader = cmd.ExecuteReader()) {
-                        while (reader.Read()) {
-                            images.Add(new ImageRecord {
-                                Id = Convert.ToInt32(reader["Id"]),
-                                SessionId = reader["SessionId"] == DBNull.Value ? "" : reader["SessionId"].ToString(),
-                                Timestamp = reader["Timestamp"] == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["Timestamp"].ToString()),
-                                TargetName = reader["TargetName"] == DBNull.Value ? "" : reader["TargetName"].ToString(),
-                                Filter = reader["Filter"] == DBNull.Value ? "" : reader["Filter"].ToString(),
-                                ExposureDuration = reader["ExposureDuration"] == DBNull.Value ? 0 : Convert.ToDouble(reader["ExposureDuration"]),
-                                HFR = reader["HFR"] == DBNull.Value ? 0 : Convert.ToDouble(reader["HFR"]),
-                                FWHM = reader["FWHM"] == DBNull.Value ? 0 : Convert.ToDouble(reader["FWHM"]),
-                                Eccentricity = reader["Eccentricity"] == DBNull.Value ? 0 : Convert.ToDouble(reader["Eccentricity"]),
-                                StarCount = reader["StarCount"] == DBNull.Value ? 0 : Convert.ToInt32(reader["StarCount"]),
-                                GuidingRMSTotal = reader["GuidingRMSTotal"] == DBNull.Value ? 0 : Convert.ToDouble(reader["GuidingRMSTotal"]),
-                                GuidingScale = reader["GuidingScale"] == DBNull.Value ? 1 : Convert.ToDouble(reader["GuidingScale"]),
-                                Accepted = reader["Accepted"] == DBNull.Value ? false : Convert.ToInt32(reader["Accepted"]) == 1,
-                                RaHours    = reader["RaHours"]    == DBNull.Value ? 0 : Convert.ToDouble(reader["RaHours"]),
-                                DecDegrees = reader["DecDegrees"] == DBNull.Value ? 0 : Convert.ToDouble(reader["DecDegrees"]),
-                                FocuserTemp     = reader["FocuserTemp"]     == DBNull.Value ? (double?)null : Convert.ToDouble(reader["FocuserTemp"]),
-                                AmbientTemp     = reader["AmbientTemp"]     == DBNull.Value ? (double?)null : Convert.ToDouble(reader["AmbientTemp"]),
-                                Gain            = reader["Gain"]            == DBNull.Value ? -1 : Convert.ToInt32(reader["Gain"]),
-                                Offset          = reader["Offset"]          == DBNull.Value ? -1 : Convert.ToInt32(reader["Offset"]),
-                                Binning         = reader["Binning"]         == DBNull.Value ? 0  : Convert.ToInt32(reader["Binning"]),
-                                CameraTemp      = reader["CameraTemp"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["CameraTemp"]),
-                                CoolerSetpoint  = reader["CoolerSetpoint"]  == DBNull.Value ? (double?)null : Convert.ToDouble(reader["CoolerSetpoint"]),
-                                FocuserPosition = reader["FocuserPosition"] == DBNull.Value ? (int?)null    : Convert.ToInt32(reader["FocuserPosition"]),
-                                RotatorPosition = reader["RotatorPosition"] == DBNull.Value ? (double?)null : Convert.ToDouble(reader["RotatorPosition"]),
-                                PositionAngle   = reader["PositionAngle"]   == DBNull.Value ? (double?)null : Convert.ToDouble(reader["PositionAngle"]),
-                                Humidity        = reader["Humidity"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["Humidity"]),
-                                DewPoint        = reader["DewPoint"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["DewPoint"]),
-                                WindSpeed       = reader["WindSpeed"]       == DBNull.Value ? (double?)null : Convert.ToDouble(reader["WindSpeed"]),
-                                Pressure        = reader["Pressure"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["Pressure"]),
-                                SkyBrightness   = reader["SkyBrightness"]   == DBNull.Value ? (double?)null : Convert.ToDouble(reader["SkyBrightness"]),
-                                SkyTemperature  = reader["SkyTemperature"]  == DBNull.Value ? (double?)null : Convert.ToDouble(reader["SkyTemperature"]),
-                                WindDirection   = reader["WindDirection"]   == DBNull.Value ? (double?)null : Convert.ToDouble(reader["WindDirection"]),
-                                WindGust        = reader["WindGust"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["WindGust"]),
-                                GradingStatus   = reader["GradingStatus"]   == DBNull.Value ? -1 : Convert.ToInt32(reader["GradingStatus"]),
-                                RejectReason    = reader["RejectReason"]    == DBNull.Value ? null : reader["RejectReason"].ToString(),
-                                ImageType       = reader["ImageType"]       == DBNull.Value ? null : reader["ImageType"].ToString(),
-                                Altitude        = reader["Altitude"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["Altitude"]),
-                                Azimuth         = reader["Azimuth"]         == DBNull.Value ? (double?)null : Convert.ToDouble(reader["Azimuth"]),
-                                Airmass         = reader["Airmass"]         == DBNull.Value ? (double?)null : Convert.ToDouble(reader["Airmass"]),
-                                SideOfPier      = reader["SideOfPier"]      == DBNull.Value ? null : reader["SideOfPier"].ToString(),
-                                ReadoutMode     = reader["ReadoutMode"]     == DBNull.Value ? null : reader["ReadoutMode"].ToString(),
-                                SkyQuality      = reader["SkyQuality"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["SkyQuality"]),
-                                CloudCover      = reader["CloudCover"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["CloudCover"]),
-                                SeeingFWHM      = reader["SeeingFWHM"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["SeeingFWHM"]),
-                                StatMedian      = reader["StatMedian"]      == DBNull.Value ? (double?)null : Convert.ToDouble(reader["StatMedian"]),
-                                StatMean        = reader["StatMean"]        == DBNull.Value ? (double?)null : Convert.ToDouble(reader["StatMean"]),
-                                StatStDev       = reader["StatStDev"]       == DBNull.Value ? (double?)null : Convert.ToDouble(reader["StatStDev"]),
-                                StatMAD         = reader["StatMAD"]         == DBNull.Value ? (double?)null : Convert.ToDouble(reader["StatMAD"]),
-                                StatMin         = reader["StatMin"]         == DBNull.Value ? (int?)null    : Convert.ToInt32(reader["StatMin"]),
-                                StatMax         = reader["StatMax"]         == DBNull.Value ? (int?)null    : Convert.ToInt32(reader["StatMax"]),
-                                StatBitDepth    = reader["StatBitDepth"]    == DBNull.Value ? (int?)null    : Convert.ToInt32(reader["StatBitDepth"])
-                            });
-                        }
-                    }
-                }
-            }
-            return images;
-        }
+        public List<ImageRecord> GetImagesForSession(string sessionId) => Reader().GetImagesForSession(sessionId);
 
         /// <summary>
         /// Retrieves the session record for a given sessionId.
         /// </summary>
-        public SessionRecord GetSession(string sessionId) {
-            using (var conn = new SQLiteConnection(connectionString)) {
-                conn.Open();
-                string sql = "SELECT * FROM Sessions WHERE SessionId = @SessionId";
-                using (var cmd = new SQLiteCommand(sql, conn)) {
-                    cmd.Parameters.AddWithValue("@SessionId", sessionId);
-                    using (var reader = cmd.ExecuteReader()) {
-                        if (reader.Read()) {
-                            try {
-                                return ReadSessionRecord(reader);
-                            } catch (Exception ex) {
-                                Logger.Error($"NightSummary: Error reading session record field: {ex.Message}");
-                                throw;
-                            }
-                        }
-                    }
-                }
-            }
-            return null;
-        }
+        public SessionRecord GetSession(string sessionId) => Reader().GetSession(sessionId);
 
         /// <summary>
         /// Saves a session event (autofocus run, safety monitor change, meridian flip, etc.).
@@ -920,30 +901,7 @@ namespace NINA.Plugin.NightSummary.Data {
         /// <summary>
         /// Retrieves all session events for a given session, ordered by timestamp.
         /// </summary>
-        public List<SessionEvent> GetEventsForSession(string sessionId) {
-            var events = new List<SessionEvent>();
-            using (var conn = new SQLiteConnection(connectionString)) {
-                conn.Open();
-                string sql = "SELECT * FROM SessionEvents WHERE SessionId = @SessionId ORDER BY Timestamp";
-                using (var cmd = new SQLiteCommand(sql, conn)) {
-                    cmd.Parameters.AddWithValue("@SessionId", sessionId);
-                    using (var reader = cmd.ExecuteReader()) {
-                        while (reader.Read()) {
-                            events.Add(new SessionEvent {
-                                Id          = Convert.ToInt32(reader["Id"]),
-                                SessionId   = reader["SessionId"]   == DBNull.Value ? "" : reader["SessionId"].ToString(),
-                                Timestamp   = reader["Timestamp"]   == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["Timestamp"].ToString()),
-                                EventType   = reader["EventType"]   == DBNull.Value ? "" : reader["EventType"].ToString(),
-                                Description = reader["Description"] == DBNull.Value ? "" : reader["Description"].ToString(),
-                                AfSucceeded = reader["AfSucceeded"] == DBNull.Value ? (bool?)null : Convert.ToInt32(reader["AfSucceeded"]) == 1,
-                                AfHfr       = reader["AfHfr"]       == DBNull.Value ? (double?)null : Convert.ToDouble(reader["AfHfr"])
-                            });
-                        }
-                    }
-                }
-            }
-            return events;
-        }
+        public List<SessionEvent> GetEventsForSession(string sessionId) => Reader().GetEventsForSession(sessionId);
 
         public void SaveTimingEvents(string sessionId, List<TimingEvent> events) {
             if (events == null || events.Count == 0) return;
@@ -1022,206 +980,53 @@ namespace NINA.Plugin.NightSummary.Data {
             }
         }
 
-        public List<TimingEvent> GetTimingEventsForSession(string sessionId) {
-            var events = new List<TimingEvent>();
-            using (var conn = new SQLiteConnection(connectionString)) {
-                conn.Open();
-                string sql = "SELECT * FROM SessionTimingEvents WHERE SessionId = @SessionId ORDER BY StartTime";
-                using (var cmd = new SQLiteCommand(sql, conn)) {
-                    cmd.Parameters.AddWithValue("@SessionId", sessionId);
-                    using (var reader = cmd.ExecuteReader()) {
-                        while (reader.Read()) {
-                            events.Add(new TimingEvent {
-                                EventType       = reader["EventType"]       == DBNull.Value ? "" : reader["EventType"].ToString(),
-                                StartTime       = reader["StartTime"]       == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["StartTime"].ToString()),
-                                EndTime         = reader["EndTime"]         == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["EndTime"].ToString()),
-                                DurationSeconds = reader["DurationSeconds"] == DBNull.Value ? 0 : Convert.ToDouble(reader["DurationSeconds"]),
-                                Details         = reader["Details"]         == DBNull.Value ? null : reader["Details"].ToString()
-                            });
-                        }
-                    }
-                }
-            }
-            return events;
-        }
+        public List<TimingEvent> GetTimingEventsForSession(string sessionId) => Reader().GetTimingEventsForSession(sessionId);
 
         /// <summary>
         /// Returns total accepted exposure seconds per target name across all sessions
         /// except the one identified by excludeSessionId.
         /// </summary>
-        public Dictionary<string, double> GetCumulativeIntegrationByTarget(string excludeSessionId) {
-            var result = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
-            using (var conn = new SQLiteConnection(connectionString)) {
-                conn.Open();
-                string sql = @"
-                    SELECT TargetName, SUM(ExposureDuration) AS TotalSeconds
-                    FROM Images
-                    WHERE Accepted = 1 AND SessionId != @SessionId
-                    GROUP BY TargetName";
+        public Dictionary<string, double> GetCumulativeIntegrationByTarget(string excludeSessionId) => Reader().GetCumulativeIntegrationByTarget(excludeSessionId);
 
-                using (var cmd = new SQLiteCommand(sql, conn)) {
-                    cmd.Parameters.AddWithValue("@SessionId", excludeSessionId ?? "");
-                    using (var reader = cmd.ExecuteReader()) {
-                        while (reader.Read()) {
-                            var name  = reader["TargetName"] == DBNull.Value ? "" : reader["TargetName"].ToString();
-                            var total = reader["TotalSeconds"] == DBNull.Value ? 0 : Convert.ToDouble(reader["TotalSeconds"]);
-                            if (!string.IsNullOrEmpty(name))
-                                result[name] = total;
-                        }
-                    }
-                }
-            }
-            return result;
-        }
+        /// <summary>
+        /// Returns enriched per-target statistics for the lifetime stats page.
+        /// Uses three queries: aggregates, filter breakdown, and coordinates/session IDs.
+        /// </summary>
+        public List<TargetDetail> GetTargetDetails() => Reader().GetTargetDetails();
 
         /// <summary>
         /// Returns per-session aggregate stats for a target across all sessions except the current one.
         /// Ordered most-recent-first, limited to <paramref name="limit"/> rows.
         /// </summary>
-        public List<TargetSessionHistory> GetSessionHistoryForTarget(string targetName, string excludeSessionId) {
-            var result = new List<TargetSessionHistory>();
-            using (var conn = new SQLiteConnection(connectionString)) {
-                conn.Open();
-                string sql = @"
-                    SELECT
-                        s.SessionStart,
-                        SUM(CASE WHEN i.Accepted = 1 THEN i.ExposureDuration ELSE 0 END) AS IntegrationSeconds,
-                        AVG(CASE WHEN i.HFR > 0 THEN i.HFR END)               AS AvgHFR,
-                        AVG(CASE WHEN i.FWHM > 0 THEN i.FWHM END)             AS AvgFWHM,
-                        AVG(CASE WHEN i.GuidingRMSTotal > 0 THEN i.GuidingRMSTotal END) AS AvgGuidingRMS
-                    FROM Images i
-                    JOIN Sessions s ON s.SessionId = i.SessionId
-                    WHERE i.TargetName = @TargetName
-                      AND i.SessionId != @ExcludeSessionId
-                    GROUP BY i.SessionId
-                    ORDER BY s.SessionStart DESC";
+        public List<TargetSessionHistory> GetSessionHistoryForTarget(string targetName, string excludeSessionId)
+            => Reader().GetSessionHistoryForTarget(targetName, excludeSessionId);
 
-                using (var cmd = new SQLiteCommand(sql, conn)) {
-                    cmd.Parameters.AddWithValue("@TargetName",       targetName       ?? "");
-                    cmd.Parameters.AddWithValue("@ExcludeSessionId", excludeSessionId ?? "");
-                    using (var reader = cmd.ExecuteReader()) {
-                        while (reader.Read()) {
-                            result.Add(new TargetSessionHistory {
-                                SessionStart       = reader["SessionStart"]       == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionStart"].ToString()),
-                                IntegrationSeconds = reader["IntegrationSeconds"] == DBNull.Value ? 0 : Convert.ToDouble(reader["IntegrationSeconds"]),
-                                AvgHFR             = reader["AvgHFR"]             == DBNull.Value ? 0 : Convert.ToDouble(reader["AvgHFR"]),
-                                AvgFWHM            = reader["AvgFWHM"]            == DBNull.Value ? 0 : Convert.ToDouble(reader["AvgFWHM"]),
-                                AvgGuidingRMS      = reader["AvgGuidingRMS"]      == DBNull.Value ? 0 : Convert.ToDouble(reader["AvgGuidingRMS"])
-                            });
-                        }
-                    }
-                }
-            }
-            return result;
-        }
+        /// <summary>
+        /// Returns the full per-session history for a target, including per-filter breakdown
+        /// per session. Used by the Stats tab target detail panel (Phase 2).
+        /// Ordered most-recent first. Case-insensitive target name match.
+        /// </summary>
+        public List<TargetSessionDetail> GetSessionsForTarget(string targetName) => Reader().GetSessionsForTarget(targetName);
 
         /// <summary>
         /// Returns the most recent <paramref name="limit"/> sessions, newest-first.
         /// </summary>
-        public List<SessionRecord> GetRecentSessions(int limit) {
-            var result = new List<SessionRecord>();
-            using (var conn = new SQLiteConnection(connectionString)) {
-                conn.Open();
-                string sql = SessionListWithCountsSql + " ORDER BY s.SessionStart DESC LIMIT @Limit";
-                using (var cmd = new SQLiteCommand(sql, conn)) {
-                    cmd.Parameters.AddWithValue("@Limit", limit);
-                    using (var reader = cmd.ExecuteReader()) {
-                        while (reader.Read()) {
-                            try { result.Add(ReadEnrichedSessionRecord(reader)); }
-                            catch (Exception ex) { Logger.Error($"NightSummary: Error reading session record: {ex.Message}"); }
-                        }
-                    }
-                }
-            }
-            return result;
-        }
+        public List<SessionRecord> GetRecentSessions(int limit) => Reader().GetRecentSessions(limit);
 
         /// <summary>
         /// Returns all sessions whose start date falls within [from, to], newest-first.
         /// </summary>
-        public List<SessionRecord> GetSessionsByDateRange(DateTime from, DateTime to) {
-            var result = new List<SessionRecord>();
-            using (var conn = new SQLiteConnection(connectionString)) {
-                conn.Open();
-                string sql = SessionListWithCountsSql +
-                    " WHERE s.SessionStart >= @From AND s.SessionStart <= @To ORDER BY s.SessionStart DESC";
-                using (var cmd = new SQLiteCommand(sql, conn)) {
-                    cmd.Parameters.AddWithValue("@From", from.ToString("o"));
-                    cmd.Parameters.AddWithValue("@To",   to.Date.AddDays(1).AddSeconds(-1).ToString("o"));
-                    using (var reader = cmd.ExecuteReader()) {
-                        while (reader.Read()) {
-                            try { result.Add(ReadEnrichedSessionRecord(reader)); }
-                            catch (Exception ex) { Logger.Error($"NightSummary: Error reading session record: {ex.Message}"); }
-                        }
-                    }
-                }
-            }
-            return result;
-        }
-
-        // Shared SELECT for session-list methods that need image/target/integration counts
-        // for display in the dropdown. Counts use Accepted = 1 to match what the report shows
-        // as the "X images" number. Uses correlated subqueries (no GROUP BY ambiguity with s.*)
-        // and the idx_images_sessionid index to keep this fast on large DBs.
-        private const string SessionListWithCountsSql = @"
-            SELECT s.*,
-                (SELECT COUNT(*) FROM Images WHERE SessionId = s.SessionId AND Accepted = 1) AS ImageCount,
-                (SELECT COUNT(DISTINCT TargetName) FROM Images WHERE SessionId = s.SessionId AND Accepted = 1 AND TargetName IS NOT NULL AND TargetName <> '') AS TargetCount,
-                (SELECT COALESCE(SUM(ExposureDuration), 0) FROM Images WHERE SessionId = s.SessionId AND Accepted = 1) AS IntegrationSeconds
-            FROM Sessions s";
-
-        private SessionRecord ReadEnrichedSessionRecord(SQLiteDataReader reader) {
-            var record = ReadSessionRecord(reader);
-            record.ImageCount         = reader["ImageCount"]         == DBNull.Value ? 0 : Convert.ToInt32(reader["ImageCount"]);
-            record.TargetCount        = reader["TargetCount"]        == DBNull.Value ? 0 : Convert.ToInt32(reader["TargetCount"]);
-            record.IntegrationSeconds = reader["IntegrationSeconds"] == DBNull.Value ? 0 : Convert.ToDouble(reader["IntegrationSeconds"]);
-            return record;
-        }
+        public List<SessionRecord> GetSessionsByDateRange(DateTime from, DateTime to) => Reader().GetSessionsByDateRange(from, to);
 
         /// <summary>
         /// Returns all sessions ordered newest-first.
         /// </summary>
-        public List<SessionRecord> GetAllSessions() {
-            var result = new List<SessionRecord>();
-            using (var conn = new SQLiteConnection(connectionString)) {
-                conn.Open();
-                string sql = "SELECT * FROM Sessions ORDER BY SessionStart DESC";
-                using (var cmd = new SQLiteCommand(sql, conn))
-                using (var reader = cmd.ExecuteReader()) {
-                    while (reader.Read()) {
-                        try {
-                            result.Add(ReadSessionRecord(reader));
-                        } catch (Exception ex) {
-                            Logger.Error($"NightSummary: Error reading session record: {ex.Message}");
-                        }
-                    }
-                }
-            }
-            return result;
-        }
+        public List<SessionRecord> GetAllSessions() => Reader().GetAllSessions();
 
         /// <summary>
         /// Returns the most recent session by SessionStart, or null if no sessions exist.
         /// </summary>
-        public SessionRecord GetLatestSession() {
-            using (var conn = new SQLiteConnection(connectionString)) {
-                conn.Open();
-                string sql = "SELECT * FROM Sessions ORDER BY SessionStart DESC LIMIT 1";
-                using (var cmd = new SQLiteCommand(sql, conn)) {
-                    using (var reader = cmd.ExecuteReader()) {
-                        if (reader.Read()) {
-                            try {
-                                return ReadSessionRecord(reader);
-                            } catch (Exception ex) {
-                                Logger.Error($"NightSummary: Error reading latest session record: {ex.Message}");
-                                throw;
-                            }
-                        }
-                    }
-                }
-            }
-            return null;
-        }
+        public SessionRecord GetLatestSession() => Reader().GetLatestSession();
 
         /// <summary>
         /// Batch-updates GradingStatus, RejectReason, and Accepted for images in a session
@@ -1286,33 +1091,5 @@ namespace NINA.Plugin.NightSummary.Data {
             }
         }
 
-        private static SessionRecord ReadSessionRecord(SQLiteDataReader reader) {
-            return new SessionRecord {
-                Id               = Convert.ToInt32(reader["Id"]),
-                SessionId        = reader["SessionId"]        == DBNull.Value ? "" : reader["SessionId"].ToString(),
-                SessionStart     = reader["SessionStart"]     == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionStart"].ToString()),
-                SessionEnd       = reader["SessionEnd"]       == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionEnd"].ToString()),
-                ProfileName      = reader["ProfileName"]      == DBNull.Value ? "" : reader["ProfileName"].ToString(),
-                Notes            = reader["Notes"]            == DBNull.Value ? "" : reader["Notes"].ToString(),
-                ReportSent       = reader["ReportSent"]       == DBNull.Value ? false : Convert.ToInt32(reader["ReportSent"]) == 1,
-                CamXSize         = reader["CamXSize"]         == DBNull.Value ? 0 : Convert.ToInt32(reader["CamXSize"]),
-                CamYSize         = reader["CamYSize"]         == DBNull.Value ? 0 : Convert.ToInt32(reader["CamYSize"]),
-                PixelSizeMicrons = reader["PixelSizeMicrons"] == DBNull.Value ? 0 : Convert.ToDouble(reader["PixelSizeMicrons"]),
-                FocalLengthMm    = reader["FocalLengthMm"]    == DBNull.Value ? 0 : Convert.ToDouble(reader["FocalLengthMm"]),
-                SkippedExposures = reader["SkippedExposures"] == DBNull.Value ? 0 : Convert.ToInt32(reader["SkippedExposures"]),
-                CameraName        = reader["CameraName"]        == DBNull.Value ? null : reader["CameraName"].ToString(),
-                TelescopeName     = reader["TelescopeName"]     == DBNull.Value ? null : reader["TelescopeName"].ToString(),
-                MountName         = reader["MountName"]         == DBNull.Value ? null : reader["MountName"].ToString(),
-                FilterWheelName   = reader["FilterWheelName"]   == DBNull.Value ? null : reader["FilterWheelName"].ToString(),
-                FocuserName       = reader["FocuserName"]       == DBNull.Value ? null : reader["FocuserName"].ToString(),
-                RotatorName       = reader["RotatorName"]       == DBNull.Value ? null : reader["RotatorName"].ToString(),
-                GuiderName        = reader["GuiderName"]        == DBNull.Value ? null : reader["GuiderName"].ToString(),
-                DomeName          = reader["DomeName"]          == DBNull.Value ? null : reader["DomeName"].ToString(),
-                FlatDeviceName    = reader["FlatDeviceName"]    == DBNull.Value ? null : reader["FlatDeviceName"].ToString(),
-                SafetyMonitorName = reader["SafetyMonitorName"] == DBNull.Value ? null : reader["SafetyMonitorName"].ToString(),
-                WeatherName       = reader["WeatherName"]       == DBNull.Value ? null : reader["WeatherName"].ToString(),
-                SwitchName        = reader["SwitchName"]        == DBNull.Value ? null : reader["SwitchName"].ToString()
-            };
-        }
     }
 }

@@ -1,12 +1,25 @@
 # Night Summary — Changelog
 
 
+## v3.0.0
+
+**New features**
+- Live Dashboard *(beta)* — built-in local web server accessible from any browser on your network, including phones and tablets. Browse your full session history with thumbnails, stat boxes, and altitude charts, and open any past report without regenerating it. View lifetime statistics per target or project. Use a VPN for remote access when viewing away from your home network or your imaging machine is at an observatory. Enable in Options → Night Summary Settings → Local Dashboard.
+- Per-target chip selector on metric charts — a target chip row is now stacked above the per-filter chip row, letting you isolate a single target's data points or combine target and filter to focus on one target/filter combination. Both rows can be independently disabled in settings.
+
+
 ## v2.11.2
 
 **Bug fixes**
 - Fixed overhead analysis showing 100% accounted in sessions that ended with an aborted exposure (e.g. cut short by a safety event). The aborted exposure was being counted toward overhead coverage even though its duration extends past the measurement window, inflating the tracked total above the implied overhead and causing the percentage to be capped at 100%.
+- Fixed Tonight's Preview showing target window times in the viewer's browser timezone instead of the telescope's local timezone. Now all times (header, summary table, timeline ruler, altitude chart axis) render in the observatory's local time regardless of where the dashboard is opened from.
+- Tonight's Preview now anchors planning at 13:00 local (matching Target Scheduler's native preview default) instead of using the current time. This produces a stable, full-night view that no longer shifts as the night progresses and matches what users see in the TS planner UI.
 - Fixed Target Scheduler progress bars showing duplicate or phantom exposure plans when the same target exists in multiple TS projects. Each project now renders as a separate labeled section.
 
+**Improvements**
+- Dashboard report-viewer settings panel now exposes the Timeline Altitude View default toggle to match the plugin Options. Old reports written before this setting existed default to the plugin's current value when opened, instead of appearing unchecked.
+- Charts, Filter Classifications & Types, and Equipment sections of the report-viewer settings panel are now collapsible — most users only adjust the top-level toggles, so the expanders shorten the panel by default and reduce scroll on phones.
+- Mobile-only layout polish on the settings panel: tap targets enlarged to ~36px on selects/inputs/checkboxes, equipment override inputs now stack cleanly under their show/hide row instead of fighting for horizontal space, and per-filter classification/type rows stay on one line by trimming their minimum widths.
 
 
 ## v2.11.1
