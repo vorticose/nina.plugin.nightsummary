@@ -7,6 +7,7 @@ using System.Data.SQLite;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
@@ -19,7 +20,7 @@ namespace NINA.Plugin.NightSummary.Server {
 
     public class DashboardServer {
 
-        private HttpListener listener;
+        private TcpListener _tcpListener;
         private CancellationTokenSource cts;
         private readonly string dbPath;
         private readonly string cachePath;
@@ -166,25 +167,25 @@ namespace NINA.Plugin.NightSummary.Server {
             Directory.CreateDirectory(reportsDir);
         }
 
-        public Task StartAsync(int port) {
-            // Bind to localhost + every active unicast IPv4 address (LAN, Tailscale, ZeroTier, etc.)
-            // using specific IPs avoids the urlacl/admin requirement that http://+:port/ imposes.
-            var prefixHosts = new List<string> { "localhost" };
-            foreach (var nic in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()) {
-                if (nic.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up) continue;
-                foreach (var addr in nic.GetIPProperties().UnicastAddresses) {
-                    if (addr.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
-                        && !IPAddress.IsLoopback(addr.Address))
-                        prefixHosts.Add(addr.Address.ToString());
-                }
-            }
-            return StartAsync(port, prefixHosts);
+        /// <summary>
+        /// Starts the HTTP server bound to all interfaces (0.0.0.0).
+        /// TcpListener is used instead of HttpListener so no urlacl registration or
+        /// admin rights are required — HttpListener routes through HTTP.sys which
+        /// enforces namespace reservations for any binding other than localhost.
+        /// </summary>
+        public Task StartAsync(int port) => StartAsync(port, IPAddress.Any);
+
+        // Used by the dev harness; maps a host string to an IPAddress.
+        public Task StartAsync(int port, string host) {
+            var addr = host switch {
+                "+" or "*" or "0.0.0.0" => IPAddress.Any,
+                "localhost"              => IPAddress.Loopback,
+                _                       => IPAddress.TryParse(host, out var ip) ? ip : IPAddress.Any,
+            };
+            return StartAsync(port, addr);
         }
 
-        // Binds to a single explicit host — used by the dev harness (localhost only, no UAC needed).
-        public Task StartAsync(int port, string host) => StartAsync(port, new List<string> { host });
-
-        private Task StartAsync(int port, List<string> hosts) {
+        private Task StartAsync(int port, IPAddress bindAddress) {
             if (IsRunning) return Task.CompletedTask;
 
             try {
@@ -194,10 +195,8 @@ namespace NINA.Plugin.NightSummary.Server {
                 log = DashboardLog.Init(Path.Combine(logsDir, $"dashboard-{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.log"));
 
                 cts = new CancellationTokenSource();
-                listener = new HttpListener();
-                foreach (var h in hosts)
-                    listener.Prefixes.Add($"http://{h}:{port}/");
-                listener.Start();
+                _tcpListener = new TcpListener(bindAddress, port);
+                _tcpListener.Start();
 
                 var hostname = Dns.GetHostName();
                 Url = $"http://{hostname}:{port}";
@@ -240,9 +239,8 @@ namespace NINA.Plugin.NightSummary.Server {
 
             try {
                 cts?.Cancel();
-                listener?.Stop();
-                listener?.Close();
-                listener = null;
+                _tcpListener?.Stop();
+                _tcpListener = null;
                 IsRunning = false;
                 Url = null;
                 TailscaleUrl = null;
@@ -263,12 +261,13 @@ namespace NINA.Plugin.NightSummary.Server {
         private async Task AcceptLoop(CancellationToken ct) {
             while (!ct.IsCancellationRequested) {
                 try {
-                    var context = await listener.GetContextAsync();
-                    // Handle each request without blocking the accept loop
-                    _ = Task.Run(() => HandleRequest(context), ct);
+                    var client = await _tcpListener.AcceptTcpClientAsync(ct);
+                    _ = Task.Run(() => HandleTcpClient(client, ct), ct);
+                } catch (OperationCanceledException) {
+                    break;
                 } catch (ObjectDisposedException) {
                     break;
-                } catch (HttpListenerException) when (ct.IsCancellationRequested) {
+                } catch (SocketException) {
                     break;
                 } catch (Exception ex) {
                     log?.Error("Accept loop error", ex);
@@ -277,9 +276,109 @@ namespace NINA.Plugin.NightSummary.Server {
             }
         }
 
-        private async Task HandleRequest(HttpListenerContext context) {
-            var req = context.Request;
-            var res = context.Response;
+        private async Task HandleTcpClient(TcpClient client, CancellationToken ct) {
+            try {
+                using (client) {
+                    client.ReceiveTimeout = 10_000;
+                    client.SendTimeout    = 30_000;
+                    var stream = client.GetStream();
+                    var req = await ParseHttpRequestAsync(stream, ct);
+                    if (req == null) return;
+                    var res = new TcpHttpResponse(stream);
+                    try {
+                        await HandleRequest(req, res);
+                    } finally {
+                        res.Close();
+                    }
+                }
+            } catch (Exception ex) {
+                log?.Error($"Client handler error: {ex.Message}");
+            }
+        }
+
+        private static async Task<TcpHttpRequest> ParseHttpRequestAsync(Stream stream, CancellationToken ct) {
+            // Read one byte at a time until \r\n\r\n (end of HTTP headers)
+            var headerBytes = new List<byte>(1024);
+            var one = new byte[1];
+            while (true) {
+                int n = await stream.ReadAsync(one, 0, 1, ct);
+                if (n == 0) return null;
+                headerBytes.Add(one[0]);
+                int c = headerBytes.Count;
+                if (c >= 4
+                    && headerBytes[c - 4] == '\r' && headerBytes[c - 3] == '\n'
+                    && headerBytes[c - 2] == '\r' && headerBytes[c - 1] == '\n')
+                    break;
+                if (c > 16_384) return null; // header too large
+            }
+
+            var headerText  = Encoding.ASCII.GetString(headerBytes.ToArray());
+            var lines       = headerText.Split(new[] { "\r\n" }, StringSplitOptions.None);
+            if (lines.Length == 0) return null;
+            var requestParts = lines[0].Split(' ');
+            if (requestParts.Length < 2) return null;
+
+            var method  = requestParts[0].ToUpperInvariant();
+            var rawPath = requestParts[1];
+
+            long contentLength = 0;
+            for (int i = 1; i < lines.Length; i++) {
+                var colon = lines[i].IndexOf(':');
+                if (colon <= 0) continue;
+                var name = lines[i].Substring(0, colon).Trim();
+                var val  = lines[i].Substring(colon + 1).Trim();
+                if (string.Equals(name, "Content-Length", StringComparison.OrdinalIgnoreCase))
+                    long.TryParse(val, out contentLength);
+            }
+
+            if (!rawPath.StartsWith("/")) rawPath = "/" + rawPath;
+            Uri uri;
+            try   { uri = new Uri("http://localhost" + rawPath); }
+            catch { return null; }
+
+            var queryString = ParseTcpQueryString(uri.Query);
+
+            Stream bodyStream = Stream.Null;
+            if (contentLength > 0 && contentLength <= 64 * 1024 * 1024) {
+                var bodyBytes = new byte[contentLength];
+                int offset = 0;
+                while (offset < (int)contentLength) {
+                    int read = await stream.ReadAsync(bodyBytes, offset, (int)contentLength - offset, ct);
+                    if (read == 0) break;
+                    offset += read;
+                }
+                bodyStream = new MemoryStream(bodyBytes);
+            }
+
+            return new TcpHttpRequest {
+                HttpMethod      = method,
+                Url             = uri,
+                QueryString     = queryString,
+                ContentLength64 = contentLength,
+                InputStream     = bodyStream,
+            };
+        }
+
+        private static System.Collections.Specialized.NameValueCollection ParseTcpQueryString(string query) {
+            var result = new System.Collections.Specialized.NameValueCollection();
+            if (string.IsNullOrEmpty(query)) return result;
+            foreach (var pair in query.TrimStart('?').Split('&')) {
+                if (string.IsNullOrEmpty(pair)) continue;
+                var eq = pair.IndexOf('=');
+                if (eq < 0)
+                    result[TcpUnescape(pair)] = "";
+                else
+                    result[TcpUnescape(pair.Substring(0, eq))] = TcpUnescape(pair.Substring(eq + 1));
+            }
+            return result;
+        }
+
+        private static string TcpUnescape(string s) {
+            try { return Uri.UnescapeDataString(s.Replace("+", " ")); }
+            catch { return s; }
+        }
+
+        private async Task HandleRequest(TcpHttpRequest req, TcpHttpResponse res) {
             var path = req.Url.AbsolutePath.TrimEnd('/');
             if (string.IsNullOrEmpty(path)) path = "/";
             var done = log?.BeginRequest(req.HttpMethod, path);
@@ -417,7 +516,7 @@ namespace NINA.Plugin.NightSummary.Server {
 
         // ── API Handlers ──────────────────────────────────────────────────────
 
-        private async Task HandleGetSessions(HttpListenerResponse res, Action<int, string> done) {
+        private async Task HandleGetSessions(TcpHttpResponse res, Action<int, string> done) {
             if (!File.Exists(dbPath)) {
                 await WriteJson(res, 200, Array.Empty<object>());
                 done?.Invoke(200, "0 sessions (no db)");
@@ -466,7 +565,7 @@ namespace NINA.Plugin.NightSummary.Server {
             done?.Invoke(200, $"{result.Count} sessions");
         }
 
-        private async Task HandleGetSession(HttpListenerResponse res, string sessionId, Action<int, string> done) {
+        private async Task HandleGetSession(TcpHttpResponse res, string sessionId, Action<int, string> done) {
             if (!File.Exists(dbPath)) {
                 await WriteJson(res, 404, new { error = "Database not found" });
                 done?.Invoke(404, "no db");
@@ -552,7 +651,7 @@ namespace NINA.Plugin.NightSummary.Server {
             done?.Invoke(200, $"{sessionId} — {targetBreakdown.Count} targets, {lightImages.Count} images");
         }
 
-        private async Task HandleGetSessionImages(HttpListenerResponse res, string sessionId, Action<int, string> done) {
+        private async Task HandleGetSessionImages(TcpHttpResponse res, string sessionId, Action<int, string> done) {
             if (!File.Exists(dbPath)) {
                 await WriteJson(res, 200, Array.Empty<object>());
                 done?.Invoke(200, "0 images (no db)");
@@ -598,7 +697,7 @@ namespace NINA.Plugin.NightSummary.Server {
             done?.Invoke(200, $"{result.Count} images for {sessionId}");
         }
 
-        private async Task HandleGetSessionEvents(HttpListenerResponse res, string sessionId, Action<int, string> done) {
+        private async Task HandleGetSessionEvents(TcpHttpResponse res, string sessionId, Action<int, string> done) {
             if (!File.Exists(dbPath)) {
                 await WriteJson(res, 200, Array.Empty<object>());
                 done?.Invoke(200, "0 events (no db)");
@@ -619,7 +718,7 @@ namespace NINA.Plugin.NightSummary.Server {
             done?.Invoke(200, $"{result.Count} events for {sessionId}");
         }
 
-        private async Task HandleGetSessionTiming(HttpListenerResponse res, string sessionId, Action<int, string> done) {
+        private async Task HandleGetSessionTiming(TcpHttpResponse res, string sessionId, Action<int, string> done) {
             if (!File.Exists(dbPath)) {
                 await WriteJson(res, 200, Array.Empty<object>());
                 done?.Invoke(200, "0 timing events (no db)");
@@ -639,7 +738,7 @@ namespace NINA.Plugin.NightSummary.Server {
             done?.Invoke(200, $"{result.Count} timing events for {sessionId}");
         }
 
-        private async Task HandleGetSessionReport(HttpListenerResponse res, string sessionId, string theme, Action<int, string> done) {
+        private async Task HandleGetSessionReport(TcpHttpResponse res, string sessionId, string theme, Action<int, string> done) {
             var reportPath = Path.Combine(reportsDir, $"{sessionId}.html");
             if (!File.Exists(reportPath)) {
                 await WriteJson(res, 404, new { error = "Report not found" });
@@ -694,7 +793,7 @@ namespace NINA.Plugin.NightSummary.Server {
             done?.Invoke(200, $"{sessionId} ({html.Length / 1024}KB)");
         }
 
-        private async Task HandleGetSessionThumbnails(HttpListenerResponse res, string sessionId, Action<int, string> done) {
+        private async Task HandleGetSessionThumbnails(TcpHttpResponse res, string sessionId, Action<int, string> done) {
             if (thumbnailCache.TryGetValue(sessionId, out var cached)) {
                 await WriteJson(res, 200, cached);
                 done?.Invoke(200, $"{sessionId} — {cached.Count} thumbs (cached)");
@@ -738,7 +837,7 @@ namespace NINA.Plugin.NightSummary.Server {
             done?.Invoke(200, $"{sessionId} — {entries.Count} thumbs");
         }
 
-        private async Task HandleGetSessionLiveStack(HttpListenerResponse res, string sessionId, Action<int, string> done) {
+        private async Task HandleGetSessionLiveStack(TcpHttpResponse res, string sessionId, Action<int, string> done) {
             if (livestackCache.TryGetValue(sessionId, out var cached)) {
                 await WriteJson(res, 200, cached);
                 var total = cached.Values.Sum(l => l.Count);
@@ -758,7 +857,7 @@ namespace NINA.Plugin.NightSummary.Server {
             done?.Invoke(200, $"{sessionId} — {totalImages} livestack images across {result.Count} targets");
         }
 
-        private async Task HandleGetLiveStackImage(HttpListenerResponse res, string sessionId, string filename, Action<int, string> done) {
+        private async Task HandleGetLiveStackImage(TcpHttpResponse res, string sessionId, string filename, Action<int, string> done) {
             // Belt-and-suspenders against path traversal: strip any directory components,
             // then verify the resolved path is still under the livestack root. The earlier
             // Contains("..") check missed URL-encoded variants and unusual separators.
@@ -1165,7 +1264,7 @@ namespace NINA.Plugin.NightSummary.Server {
             } catch { }
         }
 
-        private async Task HandleGetAltitudeChart(HttpListenerResponse res, string sessionId, Action<int, string> done) {
+        private async Task HandleGetAltitudeChart(TcpHttpResponse res, string sessionId, Action<int, string> done) {
             if (altitudeChartCache.TryGetValue(sessionId, out var cached)) {
                 await WriteJson(res, 200, cached);
                 done?.Invoke(200, $"{sessionId} — altitude chart (cached)");
@@ -1357,7 +1456,7 @@ namespace NINA.Plugin.NightSummary.Server {
             return result;
         }
 
-        private async Task HandleGetTargetStats(HttpListenerResponse res, Action<int, string> done) {
+        private async Task HandleGetTargetStats(TcpHttpResponse res, Action<int, string> done) {
             if (!File.Exists(dbPath)) {
                 await WriteJson(res, 200, new { targets = Array.Empty<object>(), tsStatus = "not_installed" });
                 done?.Invoke(200, "0 targets (no db)");
@@ -1687,7 +1786,7 @@ namespace NINA.Plugin.NightSummary.Server {
             done?.Invoke(200, $"{result.Count} targets (ts: {tsStatus})");
         }
 
-        private async Task HandleGetTargetSessions(HttpListenerResponse res, string targetName, Action<int, string> done) {
+        private async Task HandleGetTargetSessions(TcpHttpResponse res, string targetName, Action<int, string> done) {
             if (!File.Exists(dbPath)) {
                 await WriteJson(res, 200, new { target = targetName, sessions = Array.Empty<object>() });
                 done?.Invoke(200, "0 sessions (no db)");
@@ -1758,7 +1857,7 @@ namespace NINA.Plugin.NightSummary.Server {
 
         // ── Project detail (Phase 3c) ─────────────────────────────────────────
 
-        private async Task HandleGetProjectStats(HttpListenerResponse res, string projectGuid, Action<int, string> done) {
+        private async Task HandleGetProjectStats(TcpHttpResponse res, string projectGuid, Action<int, string> done) {
             if (string.IsNullOrEmpty(projectGuid)) {
                 await WriteJson(res, 400, new { error = "Missing project guid" });
                 done?.Invoke(400, null);
@@ -2108,7 +2207,7 @@ namespace NINA.Plugin.NightSummary.Server {
         }
 
         // ── Project sessions (PDP session history + chart) ───────────────────
-        private async Task HandleGetProjectSessions(HttpListenerResponse res, string projectGuid, Action<int, string> done) {
+        private async Task HandleGetProjectSessions(TcpHttpResponse res, string projectGuid, Action<int, string> done) {
             if (string.IsNullOrEmpty(projectGuid)) {
                 await WriteJson(res, 400, new { error = "Missing project guid" });
                 done?.Invoke(400, null);
@@ -2268,7 +2367,7 @@ namespace NINA.Plugin.NightSummary.Server {
         }
 
         // ── Mosaic HiPS survey thumbnail ─────────────────────────────────────
-        private async Task HandleGetProjectMosaicThumb(HttpListenerResponse res, string projectGuid, Action<int, string> done) {
+        private async Task HandleGetProjectMosaicThumb(TcpHttpResponse res, string projectGuid, Action<int, string> done) {
             if (string.IsNullOrEmpty(projectGuid)) {
                 await WriteJson(res, 400, new { error = "Missing project guid" });
                 done?.Invoke(400, null);
@@ -2402,7 +2501,7 @@ namespace NINA.Plugin.NightSummary.Server {
 
         // ── Settings & Regeneration ──────────────────────────────────────────
 
-        private async Task HandleGetFilters(HttpListenerResponse res, Action<int, string> done) {
+        private async Task HandleGetFilters(TcpHttpResponse res, Action<int, string> done) {
             if (!File.Exists(dbPath)) {
                 await WriteJson(res, 200, new { filters = Array.Empty<string>() });
                 done?.Invoke(200, "0 filters (no db)");
@@ -2421,7 +2520,7 @@ namespace NINA.Plugin.NightSummary.Server {
             done?.Invoke(200, $"{sorted.Count} filters");
         }
 
-        private async Task HandleGetSettings(HttpListenerResponse res) {
+        private async Task HandleGetSettings(TcpHttpResponse res) {
             var s = _settings.Current;
             await WriteJson(res, 200, new {
                 tsAvailable            = TsAvailable(),
@@ -2460,7 +2559,7 @@ namespace NINA.Plugin.NightSummary.Server {
         /// the dev server's <c>tools/dev-dashboard/data/ts-projects.json</c> file. Used by
         /// <c>snapshot.py</c> to capture a real TS snapshot for offline dev work.
         /// </summary>
-        private async Task HandleGetTsProjects(HttpListenerResponse res, Action<int, string> done) {
+        private async Task HandleGetTsProjects(TcpHttpResponse res, Action<int, string> done) {
             string tsStatus = "available";
             List<TsProjectInfo> projects = null;
 
@@ -2527,7 +2626,7 @@ namespace NINA.Plugin.NightSummary.Server {
         private string _tonightPreviewJson = null;
         private DateTime _tonightPreviewCachedAt = DateTime.MinValue;
 
-        private async Task HandleGetTonightPreview(HttpListenerResponse res, Action<int, string> done) {
+        private async Task HandleGetTonightPreview(TcpHttpResponse res, Action<int, string> done) {
             try {
                 // Return cached data if still fresh (5 min TTL — preview call takes ~25s)
                 if (_tonightPreviewJson != null &&
@@ -2645,7 +2744,7 @@ namespace NINA.Plugin.NightSummary.Server {
             }
         }
 
-        private async Task HandleTsStatusOverride(HttpListenerRequest req, HttpListenerResponse res, Action<int, string> done) {
+        private async Task HandleTsStatusOverride(TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
             try {
                 var body = await ReadBodyCappedAsync(req, res, done);
                 if (body == null) return;
@@ -2678,7 +2777,7 @@ namespace NINA.Plugin.NightSummary.Server {
             }
         }
 
-        private async Task HandleTsTargetLink(HttpListenerRequest req, HttpListenerResponse res, Action<int, string> done) {
+        private async Task HandleTsTargetLink(TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
             try {
                 var body = await ReadBodyCappedAsync(req, res, done);
                 if (body == null) return;
@@ -2701,7 +2800,7 @@ namespace NINA.Plugin.NightSummary.Server {
             }
         }
 
-        private async Task HandleTsAssign(HttpListenerRequest req, HttpListenerResponse res, Action<int, string> done) {
+        private async Task HandleTsAssign(TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
             try {
                 var body = await ReadBodyCappedAsync(req, res, done);
                 if (body == null) return;
@@ -2723,7 +2822,7 @@ namespace NINA.Plugin.NightSummary.Server {
             }
         }
 
-        private async Task HandleTsExclude(HttpListenerRequest req, HttpListenerResponse res, Action<int, string> done) {
+        private async Task HandleTsExclude(TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
             try {
                 var body = await ReadBodyCappedAsync(req, res, done);
                 if (body == null) return;
@@ -2746,7 +2845,7 @@ namespace NINA.Plugin.NightSummary.Server {
             }
         }
 
-        private async Task HandleCustomProjects(HttpListenerRequest req, HttpListenerResponse res, Action<int, string> done) {
+        private async Task HandleCustomProjects(TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
             var body = await ReadBodyCappedAsync(req, res, done);
             if (body == null) return;
             try {
@@ -2779,7 +2878,7 @@ namespace NINA.Plugin.NightSummary.Server {
             }
         }
 
-        private async Task HandleProjectsReset(HttpListenerRequest req, HttpListenerResponse res, Action<int, string> done) {
+        private async Task HandleProjectsReset(TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
             try {
                 SetDashboardMeta(TsProjectAssignmentsKey, null);
                 SetDashboardMeta(TsTargetExclusionsKey,   null);
@@ -2793,7 +2892,7 @@ namespace NINA.Plugin.NightSummary.Server {
             }
         }
 
-        private async Task HandleProjectReset(HttpListenerRequest req, HttpListenerResponse res, string projectGuid, Action<int, string> done) {
+        private async Task HandleProjectReset(TcpHttpRequest req, TcpHttpResponse res, string projectGuid, Action<int, string> done) {
             try {
                 if (string.IsNullOrEmpty(projectGuid)) {
                     await WriteJson(res, 400, new { error = "projectGuid required" });
@@ -2821,7 +2920,7 @@ namespace NINA.Plugin.NightSummary.Server {
             }
         }
 
-        private async Task HandleRegenerateReport(HttpListenerRequest req, HttpListenerResponse res, string sessionId, Action<int, string> done) {
+        private async Task HandleRegenerateReport(TcpHttpRequest req, TcpHttpResponse res, string sessionId, Action<int, string> done) {
             if (_regen == null || !_regen.IsAvailable) {
                 await WriteJson(res, 500, new { error = "Report generation not available" });
                 done?.Invoke(500, "no regenerator");
@@ -2880,7 +2979,7 @@ namespace NINA.Plugin.NightSummary.Server {
             }
         }
 
-        private async Task HandleRegenerateAll(HttpListenerRequest req, HttpListenerResponse res, Action<int, string> done) {
+        private async Task HandleRegenerateAll(TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
             if (_regen == null || !_regen.IsAvailable) {
                 await WriteJson(res, 500, new { error = "Report generation not available" });
                 done?.Invoke(500, "no regenerator");
@@ -2981,7 +3080,7 @@ namespace NINA.Plugin.NightSummary.Server {
             }
         }
 
-        private async Task HandleRegenAllStatus(HttpListenerResponse res) {
+        private async Task HandleRegenAllStatus(TcpHttpResponse res) {
             await WriteJson(res, 200, new {
                 status = regenAllStatus ?? "idle",
                 current = regenAllCurrent,
@@ -2992,7 +3091,7 @@ namespace NINA.Plugin.NightSummary.Server {
             });
         }
 
-        private async Task HandleGetSessionSettings(HttpListenerResponse res, string sessionId, Action<int, string> done) {
+        private async Task HandleGetSessionSettings(TcpHttpResponse res, string sessionId, Action<int, string> done) {
             var settingsPath = Path.Combine(reportsDir, $"{sessionId}.settings.json");
             if (File.Exists(settingsPath)) {
                 var json = await File.ReadAllTextAsync(settingsPath);
@@ -3220,7 +3319,7 @@ private static string FormatSettingsForLog(NightSummarySettings s) {
         // and returns null if Content-Length advertises overflow or the unknown-length
         // body exceeds the cap mid-read. Callers must early-return on null.
         private static async Task<string> ReadBodyCappedAsync(
-            HttpListenerRequest req, HttpListenerResponse res, Action<int, string> done) {
+            TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
             if (req.ContentLength64 > MaxRequestBodyBytes) {
                 await WriteJson(res, 413, new { error = "Request body too large" });
                 done?.Invoke(413, $"body {req.ContentLength64} > cap {MaxRequestBodyBytes}");
@@ -3249,7 +3348,7 @@ private static string FormatSettingsForLog(NightSummarySettings s) {
 
         // ── Response Helpers ──────────────────────────────────────────────────
 
-        private static async Task WriteJson(HttpListenerResponse res, int status, object data) {
+        private static async Task WriteJson(TcpHttpResponse res, int status, object data) {
             res.StatusCode = status;
             res.ContentType = "application/json; charset=utf-8";
             res.Headers.Add("Access-Control-Allow-Origin", "*");
@@ -3260,7 +3359,7 @@ private static string FormatSettingsForLog(NightSummarySettings s) {
             res.Close();
         }
 
-        private static async Task WriteJsonRaw(HttpListenerResponse res, int status, string json) {
+        private static async Task WriteJsonRaw(TcpHttpResponse res, int status, string json) {
             res.StatusCode = status;
             res.ContentType = "application/json; charset=utf-8";
             res.Headers.Add("Access-Control-Allow-Origin", "*");
@@ -3270,7 +3369,7 @@ private static string FormatSettingsForLog(NightSummarySettings s) {
             res.Close();
         }
 
-        private static async Task WriteHtml(HttpListenerResponse res, int status, string html) {
+        private static async Task WriteHtml(TcpHttpResponse res, int status, string html) {
             res.StatusCode = status;
             res.ContentType = "text/html; charset=utf-8";
             res.Headers.Add("Cache-Control", "no-cache, no-store, must-revalidate");
@@ -3283,7 +3382,7 @@ private static string FormatSettingsForLog(NightSummarySettings s) {
 
         // ── Stats Summary ──────────────────────────────────────────────────────
 
-        private async Task HandleGetStatsSummary(HttpListenerResponse res, Action<int, string> done) {
+        private async Task HandleGetStatsSummary(TcpHttpResponse res, Action<int, string> done) {
             if (!File.Exists(dbPath)) {
                 await WriteJson(res, 200, new {
                     totalSessions = 0, totalIntegrationHours = 0.0, totalImages = 0,
