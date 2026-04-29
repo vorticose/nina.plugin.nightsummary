@@ -116,7 +116,7 @@ The filter bar sits below the latest session card, inside the **Earlier Sessions
 | Control | What it does |
 |---------|-------------|
 | **Target picker** | Searchable 2-column popover — check/uncheck targets to show only those sessions |
-| **Date from / Date to** | Date range filter — click the field to open the native date picker |
+| **Date from / Date to** | Date range filter — click the field to open the date picker |
 | **Show empty** | When off (default), hides sessions with zero images |
 | **Show FOV** | Toggles the FOV overlay rectangle on all thumbnails |
 | **Compact / Expanded** | Switches the card layout (see above) |
