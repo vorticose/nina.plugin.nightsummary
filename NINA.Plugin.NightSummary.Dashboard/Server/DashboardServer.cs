@@ -166,12 +166,25 @@ namespace NINA.Plugin.NightSummary.Server {
             Directory.CreateDirectory(reportsDir);
         }
 
-        public Task StartAsync(int port) => StartAsync(port, "+");
+        public Task StartAsync(int port) {
+            // Bind to localhost + every active unicast IPv4 address (LAN, Tailscale, ZeroTier, etc.)
+            // using specific IPs avoids the urlacl/admin requirement that http://+:port/ imposes.
+            var prefixHosts = new List<string> { "localhost" };
+            foreach (var nic in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()) {
+                if (nic.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up) continue;
+                foreach (var addr in nic.GetIPProperties().UnicastAddresses) {
+                    if (addr.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
+                        && !IPAddress.IsLoopback(addr.Address))
+                        prefixHosts.Add(addr.Address.ToString());
+                }
+            }
+            return StartAsync(port, prefixHosts);
+        }
 
-        // host = "+" binds all interfaces (prod: needs admin or urlacl reservation;
-        // NINA already has it). host = "localhost" binds loopback only and needs no
-        // privileges - used by the dev harness so contributors can run without UAC.
-        public Task StartAsync(int port, string host) {
+        // Binds to a single explicit host — used by the dev harness (localhost only, no UAC needed).
+        public Task StartAsync(int port, string host) => StartAsync(port, new List<string> { host });
+
+        private Task StartAsync(int port, List<string> hosts) {
             if (IsRunning) return Task.CompletedTask;
 
             try {
@@ -182,7 +195,8 @@ namespace NINA.Plugin.NightSummary.Server {
 
                 cts = new CancellationTokenSource();
                 listener = new HttpListener();
-                listener.Prefixes.Add($"http://{host}:{port}/");
+                foreach (var h in hosts)
+                    listener.Prefixes.Add($"http://{h}:{port}/");
                 listener.Start();
 
                 var hostname = Dns.GetHostName();
