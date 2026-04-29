@@ -16,6 +16,12 @@
     <EmbeddedResource Include="Web\dashboard.html">
       <LogicalName>dashboard.html</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="Web\flatpickr.min.css">
+      <LogicalName>flatpickr.min.css</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Web\flatpickr.min.js">
+      <LogicalName>flatpickr.min.js</LogicalName>
+    </EmbeddedResource>
     <EmbeddedResource Include="Web\dashboard.css">
       <LogicalName>dashboard.css</LogicalName>
     </EmbeddedResource>

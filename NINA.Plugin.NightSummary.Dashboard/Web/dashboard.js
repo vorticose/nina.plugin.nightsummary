@@ -4,10 +4,32 @@
 
 var LOG_PREFIX = '[NightSummary]';
 
+function _argsToString(args) {
+  return Array.prototype.slice.call(args).map(function(a) {
+    if (a instanceof Error) return a.message + (a.stack ? '\n' + a.stack : '');
+    return (typeof a === 'object' && a !== null) ? JSON.stringify(a) : String(a);
+  }).join(' ');
+}
+function _postClientLog(level, args) {
+  try {
+    fetch('/api/clientlog', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ level: level, message: _argsToString(args), url: window.location.hash || '/' })
+    }).catch(function() {});
+  } catch (_) {}
+}
 function logDebug() { console.log.apply(console, [LOG_PREFIX].concat(Array.prototype.slice.call(arguments))); }
 function logInfo()  { console.info.apply(console, [LOG_PREFIX].concat(Array.prototype.slice.call(arguments))); }
-function logWarn()  { console.warn.apply(console, [LOG_PREFIX].concat(Array.prototype.slice.call(arguments))); }
-function logError() { console.error.apply(console, [LOG_PREFIX].concat(Array.prototype.slice.call(arguments))); }
+function logWarn()  { console.warn.apply(console, [LOG_PREFIX].concat(Array.prototype.slice.call(arguments))); _postClientLog('warn', arguments); }
+function logError() { console.error.apply(console, [LOG_PREFIX].concat(Array.prototype.slice.call(arguments))); _postClientLog('error', arguments); }
+window.addEventListener('error', function(e) {
+  _postClientLog('error', ['Uncaught: ' + e.message + ' (' + e.filename + ':' + e.lineno + ')']);
+});
+window.addEventListener('unhandledrejection', function(e) {
+  var reason = e.reason ? (e.reason.message || String(e.reason)) : 'unknown rejection';
+  _postClientLog('error', ['UnhandledRejection: ' + reason]);
+});
 
 // ── Capability detection ──────────────────────────────────────────────────
 
@@ -321,44 +343,46 @@ function updateThemeButton() {
 // ── Router ─────────────────────────────────────────────────────────────────
 
 function route() {
-  var hash = location.hash.slice(1) || '/sessions';
-  logInfo('Navigate:', hash);
-  var parts = hash.split('?');
-  var path = parts[0];
-  var params = new URLSearchParams(parts[1] || '');
+  try {
+    var hash = location.hash.slice(1) || '/sessions';
+    logInfo('Navigate:', hash);
+    var parts = hash.split('?');
+    var path = parts[0];
+    var params = new URLSearchParams(parts[1] || '');
 
-  document.querySelectorAll('.nav-link').forEach(function(el) {
-    el.classList.toggle('active', hash.startsWith('#' + el.getAttribute('href').slice(1)) ||
-      path.startsWith('/' + el.dataset.page));
-  });
-  updateStatsNavLabel();
+    document.querySelectorAll('.nav-link').forEach(function(el) {
+      el.classList.toggle('active', hash.startsWith('#' + el.getAttribute('href').slice(1)) ||
+        path.startsWith('/' + el.dataset.page));
+    });
+    updateStatsNavLabel();
 
-  // Toggle report-view mode on body to kill outer scroll
-  var isReport = path.match(/^\/sessions\/[^/]+$/);
-  document.body.classList.toggle('report-view', !!isReport);
-  if (isReport) {
-    // Shell is the scroll container in report-view; reset it so content
-    // always starts at top regardless of prior body scroll position.
-    // window.scrollTo is unreliable on iOS Safari after a hashchange.
-    var shellEl = document.querySelector('.shell');
-    if (shellEl) shellEl.scrollTop = 0;
-  } else {
-    // Remove the report nav from the header when leaving report view
-    var existingNav = document.getElementById('header-report-nav');
-    if (existingNav) existingNav.remove();
-    document.documentElement.style.removeProperty('--header-h');
-  }
+    // Toggle report-view mode on body to kill outer scroll
+    var isReport = path.match(/^\/sessions\/[^/]+$/);
+    document.body.classList.toggle('report-view', !!isReport);
+    if (isReport) {
+      // Shell is the scroll container in report-view; reset it so content
+      // always starts at top regardless of prior body scroll position.
+      // window.scrollTo is unreliable on iOS Safari after a hashchange.
+      var shellEl = document.querySelector('.shell');
+      if (shellEl) shellEl.scrollTop = 0;
+    } else {
+      // Remove the report nav from the header when leaving report view
+      var existingNav = document.getElementById('header-report-nav');
+      if (existingNav) existingNav.remove();
+      document.documentElement.style.removeProperty('--header-h');
+    }
 
-  if (path === '/sessions') {
-    renderSessionList(params);
-  } else if (isReport) {
-    renderSessionDetail(path.split('/')[2]);
-  } else if (path === '/stats') {
-    renderStats();
-  } else {
-    renderSessionList(params);
-  }
-  repositionViewToggle();
+    if (path === '/sessions') {
+      renderSessionList(params);
+    } else if (isReport) {
+      renderSessionDetail(path.split('/')[2]);
+    } else if (path === '/stats') {
+      renderStats();
+    } else {
+      renderSessionList(params);
+    }
+    repositionViewToggle();
+  } catch (e) { logError('route() crashed at', location.hash, e); }
 }
 
 function updateStatsNavLabel() {
@@ -1849,7 +1873,7 @@ function loadTargetDetailThumb(targetName, latestSessionId) {
   api('/api/sessions/' + latestSessionId + '/thumbnails').then(function(thumbs) {
     if (Array.isArray(thumbs) && thumbs.length > 0) thumbnailCache[latestSessionId] = thumbs;
     apply(thumbs);
-  }).catch(function() { /* leave placeholder */ });
+  }).catch(function(e) { logWarn('loadTargetDetailThumb: thumbnail fetch failed', e); });
 }
 
 // Look up the TS payload for a target by name from the current statsTargetData cache.
@@ -2024,7 +2048,7 @@ function openProjectDetail(projectGuid, projectName) {
         _pdpResizeDebounce = setTimeout(function() { renderPdpChart(backdrop, sessions); }, 120);
       };
       window.addEventListener('resize', _pdpResizeHandler);
-    }).catch(function() { /* session fetch failed — chart/table just stay hidden */ });
+    }).catch(function(e) { logWarn('openProjectDetail: session fetch failed', e); });
   }).catch(function(err) {
     var current = document.getElementById('pdp-backdrop');
     if (!current || current !== backdrop) return;
@@ -2279,7 +2303,7 @@ function loadPdpMultiThumbs(backdrop, imagedPanels) {
       api('/api/sessions/' + encodeURIComponent(sid) + '/thumbnails').then(function(thumbs) {
         if (Array.isArray(thumbs) && thumbs.length > 0) thumbnailCache[sid] = thumbs;
         applyThumb(thumbs);
-      }).catch(function() { /* leave placeholder */ });
+      }).catch(function(e) { logWarn('loadPdpMultiThumbs: thumbnail fetch failed', e); });
     }
   });
 }
@@ -2331,7 +2355,7 @@ function loadPdpSingleThumb(backdrop, panel) {
     api('/api/sessions/' + encodeURIComponent(sid) + '/thumbnails').then(function(thumbs) {
       if (Array.isArray(thumbs) && thumbs.length > 0) thumbnailCache[sid] = thumbs;
       applyThumb(thumbs);
-    }).catch(function() { /* leave placeholder */ });
+    }).catch(function(e) { logWarn('loadPdpSingleThumb: thumbnail fetch failed', e); });
   }
 }
 
@@ -2980,7 +3004,7 @@ function loadTargetThumbnails() {
     api('/api/sessions/' + sid + '/thumbnails').then(function(thumbs) {
       if (Array.isArray(thumbs) && thumbs.length > 0) thumbnailCache[sid] = thumbs;
       applyThumbs(sid, thumbs);
-    }).catch(function() { /* leave placeholder */ });
+    }).catch(function(e) { logWarn('loadTargetThumbnails: thumbnail fetch failed for', sid, e); });
   });
 }
 
@@ -3000,6 +3024,7 @@ var showHidden = false;
 var dropdownOpen = false; // persists across re-renders so pill clicks don't close the menu
 var targetSearch = '';   // persists across re-renders so search text survives pill clicks
 var sortDropdownOpen = false;
+var fpFrom = null, fpTo = null; // Flatpickr instances — destroyed/recreated on each list render
 var currentSort = localStorage.getItem('ns-sort') || 'date-desc';
 var SORT_LABELS = { 'date-desc': 'Newest first', 'date-asc': 'Oldest first', 'integration': 'Most integration', 'images': 'Most images', 'targets': 'Most targets' };
 var livestackMap = {}; // sessionId -> { targetName -> [{filter, url, label, isComposite}] }
@@ -3953,15 +3978,13 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy, keepPage) {
     targetDropHtml +
     '<div class="filter-dates">' +
       '<div class="date-input-wrap">' +
-        '<span class="date-label' + (fromFilter ? '' : ' empty') + '">' + (fromFilter ? fmtDate(fromFilter) : 'From') + '</span>' +
-        '<input type="date" id="filter-from" value="' + esc(fromFilter) + '" tabindex="-1">' +
+        '<input type="text" id="filter-from" class="date-pill" placeholder="From" readonly' + (fromFilter ? ' value="' + esc(fromFilter) + '"' : '') + '>' +
+        '<button class="date-clear" data-target="filter-from" title="Clear"' + (fromFilter ? '' : ' style="display:none"') + '>\u00d7</button>' +
       '</div>' +
-      (fromFilter ? '<button class="date-clear" data-target="filter-from" title="Clear">\u00d7</button>' : '') +
       '<div class="date-input-wrap">' +
-        '<span class="date-label' + (toFilter ? '' : ' empty') + '">' + (toFilter ? fmtDate(toFilter) : 'To') + '</span>' +
-        '<input type="date" id="filter-to" value="' + esc(toFilter) + '" tabindex="-1">' +
+        '<input type="text" id="filter-to" class="date-pill" placeholder="To" readonly' + (toFilter ? ' value="' + esc(toFilter) + '"' : '') + '>' +
+        '<button class="date-clear" data-target="filter-to" title="Clear"' + (toFilter ? '' : ' style="display:none"') + '>\u00d7</button>' +
       '</div>' +
-      (toFilter ? '<button class="date-clear" data-target="filter-to" title="Clear">\u00d7</button>' : '') +
     '</div>' +
     '<div class="filter-sort" id="sort-dropdown">' +
       '<button class="sort-dropdown-btn" id="sort-dropdown-btn">' + esc(SORT_LABELS[currentSort]) + ' \u25be</button>' +
@@ -4061,7 +4084,7 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy, keepPage) {
       '<div class="card-stat stat-moon">' + (s.moonPhase ? '<div class="card-stat-value">' + esc(s.moonPhase) + '</div><div class="card-stat-label">Moon</div>' : '') + '</div>' +
       '</div>';
 
-    return '<div class="session-card" onclick="navigate(\'#/sessions/' + s.sessionId + '\')">' +
+    return '<div class="session-card" data-date="' + esc(s.sessionStart ? s.sessionStart.substring(0, 10) : '') + '" onclick="navigate(\'#/sessions/' + s.sessionId + '\')">' +
       '<button class="hide-btn" data-session="' + s.sessionId + '" onclick="event.stopPropagation();hideSession(this.dataset.session)" title="Hide this session">\u2715</button>' +
       '<div class="card-header">' +
         '<span class="session-date">' + fmtDate(s.sessionStart) + '</span>' +
@@ -4094,7 +4117,7 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy, keepPage) {
       '</div>'
     : '';
 
-  el.innerHTML = filterHtml + '<div class="cards-container' + modeClass + '" style="' + fadeStyle + '">' + cards + '</div>' + loadMoreHtml;
+  el.innerHTML = filterHtml + '<div class="cards-container' + modeClass + '" style="' + fadeStyle + '">' + cards + '<div class="date-filter-empty empty" style="display:none">No sessions match the date filter.</div></div>' + loadMoreHtml;
   bindListEvents();
 
   loadLiveStacks(visible);
@@ -5795,7 +5818,75 @@ function applyTargetSearch(query) {
   });
 }
 
+// ── Popup shield overlay ──────────────────────────────────────────────────────
+// A fixed full-screen div (z-index 50) that sits above session cards but below
+// the sticky header (z-index 100) and Flatpickr calendar (z-index 99999).
+// When any filter popup is open, the overlay intercepts taps/clicks on cards:
+//   • Mobile: touchstart + preventDefault() cancels the synthetic click chain.
+//   • Desktop: overlay physically captures the click (higher z-index than cards).
+// Flatpickr on desktop closes via its own mousedown listener before our click
+// fires, so onClose uses setTimeout(0) to keep the overlay visible through click.
+
+var _popupOverlay = null;
+var _popupCloseFn = null;
+
+function _ensureOverlay() {
+  if (_popupOverlay) return;
+  _popupOverlay = document.createElement('div');
+  _popupOverlay.style.cssText = 'position:fixed;inset:0;z-index:50;display:none;';
+  _popupOverlay.addEventListener('touchstart', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    _dismissOverlay();
+  }, { passive: false });
+  _popupOverlay.addEventListener('click', function(e) {
+    e.stopPropagation();
+    _dismissOverlay();
+  });
+  document.body.appendChild(_popupOverlay);
+}
+
+function openPopupOverlay(closeFn) {
+  _ensureOverlay();
+  _popupCloseFn = closeFn;
+  _popupOverlay.style.display = '';
+}
+
+function _dismissOverlay() {
+  if (!_popupOverlay) return;
+  _popupOverlay.style.display = 'none';
+  var fn = _popupCloseFn;
+  _popupCloseFn = null;
+  if (fn) fn();
+}
+
+function closePopupOverlay() {
+  if (_popupOverlay) _popupOverlay.style.display = 'none';
+  _popupCloseFn = null;
+}
+
+// Show/hide session cards by date without re-rendering the DOM.
+// Called by Flatpickr onChange and the × clear buttons so thumbnails never blink.
+function applyDateVisibility(from, to) {
+  var anyVisible = false;
+  document.querySelectorAll('.session-card[data-date]').forEach(function(card) {
+    var d = card.getAttribute('data-date');
+    var hide = (from && d < from) || (to && d > to);
+    card.style.display = hide ? 'none' : '';
+    if (!hide) anyVisible = true;
+  });
+  var fromClear = document.querySelector('.date-clear[data-target="filter-from"]');
+  var toClear   = document.querySelector('.date-clear[data-target="filter-to"]');
+  if (fromClear) fromClear.style.display = from ? '' : 'none';
+  if (toClear)   toClear.style.display   = to   ? '' : 'none';
+  var emptyMsg = document.querySelector('.date-filter-empty');
+  if (emptyMsg) emptyMsg.style.display = (!anyVisible && (from || to)) ? '' : 'none';
+}
+
 function bindListEvents() {
+  // Reset overlay on every re-render; re-open below if a popup was already open.
+  closePopupOverlay();
+
   var fromEl = document.getElementById('filter-from');
   var toEl = document.getElementById('filter-to');
   var clearEl = document.getElementById('filter-clear');
@@ -5822,27 +5913,28 @@ function bindListEvents() {
   // Target dropdown toggle
   var dropBtn = document.getElementById('target-dropdown-btn');
   var dropMenu = document.getElementById('target-dropdown-menu');
+  function openTargetOverlay() {
+    openPopupOverlay(function() {
+      dropdownOpen = false;
+      targetSearch = '';
+      var m = document.getElementById('target-dropdown-menu');
+      if (m) m.classList.remove('open');
+    });
+  }
   if (dropBtn && dropMenu) {
     // Restore open state and search after re-render
     if (dropdownOpen) {
       dropMenu.classList.add('open');
       if (targetSearch) applyTargetSearch(targetSearch);
+      openTargetOverlay();
     }
     dropBtn.addEventListener('click', function(e) {
       e.stopPropagation();
       dropdownOpen = !dropdownOpen;
       dropMenu.classList.toggle('open');
+      if (dropdownOpen) openTargetOverlay(); else closePopupOverlay();
     });
-    // Close on click outside — also clear search
-    document.addEventListener('click', function closeDropdown(e) {
-      var dropdown = document.getElementById('target-dropdown');
-      if (dropdown && !dropdown.contains(e.target)) {
-        dropdownOpen = false;
-        targetSearch = '';
-        dropMenu.classList.remove('open');
-      }
-    });
-    // Prevent menu clicks from closing
+    // Prevent menu clicks from closing (overlay handles outside clicks)
     dropMenu.addEventListener('click', function(e) { e.stopPropagation(); });
 
     // Search input — filter pills in-place, no API call
@@ -5855,47 +5947,56 @@ function bindListEvents() {
     }
   }
 
-  // Date picker — desktop: click on wrapper calls showPicker(), change applies filter.
-  // Touch: CSS makes the input full-size so native tap opens the picker. We listen
-  // to blur (picker dismissed) instead of change — on iOS, change fires immediately
-  // when the picker opens with no value set (auto-commits today), which would re-render
-  // the DOM and close the picker before the user can scroll to their chosen date.
-  var touchDevice = window.matchMedia && window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+  // Date pickers — Flatpickr handles all platforms (iOS, Android, desktop) uniformly.
+  // disableMobile:true prevents Flatpickr from falling back to native pickers on touch devices.
+  if (fpFrom) { try { fpFrom.destroy(); } catch(e) {} fpFrom = null; }
+  if (fpTo)   { try { fpTo.destroy();   } catch(e) {} fpTo   = null; }
+  var fpConfig = {
+    dateFormat: 'Y-m-d',
+    disableMobile: true,
+    allowInput: false,
+    onOpen: function(dates, dateStr, instance) {
+      openPopupOverlay(function() { instance.close(); });
+    },
+    // Desktop: Flatpickr closes on mousedown (before click fires). Use setTimeout so
+    // the overlay stays visible through the subsequent click, preventing it from
+    // reaching a session card before the overlay can intercept it.
+    onClose: function() { setTimeout(closePopupOverlay, 0); }
+  };
+  function onDateChange() {
+    applyDateVisibility(fromEl ? fromEl.value || '' : '', toEl ? toEl.value || '' : '');
+  }
   if (fromEl) {
-    fromEl.addEventListener(touchDevice ? 'blur' : 'change', refresh);
-    if (!touchDevice) {
-      fromEl.parentElement.addEventListener('click', function(e) {
-        if (e.target.classList.contains('date-clear')) return;
-        fromEl.showPicker && fromEl.showPicker();
-      });
-    }
+    fpFrom = flatpickr(fromEl, Object.assign({}, fpConfig, {
+      defaultDate: fromEl.value || null,
+      onChange: onDateChange
+    }));
   }
   if (toEl) {
-    toEl.addEventListener(touchDevice ? 'blur' : 'change', refresh);
-    if (!touchDevice) {
-      toEl.parentElement.addEventListener('click', function(e) {
-        if (e.target.classList.contains('date-clear')) return;
-        toEl.showPicker && toEl.showPicker();
-      });
-    }
+    fpTo = flatpickr(toEl, Object.assign({}, fpConfig, {
+      defaultDate: toEl.value || null,
+      onChange: onDateChange
+    }));
   }
+  // Restore correct visibility after a full re-render triggered by a non-date filter
+  applyDateVisibility(fromEl ? fromEl.value || '' : '', toEl ? toEl.value || '' : '');
   // Sort dropdown
   var sortBtn = document.getElementById('sort-dropdown-btn');
   var sortMenu = document.getElementById('sort-dropdown-menu');
+  function openSortOverlay() {
+    openPopupOverlay(function() {
+      sortDropdownOpen = false;
+      var m = document.getElementById('sort-dropdown-menu');
+      if (m) m.classList.remove('open');
+    });
+  }
   if (sortBtn && sortMenu) {
-    if (sortDropdownOpen) sortMenu.classList.add('open');
+    if (sortDropdownOpen) { sortMenu.classList.add('open'); openSortOverlay(); }
     sortBtn.addEventListener('click', function(e) {
       e.stopPropagation();
       sortDropdownOpen = !sortDropdownOpen;
       sortMenu.classList.toggle('open');
-    });
-    document.addEventListener('click', function closeSortDropdown(e) {
-      var dropdown = document.getElementById('sort-dropdown');
-      if (dropdown && !dropdown.contains(e.target)) {
-        sortDropdownOpen = false;
-        sortMenu.classList.remove('open');
-        document.removeEventListener('click', closeSortDropdown);
-      }
+      if (sortDropdownOpen) openSortOverlay(); else closePopupOverlay();
     });
     sortMenu.addEventListener('click', function(e) { e.stopPropagation(); });
     sortMenu.querySelectorAll('.sort-option').forEach(function(btn) {
@@ -5903,19 +6004,17 @@ function bindListEvents() {
         currentSort = this.dataset.sort;
         safeSetItem('ns-sort', currentSort);
         sortDropdownOpen = false;
+        closePopupOverlay();
         refresh();
       });
     });
   }
 
-  // Clear (×) buttons on date inputs
+  // Clear (×) buttons on date inputs — fp.clear() fires onChange → applyDateVisibility
   document.querySelectorAll('.date-clear').forEach(function(btn) {
     btn.addEventListener('click', function() {
-      var input = document.getElementById(btn.dataset.target);
-      if (input) {
-        input.value = '';
-      }
-      refresh();
+      var fp = btn.dataset.target === 'filter-from' ? fpFrom : fpTo;
+      if (fp) fp.clear();
     });
   });
 

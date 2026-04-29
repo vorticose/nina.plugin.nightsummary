@@ -163,8 +163,9 @@ header.scrolled {
   margin: -3px auto 0;
   padding: 0 max(20px, env(safe-area-inset-right)) 5px calc(max(20px, env(safe-area-inset-left)) + 56px);
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
+  gap: 10px;
   font-size: 10px;
   color: var(--dim);
   opacity: 0.6;
@@ -311,35 +312,12 @@ nav {
 .theme-toggle:hover { border-color: var(--accent); }
 
 .date-input-wrap {
-  position: relative;
-  cursor: pointer;
   display: flex;
   align-items: center;
 }
 
-.date-input-wrap input[type="date"] {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 0;
-  height: 0;
-  opacity: 0;
-  pointer-events: none;
-}
-
-/* On touch: make the input cover the wrapper so native tap opens the picker.
-   Opacity stays 0 (invisible). The clear button is a flex sibling of the wrap
-   (not inside it) so it is never covered by the input overlay. */
-@media (hover: none) and (pointer: coarse) {
-  .date-input-wrap input[type="date"] {
-    width: 100%;
-    height: 100%;
-    pointer-events: auto;
-    z-index: 1;
-  }
-}
-
-.date-input-wrap .date-label {
+/* Flatpickr-owned text input styled as the existing date pill */
+.date-pill {
   background: rgba(230,232,240,0.06);
   border: 1px solid rgba(230,232,240,0.12);
   color: var(--text-secondary);
@@ -348,26 +326,109 @@ nav {
   font-size: 13px;
   font-family: Arial, sans-serif;
   min-width: 100px;
-  display: inline-flex;
-  align-items: center;
   height: 32px;
   box-sizing: border-box;
   cursor: pointer;
+  outline: none;
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.08),
     inset 0 -1px 0 rgba(0,0,0,0.15),
     0 2px 6px rgba(0,0,0,0.3),
     0 1px 2px rgba(0,0,0,0.2);
 }
-
-.date-input-wrap:hover .date-label {
+.date-pill::placeholder { color: var(--muted); }
+.date-pill:hover {
   background: rgba(230,232,240,0.10);
   border-color: rgba(230,232,240,0.22);
 }
-
-.date-input-wrap .date-label.empty {
-  color: var(--muted);
+html.light .date-pill {
+  background: rgba(30,40,60,0.06);
+  border-color: rgba(30,40,60,0.18);
+  color: var(--text);
 }
+html.light .date-pill:hover {
+  background: rgba(30,40,60,0.10);
+  border-color: rgba(30,40,60,0.30);
+}
+
+/* ── Flatpickr calendar — dark theme (default) ── */
+.flatpickr-calendar {
+  background: #1e2140;
+  border: 1px solid rgba(150,160,200,0.18);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.35);
+  border-radius: 8px;
+}
+.flatpickr-calendar.arrowTop:before,
+.flatpickr-calendar.arrowTop:after { border-bottom-color: #1e2140; }
+.flatpickr-calendar.arrowBottom:before,
+.flatpickr-calendar.arrowBottom:after { border-top-color: #1e2140; }
+.flatpickr-months { background: #1e2140; border-radius: 8px 8px 0 0; }
+.flatpickr-months .flatpickr-month { background: transparent; color: #c8ccde; fill: #c8ccde; }
+.flatpickr-months .flatpickr-prev-month,
+.flatpickr-months .flatpickr-next-month { fill: #8892b0; }
+.flatpickr-months .flatpickr-prev-month:hover,
+.flatpickr-months .flatpickr-next-month:hover { fill: #7eb8f7; }
+.flatpickr-current-month { color: #c8ccde; }
+.flatpickr-current-month .flatpickr-monthDropdown-months {
+  background: #1e2140; color: #c8ccde;
+}
+.flatpickr-current-month input.cur-year { color: #c8ccde; }
+.flatpickr-weekdays { background: #1a1e38; }
+span.flatpickr-weekday { background: #1a1e38; color: #6872a0; }
+.flatpickr-days { border-left-color: rgba(150,160,200,0.12); border-right-color: rgba(150,160,200,0.12); }
+.dayContainer { border-color: rgba(150,160,200,0.12); }
+.flatpickr-day { color: #c8ccde; border-color: transparent; }
+.flatpickr-day:hover, .flatpickr-day:focus {
+  background: rgba(126,184,247,0.18); border-color: transparent; color: #e0e8ff;
+}
+.flatpickr-day.today { border-color: #7eb8f7; }
+.flatpickr-day.today:hover { background: rgba(126,184,247,0.25); border-color: #7eb8f7; }
+.flatpickr-day.selected,
+.flatpickr-day.selected:hover {
+  background: #7eb8f7; border-color: #7eb8f7; color: #0d1117;
+}
+.flatpickr-day.flatpickr-disabled,
+.flatpickr-day.flatpickr-disabled:hover { color: rgba(150,160,200,0.3); }
+.flatpickr-day.prevMonthDay,
+.flatpickr-day.nextMonthDay { color: rgba(150,160,200,0.3); }
+
+/* ── Flatpickr calendar — light theme ── */
+html.light .flatpickr-calendar {
+  background: #ffffff;
+  border-color: rgba(30,40,80,0.15);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.15), 0 1px 4px rgba(0,0,0,0.1);
+}
+html.light .flatpickr-calendar.arrowTop:before,
+html.light .flatpickr-calendar.arrowTop:after { border-bottom-color: #ffffff; }
+html.light .flatpickr-calendar.arrowBottom:before,
+html.light .flatpickr-calendar.arrowBottom:after { border-top-color: #ffffff; }
+html.light .flatpickr-months { background: #f0f2f8; border-radius: 8px 8px 0 0; }
+html.light .flatpickr-months .flatpickr-month { background: transparent; color: #1a1a2e; fill: #1a1a2e; }
+html.light .flatpickr-months .flatpickr-prev-month,
+html.light .flatpickr-months .flatpickr-next-month { fill: #555; }
+html.light .flatpickr-months .flatpickr-prev-month:hover,
+html.light .flatpickr-months .flatpickr-next-month:hover { fill: #2563b8; }
+html.light .flatpickr-current-month { color: #1a1a2e; }
+html.light .flatpickr-current-month .flatpickr-monthDropdown-months {
+  background: #f0f2f8; color: #1a1a2e;
+}
+html.light .flatpickr-current-month input.cur-year { color: #1a1a2e; }
+html.light .flatpickr-weekdays { background: #f0f2f8; }
+html.light span.flatpickr-weekday { background: #f0f2f8; color: #888; }
+html.light .flatpickr-day { color: #1a1a2e; border-color: transparent; }
+html.light .flatpickr-day:hover, html.light .flatpickr-day:focus {
+  background: rgba(37,99,184,0.1); border-color: transparent; color: #1a1a2e;
+}
+html.light .flatpickr-day.today { border-color: #2563b8; }
+html.light .flatpickr-day.today:hover { background: rgba(37,99,184,0.15); border-color: #2563b8; }
+html.light .flatpickr-day.selected,
+html.light .flatpickr-day.selected:hover {
+  background: #2563b8; border-color: #2563b8; color: #fff;
+}
+html.light .flatpickr-day.flatpickr-disabled,
+html.light .flatpickr-day.flatpickr-disabled:hover { color: rgba(30,40,80,0.3); }
+html.light .flatpickr-day.prevMonthDay,
+html.light .flatpickr-day.nextMonthDay { color: rgba(30,40,80,0.3); }
 
 /* ── Target dropdown filter ── */
 .target-dropdown {
@@ -5108,8 +5169,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   .filter-bar .filter-dates { order: 2; flex: 0 0 auto; }
   .filter-bar .filter-sort { order: 3; flex: 1 1 70px; }
   /* Shrink date labels to fit row */
-  .date-input-wrap .date-label { min-width: 74px; padding: 0 6px; font-size: 12px; }
-  .filter-dates input { min-height: 36px; }
+  .date-pill { min-width: 74px; padding: 0 6px; font-size: 12px; min-height: 36px; }
   /* Row 2: clear, show empty, show FOV, unhide all */
   .filter-bar > #filter-clear { order: 10; }
   .filter-bar > label.target-check { order: 11; padding: 0 7px; font-size: 11px; }

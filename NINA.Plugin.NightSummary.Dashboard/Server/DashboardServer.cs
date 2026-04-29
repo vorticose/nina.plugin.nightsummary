@@ -33,6 +33,7 @@ namespace NINA.Plugin.NightSummary.Server {
         private readonly IReportRegenerator _regen;
         private string cachedDashboardHtml;
         private DashboardLog log;
+        private readonly HashSet<string> _loggedUserAgents = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // ── Sync helpers wrap the async data source so server code can call DbX() inline
         //    inside Linq/Select expressions without rewriting every block to async/Task.WhenAll.
@@ -213,11 +214,22 @@ namespace NINA.Plugin.NightSummary.Server {
                 // Pre-warm altitude chart cache in background so first page load is instant
                 _ = Task.Run(() => WarmAltitudeChartCache(cts.Token));
 
+                log.Info($"NightSummary {_settings.PluginVersion ?? "unknown"} starting");
                 log.Info($"Server started on port {port} — local: {Url}" +
                     (TailscaleUrl != null ? $", tailnet: {TailscaleUrl}" : "") +
                     (ZeroTierUrl  != null ? $", zerotier: {ZeroTierUrl}" : ""));
-                log.Info($"DB: {dbPath}");
+                var dbExists = File.Exists(dbPath);
+                var dbSize   = dbExists ? $"{new FileInfo(dbPath).Length / 1024.0 / 1024.0:F1} MB" : "not found";
+                log.Info($"DB: {dbPath} ({dbSize})");
                 log.Info($"Reports: {reportsDir}");
+                _ = Task.Run(async () => {
+                    try {
+                        var sessions = await _data.GetAllSessionsAsync();
+                        log?.Info($"DB: {sessions.Count} session(s) on record");
+                    } catch (Exception ex) {
+                        log?.Warn($"Could not read session count at startup: {ex.Message}");
+                    }
+                });
 
                 _external.Info($"NightSummary: Local dashboard started at {Url}");
                 if (TailscaleUrl != null)
@@ -322,6 +334,7 @@ namespace NINA.Plugin.NightSummary.Server {
             var rawPath = requestParts[1];
 
             long contentLength = 0;
+            string userAgent = null;
             for (int i = 1; i < lines.Length; i++) {
                 var colon = lines[i].IndexOf(':');
                 if (colon <= 0) continue;
@@ -329,6 +342,8 @@ namespace NINA.Plugin.NightSummary.Server {
                 var val  = lines[i].Substring(colon + 1).Trim();
                 if (string.Equals(name, "Content-Length", StringComparison.OrdinalIgnoreCase))
                     long.TryParse(val, out contentLength);
+                else if (string.Equals(name, "User-Agent", StringComparison.OrdinalIgnoreCase))
+                    userAgent = val;
             }
 
             if (!rawPath.StartsWith("/")) rawPath = "/" + rawPath;
@@ -356,6 +371,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 QueryString     = queryString,
                 ContentLength64 = contentLength,
                 InputStream     = bodyStream,
+                UserAgent       = userAgent,
             };
         }
 
@@ -382,6 +398,13 @@ namespace NINA.Plugin.NightSummary.Server {
             var path = req.Url.AbsolutePath.TrimEnd('/');
             if (string.IsNullOrEmpty(path)) path = "/";
             var done = log?.BeginRequest(req.HttpMethod, path);
+            var ua = req.UserAgent;
+            if (!string.IsNullOrEmpty(ua)) {
+                lock (_loggedUserAgents) {
+                    if (_loggedUserAgents.Add(ua))
+                        log?.Info($"Client: {ua}");
+                }
+            }
 
             try {
                 if (req.HttpMethod == "GET") {
@@ -485,6 +508,8 @@ namespace NINA.Plugin.NightSummary.Server {
                         await HandleTsExclude(req, res, done);
                     } else if (path == "/api/stats/projects/custom") {
                         await HandleCustomProjects(req, res, done);
+                    } else if (path == "/api/clientlog") {
+                        await HandleClientLog(req, res, done);
                     } else if (path == "/api/stats/projects/reset") {
                         await HandleProjectsReset(req, res, done);
                     } else if (path.StartsWith("/api/stats/projects/") && path.EndsWith("/reset")) {
@@ -561,6 +586,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 };
             }).ToList();
 
+            if (result.Count == 0) log?.Warn("Sessions query returned 0 completed sessions — DB exists but may have no finalized data");
             await WriteJson(res, 200, result);
             done?.Invoke(200, $"{result.Count} sessions");
         }
@@ -1473,13 +1499,16 @@ namespace NINA.Plugin.NightSummary.Server {
             List<TsProjectInfo> tsProjects = null;
             if (!TsAvailable()) {
                 tsStatus = "not_installed";
+                log?.Info("TS not available — target stats returned without TS enrichment");
             } else {
                 try {
                     tsProjects = TsProjects();
+                    log?.Debug($"TS loaded {tsProjects?.Count ?? 0} project(s)");
                 } catch (Exception ex) {
                     tsStatus = "error";
                     tsError  = ex.Message;
                     _external.Error($"NightSummary: TS GetAllProjects threw. {ex.Message}");
+                    log?.Error($"TS GetAllProjects failed: {ex.Message}");
                 }
             }
 
@@ -1783,6 +1812,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 projectAssignments = projectAssignmentsMap,
                 targetExclusions   = GetTargetExclusions(),
             });
+            if (result.Count == 0) log?.Warn($"Target stats returned 0 targets (tsStatus: {tsStatus})");
             done?.Invoke(200, $"{result.Count} targets (ts: {tsStatus})");
         }
 
@@ -2566,12 +2596,15 @@ namespace NINA.Plugin.NightSummary.Server {
             if (!TsAvailable()) {
                 tsStatus = "not_installed";
                 projects = new List<TsProjectInfo>();
+                log?.Info("TS not available — returning empty project list");
             } else {
                 try {
                     projects = TsProjects();
+                    log?.Debug($"TS snapshot: {projects.Count} project(s)");
                 } catch (Exception ex) {
                     tsStatus = "error";
                     _external.Error($"NightSummary: TS GetAllProjects threw during snapshot. {ex.Message}");
+                    log?.Error($"TS GetAllProjects failed during snapshot: {ex.Message}");
                     projects = new List<TsProjectInfo>();
                 }
             }
@@ -2874,6 +2907,30 @@ namespace NINA.Plugin.NightSummary.Server {
                 }
             } catch (Exception ex) {
                 await WriteJson(res, 500, new { error = "Internal server error" });
+                done?.Invoke(500, ex.Message);
+            }
+        }
+
+        private async Task HandleClientLog(TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
+            try {
+                var body = await ReadBodyCappedAsync(req, res, done);
+                if (body == null) return;
+                using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                var root    = doc.RootElement;
+                var level   = root.TryGetProperty("level",   out var lv) && lv.ValueKind == JsonValueKind.String ? lv.GetString() : "error";
+                var message = root.TryGetProperty("message", out var mg) && mg.ValueKind == JsonValueKind.String ? mg.GetString() : "";
+                var url     = root.TryGetProperty("url",     out var ul) && ul.ValueKind == JsonValueKind.String ? ul.GetString() : "";
+                var entry   = string.IsNullOrEmpty(url) ? $"[JS] {message}" : $"[JS] {message} (page: {url})";
+                switch (level?.ToLower()) {
+                    case "warn":  log?.Warn(entry);  break;
+                    case "error": log?.Error(entry); break;
+                    default:      log?.Info(entry);  break;
+                }
+                await WriteJson(res, 200, new { ok = true });
+                done?.Invoke(200, null);
+            } catch (Exception ex) {
+                log?.Error("HandleClientLog failed", ex);
+                await WriteJson(res, 500, new { error = "internal error" });
                 done?.Invoke(500, ex.Message);
             }
         }
@@ -3412,6 +3469,7 @@ private static string FormatSettingsForLog(NightSummarySettings s) {
                     allTargets.Add(t);
             }
 
+            if (sessions.Count == 0) log?.Warn("Stats summary: 0 sessions in DB");
             await WriteJson(res, 200, new {
                 totalSessions = sessions.Count,
                 totalIntegrationHours = Math.Round(totalIntegration / 3600.0, 1),
@@ -3471,8 +3529,8 @@ private static string FormatSettingsForLog(NightSummarySettings s) {
 
             try {
                 var html = ReadAssetText("dashboard.html");
-                var css  = ReadAssetText("dashboard.css");
-                var js   = ReadAssetText("dashboard.js");
+                var css  = ReadAssetText("flatpickr.min.css") + "\n" + ReadAssetText("dashboard.css");
+                var js   = ReadAssetText("flatpickr.min.js")  + "\n" + ReadAssetText("dashboard.js");
                 var iconBytes = _webAssets.ReadAsync("plugin-icon.png").GetAwaiter().GetResult();
                 var iconBase64 = iconBytes != null
                     ? "data:image/png;base64," + Convert.ToBase64String(iconBytes)

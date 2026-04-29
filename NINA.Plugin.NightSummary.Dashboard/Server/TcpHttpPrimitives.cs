@@ -20,6 +20,7 @@ namespace NINA.Plugin.NightSummary.Server {
         public long ContentLength64 { get; internal set; }
         public Encoding ContentEncoding => Encoding.UTF8;
         public Stream InputStream { get; internal set; } = Stream.Null;
+        public string UserAgent { get; internal set; }
     }
 
     /// <summary>
