@@ -1,6 +1,13 @@
 # Night Summary — Changelog
 
 
+## v3.0.0
+
+**New features**
+- Live Dashboard *(beta)* — built-in local web server accessible from any browser on your network, including phones and tablets. Browse your full session history with thumbnails, stat boxes, and altitude charts, and open any past report without regenerating it. View lifetime statistics per target or project. Use a VPN for remote access when viewing away from your home network or your imaging machine is at an observatory. Enable in Options → Night Summary Settings → Local Dashboard.
+- Per-target chip selector on metric charts — a target chip row is now stacked above the per-filter chip row, letting you isolate a single target's data points or combine target and filter to focus on one target/filter combination. Both rows can be independently disabled in settings.
+
+
 ## v2.11.1
 
 **Bug fixes**

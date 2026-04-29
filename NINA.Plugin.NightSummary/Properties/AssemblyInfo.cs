@@ -9,7 +9,7 @@ using System.Runtime.InteropServices;
 // from VersionPrefix in the .csproj + git commit count (see SetGitBuildNumber target)
 [assembly: AssemblyInformationalVersion("3.0.0")]
 [assembly: AssemblyTitle("Night Summary")]
-[assembly: AssemblyDescription("*** BETA *** Records your imaging session and delivers a detailed HTML report via email, Discord, or Pushover when your sequence ends. Includes a built-in local web dashboard for browsing session history and lifetime statistics from any device on your network.\n\nTo update: download the latest release from the link above and extract the zip to your existing NightSummary plugin folder, overwriting existing files.")]
+[assembly: AssemblyDescription("Records your imaging session and delivers a detailed HTML report via email, Discord, or Pushover when your sequence ends. Includes a built-in local web dashboard for browsing session history and lifetime statistics from any device on your network.\n\nTo update: download the latest release from the link above and extract the zip to your existing NightSummary plugin folder, overwriting existing files.")]
 [assembly: AssemblyCompany("Evan Pegors")]
 [assembly: AssemblyProduct("Night Summary")]
 [assembly: AssemblyCopyright("Copyright � 2026 Evan Pegors")]
