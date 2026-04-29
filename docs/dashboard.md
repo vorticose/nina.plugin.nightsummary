@@ -130,13 +130,13 @@ The filter bar sits below the latest session card, inside the **Earlier Sessions
 
 The Stats tab shows lifetime statistics aggregated across all sessions.
 
-### Targets Sub-Tab
+### Targets / Projects Sub-Tab
 
 Each target you've ever imaged gets a card showing:
 
 - Total integration time and image count across all sessions
 - Sky thumbnail
-- Target status (from Target Scheduler, if installed)
+- Target status (from its project, if assigned)
 - A compact per-session history chart
 
 **Controls:**
@@ -144,18 +144,21 @@ Each target you've ever imaged gets a card showing:
 | Control | What it does |
 |---------|-------------|
 | Sort pills | Sort by: Integration, Images, Last imaged, Name |
-| Group toggle | Group by Target Scheduler project (requires TS) |
-| Status filter chips | Filter by TS project status (Active, Inactive, etc.) |
+| Group toggle | Group targets by project |
+| Status filter chips | Filter by project status (Active, Inactive, etc.) |
 
 Click a target card to open a detail panel with the full session-by-session breakdown, per-filter stats, and the altitude chart history.
 
-If Target Scheduler is installed, targets can be linked to TS projects using the **Manage Projects** button. This enables grouping and project-based status filtering.
+Use the **Manage Projects** button to create custom projects and assign targets to them. Projects support grouping, status tracking, and integration time goals. If Target Scheduler is installed, TS projects are imported automatically — but projects work independently of TS and don't require it.
 
 ### Tonight Sub-Tab
 
 Shows what Target Scheduler plans to image tonight — same as Tonight's Preview in reports, but always up-to-date without waiting for a new report.
 
 Requires Target Scheduler to be installed with the **API enabled**. See [Target Scheduler Integration]({% link target-scheduler-integration.md %}) for setup instructions.
+
+{: .note }
+> The Tonight sub-tab is hidden entirely when Target Scheduler is not installed or its API is not enabled.
 
 ---
 
@@ -168,5 +171,5 @@ A toggle button in the top-right header switches between dark mode (default) and
 ## Tips
 
 - **Bookmark the URL** — once the server is running, the dashboard URL stays the same between sessions
-- **iPad / phone** — the dashboard is mobile-optimized; use the Tailnet URL if your imaging machine is remote
+- **Phone / tablet** — the dashboard is mobile-optimized; use the Tailnet URL if your imaging machine is remote
 - **After a long break** — if you've been away from imaging, use **Generate All Reports** to catch up on any sessions that don't have reports yet
