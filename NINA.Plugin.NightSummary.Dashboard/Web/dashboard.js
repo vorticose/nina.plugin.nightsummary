@@ -311,26 +311,31 @@ var REPORT_THEME_DARK  = ':root { --bg: #1a1a2e; --text: #e0e0e0; --accent: #7eb
   'svg text[fill="#1a1a2e"] { fill: #e0e0e0; }';
 
 function syncReportTheme() {
+  var isLight = document.documentElement.classList.contains('light');
+  // Desktop/tablet: iframe path
   var iframe = document.getElementById('report-iframe');
-  if (!iframe) return;
-  try {
-    var d = iframe.contentDocument;
-    if (!d || !d.head) return;
-    var isLight = document.documentElement.classList.contains('light');
-    // Set data-theme — new reports use embedded CSS rules keyed on this attribute
-    d.documentElement.setAttribute('data-theme', isLight ? 'light' : 'dark');
-    // Inject :root + SVG overrides for old reports that predate the embedded CSS rules
-    var existing = d.getElementById('ns-theme-override');
-    if (existing) existing.remove();
-    var style = d.createElement('style');
-    style.id = 'ns-theme-override';
-    style.textContent = isLight ? REPORT_THEME_LIGHT : REPORT_THEME_DARK;
-    d.head.appendChild(style);
-    // Override hardcoded inline style on <html> from older disk-patched reports
-    d.documentElement.style.backgroundColor = isLight ? '#f5f5f5' : '#1a1a2e';
-    // Prevent iOS bounce on the iframe content (only needed in dashboard context, not NINA preview)
-    d.documentElement.style.overscrollBehavior = 'none';
-  } catch(e) {}
+  if (iframe) {
+    try {
+      var d = iframe.contentDocument;
+      if (d && d.head) {
+        d.documentElement.setAttribute('data-theme', isLight ? 'light' : 'dark');
+        var existing = d.getElementById('ns-theme-override');
+        if (existing) existing.remove();
+        var style = d.createElement('style');
+        style.id = 'ns-theme-override';
+        style.textContent = isLight ? REPORT_THEME_LIGHT : REPORT_THEME_DARK;
+        d.head.appendChild(style);
+        d.documentElement.style.backgroundColor = isLight ? '#f5f5f5' : '#1a1a2e';
+        d.documentElement.style.overscrollBehavior = 'none';
+      }
+    } catch(e) {}
+  }
+  // Mobile: shadow DOM path
+  var host = document.getElementById('report-shadow-host');
+  if (host && host.shadowRoot) {
+    var shadowStyle = host.shadowRoot.getElementById('ns-theme-override');
+    if (shadowStyle) shadowStyle.textContent = isLight ? REPORT_THEME_LIGHT : REPORT_THEME_DARK;
+  }
 }
 
 function updateThemeButton() {
@@ -6493,7 +6498,8 @@ function loadReportIntoShadow(sessionId) {
   var host = document.getElementById('report-shadow-host');
   if (!host) return;
 
-  fetch('/api/sessions/' + sessionId + '/report')
+  var isLight = document.documentElement.classList.contains('light');
+  fetch('/api/sessions/' + sessionId + '/report?theme=' + (isLight ? 'light' : 'dark'))
     .then(function(r) { return r.text(); })
     .then(function(html) {
       // Render report at its designed width (800px) and CSS-scale to fit the
@@ -6506,6 +6512,12 @@ function loadReportIntoShadow(sessionId) {
 
       var shadow = host.shadowRoot || host.attachShadow({ mode: 'open' });
       shadow.innerHTML = '';
+
+      // Inject the same SVG color overrides used by syncReportTheme for iframes
+      var themeStyle = document.createElement('style');
+      themeStyle.id = 'ns-theme-override';
+      themeStyle.textContent = isLight ? REPORT_THEME_LIGHT : REPORT_THEME_DARK;
+      shadow.appendChild(themeStyle);
 
       var wrapper = document.createElement('div');
       wrapper.style.cssText = 'width:' + designWidth + 'px;transform:scale(' + scale + ');transform-origin:top left;margin:0 ' + padding + 'px;';

@@ -2783,7 +2783,13 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   color: var(--text-tertiary);
   cursor: pointer;
   transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.18),
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    0 2px 4px rgba(0,0,0,0.35),
+    0 1px 2px rgba(0,0,0,0.2);
 }
+:root.light .targets-fov-check { border-color: rgba(0,0,0,0.08); }
 .targets-fov-check input[type="checkbox"] {
   position: absolute;
   opacity: 0;
@@ -3969,6 +3975,14 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   background: rgba(126,184,247,0.10);
   border-color: rgba(126,184,247,0.35);
   color: var(--accent);
+}
+html.light .tdp-project-action-btn {
+  background: rgba(30,40,60,0.06);
+  border-color: rgba(30,40,60,0.18);
+}
+html.light .tdp-project-action-btn:hover {
+  background: rgba(37,99,184,0.10);
+  border-color: rgba(37,99,184,0.35);
 }
 
 /* TS unlinked fallback (no auto-match) */
