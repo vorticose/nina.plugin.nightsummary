@@ -21,7 +21,7 @@
     </Exec>
     <PropertyGroup>
       <BuildNumber>$(GitCommitCount)</BuildNumber>
-      <FullVersion>$(VersionPrefix).$(BuildNumber)</FullVersion>
+      <FullVersion>$(VersionPrefix).0</FullVersion>
     </PropertyGroup>
     <Message Importance="high" Text="NightSummary: Building version $(FullVersion)" />
     <WriteLinesToFile
