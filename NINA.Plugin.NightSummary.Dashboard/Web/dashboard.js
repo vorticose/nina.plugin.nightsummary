@@ -5953,6 +5953,9 @@ function bindListEvents() {
   if (fpTo)   { try { fpTo.destroy();   } catch(e) {} fpTo   = null; }
   var fpConfig = {
     dateFormat: 'Y-m-d',
+    altInput: true,
+    altFormat: 'n/j',
+    altInputClass: 'date-pill',
     disableMobile: true,
     allowInput: false,
     onOpen: function(dates, dateStr, instance) {

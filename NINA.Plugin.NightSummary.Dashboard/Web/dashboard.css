@@ -5161,16 +5161,24 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   .targets-fov-check { flex-shrink: 0; }
   .targets-project-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 10px; }
   .targets-project-name { font-size: 13px; }
-  /* ── Filter bar: 2 rows — selectors on row 1, actions on row 2 ── */
+  /* ── Filter bar: 2 rows — row 1: dropdowns, row 2: dates + actions ── */
   .filter-bar { flex-wrap: wrap; justify-content: center; gap: 5px; }
   .filter-bar > * { min-height: 36px; display: inline-flex; align-items: center; box-sizing: border-box; }
-  /* Row 1: target dropdown, dates, sort — flex-grow fills the row, forcing row 2 wrap */
+  /* Row 1: target + sort — each flex:1 to fill the row */
   .filter-bar .target-dropdown { order: 1; flex: 1 1 70px; }
-  .filter-bar .filter-dates { order: 2; flex: 0 0 auto; }
-  .filter-bar .filter-sort { order: 3; flex: 1 1 70px; }
-  /* Shrink date labels to fit row */
-  .date-pill { min-width: 74px; padding: 0 6px; font-size: 12px; min-height: 36px; }
-  /* Row 2: clear, show empty, show FOV, unhide all */
+  .filter-bar .filter-sort { order: 2; flex: 1 1 70px; }
+  /* Buttons inside must fill their growing parent */
+  .filter-bar .target-dropdown-btn,
+  .filter-bar .sort-dropdown-btn { width: 100%; box-sizing: border-box; }
+  /* Row 2: dates + clear + checkboxes */
+  .filter-bar .filter-dates { order: 9; flex: 0 0 auto; }
+  /* Overlay × inside the pill — adds zero layout width when date is selected */
+  .filter-bar .date-input-wrap { position: relative; }
+  .filter-bar .date-clear { position: absolute; right: 0; top: 0; bottom: 0; min-width: 22px; min-height: 0; padding: 0; font-size: 13px; }
+  /* Explicit width so input ignores browser default; right padding leaves room for × overlay;
+     16px prevents iOS Safari auto-zoom on focus */
+  .date-pill { width: 68px; min-width: 0; padding: 0 22px 0 6px; font-size: 16px; min-height: 36px; touch-action: manipulation; }
+  /* Row 2 continued: clear, show empty, show FOV, unhide all */
   .filter-bar > #filter-clear { order: 10; }
   .filter-bar > label.target-check { order: 11; padding: 0 7px; font-size: 11px; }
   .filter-bar > #unhide-all { order: 12; }
