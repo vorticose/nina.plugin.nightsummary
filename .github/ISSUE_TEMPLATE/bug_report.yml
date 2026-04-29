@@ -73,13 +73,23 @@ body:
     validations:
       required: false
 
+  - type: input
+    id: browser-device
+    attributes:
+      label: Browser / Device (dashboard bugs only)
+      description: "e.g. iOS Safari on iPhone 15, Chrome on Windows desktop"
+      placeholder: "iOS Safari, iPhone 15 Pro"
+    validations:
+      required: false
+
   - type: textarea
     id: logs
     attributes:
       label: Relevant logs
       description: |
-        Paste any relevant log output. NINA logs are in `%LOCALAPPDATA%\NINA\Logs\`.
-        Search for "NightSummary" to find plugin-specific entries.
+        **Plugin / sequence issues:** `%LOCALAPPDATA%\NINA\Logs\` — search for "NightSummary"
+        **Dashboard issues:** `%LOCALAPPDATA%\NINA\NightSummary\logs\dashboard-*.log` — search for "[JS]" for browser errors
+        Paste any relevant entries below.
       render: shell
     validations:
       required: false
