@@ -9,7 +9,7 @@ using System.Runtime.InteropServices;
 // from VersionPrefix in the .csproj + git commit count (see SetGitBuildNumber target)
 [assembly: AssemblyInformationalVersion("3.0.0")]
 [assembly: AssemblyTitle("Night Summary")]
-[assembly: AssemblyDescription("*** BETA *** Records your imaging session and delivers a detailed HTML report via email, Discord, or Pushover when your sequence ends.\n\nTo update: download the latest release from the link above and extract the zip to your existing NightSummary plugin folder, overwriting existing files.")]
+[assembly: AssemblyDescription("*** BETA *** Records your imaging session and delivers a detailed HTML report via email, Discord, or Pushover when your sequence ends. Includes a built-in local web dashboard for browsing session history and lifetime statistics from any device on your network.\n\nTo update: download the latest release from the link above and extract the zip to your existing NightSummary plugin folder, overwriting existing files.")]
 [assembly: AssemblyCompany("Evan Pegors")]
 [assembly: AssemblyProduct("Night Summary")]
 [assembly: AssemblyCopyright("Copyright � 2026 Evan Pegors")]
@@ -23,7 +23,7 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyMetadata("FeaturedImageURL", "https://i.imgur.com/uvcC1dC.png")]
 [assembly: AssemblyMetadata("ScreenshotURL", "")]
 [assembly: AssemblyMetadata("AltScreenshotURL", "")]
-[assembly: AssemblyMetadata("LongDescription", @"**[Full documentation and setup guide](https://vorticose.github.io/nina.plugin.nightsummary/)**
+[assembly: AssemblyMetadata("LongDescription", @"[Full documentation and setup guide](https://vorticose.github.io/nina.plugin.nightsummary/)
 
 Night Summary automatically records your astrophotography session as it runs and delivers a rich HTML report the moment your sequence completes — so you wake up to a full breakdown of the night.
 
@@ -44,6 +44,9 @@ Add the ""Night Summary Start"" instruction near the beginning of your sequence 
 - Session history table summarizing all past sessions for each target, including total integration and image quality stats
 - Configurable Metric Charts — add multiple charts, each showing any two metrics with a customizable x-axis. Choose from HFR, FWHM, Eccentricity, Guiding RMS, Focuser Temperature, Ambient Temperature, Altitude, Airmass, Humidity, Focuser Position and more
 - Tonight's Preview — a visual timeline of what Target Scheduler plans to image tonight, with per-target filter breakdowns
+
+**Live Dashboard**
+Night Summary v3 includes a built-in local web server for browsing all your session history and lifetime statistics from any browser on your network — desktop, laptop, tablet, or phone. The Sessions tab shows session cards with thumbnails, stat boxes, and altitude charts; click any card to open the full embedded report. The **Targets / Projects tab** shows lifetime totals and per-session history for everything you've imaged (the tab label reflects whether Target Scheduler is installed). Enable in Options → Night Summary Settings → Local Dashboard. The settings panel displays all available URLs for reaching the dashboard. Use Generate All Reports on first run to build reports for existing sessions.
 
 **Report detail levels**
 Three levels let you control how much is included: Snapshot (header and filter table only), Standard (adds timeline, altitude charts, and image quality), and Full (adds overhead analysis, metric charts, session history, and tonight's preview). Each section can also be toggled individually, and all sections can be expanded by default instead of collapsed.
@@ -69,7 +72,8 @@ Settings are saved to a stable JSON file that persists across plugin updates. A 
 - *Email not sending:* Most providers require an App Password rather than your regular account password. For Gmail, generate one at myaccount.google.com under Security > App Passwords. For other providers, check your account's security settings for app-specific password or SMTP access options.
 - *FOV overlay or survey image looks wrong:* The camera field of view box is calculated from your sensor dimensions and focal length as configured in your NINA equipment profile. If the box or image appears too large, too small, or misaligned, verify that your sensor pixel size, width, and height are correctly set in your NINA camera profile.
 - *FWHM and Eccentricity not appearing:* These metrics require the Hocus Focus plugin to be installed and active during the imaging session.
-- *Target Scheduler data not appearing:* Night Summary reads the Target Scheduler database automatically — no additional setup is needed beyond having that plugin installed.")]
+- *Target Scheduler data not appearing:* Night Summary reads the Target Scheduler database automatically — no additional setup is needed beyond having that plugin installed.
+- *Dashboard not reachable from another device:* Make sure the server is running — the URL appears in Settings → Local Dashboard when active. If the machine name doesn't resolve, try the local IP address shown instead. For access outside your home network, a VPN is required.")]
 [assembly: ComVisible(false)]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyTrademark("")]

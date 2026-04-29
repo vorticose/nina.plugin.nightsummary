@@ -27,6 +27,7 @@ A [N.I.N.A.](https://nighttime-imaging.eu/) plugin that records your astrophotog
 - Session history table with total integration and image quality stats for all previous sessions
 - Configurable Metric Charts — up to 5 charts with customizable x-axis, 20+ metrics to choose from, and optional event markers
 - Tonight's Preview — a visual timeline of what Target Scheduler plans to image tonight (requires Target Scheduler API)
+- Live Dashboard — a built-in local web interface for browsing all session history, lifetime statistics, and full reports from any device on your network
 - Delivery via email, Discord, Pushover, or local save with NINA filename pattern variables
 
 
@@ -55,6 +56,14 @@ Add up to 5 charts, each plotting any two metrics with a customizable x-axis. Ch
 
 ### Tonight's Preview
 A visual timeline of what Target Scheduler plans to image tonight, with per-target filter breakdowns. Requires the Target Scheduler API to be enabled.
+
+### Live Dashboard
+
+Night Summary v3 includes a built-in local web server that runs on your NINA machine and is accessible from any browser on your network — desktop, laptop, tablet, or phone.
+
+The **Sessions tab** shows all your recorded sessions as cards with thumbnails, stat boxes, altitude charts, and a filter bar for searching by target or date. Click any card to open the full embedded report without regenerating it. The **Targets / Projects tab** shows lifetime totals and per-session history for everything you've imaged (the tab label reflects whether Target Scheduler is installed). A **Tonight sub-tab** shows what Target Scheduler plans to image tonight (requires Target Scheduler API).
+
+Enable in **Options → Night Summary Settings → Local Dashboard**. Run **Generate All Reports** on first use to build reports for your existing session history. The settings panel displays all available URLs for reaching the dashboard so you can access it from any device on your network or over a VPN.
 
 ### Delivery options
 - **Email** via SMTP — Gmail is the default and easiest to set up, but any SMTP provider is supported
