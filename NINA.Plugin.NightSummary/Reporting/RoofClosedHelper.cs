@@ -73,7 +73,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 // and was still running (or recently aborted) when the interval began.
                 // The exposure start must be within 10 minutes before the roof closure
                 // to establish a causal link (unsafe trigger aborted the exposure).
-                var match = aborted.FirstOrDefault(a =>
+                // The list is sorted ascending so LastOrDefault picks the most recent
+                // qualifying aborted exposure — the one most likely to have been the
+                // physical exposure cut short by the closing roof.
+                var match = aborted.LastOrDefault(a =>
                     a.StartTime < interval.start &&
                     a.StartTime >= interval.start.AddMinutes(-10));
                 if (match != null)

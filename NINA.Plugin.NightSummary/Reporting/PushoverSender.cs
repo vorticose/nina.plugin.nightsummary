@@ -10,7 +10,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
     /// </summary>
     public class PushoverSender {
 
-        private static readonly HttpClient httpClient = new HttpClient();
+        // Bound the request so a hung Pushover server can't freeze the post-session
+        // notification flow for the default 100s. Pushover responses are typically <1s.
+        private static readonly HttpClient httpClient = new HttpClient {
+            Timeout = TimeSpan.FromSeconds(15)
+        };
         private const string ApiUrl = "https://api.pushover.net/1/messages.json";
 
         private readonly string appToken;
@@ -35,7 +39,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     new KeyValuePair<string, string>("message", message)
                 });
 
-                var response = await httpClient.PostAsync(ApiUrl, formData);
+                using var response = await httpClient.PostAsync(ApiUrl, formData);
 
                 if (response.IsSuccessStatusCode) {
                     Logger.Info("NightSummary: Pushover notification sent successfully");

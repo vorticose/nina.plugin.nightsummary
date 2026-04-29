@@ -1,6 +1,23 @@
 # Night Summary — Changelog
 
 
+## v3.0.0
+
+**New features**
+- Live Dashboard — built-in local web server accessible from any browser on your network, including phones and tablets. Browse your full session history with thumbnails, stat boxes, and altitude charts, and open any past report without regenerating it. View lifetime statistics per target or project. Use a VPN for remote access when viewing away from your home network or if your imaging machine is at an observatory. Enable in Options → Night Summary Settings → Local Dashboard.
+- Per-target chip selector on metric charts — a target chip row is now stacked above the per-filter chip row, letting you isolate a single target's data points or combine target and filter to focus on one target/filter combination. Both rows can be independently disabled in settings.
+
+**Bug fixes**
+- Fixed overhead analysis incorrectly showing 100% accounted in sessions that ended with an aborted exposure.
+- Fixed Target Scheduler progress bars showing duplicate or phantom exposure plans when the same target exists in multiple TS projects. Each project now renders as a separate labeled section.
+
+
+## v2.11.1
+
+**Bug fixes**
+- Reverted graceful session cleanup logic added in v2.11.0 which resulted in some sessions being ended prematurely by sequence interrupt triggers such as "When Becomes Unsafe". Sessions are now only ended by running the Night Summary End sequence instruction. If the End instruction never ran, the session data is preserved — use "Resend Previous Session" to generate a report. Reports from those sessions include a notice that session duration is approximate and overhead analysis is unavailable.
+
+
 ## v2.11.0
 
 **New features**

@@ -406,5 +406,41 @@ namespace NINA.Plugin.NightSummary.MyPluginProperties {
                 this["FilterClassifications"] = value;
             }
         }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool DashboardEnabled {
+            get {
+                return ((bool)(this["DashboardEnabled"]));
+            }
+            set {
+                this["DashboardEnabled"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string DashboardUrl {
+            get {
+                return ((string)(this["DashboardUrl"]));
+            }
+            set {
+                this["DashboardUrl"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string DashboardApiKey {
+            get {
+                return ((string)(this["DashboardApiKey"]));
+            }
+            set {
+                this["DashboardApiKey"] = value;
+            }
+        }
     }
 }

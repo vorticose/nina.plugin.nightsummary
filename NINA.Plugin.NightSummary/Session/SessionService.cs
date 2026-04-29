@@ -12,6 +12,7 @@ using System.Collections.Generic;
 using System.ComponentModel.Composition;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace NINA.Plugin.NightSummary.Session {
@@ -39,6 +40,12 @@ namespace NINA.Plugin.NightSummary.Session {
         private readonly IMessageBroker         messageBroker;
         private LiveStackCapture               liveStackCapture;
         private bool                           sequenceFinishedSubscribed;
+
+        // Tracks fire-and-forget report-generation Tasks spawned from EndSession so
+        // Teardown can wait for in-flight reports rather than dropping them when NINA
+        // closes immediately after a session ends.
+        private readonly object _pendingReportsLock = new object();
+        private readonly List<Task> _pendingReports = new List<Task>();
 
         private static NightSummarySettings S => SettingsManager.Instance.Current;
 
@@ -231,34 +238,47 @@ namespace NINA.Plugin.NightSummary.Session {
                 LiveStackImages              = liveStackImages
             };
 
-            _ = Task.Run(async () => {
+            var generation = Task.Run(async () => {
                 try {
                     await GenerateAndSendAsync(reportData);
                 } catch (Exception ex) {
                     Logger.Error($"NightSummary: Unhandled error in report generation. {ex.Message}");
                 }
             });
+            lock (_pendingReportsLock) _pendingReports.Add(generation);
+            // Self-cleanup so the list doesn't grow unbounded across many sessions.
+            _ = generation.ContinueWith(t => {
+                lock (_pendingReportsLock) _pendingReports.Remove(t);
+            }, TaskScheduler.Default);
         }
 
         /// <summary>
-        /// Called when NINA's sequence finishes (normal completion, manual stop, or error).
-        /// If a session is still active (End instruction never ran), finalize the session
-        /// record and clean up listeners — but do NOT generate or deliver a report.
-        /// The user can always resend via "Resend Previous Session" if they want the report.
+        /// Awaits any outstanding fire-and-forget report-generation Tasks (up to a timeout)
+        /// so plugin Teardown can let post-session reports finish sending instead of
+        /// abandoning them when NINA closes.
+        /// </summary>
+        public async Task WaitForPendingReportsAsync(TimeSpan timeout) {
+            Task[] snapshot;
+            lock (_pendingReportsLock) snapshot = _pendingReports.ToArray();
+            if (snapshot.Length == 0) return;
+            Logger.Info($"NightSummary: Waiting for {snapshot.Length} in-flight report(s) before teardown (timeout {timeout.TotalSeconds:F0}s)");
+            try {
+                await Task.WhenAny(Task.WhenAll(snapshot), Task.Delay(timeout));
+            } catch { /* individual tasks already log their own errors */ }
+        }
+
+        /// <summary>
+        /// SequenceFinished fires on true stops, WhenUnsafe restarts, manual pause/resume,
+        /// and any other cancel-and-restart pattern. We intentionally do nothing here —
+        /// only the End Session instruction ends an active session. This means sessions
+        /// survive restarts cleanly. Sessions where End never runs are left open in the DB
+        /// (orphaned) and the report will note that the End instruction was missing.
         /// </summary>
         private Task OnSequenceFinished(object sender, EventArgs e) {
             var sessionId = collector.GetCurrentSessionId();
             if (sessionId == null) return Task.CompletedTask;
 
-            Logger.Info($"NightSummary: Sequence finished with active session {sessionId} — finalizing without report");
-            try {
-                collector.EndSession();
-                eventCollector.EndSession();
-                liveStackCapture?.StopAndCollect();
-                liveStackCapture = null;
-            } catch (Exception ex) {
-                Logger.Error($"NightSummary: Error during graceful session cleanup: {ex.Message}");
-            }
+            Logger.Warning($"NightSummary: Sequence finished with active session {sessionId} — End Session instruction did not run. Session data preserved; use Resend Previous Session for a report.");
             return Task.CompletedTask;
         }
 
@@ -283,6 +303,7 @@ namespace NINA.Plugin.NightSummary.Session {
                 if (S.EmailEnabled) channels.Add("Email");
                 if (S.PushoverEnabled) channels.Add("Pushover");
                 if (S.DiscordEnabled) channels.Add("Discord");
+                if (S.DashboardEnabled) channels.Add("Dashboard");
                 Logger.Info($"NightSummary: Delivering report to: {(channels.Any() ? string.Join(", ", channels) : "no channels enabled")}");
 
                 var tasks = new List<Task>();
@@ -294,6 +315,12 @@ namespace NINA.Plugin.NightSummary.Session {
                     tasks.Add(SendPushoverWithDataAsync(reportData));
                 if (S.DiscordEnabled)
                     tasks.Add(SendDiscordWithDataAsync(reportData, htmlReport));
+                if (S.DashboardEnabled)
+                    tasks.Add(SendDashboardWithDataAsync(reportData, htmlReport));
+
+                // Always save a copy to the local dashboard reports directory
+                // so the embedded dashboard server can serve it
+                tasks.Add(SaveReportForDashboardAsync(reportData.Session.SessionId, htmlReport, reportData.LiveStackImages));
 
                 await Task.WhenAll(tasks);
                 Notification.ShowSuccess("Night Summary: Report delivered successfully");
@@ -389,6 +416,10 @@ namespace NINA.Plugin.NightSummary.Session {
                     tasks.Add(SendPushoverWithDataAsync(reportData));
                 if (S.DiscordEnabled)
                     tasks.Add(SendDiscordWithDataAsync(reportData, htmlReport));
+                if (S.DashboardEnabled)
+                    tasks.Add(SendDashboardWithDataAsync(reportData, htmlReport));
+
+                tasks.Add(SaveReportForDashboardAsync(reportData.Session.SessionId, htmlReport, reportData.LiveStackImages));
 
                 await Task.WhenAll(tasks);
                 Notification.ShowSuccess("Night Summary: Report delivered successfully");
@@ -490,6 +521,86 @@ namespace NINA.Plugin.NightSummary.Session {
                 SaveLiveStackMasters(saveDir, filename, reportData);
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to save report locally. {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Saves an HTML report to the local dashboard reports directory so the embedded
+        /// DashboardServer can serve it. This is always called on report generation,
+        /// independent of the user's "Save Report Locally" setting.
+        /// </summary>
+        private async Task SaveReportForDashboardAsync(string sessionId, string htmlReport, List<LiveStackImage> liveStackImages = null) {
+            try {
+                var reportsDir = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "NINA", "NightSummary", "reports");
+                Directory.CreateDirectory(reportsDir);
+                var filePath = Path.Combine(reportsDir, $"{sessionId}.html");
+                await File.WriteAllTextAsync(filePath, htmlReport);
+
+                // Save live stack masters per-session for the dashboard to serve
+                if (liveStackImages != null && liveStackImages.Count > 0) {
+                    var lsDir = Path.Combine(reportsDir, "livestack", sessionId);
+                    Directory.CreateDirectory(lsDir);
+                    var manifest = new List<Dictionary<string, object>>();
+                    foreach (var img in liveStackImages) {
+                        var data = img.MasterJpegData ?? img.JpegData;
+                        var safeName = SanitizeFileName($"{img.Target}_{img.Filter}");
+                        var jpgFile = safeName + ".jpg";
+                        File.WriteAllBytes(Path.Combine(lsDir, jpgFile), data);
+                        manifest.Add(new Dictionary<string, object> {
+                            ["file"] = jpgFile,
+                            ["target"] = img.Target,
+                            ["filter"] = img.Filter,
+                            ["isMonochrome"] = img.IsMonochrome,
+                            ["stackCount"] = img.StackCount,
+                            ["redStackCount"] = img.RedStackCount,
+                            ["greenStackCount"] = img.GreenStackCount,
+                            ["blueStackCount"] = img.BlueStackCount
+                        });
+                    }
+                    var lsJson = System.Text.Json.JsonSerializer.Serialize(manifest, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                    File.WriteAllText(Path.Combine(lsDir, "livestack.json"), lsJson);
+                    Logger.Debug($"NightSummary: Saved {liveStackImages.Count} livestack master(s) to dashboard: {lsDir}");
+                }
+
+                // Save settings sidecar so dashboard knows what was used
+                var settings = new {
+                    reportDetailLevel      = S.ReportDetailLevel,
+                    reportLightMode        = S.ReportLightMode,
+                    expandSectionsDefault  = S.ExpandSectionsDefault,
+                    showMoonCurve          = S.ShowMoonCurve,
+                    showOverheadBreakdown  = S.ShowOverheadBreakdown,
+                    showSkyThumbnails      = S.ShowSkyThumbnails,
+                    showLiveStackImages    = S.ShowLiveStackImages,
+                    showSessionHistory     = S.ShowSessionHistory,
+                    showAltitudeChart      = S.ShowAltitudeChart,
+                    showMinAltitude        = S.ShowMinAltitude,
+                    showTSProgressBars     = S.ShowTSProgressBars,
+                    showStarCountCV        = S.ShowStarCountCV,
+                    showHFRGraph           = S.ShowHFRGraph,
+                    showChartAfMarkers     = S.ShowChartAfMarkers,
+                    showChartFlipMarkers   = S.ShowChartFlipMarkers,
+                    showChartRoofMarkers   = S.ShowChartRoofMarkers,
+                    showPerTargetIQ        = S.ShowPerTargetIQ,
+                    showEquipmentProfile   = S.ShowEquipmentProfile,
+                    timelineAltitudeDefault = S.TimelineAltitudeDefault,
+                    chartXAxisMetric       = S.ChartXAxisMetric,
+                    chartPrimaryMetric     = S.ChartPrimaryMetric,
+                    chartSecondaryMetric   = S.ChartSecondaryMetric,
+                    additionalChartConfigs = S.AdditionalChartConfigs,
+                    equipmentVisibleFields = S.EquipmentVisibleFields,
+                    filterClassifications  = S.FilterClassifications,
+                    filterTypeOverrides    = S.FilterTypeOverrides,
+                    equipmentOverrides     = S.EquipmentOverrides
+                };
+                var json = System.Text.Json.JsonSerializer.Serialize(settings,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });
+                await File.WriteAllTextAsync(Path.Combine(reportsDir, $"{sessionId}.settings.json"), json);
+
+                Logger.Debug($"NightSummary: Report saved to dashboard directory: {filePath}");
+            } catch (Exception ex) {
+                Logger.Error($"NightSummary: Failed to save report to dashboard directory. {ex.Message}");
             }
         }
 
@@ -673,6 +784,145 @@ namespace NINA.Plugin.NightSummary.Session {
                 await sender.SendReportAsync(reportData, htmlReport, fileName);
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to send Discord report. {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Uploads all sessions from the given database to the dashboard server.
+        /// Skips sessions that already exist on the server (server returns "already_exists").
+        /// </summary>
+        public async Task<(int uploaded, int skipped, int failed)> UploadAllToDashboardAsync(
+            string dbPath, Action<int, int> onProgress = null) {
+
+            var dashboardUrl = S.DashboardUrl;
+            var apiKey       = S.DashboardApiKey;
+
+            if (string.IsNullOrWhiteSpace(dashboardUrl)) {
+                Logger.Warning("NightSummary: Dashboard URL not configured");
+                return (0, 0, 0);
+            }
+
+            var db       = new SessionDatabase(dbPath);
+            var sessions = db.GetAllSessions();
+            var sender   = new DashboardSender(dashboardUrl, apiKey ?? "");
+            int uploaded = 0, skipped = 0, failed = 0;
+
+            for (int i = 0; i < sessions.Count; i++) {
+                var session = sessions[i];
+                onProgress?.Invoke(i + 1, sessions.Count);
+
+                try {
+                    var images     = db.GetImagesForSession(session.SessionId);
+                    var events     = db.GetEventsForSession(session.SessionId);
+                    var profileId  = profileService?.ActiveProfile?.Id.ToString();
+                    var tsData     = FetchTsData(images, profileId);
+                    var cumulative = db.GetCumulativeIntegrationByTarget(session.SessionId);
+                    var history    = BuildSessionHistory(db, images, session.SessionId);
+                    var (fovW, fovH) = ComputeCameraFov(session);
+                    var (lat, lon)   = GetObserverCoords();
+                    var reportData = new ReportData {
+                        Session                      = session,
+                        Images                       = images,
+                        Events                       = events,
+                        TsData                       = tsData,
+                        CumulativeIntegrationSeconds = cumulative,
+                        SessionHistory               = history,
+                        CameraFovWidthDeg            = fovW,
+                        CameraFovHeightDeg           = fovH,
+                        ObserverLatitude             = lat,
+                        ObserverLongitude            = lon,
+                        ActiveProfileId              = profileId
+                    };
+
+                    var htmlReport = await GenerateReportForDashboard(reportData);
+                    bool ok = await sender.SendReportAsync(reportData, htmlReport);
+                    if (ok) uploaded++; else skipped++;
+                } catch (Exception ex) {
+                    Logger.Warning($"NightSummary: Failed to upload session {session.SessionId}. {ex.Message}");
+                    failed++;
+                }
+            }
+
+            Logger.Info($"NightSummary: Dashboard bulk upload complete — {uploaded} uploaded, {skipped} skipped, {failed} failed");
+            return (uploaded, skipped, failed);
+        }
+
+        /// <summary>
+        /// Generates HTML reports for all sessions in the database that don't already have
+        /// a report saved in the local dashboard reports directory. Used to backfill reports
+        /// for users who enable the dashboard after already having session history.
+        /// </summary>
+        public async Task<(int generated, int skipped, int failed)> GenerateAllDashboardReportsAsync(
+            string dbPath, Action<int, int> onProgress = null) {
+
+            var reportsDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "NINA", "NightSummary", "reports");
+            Directory.CreateDirectory(reportsDir);
+
+            var db       = new SessionDatabase(dbPath);
+            var sessions = db.GetAllSessions();
+            int generated = 0, skipped = 0, failed = 0;
+
+            for (int i = 0; i < sessions.Count; i++) {
+                var session = sessions[i];
+                onProgress?.Invoke(i + 1, sessions.Count);
+
+                var reportPath = Path.Combine(reportsDir, $"{session.SessionId}.html");
+                if (File.Exists(reportPath)) {
+                    skipped++;
+                    continue;
+                }
+
+                try {
+                    var reportData = await BuildReportDataAsync(dbPath, session.SessionId);
+                    if (reportData == null) {
+                        failed++;
+                        continue;
+                    }
+
+                    var htmlReport = await GenerateReportForDashboard(reportData);
+                    await File.WriteAllTextAsync(reportPath, htmlReport);
+                    generated++;
+                } catch (Exception ex) {
+                    Logger.Warning($"NightSummary: Failed to generate dashboard report for session {session.SessionId}. {ex.Message}");
+                    failed++;
+                }
+            }
+
+            Logger.Info($"NightSummary: Dashboard report generation complete — {generated} generated, {skipped} already existed, {failed} failed");
+            return (generated, skipped, failed);
+        }
+
+        private async Task SendDashboardWithDataAsync(ReportData reportData, string htmlReport = null) {
+            try {
+                var dashboardUrl = S.DashboardUrl;
+                var apiKey       = S.DashboardApiKey;
+
+                if (string.IsNullOrWhiteSpace(dashboardUrl)) {
+                    Logger.Warning("NightSummary: Dashboard URL not configured — skipping");
+                    return;
+                }
+
+                htmlReport ??= await GenerateReportForDashboard(reportData);
+                var sender     = new DashboardSender(dashboardUrl, apiKey ?? "");
+                await sender.SendReportAsync(reportData, htmlReport);
+            } catch (Exception ex) {
+                Logger.Error($"NightSummary: Failed to upload to dashboard. {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Generates an HTML report with Tonight's Preview disabled, since the dashboard
+        /// is for historical review and the preview section only shows the current night.
+        /// </summary>
+        private async Task<string> GenerateReportForDashboard(ReportData reportData) {
+            var savedPreview = S.ShowNextNightPreview;
+            try {
+                S.ShowNextNightPreview = false;
+                return await reportGenerator.GenerateHtmlReport(reportData);
+            } finally {
+                S.ShowNextNightPreview = savedPreview;
             }
         }
 
@@ -903,11 +1153,13 @@ namespace NINA.Plugin.NightSummary.Session {
         /// <summary>
         /// Builds ReportData from a database without sending. Used by the preview window.
         /// </summary>
-        public async Task<ReportData> BuildReportDataAsync(string dbPath, string sessionId = null) {
+        public async Task<ReportData> BuildReportDataAsync(string dbPath, string sessionId = null, CancellationToken ct = default) {
+            ct.ThrowIfCancellationRequested();
             var db      = new SessionDatabase(dbPath);
             var session = sessionId != null ? db.GetSession(sessionId) : db.GetLatestSession();
             if (session == null) return null;
 
+            ct.ThrowIfCancellationRequested();
             var images     = db.GetImagesForSession(session.SessionId);
             var events     = db.GetEventsForSession(session.SessionId);
             var profileId  = profileService?.ActiveProfile?.Id.ToString();
@@ -963,7 +1215,8 @@ namespace NINA.Plugin.NightSummary.Session {
         /// <summary>
         /// Generates HTML from existing ReportData without sending. Used by the preview window for re-renders.
         /// </summary>
-        public async Task<string> GenerateHtmlAsync(ReportData reportData) {
+        public async Task<string> GenerateHtmlAsync(ReportData reportData, CancellationToken ct = default) {
+            ct.ThrowIfCancellationRequested();
             return await reportGenerator.GenerateHtmlReport(reportData);
         }
 

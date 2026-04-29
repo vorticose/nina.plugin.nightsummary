@@ -1,7 +1,7 @@
 ---
 layout: default
 title: FAQ & Troubleshooting
-nav_order: 12
+nav_order: 13
 ---
 
 # FAQ & Troubleshooting
@@ -115,6 +115,26 @@ The preview requires the Target Scheduler API to be enabled:
 4. Enable the API
 
 Also check that your detail level is set to **Full** and the **Show Tonight's Preview** toggle is on.
+
+---
+
+## Live Dashboard
+
+### The dashboard won't start / shows "port in use"
+
+Port 8181 may be taken by another application. Change the port in **Options > Night Summary Settings > Local Dashboard** to any unused port (e.g. 8182, 8280) and click **Start Server**.
+
+### The dashboard is accessible on my NINA machine but not from another device
+
+Make sure no firewall is blocking the port. On Windows, you may need to add an inbound firewall rule for the port you chose. In **Windows Defender Firewall > Advanced Settings**, add an inbound rule allowing TCP on the dashboard port (default 8181).
+
+### Sessions have cards but can't open the report view
+
+The session has no saved HTML report. Click **Generate All Reports** in **Options > Local Dashboard** to create report files for historical sessions. New sessions generate reports automatically when the sequence ends (requires **Save Report Locally** to be enabled).
+
+### The dashboard shows old data after a sequence completes
+
+The dashboard fetches fresh data on every page load. Reload the page (or navigate away and back) to pick up the latest session.
 
 ---
 

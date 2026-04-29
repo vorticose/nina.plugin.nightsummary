@@ -35,6 +35,10 @@ namespace NINA.Plugin.NightSummary.Data {
         public string DashboardUrl      { get; set; } = "";
         public string DashboardApiKey   { get; set; } = "";
 
+        // ── Local Dashboard Server ────────────────────────────────────────────
+        public bool   LocalServerEnabled { get; set; } = false;
+        public int    LocalServerPort    { get; set; } = 8181;
+
         // ── Report display ────────────────────────────────────────────────────
         public int    ReportDetailLevel      { get; set; } = 2;
         public bool   ReportLightMode        { get; set; } = false;
@@ -57,12 +61,17 @@ namespace NINA.Plugin.NightSummary.Data {
         public int    ChartSecondaryMetric   { get; set; } = 0;
         public string AdditionalChartConfigs { get; set; } = "";
         public int    ChartXAxisMetric     { get; set; } = 0;
+        public bool   ShowChartTargetChips { get; set; } = true;
+        public bool   ShowChartFilterChips { get; set; } = true;
         public bool   ShowChartAfMarkers   { get; set; } = true;
         public bool   ShowChartFlipMarkers { get; set; } = true;
         public bool   ShowChartRoofMarkers { get; set; } = false;
 
         // ── Filter classification ─────────────────────────────────────────────
         public string FilterClassifications  { get; set; } = "";
+        // Comma-separated "Name=Type" pairs mapping filter names to canonical types
+        // (L/R/G/B/H/S/O). Used by the dashboard stats page for filter pill colors.
+        public string FilterTypeOverrides    { get; set; } = "";
 
         // ── Equipment overrides ──────────────────────────────────────────────
         // Comma-separated key:value pairs, e.g. "Camera:My ASI2600,Telescope:Esprit 100ED"

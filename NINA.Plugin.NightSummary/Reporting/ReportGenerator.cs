@@ -56,24 +56,6 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
         }
 
-        // Lazily-loaded metric-chart.js renderer source (embedded resource)
-        private static string? _metricChartJs;
-        private static string MetricChartJs {
-            get {
-                if (_metricChartJs != null) return _metricChartJs;
-                try {
-                    using var stream = Assembly.GetExecutingAssembly()
-                                               .GetManifestResourceStream("metric-chart.js");
-                    if (stream == null) { _metricChartJs = ""; return _metricChartJs; }
-                    using var reader = new System.IO.StreamReader(stream);
-                    _metricChartJs = reader.ReadToEnd();
-                } catch {
-                    _metricChartJs = "";
-                }
-                return _metricChartJs;
-            }
-        }
-
         // Filter classification and sorting delegated to FilterHelper
         private static bool IsBroadband(string filter) => FilterHelper.IsBroadband(filter);
         private static bool IsNarrowband(string filter) => FilterHelper.IsNarrowband(filter);
@@ -104,7 +86,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             sb.AppendLine("<!DOCTYPE html>");
-            sb.AppendLine("<html><head><meta charset='UTF-8'><style>");
+            sb.AppendLine($"<html data-theme='{(lightMode ? "light" : "dark")}'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><style>");
 
             // Theme colors via CSS custom properties
             if (lightMode) {
@@ -113,6 +95,39 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine(":root { --bg: #1a1a2e; --text: #e0e0e0; --accent: #7eb8f7; --accent-light: #a0c4ff; --accent-lighter: #c0d8ff; --surface: #16213e; --border: #2d2d5e; --muted: #888; --dim: #555; --chart-bg: #0d1117; --chart-dark: #0f0f23; --bar-acquired: #3a5a7a; --warn-bg: #3a2a00; --warn-border: #b8860b; --warn-text: #f0c040; --warn-item: #d4a850; --skip-color: #cc6666; }");
             }
 
+            // SVG chart color overrides keyed on data-theme — allows JS or future toggle to switch themes
+            // Dark report → light view
+            sb.AppendLine("html[data-theme='light'] svg rect[fill='#0d1117'] { fill: #e8eef5; }");
+            sb.AppendLine("html[data-theme='light'] svg [stroke='#2d2d5e'] { stroke: #c0c8d4; }");
+            sb.AppendLine("html[data-theme='light'] svg [fill='#2d2d5e'] { fill: #c0c8d4; }");
+            sb.AppendLine("html[data-theme='light'] svg text[fill='#888'] { fill: #666; }");
+            sb.AppendLine("html[data-theme='light'] svg [stroke='#c0c0c0'] { stroke: #7a8a9e; }");
+            sb.AppendLine("html[data-theme='light'] svg [stroke='#7eb8f7'] { stroke: #2563b8; }");
+            sb.AppendLine("html[data-theme='light'] svg rect[fill='#1a1a2e'] { fill: #f5f5f5; }");
+            sb.AppendLine("html[data-theme='light'] svg [stroke='#2a2a4a'] { stroke: #c8cdd4; }");
+            sb.AppendLine("html[data-theme='light'] svg [stroke='#555577'] { stroke: #666688; }");
+            sb.AppendLine("html[data-theme='light'] svg text[fill='#aaaacc'] { fill: #555577; }");
+            sb.AppendLine("html[data-theme='light'] svg circle[fill='#a8d4ff'] { fill: #1a4f9e; }");
+            sb.AppendLine("html[data-theme='light'] svg circle[fill='#ffd4a8'] { fill: #b85c10; }");
+            sb.AppendLine("html[data-theme='light'] svg rect[fill='#3a1e00'] { fill: #fff3cd; }");
+            sb.AppendLine("html[data-theme='light'] svg text[fill='#e0e0e0'] { fill: #1a1a2e; }"); // timeline legend text
+            // Light report → dark view
+            sb.AppendLine("html[data-theme='dark'] svg rect[fill='#e8eef5'] { fill: #0d1117; }");
+            sb.AppendLine("html[data-theme='dark'] svg [stroke='#c0c8d4'] { stroke: #2d2d5e; }");
+            sb.AppendLine("html[data-theme='dark'] svg [fill='#c0c8d4'] { fill: #2d2d5e; }");
+            sb.AppendLine("html[data-theme='dark'] svg text[fill='#666'] { fill: #888; }");
+            sb.AppendLine("html[data-theme='dark'] svg [stroke='#7a8a9e'] { stroke: #c0c0c0; }");
+            sb.AppendLine("html[data-theme='dark'] svg [stroke='#2563b8'] { stroke: #7eb8f7; }");
+            sb.AppendLine("html[data-theme='dark'] svg rect[fill='#f5f5f5'] { fill: #1a1a2e; }");
+            sb.AppendLine("html[data-theme='dark'] svg [stroke='#c8cdd4'] { stroke: #2a2a4a; }");
+            sb.AppendLine("html[data-theme='dark'] svg [stroke='#666688'] { stroke: #555577; }");
+            sb.AppendLine("html[data-theme='dark'] svg text[fill='#555577'] { fill: #aaaacc; }");
+            sb.AppendLine("html[data-theme='dark'] svg circle[fill='#1a4f9e'] { fill: #a8d4ff; }");
+            sb.AppendLine("html[data-theme='dark'] svg circle[fill='#b85c10'] { fill: #ffd4a8; }");
+            sb.AppendLine("html[data-theme='dark'] svg rect[fill='#fff3cd'] { fill: #3a1e00; }");
+            sb.AppendLine("html[data-theme='dark'] svg text[fill='#1a1a2e'] { fill: #e0e0e0; }"); // timeline legend text
+
+            sb.AppendLine("html { background-color: var(--bg); }");
             sb.AppendLine("body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background-color: var(--bg); color: var(--text); }");
             sb.AppendLine("h1 { color: var(--accent); border-bottom: 2px solid var(--accent); padding-bottom: 10px; }");
             sb.AppendLine("h2 { color: var(--accent-light); margin-top: 30px; }");
@@ -193,7 +208,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine(".ns-chart-filter-bar { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 0 auto 8px; }");
             sb.AppendLine(".ns-chart-filter-btn { background: var(--surface); color: var(--muted); border: 1px solid var(--border); border-radius: 18px; padding: 5px 18px; font-size: 18px; font-family: inherit; font-weight: bold; cursor: pointer; transition: all 0.15s; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;}");
             sb.AppendLine(".ns-chart-filter-btn:hover { border-color: var(--accent-light); color: var(--text); }");
-            sb.AppendLine(".ns-chart-filter-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }");
+            sb.AppendLine(".ns-chart-filter-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: bold; }");
+            sb.AppendLine(".ns-chart-filter-btn.ns-chart-target-btn { max-width: 180px; }");
             sb.AppendLine(".ns-chart-svg { width: 100%; }");
             sb.AppendLine("svg g:has(> title), svg circle:has(> title), svg line:has(> title), svg [data-tip] { cursor: pointer; }");
             sb.AppendLine("</style></head><body>");
@@ -207,9 +223,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             if (!data.Images.Any()) {
                 sb.AppendLine("<p><em>No images were recorded during this session.</em></p>");
-                if (detailLevel >= 2) sb.Append(BuildNextNightPreviewSection(data));
+                if (detailLevel >= 2) sb.Append(await BuildNextNightPreviewSection(data));
                 sb.Append(BuildFooter());
-                // AppendChartRendererScript(sb); // JS renderer deactivated — CSS chip selector used instead (dead code, kept for v3 dashboard)
                 sb.AppendLine("</body></html>");
                 return sb.ToString();
             }
@@ -224,10 +239,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
             sb.Append(await BuildTargetSection(data, detailLevel, detailsOpen));
             if (detailLevel >= 1) sb.Append(BuildImageQualitySection(data, detailLevel, detailsOpen));
-            if (detailLevel >= 2) sb.Append(BuildNextNightPreviewSection(data));
+            if (detailLevel >= 2) sb.Append(await BuildNextNightPreviewSection(data));
             sb.Append(BuildFooter());
 
-            // AppendChartRendererScript(sb); // JS renderer deactivated — CSS chip selector used instead (dead code, kept for v3 dashboard)
             sb.AppendLine("</body></html>");
 
             // Replace placeholder with warnings banner if any were collected during generation
@@ -262,6 +276,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine($"<p><strong>Session Date:</strong> {data.Session.SessionStart:yyyy-MM-dd}</p>");
             var sessionEnd = data.Session.SessionEnd > data.Session.SessionStart ? data.Session.SessionEnd : DateTime.Now;
             var isActive = data.Session.SessionEnd <= data.Session.SessionStart;
+            if (isActive && data.Session.SessionEnd == DateTime.MinValue) {
+                sb.AppendLine("<div style='background-color:var(--warn-bg); border:1px solid var(--warn-border); border-radius:8px; padding:12px 16px; margin:16px 0; color:var(--warn-text);'><strong>&#9888; Note:</strong> This session ended without running the Night Summary End instruction. Session end time and duration are approximate; overhead analysis is unavailable.</div>");
+            }
             sb.AppendLine($"<p><strong>Session Start:</strong> {data.Session.SessionStart:HH:mm:ss} &nbsp;&nbsp; <strong>Session End:</strong> {(isActive ? "In Progress" : sessionEnd.ToString("HH:mm:ss"))}</p>");
             sb.AppendLine($"<p><strong>Duration:</strong> {(sessionEnd - data.Session.SessionStart).TotalHours:F1} hours{(isActive ? " (so far)" : "")}</p>");
             sb.AppendLine($"<p><strong>Profile:</strong> {data.Session.ProfileName}</p>");
@@ -419,7 +436,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             // Merge overhead intervals to compute wall-clock overhead, deduplicating
             // any events that overlap with each other in time.
-            var mergedOverheadSec = MergeOverheadIntervals(effectiveOverheadEvents);
+            // Exclude AbortedExposure: the window end is deliberately capped at the last
+            // non-aborted event, so the aborted exposure's interval extends past windowEnd
+            // and would inflate mergedOverheadSec above impliedOverheadSec (causing >100%).
+            var mergedOverheadSec = MergeOverheadIntervals(
+                effectiveOverheadEvents.Where(e => e.EventType != "AbortedExposure").ToList());
             var coveragePct = impliedOverheadSec > 0
                 ? Math.Min(mergedOverheadSec / impliedOverheadSec * 100.0, 100.0) : 0;
             var unaccountedSec = Math.Max(0, impliedOverheadSec - mergedOverheadSec);
@@ -653,9 +674,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
                 foreach (var target in targets) {
                     var tsT = data.TsData?.FirstOrDefault(t =>
-                        string.Equals(t.TargetName, target.Key, StringComparison.OrdinalIgnoreCase));
+                        string.Equals(t.TargetName, target.Key, StringComparison.OrdinalIgnoreCase)
+                        && (t.RA != 0 || t.Dec != 0));
                     double ra = 0, dec = 0;
-                    if (tsT != null && (tsT.RA != 0 || tsT.Dec != 0)) { ra = tsT.RA; dec = tsT.Dec; }
+                    if (tsT != null) { ra = tsT.RA; dec = tsT.Dec; }
                     else { var ci = target.FirstOrDefault(i => i.RaHours != 0 || i.DecDegrees != 0); if (ci != null) { ra = ci.RaHours; dec = ci.DecDegrees; } }
 
                     if (ra == 0 && dec == 0) continue;
@@ -680,13 +702,16 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             foreach (var target in targets) {
-                var tsTarget = data.TsData?.FirstOrDefault(t =>
-                    string.Equals(t.TargetName, target.Key, StringComparison.OrdinalIgnoreCase));
+                // All TS entries for this target — may span multiple projects
+                var tsTargets = data.TsData?.Where(t =>
+                    string.Equals(t.TargetName, target.Key, StringComparison.OrdinalIgnoreCase)).ToList()
+                    ?? new System.Collections.Generic.List<TsTargetData>();
+                var tsFirst = tsTargets.FirstOrDefault(t => t.RA != 0 || t.Dec != 0) ?? tsTargets.FirstOrDefault();
 
                 // Resolve RA/Dec: prefer TS data, fall back to image metadata
                 double raH = 0, decD = 0;
-                if (tsTarget != null && (tsTarget.RA != 0 || tsTarget.Dec != 0)) {
-                    raH = tsTarget.RA; decD = tsTarget.Dec;
+                if (tsFirst != null && (tsFirst.RA != 0 || tsFirst.Dec != 0)) {
+                    raH = tsFirst.RA; decD = tsFirst.Dec;
                 } else {
                     var coordImg = target.FirstOrDefault(i => i.RaHours != 0 || i.DecDegrees != 0);
                     if (coordImg != null) { raH = coordImg.RaHours; decD = coordImg.DecDegrees; }
@@ -699,7 +724,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 // Build subtitle for the h3 heading: start/end times, coords, moon separation
                 var timePart   = $"Start: {targetImgStart:HH:mm} &nbsp;&#8594;&nbsp; End: {targetImgEnd:HH:mm}";
                 // Sky position angle: prefer TS data, fall back to plate solve PA from images
-                double rotation = (tsTarget != null && tsTarget.Rotation != 0) ? tsTarget.Rotation
+                double rotation = (tsFirst != null && tsFirst.Rotation != 0) ? tsFirst.Rotation
                     : target.Where(i => i.PositionAngle.HasValue && i.PositionAngle.Value != 0)
                             .Select(i => i.PositionAngle.Value).DefaultIfEmpty(0).Average();
 
@@ -751,7 +776,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     sb.AppendLine("<div class='ts-target-header'>");
                     sb.Append(thumbHtml);
                     if (showSideBySideChart) {
-                        double minAlt = SettingsManager.Instance.Current.ShowMinAltitude ? (tsTarget?.MinimumAltitude ?? 0) : 0;
+                        double minAlt = SettingsManager.Instance.Current.ShowMinAltitude ? (tsFirst?.MinimumAltitude ?? 0) : 0;
                         var altChart = BuildAltitudeChart(raH, decD, data.ObserverLatitude, data.ObserverLongitude,
                                                           targetImgStart, targetImgEnd, width: 500,
                                                           minimumAltitude: minAlt);
@@ -899,62 +924,68 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     }
                 }
 
-                if (tsTarget == null && detailLevel >= 1 && SettingsManager.Instance.Current.ShowTSProgressBars && TargetSchedulerDatabase.IsPluginInstalled) {
+                if (!tsTargets.Any() && detailLevel >= 1 && SettingsManager.Instance.Current.ShowTSProgressBars && TargetSchedulerDatabase.IsPluginInstalled) {
                     if (data.TsData != null && data.TsData.Count > 0) {
                         // TS is installed but this specific target wasn't found in it
                         Warnings.Add($"Target Scheduler progress bars unavailable for {target.Key} — target not found in Target Scheduler");
                     }
                     // If TS isn't installed at all, silently skip — the Options UI already shows it's unavailable
                 }
-                if (tsTarget != null && detailLevel >= 1 && SettingsManager.Instance.Current.ShowTSProgressBars && TargetSchedulerDatabase.IsPluginInstalled) {
-                    // TS progress bars — one per exposure plan row (template + filter)
+                if (tsTargets.Any() && detailLevel >= 1 && SettingsManager.Instance.Current.ShowTSProgressBars && TargetSchedulerDatabase.IsPluginInstalled) {
+                    // TS progress bars — one section per (project, target) pair; label project when multiple exist
+                    var multiProject = tsTargets.Count > 1;
                     sb.AppendLine("<p style='margin: 12px 0 4px; font-size: 13px; color: var(--accent-light);'><strong>Target Scheduler Progress</strong></p>");
-                    double totalIntegrationSec = 0;
-                    foreach (var f in tsTarget.Filters.OrderBy(f => FilterSortKey(f.Filter)).ThenBy(f => f.Filter).ThenBy(f => f.TemplateName)) {
-                        var desired     = f.Desired;
-                        var accepted    = f.Accepted;
-                        var acceptedPct = desired > 0 ? (double)accepted / desired * 100.0 : 0;
-                        var pctLabel    = desired > 0 ? $" ({acceptedPct:F0}%)" : "";
+                    foreach (var tsTarget in tsTargets) {
+                        if (multiProject && !string.IsNullOrEmpty(tsTarget.ProjectName)) {
+                            sb.AppendLine($"<p style='margin: 8px 0 2px; font-size: 12px; color: var(--muted);'>{System.Net.WebUtility.HtmlEncode(tsTarget.ProjectName)}</p>");
+                        }
+                        double totalIntegrationSec = 0;
+                        foreach (var f in tsTarget.Filters.OrderBy(f => FilterSortKey(f.Filter)).ThenBy(f => f.Filter).ThenBy(f => f.TemplateName)) {
+                            var desired     = f.Desired;
+                            var accepted    = f.Accepted;
+                            var acceptedPct = desired > 0 ? (double)accepted / desired * 100.0 : 0;
+                            var pctLabel    = desired > 0 ? $" ({acceptedPct:F0}%)" : "";
 
-                        // Tonight's contribution: images captured this session for this filter (match by exposure duration too to handle multiple templates per filter)
-                        var tonightImages = target.Where(i => string.Equals(i.Filter, f.Filter, StringComparison.OrdinalIgnoreCase)
-                                                           && (f.ExposureSec <= 0 || Math.Abs(i.ExposureDuration - f.ExposureSec) < 1.0)).ToList();
-                        var tonightCount  = tonightImages.Count;
+                            // Tonight's contribution: images captured this session for this filter (match by exposure duration too to handle multiple templates per filter)
+                            var tonightImages = target.Where(i => string.Equals(i.Filter, f.Filter, StringComparison.OrdinalIgnoreCase)
+                                                               && (f.ExposureSec <= 0 || Math.Abs(i.ExposureDuration - f.ExposureSec) < 1.0)).ToList();
+                            var tonightCount  = tonightImages.Count;
 
-                        // When grading is pending (accepted=0 but acquired>0), use acquired so tonight's bar is visible
-                        var gradingPending  = accepted == 0 && f.Acquired > 0;
-                        var effectiveFilled = gradingPending ? f.Acquired : accepted;
+                            // When grading is pending (accepted=0 but acquired>0), use acquired so tonight's bar is visible
+                            var gradingPending  = accepted == 0 && f.Acquired > 0;
+                            var effectiveFilled = gradingPending ? f.Acquired : accepted;
 
-                        // Integration: use effectiveFilled so grading-pending frames are included
-                        totalIntegrationSec += effectiveFilled * f.ExposureSec;
-                        var tonightBar = Math.Min(tonightCount, effectiveFilled);
-                        var priorBar   = Math.Max(0, effectiveFilled - tonightBar);
-                        var priorPct   = desired > 0 ? (double)priorBar   / desired * 100.0 : 0;
-                        var tonightPct = desired > 0 ? (double)tonightBar / desired * 100.0 : 0;
+                            // Integration: use effectiveFilled so grading-pending frames are included
+                            totalIntegrationSec += effectiveFilled * f.ExposureSec;
+                            var tonightBar = Math.Min(tonightCount, effectiveFilled);
+                            var priorBar   = Math.Max(0, effectiveFilled - tonightBar);
+                            var priorPct   = desired > 0 ? (double)priorBar   / desired * 100.0 : 0;
+                            var tonightPct = desired > 0 ? (double)tonightBar / desired * 100.0 : 0;
 
-                        var expLabel  = f.ExposureSec > 0 ? $" ({f.ExposureSec:F0}s)" : "";
-                        var barLabel  = !string.IsNullOrEmpty(f.TemplateName) ? $"{f.TemplateName}{expLabel}" : $"{f.Filter}{expLabel}";
-                        var tooltip   = tonightCount > 0
-                            ? (gradingPending ? $"+{tonightCount} images tonight (grading pending)" : $"+{tonightCount} images tonight")
-                            : "";
+                            var expLabel  = f.ExposureSec > 0 ? $" ({f.ExposureSec:F0}s)" : "";
+                            var barLabel  = !string.IsNullOrEmpty(f.TemplateName) ? $"{f.TemplateName}{expLabel}" : $"{f.Filter}{expLabel}";
+                            var tooltip   = tonightCount > 0
+                                ? (gradingPending ? $"+{tonightCount} images tonight (grading pending)" : $"+{tonightCount} images tonight")
+                                : "";
 
-                        sb.AppendLine("<div class='ts-filter-row'>");
-                        sb.AppendLine($"  <span class='ts-filter-name'>{barLabel}</span>");
-                        sb.AppendLine($"  <div class='ts-bar-track' title='{tooltip}'>");
-                        sb.AppendLine($"    <div class='ts-bar-accepted' style='width:{priorPct:F1}%'></div>");
-                        sb.AppendLine($"    <div class='ts-bar-acquired' style='left:{priorPct:F1}%;width:{tonightPct:F1}%'></div>");
-                        sb.AppendLine($"  </div>");
-                        var barRightLabel = gradingPending
-                            ? $"{f.Acquired}/{desired} acquired ({(desired > 0 ? (double)f.Acquired / desired * 100.0 : 0):F0}%)"
-                            : $"{accepted}/{desired} accepted{pctLabel}";
-                        sb.AppendLine($"  <span class='ts-bar-label'>{barRightLabel}</span>");
-                        sb.AppendLine("</div>");
+                            sb.AppendLine("<div class='ts-filter-row'>");
+                            sb.AppendLine($"  <span class='ts-filter-name'>{barLabel}</span>");
+                            sb.AppendLine($"  <div class='ts-bar-track' title='{tooltip}'>");
+                            sb.AppendLine($"    <div class='ts-bar-accepted' style='width:{priorPct:F1}%'></div>");
+                            sb.AppendLine($"    <div class='ts-bar-acquired' style='left:{priorPct:F1}%;width:{tonightPct:F1}%'></div>");
+                            sb.AppendLine($"  </div>");
+                            var barRightLabel = gradingPending
+                                ? $"{f.Acquired}/{desired} acquired ({(desired > 0 ? (double)f.Acquired / desired * 100.0 : 0):F0}%)"
+                                : $"{accepted}/{desired} accepted{pctLabel}";
+                            sb.AppendLine($"  <span class='ts-bar-label'>{barRightLabel}</span>");
+                            sb.AppendLine("</div>");
+                        }
+
+                        // Cumulative integration estimate per project
+                        var totalHours   = totalIntegrationSec / 3600.0;
+                        var integTooltip = "Estimated from TS accepted frames (or acquired if grading is pending) × configured exposure time per template. Reduce the TS accepted count manually to account for culled images.";
+                        sb.AppendLine($"<p class='ts-cumulative' title='{integTooltip}' style='cursor:help;'>Total integration (all sessions, estimate): ~{totalHours:F1}h</p>");
                     }
-
-                    // Cumulative integration estimate
-                    var totalHours    = totalIntegrationSec / 3600.0;
-                    var integTooltip  = "Estimated from TS accepted frames (or acquired if grading is pending) × configured exposure time per template. Reduce the TS accepted count manually to account for culled images.";
-                    sb.AppendLine($"<p class='ts-cumulative' title='{integTooltip}' style='cursor:help;'>Total integration (all sessions, estimate): ~{totalHours:F1}h</p>");
                 }
 
 
@@ -1170,12 +1201,6 @@ namespace NINA.Plugin.NightSummary.Reporting {
             WriteIndented = false
         };
 
-        /// <summary>
-        /// Emits one metric chart as a <c>&lt;div data-chart='...'&gt;</c> container
-        /// consumed by the metric-chart.js renderer. The JSON model carries all
-        /// points, axis metadata, event markers, and the distinct filter list for
-        /// the per-filter selector.
-        /// </summary>
         // Sanitize a filter name for use as a CSS ID fragment — replaces every
         // non-alphanumeric character with an underscore.
         private static string ChartSafeId(string filter) =>
@@ -1186,8 +1211,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// Each visible state is a pre-rendered C# SVG (axes auto-scaled to that
         /// filter's data), toggled by hidden radio inputs + CSS sibling selectors.
         /// Works in every HTML viewer including Gmail and iOS Quick Look — no JS
-        /// required. The JS renderer (metric-chart.js) is kept as dead code for
-        /// the future v3 dashboard.
+        /// required.
         /// </summary>
         private void EmitMetricChart(
                 StringBuilder sb,
@@ -1197,11 +1221,16 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 int xAxis,
                 List<(DateTime timestamp, string eventType, string description)>? markers) {
 
-            // Use BuildChartModel only for the sorted filter list
-            var filters = ChartGenerator.BuildChartModel(images, primary, secondary, xAxis, markers).Filters;
+            var model   = ChartGenerator.BuildChartModel(images, primary, secondary, xAxis, markers);
+            var filters = model.Filters;
+            var targets = model.Targets;
 
-            // No chip selector when there's only one filter or none
-            if (filters.Count < 2) {
+            var settings    = SettingsManager.Instance.Current;
+            bool hasFilters = filters.Count >= 2 && settings.ShowChartFilterChips;
+            bool hasTargets = targets.Count >= 2 && settings.ShowChartTargetChips;
+
+            // No chip selectors needed — emit a single SVG
+            if (!hasFilters && !hasTargets) {
                 var svg = ChartGenerator.GenerateMetricChart(images, primary, secondary, xAxis, markers);
                 sb.AppendLine($"<div class=\"metric-chart-container\"><div class=\"ns-chart-svg\">{svg}</div></div>");
                 return;
@@ -1210,75 +1239,106 @@ namespace NINA.Plugin.NightSummary.Reporting {
             int ci = _chartIndex++;
             string pfx = $"nsc{ci}";
 
-            // Pre-render one SVG per visible state: "All filters" + one per filter
-            var allSvg = ChartGenerator.GenerateMetricChart(images, primary, secondary, xAxis, markers);
-            var filterSvgs = filters.ToDictionary(
-                f => f,
-                f => ChartGenerator.GenerateMetricChart(
-                    images.Where(i => i.Filter == f).ToList(),
-                    primary, secondary, xAxis, markers));
+            // Local helpers for consistent ID generation
+            string TgtId(string t) => string.IsNullOrEmpty(t) ? "all" : ChartSafeId(t);
+            string FltId(string f) => string.IsNullOrEmpty(f) ? "all" : ChartSafeId(f);
+            string SvgId(string t, string f) => $"{pfx}-svg-{TgtId(t)}-{FltId(f)}";
+
+            // "" = the "all" sentinel; named entries are the specific values
+            var tgtKeys = hasTargets ? new[] { "" }.Concat(targets).ToList() : new List<string> { "" };
+            var fltKeys = hasFilters ? new[] { "" }.Concat(filters).ToList() : new List<string> { "" };
+
+            // Pre-render one SVG per (target, filter) combination
+            var svgs = new Dictionary<(string, string), string>();
+            foreach (var tgt in tgtKeys) {
+                var tgtImages = string.IsNullOrEmpty(tgt)
+                    ? images
+                    : images.Where(i => string.Equals(i.TargetName, tgt, StringComparison.OrdinalIgnoreCase)).ToList();
+                foreach (var flt in fltKeys) {
+                    var subset = string.IsNullOrEmpty(flt)
+                        ? tgtImages
+                        : tgtImages.Where(i => i.Filter == flt).ToList();
+                    svgs[(tgt, flt)] = ChartGenerator.GenerateMetricChart(subset, primary, secondary, xAxis, markers);
+                }
+            }
 
             // ── Per-chart CSS ────────────────────────────────────────────────
             // Active chip: whichever radio is :checked highlights its paired label.
-            // SVG visibility: only the selected state's container is display:block.
+            // SVG visibility: CSS sibling selectors on both radio groups show the
+            // correct (target × filter) prerendered SVG. All SVGs start hidden via
+            // inline style; !important overrides when the matching radios are checked.
             sb.AppendLine("<style>");
 
-            // Active chip highlight rules
-            var activeSelectors = new[] { $"#{pfx}-all:checked ~ .{pfx}-bar label[for=\"{pfx}-all\"]" }
-                .Concat(filters.Select(f =>
-                    $"#{pfx}-{ChartSafeId(f)}:checked ~ .{pfx}-bar label[for=\"{pfx}-{ChartSafeId(f)}\"]"));
-            sb.AppendLine(string.Join(",\n", activeSelectors));
-            sb.AppendLine("{ background: var(--accent); color: var(--bg); border-color: var(--accent); }");
+            if (hasTargets) {
+                sb.AppendLine(string.Join(",\n", tgtKeys.Select(t =>
+                    $"#{pfx}-tgt-{TgtId(t)}:checked ~ .{pfx}-tgt-bar label[for=\"{pfx}-tgt-{TgtId(t)}\"]")));
+                sb.AppendLine("{ background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: bold; }");
+            }
 
-            // Hide all per-filter SVG containers by default (shown individually below)
-            sb.AppendLine(string.Join(", ", filters.Select(f => $"#{pfx}-svg-{ChartSafeId(f)}"))
-                + " { display: none; }");
+            if (hasFilters) {
+                sb.AppendLine(string.Join(",\n", fltKeys.Select(f =>
+                    $"#{pfx}-flt-{FltId(f)}:checked ~ .{pfx}-flt-bar label[for=\"{pfx}-flt-{FltId(f)}\"]")));
+                sb.AppendLine("{ background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: bold; }");
+            }
 
-            // Show/hide rules per filter chip
-            foreach (var f in filters) {
-                string fid = ChartSafeId(f);
-                sb.AppendLine($"#{pfx}-{fid}:checked ~ #{pfx}-svg-all {{ display: none; }}");
-                // !important needed to override the inline style="display:none" on per-filter containers
-                sb.AppendLine($"#{pfx}-{fid}:checked ~ #{pfx}-svg-{fid} {{ display: block !important; }}");
+            // Show rule for each (target, filter) combination
+            foreach (var tgt in tgtKeys) {
+                foreach (var flt in fltKeys) {
+                    string tgtSel  = $"#{pfx}-tgt-{TgtId(tgt)}:checked";
+                    string fltSel  = $"#{pfx}-flt-{FltId(flt)}:checked";
+                    string selector = (hasTargets && hasFilters) ? $"{tgtSel} ~ {fltSel} ~ #{SvgId(tgt, flt)}"
+                                    : hasTargets                 ? $"{tgtSel} ~ #{SvgId(tgt, flt)}"
+                                                                 : $"{fltSel} ~ #{SvgId(tgt, flt)}";
+                    sb.AppendLine($"{selector} {{ display: block !important; }}");
+                }
             }
             sb.AppendLine("</style>");
 
             // ── HTML structure ───────────────────────────────────────────────
+            // All radio inputs MUST precede the chip bars and SVG containers so
+            // the CSS general sibling combinator (~) can reach them.
             sb.AppendLine($"<div class=\"metric-chart-container\">");
 
-            // Radio inputs — hidden but still toggled by their paired labels
-            sb.AppendLine($"<input type=\"radio\" name=\"{pfx}\" id=\"{pfx}-all\" checked style=\"display:none\">");
-            foreach (var f in filters)
-                sb.AppendLine($"<input type=\"radio\" name=\"{pfx}\" id=\"{pfx}-{ChartSafeId(f)}\" style=\"display:none\">");
-
-            // Chip bar (labels styled identically to the old JS buttons)
-            sb.Append($"<div class=\"ns-chart-filter-bar {pfx}-bar\">");
-            sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-all\">All</label>");
-            foreach (var f in filters) {
-                var encoded = WebUtility.HtmlEncode(f);
-                sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-{ChartSafeId(f)}\" title=\"{encoded}\">{encoded}</label>");
+            if (hasTargets) {
+                sb.AppendLine($"<input type=\"radio\" name=\"{pfx}-tgt\" id=\"{pfx}-tgt-all\" checked style=\"display:none\">");
+                foreach (var t in targets)
+                    sb.AppendLine($"<input type=\"radio\" name=\"{pfx}-tgt\" id=\"{pfx}-tgt-{ChartSafeId(t)}\" style=\"display:none\">");
             }
-            sb.AppendLine("</div>");
 
-            // SVG containers — "All" visible by default, per-filter hidden
-            sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-all\">{allSvg}</div>");
-            foreach (var f in filters)
-                sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-{ChartSafeId(f)}\" style=\"display:none\">{filterSvgs[f]}</div>");
+            if (hasFilters) {
+                sb.AppendLine($"<input type=\"radio\" name=\"{pfx}-flt\" id=\"{pfx}-flt-all\" checked style=\"display:none\">");
+                foreach (var f in filters)
+                    sb.AppendLine($"<input type=\"radio\" name=\"{pfx}-flt\" id=\"{pfx}-flt-{ChartSafeId(f)}\" style=\"display:none\">");
+            }
+
+            if (hasTargets) {
+                sb.Append($"<div class=\"ns-chart-filter-bar {pfx}-tgt-bar\">");
+                sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-tgt-all\">All Targets</label>");
+                foreach (var t in targets) {
+                    var encoded = WebUtility.HtmlEncode(t);
+                    sb.Append($"<label class=\"ns-chart-filter-btn ns-chart-target-btn\" for=\"{pfx}-tgt-{ChartSafeId(t)}\" title=\"{encoded}\">{encoded}</label>");
+                }
+                sb.AppendLine("</div>");
+            }
+
+            if (hasFilters) {
+                sb.Append($"<div class=\"ns-chart-filter-bar {pfx}-flt-bar\">");
+                sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-flt-all\">All</label>");
+                foreach (var f in filters) {
+                    var encoded = WebUtility.HtmlEncode(f);
+                    sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-flt-{ChartSafeId(f)}\" title=\"{encoded}\">{encoded}</label>");
+                }
+                sb.AppendLine("</div>");
+            }
+
+            // All SVGs start hidden; CSS show rules (above) override with !important
+            foreach (var tgt in tgtKeys) {
+                foreach (var flt in fltKeys) {
+                    sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{SvgId(tgt, flt)}\" style=\"display:none\">{svgs[(tgt, flt)]}</div>");
+                }
+            }
 
             sb.AppendLine("</div>"); // metric-chart-container
-        }
-
-        /// <summary>
-        /// Appends the metric-chart.js renderer source inside a &lt;script&gt; tag.
-        /// Called once, just before &lt;/body&gt;. The IIFE inside the renderer
-        /// auto-initializes all <c>[data-chart]</c> containers on DOMContentLoaded.
-        /// </summary>
-        private static void AppendChartRendererScript(StringBuilder sb) {
-            var js = MetricChartJs;
-            if (string.IsNullOrEmpty(js)) return;
-            sb.AppendLine("<script>");
-            sb.Append(js);
-            sb.AppendLine("</script>");
         }
 
         /// <summary>
@@ -1289,7 +1349,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
         private string BuildEventTimelineSection(ReportData data) {
             if (!data.Images.Any()) return string.Empty;
 
-            var simpleHtml = EventTimelineGenerator.GenerateTimeline(data.Session, data.Images, data.Events ?? new List<SessionEvent>());
+            var simpleHtml = EventTimelineGenerator.GenerateTimeline(data.Session, data.Images, FilterEventsBySettings(data.Events));
             if (string.IsNullOrEmpty(simpleHtml)) return string.Empty;
 
             var altitudeHtml = BuildSessionAltitudeChart(data);
@@ -1457,29 +1517,29 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             // ── Moon altitude curve ──────────────────────────────────────────────
-            if (!SettingsManager.Instance.Current.ShowMoonCurve) goto skipMoon;
-            var moonPoints = AltitudeCalculator.GetMoonAltitudeCurve(latDeg, lonDeg, dayStart, dayEnd, stepMinutes: 5);
-            var moonSegments = new List<List<(DateTime t, double alt)>>();
-            List<(DateTime t, double alt)> moonSeg = null;
-            foreach (var (t, alt) in moonPoints) {
-                if (alt >= 0) {
-                    if (moonSeg == null) { moonSeg = new List<(DateTime, double)>(); moonSegments.Add(moonSeg); }
-                    moonSeg.Add((t, Math.Min(maxAlt, alt)));
-                } else {
-                    moonSeg = null;
+            if (SettingsManager.Instance.Current.ShowMoonCurve) {
+                var moonPoints = AltitudeCalculator.GetMoonAltitudeCurve(latDeg, lonDeg, dayStart, dayEnd, stepMinutes: 5);
+                var moonSegments = new List<List<(DateTime t, double alt)>>();
+                List<(DateTime t, double alt)> moonSeg = null;
+                foreach (var (t, alt) in moonPoints) {
+                    if (alt >= 0) {
+                        if (moonSeg == null) { moonSeg = new List<(DateTime, double)>(); moonSegments.Add(moonSeg); }
+                        moonSeg.Add((t, Math.Min(maxAlt, alt)));
+                    } else {
+                        moonSeg = null;
+                    }
+                }
+                foreach (var seg in moonSegments) {
+                    if (seg.Count < 2) continue;
+                    var pts = new StringBuilder();
+                    foreach (var (t, alt) in seg)
+                        pts.Append($"{X(t):F1},{Y(alt):F1} ");
+                    sb.AppendLine("<g><title>Moon Position</title>");
+                    sb.AppendLine($"<polyline points='{pts}' fill='none' stroke='transparent' stroke-width='12'/>");
+                    sb.AppendLine($"<polyline points='{pts}' fill='none' stroke='{svgMoonStroke}' stroke-width='1.5' stroke-dasharray='5,4' opacity='{svgMoonOpacity}'/>");
+                    sb.AppendLine("</g>");
                 }
             }
-            foreach (var seg in moonSegments) {
-                if (seg.Count < 2) continue;
-                var pts = new StringBuilder();
-                foreach (var (t, alt) in seg)
-                    pts.Append($"{X(t):F1},{Y(alt):F1} ");
-                sb.AppendLine("<g><title>Moon Position</title>");
-                sb.AppendLine($"<polyline points='{pts}' fill='none' stroke='transparent' stroke-width='12'/>");
-                sb.AppendLine($"<polyline points='{pts}' fill='none' stroke='{svgMoonStroke}' stroke-width='1.5' stroke-dasharray='5,4' opacity='{svgMoonOpacity}'/>");
-                sb.AppendLine("</g>");
-            }
-            skipMoon:;
 
             // Session start line with tooltip
             sb.AppendLine("<g>");
@@ -1524,7 +1584,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             return $"<div class='target-section'><h2>Tonight's Preview</h2><p style='color:var(--muted);font-style:italic;'>{message}</p></div>";
         }
 
-        private string BuildNextNightPreviewSection(ReportData data) {
+        private async Task<string> BuildNextNightPreviewSection(ReportData data) {
             if (!SettingsManager.Instance.Current.ShowNextNightPreview) return "";
 
             var tsDb = new TargetSchedulerDatabase();
@@ -1544,7 +1604,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 
                 // Step 1: Get active profile ID
-                var profilesJson = TsApiClient.GetStringAsync($"{baseUrl}/profiles").Result;
+                var profilesJson = await TsApiClient.GetStringAsync($"{baseUrl}/profiles");
                 var profiles = JsonSerializer.Deserialize<List<TsProfileInfo>>(profilesJson, options);
                 var active = profiles?.FirstOrDefault(p => p.Active);
                 if (active == null)
@@ -1560,7 +1620,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var encodedStart = Uri.EscapeDataString(startTime.ToString("o"));
                 var previewUrl = $"{baseUrl}/profiles/{active.Id}/preview?startTime={encodedStart}";
 
-                var previewJson = TsApiClient.GetStringAsync(previewUrl).Result;
+                var previewJson = await TsApiClient.GetStringAsync(previewUrl);
                 var entries = JsonSerializer.Deserialize<List<TsPreviewEntry>>(previewJson, options);
                 if (entries == null || !entries.Any())
                     return PreviewNotice("Target Scheduler returned an empty preview — no targets scheduled for tonight.");
@@ -1807,7 +1867,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("<div style='margin-top:8px;display:flex;flex-wrap:wrap;gap:12px;'>");
             foreach (var name in uniqueTargets) {
                 var color = colorMap[name];
-                sb.AppendLine($"<span style='display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);'>" +
+                sb.AppendLine($"<span style='display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text);'>" +
                               $"<span style='display:inline-block;width:16px;height:3px;background:{color};border-radius:2px;flex-shrink:0;'></span>" +
                               $"{name}</span>");
             }
@@ -2118,7 +2178,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             // Event markers — vertical dashed lines with labels at top + tooltips
-            var events = data.Events;
+            var events = FilterEventsBySettings(data.Events);
             if (events != null) {
                 foreach (var evt in events) {
                     if (evt.Timestamp < sessionStart || evt.Timestamp > sessionEnd) continue;
@@ -2187,6 +2247,17 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("</div>");
 
             return sb.ToString();
+        }
+
+        private static List<SessionEvent> FilterEventsBySettings(List<SessionEvent> events) {
+            if (events == null) return new List<SessionEvent>();
+            var s = SettingsManager.Instance.Current;
+            return events.Where(e => e.EventType switch {
+                "AutoFocus"                  => s.ShowChartAfMarkers,
+                "MeridianFlip"               => s.ShowChartFlipMarkers,
+                "RoofOpen" or "RoofClosed"   => s.ShowChartRoofMarkers,
+                _                            => true
+            }).ToList();
         }
 
         private string BuildFooter() {

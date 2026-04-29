@@ -1,140 +1,92 @@
 # Screenshot List
 
 Copy-paste each filename when saving your screenshot.
-After capturing, replace the corresponding `<!-- TODO -->` comment in the markdown file with:
-`![Description](assets/filename.png)`
+After capturing, drop the file into `docs/assets/` and the preview server will reload automatically.
 
 ---
 
-## index.md
+## Status
 
-```
-hero-report.png
-```
-Full report at Full detail level, dark mode — header through first target section.
-
----
-
-## getting-started.md
-
-```
-settings-page.png
-```
-NINA Options sidebar showing Night Summary Settings section expanded, Report Content area visible.
-
-```
-sequence-instructions.png
-```
-NINA Advanced Sequencer showing Night Summary Start and End placed correctly (Start after equipment connection, End after park/warm).
-
-```
-preview-window.png
-```
-Preview Report window showing a rendered report with test data.
-
----
-
-## report-sections.md
-
-```
-stat-boxes.png
-```
-Report header and stat boxes row — session date/time, equipment profile collapsed, all 8 stat boxes at Full detail level.
-
-```
-event-timeline.png
-```
-Event timeline SVG showing a multi-target session with autofocus, meridian flip, and target change events.
-
-```
-overhead-section.png
-```
-Yield and overhead section — three stat boxes, color-coded stacked bar chart, and detailed category table.
-
-```
-target-area.png
-```
-Target header area — target name, coordinates, rotation angle, time window, moon separation, sky thumbnail with FOV overlay, and altitude chart side by side.
-
-```
-ts-progress-bars.png
-```
-Target Scheduler progress bars — multiple filters with accepted/acquired segments and cumulative integration total.
-
-```
-per-target-iq.png
-```
-Per-target image quality table with one metric row expanded to show per-filter breakdown.
-
-```
-metric-chart.png
-```
-Metric chart showing HFR (primary, solid) and Focuser Temp (secondary, dashed) over time, with hover tooltip visible.
+| File | Page | Status |
+|------|------|--------|
+| `hero-report.png` | index.md | ⚠️ recapture |
+| `plugin-icon.png` | index.md | ✅ ok |
+| `settings-page.png` | getting-started.md | ⚠️ recapture |
+| `sequence-instructions.png` | getting-started.md | ✅ ok |
+| `preview-window.png` | getting-started.md | ⚠️ recapture |
+| `stat-boxes.png` | report-sections.md | ✅ ok |
+| `event-timeline.png` | report-sections.md | ⚠️ recapture |
+| `overhead-section.png` | report-sections.md | ✅ ok |
+| `target-area.png` | report-sections.md | ✅ ok |
+| `ts-progress-bars.png` | report-sections.md | ✅ ok |
+| `per-target-iq.png` | report-sections.md | ✅ ok |
+| `metric-chart.png` | report-sections.md + metric-charts.md | ⚠️ recapture |
+| `tonights-preview.png` | report-sections.md | ⚠️ recapture |
+| `discord-embed.png` | delivery-channels.md | ✅ ok |
+| `settings-full.png` | settings-reference.md | ✅ ok |
+| `equipment-settings.png` | equipment-profile.md | ✅ ok |
+| `equipment-report.png` | equipment-profile.md | ✅ ok |
+| `file-naming-settings.png` | file-naming-patterns.md | ✅ ok |
+| `overhead-detail.png` | overhead-breakdown.md | ✅ ok |
+| `livestack-report.png` | live-stack-integration.md | ✅ ok |
+| `ts-bars-detail.png` | target-scheduler-integration.md | ✅ ok |
+| `dashboard-sessions.png` | dashboard.md | ❌ needed |
+| `metric-chart-filter.png` | metric-charts.md + report-sections.md | ❌ needed |
+| `rejected-frames.png` | report-sections.md | ❌ needed |
 
 ---
 
-## delivery-channels.md
+## New Screenshots Needed
 
-```
-discord-embed.png
-```
-Discord channel showing a Night Summary embed message with stats and the attached HTML report file.
+### dashboard-sessions.png
+**Page:** dashboard.md
 
----
+The dashboard Sessions tab in a browser showing at least 2-3 session cards. Each card should show:
+- Target badges (color-coded pills) at the top
+- Sky thumbnails for one or more targets
+- Stat boxes (FRAMES, INTEGRATION, HFR, GUIDING, MOON)
+- Altitude chart at the bottom of the card
 
-## settings-reference.md
-
-```
-settings-full.png
-```
-Full Night Summary settings page in NINA — Report Content section with Detail Level, display toggles, and metric chart config visible.
+Ideal: dark mode, 2-3 sessions visible, one card with multiple targets. Capture in a desktop browser at normal zoom so the full card layout is visible. The filter bar at the top (target picker, date range, etc.) should be visible.
 
 ---
 
-## equipment-profile.md
+### metric-chart-filter.png
+**Page:** metric-charts.md + report-sections.md
 
-```
-equipment-settings.png
-```
-Equipment Profile settings section in NINA — per-field toggles, override text boxes, and master toggle.
+A metric chart from a multi-target, multi-filter session showing **both** chip rows — target chips on top, filter chips below. One chip in each row should be selected (not "All") so both selectors are visibly active simultaneously. The chart should show the Y-axis rescaled to the selected target+filter combination.
 
-```
-equipment-report.png
-```
-Equipment profile section in a report, expanded — two-column grid of equipment labels and values.
+Ideal: a session with 2+ targets (e.g. M51, NGC 7000) and 2+ filters (e.g. Ha, OIII, Lum). Select Target=M51 and Filter=Ha so both rows show an active selection. HFR on the Y-axis with a visible trend. Capture the full chart including both chip rows and the chart area.
 
 ---
 
-## file-naming-patterns.md
+### rejected-frames.png
+**Page:** report-sections.md
 
-```
-file-naming-settings.png
-```
-File Naming section in NINA settings — pattern field, live preview, and clickable variable insertion buttons.
+The per-target filter table from a session where at least one filter has rejected frames. The table should show the Rejected column with a non-zero count in at least one row. Hover state is not needed — just the table with the count visible.
 
----
-
-## overhead-breakdown.md
-
-```
-overhead-detail.png
-```
-Yield and overhead section from a real session — stat boxes, stacked bar chart, and detailed table with multiple categories populated.
+Ideal: a row with something like "Ha | 42 | 300s | 3.5h | 3 rejected" where the rejected count is clearly visible.
 
 ---
 
-## live-stack-integration.md
+## Existing Screenshot Notes
 
-```
-livestack-report.png
-```
-Live Stack section in a report — per-filter monochrome stacks in a row with color composite below, labels with frame counts and integration times.
+These screenshots exist but need recapture:
 
----
+- **`hero-report.png`** ⚠️ — recapture showing a v3-era report. Full detail level, dark mode, header through first target section.
 
-## target-scheduler-integration.md
+- **`settings-page.png`** ⚠️ — recapture showing the updated settings panel including the new **Local Dashboard** section. NINA Options → Night Summary Settings, scrolled to show the Local Dashboard block (Enable, Port, Start/Stop, Tailscale URL, Generate All Reports).
 
-```
-ts-bars-detail.png
-```
-Target Scheduler progress bars from a real report — multiple filters with varying completion levels, accepted/acquired segments, cumulative integration total.
+- **`preview-window.png`** ⚠️ — recapture showing the current Preview Report window with a recent report rendered.
+
+- **`event-timeline.png`** ⚠️ — must show the **Altitude view** with the "Altitude / Simple" toggle chips visible. Multi-target session preferred so multiple altitude curves show. Capture from a rendered HTML report in a browser, wide enough to show the full x-axis.
+
+- **`metric-chart.png`** ⚠️ — needs the filter chip row (and target chip row if multi-target session available) visible below the chart, with one chip selected. Event markers (AF/MF vertical dashed lines) are a bonus. This is the overview screenshot for report-sections.md.
+
+- **`tonights-preview.png`** ⚠️ — recapture showing the current Tonight's Preview section layout.
+
+Already-ok screenshots to verify before publishing:
+
+- **`stat-boxes.png`** — confirm Yield stat box is present (v2.10.0)
+- **`per-target-iq.png`** — confirm Rejected column header is visible
+- **`overhead-detail.png`** — confirm stacked bar chart is color-coded with 8+ category rows

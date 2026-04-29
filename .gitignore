@@ -107,3 +107,6 @@ ROADMAP.md
 INTERNALS.md
 CLOUD_PLAN.md
 DASHBOARD_BOOTSTRAP.md
+
+# Dev dashboard snapshot data
+tools/dev-dashboard/data/

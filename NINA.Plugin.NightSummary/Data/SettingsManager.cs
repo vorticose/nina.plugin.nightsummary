@@ -83,6 +83,12 @@ namespace NINA.Plugin.NightSummary.Data {
         private static void ApplyNewFieldDefaults(NightSummarySettings settings, string json) {
             var defaults = new NightSummarySettings();
 
+            // v2.11.0 additions
+            if (!json.Contains("ShowChartTargetChips"))
+                settings.ShowChartTargetChips = defaults.ShowChartTargetChips;
+            if (!json.Contains("ShowChartFilterChips"))
+                settings.ShowChartFilterChips = defaults.ShowChartFilterChips;
+
             // v2.10.0 additions
             if (!json.Contains("ShowOverheadBreakdown"))
                 settings.ShowOverheadBreakdown = defaults.ShowOverheadBreakdown;
@@ -126,6 +132,9 @@ namespace NINA.Plugin.NightSummary.Data {
                     PushoverUserKey        = l.PushoverUserKey        ?? "",
                     DiscordEnabled         = l.DiscordEnabled,
                     DiscordWebhookUrl      = l.DiscordWebhookUrl      ?? "",
+                    DashboardEnabled       = l.DashboardEnabled,
+                    DashboardUrl           = l.DashboardUrl           ?? "",
+                    DashboardApiKey        = l.DashboardApiKey        ?? "",
                     ReportDetailLevel      = l.ReportDetailLevel,
                     ReportLightMode        = l.ReportLightMode,
                     ExpandSectionsDefault  = l.ExpandSectionsDefault,

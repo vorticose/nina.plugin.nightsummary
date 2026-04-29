@@ -42,6 +42,24 @@ cd .claude/worktrees/<name>
 - Deploy scripts in `scripts/` — `dev-v3-deploy.ps1` (local Windows), `deploy.ps1` / `deploy-remote.ps1` (remote)
 - Git is used for source control; GitHub CLI (`gh`) is authenticated for push
 
+## Dev Dashboard Server
+
+**Always start via the script — never run the exe directly:**
+
+```powershell
+.\scripts\start-dev.ps1           # normal launch (hot-reload JS/CSS, no rebuild)
+.\scripts\start-dev.ps1 -Rebuild  # rebuild C# server first (only needed when tools/dev-dashboard-cs changes)
+```
+
+Key facts every agent must know:
+- **Port: 8183** (urlacl reservation exists only for 8183 — default 8182 will fail with Access Denied)
+- **Host: `+`** (all interfaces — required for Tailscale/iPad access; default `localhost` is loopback only)
+- **DB: `~/Documents/ns-snapshot/nightsummary.sqlite`** (dev snapshot, not the production NINA DB)
+- **URL: `http://100.126.185.10:8183/`** (Tailscale IP, used to test from iPad)
+- **Hot reload**: JS/CSS in `NINA.Plugin.NightSummary.Dashboard/Web/` is served live from source — edit and refresh, no rebuild
+- **Worktree-aware**: the script derives `--web` from `$PSScriptRoot`, so running it from any worktree's `scripts/` always serves that worktree's files
+- **Stale instance**: the script kills any existing instance automatically
+
 ## Architecture Notes
 
 - `SessionDatabase.cs` handles all SQLite access and the legacy migration logic
@@ -90,25 +108,38 @@ See `scripts/TEST-MIGRATION-NOTES.md` for hard-won lessons from testing this.
 ## Branching Strategy
 
 ```
-main       ← always matches the latest published release, tagged (v2.8.0, v2.8.1 etc.)
-dev        ← integration branch, accumulates features between releases
-feature/*  ← short-lived branches for individual features/fixes
+main       ← always matches the latest published release, tagged (v2.9.0, v2.10.0 etc.)
+dev        ← integration branch for 2.x fixes and small features
+v3-dev     ← long-lived branch for v3.0.0 features (dashboard server, etc.)
+feature/*  ← short-lived branches cut from dev or v3-dev
 nina-3.3   ← long-running NINA 3.3 port, periodically synced from dev
 ```
 
 **Day-to-day workflow:**
-1. Cut a feature branch from `dev`: `git checkout dev && git checkout -b feature/my-feature`
-   - Each GitHub issue gets its own feature branch (e.g. `feature/filter-breakdown` for issue #1)
-2. Do the work, commit freely on the feature branch
-3. Merge back to `dev` when done: `git checkout dev && git merge feature/my-feature`
-4. Delete the feature branch: `git branch -d feature/my-feature`
-5. For trivial one-line fixes, committing directly to `dev` is fine
+- Small fixes and 2.x features → cut from `dev`, merge back to `dev`
+- Big v3 features → work directly on `v3-dev` or cut a feature branch from `v3-dev`
+- For trivial one-line fixes, committing directly to `dev` is fine
 
-**Releasing:**
+1. Cut a feature branch: `git checkout dev && git checkout -b feature/my-feature`
+   (or `git checkout v3-dev && git checkout -b feature/my-v3-feature` for v3 work)
+2. Do the work, commit freely on the feature branch
+3. Merge back: `git checkout dev && git merge feature/my-feature` (or `v3-dev`)
+4. Delete the feature branch: `git branch -d feature/my-feature`
+
+**Releasing 2.x:**
 1. Run `dotnet test NINA.Plugin.NightSummary.Tests` on Windows — must be 0 failures
 2. Merge `dev` → `main`: `git checkout main && git merge dev`
-3. Tag the release: `git tag v2.8.1`
+3. Tag the release: `git tag v2.X.Y`
 4. Follow the full release process below
+
+**Releasing v3.0.0:**
+1. Merge `dev` into `v3-dev` first to pick up any 2.x fixes: `git checkout v3-dev && git merge dev`
+2. Run tests, strip dev markers, build, then merge `v3-dev` → `main`
+3. Tag: `git tag v3.0.0`
+
+**Keeping v3-dev current with 2.x fixes:**
+- Periodically: `git checkout v3-dev && git merge dev`
+- Do this before starting any v3 feature work to avoid drift
 
 **Keeping nina-3.3 in sync:**
 - Periodically (every few sessions or before a release): `git checkout nina-3.3 && git merge dev`
@@ -131,6 +162,20 @@ work directly to `main`.
   cp NINA.Plugin.NightSummary/bin/Release/net8.0-windows/NINA.Plugin.NightSummary.dll /tmp/nina-deploy/
   diskutil unmount /tmp/nina-deploy
   ```
+- **SSH access to RBFocus from dev box** (set up 2026-04-24): the Windows rig runs OpenSSH server,
+  scoped to the Tailscale interface only. Used for DB snapshots, log tailing, and ad-hoc remote
+  PowerShell. Connection: `ssh RBFocus@remotetelescope.taile2b1e6.ts.net`. SCP requires `-O`
+  legacy mode and forward slashes in remote paths:
+  ```
+  scp -O 'RBFocus@remotetelescope.taile2b1e6.ts.net:C:/Users/RBFocus/AppData/Local/NINA/NightSummary/nightsummary.sqlite' /local/dest
+  ```
+  Pubkey lives in `C:\ProgramData\ssh\administrators_authorized_keys` on the remote (admin
+  accounts ignore per-user authorized_keys). Server installed via the
+  `PowerShell/Win32-OpenSSH` MSI from GitHub — `Add-WindowsCapability` returned DownloadSize 0
+  on this build, so WU route was abandoned. SMB shares also exist on RBFocus but `net use`
+  hits System error 67 from this dev box; SSH is the working path. Guardrail: never kill/start
+  NINA, deploy DLLs, or mutate remote state without explicit per-action OK — NINA may be
+  imaging.
 - GitHub raw CDN caches aggressively -- use the Contents API for reliable downloads:
   `Invoke-RestMethod "https://api.github.com/repos/.../contents/..."`
 - PowerShell scripts must be pure ASCII -- no em dashes, box-drawing chars, or
@@ -169,14 +214,46 @@ To publish a new version:
    - Remove `[assembly: AssemblyInformationalVersion("X.Y.Z-dev")]` line
 3. **Finalize CHANGELOG_DRAFT.md** following the stable-to-stable rule above, then copy the
    new version's section over the previous version's section in `CHANGELOG.md` on main.
-4. **Build**: `dotnet build NINA.Plugin.NightSummary.sln -c Release`
-2. **Package**: `cd NINA.Plugin.NightSummary/bin/Release/net8.0-windows && zip -r /tmp/NINA.Plugin.NightSummary.zip . --exclude "*.pdb" --exclude "*.xml"`
-3. **Checksum**: `shasum -a 256 /tmp/NINA.Plugin.NightSummary.zip | awk '{print toupper($1)}'`
-4. **GitHub Release**: Update existing or create new release tagged `vX.Y.Z`, upload ZIP
-5. **Update our repo**: Update `manifest.json` and `repository.json` with new version, URL, checksum
-6. **Update manifest fork**: In `~/nina.plugin.manifests`, sync with upstream, update `manifests/n/Night Summary/3.0.0/manifest.json`
-7. **Validate**: `cd ~/nina.plugin.manifests && npm install && node gather.js` — must show 0 failed
-8. **Submit PR**: to `isbeorn/nina.plugin.manifests` from `vorticose:main`
+4. **Merge and tag**: `git checkout main && git merge dev --no-ff && git tag vX.Y.Z && git push origin main vX.Y.Z`
+5. **Build**: `dotnet build NINA.Plugin.NightSummary.sln -c Release`
+6. **Package**: `cd NINA.Plugin.NightSummary/bin/Release/net8.0-windows && zip -r /tmp/NINA.Plugin.NightSummary.zip . --exclude "*.pdb" --exclude "*.xml"`
+   - On Windows when `zip`/`7z` aren't on PATH: use PowerShell `robocopy <src> <stage> /E /XF *.pdb *.xml` + `Compress-Archive -Path "<stage>\*" -DestinationPath <dest>` (staging dir preserves folder structure).
+7. **Checksum**: `shasum -a 256 /tmp/NINA.Plugin.NightSummary.zip | awk '{print toupper($1)}'` (or `Get-FileHash -Algorithm SHA256` on Windows)
+8. **GitHub Release**: `gh release create vX.Y.Z <zip> --title "vX.Y.Z" --notes "<changelog body>"`
+9. **Update our repo**: update `manifest.json` and `repository.json` (Version block, Installer URL, Checksum, and LongDescription if features changed), commit, push main
+10. **Update manifest fork**: in `~/nina.plugin.manifests`, `git checkout main && git fetch upstream && git merge upstream/main --no-ff && git push origin main`, then `git checkout -b night-summary-vX.Y.Z`, update `manifests/n/Night Summary/3.0.0/manifest.json`
+11. **Validate**: `cd ~/nina.plugin.manifests && npm install && node gather.js` — must show 0 failed
+12. **Submit PR**: to `isbeorn/nina.plugin.manifests` from `vorticose:night-summary-vX.Y.Z`
+13. **Discord announcement**: post to NINA community server once PR merges (catalog is live). See format template below.
+14. **Post-release**: merge `main` into `nina-3.3` (`git checkout nina-3.3 && git merge main --no-ff && git push`), update memory — mark release LIVE in `project_v2_XX_progress.md` and the `MEMORY.md` index line.
+
+### Discord announcement format
+
+Plain-text code block (not rendered) so mobile copy-paste preserves markdown syntax. Must fit under 2000 chars. Structure:
+
+```
+## Night Summary vX.Y.Z — <tagline: comma-separated top features>
+
+**New Features**
+- **<Feature name>** — <one-line description>
+...
+
+**Improvements**
+- <plain bullet>
+...
+
+**Bug Fixes**
+- <plain bullet>
+...
+
+https://github.com/vorticose/nina.plugin.nightsummary/releases/tag/vX.Y.Z
+```
+
+- Features: bold-prefix + em-dash + description. Pick 2-4 most user-visible.
+- Improvements/Bug Fixes: plain bullets, no bold-prefix.
+- Trailing URL auto-embeds GitHub release card.
+- Discord supports markdown (`##`, `**bold**`, `-`) since 2023.
+- When drafting via Claude Code, wrap the final message in a triple-backtick code block so mobile remote-control copy-paste captures the raw markdown characters.
 
 ### Manifest fields to keep correct
 - `Author`: must be `"Evan Pegors @sleepypuppy15"` (easy to lose the @sleepypuppy15)
@@ -235,6 +312,55 @@ the wrong direction will pull the net10.0 csproj changes into main and break the
 ### Pressure units note
 NINA 3.3 changed atmospheric pressure from MSL (sea level) to QFE (local,
 elevation-adjusted). No code change needed but worth mentioning in the 3.3 release notes.
+
+## Documentation Site
+
+The documentation site lives in the `docs/` folder on the `feature/docs-site` branch
+(cut from `dev`). It uses Jekyll with the just-the-docs theme and a custom Night Summary
+color scheme.
+
+**Standing rule: keep docs current with every change.** Whenever a feature is added,
+a setting is changed, a UI element is renamed, or behavior is modified, update the
+corresponding docs page in the same commit (or the next one). If the docs branch has
+diverged and a direct update isn't practical, add a `<!-- TODO: Update — [description] -->`
+comment in the relevant docs file, or note it in CHANGELOG_DRAFT.md so it's caught
+before release.
+
+**What triggers a docs update:**
+- New feature or setting → add to settings-reference.md and the relevant feature page
+- Renamed UI element or section → update all references across docs
+- Changed default value → update settings-reference.md
+- New delivery channel or integration → add a new page or update existing
+- New overhead category or metric → update overhead-breakdown.md or metric-charts.md
+
+**Don't deploy until v2.10.0 wide release.** The docs cover beta features not yet in
+the stable release. When v2.10.0 ships:
+1. Merge `feature/docs-site` → `dev` → `main`
+2. Enable GitHub Pages on the repo (source: `docs/` folder on `main`)
+3. Site will be live at `https://vorticose.github.io/nina.plugin.nightsummary/`
+
+**To preview locally:**
+```bash
+cd docs && bundle install && bundle exec jekyll serve
+# → http://localhost:4000/nina.plugin.nightsummary/
+```
+
+**Worktree:** There's a worktree at `.claude/worktrees/docs-preview` checked out to
+`feature/docs-site`. Use that worktree for docs work to avoid branch conflicts.
+
+## Settings: keep three places in sync
+
+Adding or renaming a user-facing plugin setting touches **three** files. Skip any one and the dashboard silently disagrees with what the report was actually generated with (see the marker-checkboxes-out-of-sync bug, 2026-04-26).
+
+1. **Property** — `NINA.Plugin.NightSummary/NightSummaryPlugin.cs` (settings property + initialization) and the backing `NightSummarySettings`.
+2. **Sidecar write** — `NINA.Plugin.NightSummary/Session/SessionService.cs` ~L568 anonymous object that gets serialized to `{sessionId}.settings.json`. **Every setting the dashboard reads or writes must be in this object.** Missing fields → checkbox shows defaulted state, not what the report actually used.
+3. **Dashboard** — `NINA.Plugin.NightSummary.Dashboard/Web/dashboard.js`:
+   - `buildSettingsPanel()` (~L5359) reads it
+   - the form-collect block (~L5535) writes it back
+
+Also update `Options.xaml` for the WPF label, and `DashboardServer.cs` if there's a typed read/augment path.
+
+When in doubt, grep the existing setting name across the repo — every hit is a place the new setting probably needs to land too.
 
 ## UI Standards (Options.xaml)
 

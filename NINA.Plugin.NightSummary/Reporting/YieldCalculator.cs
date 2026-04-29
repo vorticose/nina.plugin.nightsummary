@@ -40,7 +40,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             return new YieldResult {
                 YieldPct = yieldPct,
-                HasSafetyMonitor = (events ?? new List<SessionEvent>()).Any(e => e.EventType == "RoofClosed" || e.EventType == "RoofOpen")
+                HasSafetyMonitor = events?.Any(e => e.EventType == "RoofClosed" || e.EventType == "RoofOpen") ?? false
             };
         }
     }

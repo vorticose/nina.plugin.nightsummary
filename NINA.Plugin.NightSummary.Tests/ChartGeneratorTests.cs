@@ -475,6 +475,61 @@ namespace NINA.Plugin.NightSummary.Tests {
             Assert.Contains("Meridian flip", svg);
         }
 
+        // ── Target population ────────────────────────────────────────────────
+
+        [Fact]
+        public void BuildChartModel_SingleTarget_TargetsHasOneEntry() {
+            var images = TestDataFactory.MakeImageSeries("s", 5, filter: "Ha", target: "M42");
+            var model  = ChartGenerator.BuildChartModel(images,
+                ChartGenerator.PrimaryHFR, ChartGenerator.SecNone, ChartGenerator.XAxisTime, null);
+            Assert.Single(model.Targets);
+            Assert.Equal("M42", model.Targets[0]);
+        }
+
+        [Fact]
+        public void BuildChartModel_MultipleTargets_ChronologicalOrder() {
+            var t0 = new DateTime(2025, 1, 15, 22, 0, 0);
+            var images = new List<ImageRecord> {
+                TestDataFactory.MakeImage("s", target: "Orion",  timestamp: t0),
+                TestDataFactory.MakeImage("s", target: "Orion",  timestamp: t0.AddMinutes(10)),
+                TestDataFactory.MakeImage("s", target: "M42",    timestamp: t0.AddMinutes(20)),
+                TestDataFactory.MakeImage("s", target: "M42",    timestamp: t0.AddMinutes(30)),
+                TestDataFactory.MakeImage("s", target: "IC 434", timestamp: t0.AddMinutes(40)),
+            };
+            var model = ChartGenerator.BuildChartModel(images,
+                ChartGenerator.PrimaryHFR, ChartGenerator.SecNone, ChartGenerator.XAxisTime, null);
+            Assert.Equal(new[] { "Orion", "M42", "IC 434" }, model.Targets);
+        }
+
+        [Fact]
+        public void BuildChartModel_NullOrBlankTargetName_ExcludedFromTargets() {
+            var t0 = new DateTime(2025, 1, 15, 22, 0, 0);
+            var images = new List<ImageRecord> {
+                TestDataFactory.MakeImage("s", target: "M42", timestamp: t0),
+                new ImageRecord { SessionId="s", Timestamp=t0.AddMinutes(10), TargetName=null,  HFR=2.5, Filter="Ha", Accepted=true, ExposureDuration=300, Gain=100, Offset=10 },
+                new ImageRecord { SessionId="s", Timestamp=t0.AddMinutes(20), TargetName="",    HFR=2.5, Filter="Ha", Accepted=true, ExposureDuration=300, Gain=100, Offset=10 },
+                new ImageRecord { SessionId="s", Timestamp=t0.AddMinutes(30), TargetName="   ", HFR=2.5, Filter="Ha", Accepted=true, ExposureDuration=300, Gain=100, Offset=10 },
+            };
+            var model = ChartGenerator.BuildChartModel(images,
+                ChartGenerator.PrimaryHFR, ChartGenerator.SecNone, ChartGenerator.XAxisTime, null);
+            Assert.Single(model.Targets);
+            Assert.Equal("M42", model.Targets[0]);
+        }
+
+        [Fact]
+        public void BuildChartModel_Points_HaveTargetSet() {
+            var t0 = new DateTime(2025, 1, 15, 22, 0, 0);
+            var images = new List<ImageRecord> {
+                TestDataFactory.MakeImage("s", target: "M42",   filter: "Ha",   timestamp: t0),
+                TestDataFactory.MakeImage("s", target: "Orion", filter: "OIII", timestamp: t0.AddMinutes(30)),
+            };
+            var model = ChartGenerator.BuildChartModel(images,
+                ChartGenerator.PrimaryHFR, ChartGenerator.SecNone, ChartGenerator.XAxisTime, null);
+            Assert.All(model.PrimaryPoints, p => Assert.False(string.IsNullOrEmpty(p.Target)));
+            Assert.Contains(model.PrimaryPoints, p => p.Target == "M42");
+            Assert.Contains(model.PrimaryPoints, p => p.Target == "Orion");
+        }
+
         [Fact]
         public void EventMarkers_DifferentTypes_DifferentStyles() {
             var images = TestDataFactory.MakeImageSeries("test", 5);
