@@ -48,11 +48,9 @@ namespace NINA.Plugin.NightSummary {
             if (File.Exists(liveDbPath)) {
                 try {
                     var db = new SessionDatabase(liveDbPath);
-                    var sessions = db.GetAllSessions();
-                    foreach (var s in sessions.Take(20)) {
-                        var imageCount = db.GetImagesForSession(s.SessionId).Count;
+                    foreach (var s in db.GetRecentSessions(20)) {
                         sources.Add(new PreviewSource {
-                            Label = $"{s.SessionStart:yyyy-MM-dd HH:mm} — {s.ProfileName} ({imageCount} images)",
+                            Label = $"{s.SessionStart:yyyy-MM-dd HH:mm} — {s.ProfileName} ({s.ImageCount} images)",
                             DbPath = liveDbPath,
                             SessionId = s.SessionId
                         });

@@ -403,6 +403,12 @@ namespace NINA.Plugin.NightSummary.Data {
                         });
                     }
                     pendingStarts.Clear();
+
+                    // Center/CenterAndRotate aren't tracked in pendingStarts (they aren't in
+                    // ItemCategoryMap), so cancellation mid-Centering would leave centeringDepth
+                    // stuck > 0 and silently suppress every plate solve for the rest of the
+                    // session. Reset here so the post-cancel stream is reported correctly.
+                    centeringDepth = 0;
                 }
             }
 

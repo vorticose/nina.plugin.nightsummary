@@ -78,7 +78,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             if (string.IsNullOrWhiteSpace(raw)) return result;
             foreach (var pair in raw.Split(',')) {
-                var parts = pair.Split('=');
+                // Split into at most 2 parts so a stray `=` in the value (e.g. "Foo=Bar=B")
+                // doesn't drop the entry; the value side is opaque to this parser.
+                var parts = pair.Split('=', 2);
                 if (parts.Length == 2 && !string.IsNullOrWhiteSpace(parts[0]))
                     result[parts[0].Trim()] = parts[1].Trim();
             }

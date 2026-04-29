@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>NINA.Plugin.NightSummary.Dashboard</AssemblyName>
+    <RootNamespace>NINA.Plugin.NightSummary.Dashboard</RootNamespace>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Data.SQLite.Core" Version="1.0.119.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Web\dashboard.html">
+      <LogicalName>dashboard.html</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Web\flatpickr.min.css">
+      <LogicalName>flatpickr.min.css</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Web\flatpickr.min.js">
+      <LogicalName>flatpickr.min.js</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Web\dashboard.css">
+      <LogicalName>dashboard.css</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Web\dashboard.js">
+      <LogicalName>dashboard.js</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\assets\plugin-icon.png">
+      <LogicalName>plugin-icon.png</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+</Project>

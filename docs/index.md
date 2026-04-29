@@ -18,15 +18,17 @@ Whether you run a remote observatory or image from your backyard, Night Summary 
 
 - **Session recording** — captures every exposure with full metadata (HFR, guiding RMS, star count, filter, temperature, and more), plus autofocus runs, meridian flips, and safety monitor events
 - **Rich HTML reports** — event timelines, yield/overhead breakdowns, altitude charts, sky thumbnails, image quality tables, metric charts and more
+- **Live dashboard** — browser-based dashboard running on your NINA machine; browse session history, explore lifetime target stats, and view full reports from any device on your network
 - **Multiple delivery channels** — email, Discord webhook, Pushover notifications, or local file save
 - **Live Stack integration** — includes live-stacked thumbnails from the Live Stack plugin (if installed and enabled) in your report
 - **Target Scheduler integration** — shows acquisition progress bars, minimum altitude lines, and a preview of tonight's imaging plan when Target Scheduler is installed
-- **Metric charts** — plot any combination of HFR, FWHM, guiding RMS, temperature, humidity, and 15+ other metrics
+- **Metric charts** — plot any of 35 metrics (HFR, FWHM, guiding RMS, temperature, sky conditions, ADU statistics, capture settings, and more) with a per-filter selector to isolate one filter at a time
+- **Rejected frame tracking** — frames rejected by Target Scheduler grading or the manual thumbs-down button are counted in session overview and broken out in the per-target filter table
 - **Yield and imaging overhead analysis** — parses NINA logs to show exactly where your non-imaging time went (downloads, filter changes, autofocus, dithering, etc.)
 - **Equipment profile** — collapsible section showing all connected equipment with customizable display names
 - **Session history** — cumulative integration time per target across all sessions
 - **Customizable detail levels** — Snapshot, Standard, or Full reports to match your preference
-- **Light and dark mode** — reports render in your choice of color scheme
+- **Light and dark mode** — reports and dashboard render in your choice of color scheme
 - **File naming patterns** — use NINA-style `$$PATTERN$$` variables in report filenames
 
 ## Installation
@@ -60,4 +62,4 @@ Night Summary offers three detail levels that control how much information appea
 
 ## Version
 
-This documentation covers **Night Summary v2.10.0+** for NINA 3.2+.
+This documentation covers **Night Summary v3.0+** for NINA 3.2+.

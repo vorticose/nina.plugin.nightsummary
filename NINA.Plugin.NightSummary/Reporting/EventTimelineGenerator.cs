@@ -77,7 +77,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             string idleBg = light ? "#d0d4da" : "#0f0f23";
             string idleStripe = light ? "#b04040" : "#7a1a1a";
             string tickColor = light ? "#888" : "#555";
-            string labelColor = light ? "#666" : "#888";
+            string labelColor = light ? "#666" : "#aaaacc";
             string legendText = light ? "#1a1a2e" : "#e0e0e0";
             sb.AppendLine($"<div class='ns-tl-tip' style='display:none;position:fixed;background:{tooltipBg};color:{tooltipFg};padding:6px 10px;border-radius:6px;font-size:12px;font-family:Arial,sans-serif;pointer-events:none;box-shadow:0 2px 8px {tooltipShadow};z-index:9999;white-space:nowrap;'></div>");
 
@@ -210,7 +210,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             int ly = legendTop;
 
             // Targets section
-            sb.AppendLine($"<text x='{leftPad}' y='{ly + 12}' fill='#aaa' font-weight='bold'>Targets</text>");
+            sb.AppendLine($"<text x='{leftPad}' y='{ly + 12}' fill='{legendText}' font-weight='bold'>Targets</text>");
             ly += 18;
             foreach (var target in targets) {
                 sb.AppendLine($"<rect x='{leftPad}' y='{ly}' width='14' height='12' fill='{target.Color}' rx='2'/>");
@@ -221,7 +221,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             // Events section
             if (eventTypesPresent.Any()) {
                 ly += 6;
-                sb.AppendLine($"<text x='{leftPad}' y='{ly + 12}' fill='#aaa' font-weight='bold'>Events</text>");
+                sb.AppendLine($"<text x='{leftPad}' y='{ly + 12}' fill='{legendText}' font-weight='bold'>Events</text>");
                 ly += 18;
                 foreach (var evtType in eventTypesPresent) {
                     string c = evtType switch {

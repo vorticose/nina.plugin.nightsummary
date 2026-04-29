@@ -420,6 +420,28 @@
                         <CheckBox IsChecked="{Binding ShowHFRGraph}" VerticalAlignment="Center" />
                     </StackPanel>
 
+                    <!-- Per-target / per-filter chip selectors: disabled when Metric Chart is off -->
+                    <StackPanel Margin="20,2,0,0">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="IsEnabled" Value="True"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ShowHFRGraph}" Value="False">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                            <TextBlock Text="Per-Target Chart Filtering" Width="180" VerticalAlignment="Center" />
+                            <CheckBox IsChecked="{Binding ShowChartTargetChips}" VerticalAlignment="Center" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                            <TextBlock Text="Per-Filter Chart Filtering" Width="180" VerticalAlignment="Center" />
+                            <CheckBox IsChecked="{Binding ShowChartFilterChips}" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </StackPanel>
+
                     <!-- Chart event markers: disabled when Metric Chart is off -->
                     <StackPanel Margin="20,2,0,0">
                         <StackPanel.Style>
@@ -441,7 +463,7 @@
                             <CheckBox IsChecked="{Binding ShowChartFlipMarkers}" VerticalAlignment="Center" />
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,2">
-                            <TextBlock Text="Show Roof Event Markers" Width="180" VerticalAlignment="Center" />
+                            <TextBlock Text="Show Safety Event Markers" Width="180" VerticalAlignment="Center" />
                             <CheckBox IsChecked="{Binding ShowChartRoofMarkers}" VerticalAlignment="Center" />
                         </StackPanel>
                         <TextBlock Text="Markers only shown when x-axis is set to Time." FontSize="10" Foreground="Gray" Margin="0,2,0,0" />
@@ -688,6 +710,98 @@
                         <TextBlock Text="Light Mode Report" Width="200" VerticalAlignment="Center" />
                         <CheckBox IsChecked="{Binding ReportLightMode}" VerticalAlignment="Center" />
                     </StackPanel>
+
+                    <Separator Margin="0,20,0,10" />
+
+                    <!-- ══ Local Dashboard ═══════════════════════════════════════ -->
+                    <Expander IsExpanded="False" Margin="0,4,0,4">
+                        <Expander.Header>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="Local Dashboard" FontSize="14" FontWeight="Bold" VerticalAlignment="Center" />
+                                <Border Background="#E8A020" CornerRadius="3" Margin="10,0,0,0" Padding="6,2" VerticalAlignment="Center">
+                                    <TextBlock Text="BETA" FontSize="10" FontWeight="Bold" Foreground="White" />
+                                </Border>
+                            </StackPanel>
+                        </Expander.Header>
+                        <StackPanel Margin="0,12,0,0">
+
+                            <StackPanel Orientation="Horizontal" Margin="0,5">
+                                <TextBlock Text="Enable Local Dashboard" Width="200" VerticalAlignment="Center" />
+                                <CheckBox IsChecked="{Binding LocalServerEnabled}" VerticalAlignment="Center" />
+                            </StackPanel>
+
+                            <StackPanel IsEnabled="{Binding LocalServerEnabled}">
+
+                            <StackPanel Orientation="Horizontal" Margin="0,5">
+                                <TextBlock Text="Port" Width="200" VerticalAlignment="Center" />
+                                <TextBox MinWidth="80" Text="{Binding LocalServerPort, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,10">
+                                <TextBlock Width="200" />
+                                <Button Content="Start Server" Command="{Binding StartLocalServerCommand}" Width="180" />
+                                <Button Content="Stop Server" Command="{Binding StopLocalServerCommand}" Width="180" Margin="10,0,0,0" />
+                                <TextBlock Text="{Binding LocalServerStatus.Text}"
+                                           Foreground="{Binding LocalServerStatus.Foreground}"
+                                           Visibility="{Binding LocalServerStatus.Visibility}"
+                                           VerticalAlignment="Center" Margin="10,0,0,0" />
+                            </StackPanel>
+
+                            <!-- URL display with copy buttons (visible when server is running) -->
+                            <StackPanel Margin="0,8,0,0" Visibility="{Binding IsLocalServerRunning, Converter={StaticResource BooleanToVisibilityCollapsedConverter}}">
+                                <StackPanel Orientation="Horizontal" Margin="0,4">
+                                    <TextBlock Text="Local URL" Width="200" VerticalAlignment="Center" Foreground="Gray" FontSize="11" />
+                                    <TextBlock Text="{Binding LocalServerUrl}" VerticalAlignment="Center" Foreground="#7eb8f7" FontSize="12" />
+                                    <Button Content="Copy" Command="{Binding CopyLocalUrlCommand}" Margin="8,0,0,0" Padding="8,2" FontSize="11" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,4"
+                                            Visibility="{Binding HasTailscaleUrl, Converter={StaticResource BooleanToVisibilityCollapsedConverter}}">
+                                    <TextBlock Text="Tailnet URL" Width="200" VerticalAlignment="Center" Foreground="Gray" FontSize="11" />
+                                    <TextBlock Text="{Binding TailscaleUrl}" VerticalAlignment="Center" Foreground="#7eb8f7" FontSize="12" />
+                                    <Button Content="Copy" Command="{Binding CopyTailscaleUrlCommand}" Margin="8,0,0,0" Padding="8,2" FontSize="11" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,4"
+                                            Visibility="{Binding HasZeroTierUrl, Converter={StaticResource BooleanToVisibilityCollapsedConverter}}">
+                                    <TextBlock Text="ZeroTier URL" Width="200" VerticalAlignment="Center" Foreground="Gray" FontSize="11" />
+                                    <TextBlock Text="{Binding ZeroTierUrl}" VerticalAlignment="Center" Foreground="#7eb8f7" FontSize="12" />
+                                    <Button Content="Copy" Command="{Binding CopyZeroTierUrlCommand}" Margin="8,0,0,0" Padding="8,2" FontSize="11" />
+                                </StackPanel>
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,5">
+                                <TextBlock Width="200" />
+                                <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="400" VerticalAlignment="Center"
+                                           Text="Serves an interactive web dashboard on the configured port. Accessible from any device on your local network or via VPN. Auto-starts with NINA when enabled." />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,2">
+                                <TextBlock Width="200" />
+                                <TextBlock FontSize="11" Foreground="Gray">
+                                    <Run Text="VPN options: " />
+                                    <Hyperlink NavigateUri="https://tailscale.com" RequestNavigate="Hyperlink_RequestNavigate">Tailscale</Hyperlink>
+                                    <Run Text=" · " />
+                                    <Hyperlink NavigateUri="https://www.zerotier.com" RequestNavigate="Hyperlink_RequestNavigate">ZeroTier</Hyperlink>
+                                </TextBlock>
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,10">
+                                <TextBlock Width="200" />
+                                <Button Content="Generate All Reports" Command="{Binding GenerateAllDashboardReportsCommand}" Width="180" />
+                                <TextBlock Text="{Binding GenerateDashboardReportsStatus.Text}"
+                                           Foreground="{Binding GenerateDashboardReportsStatus.Foreground}"
+                                           Visibility="{Binding GenerateDashboardReportsStatus.Visibility}"
+                                           VerticalAlignment="Center" Margin="10,0,0,0" />
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,5">
+                                <TextBlock Width="200" />
+                                <TextBlock Text="Generates viewable reports for all past sessions that don't already have one. Run this once after enabling the dashboard to backfill historical reports."
+                                           TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="400" VerticalAlignment="Center" />
+                            </StackPanel>
+
+                            </StackPanel>
+
+                        </StackPanel>
+                    </Expander>
 
                     <Separator Margin="0,20,0,10" />
 

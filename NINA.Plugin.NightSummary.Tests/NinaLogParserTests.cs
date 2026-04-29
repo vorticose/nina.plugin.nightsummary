@@ -662,6 +662,36 @@ namespace NINA.Plugin.NightSummary.Tests {
             }
         }
 
+        [Fact]
+        public void InterruptWhen_DuringCentering_ResetsCenteringDepth_SoLaterPlateSolvesEmit() {
+            // Center/CenterAndRotate aren't in ItemCategoryMap so they aren't tracked in
+            // pendingStarts. Cancellation mid-Centering (e.g. roof-close before the inner
+            // solve finishes) used to leave centeringDepth stuck > 0, suppressing every
+            // post-cancel plate solve. This guards the reset in the InterruptWhen handler.
+            var log = @"----------------------------------------------------------------------
+--------------N.I.N.A. - Nighttime Imaging 'N' Astronomy--------------
+--------------------------Version 3.2.0.9001--------------------------
+-------------------------2026-03-30T21:21:13--------------------------
+----------------------------------------------------------------------
+2026-03-30T21:35:00.0000|INFO|SequenceItem.cs|Run|208|Starting Category: Telescope, Item: CenterAndRotate
+2026-03-30T21:35:30.0000|INFO|WhenCommon.cs|InterruptWhen|332|Canceling sequence...
+2026-03-30T21:50:00.0000|INFO|ImageSolver.cs|Solve|41|Platesolving with parameters: FocalLength: 448
+2026-03-30T21:50:03.0000|INFO|ImageSolver.cs|Solve|54|Platesolve successful: Coordinates: RA: 07:05:49
+";
+            var path = Path.Combine(Path.GetTempPath(), $"centerleak_{Guid.NewGuid():N}.log");
+            File.WriteAllText(path, log);
+            try {
+                var events = NinaLogParser.ParseFile(path, SessionStart, SessionEnd);
+                // Post-cancel plate solve must be emitted — pre-fix the suppression gate
+                // (centeringDepth > 0) blocked it for the rest of the session.
+                var solves = events.Where(e => e.EventType == "PlateSolve").ToList();
+                Assert.Single(solves);
+                Assert.Equal(new DateTime(2026, 3, 30, 21, 50, 0), solves[0].StartTime);
+            } finally {
+                File.Delete(path);
+            }
+        }
+
         // ── Fix: meridian flip trigger full duration ─────────────────────────
         // MeridianFlipTrigger runs as a SequenceTrigger, not a SequenceItem, so the
         // full flip (stop guide → slew → settle → recenter → reguide → settle) must

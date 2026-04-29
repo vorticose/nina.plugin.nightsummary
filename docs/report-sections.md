@@ -43,7 +43,29 @@ The Total Images and Total Exposure boxes are expandable — click to see the pe
 
 **Standard and Full detail levels.**
 
-A visual timeline showing what happened during your session in chronological order. Events include sequence start/end, target changes, autofocus runs, meridian flips, and safety monitor events (roof open/close).
+The event timeline shows your entire session at a glance across wall-clock time. Two views are available, toggled by the **Altitude / Simple** chips in the report:
+
+### Altitude View (default)
+
+A multi-target altitude chart spanning your session window (session start to session end). Each target gets its own color-coded curve showing its arc across the sky, with semi-transparent shading over the periods when you were actually imaging it. Includes:
+
+- **Event markers** — vertical dashed lines for AutoFocus (AF), Meridian Flip (MF), and safety monitor transitions (S / US), each with a hover tooltip showing the event description and timestamp
+- **Moon curve** — moon altitude as a dashed line (toggle in settings)
+- **Grid lines** — horizontal references at 30° and 60° altitude
+
+This view is only available when observer coordinates are set in your NINA profile. If coordinates are missing, the report falls back to Simple view with no toggle shown.
+
+### Simple View
+
+A flat horizontal bar divided into color-coded bands — one color per target — with diagonal hatching for idle periods between imaging runs. Useful when you want a compact, at-a-glance picture of what you imaged and when, without the altitude context.
+
+### Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Show Altitude Chart | On | Whether to compute and offer the Altitude view |
+| Default to Altitude View | On | Which view opens first when you load the report |
+| Show Moon Curve | On | Moon altitude line in Altitude view |
 
 ![Event Timeline](assets/event-timeline.png)
 
@@ -80,7 +102,7 @@ For each target imaged during the session:
 A sky survey image showing where the target is located, with an FOV (field of view) rectangle overlay showing your camera's framing and rotation. The thumbnail is fetched from the CDS HiPS2FITS color survey. If CDS is unavailable, Night Summary falls back to NASA SkyView DSS2 Red (monochrome). If both services are down, a remote CDS URL is embedded so the browser can fetch it directly when you view the report. Controlled by the **Show Sky Thumbnails** setting.
 
 ### Altitude Chart (Standard+)
-An SVG altitude plot showing the target's path across the sky during the session, with markers for each exposure. Optionally includes:
+An SVG altitude plot showing the target's arc across the full night window (sunset to sunrise), with markers at each exposure. Optionally includes:
 - **Moon curve** — moon altitude shown as a dashed line
 - **Minimum altitude line** — dotted red line at the Target Scheduler project's minimum altitude (requires Target Scheduler)
 
@@ -88,7 +110,7 @@ An SVG altitude plot showing the target's path across the sky during the session
 Thumbnails captured from the Live Stack plugin during the session. See [Live Stack Integration]({% link live-stack-integration.md %}).
 
 ### Filter Table
-A table showing per-filter statistics: filter name, image count, individual exposure time, and total time.
+A table showing per-filter statistics: filter name, image count, individual exposure time, total time, and a **Rejected** count if any frames were discarded during the session. Rejected frames include those failed by Target Scheduler's grading criteria or manually thumbed down in the Image History interface. Hover over the rejected count to see a breakdown by rejection reason.
 
 ### Target Scheduler Progress Bars (Standard+)
 Per-filter acquisition progress when Target Scheduler is installed. Shows accepted vs. acquired frames against the plan's desired total. See [Target Scheduler Integration]({% link target-scheduler-integration.md %}).
@@ -110,7 +132,14 @@ Cumulative integration time for the target across all recorded sessions — not 
 A session-wide image quality summary with:
 
 - **Star Count CV** — coefficient of variation of star counts across the session, with a per-filter breakdown table. Useful for detecting cloud passages or other consistency issues. You can configure [filter classifications]({% link settings-reference.md %}#filter-classifications) to group broadband and narrowband separately.
-- **Metric Chart** (Full) — customizable chart with up to three metrics: a primary and secondary Y-axis metric, plus the X-axis can be set to any metric (not just time). See [Metric Charts]({% link metric-charts.md %}).
+- **Metric Chart** (Full) — customizable chart showing your chosen metrics across the session. In multi-target or multi-filter sessions, two rows of chips appear above the chart for narrowing the data:
+
+| Chip row | Appears when | What it does |
+|----------|-------------|--------------|
+| **Target chips** — All Targets · M51 · NGC 7000 · … | 2+ distinct targets in session | Filters chart data to that target only |
+| **Filter chips** — All · Ha · OIII · … | 2+ distinct filters in session | Filters chart data to that filter only |
+
+Both selectors are independent and additive — selecting Target=M51 and Filter=Ha shows only the M51/Ha data points, with the Y-axis rescaling automatically to fit. Both default to "All". Both rows can be disabled individually in settings. See [Metric Charts]({% link metric-charts.md %}) for the full list of available metrics.
 
 ![Metric Chart](assets/metric-chart.png)
 
