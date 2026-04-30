@@ -18,7 +18,7 @@ using System.Threading.Tasks;
 
 namespace NINA.Plugin.NightSummary.Server {
 
-    public class DashboardServer {
+    public partial class DashboardServer {
 
         private TcpListener _tcpListener;
         private CancellationTokenSource cts;
@@ -335,6 +335,7 @@ namespace NINA.Plugin.NightSummary.Server {
 
             long contentLength = 0;
             string userAgent = null;
+            string authorization = null;
             for (int i = 1; i < lines.Length; i++) {
                 var colon = lines[i].IndexOf(':');
                 if (colon <= 0) continue;
@@ -344,6 +345,8 @@ namespace NINA.Plugin.NightSummary.Server {
                     long.TryParse(val, out contentLength);
                 else if (string.Equals(name, "User-Agent", StringComparison.OrdinalIgnoreCase))
                     userAgent = val;
+                else if (string.Equals(name, "Authorization", StringComparison.OrdinalIgnoreCase))
+                    authorization = val;
             }
 
             if (!rawPath.StartsWith("/")) rawPath = "/" + rawPath;
@@ -372,6 +375,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 ContentLength64 = contentLength,
                 InputStream     = bodyStream,
                 UserAgent       = userAgent,
+                Authorization   = authorization,
             };
         }
 
@@ -409,8 +413,24 @@ namespace NINA.Plugin.NightSummary.Server {
             try {
                 if (req.HttpMethod == "GET") {
                     if (path == "/api/health") {
-                        await WriteJson(res, 200, new { status = "ok" });
+                        await WriteJson(res, 200, new {
+                            status         = "ok",
+                            ok             = true,
+                            version        = _settings.PluginVersion ?? GetServerAssemblyVersion(),
+                            schemaVersion  = CompanionSchemaVersion,
+                            mode           = _settings.Mode ?? "primary",
+                        });
                         done?.Invoke(200, null);
+                    } else if (path == "/api/mode") {
+                        await HandleGetMode(res, done);
+                    } else if (path == "/api/export/manifest") {
+                        await HandleExportManifest(req, res, done);
+                    } else if (path == "/api/export/database") {
+                        await HandleExportDatabase(req, res, done);
+                    } else if (path == "/api/export/ts-database") {
+                        await HandleExportTsDatabase(req, res, done);
+                    } else if (path == "/api/export/reports") {
+                        await HandleExportReports(req, res, done);
                     } else if (path == "/api/sessions") {
                         await HandleGetSessions(res, done);
                     } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/images")) {

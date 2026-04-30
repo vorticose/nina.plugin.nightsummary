@@ -39,6 +39,12 @@ namespace NINA.Plugin.NightSummary.Data {
         public bool   LocalServerEnabled { get; set; } = false;
         public int    LocalServerPort    { get; set; } = 8181;
 
+        // ── Companion (R&D) ───────────────────────────────────────────────────
+        // Bearer token for /api/export/* endpoints. Empty = endpoints reject all
+        // requests with 401. Auto-populated by SettingsManager.EnsureCompanionApiKey()
+        // at server start so the user can copy from plugin settings without prompting.
+        public string CompanionApiKey   { get; set; } = "";
+
         // ── Report display ────────────────────────────────────────────────────
         public int    ReportDetailLevel      { get; set; } = 2;
         public bool   ReportLightMode        { get; set; } = false;

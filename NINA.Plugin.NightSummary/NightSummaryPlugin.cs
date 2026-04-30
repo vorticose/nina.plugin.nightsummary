@@ -380,6 +380,7 @@ namespace NINA.Plugin.NightSummary {
 
         private async Task StartLocalServerAsync() {
             if (dashboardServer?.IsRunning == true) return;
+            SettingsManager.Instance.EnsureCompanionApiKey();
             var paths = new NinaDashboardPaths();
             dashboardServer = new DashboardServer(
                 data:        new NinaDashboardDataSource(paths.DatabasePath),

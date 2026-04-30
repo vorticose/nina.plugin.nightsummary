@@ -11,4 +11,5 @@ internal sealed class DevPluginSettings : IPluginSettings {
     public NightSummarySettings Current { get; } = new NightSummarySettings();
     public void Save() { }
     public string PluginVersion => "3.0.0";
+    public string Mode => "primary";
 }

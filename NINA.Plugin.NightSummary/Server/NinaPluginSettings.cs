@@ -11,4 +11,5 @@ internal sealed class NinaPluginSettings : IPluginSettings {
         typeof(NinaPluginSettings).Assembly
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
             ?.InformationalVersion?.Split('+')[0] ?? "";
+    public string Mode => "primary";
 }
