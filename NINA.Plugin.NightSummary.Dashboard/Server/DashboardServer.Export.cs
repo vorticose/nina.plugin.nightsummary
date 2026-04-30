@@ -177,7 +177,10 @@ namespace NINA.Plugin.NightSummary.Server {
                             if (since.HasValue && info.LastWriteTimeUtc <= since.Value.UtcDateTime) continue;
                             var entryName = Path.GetRelativePath(reportsDir, path).Replace('\\', '/');
                             var entry = archive.CreateEntry(entryName, CompressionLevel.Fastest);
-                            entry.LastWriteTime = info.LastWriteTimeUtc;
+                            // Zip DOS-time format has no TZ; storing local wall-clock so
+                            // SetLastWriteTime on the companion side reproduces the same
+                            // visible mtime when both machines share a TZ.
+                            entry.LastWriteTime = info.LastWriteTime;
                             using var entryStream = entry.Open();
                             using var fileStream  = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
                             await fileStream.CopyToAsync(entryStream);
