@@ -612,6 +612,30 @@ namespace NINA.Plugin.NightSummary {
                 System.Windows.Clipboard.SetText(ZeroTierUrl);
         });
 
+        // ── Companion (R&D) ──────────────────────────────────────────────────
+        // Bearer token for /api/export/* endpoints. Auto-generated on first
+        // read and persisted to settings.json so the user can copy it into
+        // their companion's companion.json without an interactive prompt.
+        public string CompanionApiKey => SettingsManager.Instance.EnsureCompanionApiKey();
+
+        public ICommand CopyCompanionApiKeyCommand => new RelayCommand(async () => {
+            var key = CompanionApiKey;
+            if (!string.IsNullOrEmpty(key))
+                System.Windows.Clipboard.SetText(key);
+        });
+
+        public ICommand RegenerateCompanionApiKeyCommand => new RelayCommand(async () => {
+            var result = System.Windows.MessageBox.Show(
+                "Regenerate the companion API key?\n\nAny existing companion installations will stop syncing until you paste the new key into their companion.json.",
+                "Regenerate Companion API Key",
+                System.Windows.MessageBoxButton.OKCancel,
+                System.Windows.MessageBoxImage.Warning);
+            if (result != System.Windows.MessageBoxResult.OK) return;
+            S.CompanionApiKey = "";
+            SettingsManager.Instance.EnsureCompanionApiKey();
+            RaisePropertyChanged(nameof(CompanionApiKey));
+        });
+
         public int ReportDetailLevel {
             get => S.ReportDetailLevel;
             set {
