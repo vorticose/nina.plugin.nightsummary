@@ -361,8 +361,12 @@ function route() {
     });
     updateStatsNavLabel();
 
-    // Toggle report-view mode on body to kill outer scroll
-    var isReport = path.match(/^\/sessions\/[^/]+$/);
+    // Toggle report-view mode on body to kill outer scroll. Frames view
+    // (/sessions/{sid}/frames) is its own page, not a report iframe.
+    var isReport      = path.match(/^\/sessions\/[^/]+$/);
+    var isFrames      = path.match(/^\/sessions\/([^/]+)\/frames$/);
+    var isTargetFrames= path.match(/^\/targets\/([^/]+)\/frames$/);
+    var isProjectFrames=path.match(/^\/projects\/([^/]+)\/frames$/);
     document.body.classList.toggle('report-view', !!isReport);
     if (isReport) {
       // Shell is the scroll container in report-view; reset it so content
@@ -379,6 +383,12 @@ function route() {
 
     if (path === '/sessions') {
       renderSessionList(params);
+    } else if (isFrames) {
+      renderFramesGallery({ kind: 'session', id: decodeURIComponent(isFrames[1]) });
+    } else if (isTargetFrames) {
+      renderFramesGallery({ kind: 'target', id: decodeURIComponent(isTargetFrames[1]) });
+    } else if (isProjectFrames) {
+      renderFramesGallery({ kind: 'project', id: decodeURIComponent(isProjectFrames[1]) });
     } else if (isReport) {
       renderSessionDetail(path.split('/')[2]);
     } else if (path === '/stats') {
@@ -6564,6 +6574,7 @@ function renderSessionDetail(sessionId) {
         '<span class="report-nav-targets">' + esc(targets) + '</span>' +
       '</div>' +
       '<div class="report-nav-actions">' +
+        '<a class="report-btn" href="#/sessions/' + encodeURIComponent(sessionId) + '/frames">\ud83d\uddbc Frames</a>' +
         '<button class="report-btn" id="btn-settings">\u2699 Settings</button>';
 
     if (detail.hasReport) {
@@ -8446,6 +8457,131 @@ function renderStats() {
   }).catch(function(err) {
     logError('Failed to load stats:', err.message);
     el.innerHTML = '<div class="error">Failed to load stats: ' + esc(err.message) + '</div>';
+  });
+}
+
+// ── Raw Image Frames Gallery (RAW_THUMBNAILS_DESIGN.md) ──────────────────
+// Three view modes share one renderer: per-session, per-target (cross-session),
+// per-project (TS-mediated). Each fetches a different endpoint but produces the
+// same {id, sessionId, timestamp, filter, accepted, gradingStatus,
+//        thumbnailVersion, [targetName for target/project views]} entries.
+
+function renderFramesGallery(view) {
+  var el = document.getElementById('content');
+  el.innerHTML = '<div class="loading">Loading frames...</div>';
+
+  var url, title, backHref;
+  if (view.kind === 'session') {
+    url = '/api/sessions/' + encodeURIComponent(view.id) + '/images';
+    title = 'Frames';
+    backHref = '#/sessions/' + encodeURIComponent(view.id);
+  } else if (view.kind === 'target') {
+    url = '/api/targets/' + encodeURIComponent(view.id) + '/frames';
+    title = 'Frames — ' + view.id;
+    backHref = '#/stats';
+  } else {
+    url = '/api/projects/' + encodeURIComponent(view.id) + '/frames';
+    title = 'Frames — Project';
+    backHref = '#/stats';
+  }
+
+  api(url).then(function(rows) {
+    // For session-view we got the full /images dump including darks/flats.
+    // Filter to LIGHT frames that have a thumb.
+    var frames = (rows || []).filter(function(r) {
+      if (view.kind === 'session') {
+        if (r.imageType && r.imageType.toUpperCase() !== 'LIGHT') return false;
+      }
+      return (r.thumbnailVersion || 0) > 0;
+    });
+
+    if (frames.length === 0) {
+      el.innerHTML =
+        '<a class="back-btn" href="' + backHref + '">← Back</a>' +
+        '<h2>' + esc(title) + '</h2>' +
+        '<div class="empty">No thumbnails available. Enable "Capture Thumbnails" in Options to start collecting them, or click "Import from Target Scheduler" to backfill from existing TS data.</div>';
+      return;
+    }
+
+    var html =
+      '<a class="back-btn" href="' + backHref + '">← Back</a>' +
+      '<h2>' + esc(title) + ' <span class="frames-count">' + frames.length + '</span></h2>' +
+      '<div class="frames-gallery" id="frames-gallery">';
+    for (var i = 0; i < frames.length; i++) {
+      var f = frames[i];
+      var sid = f.sessionId || view.id;
+      var src = '/api/frames/' + f.id + '/thumb?size=sm';
+      var rejected = (f.gradingStatus === 2) || (f.accepted === false);
+      var caption = f.filter || '';
+      if (f.targetName && view.kind !== 'session') caption = (f.targetName + ' • ' + caption);
+      var ts = f.timestamp ? fmtDate(f.timestamp) : '';
+      html +=
+        '<div class="frames-thumb' + (rejected ? ' rejected' : '') + '"' +
+             ' data-id="' + f.id + '" data-sid="' + esc(sid) + '"' +
+             ' data-caption="' + esc(caption + (ts ? ' • ' + ts : '')) + '">' +
+          '<img loading="lazy" src="' + src + '" alt="" />' +
+          '<div class="frames-thumb-meta">' + esc(caption) + '</div>' +
+        '</div>';
+    }
+    html += '</div>';
+    html += '<div class="frames-lightbox" id="frames-lightbox" style="display:none">' +
+              '<button class="frames-lightbox-close" aria-label="Close">×</button>' +
+              '<button class="frames-lightbox-prev"  aria-label="Previous">‹</button>' +
+              '<button class="frames-lightbox-next"  aria-label="Next">›</button>' +
+              '<img id="frames-lightbox-img" alt="" />' +
+              '<div id="frames-lightbox-meta" class="frames-lightbox-meta"></div>' +
+            '</div>';
+
+    el.innerHTML = html;
+    bindFramesGallery(frames);
+  }).catch(function(err) {
+    logError('Failed to load frames:', err.message);
+    el.innerHTML =
+      '<a class="back-btn" href="' + backHref + '">← Back</a>' +
+      '<div class="error">Failed to load frames: ' + esc(err.message) + '</div>';
+  });
+}
+
+function bindFramesGallery(frames) {
+  var lb     = document.getElementById('frames-lightbox');
+  var lbImg  = document.getElementById('frames-lightbox-img');
+  var lbMeta = document.getElementById('frames-lightbox-meta');
+  var idx    = 0;
+
+  function open(i) {
+    idx = (i + frames.length) % frames.length;
+    var f = frames[idx];
+    // Try medium first; server falls back to small if md missing.
+    lbImg.src = '/api/frames/' + f.id + '/thumb?size=md';
+    var caption = f.filter || '';
+    if (f.targetName) caption = f.targetName + ' • ' + caption;
+    if (f.timestamp) caption += ' • ' + fmtDate(f.timestamp);
+    lbMeta.textContent = caption;
+    lb.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  }
+  function close() {
+    lb.style.display = 'none';
+    lbImg.src = '';
+    document.body.style.overflow = '';
+  }
+
+  document.getElementById('frames-gallery').addEventListener('click', function(e) {
+    var thumb = e.target.closest('.frames-thumb');
+    if (!thumb) return;
+    var id = +thumb.getAttribute('data-id');
+    var i = frames.findIndex(function(f) { return f.id === id; });
+    if (i >= 0) open(i);
+  });
+  lb.querySelector('.frames-lightbox-close').addEventListener('click', close);
+  lb.querySelector('.frames-lightbox-prev').addEventListener('click', function() { open(idx - 1); });
+  lb.querySelector('.frames-lightbox-next').addEventListener('click', function() { open(idx + 1); });
+  lb.addEventListener('click', function(e) { if (e.target === lb) close(); });
+  document.addEventListener('keydown', function lbKey(e) {
+    if (lb.style.display === 'none') { document.removeEventListener('keydown', lbKey); return; }
+    if (e.key === 'Escape')      close();
+    else if (e.key === 'ArrowLeft')  open(idx - 1);
+    else if (e.key === 'ArrowRight') open(idx + 1);
   });
 }
 
