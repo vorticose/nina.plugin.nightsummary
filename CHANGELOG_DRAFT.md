@@ -1,6 +1,12 @@
 # Night Summary — Changelog
 
 
+## Unreleased — v3.1.0 (in progress)
+
+**New features**
+- Raw image thumbnails (opt-in) — Night Summary can now save a small JPEG thumbnail of every LIGHT frame as it's captured, and surface them in a new dashboard gallery. Three views: per session (from the session detail page), cross-session per target, and per project (when Target Scheduler is installed). Click any thumbnail for a lightbox view with arrow-key navigation. Optional medium 800px thumbnails for higher-quality lightbox. Off by default — enable in Options → Raw Image Thumbnails. Three retention modes: keep all, roll over by days, or roll over by total disk usage. Existing Target Scheduler users can backfill thumbnails from past sessions with a one-click "Import from Target Scheduler" button. Thumbnails are stored at `%LOCALAPPDATA%\NINA\NightSummary\thumbs\{sessionId}\`.
+
+
 ## v3.0.0
 
 **New features**
