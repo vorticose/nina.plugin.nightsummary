@@ -68,6 +68,16 @@ namespace NINA.Plugin.NightSummary {
         public ButtonStatus ResendStatus         { get; } = new ButtonStatus();
         public ButtonStatus TestReportStatus     { get; } = new ButtonStatus();
 
+        // ── Raw image thumbnails ─────────────────────────────────────────────
+        // Populated by ImportTsThumbnailsCommand; null when idle. The XAML binds
+        // to .Text so a plain string would also work, but ButtonStatus matches the
+        // existing pattern used for similar deferred-result UIs.
+        private string _tsImportStatus = "";
+        public string TsImportStatus {
+            get => _tsImportStatus;
+            set { _tsImportStatus = value; RaisePropertyChanged(); }
+        }
+
         [ImportingConstructor]
         public NightSummaryPlugin(
             IProfileService profileService,
@@ -283,6 +293,17 @@ namespace NINA.Plugin.NightSummary {
             PreviewReportCommand = new RelayCommand(async () => {
                 var window = new PreviewWindow(sessionService);
                 window.Show();
+            });
+
+            ImportTsThumbnailsCommand = new RelayCommand(async () => {
+                TsImportStatus = "Importing…";
+                try {
+                    var result = await Task.Run(() => ThumbnailImporter.ImportFromTargetScheduler(liveDbPath));
+                    TsImportStatus = $"✓ Imported {result.Imported} of {result.Candidates} ({result.Skipped} skipped, {result.Failed} failed)";
+                } catch (Exception ex) {
+                    TsImportStatus = $"✗ {ex.Message}";
+                    Logger.Error($"NightSummary: TS thumbnail import failed: {ex.Message}\n{ex.StackTrace}");
+                }
             });
 
             StartLocalServerCommand = new RelayCommand(async () => {
@@ -753,6 +774,34 @@ namespace NINA.Plugin.NightSummary {
             set { S.ChartXAxisMetric = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
+        // ── Raw image thumbnails ─────────────────────────────────────────────
+        // Off-by-default master toggle. When on, NS encodes a JPEG thumb per LIGHT
+        // frame at save time — see RAW_THUMBNAILS_DESIGN.md.
+        public bool CaptureRawThumbnails {
+            get => S.CaptureRawThumbnails;
+            set { S.CaptureRawThumbnails = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
+        public bool CaptureMediumThumbnails {
+            get => S.CaptureMediumThumbnails;
+            set { S.CaptureMediumThumbnails = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
+        public string ThumbnailRetentionMode {
+            get => S.ThumbnailRetentionMode;
+            set { S.ThumbnailRetentionMode = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
+        public int ThumbnailRetentionDays {
+            get => S.ThumbnailRetentionDays;
+            set { S.ThumbnailRetentionDays = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
+        public double ThumbnailRetentionMaxGB {
+            get => S.ThumbnailRetentionMaxGB;
+            set { S.ThumbnailRetentionMaxGB = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
         public int ChartPrimaryMetric {
             get => S.ChartPrimaryMetric;
             set { S.ChartPrimaryMetric = value; SaveSettings(); RaisePropertyChanged(); }
@@ -1009,6 +1058,7 @@ namespace NINA.Plugin.NightSummary {
         public ICommand StartLocalServerCommand { get; }
         public ICommand StopLocalServerCommand { get; }
         public ICommand GenerateAllDashboardReportsCommand { get; }
+        public ICommand ImportTsThumbnailsCommand { get; private set; }
         public ButtonStatus GenerateDashboardReportsStatus { get; } = new ButtonStatus();
 
         public event PropertyChangedEventHandler PropertyChanged;

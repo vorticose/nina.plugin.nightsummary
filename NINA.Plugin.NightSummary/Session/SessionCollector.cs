@@ -20,6 +20,16 @@ using System.Threading.Tasks;
 
 namespace NINA.Plugin.NightSummary.Session {
     public class SessionCollector {
+        // Lazy access to plugin settings — SessionCollector is constructed before
+        // SettingsManager init in some test paths, so resolve on demand.
+        private static NightSummarySettings S => SettingsManager.Instance.Current;
+
+        // Resolved once. Path: %LOCALAPPDATA%\NINA\NightSummary\thumbs\.
+        // Computed lazily so it's never null but defaultable in tests.
+        private static string ThumbsRoot => Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "NINA", "NightSummary", "thumbs");
+
         private readonly SessionDatabase database;
         private readonly IImageSaveMediator imageSaveMediator;
         private readonly ISequenceMediator sequenceMediator;
@@ -269,15 +279,24 @@ namespace NINA.Plugin.NightSummary.Session {
                     StatBitDepth     = e.Statistics != null ? (int?)e.Statistics.BitDepth : null
                 };
 
-                database.SaveImageRecord(record);
+                // Capture FITS path on the row itself (used by future re-stretch features).
+                // FileSystemWatcher path tracking continues alongside for grade-rename detection.
+                var filePath = e.PathToImage?.LocalPath;
+                record.FilePath = filePath;
+
+                long rowId = database.SaveImageRecord(record);
                 Logger.Debug($"NightSummary: Recorded image - Target={record.TargetName}, Filter={record.Filter}, HFR={record.HFR:F2}, GuidingRMS={record.GuidingRMSTotal:F2}\"");
 
                 // Track file path so FileSystemWatcher can match renames to DB records
-                var filePath = e.PathToImage?.LocalPath;
                 if (!string.IsNullOrEmpty(filePath)) {
                     _pathToTimestamp[filePath] = record.Timestamp;
                     EnsureWatching(Path.GetDirectoryName(filePath));
                 }
+
+                // Raw image thumbnail capture — gated, off by default.
+                // Inline encode follows TS pattern (Thumbnails.cs in TS source). 5–15ms
+                // for 192px output; not worth a background queue.
+                TryCaptureThumbnails(e.Image, rowId, currentSession?.SessionId);
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to record image. {ex.Message}");
             }
@@ -334,6 +353,37 @@ namespace NINA.Plugin.NightSummary.Session {
 
         private static double? NullIfNaN(double? value) =>
             value.HasValue && !double.IsNaN(value.Value) ? value : null;
+
+        // ── Raw image thumbnail capture ─────────────────────────────────────
+        // See RAW_THUMBNAILS_DESIGN.md. Gated by CaptureRawThumbnails (master) +
+        // CaptureMediumThumbnails (extra _md output). Failure here never fails
+        // the parent OnImageSaved — capture is best-effort.
+        private void TryCaptureThumbnails(System.Windows.Media.Imaging.BitmapSource src, long imageId, string sessionId) {
+            try {
+                if (src == null || imageId <= 0 || string.IsNullOrEmpty(sessionId)) return;
+                if (!S.CaptureRawThumbnails) return;
+
+                int versionMask = 0;
+                var smallPath = Thumbnails.GetThumbnailPath(ThumbsRoot, sessionId, imageId, Thumbnails.VersionSmall);
+                var (sw, sh, sd) = Thumbnails.Encode(src, Thumbnails.SmallHeightPx);
+                if (sd != null && Thumbnails.WriteToDisk(smallPath, sd))
+                    versionMask |= Thumbnails.VersionSmall;
+
+                if (S.CaptureMediumThumbnails) {
+                    var medPath = Thumbnails.GetThumbnailPath(ThumbsRoot, sessionId, imageId, Thumbnails.VersionMedium);
+                    var (mw, mh, md) = Thumbnails.Encode(src, Thumbnails.MediumHeightPx);
+                    if (md != null && Thumbnails.WriteToDisk(medPath, md))
+                        versionMask |= Thumbnails.VersionMedium;
+                }
+
+                if (versionMask != 0) {
+                    database.UpdateImageThumbnailVersion(imageId, versionMask);
+                    Logger.Debug($"NightSummary: thumbnail saved — id={imageId}, mask={versionMask}");
+                }
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: thumbnail capture failed (id={imageId}): {ex.Message}");
+            }
+        }
 
         // ── Manual rejection tracking ────────────────────────────────────────
 

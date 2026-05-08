@@ -592,7 +592,13 @@ namespace NINA.Plugin.NightSummary.Session {
                     equipmentVisibleFields = S.EquipmentVisibleFields,
                     filterClassifications  = S.FilterClassifications,
                     filterTypeOverrides    = S.FilterTypeOverrides,
-                    equipmentOverrides     = S.EquipmentOverrides
+                    equipmentOverrides     = S.EquipmentOverrides,
+                    // Raw image thumbnails — see RAW_THUMBNAILS_DESIGN.md.
+                    captureRawThumbnails    = S.CaptureRawThumbnails,
+                    captureMediumThumbnails = S.CaptureMediumThumbnails,
+                    thumbnailRetentionMode  = S.ThumbnailRetentionMode,
+                    thumbnailRetentionDays  = S.ThumbnailRetentionDays,
+                    thumbnailRetentionMaxGB = S.ThumbnailRetentionMaxGB
                 };
                 var json = System.Text.Json.JsonSerializer.Serialize(settings,
                     new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });

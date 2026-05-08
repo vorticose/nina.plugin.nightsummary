@@ -113,6 +113,53 @@ namespace NINA.Plugin.NightSummary.Data {
         }
 
         /// <summary>
+        /// Returns the JPEG thumbnail blob TS stored for the LIGHT frame matching
+        /// (<paramref name="targetName"/>, <paramref name="filterName"/>) at
+        /// <paramref name="ts"/> ± <paramref name="windowSeconds"/>. Returns null
+        /// if no match, no thumb, or any error. Used by ThumbnailImporter for the
+        /// one-shot historical backfill — see RAW_THUMBNAILS_DESIGN.md.
+        /// </summary>
+        public byte[] GetThumbnailBlob(string targetName, string filterName, DateTime ts, int windowSeconds) {
+            if (!IsAvailable) return null;
+            if (string.IsNullOrEmpty(targetName)) return null;
+
+            try {
+                var connectionString = $"Data Source={dbPath};Version=3;Read Only=True;";
+                using (var conn = new SQLiteConnection(connectionString)) {
+                    conn.Open();
+                    long center = new DateTimeOffset(ts.ToUniversalTime()).ToUnixTimeSeconds();
+                    long lo = center - windowSeconds;
+                    long hi = center + windowSeconds;
+
+                    // Pick the closest match in case multiple TS rows fall in the window.
+                    const string sql = @"
+                        SELECT i.imagedata
+                        FROM acquiredimage a
+                        JOIN target       t ON a.targetId = t.id
+                        JOIN imagedata    i ON i.AcquiredImageId = a.Id
+                        WHERE a.acquireddate BETWEEN @Lo AND @Hi
+                          AND t.name      = @Target COLLATE NOCASE
+                          AND a.filtername = @Filter COLLATE NOCASE
+                        ORDER BY ABS(a.acquireddate - @Center)
+                        LIMIT 1";
+
+                    using (var cmd = new SQLiteCommand(sql, conn)) {
+                        cmd.Parameters.AddWithValue("@Lo",     lo);
+                        cmd.Parameters.AddWithValue("@Hi",     hi);
+                        cmd.Parameters.AddWithValue("@Center", center);
+                        cmd.Parameters.AddWithValue("@Target", targetName);
+                        cmd.Parameters.AddWithValue("@Filter", filterName ?? "");
+                        var blob = cmd.ExecuteScalar();
+                        return blob == DBNull.Value || blob == null ? null : (byte[])blob;
+                    }
+                }
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: GetThumbnailBlob failed (target={targetName}, filter={filterName}): {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
         /// Reads the TS API settings (enableAPI, apiPort) from the profilepreference table.
         /// Returns (false, 0) if TS is unavailable or any error occurs.
         /// </summary>

@@ -536,7 +536,9 @@ namespace NINA.Plugin.NightSummary.Data {
                         StatMAD REAL,
                         StatMin INTEGER,
                         StatMax INTEGER,
-                        StatBitDepth INTEGER
+                        StatBitDepth INTEGER,
+                        ThumbnailVersion INTEGER,
+                        FilePath TEXT
                     )";
 
                 using (var cmd = new SQLiteCommand(createSessions, conn))
@@ -619,10 +621,20 @@ namespace NINA.Plugin.NightSummary.Data {
                 MigrateAddColumn(conn, "Images",        "SkyTemperature",   "REAL");
                 MigrateAddColumn(conn, "Images",        "WindDirection",    "REAL");
                 MigrateAddColumn(conn, "Images",        "WindGust",         "REAL");
+                // Raw image thumbnails (RAW_THUMBNAILS_DESIGN.md). ThumbnailVersion
+                // is a bitmask: 1=small (192px), 2=medium (800px), 3=both, NULL/0=none.
+                // FilePath is the original FITS path, persisted so future features can
+                // re-stretch on demand (currently in-memory only via _pathToTimestamp).
+                MigrateAddColumn(conn, "Images",        "ThumbnailVersion", "INTEGER");
+                MigrateAddColumn(conn, "Images",        "FilePath",         "TEXT");
 
                 // Index to keep session-list enrichment queries fast even on DBs with
                 // hundreds of sessions and 100k+ images (subqueries per-session).
                 using (var cmd = new SQLiteCommand("CREATE INDEX IF NOT EXISTS idx_images_sessionid ON Images(SessionId)", conn)) {
+                    cmd.ExecuteNonQuery();
+                }
+                // Cross-session per-target lookups for the raw-thumbnails gallery.
+                using (var cmd = new SQLiteCommand("CREATE INDEX IF NOT EXISTS idx_images_targetname ON Images(TargetName COLLATE NOCASE)", conn)) {
                     cmd.ExecuteNonQuery();
                 }
 
@@ -779,11 +791,12 @@ namespace NINA.Plugin.NightSummary.Data {
         }
 
         /// <summary>
-        /// Saves a single image record to the database.
+        /// Saves a single image record to the database and returns the new row id
+        /// (so callers can derive thumbnail filenames keyed by ImageId).
         /// Call this each time an image is captured during the session.
         /// GuidingRMSTotal is stored in arcseconds (pixels * GuidingScale).
         /// </summary>
-        public void SaveImageRecord(ImageRecord image) {
+        public long SaveImageRecord(ImageRecord image) {
             using (var conn = new SQLiteConnection(connectionString)) {
                 conn.Open();
                 string sql = @"
@@ -797,7 +810,8 @@ namespace NINA.Plugin.NightSummary.Data {
                         SkyBrightness, SkyTemperature, WindDirection, WindGust,
                         GradingStatus, RejectReason,
                         ImageType, Altitude, Azimuth, Airmass, SideOfPier, ReadoutMode, SkyQuality, CloudCover, SeeingFWHM,
-                        StatMedian, StatMean, StatStDev, StatMAD, StatMin, StatMax, StatBitDepth)
+                        StatMedian, StatMean, StatStDev, StatMAD, StatMin, StatMax, StatBitDepth,
+                        ThumbnailVersion, FilePath)
                     VALUES (
                         @SessionId, @Timestamp, @TargetName, @Filter, @ExposureDuration,
                         @HFR, @FWHM, @Eccentricity, @StarCount, @GuidingRMSTotal, @GuidingScale, @Accepted,
@@ -808,7 +822,9 @@ namespace NINA.Plugin.NightSummary.Data {
                         @SkyBrightness, @SkyTemperature, @WindDirection, @WindGust,
                         @GradingStatus, @RejectReason,
                         @ImageType, @Altitude, @Azimuth, @Airmass, @SideOfPier, @ReadoutMode, @SkyQuality, @CloudCover, @SeeingFWHM,
-                        @StatMedian, @StatMean, @StatStDev, @StatMAD, @StatMin, @StatMax, @StatBitDepth)";
+                        @StatMedian, @StatMean, @StatStDev, @StatMAD, @StatMin, @StatMax, @StatBitDepth,
+                        @ThumbnailVersion, @FilePath);
+                    SELECT last_insert_rowid();";
 
                 using (var cmd = new SQLiteCommand(sql, conn)) {
                     cmd.Parameters.AddWithValue("@SessionId",       image.SessionId);
@@ -861,6 +877,26 @@ namespace NINA.Plugin.NightSummary.Data {
                     cmd.Parameters.AddWithValue("@StatMin",         image.StatMin.HasValue         ? (object)image.StatMin.Value         : DBNull.Value);
                     cmd.Parameters.AddWithValue("@StatMax",         image.StatMax.HasValue         ? (object)image.StatMax.Value         : DBNull.Value);
                     cmd.Parameters.AddWithValue("@StatBitDepth",    image.StatBitDepth.HasValue    ? (object)image.StatBitDepth.Value    : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@ThumbnailVersion",image.ThumbnailVersion.HasValue ? (object)image.ThumbnailVersion.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@FilePath",        image.FilePath != null         ? (object)image.FilePath              : DBNull.Value);
+                    var rowId = (long)cmd.ExecuteScalar();
+                    image.Id = (int)rowId;
+                    return rowId;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Updates the ThumbnailVersion bitmask for a given image row. Used after
+        /// thumbs are encoded asynchronously (not during the initial INSERT) and
+        /// when retention purges thumbs from disk.
+        /// </summary>
+        public void UpdateImageThumbnailVersion(long imageId, int? version) {
+            using (var conn = new SQLiteConnection(connectionString)) {
+                conn.Open();
+                using (var cmd = new SQLiteCommand("UPDATE Images SET ThumbnailVersion = @v WHERE Id = @id", conn)) {
+                    cmd.Parameters.AddWithValue("@v",  version.HasValue ? (object)version.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@id", imageId);
                     cmd.ExecuteNonQuery();
                 }
             }
