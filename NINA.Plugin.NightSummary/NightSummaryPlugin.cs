@@ -376,6 +376,21 @@ namespace NINA.Plugin.NightSummary {
                 });
             }
 
+            // Apply thumbnail retention on startup — catches orphan dirs from
+            // sessions that crashed before the EndSession sweep ran.
+            // Best-effort; never fail plugin init on a cleanup error.
+            try {
+                var thumbsRoot = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "NINA", "NightSummary", "thumbs");
+                if (Directory.Exists(thumbsRoot)) {
+                    var db = new SessionDatabase(liveDbPath);
+                    Data.ThumbnailRetention.Apply(thumbsRoot, S, sid => db.GetSession(sid)?.SessionStart);
+                }
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: ThumbnailRetention startup pass failed: {ex.Message}");
+            }
+
             Logger.Info("NightSummary: Plugin initialized successfully");
         }
 

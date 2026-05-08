@@ -185,6 +185,17 @@ namespace NINA.Plugin.NightSummary.Session {
             var liveStackImages = liveStackCapture?.StopAndCollect() ?? new List<LiveStackImage>();
             liveStackCapture = null;
 
+            // Apply thumbnail retention policy after the session is closed. Best-effort:
+            // failures here never block report delivery. See RAW_THUMBNAILS_DESIGN.md.
+            try {
+                var thumbsRoot = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "NINA", "NightSummary", "thumbs");
+                ThumbnailRetention.Apply(thumbsRoot, S, sid => collector.Database.GetSession(sid)?.SessionStart);
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: ThumbnailRetention threw on session-end: {ex.Message}");
+            }
+
             var database   = collector.Database;
             var session    = database.GetSession(sessionId);
             var images     = database.GetImagesForSession(sessionId);

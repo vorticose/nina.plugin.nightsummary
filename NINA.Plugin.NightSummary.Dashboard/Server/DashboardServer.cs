@@ -479,6 +479,30 @@ namespace NINA.Plugin.NightSummary.Server {
                         await HandleGetTsProjects(res, done);
                     } else if (path == "/api/filters") {
                         await HandleGetFilters(res, done);
+                    } else if (path.StartsWith("/api/frames/") && path.EndsWith("/thumb")) {
+                        // /api/frames/{imageId}/thumb?size=sm|md
+                        var fPrefix = "/api/frames/";
+                        var fSuffix = "/thumb";
+                        var fIdStr  = path.Substring(fPrefix.Length, path.Length - fPrefix.Length - fSuffix.Length);
+                        if (!long.TryParse(fIdStr, out var fId)) {
+                            await WriteJson(res, 400, new { error = "Invalid frame id" });
+                            done?.Invoke(400, "bad id");
+                        } else {
+                            var size = req.QueryString["size"];
+                            await HandleGetFrameThumb(res, fId, size, done);
+                        }
+                    } else if (path.StartsWith("/api/targets/") && path.EndsWith("/frames")) {
+                        var tPrefix  = "/api/targets/";
+                        var tSuffix  = "/frames";
+                        var tEncoded = path.Substring(tPrefix.Length, path.Length - tPrefix.Length - tSuffix.Length);
+                        var tName    = Uri.UnescapeDataString(tEncoded);
+                        await HandleGetTargetFrames(res, tName, done);
+                    } else if (path.StartsWith("/api/projects/") && path.EndsWith("/frames")) {
+                        var pjPrefix  = "/api/projects/";
+                        var pjSuffix  = "/frames";
+                        var pjEncoded = path.Substring(pjPrefix.Length, path.Length - pjPrefix.Length - pjSuffix.Length);
+                        var pjGuid    = Uri.UnescapeDataString(pjEncoded);
+                        await HandleGetProjectFrames(res, pjGuid, done);
                     } else if (path == "/api/regenerate-all/status") {
                         await HandleRegenAllStatus(res);
                         done?.Invoke(200, null);
@@ -716,7 +740,10 @@ namespace NINA.Plugin.NightSummary.Server {
                 cloudCover = i.CloudCover,
                 seeingFwhm = i.SeeingFWHM,
                 gradingStatus = i.GradingStatus,
-                rejectReason = i.RejectReason
+                rejectReason = i.RejectReason,
+                // Raw image thumbs — null/0 = none, 1 = sm, 2 = md, 3 = both.
+                thumbnailVersion = i.ThumbnailVersion,
+                filePath = i.FilePath
             }).ToList();
 
             await WriteJson(res, 200, result);
@@ -881,6 +908,148 @@ namespace NINA.Plugin.NightSummary.Server {
             var totalImages = result.Values.Sum(l => l.Count);
             await WriteJson(res, 200, result);
             done?.Invoke(200, $"{sessionId} — {totalImages} livestack images across {result.Count} targets");
+        }
+
+        // ── Raw image thumbnails (RAW_THUMBNAILS_DESIGN.md) ──────────────────
+        // Resolve thumbs root from the same parent dir that holds the dashboard
+        // reports — keeps everything under %LOCALAPPDATA%\NINA\NightSummary\.
+        private string ThumbsRoot => Path.Combine(Path.GetDirectoryName(reportsDir) ?? "", "thumbs");
+
+        // Walks the NS Image rows for {sessionId} to find the row with matching
+        // Id, returns its sessionId. Used so the binary endpoint doesn't have to
+        // know about sessionId — clients pass just the frame id.
+        private (string sessionId, int? versionMask) ResolveFrame(long imageId) {
+            // We don't have an indexed-by-id query exposed via IDashboardDataSource,
+            // so do a small scan via DbSessions(). Sessions list is small (<1000)
+            // and we early-exit on first match. Could be optimized later with a
+            // direct GetImageByIdAsync if needed.
+            foreach (var s in DbSessions()) {
+                foreach (var img in DbImages(s.SessionId)) {
+                    if (img.Id == imageId) return (s.SessionId, img.ThumbnailVersion);
+                }
+            }
+            return (null, null);
+        }
+
+        private async Task HandleGetFrameThumb(TcpHttpResponse res, long imageId, string size, Action<int, string> done) {
+            var sizeFlag = string.Equals(size, "md", StringComparison.OrdinalIgnoreCase) ? 2 : 1;
+            var (sessionId, _) = ResolveFrame(imageId);
+            if (string.IsNullOrEmpty(sessionId)) {
+                await WriteJson(res, 404, new { error = "Frame not found" });
+                done?.Invoke(404, $"frame {imageId} unknown");
+                return;
+            }
+
+            var path = Path.Combine(ThumbsRoot, sessionId, imageId + (sizeFlag == 2 ? "_md.jpg" : "_sm.jpg"));
+            if (!File.Exists(path)) {
+                // Fallback: requested medium but only small exists → serve small.
+                if (sizeFlag == 2) {
+                    var fallback = Path.Combine(ThumbsRoot, sessionId, imageId + "_sm.jpg");
+                    if (File.Exists(fallback)) path = fallback;
+                }
+                if (!File.Exists(path)) {
+                    await WriteJson(res, 404, new { error = "Thumbnail not found" });
+                    done?.Invoke(404, $"thumb {imageId} missing");
+                    return;
+                }
+            }
+
+            try {
+                var bytes = File.ReadAllBytes(path);
+                res.ContentType = "image/jpeg";
+                res.ContentLength64 = bytes.Length;
+                // Content-addressed by frame id + size — never mutates after capture.
+                res.Headers["Cache-Control"] = "public, max-age=31536000, immutable";
+                res.StatusCode = 200;
+                await res.OutputStream.WriteAsync(bytes, 0, bytes.Length);
+                done?.Invoke(200, $"frame {imageId} {size ?? "sm"} ({bytes.Length / 1024}KB)");
+            } catch (Exception ex) {
+                _external.Warn($"NightSummary: Failed to serve thumbnail {path}: {ex.Message}");
+                await WriteJson(res, 500, new { error = "Failed to read thumbnail" });
+                done?.Invoke(500, ex.Message);
+            }
+        }
+
+        // Cross-session: every LIGHT frame for this target name (case-insensitive),
+        // newest first. Each entry carries enough context for the gallery (sessionId,
+        // timestamp, filter, thumb version).
+        private async Task HandleGetTargetFrames(TcpHttpResponse res, string targetName, Action<int, string> done) {
+            if (string.IsNullOrEmpty(targetName)) {
+                await WriteJson(res, 400, new { error = "Missing target name" });
+                done?.Invoke(400, null);
+                return;
+            }
+
+            var rows = new List<object>();
+            foreach (var s in DbSessions()) {
+                foreach (var img in DbImages(s.SessionId)) {
+                    if (!string.Equals(img.TargetName, targetName, StringComparison.OrdinalIgnoreCase)) continue;
+                    if ((img.ThumbnailVersion ?? 0) == 0) continue;
+                    rows.Add(new {
+                        id = img.Id,
+                        sessionId = s.SessionId,
+                        timestamp = img.Timestamp.ToString("o"),
+                        filter = img.Filter,
+                        exposureDuration = img.ExposureDuration,
+                        accepted = img.Accepted,
+                        gradingStatus = img.GradingStatus,
+                        thumbnailVersion = img.ThumbnailVersion
+                    });
+                }
+            }
+            // Newest first
+            rows.Reverse();
+            await WriteJson(res, 200, rows);
+            done?.Invoke(200, $"{rows.Count} frames for target {targetName}");
+        }
+
+        // TS-mediated: project guid → list of TS target names → aggregate frames.
+        // Returns 404 when TS is not installed; the dashboard hides the project tab in that case.
+        private async Task HandleGetProjectFrames(TcpHttpResponse res, string projectGuid, Action<int, string> done) {
+            if (string.IsNullOrEmpty(projectGuid)) {
+                await WriteJson(res, 400, new { error = "Missing project guid" });
+                done?.Invoke(400, null);
+                return;
+            }
+            if (!TsAvailable()) {
+                await WriteJson(res, 404, new { error = "Target Scheduler not installed" });
+                done?.Invoke(404, "no TS");
+                return;
+            }
+
+            var targetNames = TsProjects()
+                .Where(p => string.Equals(p.Guid, projectGuid, StringComparison.OrdinalIgnoreCase))
+                .SelectMany(p => p.Targets ?? new List<TsProjectTarget>())
+                .Select(t => t.Name)
+                .Where(n => !string.IsNullOrEmpty(n))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (targetNames.Count == 0) {
+                await WriteJson(res, 200, Array.Empty<object>());
+                done?.Invoke(200, $"project {projectGuid} has no targets");
+                return;
+            }
+
+            var rows = new List<object>();
+            foreach (var s in DbSessions()) {
+                foreach (var img in DbImages(s.SessionId)) {
+                    if (!targetNames.Contains(img.TargetName ?? "")) continue;
+                    if ((img.ThumbnailVersion ?? 0) == 0) continue;
+                    rows.Add(new {
+                        id = img.Id,
+                        sessionId = s.SessionId,
+                        timestamp = img.Timestamp.ToString("o"),
+                        targetName = img.TargetName,
+                        filter = img.Filter,
+                        exposureDuration = img.ExposureDuration,
+                        accepted = img.Accepted,
+                        gradingStatus = img.GradingStatus,
+                        thumbnailVersion = img.ThumbnailVersion
+                    });
+                }
+            }
+            rows.Reverse();
+            await WriteJson(res, 200, rows);
+            done?.Invoke(200, $"{rows.Count} frames for project {projectGuid}");
         }
 
         private async Task HandleGetLiveStackImage(TcpHttpResponse res, string sessionId, string filename, Action<int, string> done) {
