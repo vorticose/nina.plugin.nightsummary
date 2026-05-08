@@ -1,6 +1,35 @@
 <!DOCTYPE html>
-<html><head><meta charset='UTF-8'><style>
+<html data-theme='dark'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><style>
 :root { --bg: #1a1a2e; --text: #e0e0e0; --accent: #7eb8f7; --accent-light: #a0c4ff; --accent-lighter: #c0d8ff; --surface: #16213e; --border: #2d2d5e; --muted: #888; --dim: #555; --chart-bg: #0d1117; --chart-dark: #0f0f23; --bar-acquired: #3a5a7a; --warn-bg: #3a2a00; --warn-border: #b8860b; --warn-text: #f0c040; --warn-item: #d4a850; --skip-color: #cc6666; }
+html[data-theme='light'] svg rect[fill='#0d1117'] { fill: #e8eef5; }
+html[data-theme='light'] svg [stroke='#2d2d5e'] { stroke: #c0c8d4; }
+html[data-theme='light'] svg [fill='#2d2d5e'] { fill: #c0c8d4; }
+html[data-theme='light'] svg text[fill='#888'] { fill: #666; }
+html[data-theme='light'] svg [stroke='#c0c0c0'] { stroke: #7a8a9e; }
+html[data-theme='light'] svg [stroke='#7eb8f7'] { stroke: #2563b8; }
+html[data-theme='light'] svg rect[fill='#1a1a2e'] { fill: #f5f5f5; }
+html[data-theme='light'] svg [stroke='#2a2a4a'] { stroke: #c8cdd4; }
+html[data-theme='light'] svg [stroke='#555577'] { stroke: #666688; }
+html[data-theme='light'] svg text[fill='#aaaacc'] { fill: #555577; }
+html[data-theme='light'] svg circle[fill='#a8d4ff'] { fill: #1a4f9e; }
+html[data-theme='light'] svg circle[fill='#ffd4a8'] { fill: #b85c10; }
+html[data-theme='light'] svg rect[fill='#3a1e00'] { fill: #fff3cd; }
+html[data-theme='light'] svg text[fill='#e0e0e0'] { fill: #1a1a2e; }
+html[data-theme='dark'] svg rect[fill='#e8eef5'] { fill: #0d1117; }
+html[data-theme='dark'] svg [stroke='#c0c8d4'] { stroke: #2d2d5e; }
+html[data-theme='dark'] svg [fill='#c0c8d4'] { fill: #2d2d5e; }
+html[data-theme='dark'] svg text[fill='#666'] { fill: #888; }
+html[data-theme='dark'] svg [stroke='#7a8a9e'] { stroke: #c0c0c0; }
+html[data-theme='dark'] svg [stroke='#2563b8'] { stroke: #7eb8f7; }
+html[data-theme='dark'] svg rect[fill='#f5f5f5'] { fill: #1a1a2e; }
+html[data-theme='dark'] svg [stroke='#c8cdd4'] { stroke: #2a2a4a; }
+html[data-theme='dark'] svg [stroke='#666688'] { stroke: #555577; }
+html[data-theme='dark'] svg text[fill='#555577'] { fill: #aaaacc; }
+html[data-theme='dark'] svg circle[fill='#1a4f9e'] { fill: #a8d4ff; }
+html[data-theme='dark'] svg circle[fill='#b85c10'] { fill: #ffd4a8; }
+html[data-theme='dark'] svg rect[fill='#fff3cd'] { fill: #3a1e00; }
+html[data-theme='dark'] svg text[fill='#1a1a2e'] { fill: #e0e0e0; }
+html { background-color: var(--bg); }
 body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background-color: var(--bg); color: var(--text); }
 h1 { color: var(--accent); border-bottom: 2px solid var(--accent); padding-bottom: 10px; }
 h2 { color: var(--accent-light); margin-top: 30px; }
@@ -80,7 +109,8 @@ details.iq-row[open] .iq-arrow::after { content: ' \25BC'; }
 .ns-chart-filter-bar { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 0 auto 8px; }
 .ns-chart-filter-btn { background: var(--surface); color: var(--muted); border: 1px solid var(--border); border-radius: 18px; padding: 5px 18px; font-size: 18px; font-family: inherit; font-weight: bold; cursor: pointer; transition: all 0.15s; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;}
 .ns-chart-filter-btn:hover { border-color: var(--accent-light); color: var(--text); }
-.ns-chart-filter-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.ns-chart-filter-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: bold; }
+.ns-chart-filter-btn.ns-chart-target-btn { max-width: 180px; }
 .ns-chart-svg { width: 100%; }
 svg g:has(> title), svg circle:has(> title), svg line:has(> title), svg [data-tip] { cursor: pointer; }
 </style></head><body>
@@ -167,21 +197,21 @@ svg g:has(> title), svg circle:has(> title), svg line:has(> title), svg [data-ti
 <polygon points='194.0,17 189.0,27 199.0,27' fill='#a78bfa' opacity='0.95' data-tip='22:30 — AF @ L' style='cursor:pointer;'/>
 <line x1='8' y1='34' x2='752' y2='34' stroke='#444' stroke-width='1'/>
 <line x1='132.0' y1='34' x2='132.0' y2='40' stroke='#555' stroke-width='1'/>
-<text x='132.0' y='54' fill='#888' text-anchor='middle'>22:00</text>
+<text x='132.0' y='54' fill='#aaaacc' text-anchor='middle'>22:00</text>
 <line x1='256.0' y1='34' x2='256.0' y2='40' stroke='#555' stroke-width='1'/>
-<text x='256.0' y='54' fill='#888' text-anchor='middle'>23:00</text>
+<text x='256.0' y='54' fill='#aaaacc' text-anchor='middle'>23:00</text>
 <line x1='380.0' y1='34' x2='380.0' y2='40' stroke='#555' stroke-width='1'/>
-<text x='380.0' y='54' fill='#888' text-anchor='middle'>00:00</text>
+<text x='380.0' y='54' fill='#aaaacc' text-anchor='middle'>00:00</text>
 <line x1='504.0' y1='34' x2='504.0' y2='40' stroke='#555' stroke-width='1'/>
-<text x='504.0' y='54' fill='#888' text-anchor='middle'>01:00</text>
+<text x='504.0' y='54' fill='#aaaacc' text-anchor='middle'>01:00</text>
 <line x1='628.0' y1='34' x2='628.0' y2='40' stroke='#555' stroke-width='1'/>
-<text x='628.0' y='54' fill='#888' text-anchor='middle'>02:00</text>
-<text x='8' y='54' fill='#888'>21:00</text>
-<text x='752' y='54' fill='#888' text-anchor='end'>03:00</text>
-<text x='8' y='82' fill='#aaa' font-weight='bold'>Targets</text>
+<text x='628.0' y='54' fill='#aaaacc' text-anchor='middle'>02:00</text>
+<text x='8' y='54' fill='#aaaacc'>21:00</text>
+<text x='752' y='54' fill='#aaaacc' text-anchor='end'>03:00</text>
+<text x='8' y='82' fill='#e0e0e0' font-weight='bold'>Targets</text>
 <rect x='8' y='88' width='14' height='12' fill='#4e79a7' rx='2'/>
 <text x='26' y='98' fill='#e0e0e0'>NGC 7000</text>
-<text x='8' y='126' fill='#aaa' font-weight='bold'>Events</text>
+<text x='8' y='126' fill='#e0e0e0' font-weight='bold'>Events</text>
 <polygon points='13,132 8,142 18,142' fill='#a78bfa'/>
 <text x='26' y='142' fill='#e0e0e0'>AutoFocus run</text>
 </svg>
@@ -260,13 +290,6 @@ svg g:has(> title), svg circle:has(> title), svg line:has(> title), svg [data-ti
 <tr><td>Oiii</td><td>1</td><td>300s</td><td>5m</td></tr>
 <tr><td><strong>Total</strong></td><td><strong>38</strong></td><td></td><td><strong>3h 10m</strong></td></tr>
 </table>
-<div title='CV (Coefficient of Variation) measures consistency as a percentage of the mean. Lower values indicate more stable conditions. Star count CV is calculated per target and filter type.' style='cursor:help;'>
-<p style='margin: 12px 0 4px; font-size: 13px; color: var(--accent-light);'><strong>Star Count Consistency</strong></p>
-<table class='star-count-table'>
-<tr><th>Broadband CV</th><th>Narrowband CV</th></tr>
-<tr><td>0%</td><td>0%</td></tr>
-</table>
-</div>
 </div>
 <div class='target-section'>
 <h2>Session Image Quality</h2>
@@ -297,30 +320,26 @@ svg g:has(> title), svg circle:has(> title), svg line:has(> title), svg [data-ti
 </div>
 <h2>HFR and FWHM Vs. Time</h2>
 <style>
-#nsc1-all:checked ~ .nsc1-bar label[for="nsc1-all"],
-#nsc1-L:checked ~ .nsc1-bar label[for="nsc1-L"],
-#nsc1-Ha:checked ~ .nsc1-bar label[for="nsc1-Ha"],
-#nsc1-Sii:checked ~ .nsc1-bar label[for="nsc1-Sii"],
-#nsc1-Oiii:checked ~ .nsc1-bar label[for="nsc1-Oiii"]
-{ background: var(--accent); color: var(--bg); border-color: var(--accent); }
-#nsc1-svg-L, #nsc1-svg-Ha, #nsc1-svg-Sii, #nsc1-svg-Oiii { display: none; }
-#nsc1-L:checked ~ #nsc1-svg-all { display: none; }
-#nsc1-L:checked ~ #nsc1-svg-L { display: block !important; }
-#nsc1-Ha:checked ~ #nsc1-svg-all { display: none; }
-#nsc1-Ha:checked ~ #nsc1-svg-Ha { display: block !important; }
-#nsc1-Sii:checked ~ #nsc1-svg-all { display: none; }
-#nsc1-Sii:checked ~ #nsc1-svg-Sii { display: block !important; }
-#nsc1-Oiii:checked ~ #nsc1-svg-all { display: none; }
-#nsc1-Oiii:checked ~ #nsc1-svg-Oiii { display: block !important; }
+#nsc1-flt-all:checked ~ .nsc1-flt-bar label[for="nsc1-flt-all"],
+#nsc1-flt-L:checked ~ .nsc1-flt-bar label[for="nsc1-flt-L"],
+#nsc1-flt-Ha:checked ~ .nsc1-flt-bar label[for="nsc1-flt-Ha"],
+#nsc1-flt-Sii:checked ~ .nsc1-flt-bar label[for="nsc1-flt-Sii"],
+#nsc1-flt-Oiii:checked ~ .nsc1-flt-bar label[for="nsc1-flt-Oiii"]
+{ background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: bold; }
+#nsc1-flt-all:checked ~ #nsc1-svg-all-all { display: block !important; }
+#nsc1-flt-L:checked ~ #nsc1-svg-all-L { display: block !important; }
+#nsc1-flt-Ha:checked ~ #nsc1-svg-all-Ha { display: block !important; }
+#nsc1-flt-Sii:checked ~ #nsc1-svg-all-Sii { display: block !important; }
+#nsc1-flt-Oiii:checked ~ #nsc1-svg-all-Oiii { display: block !important; }
 </style>
 <div class="metric-chart-container">
-<input type="radio" name="nsc1" id="nsc1-all" checked style="display:none">
-<input type="radio" name="nsc1" id="nsc1-L" style="display:none">
-<input type="radio" name="nsc1" id="nsc1-Ha" style="display:none">
-<input type="radio" name="nsc1" id="nsc1-Sii" style="display:none">
-<input type="radio" name="nsc1" id="nsc1-Oiii" style="display:none">
-<div class="ns-chart-filter-bar nsc1-bar"><label class="ns-chart-filter-btn" for="nsc1-all">All</label><label class="ns-chart-filter-btn" for="nsc1-L" title="L">L</label><label class="ns-chart-filter-btn" for="nsc1-Ha" title="Ha">Ha</label><label class="ns-chart-filter-btn" for="nsc1-Sii" title="Sii">Sii</label><label class="ns-chart-filter-btn" for="nsc1-Oiii" title="Oiii">Oiii</label></div>
-<div class="ns-chart-svg" id="nsc1-svg-all"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" style="width:100%;max-width:800px;display:block;margin:0 auto 16px;font-family:sans-serif">
+<input type="radio" name="nsc1-flt" id="nsc1-flt-all" checked style="display:none">
+<input type="radio" name="nsc1-flt" id="nsc1-flt-L" style="display:none">
+<input type="radio" name="nsc1-flt" id="nsc1-flt-Ha" style="display:none">
+<input type="radio" name="nsc1-flt" id="nsc1-flt-Sii" style="display:none">
+<input type="radio" name="nsc1-flt" id="nsc1-flt-Oiii" style="display:none">
+<div class="ns-chart-filter-bar nsc1-flt-bar"><label class="ns-chart-filter-btn" for="nsc1-flt-all">All</label><label class="ns-chart-filter-btn" for="nsc1-flt-L" title="L">L</label><label class="ns-chart-filter-btn" for="nsc1-flt-Ha" title="Ha">Ha</label><label class="ns-chart-filter-btn" for="nsc1-flt-Sii" title="Sii">Sii</label><label class="ns-chart-filter-btn" for="nsc1-flt-Oiii" title="Oiii">Oiii</label></div>
+<div class="ns-chart-svg" id="nsc1-svg-all-all" style="display:none"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" style="width:100%;max-width:800px;display:block;margin:0 auto 16px;font-family:sans-serif">
 <style>circle, .evt-hit { cursor: pointer; }</style>
 <rect width="800" height="300" fill="#1a1a2e" rx="6"/>
 <line x1="55" y1="255.0" x2="738" y2="255.0" stroke="#2a2a4a" stroke-width="1"/>
@@ -442,7 +461,7 @@ svg g:has(> title), svg circle:has(> title), svg line:has(> title), svg [data-ti
 <text x="172.8" y="16" fill="#a78bfa" font-size="8" text-anchor="middle" opacity="0.85" pointer-events="none">AF</text>
 </svg>
 </div>
-<div class="ns-chart-svg" id="nsc1-svg-L" style="display:none"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" style="width:100%;max-width:800px;display:block;margin:0 auto 16px;font-family:sans-serif">
+<div class="ns-chart-svg" id="nsc1-svg-all-L" style="display:none"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" style="width:100%;max-width:800px;display:block;margin:0 auto 16px;font-family:sans-serif">
 <style>circle, .evt-hit { cursor: pointer; }</style>
 <rect width="800" height="300" fill="#1a1a2e" rx="6"/>
 <line x1="55" y1="255.0" x2="738" y2="255.0" stroke="#2a2a4a" stroke-width="1"/>
@@ -552,7 +571,7 @@ svg g:has(> title), svg circle:has(> title), svg line:has(> title), svg [data-ti
 <text x="172.8" y="16" fill="#a78bfa" font-size="8" text-anchor="middle" opacity="0.85" pointer-events="none">AF</text>
 </svg>
 </div>
-<div class="ns-chart-svg" id="nsc1-svg-Ha" style="display:none"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" style="width:100%;max-width:800px;display:block;margin:0 auto 16px;font-family:sans-serif">
+<div class="ns-chart-svg" id="nsc1-svg-all-Ha" style="display:none"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" style="width:100%;max-width:800px;display:block;margin:0 auto 16px;font-family:sans-serif">
 <style>circle, .evt-hit { cursor: pointer; }</style>
 <rect width="800" height="300" fill="#1a1a2e" rx="6"/>
 <line x1="55" y1="255.0" x2="738" y2="255.0" stroke="#2a2a4a" stroke-width="1"/>
@@ -605,7 +624,7 @@ svg g:has(> title), svg circle:has(> title), svg line:has(> title), svg [data-ti
 <circle cx="738.0" cy="109.2" r="3" fill="#a8d4ff"><title>00:12 — 2.5 px [Ha]</title></circle>
 </svg>
 </div>
-<div class="ns-chart-svg" id="nsc1-svg-Sii" style="display:none"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" style="width:100%;max-width:800px;display:block;margin:0 auto 16px;font-family:sans-serif">
+<div class="ns-chart-svg" id="nsc1-svg-all-Sii" style="display:none"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" style="width:100%;max-width:800px;display:block;margin:0 auto 16px;font-family:sans-serif">
 <style>circle, .evt-hit { cursor: pointer; }</style>
 <rect width="800" height="300" fill="#1a1a2e" rx="6"/>
 <line x1="55" y1="255.0" x2="738" y2="255.0" stroke="#2a2a4a" stroke-width="1"/>
@@ -646,7 +665,7 @@ svg g:has(> title), svg circle:has(> title), svg line:has(> title), svg [data-ti
 <circle cx="738.0" cy="137.5" r="3" fill="#a8d4ff"><title>00:34 — 2.6 px [Sii]</title></circle>
 </svg>
 </div>
-<div class="ns-chart-svg" id="nsc1-svg-Oiii" style="display:none"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" style="width:100%;max-width:800px;display:block;margin:0 auto 16px;font-family:sans-serif">
+<div class="ns-chart-svg" id="nsc1-svg-all-Oiii" style="display:none"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" style="width:100%;max-width:800px;display:block;margin:0 auto 16px;font-family:sans-serif">
 <style>circle, .evt-hit { cursor: pointer; }</style>
 <rect width="800" height="300" fill="#1a1a2e" rx="6"/>
 <line x1="55" y1="255.0" x2="738" y2="255.0" stroke="#2a2a4a" stroke-width="1"/>
@@ -686,5 +705,5 @@ svg g:has(> title), svg circle:has(> title), svg line:has(> title), svg [data-ti
 </div>
 </div>
 <p class='footnote'>CV (Coefficient of Variation) measures consistency as a percentage of the mean. Lower values indicate more stable conditions. Star count CV is calculated per target and filter type.</p>
-<p class='footnote'>Generated by Night Summary v3.0.0 · N.I.N.A. 3.2.0.9001 · Created by Evan Pegors (@sleepypuppy15)</p>
+<p class='footnote'>Generated by Night Summary v3.0.0.0 · N.I.N.A. 3.2.0.9001 · Created by Evan Pegors (@sleepypuppy15)</p>
 </body></html>
