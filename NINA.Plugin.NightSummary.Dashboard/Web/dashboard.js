@@ -8596,7 +8596,8 @@ function renderFramesGallery(view) {
               '<div class="frames-lightbox-stage">' +
                 '<div class="frames-lightbox-imgwrap">' +
                   '<img id="frames-lightbox-img" alt="" />' +
-                  '<div id="frames-lightbox-badge" class="lb-badge" style="display:none">Original res</div>' +
+                  '<div id="frames-lightbox-counter" class="lb-counter"></div>' +
+                  '<div id="frames-lightbox-badge" class="lb-badge" style="display:none">TS Import</div>' +
                 '</div>' +
                 '<div id="frames-lightbox-panel" class="frames-lightbox-panel"></div>' +
               '</div>' +
@@ -8613,11 +8614,12 @@ function renderFramesGallery(view) {
 }
 
 function bindFramesGallery(frames) {
-  var lb      = document.getElementById('frames-lightbox');
-  var lbImg   = document.getElementById('frames-lightbox-img');
-  var lbPanel = document.getElementById('frames-lightbox-panel');
-  var lbBadge = document.getElementById('frames-lightbox-badge');
-  var idx     = 0;
+  var lb        = document.getElementById('frames-lightbox');
+  var lbImg     = document.getElementById('frames-lightbox-img');
+  var lbPanel   = document.getElementById('frames-lightbox-panel');
+  var lbBadge   = document.getElementById('frames-lightbox-badge');
+  var lbCounter = document.getElementById('frames-lightbox-counter');
+  var idx       = 0;
 
   // After the image decodes, fade it in (JS removes lb-loading) and decide whether
   // it was the medium (≥400px tall = native, sharp) or the small fallback
@@ -8675,24 +8677,29 @@ function bindFramesGallery(frames) {
   function renderPanel(m) {
     if (!m) { lbPanel.innerHTML = ''; return; }
 
-    // Status chip — color-keyed, shown first. -1/null = no grading data
-    // (legacy NS row before grading capture, or non-TS frame). Show a neutral
-    // chip rather than nothing so the panel has consistent shape per frame.
+    // Status pill — color-keyed by accept/reject, prefixed with the source:
+    //   "TS"     → from Target Scheduler grading (gradingStatus 1/2)
+    //   "Manual" → from NINA's side (accepted=false, no TS row)
+    // -1/null with accepted=true = no grading data anywhere → "Not graded".
     var status = '';
-    if (m.gradingStatus === 2 || m.accepted === false) {
-      status = '<span class="m-status m-status-rejected">Rejected</span>';
+    if (m.gradingStatus === 2) {
+      status = '<span class="m-status m-status-rejected">TS Rejected</span>';
+      if (m.rejectReason) status += '<span class="m-reject">' + esc(m.rejectReason) + '</span>';
+    } else if (m.accepted === false) {
+      status = '<span class="m-status m-status-rejected">Manual Rejected</span>';
       if (m.rejectReason) status += '<span class="m-reject">' + esc(m.rejectReason) + '</span>';
     } else if (m.gradingStatus === 1) {
-      status = '<span class="m-status m-status-accepted">Accepted</span>';
+      status = '<span class="m-status m-status-accepted">TS Accepted</span>';
     } else if (m.gradingStatus === 0) {
-      status = '<span class="m-status m-status-pending">Pending</span>';
+      status = '<span class="m-status m-status-pending">TS Pending</span>';
     } else {
       status = '<span class="m-status m-status-ungraded">Not graded</span>';
     }
 
-    // Header strip — quick-glance key stats
+    // Header strip — status pill first, then quick-glance key stats inline.
     var header =
       '<div class="m-strip">' +
+        status +
         chip('Date',   m.timestamp, fmtDate) +
         chip('Target', m.targetName) +
         chip('Filter', m.filter) +
@@ -8700,8 +8707,7 @@ function bindFramesGallery(frames) {
         chip('HFR',    m.hfr,       fix) +
         chip('FWHM',   m.fwhm,      fix) +
         chip('Eccen.', m.eccentricity, fix) +
-      '</div>' +
-      (status ? '<div class="m-strip-status">' + status + '</div>' : '');
+      '</div>';
 
     // Capture column
     var capture =
@@ -8775,6 +8781,8 @@ function bindFramesGallery(frames) {
     // Reset upscale state until the new image's naturalHeight is known.
     lbImg.classList.remove('lb-upscaled');
     if (lbBadge) lbBadge.style.display = 'none';
+    // Position counter at top of frame, e.g. "12 / 47"
+    if (lbCounter) lbCounter.textContent = (idx + 1) + ' / ' + frames.length;
 
     // Detect first-open (lightbox hidden) so we can synchronize reveal of image
     // and panel — both stay invisible until both finish loading, then fade in

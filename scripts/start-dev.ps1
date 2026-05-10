@@ -22,8 +22,10 @@ $ExeDir     = Join-Path $ProjDir "bin\Release\net8.0"
 $Exe        = Join-Path $ExeDir "nightsummary-dev-dashboard.exe"
 $WebDir     = Join-Path $Root "NINA.Plugin.NightSummary.Dashboard\Web"
 $AssetsDir  = Join-Path $Root "assets"
-$SnapshotDb = Join-Path $env:USERPROFILE "Documents\ns-snapshot\nightsummary.sqlite"
-$SnapshotRp = Join-Path $env:USERPROFILE "Documents\ns-snapshot\reports"
+$SnapshotRoot = Join-Path $env:USERPROFILE "Documents\ns-snapshot"
+$SnapshotDb   = Join-Path $SnapshotRoot "nightsummary.sqlite"
+$SnapshotTs   = Join-Path $SnapshotRoot "schedulerdb.sqlite"
+$SnapshotRp   = Join-Path $SnapshotRoot "reports"
 $BindHost   = "+"
 $Port       = 8183
 
@@ -51,6 +53,8 @@ if ($Rebuild -or -not (Test-Path $Exe)) {
 if (-not (Test-Path $Exe))        { Write-Error "Binary missing: $Exe`nRun: .\scripts\start-dev.ps1 -Rebuild"; exit 1 }
 if (-not (Test-Path $SnapshotDb)) { Write-Error "Snapshot DB missing: $SnapshotDb"; exit 1 }
 if (-not (Test-Path $WebDir))     { Write-Error "Web dir missing: $WebDir`n(Wrong worktree?)"; exit 1 }
+$TsArgs = @()
+if (Test-Path $SnapshotTs) { $TsArgs = @('--ts-db', $SnapshotTs) }
 
 # --- Launch ---
 Write-Host ""
@@ -58,11 +62,18 @@ Write-Host "Night Summary dev server" -ForegroundColor Cyan
 Write-Host "  Worktree : $Root" -ForegroundColor Gray
 Write-Host "  Web      : $WebDir" -ForegroundColor Gray
 Write-Host "  DB       : $SnapshotDb" -ForegroundColor Gray
+if (Test-Path $SnapshotTs) {
+    Write-Host "  TS DB    : $SnapshotTs" -ForegroundColor Gray
+} else {
+    Write-Host "  TS DB    : (not found - TS augment disabled)" -ForegroundColor DarkGray
+}
 Write-Host "  URL      : http://100.126.185.10:$Port/" -ForegroundColor White
 Write-Host ""
 
 & $Exe --host $BindHost --port $Port `
        --db      $SnapshotDb `
+       --data    $SnapshotRoot `
        --reports $SnapshotRp `
        --web     $WebDir `
-       --assets  $AssetsDir
+       --assets  $AssetsDir `
+       @TsArgs
