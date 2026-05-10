@@ -390,9 +390,9 @@ function route() {
     } else if (isProjectFrames) {
       renderFramesGallery({ kind: 'project', id: decodeURIComponent(isProjectFrames[1]) });
     } else if (isReport) {
-      renderSessionDetail(path.split('/')[2]);
+      renderSessionDetail(path.split('/')[2], params);
     } else if (path === '/stats') {
-      renderStats();
+      renderStats(params);
     } else {
       renderSessionList(params);
     }
@@ -1799,13 +1799,15 @@ function bindTargetDetailEvents(backdrop, targetName) {
     });
   });
 
-  // View report link → opens the session report in a new tab
+  // View report link → load session detail in shell with TDP context
+  // so the back-button returns to this TDP modal (preserves Frames tab access).
   backdrop.querySelectorAll('.tdp-row-link').forEach(function(link) {
     link.addEventListener('click', function(e) {
       e.stopPropagation();
       var sid = link.getAttribute('data-session-id');
       if (!sid) return;
-      window.open('/api/sessions/' + encodeURIComponent(sid) + '/report', '_blank', 'noopener');
+      navigate('#/sessions/' + encodeURIComponent(sid) +
+        '?from=tdp&target=' + encodeURIComponent(targetName));
     });
   });
 
@@ -2053,7 +2055,7 @@ function openProjectDetail(projectGuid, projectName) {
         sessSection.style.display = '';
         var panelNames = sessData.panelNames || [];
         tableWrap.innerHTML = buildPdpSessionTable(sessions, panelNames.length > 1);
-        bindPdpSessionTableEvents(backdrop);
+        bindPdpSessionTableEvents(backdrop, projectGuid, (data.project || {}).name);
       }
 
       // Resize handler for chart reflow
@@ -2532,7 +2534,7 @@ function buildPdpSessionTable(sessions, showTargetCol) {
     '<tbody>' + rows + '</tbody></table>';
 }
 
-function bindPdpSessionTableEvents(backdrop) {
+function bindPdpSessionTableEvents(backdrop, projectGuid, projectName) {
   // Expand/collapse session rows
   backdrop.querySelectorAll('.pdp-session-table tr.tdp-session-row').forEach(function(row) {
     row.addEventListener('click', function(e) {
@@ -2544,13 +2546,17 @@ function bindPdpSessionTableEvents(backdrop) {
       subs.forEach(function(sub) { sub.style.display = isOpen ? '' : 'none'; });
     });
   });
-  // View report link
+  // View report link → load session detail in shell with PDP context
+  // so the back-button returns to this PDP modal (preserves Frames tab access).
   backdrop.querySelectorAll('.pdp-session-table .tdp-row-link').forEach(function(link) {
     link.addEventListener('click', function(e) {
       e.stopPropagation();
       var sid = link.getAttribute('data-session-id');
       if (!sid) return;
-      window.open('/api/sessions/' + encodeURIComponent(sid) + '/report', '_blank', 'noopener');
+      var qs = '?from=pdp';
+      if (projectGuid) qs += '&pid=' + encodeURIComponent(projectGuid);
+      if (projectName) qs += '&pname=' + encodeURIComponent(projectName);
+      navigate('#/sessions/' + encodeURIComponent(sid) + qs);
     });
   });
 }
@@ -2607,7 +2613,7 @@ function openPdpPanelDrillDown(backdrop, panelName, panelData, projectData, proj
     });
 
     // Session row expand/collapse + view links
-    bindPdpSessionTableEvents(backdrop);
+    bindPdpSessionTableEvents(backdrop, projectGuid, (projectData.project || {}).name);
 
     // Load thumbnail
     if (panelData && panelData.latestSessionId) {
@@ -6547,11 +6553,27 @@ function loadReportIntoShadow(sessionId) {
     });
 }
 
-function renderSessionDetail(sessionId) {
+function renderSessionDetail(sessionId, params) {
   var el = document.getElementById('content');
   var sub = document.getElementById('page-subtitle');
 
   el.innerHTML = '<div class="loading">Loading report...</div>';
+
+  // Context-aware back-button: TDP/PDP origin returns to that modal.
+  var from   = params && params.get ? params.get('from')   : null;
+  var fromTarget = params && params.get ? params.get('target') : null;
+  var fromPid    = params && params.get ? params.get('pid')    : null;
+  var fromPname  = params && params.get ? params.get('pname')  : null;
+  var backHref = '#/sessions';
+  var backLabel = 'Sessions';
+  if (from === 'tdp' && fromTarget) {
+    backHref = '#/stats?openTdp=' + encodeURIComponent(fromTarget);
+    backLabel = fromTarget;
+  } else if (from === 'pdp' && fromPid) {
+    backHref = '#/stats?openPdp=' + encodeURIComponent(fromPid) +
+      (fromPname ? '&pname=' + encodeURIComponent(fromPname) : '');
+    backLabel = fromPname || 'Project';
+  }
 
   Promise.all([
     api('/api/sessions/' + sessionId),
@@ -6568,7 +6590,7 @@ function renderSessionDetail(sessionId) {
     if (sub) sub.textContent = getSubtitleText();
 
     var navHtml = '<div class="report-nav" id="header-report-nav">' +
-      '<a class="back-btn" href="#/sessions">\u2190 Sessions</a>' +
+      '<a class="back-btn" href="' + backHref + '">\u2190 ' + esc(backLabel) + '</a>' +
       '<div class="report-nav-info">' +
         '<span class="report-nav-date">' + fmtDate(detail.sessionStart) + '</span>' +
         '<span class="report-nav-targets">' + esc(targets) + '</span>' +
@@ -6624,7 +6646,7 @@ function renderSessionDetail(sessionId) {
     bindDetailEvents(sessionId);
   }).catch(function(err) {
     logError('Failed to load session detail:', sessionId, err.message);
-    el.innerHTML = '<a class="back-btn" href="#/sessions">\u2190 Sessions</a>' +
+    el.innerHTML = '<a class="back-btn" href="' + backHref + '">\u2190 ' + esc(backLabel) + '</a>' +
       '<div class="error">Failed to load session: ' + esc(err.message) + '</div>';
   });
 }
@@ -8388,10 +8410,17 @@ function buildActivityHeatmap(sessions, firstSessionIso) {
   return svg;
 }
 
-function renderStats() {
+function renderStats(params) {
   var el = document.getElementById('content');
   var sub = document.getElementById('page-subtitle');
   if (sub) sub.textContent = getSubtitleText();
+
+  // Pull deep-link params for auto-opening TDP/PDP after stats render.
+  // Used when returning from a session detail view that was launched from
+  // a TDP/PDP "View" button — preserves the user's prior context.
+  var openTdp = params && params.get ? params.get('openTdp') : null;
+  var openPdp = params && params.get ? params.get('openPdp') : null;
+  var openPname = params && params.get ? params.get('pname')   : null;
 
   el.innerHTML = '<div class="loading">Loading stats...</div>';
 
@@ -8453,6 +8482,17 @@ function renderStats() {
       html += '<div id="stats-tab-content"></div>';
       el.innerHTML = html;
       renderStatsTabContent('targets');
+    }
+
+    // Auto-open TDP/PDP after stats paints — used by deep-links from
+    // session-detail "back" buttons that originated in a TDP/PDP modal.
+    if (openTdp) {
+      // Find the latest session for this target so the TDP hero thumb populates.
+      var ttarget = (targets || []).find(function(t) { return t.target === openTdp; });
+      var latestSid = ttarget ? ttarget.latestSessionId : null;
+      requestAnimationFrame(function() { openTargetDetail(openTdp, latestSid); });
+    } else if (openPdp) {
+      requestAnimationFrame(function() { openProjectDetail(openPdp, openPname); });
     }
   }).catch(function(err) {
     logError('Failed to load stats:', err.message);
