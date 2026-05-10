@@ -24,11 +24,10 @@ namespace NINA.Plugin.NightSummary.Session {
         // SettingsManager init in some test paths, so resolve on demand.
         private static NightSummarySettings S => SettingsManager.Instance.Current;
 
-        // Resolved once. Path: %LOCALAPPDATA%\NINA\NightSummary\thumbs\.
-        // Computed lazily so it's never null but defaultable in tests.
-        private static string ThumbsRoot => Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "NINA", "NightSummary", "thumbs");
+        // Default %LOCALAPPDATA%\NINA\NightSummary\thumbs, or the user override
+        // from S.ThumbnailStorageDir if set. Resolved per-call so a settings change
+        // takes effect on the next save without restarting the collector.
+        private static string ThumbsRoot => Thumbnails.GetThumbnailsRoot(S?.ThumbnailStorageDir);
 
         private readonly SessionDatabase database;
         private readonly IImageSaveMediator imageSaveMediator;
@@ -216,9 +215,19 @@ namespace NINA.Plugin.NightSummary.Session {
                     if (!double.IsNaN(at)) ambientTemp = at;
                 } catch { /* not critical if temperature capture fails */ }
 
+                // Use ExposureStart from NINA's image metadata so this column means
+                // the same thing as the FITS DATE-OBS header, the filename's $$DATETIME$$
+                // token, and Target Scheduler's acquireddate column. Falls back to wall
+                // clock if metadata is missing (defensive — should never happen on a real
+                // ImageSaved event). Pre-fix legacy rows captured Clock.Now (ImageSaved
+                // time, ~exposureDuration later); the importer/augment paths apply an
+                // ExposureDuration offset to bridge the conventions.
+                var exposureStart = e.MetaData?.Image?.ExposureStart;
                 var record = new ImageRecord {
                     SessionId        = currentSession.SessionId,
-                    Timestamp        = Clock.Now(),
+                    Timestamp        = exposureStart.HasValue && exposureStart.Value > DateTime.MinValue
+                                         ? exposureStart.Value.ToLocalTime()
+                                         : Clock.Now(),
                     TargetName       = e.MetaData?.Target?.Name ?? "Unknown",
                     Filter           = e.MetaData?.FilterWheel?.Filter ?? "None",
                     ExposureDuration = e.MetaData?.Image?.ExposureTime ?? 0,

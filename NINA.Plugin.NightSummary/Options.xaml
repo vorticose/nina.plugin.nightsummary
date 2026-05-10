@@ -830,13 +830,30 @@
                                 </StackPanel.Style>
                                 <TextBlock Width="200" />
                                 <Button Content="Import from Target Scheduler" Command="{Binding ImportTsThumbnailsCommand}" MinWidth="220" />
-                                <TextBlock Text="Pulls existing thumbnails from the TS imagedata table for past sessions."
+                                <TextBlock Text="Pulls existing thumbnails from the TS imagedata table for past sessions. Can take several minutes for large libraries. Roughly ~25 MB on disk per 1,000 thumbnails imported (small only)."
                                            FontStyle="Italic" Foreground="Gray" FontSize="11" Margin="20,0,0,0" MaxWidth="380" TextWrapping="Wrap" VerticalAlignment="Center" />
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
                                 <TextBlock Width="200" />
                                 <TextBlock Text="{Binding TsImportStatus}"
                                            Foreground="Gray" FontSize="11" />
+                            </StackPanel>
+
+                            <!-- Custom storage directory -->
+                            <StackPanel Orientation="Horizontal" Margin="0,16,0,4">
+                                <TextBlock Text="Storage Folder" Width="200" VerticalAlignment="Center" />
+                                <TextBox Text="{Binding ThumbnailStorageDir, UpdateSourceTrigger=LostFocus}"
+                                         Width="380" VerticalAlignment="Center" />
+                                <Button Content="Browse..." Click="BrowseThumbnailStorageDir_Click"
+                                        MinWidth="80" Margin="6,0,0,0" VerticalAlignment="Center" />
+                                <Button Content="Reset" Click="ResetThumbnailStorageDir_Click"
+                                        MinWidth="60" Margin="6,0,0,0" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,2,0,4">
+                                <TextBlock Width="200" />
+                                <TextBlock MaxWidth="600" TextWrapping="Wrap"
+                                           Text="Leave blank for the default (%LOCALAPPDATA%\NINA\NightSummary\thumbs). Changing this orphans existing thumbnails at the old path — move them manually if you want to keep them."
+                                           FontStyle="Italic" Foreground="Gray" FontSize="11" />
                             </StackPanel>
                         </StackPanel>
                     </Expander>

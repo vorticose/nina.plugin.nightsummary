@@ -8503,33 +8503,103 @@ function renderFramesGallery(view) {
       return;
     }
 
+    // Sort: target → filter → exposure → timestamp. Lightbox prev/next walks
+    // this same order so navigation flows naturally across groups.
+    frames.sort(function(a, b) {
+      var t = (a.targetName || '').localeCompare(b.targetName || '');
+      if (t) return t;
+      var f = (a.filter || '').localeCompare(b.filter || '');
+      if (f) return f;
+      var e = (a.exposureDuration || 0) - (b.exposureDuration || 0);
+      if (e) return e;
+      return new Date(a.timestamp || 0) - new Date(b.timestamp || 0);
+    });
+
+    // Group: top by target (skipped on target view since they're all the same),
+    // then sub-group by filter+exposure within each.
+    var groupByTarget = view.kind !== 'target';
+    var groups = [];        // [{ target, subgroups: [{ key, label, frames }] }]
+    var groupMap = {};      // target -> group ref
+    function expoLabel(d) { return d ? Math.round(d) + 's' : '?'; }
+    for (var gi = 0; gi < frames.length; gi++) {
+      var ff = frames[gi];
+      var tname = groupByTarget ? (ff.targetName || '(unknown target)') : '';
+      var g = groupMap[tname];
+      if (!g) {
+        g = { target: tname, subgroups: [], subMap: {} };
+        groupMap[tname] = g;
+        groups.push(g);
+      }
+      var subKey = (ff.filter || '?') + '|' + expoLabel(ff.exposureDuration);
+      var sub = g.subMap[subKey];
+      if (!sub) {
+        sub = { key: subKey, filter: ff.filter || '?', exposure: expoLabel(ff.exposureDuration), frames: [] };
+        g.subMap[subKey] = sub;
+        g.subgroups.push(sub);
+      }
+      sub.frames.push(ff);
+    }
+
+    function renderThumb(ff, viewKind) {
+      var sid2 = ff.sessionId || view.id;
+      var src = '/api/frames/' + ff.id + '/thumb?size=sm';
+      var rejected = (ff.gradingStatus === 2) || (ff.accepted === false);
+      var caption = ff.filter || '';
+      if (ff.targetName && viewKind !== 'session') caption = (ff.targetName + ' • ' + caption);
+      var tsLabel = ff.timestamp ? fmtDate(ff.timestamp) : '';
+      return (
+        '<div class="frames-thumb' + (rejected ? ' rejected' : '') + '"' +
+             ' data-id="' + ff.id + '" data-sid="' + esc(sid2) + '"' +
+             ' data-caption="' + esc(caption + (tsLabel ? ' • ' + tsLabel : '')) + '">' +
+          '<img loading="lazy" src="' + src + '" alt="" />' +
+          '<div class="frames-thumb-meta">' + esc(caption) + '</div>' +
+        '</div>'
+      );
+    }
+
     var html =
       '<a class="back-btn" href="' + backHref + '">← Back</a>' +
       '<h2>' + esc(title) + ' <span class="frames-count">' + frames.length + '</span></h2>' +
-      '<div class="frames-gallery" id="frames-gallery">';
-    for (var i = 0; i < frames.length; i++) {
-      var f = frames[i];
-      var sid = f.sessionId || view.id;
-      var src = '/api/frames/' + f.id + '/thumb?size=sm';
-      var rejected = (f.gradingStatus === 2) || (f.accepted === false);
-      var caption = f.filter || '';
-      if (f.targetName && view.kind !== 'session') caption = (f.targetName + ' • ' + caption);
-      var ts = f.timestamp ? fmtDate(f.timestamp) : '';
-      html +=
-        '<div class="frames-thumb' + (rejected ? ' rejected' : '') + '"' +
-             ' data-id="' + f.id + '" data-sid="' + esc(sid) + '"' +
-             ' data-caption="' + esc(caption + (ts ? ' • ' + ts : '')) + '">' +
-          '<img loading="lazy" src="' + src + '" alt="" />' +
-          '<div class="frames-thumb-meta">' + esc(caption) + '</div>' +
-        '</div>';
+      '<div class="frames-groups">';
+
+    for (var gj = 0; gj < groups.length; gj++) {
+      var grp = groups[gj];
+      var grpTotal = grp.subgroups.reduce(function(s, x) { return s + x.frames.length; }, 0);
+      html += '<section class="frames-target-group">';
+      if (groupByTarget) {
+        html += '<h3 class="frames-target-h">' + esc(grp.target) +
+                ' <span class="frames-target-count">' + grpTotal + '</span></h3>';
+      }
+      for (var sj = 0; sj < grp.subgroups.length; sj++) {
+        var sg = grp.subgroups[sj];
+        html += '<div class="frames-subgroup">' +
+                  '<div class="frames-subgroup-h">' +
+                    '<span class="sg-filter">' + esc(sg.filter) + '</span>' +
+                    '<span class="sg-sep">·</span>' +
+                    '<span class="sg-exposure">' + esc(sg.exposure) + '</span>' +
+                    '<span class="sg-count">' + sg.frames.length +
+                      ' frame' + (sg.frames.length === 1 ? '' : 's') + '</span>' +
+                  '</div>' +
+                  '<div class="frames-gallery">';
+        for (var fk = 0; fk < sg.frames.length; fk++) {
+          html += renderThumb(sg.frames[fk], view.kind);
+        }
+        html += '</div></div>';
+      }
+      html += '</section>';
     }
     html += '</div>';
     html += '<div class="frames-lightbox" id="frames-lightbox" style="display:none">' +
               '<button class="frames-lightbox-close" aria-label="Close">×</button>' +
               '<button class="frames-lightbox-prev"  aria-label="Previous">‹</button>' +
               '<button class="frames-lightbox-next"  aria-label="Next">›</button>' +
-              '<img id="frames-lightbox-img" alt="" />' +
-              '<div id="frames-lightbox-meta" class="frames-lightbox-meta"></div>' +
+              '<div class="frames-lightbox-stage">' +
+                '<div class="frames-lightbox-imgwrap">' +
+                  '<img id="frames-lightbox-img" alt="" />' +
+                  '<div id="frames-lightbox-badge" class="lb-badge" style="display:none">Original res</div>' +
+                '</div>' +
+                '<div id="frames-lightbox-panel" class="frames-lightbox-panel"></div>' +
+              '</div>' +
             '</div>';
 
     el.innerHTML = html;
@@ -8543,45 +8613,302 @@ function renderFramesGallery(view) {
 }
 
 function bindFramesGallery(frames) {
-  var lb     = document.getElementById('frames-lightbox');
-  var lbImg  = document.getElementById('frames-lightbox-img');
-  var lbMeta = document.getElementById('frames-lightbox-meta');
-  var idx    = 0;
+  var lb      = document.getElementById('frames-lightbox');
+  var lbImg   = document.getElementById('frames-lightbox-img');
+  var lbPanel = document.getElementById('frames-lightbox-panel');
+  var lbBadge = document.getElementById('frames-lightbox-badge');
+  var idx     = 0;
+
+  // After the image decodes, fade it in (JS removes lb-loading) and decide whether
+  // it was the medium (≥400px tall = native, sharp) or the small fallback
+  // (force-upscale + show "Original res" badge so the user knows why it's blurry).
+  lbImg.addEventListener('load', function() {
+    var nat = lbImg.naturalHeight || 0;
+    var isUpscaled = nat > 0 && nat < 400;
+    lbImg.classList.toggle('lb-upscaled', isUpscaled);
+    if (lbBadge) lbBadge.style.display = isUpscaled ? 'block' : 'none';
+    lbImg.classList.remove('lb-loading');
+  });
+
+  // Cheap-and-effective preload: keep the next/prev frames warm in the browser
+  // cache so navigation feels instant even on the small (192px) variant.
+  function preloadNeighbors(i) {
+    [(i - 1 + frames.length) % frames.length, (i + 1) % frames.length].forEach(function(k) {
+      var f = frames[k]; if (!f || f._preloaded) return;
+      var img = new Image();
+      // medium first; server falls back to small if md missing.
+      img.src = '/api/frames/' + f.id + '/thumb?size=md';
+      f._preloaded = true;
+    });
+  }
+
+  // Renders a key/value chip if the value is non-null and non-empty. Numeric
+  // formatting is opt-in via the formatter; default is identity (avoids
+  // accidentally rounding ints).
+  function chip(label, val, fmt) {
+    if (val == null || val === '' || (typeof val === 'number' && !isFinite(val))) return '';
+    var v = fmt ? fmt(val) : String(val);
+    return '<div class="m-row"><span class="m-k">' + esc(label) + '</span><span class="m-v">' + esc(v) + '</span></div>';
+  }
+  function fix(n)    { return Number(n).toFixed(n < 1 ? 4 : 2); }
+  function fix1(n)   { return Number(n).toFixed(1); }
+  function int(n)    { return String(Math.round(Number(n))); }
+  function arcsec(n) { return Number(n).toFixed(3) + '"'; }
+  function px(n)     { return Number(n).toFixed(3); }
+
+  // Empty placeholder rendered on first open so the panel has its full
+  // dimensions immediately — prevents the "small loader → full content"
+  // size pop while metrics are fetching.
+  function renderSkeleton() {
+    return (
+      '<div class="m-strip">&nbsp;</div>' +
+      '<div class="m-grid">' +
+        '<div class="m-group"><div class="m-group-h">Capture</div></div>' +
+        '<div class="m-group"><div class="m-group-h">Quality</div></div>' +
+        '<div class="m-group"><div class="m-group-h">ADU</div></div>' +
+        '<div class="m-group"><div class="m-group-h">Guiding</div></div>' +
+        '<div class="m-group"><div class="m-group-h">Environment</div></div>' +
+      '</div>'
+    );
+  }
+
+  function renderPanel(m) {
+    if (!m) { lbPanel.innerHTML = ''; return; }
+
+    // Status chip — color-keyed, shown first. -1/null = no grading data
+    // (legacy NS row before grading capture, or non-TS frame). Show a neutral
+    // chip rather than nothing so the panel has consistent shape per frame.
+    var status = '';
+    if (m.gradingStatus === 2 || m.accepted === false) {
+      status = '<span class="m-status m-status-rejected">Rejected</span>';
+      if (m.rejectReason) status += '<span class="m-reject">' + esc(m.rejectReason) + '</span>';
+    } else if (m.gradingStatus === 1) {
+      status = '<span class="m-status m-status-accepted">Accepted</span>';
+    } else if (m.gradingStatus === 0) {
+      status = '<span class="m-status m-status-pending">Pending</span>';
+    } else {
+      status = '<span class="m-status m-status-ungraded">Not graded</span>';
+    }
+
+    // Header strip — quick-glance key stats
+    var header =
+      '<div class="m-strip">' +
+        chip('Date',   m.timestamp, fmtDate) +
+        chip('Target', m.targetName) +
+        chip('Filter', m.filter) +
+        chip('Stars',  m.starCount, int) +
+        chip('HFR',    m.hfr,       fix) +
+        chip('FWHM',   m.fwhm,      fix) +
+        chip('Eccen.', m.eccentricity, fix) +
+      '</div>' +
+      (status ? '<div class="m-strip-status">' + status + '</div>' : '');
+
+    // Capture column
+    var capture =
+      '<div class="m-group"><div class="m-group-h">Capture</div>' +
+        chip('Exposure', m.exposureDuration, function(v) { return v + 's'; }) +
+        chip('Gain',     m.gain >= 0 ? m.gain : null) +
+        chip('Offset',   m.offset >= 0 ? m.offset : null) +
+        chip('Binning',  m.binning > 0 ? m.binning + 'x' + m.binning : null) +
+        chip('Readout',  m.readoutMode) +
+        chip('Profile',  m.profileName) +
+        chip('Project',          m.project) +
+        chip('Exposure Profile', m.exposureTemplate) +
+        (m.filePath
+          ? '<div class="m-row m-row-wide"><span class="m-k">File</span><span class="m-v m-mono" title="' + esc(m.filePath) + '">' + esc(m.filePath.split(/[\\/]/).pop()) + '</span></div>'
+          : '') +
+      '</div>';
+
+    // Quality column
+    var quality =
+      '<div class="m-group"><div class="m-group-h">Quality</div>' +
+        chip('HFR',          m.hfr,          fix) +
+        chip('HFR StDev',    m.hfrStDev,     fix) +
+        chip('FWHM',         m.fwhm,         fix) +
+        chip('Eccentricity', m.eccentricity, fix) +
+        chip('Stars',        m.starCount,    int) +
+      '</div>';
+
+    // ADU column (NS v2.10+ StatX columns)
+    var adu =
+      '<div class="m-group"><div class="m-group-h">ADU</div>' +
+        chip('Min',    m.aduMin,    int) +
+        chip('Max',    m.aduMax,    int) +
+        chip('Mean',   m.aduMean,   fix1) +
+        chip('Median', m.aduMedian, int) +
+        chip('Std Dev',m.aduStDev,  fix1) +
+      '</div>';
+
+    // Guiding column — total from NS, RA/Dec from TS when present
+    var guiding =
+      '<div class="m-group"><div class="m-group-h">Guiding</div>' +
+        chip('RMS px',    m.guidingRmsTotal     > 0 ? m.guidingRmsTotal : null,     px) +
+        chip('RMS arcsec', m.guidingArcsec      > 0 ? m.guidingArcsec : null,       arcsec) +
+        chip('RA px',     m.guidingRmsRa        != null ? m.guidingRmsRa : null,    px) +
+        chip('RA arcsec', m.guidingRmsRaArcsec  != null ? m.guidingRmsRaArcsec : null, arcsec) +
+        chip('Dec px',    m.guidingRmsDec       != null ? m.guidingRmsDec : null,   px) +
+        chip('Dec arcsec',m.guidingRmsDecArcsec != null ? m.guidingRmsDecArcsec : null, arcsec) +
+      '</div>';
+
+    // Environment column
+    var env =
+      '<div class="m-group"><div class="m-group-h">Environment</div>' +
+        chip('Airmass',     m.airmass,         fix) +
+        chip('Altitude',    m.altitude,        function(v) { return fix1(v) + '°'; }) +
+        chip('Azimuth',     m.azimuth,         function(v) { return fix1(v) + '°'; }) +
+        chip('Camera Temp', m.cameraTemp,      function(v) { return fix1(v) + '°C'; }) +
+        chip('Focuser Temp',m.focuserTemp,     function(v) { return fix1(v) + '°C'; }) +
+        chip('Focuser Pos', m.focuserPosition) +
+        chip('Ambient',     m.ambientTemp,     function(v) { return fix1(v) + '°C'; }) +
+        chip('Humidity',    m.humidity,        function(v) { return fix1(v) + '%'; }) +
+        chip('Pressure',    m.pressure,        function(v) { return fix1(v) + ' hPa'; }) +
+      '</div>';
+
+    lbPanel.innerHTML =
+      header +
+      '<div class="m-grid">' + capture + quality + adu + guiding + env + '</div>';
+  }
 
   function open(i) {
     idx = (i + frames.length) % frames.length;
     var f = frames[idx];
-    // Try medium first; server falls back to small if md missing.
-    lbImg.src = '/api/frames/' + f.id + '/thumb?size=md';
-    var caption = f.filter || '';
-    if (f.targetName) caption = f.targetName + ' • ' + caption;
-    if (f.timestamp) caption += ' • ' + fmtDate(f.timestamp);
-    lbMeta.textContent = caption;
+    // Reset upscale state until the new image's naturalHeight is known.
+    lbImg.classList.remove('lb-upscaled');
+    if (lbBadge) lbBadge.style.display = 'none';
+
+    // Detect first-open (lightbox hidden) so we can synchronize reveal of image
+    // and panel — both stay invisible until both finish loading, then fade in
+    // together. Avoids the "skeleton then real content" two-step that looked
+    // jagged. Prev/next navigation keeps prior content visible during fetch.
+    var firstOpen = lb.style.display === 'none' || lb.style.display === '';
     lb.style.display = 'flex';
     document.body.style.overflow = 'hidden';
+
+    if (firstOpen) {
+      // Skeleton sets layout dimensions; .lb-pending hides image+panel content
+      // (opacity 0) until everything is ready.
+      lbPanel.innerHTML = renderSkeleton();
+      lb.classList.add('lb-pending');
+      if (lb.animate) {
+        lb.animate(
+          [{ opacity: 0 }, { opacity: 1 }],
+          { duration: 180, easing: 'ease-out', fill: 'forwards' }
+        );
+      }
+    } else if (!lbPanel.innerHTML.trim()) {
+      lbPanel.innerHTML = renderSkeleton();
+    }
+
+    // Track which frame this fetch is for so a slow response from a previous
+    // frame doesn't overwrite a newer frame's panel after the user clicked next.
+    var fetchFrameId = f.id;
+
+    // First-open: capture both image-load and metrics-fetch promises so we can
+    // reveal them together. Subsequent navigates: render metrics as soon as
+    // they arrive (image animation handled by navigate() slide).
+    var imgReady = new Promise(function(resolve) {
+      var done = function() { lbImg.removeEventListener('load', done); lbImg.removeEventListener('error', done); resolve(); };
+      lbImg.addEventListener('load', done);
+      lbImg.addEventListener('error', done);
+      // Try medium first; server falls back to small if md missing.
+      lbImg.src = '/api/frames/' + f.id + '/thumb?size=md';
+    });
+
+    var metricsReady = api('/api/frames/' + f.id + '/metrics')
+      .then(function(m) {
+        if (frames[idx].id !== fetchFrameId) return null;
+        return m;
+      })
+      .catch(function(err) {
+        logError('Failed to load frame metrics:', err && err.message);
+        return null;
+      });
+
+    if (firstOpen) {
+      Promise.all([imgReady, metricsReady]).then(function(results) {
+        if (frames[idx].id !== fetchFrameId) return;
+        var m = results[1];
+        if (m) renderPanel(m);
+        else   lbPanel.innerHTML = '<div class="m-loading">Metrics unavailable</div>';
+        // Synchronized reveal — CSS transition does the fade.
+        lb.classList.remove('lb-pending');
+      });
+    } else {
+      metricsReady.then(function(m) {
+        if (frames[idx].id !== fetchFrameId) return;
+        if (m) renderPanel(m);
+        else   lbPanel.innerHTML = '<div class="m-loading">Metrics unavailable</div>';
+      });
+    }
+
+    // Warm the cache for the neighbors so the next click is instant.
+    preloadNeighbors(idx);
+  }
+
+  // Slide the whole stage (image + panel) as one unit when navigating prev/next.
+  // The user sees the current frame leave the viewport in the direction of travel,
+  // then the new frame enters from the opposite side. Web Animations API instead
+  // of CSS classes so we can chain the swap mid-animation cleanly.
+  var navigating = false;
+  function navigate(delta) {
+    if (navigating) return;            // ignore mash-clicks during a transition
+    if (frames.length < 2) return;
+    var stage = lb.querySelector('.frames-lightbox-stage');
+    if (!stage || !stage.animate) {     // no Web Animations support → fallback
+      open(idx + delta);
+      return;
+    }
+    navigating = true;
+    var outX = delta > 0 ? '-12%' : '12%';
+    var inX  = delta > 0 ? '12%'  : '-12%';
+    stage.animate(
+      [
+        { transform: 'translateX(0)', opacity: 1 },
+        { transform: 'translateX(' + outX + ')', opacity: 0 }
+      ],
+      { duration: 160, easing: 'ease-in', fill: 'forwards' }
+    ).onfinish = function() {
+      open(idx + delta);
+      stage.animate(
+        [
+          { transform: 'translateX(' + inX + ')', opacity: 0 },
+          { transform: 'translateX(0)', opacity: 1 }
+        ],
+        { duration: 180, easing: 'ease-out', fill: 'forwards' }
+      ).onfinish = function() { navigating = false; };
+    };
   }
   function close() {
     lb.style.display = 'none';
+    lb.classList.remove('lb-pending');
     lbImg.src = '';
+    lbImg.classList.remove('lb-loading', 'lb-upscaled');
+    if (lbBadge) lbBadge.style.display = 'none';
+    lbPanel.innerHTML = '';
     document.body.style.overflow = '';
   }
 
-  document.getElementById('frames-gallery').addEventListener('click', function(e) {
-    var thumb = e.target.closest('.frames-thumb');
-    if (!thumb) return;
-    var id = +thumb.getAttribute('data-id');
-    var i = frames.findIndex(function(f) { return f.id === id; });
-    if (i >= 0) open(i);
-  });
+  // Click delegation across all (now multiple) gallery grids — the wrapping
+  // .frames-groups div catches every thumb regardless of which subgroup it lives in.
+  var groupsRoot = document.querySelector('.frames-groups');
+  if (groupsRoot) {
+    groupsRoot.addEventListener('click', function(e) {
+      var thumb = e.target.closest('.frames-thumb');
+      if (!thumb) return;
+      var id = +thumb.getAttribute('data-id');
+      var i = frames.findIndex(function(f) { return f.id === id; });
+      if (i >= 0) open(i);
+    });
+  }
   lb.querySelector('.frames-lightbox-close').addEventListener('click', close);
-  lb.querySelector('.frames-lightbox-prev').addEventListener('click', function() { open(idx - 1); });
-  lb.querySelector('.frames-lightbox-next').addEventListener('click', function() { open(idx + 1); });
+  lb.querySelector('.frames-lightbox-prev').addEventListener('click', function() { navigate(-1); });
+  lb.querySelector('.frames-lightbox-next').addEventListener('click', function() { navigate(+1); });
   lb.addEventListener('click', function(e) { if (e.target === lb) close(); });
   document.addEventListener('keydown', function lbKey(e) {
     if (lb.style.display === 'none') { document.removeEventListener('keydown', lbKey); return; }
-    if (e.key === 'Escape')      close();
-    else if (e.key === 'ArrowLeft')  open(idx - 1);
-    else if (e.key === 'ArrowRight') open(idx + 1);
+    if (e.key === 'Escape')          close();
+    else if (e.key === 'ArrowLeft')  navigate(-1);
+    else if (e.key === 'ArrowRight') navigate(+1);
   });
 }
 

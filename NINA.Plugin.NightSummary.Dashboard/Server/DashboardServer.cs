@@ -26,6 +26,7 @@ namespace NINA.Plugin.NightSummary.Server {
         private readonly string cachePath;
         private readonly string reportsDir;
         private readonly string dataDir;
+        private readonly IDashboardPaths _paths;     // kept so ThumbsRoot stays settings-aware
         private readonly IDashboardDataSource _data;
         private readonly IPluginSettings _settings;
         private readonly IWebAssets _webAssets;
@@ -161,6 +162,7 @@ namespace NINA.Plugin.NightSummary.Server {
 
             // Path roots come from IDashboardPaths; the legacy fields stay so the rest
             // of the file's File.Exists/Path.Combine calls keep working unchanged.
+            this._paths     = paths;
             this.dataDir    = paths.DataDir;
             this.cachePath  = Path.Combine(dataDir, "nightsummary-dashboard-cache.sqlite");
             this.reportsDir = paths.ReportsDir;
@@ -490,6 +492,17 @@ namespace NINA.Plugin.NightSummary.Server {
                         } else {
                             var size = req.QueryString["size"];
                             await HandleGetFrameThumb(res, fId, size, done);
+                        }
+                    } else if (path.StartsWith("/api/frames/") && path.EndsWith("/metrics")) {
+                        // /api/frames/{imageId}/metrics — NS row + TS augmentation for the lightbox panel
+                        var mPrefix = "/api/frames/";
+                        var mSuffix = "/metrics";
+                        var mIdStr  = path.Substring(mPrefix.Length, path.Length - mPrefix.Length - mSuffix.Length);
+                        if (!long.TryParse(mIdStr, out var mId)) {
+                            await WriteJson(res, 400, new { error = "Invalid frame id" });
+                            done?.Invoke(400, "bad id");
+                        } else {
+                            await HandleGetFrameMetrics(res, mId, done);
                         }
                     } else if (path.StartsWith("/api/targets/") && path.EndsWith("/frames")) {
                         var tPrefix  = "/api/targets/";
@@ -911,9 +924,10 @@ namespace NINA.Plugin.NightSummary.Server {
         }
 
         // ── Raw image thumbnails (RAW_THUMBNAILS_DESIGN.md) ──────────────────
-        // Resolve thumbs root from the same parent dir that holds the dashboard
-        // reports — keeps everything under %LOCALAPPDATA%\NINA\NightSummary\.
-        private string ThumbsRoot => Path.Combine(Path.GetDirectoryName(reportsDir) ?? "", "thumbs");
+        // Per-call so the user's ThumbnailStorageDir override is picked up immediately
+        // without restarting the server. Defaults to %LOCALAPPDATA%\NINA\NightSummary\thumbs
+        // when no override is set.
+        private string ThumbsRoot => _paths.ThumbsRoot;
 
         // Walks the NS Image rows for {sessionId} to find the row with matching
         // Id, returns its sessionId. Used so the binary endpoint doesn't have to
@@ -929,6 +943,129 @@ namespace NINA.Plugin.NightSummary.Server {
                 }
             }
             return (null, null);
+        }
+
+        // Per-frame metrics for the lightbox panel. Returns the NS Image row plus
+        // optional TS augmentation (Project, ExposureTemplate, per-axis guiding RMS).
+        // Fields default to null when TS is unavailable or no row matches — the JS
+        // hides any chip whose value is null/empty.
+        private async Task HandleGetFrameMetrics(TcpHttpResponse res, long imageId, Action<int, string> done) {
+            // Locate the NS row + session via the same scan ResolveFrame uses.
+            ImageRecord img = null;
+            SessionRecord sess = null;
+            foreach (var s in DbSessions()) {
+                foreach (var i in DbImages(s.SessionId)) {
+                    if (i.Id == imageId) { img = i; sess = s; break; }
+                }
+                if (img != null) break;
+            }
+            if (img == null) {
+                await WriteJson(res, 404, new { error = "Frame not found" });
+                done?.Invoke(404, $"frame {imageId} unknown");
+                return;
+            }
+
+            // TS augment via the data-source abstraction — null when TS is not
+            // installed or no row matches; never throws to caller.
+            string projectName = null, templateName = null;
+            double? guidingRA = null, guidingRAArcsec = null;
+            double? guidingDec = null, guidingDecArcsec = null;
+            double? hfrStDev = null;
+            int? augGrading = null;
+            string augReject = null;
+            try {
+                // ±30s window centered on either NS Timestamp (new convention) or
+                // NS Timestamp - ExposureDuration (legacy ImageSaved convention) — see
+                // TargetSchedulerDatabase.GetImageAugment for the two-pass strategy.
+                // Matches the importer's ±30s so identical frames augment consistently.
+                var aug = await _data.GetTsImageAugmentAsync(img.TargetName, img.Filter, img.Timestamp, 30, img.ExposureDuration);
+                if (aug != null) {
+                    projectName      = aug.ProjectName;
+                    templateName     = aug.ExposureTemplateName;
+                    hfrStDev         = aug.HFRStDev;
+                    guidingRA        = aug.GuidingRMSRA;
+                    guidingRAArcsec  = aug.GuidingRMSRAArcSec;
+                    guidingDec       = aug.GuidingRMSDEC;
+                    guidingDecArcsec = aug.GuidingRMSDECArcSec;
+                    augGrading       = aug.GradingStatus;
+                    augReject        = aug.RejectReason;
+                }
+            } catch (Exception ex) {
+                _external.Warn($"NightSummary: HandleGetFrameMetrics TS augment failed: {ex.Message}");
+            }
+
+            // Prefer NS's grading when set (>= 0); fall back to whatever TS recorded for
+            // legacy rows that pre-date NS capturing the field. -1 stays as the
+            // "genuinely unknown" sentinel and the JS renders a "Not graded" chip.
+            int finalGrading = img.GradingStatus >= 0
+                ? img.GradingStatus
+                : (augGrading.HasValue ? augGrading.Value : -1);
+            string finalReject = !string.IsNullOrEmpty(img.RejectReason) ? img.RejectReason : augReject;
+
+            // Derive guiding arcsec from total + scale when present.
+            double? guidingArcsec = (img.GuidingRMSTotal > 0 && img.GuidingScale > 0)
+                ? (double?)(img.GuidingRMSTotal * img.GuidingScale) : null;
+
+            await WriteJson(res, 200, new {
+                // Identity
+                id = img.Id,
+                sessionId = sess.SessionId,
+                profileName = sess.ProfileName,
+                timestamp = img.Timestamp.ToString("o"),
+
+                // Capture
+                targetName = img.TargetName,
+                filter = img.Filter,
+                exposureDuration = img.ExposureDuration,
+                gain = img.Gain,
+                offset = img.Offset,
+                binning = img.Binning,
+                readoutMode = img.ReadoutMode,
+                filePath = img.FilePath,
+
+                // Quality
+                hfr = img.HFR,
+                hfrStDev = hfrStDev,
+                fwhm = img.FWHM,
+                eccentricity = img.Eccentricity,
+                starCount = img.StarCount,
+
+                // ADU (from NS v2.10+ StatX columns)
+                aduMin = img.StatMin,
+                aduMax = img.StatMax,
+                aduMean = img.StatMean,
+                aduMedian = img.StatMedian,
+                aduStDev = img.StatStDev,
+
+                // Guiding — total from NS, RA/Dec from TS when present
+                guidingRmsTotal = img.GuidingRMSTotal,
+                guidingArcsec = guidingArcsec,
+                guidingRmsRa = guidingRA,
+                guidingRmsRaArcsec = guidingRAArcsec,
+                guidingRmsDec = guidingDec,
+                guidingRmsDecArcsec = guidingDecArcsec,
+
+                // Environment
+                airmass = img.Airmass,
+                altitude = img.Altitude,
+                azimuth = img.Azimuth,
+                cameraTemp = img.CameraTemp,
+                focuserTemp = img.FocuserTemp,
+                focuserPosition = img.FocuserPosition,
+                ambientTemp = img.AmbientTemp,
+                humidity = img.Humidity,
+                pressure = img.Pressure,
+
+                // Status
+                accepted = img.Accepted,
+                gradingStatus = finalGrading,
+                rejectReason = finalReject,
+
+                // TS-only context
+                project = projectName,
+                exposureTemplate = templateName
+            });
+            done?.Invoke(200, $"frame {imageId} metrics");
         }
 
         private async Task HandleGetFrameThumb(TcpHttpResponse res, long imageId, string size, Action<int, string> done) {

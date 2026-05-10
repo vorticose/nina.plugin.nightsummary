@@ -296,10 +296,42 @@ namespace NINA.Plugin.NightSummary {
             });
 
             ImportTsThumbnailsCommand = new RelayCommand(async () => {
-                TsImportStatus = "Importing…";
+                TsImportStatus = "Starting…";
                 try {
-                    var result = await Task.Run(() => ThumbnailImporter.ImportFromTargetScheduler(liveDbPath));
-                    TsImportStatus = $"✓ Imported {result.Imported} of {result.Candidates} ({result.Skipped} skipped, {result.Failed} failed)";
+                    var thumbsRoot = Data.Thumbnails.GetThumbnailsRoot(S?.ThumbnailStorageDir);
+                    var dispatcher = System.Windows.Application.Current?.Dispatcher;
+                    var startTime = DateTime.UtcNow;
+                    Action<int, int> onProgress = (n, total) => {
+                        // ETA from rolling rate, only after we have a few rows of data
+                        // so the estimate isn't wild on the first callback.
+                        string eta = "";
+                        if (n >= 10 && n < total) {
+                            var elapsed = (DateTime.UtcNow - startTime).TotalSeconds;
+                            var perRow  = elapsed / n;
+                            var remain  = TimeSpan.FromSeconds(perRow * (total - n));
+                            eta = $" — ~{FormatRemaining(remain)} left";
+                        }
+                        var msg = total > 0 ? $"Importing {n}/{total}{eta}…" : "Importing…";
+                        // Property setter raises PropertyChanged which WPF needs on the UI thread.
+                        if (dispatcher != null && !dispatcher.CheckAccess()) {
+                            dispatcher.BeginInvoke(new Action(() => TsImportStatus = msg));
+                        } else {
+                            TsImportStatus = msg;
+                        }
+                    };
+                    var result = await Task.Run(() => ThumbnailImporter.ImportFromTargetScheduler(liveDbPath, thumbsRoot, onProgress));
+
+                    // Re-run with nothing left to do is the most common path after the
+                    // first successful import — surface the existing count so the user
+                    // doesn't see a bare "0 of 0" and wonder if anything got pulled.
+                    if (result.Candidates == 0) {
+                        TsImportStatus = result.AlreadyImported > 0
+                            ? $"✓ Already imported — {result.AlreadyImported} thumbnails on disk"
+                            : "✓ Nothing to import";
+                    } else {
+                        var totalAfter = result.AlreadyImported + result.Imported;
+                        TsImportStatus = $"✓ Imported {result.Imported} of {result.Candidates} ({result.Skipped} skipped, {result.Failed} failed) — {totalAfter} total on disk";
+                    }
                 } catch (Exception ex) {
                     TsImportStatus = $"✗ {ex.Message}";
                     Logger.Error($"NightSummary: TS thumbnail import failed: {ex.Message}\n{ex.StackTrace}");
@@ -380,9 +412,7 @@ namespace NINA.Plugin.NightSummary {
             // sessions that crashed before the EndSession sweep ran.
             // Best-effort; never fail plugin init on a cleanup error.
             try {
-                var thumbsRoot = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "NINA", "NightSummary", "thumbs");
+                var thumbsRoot = Data.Thumbnails.GetThumbnailsRoot(S?.ThumbnailStorageDir);
                 if (Directory.Exists(thumbsRoot)) {
                     var db = new SessionDatabase(liveDbPath);
                     Data.ThumbnailRetention.Apply(thumbsRoot, S, sid => db.GetSession(sid)?.SessionStart);
@@ -817,6 +847,13 @@ namespace NINA.Plugin.NightSummary {
             set { S.ThumbnailRetentionMaxGB = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
+        // Custom thumbnail storage directory; empty = default. Path resolution lives
+        // in Thumbnails.GetThumbnailsRoot — call sites use that helper, not this raw value.
+        public string ThumbnailStorageDir {
+            get => S.ThumbnailStorageDir;
+            set { S.ThumbnailStorageDir = value ?? ""; SaveSettings(); RaisePropertyChanged(); }
+        }
+
         public int ChartPrimaryMetric {
             get => S.ChartPrimaryMetric;
             set { S.ChartPrimaryMetric = value; SaveSettings(); RaisePropertyChanged(); }
@@ -1075,6 +1112,14 @@ namespace NINA.Plugin.NightSummary {
         public ICommand GenerateAllDashboardReportsCommand { get; }
         public ICommand ImportTsThumbnailsCommand { get; private set; }
         public ButtonStatus GenerateDashboardReportsStatus { get; } = new ButtonStatus();
+
+        // Compact mm:ss / h:mm formatter for the import ETA. Sub-minute durations
+        // use seconds so users see live countdown on small libraries.
+        private static string FormatRemaining(TimeSpan ts) {
+            if (ts.TotalSeconds < 60)  return $"{(int)Math.Ceiling(ts.TotalSeconds)}s";
+            if (ts.TotalMinutes < 60)  return $"{(int)ts.TotalMinutes}m {ts.Seconds:00}s";
+            return $"{(int)ts.TotalHours}h {ts.Minutes:00}m";
+        }
 
         public event PropertyChangedEventHandler PropertyChanged;
         protected void RaisePropertyChanged([CallerMemberName] string propertyName = null) {

@@ -609,7 +609,8 @@ namespace NINA.Plugin.NightSummary.Session {
                     captureMediumThumbnails = S.CaptureMediumThumbnails,
                     thumbnailRetentionMode  = S.ThumbnailRetentionMode,
                     thumbnailRetentionDays  = S.ThumbnailRetentionDays,
-                    thumbnailRetentionMaxGB = S.ThumbnailRetentionMaxGB
+                    thumbnailRetentionMaxGB = S.ThumbnailRetentionMaxGB,
+                    thumbnailStorageDir     = S.ThumbnailStorageDir
                 };
                 var json = System.Text.Json.JsonSerializer.Serialize(settings,
                     new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });

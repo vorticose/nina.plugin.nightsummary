@@ -41,6 +41,10 @@ namespace NINA.Plugin.NightSummary.Data {
 
         public bool IsAvailable => File.Exists(dbPath);
 
+        // Exposed so high-volume callers (importer) can open one connection and
+        // reuse it across many queries instead of paying open/close per row.
+        public string GetDbPath() => dbPath;
+
         /// <summary>
         /// Returns TS progress data for the given set of target names.
         /// Only targets whose names match (case-insensitive) are returned.
@@ -155,6 +159,47 @@ namespace NINA.Plugin.NightSummary.Data {
                 }
             } catch (Exception ex) {
                 Logger.Warning($"NightSummary: GetThumbnailBlob failed (target={targetName}, filter={filterName}): {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Looks up the TS row matching (<paramref name="targetName"/>,
+        /// <paramref name="filterName"/>) for the NS image timestamped <paramref name="ts"/>.
+        ///
+        /// Tries two centers in order:
+        ///   1. <paramref name="ts"/> directly — for new NS rows that capture
+        ///      <c>ExposureStart</c> in their Timestamp column (post-fix convention).
+        ///   2. <paramref name="ts"/> minus <paramref name="exposureDurationSeconds"/> —
+        ///      for legacy NS rows that captured the ImageSaved time, which lags
+        ///      ExposureStart by ~exposure duration plus a few seconds of overhead.
+        ///
+        /// Each attempt searches within ±<paramref name="windowSeconds"/> seconds.
+        /// Returns null on no match, TS unavailable, or any error.
+        /// </summary>
+        public TsImageAugment GetImageAugment(string targetName, string filterName, DateTime ts, int windowSeconds, double exposureDurationSeconds = 0) {
+            if (!IsAvailable) return null;
+            if (string.IsNullOrEmpty(targetName)) return null;
+
+            try {
+                var connectionString = $"Data Source={dbPath};Version=3;Read Only=True;";
+                using (var conn = new SQLiteConnection(connectionString)) {
+                    conn.Open();
+                    long centerDirect = new DateTimeOffset(ts.ToUniversalTime()).ToUnixTimeSeconds();
+
+                    // Direct attempt — new convention.
+                    var aug = QueryAugment(conn, targetName, filterName, centerDirect, windowSeconds);
+                    if (aug != null) return aug;
+
+                    // Fallback — legacy NS rows, shift back by exposure duration.
+                    if (exposureDurationSeconds > 0) {
+                        long centerShifted = centerDirect - (long)exposureDurationSeconds;
+                        return QueryAugment(conn, targetName, filterName, centerShifted, windowSeconds);
+                    }
+                    return null;
+                }
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: GetImageAugment failed (target={targetName}, filter={filterName}): {ex.Message}");
                 return null;
             }
         }
@@ -418,6 +463,72 @@ namespace NINA.Plugin.NightSummary.Data {
                                    }).ToList()
                 })
                 .ToList();
+        }
+
+        // Single SQL query against TS for one (target, filter, ±window-around-center).
+        // Centralized so GetImageAugment can call it twice (direct + legacy-shifted)
+        // without duplicating the SELECT/JOIN block.
+        private static TsImageAugment QueryAugment(SQLiteConnection conn, string targetName, string filterName, long center, int windowSeconds) {
+            const string sql = @"
+                SELECT a.metadata, a.gradingStatus, a.rejectreason,
+                       p.name AS projectName, et.name AS templateName
+                FROM acquiredimage a
+                JOIN target           t  ON a.targetId   = t.id
+                LEFT JOIN project     p  ON a.projectId  = p.id
+                LEFT JOIN exposureplan ep ON a.exposureId = ep.id
+                LEFT JOIN exposuretemplate et ON et.id = ep.exposureTemplateId
+                WHERE a.acquireddate BETWEEN @Lo AND @Hi
+                  AND t.name       = @Target COLLATE NOCASE
+                  AND a.filtername = @Filter COLLATE NOCASE
+                ORDER BY ABS(a.acquireddate - @Center)
+                LIMIT 1";
+
+            using var cmd = new SQLiteCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@Lo",     center - windowSeconds);
+            cmd.Parameters.AddWithValue("@Hi",     center + windowSeconds);
+            cmd.Parameters.AddWithValue("@Center", center);
+            cmd.Parameters.AddWithValue("@Target", targetName);
+            cmd.Parameters.AddWithValue("@Filter", filterName ?? "");
+            using var reader = cmd.ExecuteReader();
+            if (!reader.Read()) return null;
+
+            var aug = new TsImageAugment {
+                ProjectName          = reader["projectName"] as string,
+                ExposureTemplateName = reader["templateName"] as string,
+                GradingStatus        = reader["gradingStatus"] == DBNull.Value
+                    ? (int?)null
+                    : Convert.ToInt32(reader["gradingStatus"]),
+                RejectReason         = reader["rejectreason"] as string
+            };
+
+            // TS stores per-image metadata as serialized JSON (HFRStDev, per-axis guiding,
+            // ADU stats, etc). NS doesn't capture HFRStDev or RA/Dec guiding split natively
+            // so we lift just those fields out — everything else NS already has on the row.
+            var json = reader["metadata"] as string;
+            if (!string.IsNullOrEmpty(json)) {
+                try {
+                    using var doc = System.Text.Json.JsonDocument.Parse(json);
+                    var root = doc.RootElement;
+                    aug.HFRStDev            = TryDouble(root, "HFRStDev");
+                    aug.GuidingRMSRA        = TryDouble(root, "GuidingRMSRA");
+                    aug.GuidingRMSRAArcSec  = TryDouble(root, "GuidingRMSRAArcSec");
+                    aug.GuidingRMSDEC       = TryDouble(root, "GuidingRMSDEC");
+                    aug.GuidingRMSDECArcSec = TryDouble(root, "GuidingRMSDECArcSec");
+                } catch { /* malformed JSON — fields stay null */ }
+            }
+            return aug;
+        }
+
+        // Pull a numeric field from the TS metadata JSON object. Returns null when the
+        // property is missing, null, or not a number — TS sometimes serializes 0.0 as "0".
+        private static double? TryDouble(System.Text.Json.JsonElement root, string name) {
+            if (root.ValueKind != System.Text.Json.JsonValueKind.Object) return null;
+            if (!root.TryGetProperty(name, out var prop)) return null;
+            if (prop.ValueKind == System.Text.Json.JsonValueKind.Number && prop.TryGetDouble(out var d)) return d;
+            if (prop.ValueKind == System.Text.Json.JsonValueKind.String
+                && double.TryParse(prop.GetString(), System.Globalization.NumberStyles.Float,
+                                   System.Globalization.CultureInfo.InvariantCulture, out var ds)) return ds;
+            return null;
         }
     }
 }

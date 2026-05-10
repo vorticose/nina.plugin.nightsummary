@@ -93,5 +93,10 @@ namespace NINA.Plugin.NightSummary.Data {
         public string ThumbnailRetentionMode  { get; set; } = "KeepAll";
         public int    ThumbnailRetentionDays  { get; set; } = 90;
         public double ThumbnailRetentionMaxGB { get; set; } = 5.0;
+        // Custom storage directory for thumbnails. Empty = default
+        // (%LOCALAPPDATA%\NINA\NightSummary\thumbs). Lets users park large
+        // collections on a different drive. Changing this orphans existing
+        // thumbs at the old path — they must be moved manually.
+        public string ThumbnailStorageDir     { get; set; } = "";
     }
 }

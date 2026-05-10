@@ -57,6 +57,21 @@ namespace NINA.Plugin.NightSummary.Data {
         }
 
         /// <summary>
+        /// Resolves the active thumbnails storage root. Returns <paramref name="custom"/>
+        /// when non-empty (after trimming/expanding env vars), otherwise the default
+        /// <c>%LOCALAPPDATA%\NINA\NightSummary\thumbs</c>. Single source of truth so
+        /// the importer, capture path, retention sweep, and dashboard server all agree.
+        /// </summary>
+        public static string GetThumbnailsRoot(string custom) {
+            if (!string.IsNullOrWhiteSpace(custom)) {
+                return Environment.ExpandEnvironmentVariables(custom.Trim());
+            }
+            return Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "NINA", "NightSummary", "thumbs");
+        }
+
+        /// <summary>
         /// Computes the on-disk path for a thumbnail under the NightSummary thumbs root.
         /// Layout: <c>{thumbsRoot}/{sessionId}/{imageId}_sm.jpg</c> (or <c>_md.jpg</c>).
         /// </summary>
