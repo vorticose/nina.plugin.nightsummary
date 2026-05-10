@@ -1806,6 +1806,7 @@ function bindTargetDetailEvents(backdrop, targetName) {
       e.stopPropagation();
       var sid = link.getAttribute('data-session-id');
       if (!sid) return;
+      closeTargetDetail();
       navigate('#/sessions/' + encodeURIComponent(sid) +
         '?from=tdp&target=' + encodeURIComponent(targetName));
     });
@@ -2556,6 +2557,7 @@ function bindPdpSessionTableEvents(backdrop, projectGuid, projectName) {
       var qs = '?from=pdp';
       if (projectGuid) qs += '&pid=' + encodeURIComponent(projectGuid);
       if (projectName) qs += '&pname=' + encodeURIComponent(projectName);
+      closeProjectDetail();
       navigate('#/sessions/' + encodeURIComponent(sid) + qs);
     });
   });
