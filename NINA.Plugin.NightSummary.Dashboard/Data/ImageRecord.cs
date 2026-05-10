@@ -97,5 +97,12 @@ namespace NINA.Plugin.NightSummary.Data {
         public int?    StatMin       { get; set; }  // minimum pixel value
         public int?    StatMax       { get; set; }  // maximum pixel value
         public int?    StatBitDepth  { get; set; }  // image bit depth
+
+        // Raw image thumbnails — bitmask: 1=small (192px), 2=medium (800px), 3=both,
+        // null/0=none. Path is derivable from (SessionId, Id, version) — see Thumbnails.GetThumbnailPath.
+        public int?    ThumbnailVersion { get; set; }
+
+        // Original FITS path on disk; null on rows captured before this column existed.
+        public string  FilePath         { get; set; }
     }
 }

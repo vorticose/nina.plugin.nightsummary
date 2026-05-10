@@ -69,6 +69,13 @@ internal sealed class NinaDashboardDataSource : IDashboardDataSource {
         return Task.FromResult<TsApiSettings?>(new TsApiSettings(enabled, port));
     }
 
+    public Task<TsImageAugment?> GetTsImageAugmentAsync(string targetName, string filterName, System.DateTime timestamp, int windowSeconds, double exposureDurationSeconds, CancellationToken ct = default) {
+        if (!TargetSchedulerDatabase.IsPluginInstalled) return Task.FromResult<TsImageAugment?>(null);
+        var tsDb = new TargetSchedulerDatabase();
+        if (!tsDb.IsAvailable) return Task.FromResult<TsImageAugment?>(null);
+        return Task.FromResult<TsImageAugment?>(tsDb.GetImageAugment(targetName, filterName, timestamp, windowSeconds, exposureDurationSeconds));
+    }
+
     public Task<string?> LoadReportHtmlAsync(string sessionId, CancellationToken ct = default) {
         // The server reads disk-backed report HTML directly via reportsDir; this
         // method exists on the interface for future cloud backends. Plugin returns

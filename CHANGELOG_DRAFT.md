@@ -1,6 +1,17 @@
 # Night Summary — Changelog
 
 
+## Unreleased — v3.1.0 (in progress)
+
+**New features**
+- Raw image thumbnails (opt-in) — Night Summary can now save a small JPEG thumbnail of every LIGHT frame as it's captured, and surface them in a new dashboard gallery. Three views: per session (from the session detail page), cross-session per target, and per project (when Target Scheduler is installed). The gallery groups thumbnails by target, then by filter and exposure length, with a "Rejected" badge on rejects. Click any thumbnail for a lightbox view with a 5-column metrics panel (Capture, Quality, ADU, Guiding, Environment) showing HFR, FWHM, Eccentricity, ADU statistics, guiding RMS, focuser/camera temps, airmass, and more. Project name, Exposure Profile, and per-axis guiding RMS are pulled from Target Scheduler when available. Smooth slide animation between frames with arrow-key navigation; image and metrics reveal together on first open with no layout pop. Optional medium 800px thumbnails (~80 KB each) for sharper lightbox viewing. Off by default — enable in Options → Raw Image Thumbnails. Three retention modes: keep all, roll over by days, or roll over by total disk usage. Custom storage directory option for parking large collections on a different drive. Existing Target Scheduler users can backfill thumbnails from past sessions with a one-click "Import from Target Scheduler" button — typically completes in a few minutes for a thousand frames with live progress and ETA. Thumbnails are stored at `%LOCALAPPDATA%\NINA\NightSummary\thumbs\{sessionId}\` by default.
+
+**Improvements**
+- Per-image timestamps now record exposure-start time to match FITS `DATE-OBS` headers, filenames, and Target Scheduler's convention. New captures going forward align across all tools; existing reports continue to render normally.
+- Dashboard header title is clickable and returns to the session list (typical home-link behavior).
+- Lightbox redesign: the metrics panel now renders as five elevated stat-box cards (Capture, Quality, ADU, Guiding, Environment) with the same depth shadows used by the session cards on the sessions page, plus a quick-glance header strip. Status pill at the left of the strip distinguishes the source: "TS Accepted/Rejected/Pending" (from Target Scheduler), "Manual Rejected" (from NINA's image grader), or "Not graded" (no grading data). A position counter ("1 / 23") sits at the top of the image; "TS Import" badge marks frames whose source is the small (192px) thumb. Image is wrapped in a subtle 3D border that hugs the actual image edges, with corner radius matching the stat boxes. Background dim plus backdrop blur replaces the old opaque black overlay. Prev/next navigation slides the image and panel as a single unit.
+
+
 ## v3.0.0
 
 **New features**

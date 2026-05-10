@@ -26,6 +26,7 @@ namespace NINA.Plugin.NightSummary.Server {
         private readonly string cachePath;
         private readonly string reportsDir;
         private readonly string dataDir;
+        private readonly IDashboardPaths _paths;     // kept so ThumbsRoot stays settings-aware
         private readonly IDashboardDataSource _data;
         private readonly IPluginSettings _settings;
         private readonly IWebAssets _webAssets;
@@ -161,6 +162,7 @@ namespace NINA.Plugin.NightSummary.Server {
 
             // Path roots come from IDashboardPaths; the legacy fields stay so the rest
             // of the file's File.Exists/Path.Combine calls keep working unchanged.
+            this._paths     = paths;
             this.dataDir    = paths.DataDir;
             this.cachePath  = Path.Combine(dataDir, "nightsummary-dashboard-cache.sqlite");
             this.reportsDir = paths.ReportsDir;
@@ -479,6 +481,41 @@ namespace NINA.Plugin.NightSummary.Server {
                         await HandleGetTsProjects(res, done);
                     } else if (path == "/api/filters") {
                         await HandleGetFilters(res, done);
+                    } else if (path.StartsWith("/api/frames/") && path.EndsWith("/thumb")) {
+                        // /api/frames/{imageId}/thumb?size=sm|md
+                        var fPrefix = "/api/frames/";
+                        var fSuffix = "/thumb";
+                        var fIdStr  = path.Substring(fPrefix.Length, path.Length - fPrefix.Length - fSuffix.Length);
+                        if (!long.TryParse(fIdStr, out var fId)) {
+                            await WriteJson(res, 400, new { error = "Invalid frame id" });
+                            done?.Invoke(400, "bad id");
+                        } else {
+                            var size = req.QueryString["size"];
+                            await HandleGetFrameThumb(res, fId, size, done);
+                        }
+                    } else if (path.StartsWith("/api/frames/") && path.EndsWith("/metrics")) {
+                        // /api/frames/{imageId}/metrics — NS row + TS augmentation for the lightbox panel
+                        var mPrefix = "/api/frames/";
+                        var mSuffix = "/metrics";
+                        var mIdStr  = path.Substring(mPrefix.Length, path.Length - mPrefix.Length - mSuffix.Length);
+                        if (!long.TryParse(mIdStr, out var mId)) {
+                            await WriteJson(res, 400, new { error = "Invalid frame id" });
+                            done?.Invoke(400, "bad id");
+                        } else {
+                            await HandleGetFrameMetrics(res, mId, done);
+                        }
+                    } else if (path.StartsWith("/api/targets/") && path.EndsWith("/frames")) {
+                        var tPrefix  = "/api/targets/";
+                        var tSuffix  = "/frames";
+                        var tEncoded = path.Substring(tPrefix.Length, path.Length - tPrefix.Length - tSuffix.Length);
+                        var tName    = Uri.UnescapeDataString(tEncoded);
+                        await HandleGetTargetFrames(res, tName, done);
+                    } else if (path.StartsWith("/api/projects/") && path.EndsWith("/frames")) {
+                        var pjPrefix  = "/api/projects/";
+                        var pjSuffix  = "/frames";
+                        var pjEncoded = path.Substring(pjPrefix.Length, path.Length - pjPrefix.Length - pjSuffix.Length);
+                        var pjGuid    = Uri.UnescapeDataString(pjEncoded);
+                        await HandleGetProjectFrames(res, pjGuid, done);
                     } else if (path == "/api/regenerate-all/status") {
                         await HandleRegenAllStatus(res);
                         done?.Invoke(200, null);
@@ -716,7 +753,10 @@ namespace NINA.Plugin.NightSummary.Server {
                 cloudCover = i.CloudCover,
                 seeingFwhm = i.SeeingFWHM,
                 gradingStatus = i.GradingStatus,
-                rejectReason = i.RejectReason
+                rejectReason = i.RejectReason,
+                // Raw image thumbs — null/0 = none, 1 = sm, 2 = md, 3 = both.
+                thumbnailVersion = i.ThumbnailVersion,
+                filePath = i.FilePath
             }).ToList();
 
             await WriteJson(res, 200, result);
@@ -881,6 +921,272 @@ namespace NINA.Plugin.NightSummary.Server {
             var totalImages = result.Values.Sum(l => l.Count);
             await WriteJson(res, 200, result);
             done?.Invoke(200, $"{sessionId} — {totalImages} livestack images across {result.Count} targets");
+        }
+
+        // ── Raw image thumbnails (RAW_THUMBNAILS_DESIGN.md) ──────────────────
+        // Per-call so the user's ThumbnailStorageDir override is picked up immediately
+        // without restarting the server. Defaults to %LOCALAPPDATA%\NINA\NightSummary\thumbs
+        // when no override is set.
+        private string ThumbsRoot => _paths.ThumbsRoot;
+
+        // Walks the NS Image rows for {sessionId} to find the row with matching
+        // Id, returns its sessionId. Used so the binary endpoint doesn't have to
+        // know about sessionId — clients pass just the frame id.
+        private (string sessionId, int? versionMask) ResolveFrame(long imageId) {
+            // We don't have an indexed-by-id query exposed via IDashboardDataSource,
+            // so do a small scan via DbSessions(). Sessions list is small (<1000)
+            // and we early-exit on first match. Could be optimized later with a
+            // direct GetImageByIdAsync if needed.
+            foreach (var s in DbSessions()) {
+                foreach (var img in DbImages(s.SessionId)) {
+                    if (img.Id == imageId) return (s.SessionId, img.ThumbnailVersion);
+                }
+            }
+            return (null, null);
+        }
+
+        // Per-frame metrics for the lightbox panel. Returns the NS Image row plus
+        // optional TS augmentation (Project, ExposureTemplate, per-axis guiding RMS).
+        // Fields default to null when TS is unavailable or no row matches — the JS
+        // hides any chip whose value is null/empty.
+        private async Task HandleGetFrameMetrics(TcpHttpResponse res, long imageId, Action<int, string> done) {
+            // Locate the NS row + session via the same scan ResolveFrame uses.
+            ImageRecord img = null;
+            SessionRecord sess = null;
+            foreach (var s in DbSessions()) {
+                foreach (var i in DbImages(s.SessionId)) {
+                    if (i.Id == imageId) { img = i; sess = s; break; }
+                }
+                if (img != null) break;
+            }
+            if (img == null) {
+                await WriteJson(res, 404, new { error = "Frame not found" });
+                done?.Invoke(404, $"frame {imageId} unknown");
+                return;
+            }
+
+            // TS augment via the data-source abstraction — null when TS is not
+            // installed or no row matches; never throws to caller.
+            string projectName = null, templateName = null;
+            double? guidingRA = null, guidingRAArcsec = null;
+            double? guidingDec = null, guidingDecArcsec = null;
+            double? hfrStDev = null;
+            int? augGrading = null;
+            string augReject = null;
+            try {
+                // ±30s window centered on either NS Timestamp (new convention) or
+                // NS Timestamp - ExposureDuration (legacy ImageSaved convention) — see
+                // TargetSchedulerDatabase.GetImageAugment for the two-pass strategy.
+                // Matches the importer's ±30s so identical frames augment consistently.
+                var aug = await _data.GetTsImageAugmentAsync(img.TargetName, img.Filter, img.Timestamp, 30, img.ExposureDuration);
+                if (aug != null) {
+                    projectName      = aug.ProjectName;
+                    templateName     = aug.ExposureTemplateName;
+                    hfrStDev         = aug.HFRStDev;
+                    guidingRA        = aug.GuidingRMSRA;
+                    guidingRAArcsec  = aug.GuidingRMSRAArcSec;
+                    guidingDec       = aug.GuidingRMSDEC;
+                    guidingDecArcsec = aug.GuidingRMSDECArcSec;
+                    augGrading       = aug.GradingStatus;
+                    augReject        = aug.RejectReason;
+                }
+            } catch (Exception ex) {
+                _external.Warn($"NightSummary: HandleGetFrameMetrics TS augment failed: {ex.Message}");
+            }
+
+            // Prefer NS's grading when set (>= 0); fall back to whatever TS recorded for
+            // legacy rows that pre-date NS capturing the field. -1 stays as the
+            // "genuinely unknown" sentinel and the JS renders a "Not graded" chip.
+            int finalGrading = img.GradingStatus >= 0
+                ? img.GradingStatus
+                : (augGrading.HasValue ? augGrading.Value : -1);
+            string finalReject = !string.IsNullOrEmpty(img.RejectReason) ? img.RejectReason : augReject;
+
+            // Derive guiding arcsec from total + scale when present.
+            double? guidingArcsec = (img.GuidingRMSTotal > 0 && img.GuidingScale > 0)
+                ? (double?)(img.GuidingRMSTotal * img.GuidingScale) : null;
+
+            await WriteJson(res, 200, new {
+                // Identity
+                id = img.Id,
+                sessionId = sess.SessionId,
+                profileName = sess.ProfileName,
+                timestamp = img.Timestamp.ToString("o"),
+
+                // Capture
+                targetName = img.TargetName,
+                filter = img.Filter,
+                exposureDuration = img.ExposureDuration,
+                gain = img.Gain,
+                offset = img.Offset,
+                binning = img.Binning,
+                readoutMode = img.ReadoutMode,
+                filePath = img.FilePath,
+
+                // Quality
+                hfr = img.HFR,
+                hfrStDev = hfrStDev,
+                fwhm = img.FWHM,
+                eccentricity = img.Eccentricity,
+                starCount = img.StarCount,
+
+                // ADU (from NS v2.10+ StatX columns)
+                aduMin = img.StatMin,
+                aduMax = img.StatMax,
+                aduMean = img.StatMean,
+                aduMedian = img.StatMedian,
+                aduStDev = img.StatStDev,
+
+                // Guiding — total from NS, RA/Dec from TS when present
+                guidingRmsTotal = img.GuidingRMSTotal,
+                guidingArcsec = guidingArcsec,
+                guidingRmsRa = guidingRA,
+                guidingRmsRaArcsec = guidingRAArcsec,
+                guidingRmsDec = guidingDec,
+                guidingRmsDecArcsec = guidingDecArcsec,
+
+                // Environment
+                airmass = img.Airmass,
+                altitude = img.Altitude,
+                azimuth = img.Azimuth,
+                cameraTemp = img.CameraTemp,
+                focuserTemp = img.FocuserTemp,
+                focuserPosition = img.FocuserPosition,
+                ambientTemp = img.AmbientTemp,
+                humidity = img.Humidity,
+                pressure = img.Pressure,
+
+                // Status
+                accepted = img.Accepted,
+                gradingStatus = finalGrading,
+                rejectReason = finalReject,
+
+                // TS-only context
+                project = projectName,
+                exposureTemplate = templateName
+            });
+            done?.Invoke(200, $"frame {imageId} metrics");
+        }
+
+        private async Task HandleGetFrameThumb(TcpHttpResponse res, long imageId, string size, Action<int, string> done) {
+            var sizeFlag = string.Equals(size, "md", StringComparison.OrdinalIgnoreCase) ? 2 : 1;
+            var (sessionId, _) = ResolveFrame(imageId);
+            if (string.IsNullOrEmpty(sessionId)) {
+                await WriteJson(res, 404, new { error = "Frame not found" });
+                done?.Invoke(404, $"frame {imageId} unknown");
+                return;
+            }
+
+            var path = Path.Combine(ThumbsRoot, sessionId, imageId + (sizeFlag == 2 ? "_md.jpg" : "_sm.jpg"));
+            if (!File.Exists(path)) {
+                // Fallback: requested medium but only small exists → serve small.
+                if (sizeFlag == 2) {
+                    var fallback = Path.Combine(ThumbsRoot, sessionId, imageId + "_sm.jpg");
+                    if (File.Exists(fallback)) path = fallback;
+                }
+                if (!File.Exists(path)) {
+                    await WriteJson(res, 404, new { error = "Thumbnail not found" });
+                    done?.Invoke(404, $"thumb {imageId} missing");
+                    return;
+                }
+            }
+
+            try {
+                var bytes = File.ReadAllBytes(path);
+                res.ContentType = "image/jpeg";
+                res.ContentLength64 = bytes.Length;
+                // Content-addressed by frame id + size — never mutates after capture.
+                res.Headers["Cache-Control"] = "public, max-age=31536000, immutable";
+                res.StatusCode = 200;
+                await res.OutputStream.WriteAsync(bytes, 0, bytes.Length);
+                done?.Invoke(200, $"frame {imageId} {size ?? "sm"} ({bytes.Length / 1024}KB)");
+            } catch (Exception ex) {
+                _external.Warn($"NightSummary: Failed to serve thumbnail {path}: {ex.Message}");
+                await WriteJson(res, 500, new { error = "Failed to read thumbnail" });
+                done?.Invoke(500, ex.Message);
+            }
+        }
+
+        // Cross-session: every LIGHT frame for this target name (case-insensitive),
+        // newest first. Each entry carries enough context for the gallery (sessionId,
+        // timestamp, filter, thumb version).
+        private async Task HandleGetTargetFrames(TcpHttpResponse res, string targetName, Action<int, string> done) {
+            if (string.IsNullOrEmpty(targetName)) {
+                await WriteJson(res, 400, new { error = "Missing target name" });
+                done?.Invoke(400, null);
+                return;
+            }
+
+            var rows = new List<object>();
+            foreach (var s in DbSessions()) {
+                foreach (var img in DbImages(s.SessionId)) {
+                    if (!string.Equals(img.TargetName, targetName, StringComparison.OrdinalIgnoreCase)) continue;
+                    if ((img.ThumbnailVersion ?? 0) == 0) continue;
+                    rows.Add(new {
+                        id = img.Id,
+                        sessionId = s.SessionId,
+                        timestamp = img.Timestamp.ToString("o"),
+                        filter = img.Filter,
+                        exposureDuration = img.ExposureDuration,
+                        accepted = img.Accepted,
+                        gradingStatus = img.GradingStatus,
+                        thumbnailVersion = img.ThumbnailVersion
+                    });
+                }
+            }
+            // Newest first
+            rows.Reverse();
+            await WriteJson(res, 200, rows);
+            done?.Invoke(200, $"{rows.Count} frames for target {targetName}");
+        }
+
+        // TS-mediated: project guid → list of TS target names → aggregate frames.
+        // Returns 404 when TS is not installed; the dashboard hides the project tab in that case.
+        private async Task HandleGetProjectFrames(TcpHttpResponse res, string projectGuid, Action<int, string> done) {
+            if (string.IsNullOrEmpty(projectGuid)) {
+                await WriteJson(res, 400, new { error = "Missing project guid" });
+                done?.Invoke(400, null);
+                return;
+            }
+            if (!TsAvailable()) {
+                await WriteJson(res, 404, new { error = "Target Scheduler not installed" });
+                done?.Invoke(404, "no TS");
+                return;
+            }
+
+            var targetNames = TsProjects()
+                .Where(p => string.Equals(p.Guid, projectGuid, StringComparison.OrdinalIgnoreCase))
+                .SelectMany(p => p.Targets ?? new List<TsProjectTarget>())
+                .Select(t => t.Name)
+                .Where(n => !string.IsNullOrEmpty(n))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (targetNames.Count == 0) {
+                await WriteJson(res, 200, Array.Empty<object>());
+                done?.Invoke(200, $"project {projectGuid} has no targets");
+                return;
+            }
+
+            var rows = new List<object>();
+            foreach (var s in DbSessions()) {
+                foreach (var img in DbImages(s.SessionId)) {
+                    if (!targetNames.Contains(img.TargetName ?? "")) continue;
+                    if ((img.ThumbnailVersion ?? 0) == 0) continue;
+                    rows.Add(new {
+                        id = img.Id,
+                        sessionId = s.SessionId,
+                        timestamp = img.Timestamp.ToString("o"),
+                        targetName = img.TargetName,
+                        filter = img.Filter,
+                        exposureDuration = img.ExposureDuration,
+                        accepted = img.Accepted,
+                        gradingStatus = img.GradingStatus,
+                        thumbnailVersion = img.ThumbnailVersion
+                    });
+                }
+            }
+            rows.Reverse();
+            await WriteJson(res, 200, rows);
+            done?.Invoke(200, $"{rows.Count} frames for project {projectGuid}");
         }
 
         private async Task HandleGetLiveStackImage(TcpHttpResponse res, string sessionId, string filename, Action<int, string> done) {
