@@ -1810,27 +1810,10 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   padding: 8px 16px 0;
 }
 
-.report-nav-info {
-  flex: 1;
-  display: flex;
-  gap: 12px;
-  align-items: baseline;
-}
-
-.report-nav-date {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.report-nav-targets {
-  font-size: 13px;
-  color: var(--muted);
-}
-
 .report-nav-actions {
   display: flex;
   gap: 8px;
+  margin-left: auto;
 }
 
 .report-btn {
@@ -5224,10 +5207,24 @@ html.light .tdp-project-action-btn:hover {
   body.report-view header h1 { font-size: 16px; gap: 6px; }
   body.report-view .header-icon { width: 22px; height: 22px; }
   body.report-view .subtitle { display: none; }
-  body.report-view header .report-nav { padding: 6px 12px; margin-bottom: 0; flex-direction: row; align-items: center; gap: 8px; border-top: 1px solid var(--border); }
-  body.report-view .report-nav-info { display: none; }
-  body.report-view .report-nav-actions { gap: 8px; }
-  body.report-view .report-btn, body.report-view .back-btn { min-height: 36px; padding: 4px 12px; font-size: 12px; }
+  body.report-view header .report-nav { padding: 6px 12px; margin-bottom: 0; flex-direction: row; flex-wrap: nowrap; align-items: center; gap: 6px; border-top: 1px solid var(--border); }
+  /* Flatten actions wrapper so back-btn + 3 report-btns become equal-share
+     flex children of .report-nav — fits all 4 on one row without wrapping.
+     min-width:0 + ellipsis handles long labels (e.g. target-name back-btn). */
+  body.report-view .report-nav-actions { display: contents; }
+  body.report-view .report-nav .back-btn,
+  body.report-view .report-nav .report-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 36px;
+    padding: 4px 6px;
+    font-size: 12px;
+    justify-content: center;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   body.report-view .settings-panel { margin: 0 12px 6px; }
   .report-viewer { border-radius: 0; border-left: none; border-right: none; border: none; overflow: visible; }
   .report-shadow-host { width: 100%; }
@@ -5762,9 +5759,6 @@ html.light .tdp-project-action-btn:hover {
    smooth prev/next navigation — this comment block left as a marker.) */
 
 .lb-badge {
-  position: absolute;
-  top: 8px;
-  left: 8px;
   background: rgba(0, 0, 0, 0.7);
   color: #ffd28a;
   font-size: 10px;
@@ -5776,15 +5770,10 @@ html.light .tdp-project-action-btn:hover {
   border-radius: 3px;
   border: 1px solid rgba(255, 210, 138, 0.3);
   pointer-events: none;
-  z-index: 3;
 }
 
 /* Lightbox position counter (top-center of the image) — "1 / 23" style. */
 .lb-counter {
-  position: absolute;
-  top: 8px;
-  left: 50%;
-  transform: translateX(-50%);
   background: rgba(0, 0, 0, 0.65);
   color: #fff;
   font-size: 11px;
@@ -5799,7 +5788,35 @@ html.light .tdp-project-action-btn:hover {
     inset 0 1px 0 rgba(255, 255, 255, 0.06),
     0 1px 4px rgba(0, 0, 0, 0.4);
   pointer-events: none;
-  z-index: 3;
+}
+
+/* Sticky header — badge | counter (centered) | close. Lives at the top of
+   .frames-lightbox-stage; position:sticky keeps it pinned to the visible top
+   when the metrics panel scrolls. Slides with the stage during prev/next
+   nav (acceptable, brief).
+
+   3-column grid (1fr auto 1fr) true-centers the counter regardless of badge
+   width — flex with `margin: auto` doesn't, because auto margins only
+   equalize their own side, not the sibling widths. Badge hidden (display:none)
+   leaves an empty 1fr column on the left, counter still centered. */
+.lb-header {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  width: min(92vw, 1100px);
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 4px 4px;
+  background: linear-gradient(to bottom, rgba(10, 12, 16, 0.7) 0%, rgba(10, 12, 16, 0.0) 100%);
+}
+.lb-header .lb-badge   { justify-self: start; }
+.lb-header .lb-counter { justify-self: center; }
+.lb-header .frames-lightbox-close {
+  position: static;
+  justify-self: end;
 }
 
 .frames-lightbox-close,
@@ -5818,6 +5835,12 @@ html.light .tdp-project-action-btn:hover {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* z-index needed because navigate() animates .frames-lightbox-stage with
+     fill: 'forwards' — the lingering transform creates a stacking context on
+     the stage, which then paints over these absolute siblings (DOM order
+     wins among auto-z positioned/transformed siblings). z-index: 2 keeps
+     close/prev/next on top regardless. */
+  z-index: 2;
 }
 
 .frames-lightbox-close:hover,
@@ -5990,5 +6013,24 @@ html.light .tdp-project-action-btn:hover {
     gap: 6px;
   }
   .frames-thumb-meta { font-size: 10px; padding: 3px 5px; }
-  .frames-lightbox-prev, .frames-lightbox-next { width: 36px; height: 36px; font-size: 22px; }
+  /* Mobile lightbox: swipe replaces prev/next buttons. Close button stays.
+     Counter shows '‹ 3 / 12 ›' chevrons as a swipe affordance — wrapped via
+     pseudo-elements so JS only manages the numeric content + data-multi. */
+  .frames-lightbox-prev, .frames-lightbox-next { display: none; }
+  .lb-counter[data-multi]::before { content: '‹ '; opacity: 0.55; margin-right: 1px; }
+  .lb-counter[data-multi]::after  { content: ' ›'; opacity: 0.55; margin-left: 1px; }
+  /* Tighter header on phone — smaller close button, less padding. */
+  .lb-header { min-height: 36px; padding: 2px 4px; gap: 6px; }
+  .lb-header .frames-lightbox-close { width: 32px; height: 32px; font-size: 22px; }
+  /* Tighten lightbox vertical layout — row/padding shrinks scale with row
+     count (5 groups × up to 9 rows each), so this actually moves the needle
+     on a 2-col mobile grid where the tallest group sets each row's height. */
+  .frames-lightbox-stage { gap: 6px; padding: 0; }
+  .m-strip { padding: 6px 12px; gap: 6px 16px; }
+  .m-strip-status { margin-top: 4px; }
+  .m-group { min-height: auto; padding: 6px 10px; }
+  .m-group-h { padding-bottom: 4px; margin-bottom: 4px; }
+  .m-grid  { margin-top: 4px; gap: 6px; }
+  .m-row   { font-size: 11px; line-height: 1.25; }
+  .m-k, .m-v { font-size: 11px; }
 }

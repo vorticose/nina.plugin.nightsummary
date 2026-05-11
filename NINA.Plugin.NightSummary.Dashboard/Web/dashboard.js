@@ -3204,8 +3204,13 @@ function buildActivityWaveform(sessions) {
     var barClass = isLatest ? 'lw-bar lw-bar-latest' : 'lw-bar';
     var tipMeta = fmtDate(s.sessionStart) + ' \u00b7 ' + fmt(s.totalIntegrationSeconds || 0) + ' \u00b7 ' + (s.imageCount || 0) + ' images' + (isLatest ? ' \u00b7 latest' : '');
     var bar = '<rect class="' + barClass + '" x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + BAR_W + '" height="' + barH.toFixed(1) + '" fill="' + hColor + '" rx="2" data-lw-tgt="' + esc(tgtStr) + '" data-lw-meta="' + esc(tipMeta) + '" data-lw-latest="' + (isLatest ? '1' : '0') + '"/>';
-    if (!isMobile && !IS_TOUCH && s.sessionId && s.hasReport) {
-      svg += '<a href="/api/sessions/' + encodeURIComponent(s.sessionId) + '/report" target="_blank" rel="noopener">' + bar + '</a>';
+    if (!IS_TOUCH && s.sessionId && s.hasReport) {
+      // In-app session view (settings panel + inline report), matching the
+      // session-card click behavior. Previously opened the static report in
+      // a new tab, which felt jarringly different from clicking a card.
+      // Gated on !IS_TOUCH only (was also gated on !isMobile, which broke
+      // click-through for non-touch desktop windows narrower than 720px).
+      svg += '<a href="#/sessions/' + encodeURIComponent(s.sessionId) + '">' + bar + '</a>';
     } else {
       svg += bar;
     }
@@ -3329,7 +3334,9 @@ function buildCalendarHeatmap(sessions) {
       }
       var rect = '<rect class="lifetime-heatmap-cell lw-bar' + (clickable ? ' is-clickable' : '') + (isLatest ? ' lw-bar-latest' : '') + '" x="' + cx + '" y="' + cy + '" width="' + CELL + '" height="' + CELL + '" rx="2" fill="' + fillColor + '" data-lw-tgt="' + esc(tgtStr) + '" data-lw-meta="' + esc(tipMeta) + '" data-lw-latest="' + (isLatest ? '1' : '0') + '"/>';
       if (clickable && !IS_TOUCH) {
-        svgBody += '<a href="/api/sessions/' + encodeURIComponent(sessInfo.id) + '/report" target="_blank" rel="noopener">' + rect + '</a>';
+        // In-app session view matches session-card click behavior — was
+        // opening the static /report in a new tab, now goes through the SPA.
+        svgBody += '<a href="#/sessions/' + encodeURIComponent(sessInfo.id) + '">' + rect + '</a>';
       } else {
         svgBody += rect;
       }
@@ -3361,8 +3368,29 @@ function toggleLifetimeView(btn, view) {
   strip.querySelector('.lifetime-calendar-slot').style.display = view === 'calendar' ? '' : 'none';
 }
 
+// Cached sessions used to rebuild the activity waveform on window resize.
+// The waveform SVG is rendered with an explicit numeric width derived from
+// window.innerWidth at build time, so it doesn't reflow on its own.
+var __lwCachedSessions = null;
+var __lwResizeTimer = null;
+window.addEventListener('resize', function() {
+  if (__lwResizeTimer) clearTimeout(__lwResizeTimer);
+  __lwResizeTimer = setTimeout(function() {
+    if (!__lwCachedSessions) return;
+    var wrap = document.querySelector('.lifetime-waveform-slot .lw-scroll-wrap');
+    if (!wrap) return;
+    wrap.innerHTML = buildActivityWaveform(__lwCachedSessions);
+    // Reinit the touch scrubber against the freshly rendered SVG (no-op on
+    // non-touch). The lw-bar-tip hover handler is delegated on document so
+    // it doesn't need rewiring.
+    var strip = wrap.closest('.lifetime-strip');
+    if (strip && typeof initWaveformScrubber === 'function') initWaveformScrubber(strip);
+  }, 200);
+});
+
 function renderLifetimeStrip(sessions) {
   if (!sessions || sessions.length === 0) return '';
+  __lwCachedSessions = sessions;
   var totalSessions = sessions.length;
   var totalIntegSec = sessions.reduce(function(sum, s) { return sum + (s.totalIntegrationSeconds || 0); }, 0);
   var totalImages = sessions.reduce(function(sum, s) { return sum + (s.imageCount || 0); }, 0);
@@ -5051,6 +5079,15 @@ var isTouchDevice = 'ontouchstart' in window;
     var bar = e.target.closest('.lw-bar');
     if (bar && !bar.contains(e.relatedTarget)) hide();
   });
+  // Hide on bar click — desktop click navigates to #/sessions/{id}, removing
+  // the .lw-bar from DOM before mouseout can fire. Without this the tip
+  // stays pinned at its last position on the new page.
+  document.addEventListener('click', function(e) {
+    if (e.target.closest('.lw-bar')) hide();
+  });
+  // Also hide on any hash change — defensive for any other navigation path
+  // (keyboard nav, programmatic route change, back/forward, etc.).
+  window.addEventListener('hashchange', hide);
 })();
 
 // Event delegation for stat box hover expansion (desktop only)
@@ -6593,16 +6630,16 @@ function renderSessionDetail(sessionId, params) {
 
     var navHtml = '<div class="report-nav" id="header-report-nav">' +
       '<a class="back-btn" href="' + backHref + '">\u2190 ' + esc(backLabel) + '</a>' +
-      '<div class="report-nav-info">' +
-        '<span class="report-nav-date">' + fmtDate(detail.sessionStart) + '</span>' +
-        '<span class="report-nav-targets">' + esc(targets) + '</span>' +
-      '</div>' +
       '<div class="report-nav-actions">' +
         '<a class="report-btn" href="#/sessions/' + encodeURIComponent(sessionId) + '/frames">\ud83d\uddbc Frames</a>' +
         '<button class="report-btn" id="btn-settings">\u2699 Settings</button>';
 
     if (detail.hasReport) {
-      navHtml += '<a href="/api/sessions/' + sessionId + '/report" target="_blank" class="report-btn">Open in New Tab \u2192</a>';
+      // Mobile gets a short label so all four toolbar buttons (back, Frames,
+      // Settings, this one) fit on a single row at equal width.
+      var newTabLabel = window.matchMedia('(max-width: 700px)').matches
+        ? '\u2197 New Tab' : 'Open in New Tab \u2192';
+      navHtml += '<a href="/api/sessions/' + sessionId + '/report" target="_blank" class="report-btn">' + newTabLabel + '</a>';
     }
 
     navHtml += '</div></div>';
@@ -8380,7 +8417,8 @@ function buildActivityHeatmap(sessions, firstSessionIso) {
                'width="' + cellSize + '" height="' + cellSize + '" rx="2"><title>' +
                esc(tooltip) + '</title></rect>';
     if (c.sessionId && !IS_TOUCH) {
-      svg += '<a href="/api/sessions/' + encodeURIComponent(c.sessionId) + '/report" target="_blank" rel="noopener">' + rect + '</a>';
+      // In-app session view, same pattern as session-card click.
+      svg += '<a href="#/sessions/' + encodeURIComponent(c.sessionId) + '">' + rect + '</a>';
     } else {
       svg += rect;
     }
@@ -8631,15 +8669,21 @@ function renderFramesGallery(view) {
       html += '</section>';
     }
     html += '</div>';
+    // Lightbox structure: sticky header (badge / counter / close) above a
+    // scrolling stage (image + metrics panel). Header lives inside the stage
+    // so it travels with the slide animation; position:sticky keeps it pinned
+    // to the visible top when the user scrolls the metrics panel.
     html += '<div class="frames-lightbox" id="frames-lightbox" style="display:none">' +
-              '<button class="frames-lightbox-close" aria-label="Close">×</button>' +
               '<button class="frames-lightbox-prev"  aria-label="Previous">‹</button>' +
               '<button class="frames-lightbox-next"  aria-label="Next">›</button>' +
               '<div class="frames-lightbox-stage">' +
+                '<div class="lb-header">' +
+                  '<div id="frames-lightbox-badge" class="lb-badge" style="display:none">TS Import</div>' +
+                  '<div id="frames-lightbox-counter" class="lb-counter"></div>' +
+                  '<button class="frames-lightbox-close" aria-label="Close">×</button>' +
+                '</div>' +
                 '<div class="frames-lightbox-imgwrap">' +
                   '<img id="frames-lightbox-img" alt="" />' +
-                  '<div id="frames-lightbox-counter" class="lb-counter"></div>' +
-                  '<div id="frames-lightbox-badge" class="lb-badge" style="display:none">TS Import</div>' +
                 '</div>' +
                 '<div id="frames-lightbox-panel" class="frames-lightbox-panel"></div>' +
               '</div>' +
@@ -8694,11 +8738,11 @@ function bindFramesGallery(frames) {
     var v = fmt ? fmt(val) : String(val);
     return '<div class="m-row"><span class="m-k">' + esc(label) + '</span><span class="m-v">' + esc(v) + '</span></div>';
   }
-  function fix(n)    { return Number(n).toFixed(n < 1 ? 4 : 2); }
+  function fix(n)    { return Number(n).toFixed(2); }
   function fix1(n)   { return Number(n).toFixed(1); }
   function int(n)    { return String(Math.round(Number(n))); }
-  function arcsec(n) { return Number(n).toFixed(3) + '"'; }
-  function px(n)     { return Number(n).toFixed(3); }
+  function arcsec(n) { return Number(n).toFixed(2) + '"'; }
+  function px(n)     { return Number(n).toFixed(2); }
 
   // Empty placeholder rendered on first open so the panel has its full
   // dimensions immediately — prevents the "small loader → full content"
@@ -8823,8 +8867,15 @@ function bindFramesGallery(frames) {
     // Reset upscale state until the new image's naturalHeight is known.
     lbImg.classList.remove('lb-upscaled');
     if (lbBadge) lbBadge.style.display = 'none';
-    // Position counter at top of frame, e.g. "12 / 47"
-    if (lbCounter) lbCounter.textContent = (idx + 1) + ' / ' + frames.length;
+    // Position counter at top of frame, e.g. "12 / 47". On mobile the
+    // data-multi attr triggers '‹ 12 / 47 ›' chevrons via CSS pseudo-elements
+    // — visual affordance for swipe-to-navigate (which replaces prev/next
+    // buttons on small screens).
+    if (lbCounter) {
+      lbCounter.textContent = (idx + 1) + ' / ' + frames.length;
+      if (frames.length > 1) lbCounter.setAttribute('data-multi', '');
+      else                   lbCounter.removeAttribute('data-multi');
+    }
 
     // Detect first-open (lightbox hidden) so we can synchronize reveal of image
     // and panel — both stay invisible until both finish loading, then fade in
@@ -8954,6 +9005,29 @@ function bindFramesGallery(frames) {
   lb.querySelector('.frames-lightbox-prev').addEventListener('click', function() { navigate(-1); });
   lb.querySelector('.frames-lightbox-next').addEventListener('click', function() { navigate(+1); });
   lb.addEventListener('click', function(e) { if (e.target === lb) close(); });
+
+  // Touch swipe — replaces prev/next buttons on mobile (buttons display:none'd
+  // via CSS @media). 50px horizontal threshold; vertical-dominant gestures are
+  // ignored so the stage's overflow-y scroll continues to work. Left swipe
+  // (dx < 0) advances to next, right swipe goes back — matches Photos.app and
+  // every other mobile gallery.
+  var touchX0 = 0, touchY0 = 0, touchActive = false;
+  lb.addEventListener('touchstart', function(e) {
+    if (e.touches.length !== 1) { touchActive = false; return; }
+    touchX0 = e.touches[0].clientX;
+    touchY0 = e.touches[0].clientY;
+    touchActive = true;
+  }, { passive: true });
+  lb.addEventListener('touchend', function(e) {
+    if (!touchActive || !e.changedTouches.length) return;
+    touchActive = false;
+    var dx = e.changedTouches[0].clientX - touchX0;
+    var dy = e.changedTouches[0].clientY - touchY0;
+    if (Math.abs(dx) < 50) return;                  // too short — treat as tap
+    if (Math.abs(dy) > Math.abs(dx)) return;        // vertical-dominant — let stage scroll
+    if (frames.length < 2) return;
+    navigate(dx < 0 ? +1 : -1);
+  }, { passive: true });
   document.addEventListener('keydown', function lbKey(e) {
     if (lb.style.display === 'none') { document.removeEventListener('keydown', lbKey); return; }
     if (e.key === 'Escape')          close();
