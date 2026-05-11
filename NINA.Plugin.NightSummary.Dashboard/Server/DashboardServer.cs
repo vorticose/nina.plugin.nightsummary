@@ -1002,9 +1002,16 @@ namespace NINA.Plugin.NightSummary.Server {
                 : (augGrading.HasValue ? augGrading.Value : -1);
             string finalReject = !string.IsNullOrEmpty(img.RejectReason) ? img.RejectReason : augReject;
 
-            // Derive guiding arcsec from total + scale when present.
-            double? guidingArcsec = (img.GuidingRMSTotal > 0 && img.GuidingScale > 0)
-                ? (double?)(img.GuidingRMSTotal * img.GuidingScale) : null;
+            // img.GuidingRMSTotal is stored in arcseconds (px × scale at capture
+            // time — see SessionDatabase.SaveImageRecord comment). Use it directly
+            // for the arcsec representation; derive px by dividing by scale.
+            // (Earlier this multiplied by scale again, producing arcsec², making
+            // the "RMS arcsec" row in the lightbox 1.5–2.5× too high vs the
+            // per-axis values from TS.)
+            double? guidingArcsec = img.GuidingRMSTotal > 0
+                ? (double?)img.GuidingRMSTotal : null;
+            double? guidingRmsPx = (img.GuidingRMSTotal > 0 && img.GuidingScale > 0)
+                ? (double?)(img.GuidingRMSTotal / img.GuidingScale) : null;
 
             await WriteJson(res, 200, new {
                 // Identity
@@ -1038,7 +1045,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 aduStDev = img.StatStDev,
 
                 // Guiding — total from NS, RA/Dec from TS when present
-                guidingRmsTotal = img.GuidingRMSTotal,
+                guidingRmsTotal = guidingRmsPx,
                 guidingArcsec = guidingArcsec,
                 guidingRmsRa = guidingRA,
                 guidingRmsRaArcsec = guidingRAArcsec,
