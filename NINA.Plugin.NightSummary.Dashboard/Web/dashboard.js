@@ -8710,12 +8710,65 @@ function bindFramesGallery(frames) {
   // After the image decodes, fade it in (JS removes lb-loading) and decide whether
   // it was the medium (≥400px tall = native, sharp) or the small fallback
   // (force-upscale + show "Original res" badge so the user knows why it's blurry).
+  //
+  // When upscaling, set explicit width/height that preserves the natural aspect
+  // ratio. CSS-only sizing (width:1100px + max-height:58vh) created a frame on
+  // wider viewports: the IMG element became wider than the actual image content
+  // could fill (object-fit:contain letterboxed inside), and the box-shadow's
+  // outline drew around that wider element — giving visible side-frames where
+  // there was no image content. Computing dimensions from naturalWidth/Height
+  // makes the IMG box hug actual content edges at every viewport size.
+  function applyUpscaledSize() {
+    var nw = lbImg.naturalWidth, nh = lbImg.naturalHeight;
+    if (!nw || !nh) return;
+    var maxW = Math.min(window.innerWidth * 0.92, 1100);
+    var maxH = window.innerHeight * 0.58;
+    var aspect = nw / nh;
+    var w, h;
+    if (maxW / aspect <= maxH) { w = maxW; h = maxW / aspect; }
+    else                       { h = maxH; w = maxH * aspect; }
+    lbImg.style.width  = w + 'px';
+    lbImg.style.height = h + 'px';
+  }
+  // Match the header bar width to the image so the TS Import badge and close
+  // button align with the image's left/right edges (regardless of upscale
+  // state or viewport size). Without this, on wide desktop viewports the
+  // header spans the full 1100px stage width but the image can be narrower
+  // (e.g. a portrait-aspect frame, or any upscaled thumb), pushing the badge
+  // and close way off the image corners. Read the actual rendered width.
+  function syncHeaderToImage() {
+    var header = lb.querySelector('.lb-header');
+    if (!header) return;
+    var imgW = lbImg.getBoundingClientRect().width;
+    if (imgW > 0) header.style.width = imgW + 'px';
+  }
   lbImg.addEventListener('load', function() {
     var nat = lbImg.naturalHeight || 0;
     var isUpscaled = nat > 0 && nat < 400;
     lbImg.classList.toggle('lb-upscaled', isUpscaled);
     if (lbBadge) lbBadge.style.display = isUpscaled ? 'block' : 'none';
+    if (isUpscaled) {
+      applyUpscaledSize();
+    } else {
+      lbImg.style.width = '';
+      lbImg.style.height = '';
+    }
+    syncHeaderToImage();
     lbImg.classList.remove('lb-loading');
+  });
+  // Re-size on window resize: keep the upscaled image aspect-correct, and
+  // keep the header pinned to the image edges. Coalesce via requestAnimationFrame
+  // so it updates every frame during drag (no visible lag) but never more than
+  // once per frame. Cheap operations (just style writes), so no extra debounce.
+  var __lbResizeRaf = null;
+  window.addEventListener('resize', function() {
+    if (lb.style.display !== 'flex') return;
+    if (__lbResizeRaf) return;
+    __lbResizeRaf = requestAnimationFrame(function() {
+      __lbResizeRaf = null;
+      if (lbImg.classList.contains('lb-upscaled')) applyUpscaledSize();
+      syncHeaderToImage();
+    });
   });
 
   // Cheap-and-effective preload: keep the next/prev frames warm in the browser
@@ -8865,7 +8918,11 @@ function bindFramesGallery(frames) {
     idx = (i + frames.length) % frames.length;
     var f = frames[idx];
     // Reset upscale state until the new image's naturalHeight is known.
+    // Also clear any inline width/height left over from a previous upscaled
+    // frame so the next image starts from a clean CSS-driven size.
     lbImg.classList.remove('lb-upscaled');
+    lbImg.style.width = '';
+    lbImg.style.height = '';
     if (lbBadge) lbBadge.style.display = 'none';
     // Position counter at top of frame, e.g. "12 / 47". On mobile the
     // data-multi attr triggers '‹ 12 / 47 ›' chevrons via CSS pseudo-elements
@@ -8984,6 +9041,10 @@ function bindFramesGallery(frames) {
     lb.classList.remove('lb-pending');
     lbImg.src = '';
     lbImg.classList.remove('lb-loading', 'lb-upscaled');
+    lbImg.style.width = '';
+    lbImg.style.height = '';
+    var header = lb.querySelector('.lb-header');
+    if (header) header.style.width = '';
     if (lbBadge) lbBadge.style.display = 'none';
     lbPanel.innerHTML = '';
     document.body.style.overflow = '';
