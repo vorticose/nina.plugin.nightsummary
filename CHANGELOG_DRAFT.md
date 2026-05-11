@@ -10,6 +10,19 @@
 - Per-image timestamps now record exposure-start time to match FITS `DATE-OBS` headers, filenames, and Target Scheduler's convention. New captures going forward align across all tools; existing reports continue to render normally.
 - Dashboard header title is clickable and returns to the session list (typical home-link behavior).
 - Lightbox redesign: the metrics panel now renders as five elevated stat-box cards (Capture, Quality, ADU, Guiding, Environment) with the same depth shadows used by the session cards on the sessions page, plus a quick-glance header strip. Status pill at the left of the strip distinguishes the source: "TS Accepted/Rejected/Pending" (from Target Scheduler), "Manual Rejected" (from NINA's image grader), or "Not graded" (no grading data). A position counter ("1 / 23") sits at the top of the image; "TS Import" badge marks frames whose source is the small (192px) thumb. Image is wrapped in a subtle 3D border that hugs the actual image edges, with corner radius matching the stat boxes. Background dim plus backdrop blur replaces the old opaque black overlay. Prev/next navigation slides the image and panel as a single unit.
+- Lightbox mobile improvements: swipe left/right to navigate between frames (prev/next buttons hidden on small screens), counter shows `‹ 3 / 12 ›` chevrons as a swipe affordance, and the metrics panel layout is tightened to fit one phone screen without scrolling.
+
+**Bug fixes**
+- Lightbox guiding RMS arcsec was scale-multiplied twice, showing values ~1.5–2.5× too high vs the per-axis (RA/Dec) arcsec pulled from Target Scheduler. Both the RMS px and RMS arcsec rows are now correctly derived from the stored arcsec value.
+- Lightbox prev/next/close buttons could become hidden behind the metrics panel after the first navigation click — the slide animation's `fill: forwards` transform created a stacking context on the stage that paints over the buttons. Buttons now layered explicitly on top.
+- Sessions page activity waveform did not rescale when the browser window was resized horizontally; it kept the width it had on initial render. The waveform now re-renders on resize (debounced 200 ms).
+- Sessions page activity waveform was unclickable on narrow desktop browser windows (the click anchor was gated on `!isMobile`, which excluded any window narrower than 720 px even with a mouse). Click-to-open now works at any desktop window width.
+- Sessions page activity waveform hover tooltip stayed pinned at its last position after clicking a bar to navigate; it now dismisses on click and on any hash change.
+- Activity waveform and calendar heatmap (Sessions page) opened the static report in a new browser tab when clicked; they now open the report in the in-app session view, matching the session-card click behavior.
+- Reports opened on mobile (from a Discord/email/Pushover link) were reflowing to phone-screen width instead of showing the desktop layout scaled down. The viewport meta now uses a fixed 800 px width, restoring the original scale-to-fit behavior.
+
+**Layout polish**
+- Report session toolbar: removed the redundant date and target labels that duplicated info already shown inside the report. Back button, Frames, Settings, and Open-in-new-tab buttons now sit on a single row on both desktop and mobile.
 
 
 ## v3.0.0
