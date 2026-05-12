@@ -8843,14 +8843,13 @@ function bindFramesGallery(frames) {
   lbImg.addEventListener('load', function() {
     var nat = lbImg.naturalHeight || 0;
     var isUpscaled = nat > 0 && nat < 400;
+    // Class still drives the "Original res" badge visibility; sizing path is
+    // unified below so medium thumbs and upscaled small thumbs both get explicit
+    // inline width/height set in the same tick — the header sync that follows
+    // reads a stable, already-laid-out bounding rect on both paths.
     lbImg.classList.toggle('lb-upscaled', isUpscaled);
     if (lbBadge) lbBadge.style.display = isUpscaled ? 'block' : 'none';
-    if (isUpscaled) {
-      applyUpscaledSize();
-    } else {
-      lbImg.style.width = '';
-      lbImg.style.height = '';
-    }
+    applyUpscaledSize();
     syncHeaderToImage();
     lbImg.classList.remove('lb-loading');
   });
