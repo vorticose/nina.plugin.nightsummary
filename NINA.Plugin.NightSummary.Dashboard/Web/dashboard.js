@@ -8920,7 +8920,6 @@ function bindFramesGallery(frames) {
       '<div class="m-strip">&nbsp;</div>' +
       '<div class="m-grid">' +
         '<div class="m-group"><div class="m-group-h">Capture</div></div>' +
-        '<div class="m-group"><div class="m-group-h">Quality</div></div>' +
         '<div class="m-group"><div class="m-group-h">ADU</div></div>' +
         '<div class="m-group"><div class="m-group-h">Guiding</div></div>' +
         '<div class="m-group"><div class="m-group-h">Environment</div></div>' +
@@ -8984,15 +8983,9 @@ function bindFramesGallery(frames) {
           : '') +
       '</div>';
 
-    // Quality column
-    var quality =
-      '<div class="m-group"><div class="m-group-h">Quality</div>' +
-        chip('HFR',          m.hfr,          fix) +
-        chip('HFR StDev',    m.hfrStDev,     fix) +
-        chip('FWHM',         m.fwhm,         fix) +
-        chip('Eccentricity', m.eccentricity, fix) +
-        chip('Stars',        m.starCount,    int) +
-      '</div>';
+    // Quality dropped — HFR/FWHM/Eccentricity/Stars already in the m-strip
+    // header above. HFR StDev was the only unique field (TS-only augment)
+    // and isn't worth a whole group; can resurface elsewhere if needed.
 
     // ADU column (NS v2.10+ StatX columns)
     var adu =
@@ -9031,7 +9024,7 @@ function bindFramesGallery(frames) {
 
     lbPanel.innerHTML =
       header +
-      '<div class="m-grid">' + capture + quality + adu + guiding + env + '</div>';
+      '<div class="m-grid">' + capture + adu + guiding + env + '</div>';
   }
 
   function open(i) {

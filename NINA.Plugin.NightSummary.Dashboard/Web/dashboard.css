@@ -6031,7 +6031,7 @@ html.light .tdp-project-action-btn:hover {
 .m-grid {
   margin-top: 10px;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
 @media (max-width: 1000px) { .m-grid { grid-template-columns: repeat(3, 1fr); } }
