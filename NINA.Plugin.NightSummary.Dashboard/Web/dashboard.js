@@ -6680,7 +6680,10 @@ function renderSessionDetail(sessionId, params) {
     }
 
     var iframeEl = document.getElementById('report-iframe');
-    if (iframeEl) iframeEl.addEventListener('load', syncReportTheme);
+    if (iframeEl) iframeEl.addEventListener('load', function() {
+      iframeEl.classList.add('is-loaded');
+      syncReportTheme();
+    });
 
     bindDetailEvents(sessionId);
   }).catch(function(err) {
