@@ -6042,11 +6042,15 @@ html.light .tdp-project-action-btn:hover {
   /* Locked floor so prev/next nav doesn't reshuffle the panel — sized to fit
      the tallest groups (Capture, Environment) which carry up to 9 rows. */
   min-height: 180px;
-  /* 2-col grid: labels in col 1 (auto width = widest label in this group),
-     values in col 2 (1fr, left-aligned). All rows in a group share the
-     same label column width so value starts line up at the same X. */
+  /* 3-col grid:
+       col 1 = label (auto, sized to widest label in this group)
+       col 2 = spacer (1fr) — pushes values toward the right side of the box
+       col 3 = value (max-content, sized to widest value in this group)
+     Values are left-aligned within col 3 so their LEFT edges line up at
+     the same X. The 1fr spacer keeps the value column anchored to the
+     right side of the m-group regardless of label width. */
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto 1fr max-content;
   column-gap: 8px;
   row-gap: 2px;
   align-content: start;
@@ -6066,11 +6070,16 @@ html.light .tdp-project-action-btn:hover {
 /* m-rows inside a group flatten so their .m-k / .m-v become direct grid
    items of .m-group — that's what lets labels in a group sync widths. */
 .m-group > .m-row { display: contents; }
-/* Values inside groups right-align within their grid column so the right
-   edges line up with the m-group's right padding. Combined with the
-   auto-sized label column, this gives a "labels left, numbers right
-   column" look while still keeping all values in the same column. */
-.m-group > .m-row > .m-v { text-align: right; }
+/* Values left-align within col 3 so all value left edges line up at the
+   same X. Col 3 itself sits flush to the right of the group via the 1fr
+   spacer in col 2 — so the column reads as "right side of box" while
+   keeping value starts aligned. */
+.m-group > .m-row > .m-v {
+  grid-column: 3;
+  text-align: left;
+}
+/* Label sits in col 1; the spacer in col 2 has no element. */
+.m-group > .m-row > .m-k { grid-column: 1; }
 :root.light .m-group {
   background: linear-gradient(to bottom, rgba(255,255,255,0.6) 0%, transparent 60%), var(--surface);
   border-color: rgba(0,0,0,0.06);
