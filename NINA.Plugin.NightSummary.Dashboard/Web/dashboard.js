@@ -8678,11 +8678,22 @@ function renderFramesGallery(view) {
       return;
     }
 
-    // Sort: target → filter (stack order L,R,G,B,H,S,O,N) → exposure → timestamp.
-    // Lightbox prev/next walks this same order so navigation flows naturally
-    // across groups.
+    // Sort: target (chronological by first-imaged timestamp) → filter (stack
+    // order L,R,G,B,H,S,O,N) → exposure → timestamp. Lightbox prev/next walks
+    // this same order so navigation flows naturally across groups.
+    // Pre-compute first-imaged timestamp per target so the comparator stays O(n log n).
+    var targetFirstTs = {};
+    frames.forEach(function(f) {
+      var name = f.targetName || '(unknown target)';
+      var ts = new Date(f.timestamp || 0).getTime();
+      if (ts > 0 && (targetFirstTs[name] == null || ts < targetFirstTs[name])) {
+        targetFirstTs[name] = ts;
+      }
+    });
     frames.sort(function(a, b) {
-      var t = (a.targetName || '').localeCompare(b.targetName || '');
+      var an = a.targetName || '(unknown target)';
+      var bn = b.targetName || '(unknown target)';
+      var t = (targetFirstTs[an] || 0) - (targetFirstTs[bn] || 0);
       if (t) return t;
       var f = compareFilterStackOrder(a.filter, b.filter);
       if (f) return f;
