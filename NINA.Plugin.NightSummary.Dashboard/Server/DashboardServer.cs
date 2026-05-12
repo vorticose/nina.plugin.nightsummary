@@ -725,6 +725,9 @@ namespace NINA.Plugin.NightSummary.Server {
             // gradingStatus / rejectReason are TS-import residue; suppress them
             // when TS is unavailable so frame tiles don't render as rejected for
             // a non-TS user (see HandleGetFrameMetrics for the same gating).
+            // Also reset accepted=true when TS sync had previously written accepted=false
+            // (UpdateImageGradingFromTs sets accepted = gradingStatus==1, so a non-1
+            // gradingStatus implies accepted came from TS, not NINA-side rejection).
             bool tsAvailable = await _data.IsTargetSchedulerAvailableAsync();
             var result = images.Select(i => new {
                 id = i.Id,
@@ -733,7 +736,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 filter = i.Filter,
                 exposureDuration = i.ExposureDuration,
                 imageType = i.ImageType,
-                accepted = i.Accepted,
+                accepted = (!tsAvailable && i.GradingStatus >= 0) ? true : i.Accepted,
                 hfr = i.HFR,
                 fwhm = i.FWHM,
                 eccentricity = i.Eccentricity,
@@ -1005,10 +1008,14 @@ namespace NINA.Plugin.NightSummary.Server {
             // When TS is unavailable (uninstalled, --no-ts dev sim, etc.), the NS
             // gradingStatus / rejectReason columns are stale TS-import residue —
             // a true non-TS user would never have them populated. Suppress so the
-            // lightbox doesn't claim "TS Rejected" on a non-TS session.
+            // lightbox doesn't claim "TS Rejected" on a non-TS session. Also reset
+            // accepted=true when the false came from TS sync (gradingStatus >= 0
+            // means UpdateImageGradingFromTs set accepted = gradingStatus==1, so
+            // accepted=false there is TS rejection, not NINA-side manual).
             bool tsAvailable = await _data.IsTargetSchedulerAvailableAsync();
             int finalGrading;
             string finalReject;
+            bool effectivelyAccepted = img.Accepted;
             if (tsAvailable) {
                 finalGrading = img.GradingStatus >= 0
                     ? img.GradingStatus
@@ -1017,6 +1024,7 @@ namespace NINA.Plugin.NightSummary.Server {
             } else {
                 finalGrading = -1;
                 finalReject = null;
+                if (img.GradingStatus >= 0) effectivelyAccepted = true;
             }
 
             // img.GuidingRMSTotal is stored in arcseconds (px × scale at capture
@@ -1084,7 +1092,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 pressure = img.Pressure,
 
                 // Status
-                accepted = img.Accepted,
+                accepted = effectivelyAccepted,
                 gradingStatus = finalGrading,
                 rejectReason = finalReject,
 
@@ -1145,7 +1153,8 @@ namespace NINA.Plugin.NightSummary.Server {
             }
 
             // Suppress TS-derived gradingStatus when TS is unavailable — same
-            // reason as HandleGetSessionImages.
+            // reason as HandleGetSessionImages. Also reset accepted=true when
+            // TS sync had set it to false.
             bool tsAvailable = await _data.IsTargetSchedulerAvailableAsync();
             var rows = new List<object>();
             foreach (var s in DbSessions()) {
@@ -1158,7 +1167,7 @@ namespace NINA.Plugin.NightSummary.Server {
                         timestamp = img.Timestamp.ToString("o"),
                         filter = img.Filter,
                         exposureDuration = img.ExposureDuration,
-                        accepted = img.Accepted,
+                        accepted = (!tsAvailable && img.GradingStatus >= 0) ? true : img.Accepted,
                         gradingStatus = tsAvailable ? img.GradingStatus : -1,
                         thumbnailVersion = img.ThumbnailVersion
                     });
