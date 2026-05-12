@@ -280,6 +280,16 @@ function deferLoader(el, msg) {
   return function cancelLoader() { clearTimeout(timer); };
 }
 
+// Strip report-view chrome (body class, header pills, --header-h CSS var).
+// Call this in each non-report destination renderer at the paint moment so
+// the prior report doesn't collapse before the new page is ready. Idempotent.
+function exitReportView() {
+  document.body.classList.remove('report-view');
+  var existingNav = document.getElementById('header-report-nav');
+  if (existingNav) existingNav.remove();
+  document.documentElement.style.removeProperty('--header-h');
+}
+
 // ── Theme ──────────────────────────────────────────────────────────────────
 
 function initTheme() {
@@ -378,19 +388,18 @@ function route() {
     var isFrames      = path.match(/^\/sessions\/([^/]+)\/frames$/);
     var isTargetFrames= path.match(/^\/targets\/([^/]+)\/frames$/);
     var isProjectFrames=path.match(/^\/projects\/([^/]+)\/frames$/);
-    document.body.classList.toggle('report-view', !!isReport);
     if (isReport) {
+      document.body.classList.add('report-view');
       // Shell is the scroll container in report-view; reset it so content
       // always starts at top regardless of prior body scroll position.
       // window.scrollTo is unreliable on iOS Safari after a hashchange.
       var shellEl = document.querySelector('.shell');
       if (shellEl) shellEl.scrollTop = 0;
-    } else {
-      // Remove the report nav from the header when leaving report view
-      var existingNav = document.getElementById('header-report-nav');
-      if (existingNav) existingNav.remove();
-      document.documentElement.style.removeProperty('--header-h');
     }
+    // Leaving report view: chrome cleanup (body class, header pills,
+    // --header-h) is deferred to the destination renderer's first paint via
+    // exitReportView() so the prior report doesn't visibly collapse while
+    // the destination data is still loading.
 
     if (path === '/sessions') {
       renderSessionList(params);
@@ -4003,6 +4012,10 @@ function renderSessionList(params) {
   heroSessionId = null;
 
   function finish() {
+    // Strip the prior page's report-view chrome at the paint moment so
+    // we don't visibly collapse the iframe + lose header pills before
+    // the sessions list is ready.
+    exitReportView();
     getAllTargets().forEach(function(t) { selectedTargets[t] = true; });
     if (v1) {
       doRenderList(el, sub, fromVal, toVal, sortVal);
@@ -8552,6 +8565,11 @@ function renderStats(params) {
 
     if (sub) sub.textContent = getSubtitleText();
 
+    // Strip prior report-view chrome in the same sync tick as the stats
+    // innerHTML write below — keeps the iframe + header pills intact while
+    // the stats data was loading.
+    exitReportView();
+
     var html = '';
 
     // Tab bar + content
@@ -8635,6 +8653,7 @@ function renderFramesGallery(view) {
     });
 
     if (frames.length === 0) {
+      exitReportView();
       el.innerHTML =
         '<a class="back-btn" href="' + backHref + '">← Back</a>' +
         '<h2>' + esc(title) + '</h2>' +
@@ -8748,6 +8767,7 @@ function renderFramesGallery(view) {
               '</div>' +
             '</div>';
 
+    exitReportView();
     el.innerHTML = html;
     bindFramesGallery(frames);
   }).catch(function(err) {
