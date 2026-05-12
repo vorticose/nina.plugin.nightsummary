@@ -9,7 +9,7 @@ using System.Runtime.InteropServices;
 // from VersionPrefix in the .csproj + git commit count (see SetGitBuildNumber target)
 [assembly: AssemblyInformationalVersion("3.0.0")]
 [assembly: AssemblyTitle("Night Summary")]
-[assembly: AssemblyDescription("Records your imaging session and delivers a detailed HTML report via email, Discord, or Pushover when your sequence ends. Includes a built-in local web dashboard for browsing session history and lifetime statistics from any device on your network.\n\nTo update: download the latest release from the link above and extract the zip to your existing NightSummary plugin folder, overwriting existing files.")]
+[assembly: AssemblyDescription("Records your imaging session and delivers a detailed HTML report via email, Discord, or Pushover when your sequence ends. Includes a built-in local web dashboard for browsing session history and lifetime statistics from any device on your network.\n\nFree and open source — support development: https://ko-fi.com/sleepypuppy15\n\nTo update: download the latest release from the link above and extract the zip to your existing NightSummary plugin folder, overwriting existing files.")]
 [assembly: AssemblyCompany("Evan Pegors")]
 [assembly: AssemblyProduct("Night Summary")]
 [assembly: AssemblyCopyright("Copyright � 2026 Evan Pegors")]
@@ -65,6 +65,10 @@ Three levels let you control how much is included: Snapshot (header and filter t
 All channels can be enabled independently and tested directly from the plugin options page. Previous session reports can also be resent at any time without re-running a sequence. NINA shows toast notifications when reports are generated and delivered, including warnings if any section couldn't be included.
 
 Settings are saved to a stable JSON file that persists across plugin updates. A built-in Report Preview lets you view reports with real session data or test data directly from the plugin options page.
+
+**Support**
+
+Night Summary is free and open source. If it's saved you time, you can [donate via Ko-fi](https://ko-fi.com/sleepypuppy15). Appreciated but never expected.
 
 **Troubleshooting**
 
