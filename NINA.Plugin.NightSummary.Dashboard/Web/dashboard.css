@@ -6173,7 +6173,14 @@ html.light .tdp-project-action-btn:hover {
      count (5 groups × up to 9 rows each), so this actually moves the needle
      on a 2-col mobile grid where the tallest group sets each row's height. */
   .frames-lightbox-stage { gap: 6px; padding: 0; }
-  .m-strip { padding: 6px 12px; gap: 6px 16px; }
+  /* Tighter chip layout so Date + Target + Filter + Stars + HFR + FWHM
+     + Eccen. fit on two lines instead of three on iPhone-class viewports.
+     Cuts column gap, internal chip gap, label letter-spacing, and font
+     size — together saves ~50px per line. */
+  .m-strip { padding: 5px 8px; gap: 4px 10px; }
+  .m-strip .m-row { gap: 4px; }
+  .m-strip .m-k { font-size: 9px; letter-spacing: 0.4px; }
+  .m-strip .m-v { font-size: 12px; }
   .m-strip-status { margin-top: 4px; }
   .m-group { min-height: auto; padding: 6px 10px; }
   .m-group-h { padding-bottom: 4px; margin-bottom: 4px; }
