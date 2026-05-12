@@ -1817,7 +1817,9 @@ function bindTargetDetailEvents(backdrop, targetName) {
       e.stopPropagation();
       var sid = link.getAttribute('data-session-id');
       if (!sid) return;
-      closeTargetDetail();
+      // Don't close yet — modal stays visible until the report paints,
+      // then renderSessionDetail dismisses it. Avoids a 1-frame gap where
+      // the user would see the Stats page behind the closing modal.
       navigate('#/sessions/' + encodeURIComponent(sid) +
         '?from=tdp&target=' + encodeURIComponent(targetName));
     });
@@ -6703,6 +6705,13 @@ function renderSessionDetail(sessionId, params) {
 
     el.innerHTML = html;
 
+    // Dismiss any open TDP/PDP modal that was left visible during navigation
+    // so the underlying page wouldn't flash. Modal's own fade-out animation
+    // runs over the now-painted report — smooth handoff.
+    if (document.getElementById('tdp-backdrop')) closeTargetDetail();
+    if (typeof closeProjectDetail === 'function' &&
+        document.getElementById('pdp-backdrop')) closeProjectDetail();
+
     if (detail.hasReport && isMobile) {
       loadReportIntoShadow(sessionId);
     }
@@ -8497,23 +8506,26 @@ function renderStats(params) {
   var cancelLoader = deferLoader(el, 'Loading stats...');
 
   // Pre-fetch TDP sessions in parallel with the stats load when returning
-  // from a session-detail view. Avoids the "stats paints -> modal opens with
-  // stub -> stub fills" cascade — the modal can paint fully on first show.
+  // from a session-detail view. Included in the main Promise.all so the
+  // modal opens in the *same* paint cycle as the stats page — no 1-frame
+  // gap where the user sees Stats without its overlaid modal.
   var tdpPrefetch = openTdp
     ? api('/api/stats/targets/' + encodeURIComponent(openTdp) + '/sessions').catch(function() { return null; })
-    : null;
+    : Promise.resolve(null);
 
   Promise.all([
     api('/api/stats/targets'),
     api('/api/stats/summary'),
     api('/api/settings'),
-    api('/api/sessions')
+    api('/api/sessions'),
+    tdpPrefetch
   ]).then(function(results) {
     cancelLoader();
     var targetData = results[0];
     var summary    = results[1];
     var settings   = results[2];
     var sessions   = results[3] || [];
+    var tdpData    = results[4];
     if (sessions.length > 0) sessionsCache = sessions;
     var targets = targetData.targets || [];
     statsTargetData = targets;
@@ -8566,17 +8578,13 @@ function renderStats(params) {
 
     // Auto-open TDP/PDP after stats paints — used by deep-links from
     // session-detail "back" buttons that originated in a TDP/PDP modal.
+    // TDP modal opens synchronously here so the browser paints stats +
+    // overlaid modal in one cycle (no flash of bare Stats).
     if (openTdp) {
       // Find the latest session for this target so the TDP hero thumb populates.
       var ttarget = (targets || []).find(function(t) { return t.target === openTdp; });
       var latestSid = ttarget ? ttarget.latestSessionId : null;
-      // Wait for prefetch so the modal paints in one shot (no stub flash).
-      // If prefetch failed/null, openTargetDetail falls back to cold-fetch path.
-      tdpPrefetch.then(function(tdpData) {
-        requestAnimationFrame(function() {
-          openTargetDetail(openTdp, latestSid, tdpData || undefined);
-        });
-      });
+      openTargetDetail(openTdp, latestSid, tdpData || undefined);
     } else if (openPdp) {
       requestAnimationFrame(function() { openProjectDetail(openPdp, openPname); });
     }
