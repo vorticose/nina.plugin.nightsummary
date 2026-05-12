@@ -6042,6 +6042,14 @@ html.light .tdp-project-action-btn:hover {
   /* Locked floor so prev/next nav doesn't reshuffle the panel — sized to fit
      the tallest groups (Capture, Environment) which carry up to 9 rows. */
   min-height: 180px;
+  /* 2-col grid: labels in col 1 (auto width = widest label in this group),
+     values in col 2 (1fr, left-aligned). All rows in a group share the
+     same label column width so value starts line up at the same X. */
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 8px;
+  row-gap: 2px;
+  align-content: start;
   background: linear-gradient(to bottom, rgba(255,255,255,0.04) 0%, transparent 60%), var(--surface);
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 8px;
@@ -6053,6 +6061,13 @@ html.light .tdp-project-action-btn:hover {
     0 2px 6px rgba(0,0,0,0.28),
     0 1px 2px rgba(0,0,0,0.18);
 }
+/* Group header spans both columns of the grid. */
+.m-group > .m-group-h { grid-column: 1 / -1; }
+/* m-rows inside a group flatten so their .m-k / .m-v become direct grid
+   items of .m-group — that's what lets labels in a group sync widths. */
+.m-group > .m-row { display: contents; }
+/* Values inside groups left-align (base .m-v is right-align for the strip). */
+.m-group > .m-row > .m-v { text-align: left; }
 :root.light .m-group {
   background: linear-gradient(to bottom, rgba(255,255,255,0.6) 0%, transparent 60%), var(--surface);
   border-color: rgba(0,0,0,0.06);
