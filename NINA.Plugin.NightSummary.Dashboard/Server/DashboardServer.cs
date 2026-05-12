@@ -722,6 +722,10 @@ namespace NINA.Plugin.NightSummary.Server {
             }
 
             var images = DbImages(sessionId);
+            // gradingStatus / rejectReason are TS-import residue; suppress them
+            // when TS is unavailable so frame tiles don't render as rejected for
+            // a non-TS user (see HandleGetFrameMetrics for the same gating).
+            bool tsAvailable = await _data.IsTargetSchedulerAvailableAsync();
             var result = images.Select(i => new {
                 id = i.Id,
                 timestamp = i.Timestamp.ToString("o"),
@@ -752,8 +756,8 @@ namespace NINA.Plugin.NightSummary.Server {
                 skyQuality = i.SkyQuality,
                 cloudCover = i.CloudCover,
                 seeingFwhm = i.SeeingFWHM,
-                gradingStatus = i.GradingStatus,
-                rejectReason = i.RejectReason,
+                gradingStatus = tsAvailable ? i.GradingStatus : -1,
+                rejectReason = tsAvailable ? i.RejectReason : null,
                 // Raw image thumbs — null/0 = none, 1 = sm, 2 = md, 3 = both.
                 thumbnailVersion = i.ThumbnailVersion,
                 filePath = i.FilePath
@@ -1137,6 +1141,9 @@ namespace NINA.Plugin.NightSummary.Server {
                 return;
             }
 
+            // Suppress TS-derived gradingStatus when TS is unavailable — same
+            // reason as HandleGetSessionImages.
+            bool tsAvailable = await _data.IsTargetSchedulerAvailableAsync();
             var rows = new List<object>();
             foreach (var s in DbSessions()) {
                 foreach (var img in DbImages(s.SessionId)) {
@@ -1149,7 +1156,7 @@ namespace NINA.Plugin.NightSummary.Server {
                         filter = img.Filter,
                         exposureDuration = img.ExposureDuration,
                         accepted = img.Accepted,
-                        gradingStatus = img.GradingStatus,
+                        gradingStatus = tsAvailable ? img.GradingStatus : -1,
                         thumbnailVersion = img.ThumbnailVersion
                     });
                 }
