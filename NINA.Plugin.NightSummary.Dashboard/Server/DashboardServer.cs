@@ -997,10 +997,23 @@ namespace NINA.Plugin.NightSummary.Server {
             // Prefer NS's grading when set (>= 0); fall back to whatever TS recorded for
             // legacy rows that pre-date NS capturing the field. -1 stays as the
             // "genuinely unknown" sentinel and the JS renders a "Not graded" chip.
-            int finalGrading = img.GradingStatus >= 0
-                ? img.GradingStatus
-                : (augGrading.HasValue ? augGrading.Value : -1);
-            string finalReject = !string.IsNullOrEmpty(img.RejectReason) ? img.RejectReason : augReject;
+            //
+            // When TS is unavailable (uninstalled, --no-ts dev sim, etc.), the NS
+            // gradingStatus / rejectReason columns are stale TS-import residue —
+            // a true non-TS user would never have them populated. Suppress so the
+            // lightbox doesn't claim "TS Rejected" on a non-TS session.
+            bool tsAvailable = await _data.IsTargetSchedulerAvailableAsync();
+            int finalGrading;
+            string finalReject;
+            if (tsAvailable) {
+                finalGrading = img.GradingStatus >= 0
+                    ? img.GradingStatus
+                    : (augGrading.HasValue ? augGrading.Value : -1);
+                finalReject = !string.IsNullOrEmpty(img.RejectReason) ? img.RejectReason : augReject;
+            } else {
+                finalGrading = -1;
+                finalReject = null;
+            }
 
             // img.GuidingRMSTotal is stored in arcseconds (px × scale at capture
             // time — see SessionDatabase.SaveImageRecord comment). Use it directly
