@@ -6066,8 +6066,11 @@ html.light .tdp-project-action-btn:hover {
 /* m-rows inside a group flatten so their .m-k / .m-v become direct grid
    items of .m-group — that's what lets labels in a group sync widths. */
 .m-group > .m-row { display: contents; }
-/* Values inside groups left-align (base .m-v is right-align for the strip). */
-.m-group > .m-row > .m-v { text-align: left; }
+/* Values inside groups right-align within their grid column so the right
+   edges line up with the m-group's right padding. Combined with the
+   auto-sized label column, this gives a "labels left, numbers right
+   column" look while still keeping all values in the same column. */
+.m-group > .m-row > .m-v { text-align: right; }
 :root.light .m-group {
   background: linear-gradient(to bottom, rgba(255,255,255,0.6) 0%, transparent 60%), var(--surface);
   border-color: rgba(0,0,0,0.06);
