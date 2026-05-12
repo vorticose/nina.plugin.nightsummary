@@ -6082,8 +6082,21 @@ html.light .tdp-project-action-btn:hover {
   line-height: 1.45;
   min-width: 0;
 }
-.m-row-wide { display: block; }
-.m-row-wide .m-v { display: block; margin-top: 2px; text-align: left; }
+.m-row-wide { display: block; min-width: 0; }
+.m-row-wide .m-v {
+  display: block;
+  margin-top: 2px;
+  text-align: left;
+  /* Re-assert truncation on wide rows — base .m-v has these but the
+     block-display override here can confuse cascade resolution in some
+     embedded browsers (WebView2). Explicit keeps the filename on one
+     line regardless of viewport; the title attribute carries the full
+     path for hover. */
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .m-k {
   color: var(--text-tertiary, rgba(255, 255, 255, 0.5));
