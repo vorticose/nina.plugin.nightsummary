@@ -1916,51 +1916,65 @@ function findTsForTarget(targetName) {
   return null;
 }
 
-function openTargetDetail(targetName, latestSessionId) {
+// Paint the TDP panel into an existing backdrop. Extracted so the cold path
+// (fetch -> paint) and the preloaded path (paint now) share one impl.
+function paintTargetDetailPanel(backdrop, data, targetName, latestSessionId, ts) {
+  backdrop.innerHTML = renderTargetDetailPanel(data, targetName, ts);
+  bindTargetDetailEvents(backdrop, targetName);
+  loadTargetDetailThumb(targetName, latestSessionId);
+  // Chart renders after the panel is in the DOM so we can measure available width.
+  // Use rAF to ensure layout has settled (kpi grid, etc.).
+  var sessions = data.sessions || [];
+  requestAnimationFrame(function() { renderChartIntoPanel(backdrop, sessions); });
+  // Re-render chart on window resize (debounced) so it stays full-width.
+  // Detach any prior handler first; opening the panel twice would otherwise
+  // attach a second listener and the close-time remove only catches the latest.
+  if (_tdpResizeHandler) window.removeEventListener('resize', _tdpResizeHandler);
+  _tdpResizeHandler = function() {
+    if (_tdpResizeDebounce) clearTimeout(_tdpResizeDebounce);
+    _tdpResizeDebounce = setTimeout(function() {
+      renderChartIntoPanel(backdrop, sessions);
+    }, 120);
+  };
+  window.addEventListener('resize', _tdpResizeHandler);
+}
+
+function openTargetDetail(targetName, latestSessionId, preloadedData) {
   if (!targetName) return;
   // Close any existing panel first
   closeTargetDetail();
 
-  // Loading placeholder so the user gets immediate feedback
   var backdrop = document.createElement('div');
   backdrop.id = 'tdp-backdrop';
   backdrop.className = 'tdp-backdrop';
-  backdrop.innerHTML = '<div class="tdp-modal" style="padding:40px;text-align:center;color:var(--text-tertiary);">Loading \u2026</div>';
   document.body.appendChild(backdrop);
   document.body.style.overflow = 'hidden';
   backdrop.addEventListener('touchmove', function(e) { if (e.target === backdrop) e.preventDefault(); }, { passive: false });
-
-  // Tentative close on backdrop click while loading
-  var loadClickHandler = function(e) { if (e.target === backdrop) closeTargetDetail(); };
-  backdrop.addEventListener('click', loadClickHandler);
   _tdpKeyHandler = function(e) { if (e.key === 'Escape') closeTargetDetail(); };
   document.addEventListener('keydown', _tdpKeyHandler);
 
   var ts = findTsForTarget(targetName);
+
+  // Preloaded path: paint full panel immediately. Used by back-navigation
+  // from session detail where the caller pre-fetched the sessions list in
+  // parallel with the stats page load.
+  if (preloadedData) {
+    paintTargetDetailPanel(backdrop, preloadedData, targetName, latestSessionId, ts);
+    return;
+  }
+
+  // Cold path: show loading stub while fetching.
+  backdrop.innerHTML = '<div class="tdp-modal" style="padding:40px;text-align:center;color:var(--text-tertiary);">Loading \u2026</div>';
+  // Tentative close on backdrop click while loading
+  var loadClickHandler = function(e) { if (e.target === backdrop) closeTargetDetail(); };
+  backdrop.addEventListener('click', loadClickHandler);
 
   api('/api/stats/targets/' + encodeURIComponent(targetName) + '/sessions').then(function(data) {
     // If the user closed it while loading, bail out
     var current = document.getElementById('tdp-backdrop');
     if (!current || current !== backdrop) return;
     backdrop.removeEventListener('click', loadClickHandler);
-    backdrop.innerHTML = renderTargetDetailPanel(data, targetName, ts);
-    bindTargetDetailEvents(backdrop, targetName);
-    loadTargetDetailThumb(targetName, latestSessionId);
-    // Chart renders after the panel is in the DOM so we can measure available width.
-    // Use rAF to ensure layout has settled (kpi grid, etc.).
-    var sessions = data.sessions || [];
-    requestAnimationFrame(function() { renderChartIntoPanel(backdrop, sessions); });
-    // Re-render chart on window resize (debounced) so it stays full-width.
-    // Detach any prior handler first; opening the panel twice would otherwise
-    // attach a second listener and the close-time remove only catches the latest.
-    if (_tdpResizeHandler) window.removeEventListener('resize', _tdpResizeHandler);
-    _tdpResizeHandler = function() {
-      if (_tdpResizeDebounce) clearTimeout(_tdpResizeDebounce);
-      _tdpResizeDebounce = setTimeout(function() {
-        renderChartIntoPanel(backdrop, sessions);
-      }, 120);
-    };
-    window.addEventListener('resize', _tdpResizeHandler);
+    paintTargetDetailPanel(backdrop, data, targetName, latestSessionId, ts);
   }).catch(function(err) {
     logError('Failed to load target detail:', err && err.message);
     var current = document.getElementById('tdp-backdrop');
@@ -8482,6 +8496,13 @@ function renderStats(params) {
 
   var cancelLoader = deferLoader(el, 'Loading stats...');
 
+  // Pre-fetch TDP sessions in parallel with the stats load when returning
+  // from a session-detail view. Avoids the "stats paints -> modal opens with
+  // stub -> stub fills" cascade — the modal can paint fully on first show.
+  var tdpPrefetch = openTdp
+    ? api('/api/stats/targets/' + encodeURIComponent(openTdp) + '/sessions').catch(function() { return null; })
+    : null;
+
   Promise.all([
     api('/api/stats/targets'),
     api('/api/stats/summary'),
@@ -8549,7 +8570,13 @@ function renderStats(params) {
       // Find the latest session for this target so the TDP hero thumb populates.
       var ttarget = (targets || []).find(function(t) { return t.target === openTdp; });
       var latestSid = ttarget ? ttarget.latestSessionId : null;
-      requestAnimationFrame(function() { openTargetDetail(openTdp, latestSid); });
+      // Wait for prefetch so the modal paints in one shot (no stub flash).
+      // If prefetch failed/null, openTargetDetail falls back to cold-fetch path.
+      tdpPrefetch.then(function(tdpData) {
+        requestAnimationFrame(function() {
+          openTargetDetail(openTdp, latestSid, tdpData || undefined);
+        });
+      });
     } else if (openPdp) {
       requestAnimationFrame(function() { openProjectDetail(openPdp, openPname); });
     }
