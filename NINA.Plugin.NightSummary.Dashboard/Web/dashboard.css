@@ -5958,10 +5958,13 @@ html.light .tdp-project-action-btn:hover {
   padding: 20px;
 }
 
-/* Header strip — quick-glance key stats inline, styled as a single elevated card. */
+/* Header strip — quick-glance key stats inline, styled as a single elevated card.
+   Centered so the strip reads symmetrically regardless of whether a status
+   pill is present (non-TS users won't see one). */
 .m-strip {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 8px 22px;
   padding: 10px 14px;
   background: linear-gradient(to bottom, rgba(255,255,255,0.04) 0%, transparent 60%), var(--surface);
