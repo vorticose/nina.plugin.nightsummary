@@ -269,6 +269,17 @@ function api(path) {
   });
 }
 
+// Defer a "Loading…" placeholder so cache-hot navigations don't flash one.
+// Call before kicking off the fetch and invoke the returned cancel fn once
+// data arrives (before paint). If 200ms elapses without cancel, the
+// placeholder paints so the user still sees progress on slow loads.
+function deferLoader(el, msg) {
+  var timer = setTimeout(function() {
+    el.innerHTML = '<div class="loading">' + msg + '</div>';
+  }, 200);
+  return function cancelLoader() { clearTimeout(timer); };
+}
+
 // ── Theme ──────────────────────────────────────────────────────────────────
 
 function initTheme() {
@@ -3986,12 +3997,14 @@ function renderSessionList(params) {
     return;
   }
 
-  el.innerHTML = '<div class="loading">Loading sessions...</div>';
+  var cancelLoader = deferLoader(el, 'Loading sessions...');
   api('/api/sessions').then(function(data) {
+    cancelLoader();
     sessionsCache = data;
     logInfo('Sessions loaded:', data.length);
     finish();
   }).catch(function(err) {
+    cancelLoader();
     logError('Failed to load sessions:', err.message);
     el.innerHTML = '<div class="error">Failed to load sessions: ' + esc(err.message) + '</div>';
   });
@@ -6596,7 +6609,7 @@ function renderSessionDetail(sessionId, params) {
   var el = document.getElementById('content');
   var sub = document.getElementById('page-subtitle');
 
-  el.innerHTML = '<div class="loading">Loading report...</div>';
+  var cancelLoader = deferLoader(el, 'Loading report...');
 
   // Context-aware back-button: TDP/PDP origin returns to that modal.
   var from   = params && params.get ? params.get('from')   : null;
@@ -6619,6 +6632,7 @@ function renderSessionDetail(sessionId, params) {
     api('/api/sessions/' + sessionId + '/settings'),
     cachedFilters ? Promise.resolve({ filters: cachedFilters }) : api('/api/filters')
   ]).then(function(results) {
+    cancelLoader();
     var detail = results[0];
     currentSettings = results[1];
     cachedFilters = results[2].filters || [];
@@ -6687,6 +6701,7 @@ function renderSessionDetail(sessionId, params) {
 
     bindDetailEvents(sessionId);
   }).catch(function(err) {
+    cancelLoader();
     logError('Failed to load session detail:', sessionId, err.message);
     el.innerHTML = '<a class="back-btn" href="' + backHref + '">\u2190 ' + esc(backLabel) + '</a>' +
       '<div class="error">Failed to load session: ' + esc(err.message) + '</div>';
@@ -8465,7 +8480,7 @@ function renderStats(params) {
   var openPdp = params && params.get ? params.get('openPdp') : null;
   var openPname = params && params.get ? params.get('pname')   : null;
 
-  el.innerHTML = '<div class="loading">Loading stats...</div>';
+  var cancelLoader = deferLoader(el, 'Loading stats...');
 
   Promise.all([
     api('/api/stats/targets'),
@@ -8473,6 +8488,7 @@ function renderStats(params) {
     api('/api/settings'),
     api('/api/sessions')
   ]).then(function(results) {
+    cancelLoader();
     var targetData = results[0];
     var summary    = results[1];
     var settings   = results[2];
@@ -8538,6 +8554,7 @@ function renderStats(params) {
       requestAnimationFrame(function() { openProjectDetail(openPdp, openPname); });
     }
   }).catch(function(err) {
+    cancelLoader();
     logError('Failed to load stats:', err.message);
     el.innerHTML = '<div class="error">Failed to load stats: ' + esc(err.message) + '</div>';
   });
@@ -8551,7 +8568,7 @@ function renderStats(params) {
 
 function renderFramesGallery(view) {
   var el = document.getElementById('content');
-  el.innerHTML = '<div class="loading">Loading frames...</div>';
+  var cancelLoader = deferLoader(el, 'Loading frames...');
 
   var url, title, backHref;
   if (view.kind === 'session') {
@@ -8569,6 +8586,7 @@ function renderFramesGallery(view) {
   }
 
   api(url).then(function(rows) {
+    cancelLoader();
     // For session-view we got the full /images dump including darks/flats.
     // Filter to LIGHT frames that have a thumb.
     var frames = (rows || []).filter(function(r) {
@@ -8695,6 +8713,7 @@ function renderFramesGallery(view) {
     el.innerHTML = html;
     bindFramesGallery(frames);
   }).catch(function(err) {
+    cancelLoader();
     logError('Failed to load frames:', err.message);
     el.innerHTML =
       '<a class="back-btn" href="' + backHref + '">← Back</a>' +
