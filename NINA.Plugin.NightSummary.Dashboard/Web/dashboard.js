@@ -9178,7 +9178,13 @@ function bindFramesGallery(frames) {
   lb.querySelector('.frames-lightbox-close').addEventListener('click', close);
   lb.querySelector('.frames-lightbox-prev').addEventListener('click', function() { navigate(-1); });
   lb.querySelector('.frames-lightbox-next').addEventListener('click', function() { navigate(+1); });
-  lb.addEventListener('click', function(e) { if (e.target === lb) close(); });
+  // Close when click lands on the dark backdrop OR on the stage's empty
+  // areas (gap above/below image and panel). Stage on small viewports is
+  // nearly fullscreen, so requiring the click to land on the dark border
+  // makes outside-click unusable on mobile.
+  lb.addEventListener('click', function(e) {
+    if (e.target === lb || e.target.classList.contains('frames-lightbox-stage')) close();
+  });
 
   // Touch swipe — replaces prev/next buttons on mobile (buttons display:none'd
   // via CSS @media). 50px horizontal threshold; vertical-dominant gestures are
