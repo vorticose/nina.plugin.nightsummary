@@ -68,8 +68,6 @@ namespace NINA.Plugin.NightSummary.Reporting {
             int svgHeight = legendTop + legendHeight + 10;
 
             var sb = new StringBuilder();
-            sb.AppendLine("<h2>Session Timeline</h2>");
-            sb.AppendLine("<div class='timeline-container' style='position:relative;'>");
 
             // Floating tooltip div — positioned by JS on mousemove
             bool light = SettingsManager.Instance.Current.ReportLightMode;
@@ -79,9 +77,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
             string idleBg = light ? "#d0d4da" : "#0f0f23";
             string idleStripe = light ? "#b04040" : "#7a1a1a";
             string tickColor = light ? "#888" : "#555";
-            string labelColor = light ? "#666" : "#888";
+            string labelColor = light ? "#666" : "#aaaacc";
             string legendText = light ? "#1a1a2e" : "#e0e0e0";
-            sb.AppendLine($"<div id='ns-tooltip' style='display:none;position:fixed;background:{tooltipBg};color:{tooltipFg};padding:6px 10px;border-radius:6px;font-size:12px;font-family:Arial,sans-serif;pointer-events:none;box-shadow:0 2px 8px {tooltipShadow};z-index:9999;white-space:nowrap;'></div>");
+            sb.AppendLine($"<div class='ns-tl-tip' style='display:none;position:fixed;background:{tooltipBg};color:{tooltipFg};padding:6px 10px;border-radius:6px;font-size:12px;font-family:Arial,sans-serif;pointer-events:none;box-shadow:0 2px 8px {tooltipShadow};z-index:9999;white-space:nowrap;'></div>");
 
             sb.AppendLine($"<svg viewBox='0 0 {svgWidth} {svgHeight}' xmlns='http://www.w3.org/2000/svg' style='width:100%;font-family:Arial,sans-serif;font-size:11px;'>");
 
@@ -212,7 +210,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             int ly = legendTop;
 
             // Targets section
-            sb.AppendLine($"<text x='{leftPad}' y='{ly + 12}' fill='#aaa' font-weight='bold'>Targets</text>");
+            sb.AppendLine($"<text x='{leftPad}' y='{ly + 12}' fill='{legendText}' font-weight='bold'>Targets</text>");
             ly += 18;
             foreach (var target in targets) {
                 sb.AppendLine($"<rect x='{leftPad}' y='{ly}' width='14' height='12' fill='{target.Color}' rx='2'/>");
@@ -223,7 +221,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             // Events section
             if (eventTypesPresent.Any()) {
                 ly += 6;
-                sb.AppendLine($"<text x='{leftPad}' y='{ly + 12}' fill='#aaa' font-weight='bold'>Events</text>");
+                sb.AppendLine($"<text x='{leftPad}' y='{ly + 12}' fill='{legendText}' font-weight='bold'>Events</text>");
                 ly += 18;
                 foreach (var evtType in eventTypesPresent) {
                     string c = evtType switch {
@@ -263,10 +261,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             sb.AppendLine($@"<script>
 (function() {{
-  var tip = document.getElementById('ns-tooltip');
+  var root = document.currentScript.parentElement;
+  var tip = root.querySelector('.ns-tl-tip');
   if (!tip) return;
   var markers = {jsMarkers};
-  document.querySelectorAll('[data-tip]').forEach(function(el) {{
+  root.querySelectorAll('[data-tip]').forEach(function(el) {{
     el.addEventListener('mousemove', function(e) {{
       tip.textContent = el.getAttribute('data-tip');
       tip.style.display = 'block';
@@ -277,11 +276,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
       tip.style.display = 'none';
     }});
   }});
-  var container = document.querySelector('.timeline-container');
-  if (container) {{
-    var svg = container.querySelector('svg');
-    container.addEventListener('click', function(e) {{
-      if (!svg || markers.length === 0) return;
+  var svg = root.querySelector('svg');
+  if (svg) {{
+    root.addEventListener('click', function(e) {{
+      if (markers.length === 0) return;
       var rect = svg.getBoundingClientRect();
       var svgW = {svgWidth};
       var scaleX = rect.width / svgW;
@@ -311,7 +309,6 @@ namespace NINA.Plugin.NightSummary.Reporting {
 }})();
 </script>");
 
-            sb.AppendLine("</div>");
             return sb.ToString();
         }
     }

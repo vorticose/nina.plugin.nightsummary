@@ -1,6 +1,64 @@
 # Night Summary — Changelog
 
 
+## v3.0.0
+
+**New features**
+- Live Dashboard — built-in local web server accessible from any browser on your network, including phones and tablets. Browse your full session history with thumbnails, stat boxes, and altitude charts, and open any past report without regenerating it. View lifetime statistics per target or project. Use a VPN for remote access when viewing away from your home network or if your imaging machine is at an observatory. Enable in Options → Night Summary Settings → Local Dashboard.
+- Per-target chip selector on metric charts — a target chip row is now stacked above the per-filter chip row, letting you isolate a single target's data points or combine target and filter to focus on one target/filter combination. Both rows can be independently disabled in settings.
+
+**Bug fixes**
+- Fixed overhead analysis incorrectly showing 100% accounted in sessions that ended with an aborted exposure.
+- Fixed Target Scheduler progress bars showing duplicate or phantom exposure plans when the same target exists in multiple TS projects. Each project now renders as a separate labeled section.
+
+
+## v2.11.1
+
+**Bug fixes**
+- Reverted graceful session cleanup logic added in v2.11.0 which resulted in some sessions being ended prematurely by sequence interrupt triggers such as "When Becomes Unsafe". Sessions are now only ended by running the Night Summary End sequence instruction. If the End instruction never ran, the session data is preserved — use "Resend Previous Session" to generate a report. Reports from those sessions include a notice that session duration is approximate and overhead analysis is unavailable.
+
+
+## v2.11.0
+
+**New features**
+- Per-filter selector on metric charts — click a filter chip to show one filter at a time, with axes auto-rescaling so trends are visible at full resolution.
+- Session Timeline and Tonight's Preview can now show a multi-target altitude chart instead of a flat bar timeline — each target's altitude curve is plotted over its imaging window with color-coded shading per block. Toggle between Altitude and Simple views from the chip bar above the chart.
+- Rejected frame tracking — frames rejected by Target Scheduler grading or manually thumbed-down in NINA are counted in the session overview and shown in a new Rejected column in the per-target filter table, with a hover tooltip breaking down reject reasons.
+
+**Improvements**
+- Expanded metric chart options from 20 to 35 — including Sky Temperature, Sky Brightness, Wind Direction, Wind Gust, Mean ADU, Std Deviation, MAD, Exposure, Gain, Offset, Cooler Setpoint, Rotator Position, and more.
+- Reorganized the plugin options page — high-frequency actions (Preview Report, Resend Previous Session) at the top, delivery channels and equipment profile behind collapsible sections, and metric dropdowns sorted by usefulness.
+- Multiple improvements and fixes to the Overhead Analysis log parser resulting in more accurate numbers across a wider range of real-world sessions (meridian flips, guide-star retries, weather interruptions).
+
+**Bug fixes**
+- Graceful session cleanup when the sequence is stopped manually — if NINA ends the sequence before the Night Summary End instruction runs, the session is now finalized automatically. Use "Resend Previous Session" to get a report from the saved data.
+- Fixed event marker hover tooltips on metric charts not responding.
+- Fixed equipment section showing only a subset of connected equipment — equipment is now captured when the first image is saved, not at session start, so all devices are connected before the snapshot is taken.
+
+
+## v2.10.0
+
+**New features**
+- Live Stack integration — captures live-stacked thumbnails from the Live Stack plugin and displays them in the report per target/filter, with broadband/narrowband grouping and composite support
+- Yield and Imaging Overhead Analysis — parses NINA logs to show a per-category timing breakdown with stacked bar chart and detailed table. Tracks all major NINA sequence items (camera download, filter changes, dithering, autofocus, plate solves, image saves, centering, slew, guiding, dome operations, flat panel, camera temp, mount operations, and more) plus trigger-based meridian flips detected from NINA internal logs. Uses interval merging to accurately handle overlapping concurrent events. Automatically excludes roof-closed (unsafe) periods so safety events don't inflate overhead numbers. Exposures aborted by quality triggers (e.g. guiding RMS threshold) appear as a "Skipped Exposure" category so you can see time lost to poor conditions.
+- Equipment profile section in report header — shows all 12 NINA equipment types (Camera, Telescope, Mount, Filter Wheel, Focuser, Rotator, Guider, Dome, Flat Panel, Safety Monitor, Weather, Switch) with per-field visibility toggles and user-overridable display names
+- NINA filename pattern variables in report save path — use the same path variables as NINA's file save patterns, with clickable insertion buttons
+- Customizable x-axis on metric charts — choose Time, Frame Index, or any metric (Altitude, Temperature, etc.) as the x-axis, independently configurable per chart
+- Configurable event markers on metric charts — vertical dashed lines at AutoFocus, Meridian Flip, and Safe/Unsafe events with per-type toggle settings and hover tooltips (shown when x-axis is Time)
+- Median ADU metric — image median ADU value is now recorded per image and available as a primary, secondary, or x-axis metric in the metric chart. Useful for tracking sky background brightness changes throughout a session.
+- Sky position angle displayed in target headers and FOV overlay on sky thumbnails
+
+**Improvements**
+- Filter name now shown in metric chart data point hover tooltips
+- Tonight's Preview now shown even when session has zero images (weather-interrupted sessions)
+- Session history now returns all previous sessions instead of a capped limit
+- Plugin version and NINA version shown in report footer
+- Settings now persist to a stable JSON file that survives NINA updates
+- Per-filter exposure breakdown in overview now uses FormatDuration for consistent time formatting
+- Active sessions show "In Progress" with duration so far within the preview window instead of negative numbers
+- Updated Gmail app password setup instructions with direct link to Google app passwords page
+
+
 ## v2.9.0
 
 **New features**

@@ -181,6 +181,24 @@ namespace NINA.Plugin.NightSummary.Tests {
             Assert.Equal(2, result.Count);
         }
 
+        [Fact]
+        public void ParseClassifications_EqualsSignInValue_KeepsEverythingAfterFirstEquals() {
+            // Pre-fix the splitter dropped this entry because the 3-part split failed
+            // the parts.Length==2 guard. The value side should be treated as opaque.
+            var result = FilterHelper.ParseClassifications("Foo=Bar=B,Ha=N");
+            Assert.Equal(2, result.Count);
+            Assert.Equal("Bar=B", result["Foo"]);
+            Assert.Equal("N", result["Ha"]);
+        }
+
+        [Fact]
+        public void ParseClassifications_TrailingEquals_LeavesEmptyValue() {
+            var result = FilterHelper.ParseClassifications("Ha=,Lum=B");
+            Assert.Equal(2, result.Count);
+            Assert.Equal("", result["Ha"]);
+            Assert.Equal("B", result["Lum"]);
+        }
+
         // ── SortKey ───────────────────────────────────────────────────────────
 
         [Fact]

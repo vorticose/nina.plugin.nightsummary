@@ -10,7 +10,28 @@
     <ApplicationIcon>NINAPluginTemplate.ico</ApplicationIcon>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+    <!-- Major.Minor.Patch set here; build number auto-computed from git commit count -->
+    <VersionPrefix>3.0.0</VersionPrefix>
   </PropertyGroup>
+
+  <!-- Auto-compute build number from git commit count and generate version file -->
+  <Target Name="SetGitBuildNumber" BeforeTargets="BeforeBuild">
+    <Exec Command="git rev-list --count HEAD" ConsoleToMSBuild="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="GitCommitCount" />
+    </Exec>
+    <PropertyGroup>
+      <BuildNumber>$(GitCommitCount)</BuildNumber>
+      <FullVersion>$(VersionPrefix).0</FullVersion>
+    </PropertyGroup>
+    <Message Importance="high" Text="NightSummary: Building version $(FullVersion)" />
+    <WriteLinesToFile
+      File="$(IntermediateOutputPath)AssemblyVersion.g.cs"
+      Lines="[assembly: System.Reflection.AssemblyVersion(&quot;$(FullVersion)&quot;)]&#10;[assembly: System.Reflection.AssemblyFileVersion(&quot;$(FullVersion)&quot;)]"
+      Overwrite="true" />
+    <ItemGroup>
+      <Compile Include="$(IntermediateOutputPath)AssemblyVersion.g.cs" />
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3296.44" />
@@ -20,7 +41,6 @@
 
   <ItemGroup>
     <Compile Remove="MyPluginProperties\AssemblyInfo.cs" />
-    <Compile Remove="Server\**" />
   </ItemGroup>
 
   <ItemGroup>
@@ -28,9 +48,16 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- plugin-icon.png stays embedded in the plugin assembly because ReportGenerator embeds it
+         into HTML reports. The dashboard classlib also embeds its own copy for the favicon
+         endpoint (separate assembly, separate resource lookup). -->
     <EmbeddedResource Include="..\assets\plugin-icon.png">
       <LogicalName>plugin-icon.png</LogicalName>
     </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NINA.Plugin.NightSummary.Dashboard\NINA.Plugin.NightSummary.Dashboard.csproj" />
   </ItemGroup>
 
   <ItemGroup>

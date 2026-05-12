@@ -55,13 +55,17 @@ namespace NINA.Plugin.NightSummary.Data {
         public double? PositionAngle   { get; set; }  // sky position angle from plate solve (degrees E of N)
 
         // Extended weather data; null = weather device not connected
-        public double? Humidity { get; set; }   // relative humidity %
-        public double? DewPoint { get; set; }   // dew point °C
-        public double? WindSpeed { get; set; }  // wind speed m/s
-        public double? Pressure  { get; set; }  // atmospheric pressure hPa
+        public double? Humidity       { get; set; }  // relative humidity %
+        public double? DewPoint       { get; set; }  // dew point °C
+        public double? WindSpeed      { get; set; }  // wind speed m/s
+        public double? Pressure       { get; set; }  // atmospheric pressure hPa
+        public double? SkyBrightness  { get; set; }  // sky brightness (Lux) from ASCOM ObservingConditions
+        public double? SkyTemperature { get; set; }  // infrared sky temperature °C (cloud detection)
+        public double? WindDirection  { get; set; }  // wind direction degrees (0-360)
+        public double? WindGust       { get; set; }  // peak 3-second wind gust m/s
 
-        // Target Scheduler grading; -1 = no TS match or TS not installed
-        public int    GradingStatus { get; set; }
+        // Target Scheduler grading; -1 = no TS match or TS not installed, 0 = TS Pending, 1 = TS Accepted, 2 = TS Rejected
+        public int    GradingStatus { get; set; } = -1;
         public string RejectReason  { get; set; }
 
         // Frame type — "LIGHT", "DARK", "FLAT", "BIAS", "SNAPSHOT"; empty = unknown (pre-v2.7 data)
@@ -84,5 +88,21 @@ namespace NINA.Plugin.NightSummary.Data {
 
         // ASCOM seeing monitor; null = device not connected
         public double? SeeingFWHM { get; set; }    // star FWHM arcseconds from ASCOM seeing monitor
+
+        // Image statistics from NINA's IImageStatistics; null = not available (pre-v2.10 data)
+        public double? StatMedian    { get; set; }  // median ADU value
+        public double? StatMean      { get; set; }  // mean ADU value
+        public double? StatStDev     { get; set; }  // standard deviation
+        public double? StatMAD       { get; set; }  // median absolute deviation
+        public int?    StatMin       { get; set; }  // minimum pixel value
+        public int?    StatMax       { get; set; }  // maximum pixel value
+        public int?    StatBitDepth  { get; set; }  // image bit depth
+
+        // Raw image thumbnails — bitmask: 1=small (192px), 2=medium (800px), 3=both,
+        // null/0=none. Path is derivable from (SessionId, Id, version) — see Thumbnails.GetThumbnailPath.
+        public int?    ThumbnailVersion { get; set; }
+
+        // Original FITS path on disk; null on rows captured before this column existed.
+        public string  FilePath         { get; set; }
     }
 }

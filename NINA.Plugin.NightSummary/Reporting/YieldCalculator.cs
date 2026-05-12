@@ -29,26 +29,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var lastImage  = images.Any() ? images.Max(i => i.Timestamp) : sessionEnd;
             var windowSec  = (lastImage - firstImage).TotalSeconds;
 
-            var roofEvents = (events ?? new List<SessionEvent>())
-                .Where(e => e.EventType == "RoofClosed" || e.EventType == "RoofOpen")
-                .OrderBy(e => e.Timestamp)
-                .ToList();
-
-            double roofClosedSec = 0;
-            DateTime? closedAt = null;
-            foreach (var ev in roofEvents) {
-                if (ev.EventType == "RoofClosed") {
-                    closedAt = ev.Timestamp;
-                } else if (ev.EventType == "RoofOpen" && closedAt.HasValue) {
-                    var overlapStart = closedAt.Value < firstImage ? firstImage : closedAt.Value;
-                    var overlapEnd   = ev.Timestamp   > lastImage  ? lastImage  : ev.Timestamp;
-                    if (overlapEnd > overlapStart)
-                        roofClosedSec += (overlapEnd - overlapStart).TotalSeconds;
-                    closedAt = null;
-                }
-            }
-            if (closedAt.HasValue && closedAt.Value < lastImage)
-                roofClosedSec += (lastImage - closedAt.Value).TotalSeconds;
+            var roofIntervals = RoofClosedHelper.GetIntervals(events, firstImage, lastImage);
+            var roofClosedSec = RoofClosedHelper.TotalSeconds(roofIntervals);
 
             var effectiveWindowSec = windowSec - roofClosedSec;
             var totalExposureSec   = images.Sum(i => i.ExposureDuration);
@@ -58,7 +40,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             return new YieldResult {
                 YieldPct = yieldPct,
-                HasSafetyMonitor = roofEvents.Any()
+                HasSafetyMonitor = events?.Any(e => e.EventType == "RoofClosed" || e.EventType == "RoofOpen") ?? false
             };
         }
     }

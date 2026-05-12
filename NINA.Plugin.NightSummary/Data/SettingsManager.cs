@@ -51,6 +51,10 @@ namespace NINA.Plugin.NightSummary.Data {
                     var json   = File.ReadAllText(_path);
                     var loaded = JsonSerializer.Deserialize<NightSummarySettings>(json);
                     if (loaded != null) {
+                        // Apply defaults for new settings not present in the saved JSON.
+                        // System.Text.Json leaves missing bool properties as false, not the
+                        // class default. Check for fields added after initial release.
+                        ApplyNewFieldDefaults(loaded, json);
                         _settings = loaded;
                         return _settings;
                     }
@@ -68,6 +72,34 @@ namespace NINA.Plugin.NightSummary.Data {
 
             _settings = new NightSummarySettings();
             return _settings;
+        }
+
+        /// <summary>
+        /// Applies default values for settings fields that were added after the initial release.
+        /// When System.Text.Json deserializes a JSON file that's missing a bool property, it
+        /// defaults to false — not the class's field initializer. This method checks if the JSON
+        /// is missing each new field and applies the intended default.
+        /// </summary>
+        private static void ApplyNewFieldDefaults(NightSummarySettings settings, string json) {
+            var defaults = new NightSummarySettings();
+
+            // v2.11.0 additions
+            if (!json.Contains("ShowChartTargetChips"))
+                settings.ShowChartTargetChips = defaults.ShowChartTargetChips;
+            if (!json.Contains("ShowChartFilterChips"))
+                settings.ShowChartFilterChips = defaults.ShowChartFilterChips;
+
+            // v2.10.0 additions
+            if (!json.Contains("ShowOverheadBreakdown"))
+                settings.ShowOverheadBreakdown = defaults.ShowOverheadBreakdown;
+            if (!json.Contains("ShowLiveStackImages"))
+                settings.ShowLiveStackImages = defaults.ShowLiveStackImages;
+            if (!json.Contains("ShowEquipmentProfile"))
+                settings.ShowEquipmentProfile = defaults.ShowEquipmentProfile;
+            if (!json.Contains("EquipmentVisibleFields"))
+                settings.EquipmentVisibleFields = defaults.EquipmentVisibleFields;
+            if (!json.Contains("SaveReportFilePattern"))
+                settings.SaveReportFilePattern = defaults.SaveReportFilePattern;
         }
 
         public void Save() {
@@ -100,6 +132,9 @@ namespace NINA.Plugin.NightSummary.Data {
                     PushoverUserKey        = l.PushoverUserKey        ?? "",
                     DiscordEnabled         = l.DiscordEnabled,
                     DiscordWebhookUrl      = l.DiscordWebhookUrl      ?? "",
+                    DashboardEnabled       = l.DashboardEnabled,
+                    DashboardUrl           = l.DashboardUrl           ?? "",
+                    DashboardApiKey        = l.DashboardApiKey        ?? "",
                     ReportDetailLevel      = l.ReportDetailLevel,
                     ReportLightMode        = l.ReportLightMode,
                     ExpandSectionsDefault  = l.ExpandSectionsDefault,

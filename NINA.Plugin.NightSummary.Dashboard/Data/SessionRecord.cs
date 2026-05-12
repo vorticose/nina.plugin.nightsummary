@@ -51,7 +51,25 @@ namespace NINA.Plugin.NightSummary.Data {
         public string WeatherName       { get; set; }
         public string SwitchName        { get; set; }
 
-        // Display string for session picker dropdown
-        public string DisplayLabel => $"{SessionStart:yyyy-MM-dd  HH:mm}  —  {ProfileName}";
+        // Populated only by GetRecentSessions / GetSessionsByDateRange for dropdown display.
+        // Zero everywhere else (reporting pipeline, GetAllSessions, GetLatestSession, etc.).
+        public int    ImageCount         { get; set; }
+        public int    TargetCount        { get; set; }
+        public double IntegrationSeconds { get; set; }
+
+        // Display string for session picker dropdown.
+        // Always includes counts so zero-image sessions render as "0 targets, 0 images, 0m"
+        // rather than a truncated label that breaks dropdown alignment.
+        public string DisplayLabel {
+            get {
+                var baseLabel = $"{SessionStart:yyyy-MM-dd  HH:mm}  —  {ProfileName}";
+                var hours   = (int)(IntegrationSeconds / 3600);
+                var minutes = (int)((IntegrationSeconds % 3600) / 60);
+                var duration = hours > 0 ? $"{hours}h{minutes:D2}m" : $"{minutes}m";
+                var targetWord = TargetCount == 1 ? "target" : "targets";
+                var imageWord  = ImageCount  == 1 ? "image"  : "images";
+                return $"{baseLabel}  —  {TargetCount} {targetWord}, {ImageCount} {imageWord}, {duration}";
+            }
+        }
     }
 }

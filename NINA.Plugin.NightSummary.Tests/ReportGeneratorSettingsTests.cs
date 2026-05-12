@@ -213,8 +213,9 @@ namespace NINA.Plugin.NightSummary.Tests {
             SettingsManager.Instance.Current.AdditionalChartConfigs = "";
             var data   = TestDataFactory.MakeReportData(imageCount: 10);
             var report = await _generator.GenerateHtmlReport(data);
-            // Only one chart — "HFR Vs. Time" should appear exactly once as an h2
-            var count = CountOccurrences(report, "HFR Vs. Time");
+            // Only one chart section. Match the <h2> header exactly to avoid
+            // false positives from SVG text content or CSS class names.
+            var count = CountOccurrences(report, "<h2>HFR Vs. Time</h2>");
             Assert.Equal(1, count);
         }
 

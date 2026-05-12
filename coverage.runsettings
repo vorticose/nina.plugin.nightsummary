@@ -15,6 +15,8 @@
             Also exclude Session/* integration classes: they depend on NINA mediator
             interfaces (IImageSaveMediator, ISafetyMonitorMediator, etc.) that cannot
             be injected in unit tests — same rationale as NightSummaryPlugin.cs.
+            DashboardServer is HTTP server infrastructure (requires HttpListener, live
+            SQLite connections, file system) — same exclusion rationale as SessionService.
           -->
           <ExcludeByFile>
             **/NightSummaryPlugin.cs,
@@ -24,7 +26,8 @@
             **/AssemblyInfo.cs,
             **/Session/SessionService.cs,
             **/Session/SessionCollector.cs,
-            **/Session/SessionEventCollector.cs
+            **/Session/SessionEventCollector.cs,
+            **/Server/DashboardServer.cs
           </ExcludeByFile>
           <ExcludeByAttribute>GeneratedCodeAttribute,CompilerGeneratedAttribute</ExcludeByAttribute>
           <SingleHit>false</SingleHit>
