@@ -1036,6 +1036,9 @@ namespace NINA.Plugin.NightSummary.Server {
                 sessionId = sess.SessionId,
                 profileName = sess.ProfileName,
                 timestamp = img.Timestamp.ToString("o"),
+                // Lets the lightbox suppress the "Not graded" pill for non-TS users —
+                // an ungraded label only makes sense when grading is even a concept.
+                tsAvailable = tsAvailable,
 
                 // Capture
                 targetName = img.TargetName,

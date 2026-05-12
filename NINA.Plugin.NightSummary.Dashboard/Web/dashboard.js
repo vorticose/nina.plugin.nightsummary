@@ -8927,7 +8927,9 @@ function bindFramesGallery(frames) {
     // Status pill — color-keyed by accept/reject, prefixed with the source:
     //   "TS"     → from Target Scheduler grading (gradingStatus 1/2)
     //   "Manual" → from NINA's side (accepted=false, no TS row)
-    // -1/null with accepted=true = no grading data anywhere → "Not graded".
+    // -1/null with accepted=true = no grading data anywhere → "Not graded"
+    // when TS is available, but suppressed entirely for non-TS users since
+    // an ungraded label is meaningless without grading as a concept.
     var status = '';
     if (m.gradingStatus === 2) {
       status = '<span class="m-status m-status-rejected">TS Rejected</span>';
@@ -8939,7 +8941,7 @@ function bindFramesGallery(frames) {
       status = '<span class="m-status m-status-accepted">TS Accepted</span>';
     } else if (m.gradingStatus === 0) {
       status = '<span class="m-status m-status-pending">TS Pending</span>';
-    } else {
+    } else if (m.tsAvailable !== false) {
       status = '<span class="m-status m-status-ungraded">Not graded</span>';
     }
 
