@@ -167,8 +167,10 @@ header.scrolled {
   align-items: center;
   gap: 10px;
   font-size: 10px;
-  color: var(--dim);
-  opacity: 0.6;
+  /* --dim + opacity 0.6 stacked to near-invisible. Step up to text-tertiary
+     and drop the opacity multiplier — still clearly secondary chrome but
+     readable at a glance. */
+  color: var(--text-tertiary);
 }
 .header-meta-links { display: flex; gap: 6px; }
 .header-meta-btn {
@@ -176,14 +178,14 @@ header.scrolled {
   align-items: center;
   padding: 3px 9px;
   border-radius: 20px;
-  border: 1px solid rgba(230,232,240,0.15);
-  color: var(--dim);
+  border: 1px solid rgba(230,232,240,0.22);
+  color: var(--text-tertiary);
   font-size: 10px;
   text-decoration: none;
   transition: border-color var(--t-fast), color var(--t-fast);
 }
 .header-meta-btn:hover {
-  border-color: rgba(230,232,240,0.3);
+  border-color: rgba(230,232,240,0.4);
   color: var(--text-secondary);
 }
 
