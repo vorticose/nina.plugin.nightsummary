@@ -1959,8 +1959,11 @@ function openTargetDetail(targetName, latestSessionId, preloadedData) {
 
   // Preloaded path: paint full panel immediately. Used by back-navigation
   // from session detail where the caller pre-fetched the sessions list in
-  // parallel with the stats page load.
+  // parallel with the stats page load. Skip fade-in so the modal is fully
+  // opaque on the same paint cycle as Stats — otherwise the user sees a
+  // 180ms flash of Stats underneath the still-transparent backdrop.
   if (preloadedData) {
+    backdrop.classList.add('tdp-no-anim');
     paintTargetDetailPanel(backdrop, preloadedData, targetName, latestSessionId, ts);
     return;
   }

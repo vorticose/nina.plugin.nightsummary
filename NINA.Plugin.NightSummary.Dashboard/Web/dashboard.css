@@ -4134,6 +4134,10 @@ html.light .tdp-project-action-btn:hover {
 @keyframes tdp-fade-in { from { opacity: 0; } to { opacity: 1; } }
 .tdp-backdrop.tdp-hiding { animation: tdp-fade-out 160ms forwards; }
 @keyframes tdp-fade-out { from { opacity: 1; } to { opacity: 0; } }
+/* Skip fade-in when the modal is restored synchronously alongside the
+   Stats page (e.g. back-nav from session detail). The fade was making the
+   modal invisible for 180ms while Stats was visible underneath. */
+.tdp-backdrop.tdp-no-anim { animation: none; }
 
 .tdp-modal {
   background: var(--surface);
