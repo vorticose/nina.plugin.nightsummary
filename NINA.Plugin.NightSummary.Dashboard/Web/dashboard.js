@@ -234,6 +234,23 @@ function resolveFilterType(name) {
   return null;                                                              // 4. unresolved
 }
 
+// Canonical imaging stack order — L, R, G, B then narrowband Ha, Sii, Oiii,
+// other narrowband. Unresolved filters fall to the end, alphabetical.
+var FILTER_STACK_ORDER = ['L', 'R', 'G', 'B', 'H', 'S', 'O', 'N'];
+
+// Compare two filter names by stack order. Use anywhere filters need to be
+// listed in a consistent imaging-meaningful order (frames gallery, charts,
+// per-filter tables, etc).
+function compareFilterStackOrder(a, b) {
+  var ta = resolveFilterType(a), tb = resolveFilterType(b);
+  var ia = ta ? FILTER_STACK_ORDER.indexOf(ta) : -1;
+  var ib = tb ? FILTER_STACK_ORDER.indexOf(tb) : -1;
+  if (ia < 0) ia = FILTER_STACK_ORDER.length;
+  if (ib < 0) ib = FILTER_STACK_ORDER.length;
+  if (ia !== ib) return ia - ib;
+  return (a || '').localeCompare(b || '');
+}
+
 function getFilterColor(name) {
   var type = resolveFilterType(name);
   return type ? FILTER_TYPE_COLORS[type] : null;
@@ -8661,12 +8678,13 @@ function renderFramesGallery(view) {
       return;
     }
 
-    // Sort: target → filter → exposure → timestamp. Lightbox prev/next walks
-    // this same order so navigation flows naturally across groups.
+    // Sort: target → filter (stack order L,R,G,B,H,S,O,N) → exposure → timestamp.
+    // Lightbox prev/next walks this same order so navigation flows naturally
+    // across groups.
     frames.sort(function(a, b) {
       var t = (a.targetName || '').localeCompare(b.targetName || '');
       if (t) return t;
-      var f = (a.filter || '').localeCompare(b.filter || '');
+      var f = compareFilterStackOrder(a.filter, b.filter);
       if (f) return f;
       var e = (a.exposureDuration || 0) - (b.exposureDuration || 0);
       if (e) return e;
