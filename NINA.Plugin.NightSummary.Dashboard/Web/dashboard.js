@@ -8731,15 +8731,22 @@ function renderFramesGallery(view) {
       var sid2 = ff.sessionId || view.id;
       var src = '/api/frames/' + ff.id + '/thumb?size=sm';
       var rejected = (ff.gradingStatus === 2) || (ff.accepted === false);
-      var caption = ff.filter || '';
-      if (ff.targetName && viewKind !== 'session') caption = (ff.targetName + ' • ' + caption);
+      // Tile caption: filter is already shown in the subgroup header above,
+      // and target is shown in the group header — only the project view
+      // mixes multiple targets per subgroup, so only there is a per-tile
+      // target label useful. Other views render no meta strip.
+      var meta = (viewKind === 'project' && ff.targetName) ? ff.targetName : '';
+      // data-caption still includes filter + timestamp so lightbox prev/next
+      // can label the slide meaningfully (independent of the visible tile).
+      var dataCaption = (ff.filter || '');
+      if (ff.targetName && viewKind !== 'session') dataCaption = ff.targetName + ' • ' + dataCaption;
       var tsLabel = ff.timestamp ? fmtDate(ff.timestamp) : '';
       return (
         '<div class="frames-thumb' + (rejected ? ' rejected' : '') + '"' +
              ' data-id="' + ff.id + '" data-sid="' + esc(sid2) + '"' +
-             ' data-caption="' + esc(caption + (tsLabel ? ' • ' + tsLabel : '')) + '">' +
+             ' data-caption="' + esc(dataCaption + (tsLabel ? ' • ' + tsLabel : '')) + '">' +
           '<img loading="lazy" src="' + src + '" alt="" />' +
-          '<div class="frames-thumb-meta">' + esc(caption) + '</div>' +
+          (meta ? '<div class="frames-thumb-meta">' + esc(meta) + '</div>' : '') +
         '</div>'
       );
     }
