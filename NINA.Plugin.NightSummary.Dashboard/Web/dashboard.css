@@ -5646,7 +5646,6 @@ html.light .tdp-project-action-btn:hover {
 .frames-subgroup-h .sg-sep { color: var(--text-secondary); opacity: 0.6; }
 .frames-subgroup-h .sg-exposure { font-variant-numeric: tabular-nums; }
 .frames-subgroup-h .sg-count {
-  font-size: 11px;
   color: var(--text-secondary);
 }
 
