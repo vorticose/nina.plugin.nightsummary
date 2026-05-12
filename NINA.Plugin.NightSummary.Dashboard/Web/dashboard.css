@@ -5827,9 +5827,15 @@ html.light .tdp-project-action-btn:hover {
   /* Transparent — the badge/counter pills carry their own backgrounds, no
      wrapper tint needed. */
 }
-.lb-header .lb-badge   { justify-self: start; }
-.lb-header .lb-counter { justify-self: center; }
+/* Pin each child to its own grid column. Without this, when the badge is
+   display:none (medium thumbs — no "Original res" upscale notice), grid
+   auto-placement shifts the counter into column 1 and the close into
+   column 2, leaving column 3 empty and the pills clustered on the left.
+   Explicit grid-column keeps positions stable across badge visibility. */
+.lb-header .lb-badge   { grid-column: 1; justify-self: start; }
+.lb-header .lb-counter { grid-column: 2; justify-self: center; }
 .lb-header .frames-lightbox-close {
+  grid-column: 3;
   position: static;
   justify-self: end;
   /* Match the pill height so the header doesn't bulk up to the original
