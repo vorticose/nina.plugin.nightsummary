@@ -6077,9 +6077,18 @@ html.light .tdp-project-action-btn:hover {
 .m-group > .m-row > .m-v {
   grid-column: 3;
   text-align: left;
+  min-width: 0;
 }
 /* Label sits in col 1; the spacer in col 2 has no element. */
 .m-group > .m-row > .m-k { grid-column: 1; }
+/* Long mono values (file paths) span cols 2+3 instead of forcing col 3
+   wider than the other numeric values. min-width:0 lets the cell shrink
+   so the nowrap+ellipsis truncation kicks in at the group's right edge. */
+.m-group > .m-row > .m-v.m-mono {
+  grid-column: 2 / -1;
+  min-width: 0;
+  max-width: 100%;
+}
 :root.light .m-group {
   background: linear-gradient(to bottom, rgba(255,255,255,0.6) 0%, transparent 60%), var(--surface);
   border-color: rgba(0,0,0,0.06);
