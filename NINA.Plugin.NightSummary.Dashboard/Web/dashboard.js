@@ -8977,7 +8977,10 @@ function bindFramesGallery(frames) {
         chip('Project',          m.project) +
         chip('Exposure Profile', m.exposureTemplate) +
         (m.filePath
-          ? '<div class="m-row"><span class="m-k">File</span><span class="m-v m-mono" title="' + esc(m.filePath) + '">' + esc(m.filePath.split(/[\\/]/).pop()) + '</span></div>'
+          ? (function() {
+              var fname = m.filePath.split(/[\\/]/).pop();
+              return '<div class="m-row"><span class="m-k">File</span><span class="m-v m-mono" title="' + esc(fname) + '">' + esc(fname) + '</span></div>';
+            })()
           : '') +
       '</div>';
 
