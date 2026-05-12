@@ -23,7 +23,7 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyMetadata("FeaturedImageURL", "https://i.imgur.com/uvcC1dC.png")]
 [assembly: AssemblyMetadata("ScreenshotURL", "")]
 [assembly: AssemblyMetadata("AltScreenshotURL", "")]
-[assembly: AssemblyMetadata("LongDescription", @"[Full documentation and setup guide](https://vorticose.github.io/nina.plugin.nightsummary/)
+[assembly: AssemblyMetadata("LongDescription", @"[Full documentation and setup guide](https://vorticose.github.io/nina.plugin.nightsummary/) · [Support development on Ko-fi](https://ko-fi.com/sleepypuppy15)
 
 Night Summary automatically records your astrophotography session as it runs and delivers a rich HTML report the moment your sequence completes — so you wake up to a full breakdown of the night.
 
@@ -65,10 +65,6 @@ Three levels let you control how much is included: Snapshot (header and filter t
 All channels can be enabled independently and tested directly from the plugin options page. Previous session reports can also be resent at any time without re-running a sequence. NINA shows toast notifications when reports are generated and delivered, including warnings if any section couldn't be included.
 
 Settings are saved to a stable JSON file that persists across plugin updates. A built-in Report Preview lets you view reports with real session data or test data directly from the plugin options page.
-
-**Support**
-
-Night Summary is free and open source. If it's saved you time, you can [donate via Ko-fi](https://ko-fi.com/sleepypuppy15). Appreciated but never expected.
 
 **Troubleshooting**
 
