@@ -5553,6 +5553,12 @@ html.light .tdp-project-action-btn:hover {
   padding: 1px 8px;
   border-radius: 10px;
   margin-left: 8px;
+  /* Vertically center on the h2's text x-height instead of baseline (which
+     drops the pill ~2px below the cap line of the title text). */
+  display: inline-block;
+  vertical-align: middle;
+  position: relative;
+  top: -2px;
 }
 
 /* Group container — wraps all per-target sections */
@@ -5571,7 +5577,9 @@ html.light .tdp-project-action-btn:hover {
   padding-bottom: 6px;
   border-bottom: 1px solid var(--border);
   display: flex;
-  align-items: baseline;
+  /* Center the pill on the target name's x-height instead of baseline so
+     it doesn't sit ~2px low. */
+  align-items: center;
   gap: 10px;
 }
 .frames-target-count {
