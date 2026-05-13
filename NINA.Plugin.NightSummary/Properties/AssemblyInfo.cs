@@ -23,7 +23,9 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyMetadata("FeaturedImageURL", "https://i.imgur.com/uvcC1dC.png")]
 [assembly: AssemblyMetadata("ScreenshotURL", "")]
 [assembly: AssemblyMetadata("AltScreenshotURL", "")]
-[assembly: AssemblyMetadata("LongDescription", @"[Full documentation and setup guide](https://vorticose.github.io/nina.plugin.nightsummary/) · [Support development on Ko-fi](https://ko-fi.com/sleepypuppy15)
+[assembly: AssemblyMetadata("LongDescription", @"[Full documentation and setup guide](https://vorticose.github.io/nina.plugin.nightsummary/)
+
+[Donate](https://ko-fi.com/sleepypuppy15)
 
 Night Summary automatically records your astrophotography session as it runs and delivers a rich HTML report the moment your sequence completes — so you wake up to a full breakdown of the night.
 
