@@ -9,7 +9,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="System.Data.SQLite.Core" Version="1.0.119.0" />
+    <!-- Cross-platform SQLite stack. System.Data.SQLite ships natives only for
+         Windows + Linux; the companion needs to open the DB on macOS too.
+         Microsoft.Data.Sqlite pulls SQLitePCLRaw.bundle_e_sqlite3 which bundles
+         native binaries for win-x64/arm64, linux-*, osx-x64, osx-arm64. -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
   </ItemGroup>
 
   <ItemGroup>

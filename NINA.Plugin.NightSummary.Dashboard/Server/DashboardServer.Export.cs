@@ -1,7 +1,7 @@
 using NINA.Plugin.NightSummary.Data;
 using System;
 using System.Collections.Generic;
-using System.Data.SQLite;
+using Microsoft.Data.Sqlite;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -130,8 +130,8 @@ namespace NINA.Plugin.NightSummary.Server {
             try {
                 // VACUUM INTO does not accept parameter binding for the path — must inline as a SQL string literal.
                 // Doubling embedded single-quotes neutralizes any quoting in the temp path.
-                var cs = $"Data Source={sourceDb};Version=3;Read Only=True;";
-                using (var conn = new SQLiteConnection(cs)) {
+                var cs = $"Data Source={sourceDb};Mode=ReadOnly";
+                using (var conn = new SqliteConnection(cs)) {
                     conn.Open();
                     using var cmd = conn.CreateCommand();
                     cmd.CommandText = $"VACUUM INTO '{tempPath.Replace("'", "''")}'";
@@ -139,8 +139,8 @@ namespace NINA.Plugin.NightSummary.Server {
                 }
 
                 if (!string.IsNullOrEmpty(postSnapshotSql)) {
-                    var rwCs = $"Data Source={tempPath};Version=3;";
-                    using var conn = new SQLiteConnection(rwCs);
+                    var rwCs = $"Data Source={tempPath};";
+                    using var conn = new SqliteConnection(rwCs);
                     conn.Open();
                     using var cmd = conn.CreateCommand();
                     cmd.CommandText = postSnapshotSql;

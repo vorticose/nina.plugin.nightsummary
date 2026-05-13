@@ -3,7 +3,7 @@ using NINA.Plugin.NightSummary.Dashboard.Abstractions;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Data.SQLite;
+using Microsoft.Data.Sqlite;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -1422,9 +1422,9 @@ namespace NINA.Plugin.NightSummary.Server {
                 // Bulk-load all cached charts from DB into memory — fast path, no HTML parsing
                 int dbLoaded = 0;
                 try {
-                    using (var conn = new SQLiteConnection($"Data Source={cachePath};Version=3;")) {
+                    using (var conn = new SqliteConnection($"Data Source={cachePath};")) {
                         conn.Open();
-                        using (var cmd = new SQLiteCommand("SELECT SessionId, ChartJson FROM AltitudeCharts", conn))
+                        using (var cmd = new SqliteCommand("SELECT SessionId, ChartJson FROM AltitudeCharts", conn))
                         using (var reader = cmd.ExecuteReader()) {
                             while (reader.Read()) {
                                 if (ct.IsCancellationRequested) break;
@@ -1466,16 +1466,16 @@ namespace NINA.Plugin.NightSummary.Server {
 
         private void InitCacheDb() {
             try {
-                using (var conn = new SQLiteConnection($"Data Source={cachePath};Version=3;")) {
+                using (var conn = new SqliteConnection($"Data Source={cachePath};")) {
                     conn.Open();
-                    using (var cmd = new SQLiteCommand(
+                    using (var cmd = new SqliteCommand(
                         "CREATE TABLE IF NOT EXISTS AltitudeCharts (SessionId TEXT PRIMARY KEY, ChartJson TEXT NOT NULL, GeneratedAt TEXT NOT NULL)",
                         conn))
                         cmd.ExecuteNonQuery();
                     // Generic key/value store for dashboard-side metadata (TS status overrides,
                     // manual target→TS links, etc.) Avoids touching SettingsManager for features
                     // that don't need XAML bindings.
-                    using (var cmd = new SQLiteCommand(
+                    using (var cmd = new SqliteCommand(
                         "CREATE TABLE IF NOT EXISTS DashboardMetadata (Key TEXT PRIMARY KEY, Value TEXT NOT NULL, UpdatedAt TEXT NOT NULL)",
                         conn))
                         cmd.ExecuteNonQuery();
@@ -1487,9 +1487,9 @@ namespace NINA.Plugin.NightSummary.Server {
 
         private string GetDashboardMeta(string key) {
             try {
-                using (var conn = new SQLiteConnection($"Data Source={cachePath};Version=3;")) {
+                using (var conn = new SqliteConnection($"Data Source={cachePath};")) {
                     conn.Open();
-                    using (var cmd = new SQLiteCommand("SELECT Value FROM DashboardMetadata WHERE Key = @k", conn)) {
+                    using (var cmd = new SqliteCommand("SELECT Value FROM DashboardMetadata WHERE Key = @k", conn)) {
                         cmd.Parameters.AddWithValue("@k", key);
                         return cmd.ExecuteScalar() as string;
                     }
@@ -1499,9 +1499,9 @@ namespace NINA.Plugin.NightSummary.Server {
 
         private void SetDashboardMeta(string key, string value) {
             try {
-                using (var conn = new SQLiteConnection($"Data Source={cachePath};Version=3;")) {
+                using (var conn = new SqliteConnection($"Data Source={cachePath};")) {
                     conn.Open();
-                    using (var cmd = new SQLiteCommand(
+                    using (var cmd = new SqliteCommand(
                         "INSERT OR REPLACE INTO DashboardMetadata (Key, Value, UpdatedAt) VALUES (@k, @v, @ts)",
                         conn)) {
                         cmd.Parameters.AddWithValue("@k", key);
@@ -1634,9 +1634,9 @@ namespace NINA.Plugin.NightSummary.Server {
 
         private string GetCachedChartJson(string sessionId) {
             try {
-                using (var conn = new SQLiteConnection($"Data Source={cachePath};Version=3;")) {
+                using (var conn = new SqliteConnection($"Data Source={cachePath};")) {
                     conn.Open();
-                    using (var cmd = new SQLiteCommand("SELECT ChartJson FROM AltitudeCharts WHERE SessionId = @id", conn)) {
+                    using (var cmd = new SqliteCommand("SELECT ChartJson FROM AltitudeCharts WHERE SessionId = @id", conn)) {
                         cmd.Parameters.AddWithValue("@id", sessionId);
                         return cmd.ExecuteScalar() as string;
                     }
@@ -1646,9 +1646,9 @@ namespace NINA.Plugin.NightSummary.Server {
 
         private void SetCachedChartJson(string sessionId, string json) {
             try {
-                using (var conn = new SQLiteConnection($"Data Source={cachePath};Version=3;")) {
+                using (var conn = new SqliteConnection($"Data Source={cachePath};")) {
                     conn.Open();
-                    using (var cmd = new SQLiteCommand(
+                    using (var cmd = new SqliteCommand(
                         "INSERT OR REPLACE INTO AltitudeCharts (SessionId, ChartJson, GeneratedAt) VALUES (@id, @json, @ts)",
                         conn)) {
                         cmd.Parameters.AddWithValue("@id", sessionId);
@@ -1662,9 +1662,9 @@ namespace NINA.Plugin.NightSummary.Server {
 
         private void DeleteCachedChartJson(string sessionId) {
             try {
-                using (var conn = new SQLiteConnection($"Data Source={cachePath};Version=3;")) {
+                using (var conn = new SqliteConnection($"Data Source={cachePath};")) {
                     conn.Open();
-                    using (var cmd = new SQLiteCommand("DELETE FROM AltitudeCharts WHERE SessionId = @id", conn)) {
+                    using (var cmd = new SqliteCommand("DELETE FROM AltitudeCharts WHERE SessionId = @id", conn)) {
                         cmd.Parameters.AddWithValue("@id", sessionId);
                         cmd.ExecuteNonQuery();
                     }
@@ -2310,7 +2310,7 @@ namespace NINA.Plugin.NightSummary.Server {
                     allSessions = DbSessions().ToArray();
 
                 // Query the most recent plate-solve PositionAngle per target name
-                using (var conn = new System.Data.SQLite.SQLiteConnection($"Data Source={dbPath};Version=3;"))
+                using (var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath};"))
                 {
                     conn.Open();
                     string paSql = @"
@@ -2319,7 +2319,7 @@ namespace NINA.Plugin.NightSummary.Server {
                         WHERE TargetName IS NOT NULL AND TargetName != ''
                           AND PositionAngle IS NOT NULL
                         ORDER BY TargetName, Timestamp DESC";
-                    using (var cmd = new System.Data.SQLite.SQLiteCommand(paSql, conn))
+                    using (var cmd = new Microsoft.Data.Sqlite.SqliteCommand(paSql, conn))
                     using (var reader = cmd.ExecuteReader()) {
                         while (reader.Read()) {
                             var tname = reader["TargetName"].ToString();

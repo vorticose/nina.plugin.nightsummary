@@ -22,7 +22,7 @@ internal sealed class CompanionDataSource : IDashboardDataSource {
 
     public CompanionDataSource(string dbPath, string tsDbPath, IDashboardLogger log) {
         _dbPath = dbPath;
-        _connectionString = $"Data Source={dbPath};Version=3;Read Only=True;";
+        _connectionString = $"Data Source={dbPath};Mode=ReadOnly";
         _log = log;
         _ts = new CompanionTsReader(tsDbPath, log);
     }

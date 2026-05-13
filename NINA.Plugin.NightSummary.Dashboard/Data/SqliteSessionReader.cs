@@ -1,19 +1,19 @@
 using System;
 using System.Collections.Generic;
-using System.Data.SQLite;
+using Microsoft.Data.Sqlite;
 using System.Linq;
 using NINA.Plugin.NightSummary.Dashboard.Abstractions;
 
 namespace NINA.Plugin.NightSummary.Data;
 
-// Wraps SQLiteDataReader so `reader["MissingCol"]` returns DBNull instead of
+// Wraps SqliteDataReader so `reader["MissingCol"]` returns DBNull instead of
 // throwing IndexOutOfRangeException. Lets the reader run against any schema
 // version the plugin has shipped — the dev harness opens older DBs without
 // running migrations, and a backup restored on a newer plugin must not crash.
 internal sealed class SchemaSafeReader : IDisposable {
-    private readonly SQLiteDataReader r;
+    private readonly SqliteDataReader r;
     private readonly HashSet<string> cols;
-    public SchemaSafeReader(SQLiteDataReader r) {
+    public SchemaSafeReader(SqliteDataReader r) {
         this.r = r;
         cols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < r.FieldCount; i++) cols.Add(r.GetName(i));
@@ -38,10 +38,10 @@ public sealed class SqliteSessionReader {
 
     public List<ImageRecord> GetImagesForSession(string sessionId) {
         var images = new List<ImageRecord>();
-        using var conn = new SQLiteConnection(connectionString);
+        using var conn = new SqliteConnection(connectionString);
         conn.Open();
         const string sql = "SELECT * FROM Images WHERE SessionId = @SessionId ORDER BY Timestamp";
-        using var cmd = new SQLiteCommand(sql, conn);
+        using var cmd = new SqliteCommand(sql, conn);
         cmd.Parameters.AddWithValue("@SessionId", sessionId);
         using var reader = new SchemaSafeReader(cmd.ExecuteReader());
         while (reader.Read()) {
@@ -105,10 +105,10 @@ public sealed class SqliteSessionReader {
     }
 
     public SessionRecord? GetSession(string sessionId) {
-        using var conn = new SQLiteConnection(connectionString);
+        using var conn = new SqliteConnection(connectionString);
         conn.Open();
         const string sql = "SELECT * FROM Sessions WHERE SessionId = @SessionId";
-        using var cmd = new SQLiteCommand(sql, conn);
+        using var cmd = new SqliteCommand(sql, conn);
         cmd.Parameters.AddWithValue("@SessionId", sessionId);
         using var reader = new SchemaSafeReader(cmd.ExecuteReader());
         if (reader.Read()) {
@@ -124,10 +124,10 @@ public sealed class SqliteSessionReader {
 
     public List<SessionEvent> GetEventsForSession(string sessionId) {
         var events = new List<SessionEvent>();
-        using var conn = new SQLiteConnection(connectionString);
+        using var conn = new SqliteConnection(connectionString);
         conn.Open();
         const string sql = "SELECT * FROM SessionEvents WHERE SessionId = @SessionId ORDER BY Timestamp";
-        using var cmd = new SQLiteCommand(sql, conn);
+        using var cmd = new SqliteCommand(sql, conn);
         cmd.Parameters.AddWithValue("@SessionId", sessionId);
         using var reader = new SchemaSafeReader(cmd.ExecuteReader());
         while (reader.Read()) {
@@ -146,10 +146,10 @@ public sealed class SqliteSessionReader {
 
     public List<TimingEvent> GetTimingEventsForSession(string sessionId) {
         var events = new List<TimingEvent>();
-        using var conn = new SQLiteConnection(connectionString);
+        using var conn = new SqliteConnection(connectionString);
         conn.Open();
         const string sql = "SELECT * FROM SessionTimingEvents WHERE SessionId = @SessionId ORDER BY StartTime";
-        using var cmd = new SQLiteCommand(sql, conn);
+        using var cmd = new SqliteCommand(sql, conn);
         cmd.Parameters.AddWithValue("@SessionId", sessionId);
         using var reader = new SchemaSafeReader(cmd.ExecuteReader());
         while (reader.Read()) {
@@ -166,14 +166,14 @@ public sealed class SqliteSessionReader {
 
     public Dictionary<string, double> GetCumulativeIntegrationByTarget(string excludeSessionId) {
         var result = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
-        using var conn = new SQLiteConnection(connectionString);
+        using var conn = new SqliteConnection(connectionString);
         conn.Open();
         const string sql = @"
             SELECT TargetName, SUM(ExposureDuration) AS TotalSeconds
             FROM Images
             WHERE Accepted = 1 AND SessionId != @SessionId
             GROUP BY TargetName";
-        using var cmd = new SQLiteCommand(sql, conn);
+        using var cmd = new SqliteCommand(sql, conn);
         cmd.Parameters.AddWithValue("@SessionId", excludeSessionId ?? "");
         using var reader = new SchemaSafeReader(cmd.ExecuteReader());
         while (reader.Read()) {
@@ -188,7 +188,7 @@ public sealed class SqliteSessionReader {
     public List<TargetDetail> GetTargetDetails() {
         var targets = new Dictionary<string, TargetDetail>(StringComparer.OrdinalIgnoreCase);
 
-        using var conn = new SQLiteConnection(connectionString);
+        using var conn = new SqliteConnection(connectionString);
         conn.Open();
 
         const string sqlAgg = @"
@@ -209,7 +209,7 @@ public sealed class SqliteSessionReader {
             GROUP BY i.TargetName
             ORDER BY TotalSeconds DESC";
 
-        using (var cmd = new SQLiteCommand(sqlAgg, conn))
+        using (var cmd = new SqliteCommand(sqlAgg, conn))
         using (var reader = new SchemaSafeReader(cmd.ExecuteReader())) {
             while (reader.Read()) {
                 var name = reader["TargetName"].ToString();
@@ -240,7 +240,7 @@ public sealed class SqliteSessionReader {
             GROUP BY i.TargetName, i.Filter
             ORDER BY i.TargetName, TotalSeconds DESC";
 
-        using (var cmd = new SQLiteCommand(sqlFilters, conn))
+        using (var cmd = new SqliteCommand(sqlFilters, conn))
         using (var reader = new SchemaSafeReader(cmd.ExecuteReader())) {
             while (reader.Read()) {
                 var name   = reader["TargetName"].ToString();
@@ -266,7 +266,7 @@ public sealed class SqliteSessionReader {
         var coordsDone  = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var sessionDone = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        using (var cmd = new SQLiteCommand(sqlCoords, conn))
+        using (var cmd = new SqliteCommand(sqlCoords, conn))
         using (var reader = new SchemaSafeReader(cmd.ExecuteReader())) {
             while (reader.Read()) {
                 var name = reader["TargetName"].ToString();
@@ -298,7 +298,7 @@ public sealed class SqliteSessionReader {
 
     public List<TargetSessionHistory> GetSessionHistoryForTarget(string targetName, string excludeSessionId) {
         var result = new List<TargetSessionHistory>();
-        using var conn = new SQLiteConnection(connectionString);
+        using var conn = new SqliteConnection(connectionString);
         conn.Open();
         const string sql = @"
             SELECT
@@ -314,7 +314,7 @@ public sealed class SqliteSessionReader {
             GROUP BY i.SessionId
             ORDER BY s.SessionStart DESC";
 
-        using var cmd = new SQLiteCommand(sql, conn);
+        using var cmd = new SqliteCommand(sql, conn);
         cmd.Parameters.AddWithValue("@TargetName",       targetName       ?? "");
         cmd.Parameters.AddWithValue("@ExcludeSessionId", excludeSessionId ?? "");
         using var reader = new SchemaSafeReader(cmd.ExecuteReader());
@@ -334,7 +334,7 @@ public sealed class SqliteSessionReader {
         var sessions = new Dictionary<string, TargetSessionDetail>(StringComparer.OrdinalIgnoreCase);
         if (string.IsNullOrEmpty(targetName)) return new List<TargetSessionDetail>();
 
-        using var conn = new SQLiteConnection(connectionString);
+        using var conn = new SqliteConnection(connectionString);
         conn.Open();
 
         const string sqlAgg = @"
@@ -352,7 +352,7 @@ public sealed class SqliteSessionReader {
             GROUP BY s.SessionId, s.SessionStart, s.SessionEnd
             ORDER BY s.SessionStart DESC";
 
-        using (var cmd = new SQLiteCommand(sqlAgg, conn)) {
+        using (var cmd = new SqliteCommand(sqlAgg, conn)) {
             cmd.Parameters.AddWithValue("@TargetName", targetName);
             using var reader = new SchemaSafeReader(cmd.ExecuteReader());
             while (reader.Read()) {
@@ -387,7 +387,7 @@ public sealed class SqliteSessionReader {
             GROUP BY i.SessionId, i.Filter
             ORDER BY i.SessionId, IntegrationSeconds DESC";
 
-        using (var cmd = new SQLiteCommand(sqlFilters, conn)) {
+        using (var cmd = new SqliteCommand(sqlFilters, conn)) {
             cmd.Parameters.AddWithValue("@TargetName", targetName);
             using var reader = new SchemaSafeReader(cmd.ExecuteReader());
             while (reader.Read()) {
@@ -410,10 +410,10 @@ public sealed class SqliteSessionReader {
 
     public List<SessionRecord> GetRecentSessions(int limit) {
         var result = new List<SessionRecord>();
-        using var conn = new SQLiteConnection(connectionString);
+        using var conn = new SqliteConnection(connectionString);
         conn.Open();
         var sql = SessionListWithCountsSql + " ORDER BY s.SessionStart DESC LIMIT @Limit";
-        using var cmd = new SQLiteCommand(sql, conn);
+        using var cmd = new SqliteCommand(sql, conn);
         cmd.Parameters.AddWithValue("@Limit", limit);
         using var reader = new SchemaSafeReader(cmd.ExecuteReader());
         while (reader.Read()) {
@@ -425,11 +425,11 @@ public sealed class SqliteSessionReader {
 
     public List<SessionRecord> GetSessionsByDateRange(DateTime from, DateTime to) {
         var result = new List<SessionRecord>();
-        using var conn = new SQLiteConnection(connectionString);
+        using var conn = new SqliteConnection(connectionString);
         conn.Open();
         var sql = SessionListWithCountsSql +
             " WHERE s.SessionStart >= @From AND s.SessionStart <= @To ORDER BY s.SessionStart DESC";
-        using var cmd = new SQLiteCommand(sql, conn);
+        using var cmd = new SqliteCommand(sql, conn);
         cmd.Parameters.AddWithValue("@From", from.ToString("o"));
         cmd.Parameters.AddWithValue("@To",   to.Date.AddDays(1).AddSeconds(-1).ToString("o"));
         using var reader = new SchemaSafeReader(cmd.ExecuteReader());
@@ -442,10 +442,10 @@ public sealed class SqliteSessionReader {
 
     public List<SessionRecord> GetAllSessions() {
         var result = new List<SessionRecord>();
-        using var conn = new SQLiteConnection(connectionString);
+        using var conn = new SqliteConnection(connectionString);
         conn.Open();
         const string sql = "SELECT * FROM Sessions ORDER BY SessionStart DESC";
-        using var cmd = new SQLiteCommand(sql, conn);
+        using var cmd = new SqliteCommand(sql, conn);
         using var reader = new SchemaSafeReader(cmd.ExecuteReader());
         while (reader.Read()) {
             try { result.Add(ReadSessionRecord(reader)); }
@@ -455,10 +455,10 @@ public sealed class SqliteSessionReader {
     }
 
     public SessionRecord? GetLatestSession() {
-        using var conn = new SQLiteConnection(connectionString);
+        using var conn = new SqliteConnection(connectionString);
         conn.Open();
         const string sql = "SELECT * FROM Sessions ORDER BY SessionStart DESC LIMIT 1";
-        using var cmd = new SQLiteCommand(sql, conn);
+        using var cmd = new SqliteCommand(sql, conn);
         using var reader = new SchemaSafeReader(cmd.ExecuteReader());
         if (reader.Read()) {
             try {
