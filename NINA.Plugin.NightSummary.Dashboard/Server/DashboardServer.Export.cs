@@ -130,7 +130,17 @@ namespace NINA.Plugin.NightSummary.Server {
             try {
                 // VACUUM INTO does not accept parameter binding for the path — must inline as a SQL string literal.
                 // Doubling embedded single-quotes neutralizes any quoting in the temp path.
-                var cs = $"Data Source={sourceDb};Mode=ReadOnly";
+                //
+                // Open RW (no Mode=ReadOnly): Microsoft.Data.Sqlite's ReadOnly
+                // gate refuses VACUUM INTO even though the source DB itself is
+                // never mutated. Source-side rows aren't touched; only the
+                // destination file is written. SQLite's own file-level locking
+                // serializes against any writer holding the WAL.
+                //
+                // Pooling=False: M.D.Sqlite pools native handles by default.
+                // Without this, the dest temp file stays locked after Dispose
+                // and the subsequent open-rw or File.Delete step fails.
+                var cs = $"Data Source={sourceDb};Pooling=False";
                 using (var conn = new SqliteConnection(cs)) {
                     conn.Open();
                     using var cmd = conn.CreateCommand();
@@ -139,7 +149,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 }
 
                 if (!string.IsNullOrEmpty(postSnapshotSql)) {
-                    var rwCs = $"Data Source={tempPath};";
+                    var rwCs = $"Data Source={tempPath};Pooling=False";
                     using var conn = new SqliteConnection(rwCs);
                     conn.Open();
                     using var cmd = conn.CreateCommand();

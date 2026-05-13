@@ -32,8 +32,34 @@ public sealed class SqliteSessionReader {
     private readonly IDashboardLogger? log;
 
     public SqliteSessionReader(string connectionString, IDashboardLogger? log = null) {
-        this.connectionString = connectionString;
+        // Normalize System.Data.SQLite-style connection strings — the plugin's
+        // SessionDatabase still uses Version=3 / Read Only=True (legal for
+        // System.Data.SQLite) but Microsoft.Data.Sqlite rejects both. Strip
+        // them so callers don't need two separate connection strings.
+        this.connectionString = NormalizeConnectionString(connectionString);
         this.log              = log;
+    }
+
+    internal static string NormalizeConnectionString(string cs) {
+        if (string.IsNullOrEmpty(cs)) return cs;
+        // Drop the `Version=N` token wholesale — M.D.Sqlite only speaks SQLite 3.
+        cs = System.Text.RegularExpressions.Regex.Replace(cs, @";\s*Version\s*=\s*[^;]*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        // System.Data.SQLite's "Read Only=True" -> M.D.Sqlite's "Mode=ReadOnly".
+        // Use a one-shot replace; the lib parser tolerates duplicate Mode tokens but the regex avoids them.
+        if (System.Text.RegularExpressions.Regex.IsMatch(cs, @"Read\s*Only\s*=\s*True", System.Text.RegularExpressions.RegexOptions.IgnoreCase)) {
+            cs = System.Text.RegularExpressions.Regex.Replace(cs, @";\s*Read\s*Only\s*=\s*True", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (!System.Text.RegularExpressions.Regex.IsMatch(cs, @";\s*Mode\s*=", System.Text.RegularExpressions.RegexOptions.IgnoreCase)) {
+                cs = cs.TrimEnd(';') + ";Mode=ReadOnly";
+            }
+        }
+        // Disable connection pooling. M.D.Sqlite pools native handles so the
+        // file stays open after Dispose, which blocks File.Delete on Windows
+        // (test teardown, migration cleanup, etc.) and is wholly unnecessary
+        // for our usage — dashboard reads are infrequent and short.
+        if (!System.Text.RegularExpressions.Regex.IsMatch(cs, @";\s*Pooling\s*=", System.Text.RegularExpressions.RegexOptions.IgnoreCase)) {
+            cs = cs.TrimEnd(';') + ";Pooling=False";
+        }
+        return cs;
     }
 
     public List<ImageRecord> GetImagesForSession(string sessionId) {
