@@ -124,5 +124,31 @@ namespace NINA.Plugin.NightSummary {
                 }
             }
         }
+
+        private void BrowseThumbnailStorageDir_Click(object sender, RoutedEventArgs e) {
+            var dialog = new OpenFolderDialog {
+                Title = "Select folder for raw image thumbnails"
+            };
+
+            // Seed with the currently resolved root so the picker opens somewhere familiar.
+            var current = Data.SettingsManager.Instance.Current.ThumbnailStorageDir;
+            var resolved = Data.Thumbnails.GetThumbnailsRoot(current);
+            if (System.IO.Directory.Exists(resolved)) {
+                dialog.InitialDirectory = resolved;
+            }
+
+            if (dialog.ShowDialog() == true) {
+                var plugin = (sender as Button)?.DataContext as NightSummaryPlugin;
+                if (plugin != null) {
+                    plugin.ThumbnailStorageDir = dialog.FolderName;
+                }
+            }
+        }
+
+        private void ResetThumbnailStorageDir_Click(object sender, RoutedEventArgs e) {
+            // Empty string → resolver falls back to %LOCALAPPDATA%\NINA\NightSummary\thumbs.
+            var plugin = (sender as Button)?.DataContext as NightSummaryPlugin;
+            if (plugin != null) plugin.ThumbnailStorageDir = "";
+        }
     }
 }

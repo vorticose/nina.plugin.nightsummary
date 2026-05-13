@@ -132,6 +132,11 @@ If you use **Target Scheduler**, place Night Summary Start before the Target Sch
 Once your sequence completes, check your configured delivery channel for the report. You can also resend any previous session report at any time from the plugin options page.
 
 
+## Support
+
+Night Summary is free and open source. If it's saved you time, you can [donate via Ko-fi](https://ko-fi.com/sleepypuppy15). Appreciated but never expected.
+
+
 ## License
 
 [Mozilla Public License 2.0](LICENSE.txt)

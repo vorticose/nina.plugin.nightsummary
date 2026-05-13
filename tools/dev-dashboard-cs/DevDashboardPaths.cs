@@ -11,13 +11,16 @@ internal sealed class DevDashboardPaths : IDashboardPaths {
     public string LogsDir      { get; }
     public string HipsCacheDir { get; }
     public string DatabasePath { get; }
+    public string ThumbsRoot   { get; }
 
-    public DevDashboardPaths(string dataDir, string reportsDir, string databasePath) {
+    public DevDashboardPaths(string dataDir, string reportsDir, string databasePath, string thumbsRoot = null) {
         DataDir      = dataDir;
         ReportsDir   = reportsDir;
         LogsDir      = Path.Combine(dataDir, "logs");
         HipsCacheDir = Path.Combine(dataDir, "hips-cache");
         DatabasePath = databasePath;
+        // Dev harness anchors thumbs under {dataDir}/thumbs unless --thumbs-root overrides.
+        ThumbsRoot   = !string.IsNullOrEmpty(thumbsRoot) ? thumbsRoot : Path.Combine(dataDir, "thumbs");
     }
 
     public string ReportHtmlPath(string sessionId)        => Path.Combine(ReportsDir, $"{sessionId}.html");

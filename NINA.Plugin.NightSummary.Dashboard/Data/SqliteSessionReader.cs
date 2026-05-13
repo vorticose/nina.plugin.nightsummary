@@ -96,7 +96,9 @@ public sealed class SqliteSessionReader {
                 StatMAD          = reader["StatMAD"]          == DBNull.Value ? (double?)null : Convert.ToDouble(reader["StatMAD"]),
                 StatMin          = reader["StatMin"]          == DBNull.Value ? (int?)null    : Convert.ToInt32(reader["StatMin"]),
                 StatMax          = reader["StatMax"]          == DBNull.Value ? (int?)null    : Convert.ToInt32(reader["StatMax"]),
-                StatBitDepth     = reader["StatBitDepth"]     == DBNull.Value ? (int?)null    : Convert.ToInt32(reader["StatBitDepth"])
+                StatBitDepth     = reader["StatBitDepth"]     == DBNull.Value ? (int?)null    : Convert.ToInt32(reader["StatBitDepth"]),
+                ThumbnailVersion = reader["ThumbnailVersion"] == DBNull.Value ? (int?)null    : Convert.ToInt32(reader["ThumbnailVersion"]),
+                FilePath         = reader["FilePath"]         == DBNull.Value ? null          : reader["FilePath"].ToString()
             });
         }
         return images;

@@ -20,6 +20,15 @@ using System.Threading.Tasks;
 
 namespace NINA.Plugin.NightSummary.Session {
     public class SessionCollector {
+        // Lazy access to plugin settings — SessionCollector is constructed before
+        // SettingsManager init in some test paths, so resolve on demand.
+        private static NightSummarySettings S => SettingsManager.Instance.Current;
+
+        // Default %LOCALAPPDATA%\NINA\NightSummary\thumbs, or the user override
+        // from S.ThumbnailStorageDir if set. Resolved per-call so a settings change
+        // takes effect on the next save without restarting the collector.
+        private static string ThumbsRoot => Thumbnails.GetThumbnailsRoot(S?.ThumbnailStorageDir);
+
         private readonly SessionDatabase database;
         private readonly IImageSaveMediator imageSaveMediator;
         private readonly ISequenceMediator sequenceMediator;
@@ -206,9 +215,19 @@ namespace NINA.Plugin.NightSummary.Session {
                     if (!double.IsNaN(at)) ambientTemp = at;
                 } catch { /* not critical if temperature capture fails */ }
 
+                // Use ExposureStart from NINA's image metadata so this column means
+                // the same thing as the FITS DATE-OBS header, the filename's $$DATETIME$$
+                // token, and Target Scheduler's acquireddate column. Falls back to wall
+                // clock if metadata is missing (defensive — should never happen on a real
+                // ImageSaved event). Pre-fix legacy rows captured Clock.Now (ImageSaved
+                // time, ~exposureDuration later); the importer/augment paths apply an
+                // ExposureDuration offset to bridge the conventions.
+                var exposureStart = e.MetaData?.Image?.ExposureStart;
                 var record = new ImageRecord {
                     SessionId        = currentSession.SessionId,
-                    Timestamp        = Clock.Now(),
+                    Timestamp        = exposureStart.HasValue && exposureStart.Value > DateTime.MinValue
+                                         ? exposureStart.Value.ToLocalTime()
+                                         : Clock.Now(),
                     TargetName       = e.MetaData?.Target?.Name ?? "Unknown",
                     Filter           = e.MetaData?.FilterWheel?.Filter ?? "None",
                     ExposureDuration = e.MetaData?.Image?.ExposureTime ?? 0,
@@ -269,15 +288,24 @@ namespace NINA.Plugin.NightSummary.Session {
                     StatBitDepth     = e.Statistics != null ? (int?)e.Statistics.BitDepth : null
                 };
 
-                database.SaveImageRecord(record);
+                // Capture FITS path on the row itself (used by future re-stretch features).
+                // FileSystemWatcher path tracking continues alongside for grade-rename detection.
+                var filePath = e.PathToImage?.LocalPath;
+                record.FilePath = filePath;
+
+                long rowId = database.SaveImageRecord(record);
                 Logger.Debug($"NightSummary: Recorded image - Target={record.TargetName}, Filter={record.Filter}, HFR={record.HFR:F2}, GuidingRMS={record.GuidingRMSTotal:F2}\"");
 
                 // Track file path so FileSystemWatcher can match renames to DB records
-                var filePath = e.PathToImage?.LocalPath;
                 if (!string.IsNullOrEmpty(filePath)) {
                     _pathToTimestamp[filePath] = record.Timestamp;
                     EnsureWatching(Path.GetDirectoryName(filePath));
                 }
+
+                // Raw image thumbnail capture — gated, off by default.
+                // Inline encode follows TS pattern (Thumbnails.cs in TS source). 5–15ms
+                // for 192px output; not worth a background queue.
+                TryCaptureThumbnails(e.Image, rowId, currentSession?.SessionId);
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to record image. {ex.Message}");
             }
@@ -334,6 +362,37 @@ namespace NINA.Plugin.NightSummary.Session {
 
         private static double? NullIfNaN(double? value) =>
             value.HasValue && !double.IsNaN(value.Value) ? value : null;
+
+        // ── Raw image thumbnail capture ─────────────────────────────────────
+        // See RAW_THUMBNAILS_DESIGN.md. Gated by CaptureRawThumbnails (master) +
+        // CaptureMediumThumbnails (extra _md output). Failure here never fails
+        // the parent OnImageSaved — capture is best-effort.
+        private void TryCaptureThumbnails(System.Windows.Media.Imaging.BitmapSource src, long imageId, string sessionId) {
+            try {
+                if (src == null || imageId <= 0 || string.IsNullOrEmpty(sessionId)) return;
+                if (!S.CaptureRawThumbnails) return;
+
+                int versionMask = 0;
+                var smallPath = Thumbnails.GetThumbnailPath(ThumbsRoot, sessionId, imageId, Thumbnails.VersionSmall);
+                var (sw, sh, sd) = Thumbnails.Encode(src, Thumbnails.SmallHeightPx);
+                if (sd != null && Thumbnails.WriteToDisk(smallPath, sd))
+                    versionMask |= Thumbnails.VersionSmall;
+
+                if (S.CaptureMediumThumbnails) {
+                    var medPath = Thumbnails.GetThumbnailPath(ThumbsRoot, sessionId, imageId, Thumbnails.VersionMedium);
+                    var (mw, mh, md) = Thumbnails.Encode(src, Thumbnails.MediumHeightPx);
+                    if (md != null && Thumbnails.WriteToDisk(medPath, md))
+                        versionMask |= Thumbnails.VersionMedium;
+                }
+
+                if (versionMask != 0) {
+                    database.UpdateImageThumbnailVersion(imageId, versionMask);
+                    Logger.Debug($"NightSummary: thumbnail saved — id={imageId}, mask={versionMask}");
+                }
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: thumbnail capture failed (id={imageId}): {ex.Message}");
+            }
+        }
 
         // ── Manual rejection tracking ────────────────────────────────────────
 
