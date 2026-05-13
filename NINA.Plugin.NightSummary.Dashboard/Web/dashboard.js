@@ -7097,6 +7097,7 @@ function renderTonightContent(container, data) {
     return;
   }
 
+
   // Trim leading wait periods so the timeline starts at the first target block
   var firstTargetStart = new Date(targets[0].startTime);
   entries = entries.filter(function(e) { return new Date(e.endTime) > firstTargetStart; });
@@ -7203,6 +7204,24 @@ function renderTonightContent(container, data) {
 
   html += '</div>';
   container.innerHTML = html;
+
+  // Cached-payload pill — surfaces when the server fell back to disk cache
+  // (companion w/ NINA off, or transient TS API hiccup). Mount after the main
+  // render so the inner innerHTML assignment above doesn't blow it away.
+  if (data.cached && data.cachedAtUtc) {
+    var when = new Date(data.cachedAtUtc);
+    var rel = (function(d){
+      var s = Math.floor((Date.now() - d.getTime())/1000);
+      if (s < 60)   return s + 's ago';
+      if (s < 3600) return Math.floor(s/60) + 'm ago';
+      if (s < 86400)return Math.floor(s/3600) + 'h ago';
+      return Math.floor(s/86400) + 'd ago';
+    })(when);
+    container.insertAdjacentHTML('afterbegin',
+      '<div class="tonight-cached-pill" title="Live Target Scheduler API not reachable — showing last successful preview from ' + esc(when.toLocaleString()) + '">' +
+        '<span class="tonight-cached-dot"></span>Cached ' + esc(rel) +
+      '</div>');
+  }
 
   // Wire crosshair on the altitude chart (must be after innerHTML is set)
   var altWrap = container.querySelector('.tonight-altitude-wrap');

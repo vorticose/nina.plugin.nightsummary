@@ -3037,21 +3037,64 @@ namespace NINA.Plugin.NightSummary.Server {
             Timeout = TimeSpan.FromSeconds(120)
         };
 
-        // Tonight preview response cache (5-minute TTL; refreshed on first request after expiry)
+        // In-memory hot cache (5-minute TTL) for the happy path — keeps the
+        // ~25s TS preview call from running on every dashboard refresh.
         private string _tonightPreviewJson = null;
         private DateTime _tonightPreviewCachedAt = DateTime.MinValue;
 
+        // On-disk cache, noon-boundary expiry. Backstops every error path so
+        // companion mode (and primary when NINA-side TS API is briefly down)
+        // can still render Tonight's Preview from last-good data.
+        private string TonightPreviewDiskCachePath()
+            => Path.Combine(_paths.DataDir, "tonight-preview-cache.json");
+
+        // Splices `cached:true` + `cachedAtUtc` into a stored payload so the
+        // client can show a subtle "Cached from {time}" badge on stale-but-valid
+        // fallback. Re-parse over string surgery so we don't depend on payload shape.
+        private static string WrapCachedPayloadWith(string payload, DateTime cachedAtUtc) {
+            try {
+                using var doc = JsonDocument.Parse(payload);
+                if (doc.RootElement.ValueKind != JsonValueKind.Object) return payload;
+                using var ms = new MemoryStream();
+                using (var w = new Utf8JsonWriter(ms)) {
+                    w.WriteStartObject();
+                    foreach (var p in doc.RootElement.EnumerateObject()) p.WriteTo(w);
+                    w.WriteBoolean("cached", true);
+                    w.WriteString("cachedAtUtc", cachedAtUtc.ToString("o"));
+                    w.WriteEndObject();
+                }
+                return System.Text.Encoding.UTF8.GetString(ms.ToArray());
+            } catch {
+                return payload;
+            }
+        }
+
+        // Centralized fallback for every error path below — if we have a valid
+        // disk cache, serve it with cached:true; otherwise pass through the
+        // {error} response the caller built.
+        private async Task<bool> ServeTonightFromDiskCacheOrFail(TcpHttpResponse res, Action<int, string> done, string failTag) {
+            var cache = TsApiCache.Load(TonightPreviewDiskCachePath());
+            if (cache == null || !cache.IsValidAt(DateTime.Now)) return false;
+            var wrapped = WrapCachedPayloadWith(cache.Payload, cache.CachedAtUtc);
+            await WriteJsonRaw(res, 200, wrapped);
+            done?.Invoke(200, $"{failTag} → served disk cache from {cache.CachedAtUtc:o}");
+            return true;
+        }
+
         private async Task HandleGetTonightPreview(TcpHttpResponse res, Action<int, string> done) {
             try {
-                // Return cached data if still fresh (5 min TTL — preview call takes ~25s)
+                // Return hot-cached data if still fresh (5 min TTL — preview call takes ~25s)
                 if (_tonightPreviewJson != null &&
                     (DateTime.UtcNow - _tonightPreviewCachedAt).TotalSeconds < 300) {
                     await WriteJsonRaw(res, 200, _tonightPreviewJson);
-                    done?.Invoke(200, "tonight preview (cached)");
+                    done?.Invoke(200, "tonight preview (hot cached)");
                     return;
                 }
 
-                    if (!TsAvailable()) {
+                if (!TsAvailable()) {
+                    // Companion w/o TS DB synced OR primary w/o TS installed → still
+                    // serve a stale-but-valid preview if we have one.
+                    if (await ServeTonightFromDiskCacheOrFail(res, done, "tonight: ts not available")) return;
                     await WriteJson(res, 200, new { error = "Target Scheduler is not installed or not available." });
                     done?.Invoke(200, "tonight: ts not available");
                     return;
@@ -3059,6 +3102,7 @@ namespace NINA.Plugin.NightSummary.Server {
 
                 var (apiEnabled, apiPort, apiHost) = TsApi();
                 if (!apiEnabled) {
+                    if (await ServeTonightFromDiskCacheOrFail(res, done, "tonight: ts api disabled")) return;
                     await WriteJson(res, 200, new { error = "Target Scheduler API is disabled. Enable it in Target Scheduler settings." });
                     done?.Invoke(200, "tonight: ts api disabled");
                     return;
@@ -3073,6 +3117,8 @@ namespace NINA.Plugin.NightSummary.Server {
                     profilesJson = await TonightApiClient.GetStringAsync($"{baseUrl}/profiles");
                 } catch (Exception ex) {
                     log?.Info($"Tonight preview: TS API unreachable: {ex.Message}");
+                    // Companion-side NINA-off case lives here too. Serve last-good if we have it.
+                    if (await ServeTonightFromDiskCacheOrFail(res, done, "tonight: ts api unreachable")) return;
                     await WriteJson(res, 200, new { error = "Could not reach Target Scheduler API. Make sure NINA is running with Target Scheduler installed and the API is enabled." });
                     done?.Invoke(200, "tonight: ts api unreachable");
                     return;
@@ -3082,6 +3128,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 var profiles = JsonSerializer.Deserialize<List<TsProfileInfo>>(profilesJson, options);
                 var active = profiles?.FirstOrDefault(p => p.Active);
                 if (active == null) {
+                    if (await ServeTonightFromDiskCacheOrFail(res, done, "tonight: no active profile")) return;
                     await WriteJson(res, 200, new { error = "No active NINA profile found in Target Scheduler." });
                     done?.Invoke(200, "tonight: no active profile");
                     return;
@@ -3102,6 +3149,7 @@ namespace NINA.Plugin.NightSummary.Server {
                     previewJson = await TonightApiClient.GetStringAsync(previewUrl);
                 } catch (Exception ex) {
                     log?.Info($"Tonight preview: TS preview call failed: {ex.Message}");
+                    if (await ServeTonightFromDiskCacheOrFail(res, done, $"tonight: preview error: {ex.Message}")) return;
                     await WriteJson(res, 200, new { error = "Target Scheduler preview failed. Check the NINA log for details." });
                     done?.Invoke(200, $"tonight: preview error: {ex.Message}");
                     return;
@@ -3149,6 +3197,10 @@ namespace NINA.Plugin.NightSummary.Server {
 
                 _tonightPreviewJson = JsonSerializer.Serialize(responseObj, JsonOpts);
                 _tonightPreviewCachedAt = DateTime.UtcNow;
+
+                // Persist to disk for noon-boundary fallback on subsequent failure
+                // (companion-side NINA-off scenario, or transient TS API hiccup).
+                TsApiCache.Save(TonightPreviewDiskCachePath(), _tonightPreviewJson);
 
                 await WriteJsonRaw(res, 200, _tonightPreviewJson);
                 done?.Invoke(200, $"tonight preview: {entries.Count} entries");
