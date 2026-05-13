@@ -1,6 +1,24 @@
 # Night Summary — Changelog
 
 
+## Unreleased — v3.1.0 (in progress)
+
+**New features**
+- Raw image thumbnails (opt-in) — Night Summary can now save a small JPEG of every LIGHT frame as it's captured and browse them in a new dashboard gallery, accessed via the Frames pill in the session report toolbar. Click any thumb for a lightbox with capture/ADU/guiding/environment metrics; project name, Exposure Profile, and per-axis guiding RMS are pulled from Target Scheduler when available. Arrow-key (desktop) or swipe (mobile) navigation. Optional medium 800px thumbnails for sharper lightbox viewing. Three retention modes (keep all, roll over by days, roll over by disk GB). Existing TS users can backfill TS captured thumbnails from past sessions via one-click "Import from Target Scheduler" in Options. Off by default — enable in Options → Raw Image Thumbnails.
+
+- Donation link — new "Donate" pill in the dashboard header and a Support line in the plugin description point at https://ko-fi.com/sleepypuppy15. GitHub Sponsors also enabled. Plugin stays free and open source; donations always optional.
+
+**Improvements**
+- Dashboard header title is clickable and returns to the session list.
+- Smoother dashboard navigation with additional polish and multiple fixes
+
+**Bug fixes**
+- Sessions page activity waveform fixes: re-renders on browser resize, click-to-open works at any desktop window width (not just ≥720 px), hover tooltip dismisses on click and hash change.
+- Activity waveform and calendar heatmap on the Sessions page opened the static report in a new tab when clicked; now open in the in-app session view, matching the session-card click behavior.
+- Reports opened on mobile (Discord/email) were reflowing to phone width instead of scaling the desktop layout. Fixed viewport meta restores scale-to-fit.
+- Per-image timestamps now record exposure-start time rather than save time to match FITS `DATE-OBS` headers, filenames, and Target Scheduler's convention.
+
+
 ## v3.0.0
 
 **New features**

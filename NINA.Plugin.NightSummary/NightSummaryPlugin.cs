@@ -68,6 +68,16 @@ namespace NINA.Plugin.NightSummary {
         public ButtonStatus ResendStatus         { get; } = new ButtonStatus();
         public ButtonStatus TestReportStatus     { get; } = new ButtonStatus();
 
+        // ── Raw image thumbnails ─────────────────────────────────────────────
+        // Populated by ImportTsThumbnailsCommand; null when idle. The XAML binds
+        // to .Text so a plain string would also work, but ButtonStatus matches the
+        // existing pattern used for similar deferred-result UIs.
+        private string _tsImportStatus = "";
+        public string TsImportStatus {
+            get => _tsImportStatus;
+            set { _tsImportStatus = value; RaisePropertyChanged(); }
+        }
+
         [ImportingConstructor]
         public NightSummaryPlugin(
             IProfileService profileService,
@@ -285,6 +295,49 @@ namespace NINA.Plugin.NightSummary {
                 window.Show();
             });
 
+            ImportTsThumbnailsCommand = new RelayCommand(async () => {
+                TsImportStatus = "Starting…";
+                try {
+                    var thumbsRoot = Data.Thumbnails.GetThumbnailsRoot(S?.ThumbnailStorageDir);
+                    var dispatcher = System.Windows.Application.Current?.Dispatcher;
+                    var startTime = DateTime.UtcNow;
+                    Action<int, int> onProgress = (n, total) => {
+                        // ETA from rolling rate, only after we have a few rows of data
+                        // so the estimate isn't wild on the first callback.
+                        string eta = "";
+                        if (n >= 10 && n < total) {
+                            var elapsed = (DateTime.UtcNow - startTime).TotalSeconds;
+                            var perRow  = elapsed / n;
+                            var remain  = TimeSpan.FromSeconds(perRow * (total - n));
+                            eta = $" — ~{FormatRemaining(remain)} left";
+                        }
+                        var msg = total > 0 ? $"Importing {n}/{total}{eta}…" : "Importing…";
+                        // Property setter raises PropertyChanged which WPF needs on the UI thread.
+                        if (dispatcher != null && !dispatcher.CheckAccess()) {
+                            dispatcher.BeginInvoke(new Action(() => TsImportStatus = msg));
+                        } else {
+                            TsImportStatus = msg;
+                        }
+                    };
+                    var result = await Task.Run(() => ThumbnailImporter.ImportFromTargetScheduler(liveDbPath, thumbsRoot, onProgress));
+
+                    // Re-run with nothing left to do is the most common path after the
+                    // first successful import — surface the existing count so the user
+                    // doesn't see a bare "0 of 0" and wonder if anything got pulled.
+                    if (result.Candidates == 0) {
+                        TsImportStatus = result.AlreadyImported > 0
+                            ? $"✓ Already imported — {result.AlreadyImported} thumbnails on disk"
+                            : "✓ Nothing to import";
+                    } else {
+                        var totalAfter = result.AlreadyImported + result.Imported;
+                        TsImportStatus = $"✓ Imported {result.Imported} of {result.Candidates} ({result.Skipped} skipped, {result.Failed} failed) — {totalAfter} total on disk";
+                    }
+                } catch (Exception ex) {
+                    TsImportStatus = $"✗ {ex.Message}";
+                    Logger.Error($"NightSummary: TS thumbnail import failed: {ex.Message}\n{ex.StackTrace}");
+                }
+            });
+
             StartLocalServerCommand = new RelayCommand(async () => {
                 LocalServerStatus.Text = "";
                 try {
@@ -353,6 +406,19 @@ namespace NINA.Plugin.NightSummary {
                         Logger.Error($"NightSummary: Failed to auto-start local dashboard. {ex.Message}");
                     }
                 });
+            }
+
+            // Apply thumbnail retention on startup — catches orphan dirs from
+            // sessions that crashed before the EndSession sweep ran.
+            // Best-effort; never fail plugin init on a cleanup error.
+            try {
+                var thumbsRoot = Data.Thumbnails.GetThumbnailsRoot(S?.ThumbnailStorageDir);
+                if (Directory.Exists(thumbsRoot)) {
+                    var db = new SessionDatabase(liveDbPath);
+                    Data.ThumbnailRetention.Apply(thumbsRoot, S, sid => db.GetSession(sid)?.SessionStart);
+                }
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: ThumbnailRetention startup pass failed: {ex.Message}");
             }
 
             Logger.Info("NightSummary: Plugin initialized successfully");
@@ -778,6 +844,41 @@ namespace NINA.Plugin.NightSummary {
             set { S.ChartXAxisMetric = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
+        // ── Raw image thumbnails ─────────────────────────────────────────────
+        // Off-by-default master toggle. When on, NS encodes a JPEG thumb per LIGHT
+        // frame at save time — see RAW_THUMBNAILS_DESIGN.md.
+        public bool CaptureRawThumbnails {
+            get => S.CaptureRawThumbnails;
+            set { S.CaptureRawThumbnails = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
+        public bool CaptureMediumThumbnails {
+            get => S.CaptureMediumThumbnails;
+            set { S.CaptureMediumThumbnails = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
+        public string ThumbnailRetentionMode {
+            get => S.ThumbnailRetentionMode;
+            set { S.ThumbnailRetentionMode = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
+        public int ThumbnailRetentionDays {
+            get => S.ThumbnailRetentionDays;
+            set { S.ThumbnailRetentionDays = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
+        public double ThumbnailRetentionMaxGB {
+            get => S.ThumbnailRetentionMaxGB;
+            set { S.ThumbnailRetentionMaxGB = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
+        // Custom thumbnail storage directory; empty = default. Path resolution lives
+        // in Thumbnails.GetThumbnailsRoot — call sites use that helper, not this raw value.
+        public string ThumbnailStorageDir {
+            get => S.ThumbnailStorageDir;
+            set { S.ThumbnailStorageDir = value ?? ""; SaveSettings(); RaisePropertyChanged(); }
+        }
+
         public int ChartPrimaryMetric {
             get => S.ChartPrimaryMetric;
             set { S.ChartPrimaryMetric = value; SaveSettings(); RaisePropertyChanged(); }
@@ -1034,7 +1135,16 @@ namespace NINA.Plugin.NightSummary {
         public ICommand StartLocalServerCommand { get; }
         public ICommand StopLocalServerCommand { get; }
         public ICommand GenerateAllDashboardReportsCommand { get; }
+        public ICommand ImportTsThumbnailsCommand { get; private set; }
         public ButtonStatus GenerateDashboardReportsStatus { get; } = new ButtonStatus();
+
+        // Compact mm:ss / h:mm formatter for the import ETA. Sub-minute durations
+        // use seconds so users see live countdown on small libraries.
+        private static string FormatRemaining(TimeSpan ts) {
+            if (ts.TotalSeconds < 60)  return $"{(int)Math.Ceiling(ts.TotalSeconds)}s";
+            if (ts.TotalMinutes < 60)  return $"{(int)ts.TotalMinutes}m {ts.Seconds:00}s";
+            return $"{(int)ts.TotalHours}h {ts.Minutes:00}m";
+        }
 
         public event PropertyChangedEventHandler PropertyChanged;
         protected void RaisePropertyChanged([CallerMemberName] string propertyName = null) {

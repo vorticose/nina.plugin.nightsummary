@@ -7,10 +7,10 @@ using System.Runtime.InteropServices;
 [assembly: Guid("682531D1-5A23-4627-B961-0794282ECB4E")]
 // AssemblyVersion and AssemblyFileVersion are auto-generated at build time
 // from VersionPrefix in the .csproj + git commit count (see SetGitBuildNumber target)
-[assembly: AssemblyInformationalVersion("3.0.0")]
+[assembly: AssemblyInformationalVersion("3.1.0")]
 [assembly: AssemblyTitle("Night Summary")]
-[assembly: AssemblyDescription("Records your imaging session and delivers a detailed HTML report via email, Discord, or Pushover when your sequence ends. Includes a built-in local web dashboard for browsing session history and lifetime statistics from any device on your network.\n\nTo update: download the latest release from the link above and extract the zip to your existing NightSummary plugin folder, overwriting existing files.")]
-[assembly: AssemblyCompany("Evan Pegors")]
+[assembly: AssemblyDescription("Records your imaging session and delivers a detailed HTML report via email, Discord, or Pushover when your sequence ends. Includes a built-in local web dashboard for browsing session history and lifetime statistics from any device on your network.\n\nFree and open source — support development: https://ko-fi.com/sleepypuppy15\n\nTo update: download the latest release from the link above and extract the zip to your existing NightSummary plugin folder, overwriting existing files.")]
+[assembly: AssemblyCompany("Evan Pegors @sleepypuppy15")]
 [assembly: AssemblyProduct("Night Summary")]
 [assembly: AssemblyCopyright("Copyright � 2026 Evan Pegors")]
 [assembly: AssemblyMetadata("MinimumApplicationVersion", "3.2.0.9001")]
@@ -24,6 +24,8 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyMetadata("ScreenshotURL", "")]
 [assembly: AssemblyMetadata("AltScreenshotURL", "")]
 [assembly: AssemblyMetadata("LongDescription", @"[Full documentation and setup guide](https://vorticose.github.io/nina.plugin.nightsummary/)
+
+[Donate](https://ko-fi.com/sleepypuppy15)
 
 Night Summary automatically records your astrophotography session as it runs and delivers a rich HTML report the moment your sequence completes — so you wake up to a full breakdown of the night.
 

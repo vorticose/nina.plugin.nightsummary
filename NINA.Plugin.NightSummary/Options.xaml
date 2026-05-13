@@ -827,6 +827,153 @@
                         </StackPanel>
                     </Expander>
 
+                    <Separator Margin="0,10,0,10" />
+
+                    <!-- ══ Raw Image Thumbnails ══════════════════════════════════ -->
+                    <Expander IsExpanded="False" Margin="0,4,0,4">
+                        <Expander.Header>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="Raw Image Thumbnails" FontSize="14" FontWeight="Bold" VerticalAlignment="Center" />
+                                <TextBlock Text="(off by default)" FontSize="11" FontStyle="Italic" Foreground="Gray" Margin="8,0,0,0" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Expander.Header>
+                        <StackPanel Margin="20,8,0,8">
+                            <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="0,0,0,8" MaxWidth="600">
+                                Save a small JPEG thumbnail of every LIGHT frame at capture time. Thumbnails appear in the dashboard's image gallery (per session, per target, per project). ~15 KB per frame for the small thumbnail.
+                            </TextBlock>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,4">
+                                <TextBlock Text="Capture Thumbnails" Width="200" VerticalAlignment="Center" />
+                                <CheckBox IsChecked="{Binding CaptureRawThumbnails}" VerticalAlignment="Center" />
+                                <TextBlock Text="Master toggle. Encodes a 192px-tall JPEG per frame as it's saved."
+                                           FontStyle="Italic" Foreground="Gray" FontSize="11" Margin="20,0,0,0" MaxWidth="380" TextWrapping="Wrap" VerticalAlignment="Center" />
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,4">
+                                <StackPanel.Style>
+                                    <Style TargetType="StackPanel">
+                                        <Setter Property="IsEnabled" Value="True"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CaptureRawThumbnails}" Value="False">
+                                                <Setter Property="IsEnabled" Value="False"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </StackPanel.Style>
+                                <TextBlock Text="Larger Size" Width="200" VerticalAlignment="Center" />
+                                <CheckBox IsChecked="{Binding CaptureMediumThumbnails}" VerticalAlignment="Center" />
+                                <TextBlock Text="Also saves an 800px-tall JPEG (~80 KB) alongside the 192px thumbnail. The dashboard lightbox uses the larger one for sharper detail; the gallery grid keeps using the small one for fast loading."
+                                           FontStyle="Italic" Foreground="Gray" FontSize="11" Margin="20,0,0,0" MaxWidth="380" TextWrapping="Wrap" VerticalAlignment="Center" />
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,12,0,4">
+                                <StackPanel.Style>
+                                    <Style TargetType="StackPanel">
+                                        <Setter Property="IsEnabled" Value="True"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CaptureRawThumbnails}" Value="False">
+                                                <Setter Property="IsEnabled" Value="False"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </StackPanel.Style>
+                                <TextBlock Text="Retention" Width="200" VerticalAlignment="Center" />
+                                <ComboBox SelectedValue="{Binding ThumbnailRetentionMode}" SelectedValuePath="Tag" MinWidth="160" VerticalAlignment="Center" HorizontalContentAlignment="Left">
+                                    <ComboBox.ItemContainerStyle>
+                                        <Style TargetType="ComboBoxItem">
+                                            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                                        </Style>
+                                    </ComboBox.ItemContainerStyle>
+                                    <ComboBoxItem Tag="KeepAll" Content="Keep All" />
+                                    <ComboBoxItem Tag="RolloverByDays" Content="Roll over by days" />
+                                    <ComboBoxItem Tag="RolloverByGB"   Content="Roll over by GB" />
+                                </ComboBox>
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,4">
+                                <StackPanel.Style>
+                                    <Style TargetType="StackPanel">
+                                        <Setter Property="IsEnabled" Value="True"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CaptureRawThumbnails}" Value="False">
+                                                <Setter Property="IsEnabled" Value="False"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding ThumbnailRetentionMode}" Value="KeepAll">
+                                                <Setter Property="IsEnabled" Value="False"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding ThumbnailRetentionMode}" Value="RolloverByGB">
+                                                <Setter Property="IsEnabled" Value="False"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </StackPanel.Style>
+                                <TextBlock Text="Keep Thumbnails For (days)" Width="200" VerticalAlignment="Center" />
+                                <TextBox Text="{Binding ThumbnailRetentionDays}" Width="80" VerticalAlignment="Center" />
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,4">
+                                <StackPanel.Style>
+                                    <Style TargetType="StackPanel">
+                                        <Setter Property="IsEnabled" Value="True"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CaptureRawThumbnails}" Value="False">
+                                                <Setter Property="IsEnabled" Value="False"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding ThumbnailRetentionMode}" Value="KeepAll">
+                                                <Setter Property="IsEnabled" Value="False"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding ThumbnailRetentionMode}" Value="RolloverByDays">
+                                                <Setter Property="IsEnabled" Value="False"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </StackPanel.Style>
+                                <TextBlock Text="Max Disk Use (GB)" Width="200" VerticalAlignment="Center" />
+                                <TextBox Text="{Binding ThumbnailRetentionMaxGB}" Width="80" VerticalAlignment="Center" />
+                            </StackPanel>
+
+                            <!-- TS historical import: only useful when TS plugin is installed -->
+                            <StackPanel Orientation="Horizontal" Margin="0,12,0,4">
+                                <StackPanel.Style>
+                                    <Style TargetType="StackPanel">
+                                        <Setter Property="IsEnabled" Value="True"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsTsInstalled}" Value="False">
+                                                <Setter Property="IsEnabled" Value="False"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </StackPanel.Style>
+                                <TextBlock Width="200" />
+                                <Button Content="Import from Target Scheduler" Command="{Binding ImportTsThumbnailsCommand}" MinWidth="220" />
+                                <TextBlock Text="Pulls existing thumbnails from the TS imagedata table for past sessions. Can take several minutes for large libraries. Roughly ~25 MB on disk per 1,000 thumbnails imported (small only)."
+                                           FontStyle="Italic" Foreground="Gray" FontSize="11" Margin="20,0,0,0" MaxWidth="380" TextWrapping="Wrap" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                <TextBlock Width="200" />
+                                <TextBlock Text="{Binding TsImportStatus}"
+                                           Foreground="Gray" FontSize="11" />
+                            </StackPanel>
+
+                            <!-- Custom storage directory -->
+                            <StackPanel Orientation="Horizontal" Margin="0,16,0,4">
+                                <TextBlock Text="Storage Folder" Width="200" VerticalAlignment="Center" />
+                                <TextBox Text="{Binding ThumbnailStorageDir, UpdateSourceTrigger=LostFocus}"
+                                         Width="380" VerticalAlignment="Center" />
+                                <Button Content="Browse..." Click="BrowseThumbnailStorageDir_Click"
+                                        MinWidth="80" Margin="6,0,0,0" VerticalAlignment="Center" />
+                                <Button Content="Reset" Click="ResetThumbnailStorageDir_Click"
+                                        MinWidth="60" Margin="6,0,0,0" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,2,0,4">
+                                <TextBlock Width="200" />
+                                <TextBlock MaxWidth="600" TextWrapping="Wrap"
+                                           Text="Leave blank for the default (%LOCALAPPDATA%\NINA\NightSummary\thumbs). Changing this orphans existing thumbnails at the old path — move them manually if you want to keep them."
+                                           FontStyle="Italic" Foreground="Gray" FontSize="11" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Expander>
+
                     <Separator Margin="0,20,0,10" />
 
                     <!-- ══ Equipment Profile ══════════════════════════════════════ -->

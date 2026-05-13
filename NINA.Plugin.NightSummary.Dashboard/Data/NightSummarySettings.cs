@@ -85,5 +85,24 @@ namespace NINA.Plugin.NightSummary.Data {
         public bool   ShowEquipmentProfile { get; set; } = true;
         // Comma-separated list of equipment fields to show in the report
         public string EquipmentVisibleFields { get; set; } = "Camera,Telescope,Mount,Filter Wheel,Focuser,Rotator,Guider";
+
+        // ── Raw image thumbnails ─────────────────────────────────────────────
+        // Master toggle. When true, NS encodes a small JPEG thumbnail per LIGHT
+        // frame at save time and stores it under %LOCALAPPDATA%\NINA\NightSummary\thumbs\.
+        // OFF by default — opt-in to avoid surprising existing users with new
+        // disk usage. See RAW_THUMBNAILS_DESIGN.md.
+        public bool   CaptureRawThumbnails    { get; set; } = false;
+        // When true (and CaptureRawThumbnails=true), also encode an 800px
+        // thumbnail used for the dashboard lightbox. ~80 KB/frame vs ~15 KB.
+        public bool   CaptureMediumThumbnails { get; set; } = false;
+        // Retention policy for thumb dirs. Values: "KeepAll" | "RolloverByDays" | "RolloverByGB".
+        public string ThumbnailRetentionMode  { get; set; } = "KeepAll";
+        public int    ThumbnailRetentionDays  { get; set; } = 90;
+        public double ThumbnailRetentionMaxGB { get; set; } = 5.0;
+        // Custom storage directory for thumbnails. Empty = default
+        // (%LOCALAPPDATA%\NINA\NightSummary\thumbs). Lets users park large
+        // collections on a different drive. Changing this orphans existing
+        // thumbs at the old path — they must be moved manually.
+        public string ThumbnailStorageDir     { get; set; } = "";
     }
 }

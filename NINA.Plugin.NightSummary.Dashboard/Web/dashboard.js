@@ -234,6 +234,23 @@ function resolveFilterType(name) {
   return null;                                                              // 4. unresolved
 }
 
+// Canonical imaging stack order — L, R, G, B then narrowband Ha, Sii, Oiii,
+// other narrowband. Unresolved filters fall to the end, alphabetical.
+var FILTER_STACK_ORDER = ['L', 'R', 'G', 'B', 'H', 'S', 'O', 'N'];
+
+// Compare two filter names by stack order. Use anywhere filters need to be
+// listed in a consistent imaging-meaningful order (frames gallery, charts,
+// per-filter tables, etc).
+function compareFilterStackOrder(a, b) {
+  var ta = resolveFilterType(a), tb = resolveFilterType(b);
+  var ia = ta ? FILTER_STACK_ORDER.indexOf(ta) : -1;
+  var ib = tb ? FILTER_STACK_ORDER.indexOf(tb) : -1;
+  if (ia < 0) ia = FILTER_STACK_ORDER.length;
+  if (ib < 0) ib = FILTER_STACK_ORDER.length;
+  if (ia !== ib) return ia - ib;
+  return (a || '').localeCompare(b || '');
+}
+
 function getFilterColor(name) {
   var type = resolveFilterType(name);
   return type ? FILTER_TYPE_COLORS[type] : null;
@@ -267,6 +284,27 @@ function api(path) {
       return data;
     });
   });
+}
+
+// Defer a "Loading…" placeholder so cache-hot navigations don't flash one.
+// Call before kicking off the fetch and invoke the returned cancel fn once
+// data arrives (before paint). If 200ms elapses without cancel, the
+// placeholder paints so the user still sees progress on slow loads.
+function deferLoader(el, msg) {
+  var timer = setTimeout(function() {
+    el.innerHTML = '<div class="loading">' + msg + '</div>';
+  }, 200);
+  return function cancelLoader() { clearTimeout(timer); };
+}
+
+// Strip report-view chrome (body class, header pills, --header-h CSS var).
+// Call this in each non-report destination renderer at the paint moment so
+// the prior report doesn't collapse before the new page is ready. Idempotent.
+function exitReportView() {
+  document.body.classList.remove('report-view');
+  var existingNav = document.getElementById('header-report-nav');
+  if (existingNav) existingNav.remove();
+  document.documentElement.style.removeProperty('--header-h');
 }
 
 // ── Theme ──────────────────────────────────────────────────────────────────
@@ -361,28 +399,37 @@ function route() {
     });
     updateStatsNavLabel();
 
-    // Toggle report-view mode on body to kill outer scroll
-    var isReport = path.match(/^\/sessions\/[^/]+$/);
-    document.body.classList.toggle('report-view', !!isReport);
+    // Toggle report-view mode on body to kill outer scroll. Frames view
+    // (/sessions/{sid}/frames) is its own page, not a report iframe.
+    var isReport      = path.match(/^\/sessions\/[^/]+$/);
+    var isFrames      = path.match(/^\/sessions\/([^/]+)\/frames$/);
+    var isTargetFrames= path.match(/^\/targets\/([^/]+)\/frames$/);
+    var isProjectFrames=path.match(/^\/projects\/([^/]+)\/frames$/);
     if (isReport) {
+      document.body.classList.add('report-view');
       // Shell is the scroll container in report-view; reset it so content
       // always starts at top regardless of prior body scroll position.
       // window.scrollTo is unreliable on iOS Safari after a hashchange.
       var shellEl = document.querySelector('.shell');
       if (shellEl) shellEl.scrollTop = 0;
-    } else {
-      // Remove the report nav from the header when leaving report view
-      var existingNav = document.getElementById('header-report-nav');
-      if (existingNav) existingNav.remove();
-      document.documentElement.style.removeProperty('--header-h');
     }
+    // Leaving report view: chrome cleanup (body class, header pills,
+    // --header-h) is deferred to the destination renderer's first paint via
+    // exitReportView() so the prior report doesn't visibly collapse while
+    // the destination data is still loading.
 
     if (path === '/sessions') {
       renderSessionList(params);
+    } else if (isFrames) {
+      renderFramesGallery({ kind: 'session', id: decodeURIComponent(isFrames[1]) });
+    } else if (isTargetFrames) {
+      renderFramesGallery({ kind: 'target', id: decodeURIComponent(isTargetFrames[1]) });
+    } else if (isProjectFrames) {
+      renderFramesGallery({ kind: 'project', id: decodeURIComponent(isProjectFrames[1]) });
     } else if (isReport) {
-      renderSessionDetail(path.split('/')[2]);
+      renderSessionDetail(path.split('/')[2], params);
     } else if (path === '/stats') {
-      renderStats();
+      renderStats(params);
     } else if (path === '/settings') {
       renderSettingsPage();
     } else {
@@ -1791,13 +1838,18 @@ function bindTargetDetailEvents(backdrop, targetName) {
     });
   });
 
-  // View report link → opens the session report in a new tab
+  // View report link → load session detail in shell with TDP context
+  // so the back-button returns to this TDP modal (preserves Frames tab access).
   backdrop.querySelectorAll('.tdp-row-link').forEach(function(link) {
     link.addEventListener('click', function(e) {
       e.stopPropagation();
       var sid = link.getAttribute('data-session-id');
       if (!sid) return;
-      window.open('/api/sessions/' + encodeURIComponent(sid) + '/report', '_blank', 'noopener');
+      // Don't close yet — modal stays visible until the report paints,
+      // then renderSessionDetail dismisses it. Avoids a 1-frame gap where
+      // the user would see the Stats page behind the closing modal.
+      navigate('#/sessions/' + encodeURIComponent(sid) +
+        '?from=tdp&target=' + encodeURIComponent(targetName));
     });
   });
 
@@ -1894,51 +1946,68 @@ function findTsForTarget(targetName) {
   return null;
 }
 
-function openTargetDetail(targetName, latestSessionId) {
+// Paint the TDP panel into an existing backdrop. Extracted so the cold path
+// (fetch -> paint) and the preloaded path (paint now) share one impl.
+function paintTargetDetailPanel(backdrop, data, targetName, latestSessionId, ts) {
+  backdrop.innerHTML = renderTargetDetailPanel(data, targetName, ts);
+  bindTargetDetailEvents(backdrop, targetName);
+  loadTargetDetailThumb(targetName, latestSessionId);
+  // Chart renders after the panel is in the DOM so we can measure available width.
+  // Use rAF to ensure layout has settled (kpi grid, etc.).
+  var sessions = data.sessions || [];
+  requestAnimationFrame(function() { renderChartIntoPanel(backdrop, sessions); });
+  // Re-render chart on window resize (debounced) so it stays full-width.
+  // Detach any prior handler first; opening the panel twice would otherwise
+  // attach a second listener and the close-time remove only catches the latest.
+  if (_tdpResizeHandler) window.removeEventListener('resize', _tdpResizeHandler);
+  _tdpResizeHandler = function() {
+    if (_tdpResizeDebounce) clearTimeout(_tdpResizeDebounce);
+    _tdpResizeDebounce = setTimeout(function() {
+      renderChartIntoPanel(backdrop, sessions);
+    }, 120);
+  };
+  window.addEventListener('resize', _tdpResizeHandler);
+}
+
+function openTargetDetail(targetName, latestSessionId, preloadedData) {
   if (!targetName) return;
   // Close any existing panel first
   closeTargetDetail();
 
-  // Loading placeholder so the user gets immediate feedback
   var backdrop = document.createElement('div');
   backdrop.id = 'tdp-backdrop';
   backdrop.className = 'tdp-backdrop';
-  backdrop.innerHTML = '<div class="tdp-modal" style="padding:40px;text-align:center;color:var(--text-tertiary);">Loading \u2026</div>';
   document.body.appendChild(backdrop);
   document.body.style.overflow = 'hidden';
   backdrop.addEventListener('touchmove', function(e) { if (e.target === backdrop) e.preventDefault(); }, { passive: false });
-
-  // Tentative close on backdrop click while loading
-  var loadClickHandler = function(e) { if (e.target === backdrop) closeTargetDetail(); };
-  backdrop.addEventListener('click', loadClickHandler);
   _tdpKeyHandler = function(e) { if (e.key === 'Escape') closeTargetDetail(); };
   document.addEventListener('keydown', _tdpKeyHandler);
 
   var ts = findTsForTarget(targetName);
+
+  // Preloaded path: paint full panel immediately. Used by back-navigation
+  // from session detail where the caller pre-fetched the sessions list in
+  // parallel with the stats page load. Skip fade-in so the modal is fully
+  // opaque on the same paint cycle as Stats — otherwise the user sees a
+  // 180ms flash of Stats underneath the still-transparent backdrop.
+  if (preloadedData) {
+    backdrop.classList.add('tdp-no-anim');
+    paintTargetDetailPanel(backdrop, preloadedData, targetName, latestSessionId, ts);
+    return;
+  }
+
+  // Cold path: show loading stub while fetching.
+  backdrop.innerHTML = '<div class="tdp-modal" style="padding:40px;text-align:center;color:var(--text-tertiary);">Loading \u2026</div>';
+  // Tentative close on backdrop click while loading
+  var loadClickHandler = function(e) { if (e.target === backdrop) closeTargetDetail(); };
+  backdrop.addEventListener('click', loadClickHandler);
 
   api('/api/stats/targets/' + encodeURIComponent(targetName) + '/sessions').then(function(data) {
     // If the user closed it while loading, bail out
     var current = document.getElementById('tdp-backdrop');
     if (!current || current !== backdrop) return;
     backdrop.removeEventListener('click', loadClickHandler);
-    backdrop.innerHTML = renderTargetDetailPanel(data, targetName, ts);
-    bindTargetDetailEvents(backdrop, targetName);
-    loadTargetDetailThumb(targetName, latestSessionId);
-    // Chart renders after the panel is in the DOM so we can measure available width.
-    // Use rAF to ensure layout has settled (kpi grid, etc.).
-    var sessions = data.sessions || [];
-    requestAnimationFrame(function() { renderChartIntoPanel(backdrop, sessions); });
-    // Re-render chart on window resize (debounced) so it stays full-width.
-    // Detach any prior handler first; opening the panel twice would otherwise
-    // attach a second listener and the close-time remove only catches the latest.
-    if (_tdpResizeHandler) window.removeEventListener('resize', _tdpResizeHandler);
-    _tdpResizeHandler = function() {
-      if (_tdpResizeDebounce) clearTimeout(_tdpResizeDebounce);
-      _tdpResizeDebounce = setTimeout(function() {
-        renderChartIntoPanel(backdrop, sessions);
-      }, 120);
-    };
-    window.addEventListener('resize', _tdpResizeHandler);
+    paintTargetDetailPanel(backdrop, data, targetName, latestSessionId, ts);
   }).catch(function(err) {
     logError('Failed to load target detail:', err && err.message);
     var current = document.getElementById('tdp-backdrop');
@@ -2045,7 +2114,7 @@ function openProjectDetail(projectGuid, projectName) {
         sessSection.style.display = '';
         var panelNames = sessData.panelNames || [];
         tableWrap.innerHTML = buildPdpSessionTable(sessions, panelNames.length > 1);
-        bindPdpSessionTableEvents(backdrop);
+        bindPdpSessionTableEvents(backdrop, projectGuid, (data.project || {}).name);
       }
 
       // Resize handler for chart reflow
@@ -2524,7 +2593,7 @@ function buildPdpSessionTable(sessions, showTargetCol) {
     '<tbody>' + rows + '</tbody></table>';
 }
 
-function bindPdpSessionTableEvents(backdrop) {
+function bindPdpSessionTableEvents(backdrop, projectGuid, projectName) {
   // Expand/collapse session rows
   backdrop.querySelectorAll('.pdp-session-table tr.tdp-session-row').forEach(function(row) {
     row.addEventListener('click', function(e) {
@@ -2536,13 +2605,18 @@ function bindPdpSessionTableEvents(backdrop) {
       subs.forEach(function(sub) { sub.style.display = isOpen ? '' : 'none'; });
     });
   });
-  // View report link
+  // View report link → load session detail in shell with PDP context
+  // so the back-button returns to this PDP modal (preserves Frames tab access).
   backdrop.querySelectorAll('.pdp-session-table .tdp-row-link').forEach(function(link) {
     link.addEventListener('click', function(e) {
       e.stopPropagation();
       var sid = link.getAttribute('data-session-id');
       if (!sid) return;
-      window.open('/api/sessions/' + encodeURIComponent(sid) + '/report', '_blank', 'noopener');
+      var qs = '?from=pdp';
+      if (projectGuid) qs += '&pid=' + encodeURIComponent(projectGuid);
+      if (projectName) qs += '&pname=' + encodeURIComponent(projectName);
+      closeProjectDetail();
+      navigate('#/sessions/' + encodeURIComponent(sid) + qs);
     });
   });
 }
@@ -2599,7 +2673,7 @@ function openPdpPanelDrillDown(backdrop, panelName, panelData, projectData, proj
     });
 
     // Session row expand/collapse + view links
-    bindPdpSessionTableEvents(backdrop);
+    bindPdpSessionTableEvents(backdrop, projectGuid, (projectData.project || {}).name);
 
     // Load thumbnail
     if (panelData && panelData.latestSessionId) {
@@ -3188,8 +3262,13 @@ function buildActivityWaveform(sessions) {
     var barClass = isLatest ? 'lw-bar lw-bar-latest' : 'lw-bar';
     var tipMeta = fmtDate(s.sessionStart) + ' \u00b7 ' + fmt(s.totalIntegrationSeconds || 0) + ' \u00b7 ' + (s.imageCount || 0) + ' images' + (isLatest ? ' \u00b7 latest' : '');
     var bar = '<rect class="' + barClass + '" x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + BAR_W + '" height="' + barH.toFixed(1) + '" fill="' + hColor + '" rx="2" data-lw-tgt="' + esc(tgtStr) + '" data-lw-meta="' + esc(tipMeta) + '" data-lw-latest="' + (isLatest ? '1' : '0') + '"/>';
-    if (!isMobile && !IS_TOUCH && s.sessionId && s.hasReport) {
-      svg += '<a href="/api/sessions/' + encodeURIComponent(s.sessionId) + '/report" target="_blank" rel="noopener">' + bar + '</a>';
+    if (!IS_TOUCH && s.sessionId && s.hasReport) {
+      // In-app session view (settings panel + inline report), matching the
+      // session-card click behavior. Previously opened the static report in
+      // a new tab, which felt jarringly different from clicking a card.
+      // Gated on !IS_TOUCH only (was also gated on !isMobile, which broke
+      // click-through for non-touch desktop windows narrower than 720px).
+      svg += '<a href="#/sessions/' + encodeURIComponent(s.sessionId) + '">' + bar + '</a>';
     } else {
       svg += bar;
     }
@@ -3313,7 +3392,9 @@ function buildCalendarHeatmap(sessions) {
       }
       var rect = '<rect class="lifetime-heatmap-cell lw-bar' + (clickable ? ' is-clickable' : '') + (isLatest ? ' lw-bar-latest' : '') + '" x="' + cx + '" y="' + cy + '" width="' + CELL + '" height="' + CELL + '" rx="2" fill="' + fillColor + '" data-lw-tgt="' + esc(tgtStr) + '" data-lw-meta="' + esc(tipMeta) + '" data-lw-latest="' + (isLatest ? '1' : '0') + '"/>';
       if (clickable && !IS_TOUCH) {
-        svgBody += '<a href="/api/sessions/' + encodeURIComponent(sessInfo.id) + '/report" target="_blank" rel="noopener">' + rect + '</a>';
+        // In-app session view matches session-card click behavior — was
+        // opening the static /report in a new tab, now goes through the SPA.
+        svgBody += '<a href="#/sessions/' + encodeURIComponent(sessInfo.id) + '">' + rect + '</a>';
       } else {
         svgBody += rect;
       }
@@ -3345,8 +3426,29 @@ function toggleLifetimeView(btn, view) {
   strip.querySelector('.lifetime-calendar-slot').style.display = view === 'calendar' ? '' : 'none';
 }
 
+// Cached sessions used to rebuild the activity waveform on window resize.
+// The waveform SVG is rendered with an explicit numeric width derived from
+// window.innerWidth at build time, so it doesn't reflow on its own.
+var __lwCachedSessions = null;
+var __lwResizeTimer = null;
+window.addEventListener('resize', function() {
+  if (__lwResizeTimer) clearTimeout(__lwResizeTimer);
+  __lwResizeTimer = setTimeout(function() {
+    if (!__lwCachedSessions) return;
+    var wrap = document.querySelector('.lifetime-waveform-slot .lw-scroll-wrap');
+    if (!wrap) return;
+    wrap.innerHTML = buildActivityWaveform(__lwCachedSessions);
+    // Reinit the touch scrubber against the freshly rendered SVG (no-op on
+    // non-touch). The lw-bar-tip hover handler is delegated on document so
+    // it doesn't need rewiring.
+    var strip = wrap.closest('.lifetime-strip');
+    if (strip && typeof initWaveformScrubber === 'function') initWaveformScrubber(strip);
+  }, 200);
+});
+
 function renderLifetimeStrip(sessions) {
   if (!sessions || sessions.length === 0) return '';
+  __lwCachedSessions = sessions;
   var totalSessions = sessions.length;
   var totalIntegSec = sessions.reduce(function(sum, s) { return sum + (s.totalIntegrationSeconds || 0); }, 0);
   var totalImages = sessions.reduce(function(sum, s) { return sum + (s.imageCount || 0); }, 0);
@@ -3929,6 +4031,10 @@ function renderSessionList(params) {
   heroSessionId = null;
 
   function finish() {
+    // Strip the prior page's report-view chrome at the paint moment so
+    // we don't visibly collapse the iframe + lose header pills before
+    // the sessions list is ready.
+    exitReportView();
     getAllTargets().forEach(function(t) { selectedTargets[t] = true; });
     if (v1) {
       doRenderList(el, sub, fromVal, toVal, sortVal);
@@ -3942,12 +4048,14 @@ function renderSessionList(params) {
     return;
   }
 
-  el.innerHTML = '<div class="loading">Loading sessions...</div>';
+  var cancelLoader = deferLoader(el, 'Loading sessions...');
   api('/api/sessions').then(function(data) {
+    cancelLoader();
     sessionsCache = data;
     logInfo('Sessions loaded:', data.length);
     finish();
   }).catch(function(err) {
+    cancelLoader();
     logError('Failed to load sessions:', err.message);
     el.innerHTML = '<div class="error">Failed to load sessions: ' + esc(err.message) + '</div>';
   });
@@ -5035,6 +5143,15 @@ var isTouchDevice = 'ontouchstart' in window;
     var bar = e.target.closest('.lw-bar');
     if (bar && !bar.contains(e.relatedTarget)) hide();
   });
+  // Hide on bar click — desktop click navigates to #/sessions/{id}, removing
+  // the .lw-bar from DOM before mouseout can fire. Without this the tip
+  // stays pinned at its last position on the new page.
+  document.addEventListener('click', function(e) {
+    if (e.target.closest('.lw-bar')) hide();
+  });
+  // Also hide on any hash change — defensive for any other navigation path
+  // (keyboard nav, programmatic route change, back/forward, etc.).
+  window.addEventListener('hashchange', hide);
 })();
 
 // Event delegation for stat box hover expansion (desktop only)
@@ -6539,17 +6656,34 @@ function loadReportIntoShadow(sessionId) {
     });
 }
 
-function renderSessionDetail(sessionId) {
+function renderSessionDetail(sessionId, params) {
   var el = document.getElementById('content');
   var sub = document.getElementById('page-subtitle');
 
-  el.innerHTML = '<div class="loading">Loading report...</div>';
+  var cancelLoader = deferLoader(el, 'Loading report...');
+
+  // Context-aware back-button: TDP/PDP origin returns to that modal.
+  var from   = params && params.get ? params.get('from')   : null;
+  var fromTarget = params && params.get ? params.get('target') : null;
+  var fromPid    = params && params.get ? params.get('pid')    : null;
+  var fromPname  = params && params.get ? params.get('pname')  : null;
+  var backHref = '#/sessions';
+  var backLabel = 'Sessions';
+  if (from === 'tdp' && fromTarget) {
+    backHref = '#/stats?openTdp=' + encodeURIComponent(fromTarget);
+    backLabel = fromTarget;
+  } else if (from === 'pdp' && fromPid) {
+    backHref = '#/stats?openPdp=' + encodeURIComponent(fromPid) +
+      (fromPname ? '&pname=' + encodeURIComponent(fromPname) : '');
+    backLabel = fromPname || 'Project';
+  }
 
   Promise.all([
     api('/api/sessions/' + sessionId),
     api('/api/sessions/' + sessionId + '/settings'),
     cachedFilters ? Promise.resolve({ filters: cachedFilters }) : api('/api/filters')
   ]).then(function(results) {
+    cancelLoader();
     var detail = results[0];
     currentSettings = results[1];
     cachedFilters = results[2].filters || [];
@@ -6560,16 +6694,17 @@ function renderSessionDetail(sessionId) {
     if (sub) sub.textContent = getSubtitleText();
 
     var navHtml = '<div class="report-nav" id="header-report-nav">' +
-      '<a class="back-btn" href="#/sessions">\u2190 Sessions</a>' +
-      '<div class="report-nav-info">' +
-        '<span class="report-nav-date">' + fmtDate(detail.sessionStart) + '</span>' +
-        '<span class="report-nav-targets">' + esc(targets) + '</span>' +
-      '</div>' +
+      '<a class="back-btn" href="' + backHref + '">\u2190 ' + esc(backLabel) + '</a>' +
       '<div class="report-nav-actions">' +
+        '<a class="report-btn" href="#/sessions/' + encodeURIComponent(sessionId) + '/frames">\ud83d\uddbc Frames</a>' +
         '<button class="report-btn" id="btn-settings">\u2699 Settings</button>';
 
     if (detail.hasReport) {
-      navHtml += '<a href="/api/sessions/' + sessionId + '/report" target="_blank" class="report-btn">Open in New Tab \u2192</a>';
+      // Mobile gets a short label so all four toolbar buttons (back, Frames,
+      // Settings, this one) fit on a single row at equal width.
+      var newTabLabel = window.matchMedia('(max-width: 700px)').matches
+        ? '\u2197 New Tab' : 'Open in New Tab \u2192';
+      navHtml += '<a href="/api/sessions/' + sessionId + '/report" target="_blank" class="report-btn">' + newTabLabel + '</a>';
     }
 
     navHtml += '</div></div>';
@@ -6605,17 +6740,28 @@ function renderSessionDetail(sessionId) {
 
     el.innerHTML = html;
 
+    // Dismiss any open TDP/PDP modal that was left visible during navigation
+    // so the underlying page wouldn't flash. Modal's own fade-out animation
+    // runs over the now-painted report — smooth handoff.
+    if (document.getElementById('tdp-backdrop')) closeTargetDetail();
+    if (typeof closeProjectDetail === 'function' &&
+        document.getElementById('pdp-backdrop')) closeProjectDetail();
+
     if (detail.hasReport && isMobile) {
       loadReportIntoShadow(sessionId);
     }
 
     var iframeEl = document.getElementById('report-iframe');
-    if (iframeEl) iframeEl.addEventListener('load', syncReportTheme);
+    if (iframeEl) iframeEl.addEventListener('load', function() {
+      iframeEl.classList.add('is-loaded');
+      syncReportTheme();
+    });
 
     bindDetailEvents(sessionId);
   }).catch(function(err) {
+    cancelLoader();
     logError('Failed to load session detail:', sessionId, err.message);
-    el.innerHTML = '<a class="back-btn" href="#/sessions">\u2190 Sessions</a>' +
+    el.innerHTML = '<a class="back-btn" href="' + backHref + '">\u2190 ' + esc(backLabel) + '</a>' +
       '<div class="error">Failed to load session: ' + esc(err.message) + '</div>';
   });
 }
@@ -8347,7 +8493,8 @@ function buildActivityHeatmap(sessions, firstSessionIso) {
                'width="' + cellSize + '" height="' + cellSize + '" rx="2"><title>' +
                esc(tooltip) + '</title></rect>';
     if (c.sessionId && !IS_TOUCH) {
-      svg += '<a href="/api/sessions/' + encodeURIComponent(c.sessionId) + '/report" target="_blank" rel="noopener">' + rect + '</a>';
+      // In-app session view, same pattern as session-card click.
+      svg += '<a href="#/sessions/' + encodeURIComponent(c.sessionId) + '">' + rect + '</a>';
     } else {
       svg += rect;
     }
@@ -8379,23 +8526,41 @@ function buildActivityHeatmap(sessions, firstSessionIso) {
   return svg;
 }
 
-function renderStats() {
+function renderStats(params) {
   var el = document.getElementById('content');
   var sub = document.getElementById('page-subtitle');
   if (sub) sub.textContent = getSubtitleText();
 
-  el.innerHTML = '<div class="loading">Loading stats...</div>';
+  // Pull deep-link params for auto-opening TDP/PDP after stats render.
+  // Used when returning from a session detail view that was launched from
+  // a TDP/PDP "View" button — preserves the user's prior context.
+  var openTdp = params && params.get ? params.get('openTdp') : null;
+  var openPdp = params && params.get ? params.get('openPdp') : null;
+  var openPname = params && params.get ? params.get('pname')   : null;
+
+  var cancelLoader = deferLoader(el, 'Loading stats...');
+
+  // Pre-fetch TDP sessions in parallel with the stats load when returning
+  // from a session-detail view. Included in the main Promise.all so the
+  // modal opens in the *same* paint cycle as the stats page — no 1-frame
+  // gap where the user sees Stats without its overlaid modal.
+  var tdpPrefetch = openTdp
+    ? api('/api/stats/targets/' + encodeURIComponent(openTdp) + '/sessions').catch(function() { return null; })
+    : Promise.resolve(null);
 
   Promise.all([
     api('/api/stats/targets'),
     api('/api/stats/summary'),
     api('/api/settings'),
-    api('/api/sessions')
+    api('/api/sessions'),
+    tdpPrefetch
   ]).then(function(results) {
+    cancelLoader();
     var targetData = results[0];
     var summary    = results[1];
     var settings   = results[2];
     var sessions   = results[3] || [];
+    var tdpData    = results[4];
     if (sessions.length > 0) sessionsCache = sessions;
     var targets = targetData.targets || [];
     statsTargetData = targets;
@@ -8418,6 +8583,11 @@ function renderStats() {
     logInfo('Stats loaded:', summary.totalSessions, 'sessions,', targets.length, 'targets');
 
     if (sub) sub.textContent = getSubtitleText();
+
+    // Strip prior report-view chrome in the same sync tick as the stats
+    // innerHTML write below — keeps the iframe + header pills intact while
+    // the stats data was loading.
+    exitReportView();
 
     var html = '';
 
@@ -8445,9 +8615,606 @@ function renderStats() {
       el.innerHTML = html;
       renderStatsTabContent('targets');
     }
+
+    // Auto-open TDP/PDP after stats paints — used by deep-links from
+    // session-detail "back" buttons that originated in a TDP/PDP modal.
+    // TDP modal opens synchronously here so the browser paints stats +
+    // overlaid modal in one cycle (no flash of bare Stats).
+    if (openTdp) {
+      // Find the latest session for this target so the TDP hero thumb populates.
+      var ttarget = (targets || []).find(function(t) { return t.target === openTdp; });
+      var latestSid = ttarget ? ttarget.latestSessionId : null;
+      openTargetDetail(openTdp, latestSid, tdpData || undefined);
+    } else if (openPdp) {
+      requestAnimationFrame(function() { openProjectDetail(openPdp, openPname); });
+    }
   }).catch(function(err) {
+    cancelLoader();
     logError('Failed to load stats:', err.message);
     el.innerHTML = '<div class="error">Failed to load stats: ' + esc(err.message) + '</div>';
+  });
+}
+
+// ── Raw Image Frames Gallery (RAW_THUMBNAILS_DESIGN.md) ──────────────────
+// Three view modes share one renderer: per-session, per-target (cross-session),
+// per-project (TS-mediated). Each fetches a different endpoint but produces the
+// same {id, sessionId, timestamp, filter, accepted, gradingStatus,
+//        thumbnailVersion, [targetName for target/project views]} entries.
+
+function renderFramesGallery(view) {
+  var el = document.getElementById('content');
+  var cancelLoader = deferLoader(el, 'Loading frames...');
+
+  var url, title, backHref;
+  if (view.kind === 'session') {
+    url = '/api/sessions/' + encodeURIComponent(view.id) + '/images';
+    title = 'Frames';
+    backHref = '#/sessions/' + encodeURIComponent(view.id);
+  } else if (view.kind === 'target') {
+    url = '/api/targets/' + encodeURIComponent(view.id) + '/frames';
+    title = 'Frames — ' + view.id;
+    backHref = '#/stats';
+  } else {
+    url = '/api/projects/' + encodeURIComponent(view.id) + '/frames';
+    title = 'Frames — Project';
+    backHref = '#/stats';
+  }
+
+  api(url).then(function(rows) {
+    cancelLoader();
+    // For session-view we got the full /images dump including darks/flats.
+    // Filter to LIGHT frames that have a thumb.
+    var frames = (rows || []).filter(function(r) {
+      if (view.kind === 'session') {
+        if (r.imageType && r.imageType.toUpperCase() !== 'LIGHT') return false;
+      }
+      return (r.thumbnailVersion || 0) > 0;
+    });
+
+    if (frames.length === 0) {
+      exitReportView();
+      el.innerHTML =
+        '<a class="back-btn" href="' + backHref + '">← Back</a>' +
+        '<h2>' + esc(title) + '</h2>' +
+        '<div class="empty">No thumbnails available. Enable "Capture Thumbnails" in Options to start collecting them, or click "Import from Target Scheduler" to backfill from existing TS data.</div>';
+      return;
+    }
+
+    // Sort: target (chronological by first-imaged timestamp) → filter (stack
+    // order L,R,G,B,H,S,O,N) → exposure → timestamp. Lightbox prev/next walks
+    // this same order so navigation flows naturally across groups.
+    // Pre-compute first-imaged timestamp per target so the comparator stays O(n log n).
+    var targetFirstTs = {};
+    frames.forEach(function(f) {
+      var name = f.targetName || '(unknown target)';
+      var ts = new Date(f.timestamp || 0).getTime();
+      if (ts > 0 && (targetFirstTs[name] == null || ts < targetFirstTs[name])) {
+        targetFirstTs[name] = ts;
+      }
+    });
+    frames.sort(function(a, b) {
+      var an = a.targetName || '(unknown target)';
+      var bn = b.targetName || '(unknown target)';
+      var t = (targetFirstTs[an] || 0) - (targetFirstTs[bn] || 0);
+      if (t) return t;
+      var f = compareFilterStackOrder(a.filter, b.filter);
+      if (f) return f;
+      var e = (a.exposureDuration || 0) - (b.exposureDuration || 0);
+      if (e) return e;
+      return new Date(a.timestamp || 0) - new Date(b.timestamp || 0);
+    });
+
+    // Group: top by target (skipped on target view since they're all the same),
+    // then sub-group by filter+exposure within each.
+    var groupByTarget = view.kind !== 'target';
+    var groups = [];        // [{ target, subgroups: [{ key, label, frames }] }]
+    var groupMap = {};      // target -> group ref
+    function expoLabel(d) { return d ? Math.round(d) + 's' : '?'; }
+    for (var gi = 0; gi < frames.length; gi++) {
+      var ff = frames[gi];
+      var tname = groupByTarget ? (ff.targetName || '(unknown target)') : '';
+      var g = groupMap[tname];
+      if (!g) {
+        g = { target: tname, subgroups: [], subMap: {} };
+        groupMap[tname] = g;
+        groups.push(g);
+      }
+      var subKey = (ff.filter || '?') + '|' + expoLabel(ff.exposureDuration);
+      var sub = g.subMap[subKey];
+      if (!sub) {
+        sub = { key: subKey, filter: ff.filter || '?', exposure: expoLabel(ff.exposureDuration), frames: [] };
+        g.subMap[subKey] = sub;
+        g.subgroups.push(sub);
+      }
+      sub.frames.push(ff);
+    }
+
+    function renderThumb(ff, viewKind) {
+      var sid2 = ff.sessionId || view.id;
+      var src = '/api/frames/' + ff.id + '/thumb?size=sm';
+      var rejected = (ff.gradingStatus === 2) || (ff.accepted === false);
+      // Tile caption: filter is already shown in the subgroup header above,
+      // and target is shown in the group header — only the project view
+      // mixes multiple targets per subgroup, so only there is a per-tile
+      // target label useful. Other views render no meta strip.
+      var meta = (viewKind === 'project' && ff.targetName) ? ff.targetName : '';
+      // data-caption still includes filter + timestamp so lightbox prev/next
+      // can label the slide meaningfully (independent of the visible tile).
+      var dataCaption = (ff.filter || '');
+      if (ff.targetName && viewKind !== 'session') dataCaption = ff.targetName + ' • ' + dataCaption;
+      var tsLabel = ff.timestamp ? fmtDate(ff.timestamp) : '';
+      return (
+        '<div class="frames-thumb' + (rejected ? ' rejected' : '') + '"' +
+             ' data-id="' + ff.id + '" data-sid="' + esc(sid2) + '"' +
+             ' data-caption="' + esc(dataCaption + (tsLabel ? ' • ' + tsLabel : '')) + '">' +
+          '<img loading="lazy" src="' + src + '" alt="" />' +
+          (meta ? '<div class="frames-thumb-meta">' + esc(meta) + '</div>' : '') +
+        '</div>'
+      );
+    }
+
+    var html =
+      '<a class="back-btn" href="' + backHref + '">← Back</a>' +
+      '<h2>' + esc(title) + ' <span class="frames-count">' + frames.length + '</span></h2>' +
+      '<div class="frames-groups">';
+
+    for (var gj = 0; gj < groups.length; gj++) {
+      var grp = groups[gj];
+      var grpTotal = grp.subgroups.reduce(function(s, x) { return s + x.frames.length; }, 0);
+      html += '<section class="frames-target-group">';
+      if (groupByTarget) {
+        html += '<h3 class="frames-target-h">' + esc(grp.target) +
+                ' <span class="frames-target-count">' + grpTotal + '</span></h3>';
+      }
+      for (var sj = 0; sj < grp.subgroups.length; sj++) {
+        var sg = grp.subgroups[sj];
+        html += '<div class="frames-subgroup">' +
+                  '<div class="frames-subgroup-h">' +
+                    '<span class="sg-filter">' + esc(sg.filter) + '</span>' +
+                    '<span class="sg-sep">·</span>' +
+                    '<span class="sg-exposure">' + esc(sg.exposure) + '</span>' +
+                    '<span class="sg-count">' + sg.frames.length +
+                      ' frame' + (sg.frames.length === 1 ? '' : 's') + '</span>' +
+                  '</div>' +
+                  '<div class="frames-gallery">';
+        for (var fk = 0; fk < sg.frames.length; fk++) {
+          html += renderThumb(sg.frames[fk], view.kind);
+        }
+        html += '</div></div>';
+      }
+      html += '</section>';
+    }
+    html += '</div>';
+    // Lightbox structure: sticky header (badge / counter / close) above a
+    // scrolling stage (image + metrics panel). Header lives inside the stage
+    // so it travels with the slide animation; position:sticky keeps it pinned
+    // to the visible top when the user scrolls the metrics panel.
+    html += '<div class="frames-lightbox" id="frames-lightbox" style="display:none">' +
+              '<button class="frames-lightbox-prev"  aria-label="Previous">‹</button>' +
+              '<button class="frames-lightbox-next"  aria-label="Next">›</button>' +
+              '<div class="frames-lightbox-stage">' +
+                '<div class="lb-header">' +
+                  '<div id="frames-lightbox-badge" class="lb-badge" style="display:none">TS Import</div>' +
+                  '<div id="frames-lightbox-counter" class="lb-counter"></div>' +
+                  '<button class="frames-lightbox-close" aria-label="Close">×</button>' +
+                '</div>' +
+                '<div class="frames-lightbox-imgwrap">' +
+                  '<img id="frames-lightbox-img" alt="" />' +
+                '</div>' +
+                '<div id="frames-lightbox-panel" class="frames-lightbox-panel"></div>' +
+              '</div>' +
+            '</div>';
+
+    exitReportView();
+    el.innerHTML = html;
+    bindFramesGallery(frames);
+  }).catch(function(err) {
+    cancelLoader();
+    logError('Failed to load frames:', err.message);
+    el.innerHTML =
+      '<a class="back-btn" href="' + backHref + '">← Back</a>' +
+      '<div class="error">Failed to load frames: ' + esc(err.message) + '</div>';
+  });
+}
+
+function bindFramesGallery(frames) {
+  var lb        = document.getElementById('frames-lightbox');
+  var lbImg     = document.getElementById('frames-lightbox-img');
+  var lbPanel   = document.getElementById('frames-lightbox-panel');
+  var lbBadge   = document.getElementById('frames-lightbox-badge');
+  var lbCounter = document.getElementById('frames-lightbox-counter');
+  var idx       = 0;
+
+  // After the image decodes, fade it in (JS removes lb-loading) and decide whether
+  // it was the medium (≥400px tall = native, sharp) or the small fallback
+  // (force-upscale + show "Original res" badge so the user knows why it's blurry).
+  //
+  // When upscaling, set explicit width/height that preserves the natural aspect
+  // ratio. CSS-only sizing (width:1100px + max-height:58vh) created a frame on
+  // wider viewports: the IMG element became wider than the actual image content
+  // could fill (object-fit:contain letterboxed inside), and the box-shadow's
+  // outline drew around that wider element — giving visible side-frames where
+  // there was no image content. Computing dimensions from naturalWidth/Height
+  // makes the IMG box hug actual content edges at every viewport size.
+  function applyUpscaledSize() {
+    var nw = lbImg.naturalWidth, nh = lbImg.naturalHeight;
+    if (!nw || !nh) return;
+    var maxW = Math.min(window.innerWidth * 0.92, 1100);
+    var maxH = window.innerHeight * 0.58;
+    var aspect = nw / nh;
+    var w, h;
+    if (maxW / aspect <= maxH) { w = maxW; h = maxW / aspect; }
+    else                       { h = maxH; w = maxH * aspect; }
+    lbImg.style.width  = w + 'px';
+    lbImg.style.height = h + 'px';
+  }
+  // Match the header bar width to the image so the TS Import badge and close
+  // button align with the image's left/right edges (regardless of upscale
+  // state or viewport size). Without this, on wide desktop viewports the
+  // header spans the full 1100px stage width but the image can be narrower
+  // (e.g. a portrait-aspect frame, or any upscaled thumb), pushing the badge
+  // and close way off the image corners. Read the actual rendered width.
+  function syncHeaderToImage() {
+    var header = lb.querySelector('.lb-header');
+    if (!header) return;
+    var imgW = lbImg.getBoundingClientRect().width;
+    if (imgW > 0) header.style.width = imgW + 'px';
+  }
+  lbImg.addEventListener('load', function() {
+    var nat = lbImg.naturalHeight || 0;
+    var isUpscaled = nat > 0 && nat < 400;
+    // Class still drives the "Original res" badge visibility; sizing path is
+    // unified below so medium thumbs and upscaled small thumbs both get explicit
+    // inline width/height set in the same tick — the header sync that follows
+    // reads a stable, already-laid-out bounding rect on both paths.
+    lbImg.classList.toggle('lb-upscaled', isUpscaled);
+    if (lbBadge) lbBadge.style.display = isUpscaled ? 'block' : 'none';
+    applyUpscaledSize();
+    syncHeaderToImage();
+    lbImg.classList.remove('lb-loading');
+  });
+  // Re-size on window resize: keep the upscaled image aspect-correct, and
+  // keep the header pinned to the image edges. Coalesce via requestAnimationFrame
+  // so it updates every frame during drag (no visible lag) but never more than
+  // once per frame. Cheap operations (just style writes), so no extra debounce.
+  var __lbResizeRaf = null;
+  window.addEventListener('resize', function() {
+    if (lb.style.display !== 'flex') return;
+    if (__lbResizeRaf) return;
+    __lbResizeRaf = requestAnimationFrame(function() {
+      __lbResizeRaf = null;
+      if (lbImg.classList.contains('lb-upscaled')) applyUpscaledSize();
+      syncHeaderToImage();
+    });
+  });
+
+  // Cheap-and-effective preload: keep the next/prev frames warm in the browser
+  // cache so navigation feels instant even on the small (192px) variant.
+  function preloadNeighbors(i) {
+    [(i - 1 + frames.length) % frames.length, (i + 1) % frames.length].forEach(function(k) {
+      var f = frames[k]; if (!f || f._preloaded) return;
+      var img = new Image();
+      // medium first; server falls back to small if md missing.
+      img.src = '/api/frames/' + f.id + '/thumb?size=md';
+      f._preloaded = true;
+    });
+  }
+
+  // Renders a key/value chip if the value is non-null and non-empty. Numeric
+  // formatting is opt-in via the formatter; default is identity (avoids
+  // accidentally rounding ints).
+  function chip(label, val, fmt) {
+    if (val == null || val === '' || (typeof val === 'number' && !isFinite(val))) return '';
+    var v = fmt ? fmt(val) : String(val);
+    return '<div class="m-row"><span class="m-k">' + esc(label) + '</span><span class="m-v">' + esc(v) + '</span></div>';
+  }
+  function fix(n)    { return Number(n).toFixed(2); }
+  function fix1(n)   { return Number(n).toFixed(1); }
+  function int(n)    { return String(Math.round(Number(n))); }
+  function arcsec(n) { return Number(n).toFixed(2) + '"'; }
+  function px(n)     { return Number(n).toFixed(2); }
+
+  // Empty placeholder rendered on first open so the panel has its full
+  // dimensions immediately — prevents the "small loader → full content"
+  // size pop while metrics are fetching.
+  function renderSkeleton() {
+    return (
+      '<div class="m-strip">&nbsp;</div>' +
+      '<div class="m-grid">' +
+        '<div class="m-group"><div class="m-group-h">Capture</div></div>' +
+        '<div class="m-group"><div class="m-group-h">ADU</div></div>' +
+        '<div class="m-group"><div class="m-group-h">Guiding</div></div>' +
+        '<div class="m-group"><div class="m-group-h">Environment</div></div>' +
+      '</div>'
+    );
+  }
+
+  function renderPanel(m) {
+    if (!m) { lbPanel.innerHTML = ''; return; }
+
+    // Status pill — color-keyed by accept/reject, prefixed with the source:
+    //   "TS"     → from Target Scheduler grading (gradingStatus 1/2)
+    //   "Manual" → from NINA's side (accepted=false, no TS row)
+    // -1/null with accepted=true = no grading data anywhere → "Not graded"
+    // when TS is available, but suppressed entirely for non-TS users since
+    // an ungraded label is meaningless without grading as a concept.
+    var status = '';
+    if (m.gradingStatus === 2) {
+      status = '<span class="m-status m-status-rejected">TS Rejected</span>';
+      if (m.rejectReason) status += '<span class="m-reject">' + esc(m.rejectReason) + '</span>';
+    } else if (m.accepted === false) {
+      status = '<span class="m-status m-status-rejected">Manual Rejected</span>';
+      if (m.rejectReason) status += '<span class="m-reject">' + esc(m.rejectReason) + '</span>';
+    } else if (m.gradingStatus === 1) {
+      status = '<span class="m-status m-status-accepted">TS Accepted</span>';
+    } else if (m.gradingStatus === 0) {
+      status = '<span class="m-status m-status-pending">TS Pending</span>';
+    } else if (m.tsAvailable !== false) {
+      status = '<span class="m-status m-status-ungraded">Not graded</span>';
+    }
+
+    // Header strip — status pill first, then quick-glance key stats inline.
+    var header =
+      '<div class="m-strip">' +
+        status +
+        chip('Date',   m.timestamp, fmtDate) +
+        chip('Target', m.targetName) +
+        chip('Filter', m.filter) +
+        chip('Stars',  m.starCount, int) +
+        chip('HFR',    m.hfr,       fix) +
+        chip('FWHM',   m.fwhm,      fix) +
+        chip('Eccen.', m.eccentricity, fix) +
+      '</div>';
+
+    // Capture column
+    var capture =
+      '<div class="m-group"><div class="m-group-h">Capture</div>' +
+        chip('Exposure', m.exposureDuration, function(v) { return v + 's'; }) +
+        chip('Gain',     m.gain >= 0 ? m.gain : null) +
+        chip('Offset',   m.offset >= 0 ? m.offset : null) +
+        chip('Binning',  m.binning > 0 ? m.binning + 'x' + m.binning : null) +
+        chip('Readout',  m.readoutMode) +
+        chip('Profile',  m.profileName) +
+        chip('Project',          m.project) +
+        chip('Exposure Profile', m.exposureTemplate) +
+        (m.filePath
+          ? (function() {
+              var fname = m.filePath.split(/[\\/]/).pop();
+              return '<div class="m-row"><span class="m-k">File</span><span class="m-v m-mono" title="' + esc(fname) + '">' + esc(fname) + '</span></div>';
+            })()
+          : '') +
+      '</div>';
+
+    // Quality dropped — HFR/FWHM/Eccentricity/Stars already in the m-strip
+    // header above. HFR StDev was the only unique field (TS-only augment)
+    // and isn't worth a whole group; can resurface elsewhere if needed.
+
+    // ADU column (NS v2.10+ StatX columns)
+    var adu =
+      '<div class="m-group"><div class="m-group-h">ADU</div>' +
+        chip('Min',    m.aduMin,    int) +
+        chip('Max',    m.aduMax,    int) +
+        chip('Mean',   m.aduMean,   fix1) +
+        chip('Median', m.aduMedian, int) +
+        chip('Std Dev',m.aduStDev,  fix1) +
+      '</div>';
+
+    // Guiding column — total from NS, RA/Dec from TS when present
+    var guiding =
+      '<div class="m-group"><div class="m-group-h">Guiding</div>' +
+        chip('RMS px',    m.guidingRmsTotal     > 0 ? m.guidingRmsTotal : null,     px) +
+        chip('RMS arcsec', m.guidingArcsec      > 0 ? m.guidingArcsec : null,       arcsec) +
+        chip('RA px',     m.guidingRmsRa        != null ? m.guidingRmsRa : null,    px) +
+        chip('RA arcsec', m.guidingRmsRaArcsec  != null ? m.guidingRmsRaArcsec : null, arcsec) +
+        chip('Dec px',    m.guidingRmsDec       != null ? m.guidingRmsDec : null,   px) +
+        chip('Dec arcsec',m.guidingRmsDecArcsec != null ? m.guidingRmsDecArcsec : null, arcsec) +
+      '</div>';
+
+    // Environment column
+    var env =
+      '<div class="m-group"><div class="m-group-h">Environment</div>' +
+        chip('Airmass',     m.airmass,         fix) +
+        chip('Altitude',    m.altitude,        function(v) { return fix1(v) + '°'; }) +
+        chip('Azimuth',     m.azimuth,         function(v) { return fix1(v) + '°'; }) +
+        chip('Camera Temp', m.cameraTemp,      function(v) { return fix1(v) + '°C'; }) +
+        chip('Focuser Temp',m.focuserTemp,     function(v) { return fix1(v) + '°C'; }) +
+        chip('Focuser Pos', m.focuserPosition) +
+        chip('Ambient',     m.ambientTemp,     function(v) { return fix1(v) + '°C'; }) +
+        chip('Humidity',    m.humidity,        function(v) { return fix1(v) + '%'; }) +
+        chip('Pressure',    m.pressure,        function(v) { return fix1(v) + ' hPa'; }) +
+      '</div>';
+
+    lbPanel.innerHTML =
+      header +
+      '<div class="m-grid">' + capture + adu + guiding + env + '</div>';
+  }
+
+  function open(i) {
+    idx = (i + frames.length) % frames.length;
+    var f = frames[idx];
+    // Reset upscale state until the new image's naturalHeight is known.
+    // Also clear any inline width/height left over from a previous upscaled
+    // frame so the next image starts from a clean CSS-driven size.
+    lbImg.classList.remove('lb-upscaled');
+    lbImg.style.width = '';
+    lbImg.style.height = '';
+    if (lbBadge) lbBadge.style.display = 'none';
+    // Position counter at top of frame, e.g. "12 / 47". On mobile the
+    // data-multi attr triggers '‹ 12 / 47 ›' chevrons via CSS pseudo-elements
+    // — visual affordance for swipe-to-navigate (which replaces prev/next
+    // buttons on small screens).
+    if (lbCounter) {
+      lbCounter.textContent = (idx + 1) + ' / ' + frames.length;
+      if (frames.length > 1) lbCounter.setAttribute('data-multi', '');
+      else                   lbCounter.removeAttribute('data-multi');
+    }
+
+    // Detect first-open (lightbox hidden) so we can synchronize reveal of image
+    // and panel — both stay invisible until both finish loading, then fade in
+    // together. Avoids the "skeleton then real content" two-step that looked
+    // jagged. Prev/next navigation keeps prior content visible during fetch.
+    var firstOpen = lb.style.display === 'none' || lb.style.display === '';
+    lb.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+
+    if (firstOpen) {
+      // Skeleton sets layout dimensions; .lb-pending hides image+panel content
+      // (opacity 0) until everything is ready.
+      lbPanel.innerHTML = renderSkeleton();
+      lb.classList.add('lb-pending');
+      if (lb.animate) {
+        lb.animate(
+          [{ opacity: 0 }, { opacity: 1 }],
+          { duration: 180, easing: 'ease-out', fill: 'forwards' }
+        );
+      }
+    } else if (!lbPanel.innerHTML.trim()) {
+      lbPanel.innerHTML = renderSkeleton();
+    }
+
+    // Track which frame this fetch is for so a slow response from a previous
+    // frame doesn't overwrite a newer frame's panel after the user clicked next.
+    var fetchFrameId = f.id;
+
+    // First-open: capture both image-load and metrics-fetch promises so we can
+    // reveal them together. Subsequent navigates: render metrics as soon as
+    // they arrive (image animation handled by navigate() slide).
+    var imgReady = new Promise(function(resolve) {
+      var done = function() { lbImg.removeEventListener('load', done); lbImg.removeEventListener('error', done); resolve(); };
+      lbImg.addEventListener('load', done);
+      lbImg.addEventListener('error', done);
+      // Try medium first; server falls back to small if md missing.
+      lbImg.src = '/api/frames/' + f.id + '/thumb?size=md';
+    });
+
+    var metricsReady = api('/api/frames/' + f.id + '/metrics')
+      .then(function(m) {
+        if (frames[idx].id !== fetchFrameId) return null;
+        return m;
+      })
+      .catch(function(err) {
+        logError('Failed to load frame metrics:', err && err.message);
+        return null;
+      });
+
+    if (firstOpen) {
+      Promise.all([imgReady, metricsReady]).then(function(results) {
+        if (frames[idx].id !== fetchFrameId) return;
+        var m = results[1];
+        if (m) renderPanel(m);
+        else   lbPanel.innerHTML = '<div class="m-loading">Metrics unavailable</div>';
+        // Synchronized reveal — CSS transition does the fade.
+        lb.classList.remove('lb-pending');
+      });
+    } else {
+      metricsReady.then(function(m) {
+        if (frames[idx].id !== fetchFrameId) return;
+        if (m) renderPanel(m);
+        else   lbPanel.innerHTML = '<div class="m-loading">Metrics unavailable</div>';
+      });
+    }
+
+    // Warm the cache for the neighbors so the next click is instant.
+    preloadNeighbors(idx);
+  }
+
+  // Slide the whole stage (image + panel) as one unit when navigating prev/next.
+  // The user sees the current frame leave the viewport in the direction of travel,
+  // then the new frame enters from the opposite side. Web Animations API instead
+  // of CSS classes so we can chain the swap mid-animation cleanly.
+  var navigating = false;
+  function navigate(delta) {
+    if (navigating) return;            // ignore mash-clicks during a transition
+    if (frames.length < 2) return;
+    var stage = lb.querySelector('.frames-lightbox-stage');
+    if (!stage || !stage.animate) {     // no Web Animations support → fallback
+      open(idx + delta);
+      return;
+    }
+    navigating = true;
+    var outX = delta > 0 ? '-12%' : '12%';
+    var inX  = delta > 0 ? '12%'  : '-12%';
+    stage.animate(
+      [
+        { transform: 'translateX(0)', opacity: 1 },
+        { transform: 'translateX(' + outX + ')', opacity: 0 }
+      ],
+      { duration: 160, easing: 'ease-in', fill: 'forwards' }
+    ).onfinish = function() {
+      open(idx + delta);
+      stage.animate(
+        [
+          { transform: 'translateX(' + inX + ')', opacity: 0 },
+          { transform: 'translateX(0)', opacity: 1 }
+        ],
+        { duration: 180, easing: 'ease-out', fill: 'forwards' }
+      ).onfinish = function() { navigating = false; };
+    };
+  }
+  function close() {
+    lb.style.display = 'none';
+    lb.classList.remove('lb-pending');
+    lbImg.src = '';
+    lbImg.classList.remove('lb-loading', 'lb-upscaled');
+    lbImg.style.width = '';
+    lbImg.style.height = '';
+    var header = lb.querySelector('.lb-header');
+    if (header) header.style.width = '';
+    if (lbBadge) lbBadge.style.display = 'none';
+    lbPanel.innerHTML = '';
+    document.body.style.overflow = '';
+  }
+
+  // Click delegation across all (now multiple) gallery grids — the wrapping
+  // .frames-groups div catches every thumb regardless of which subgroup it lives in.
+  var groupsRoot = document.querySelector('.frames-groups');
+  if (groupsRoot) {
+    groupsRoot.addEventListener('click', function(e) {
+      var thumb = e.target.closest('.frames-thumb');
+      if (!thumb) return;
+      var id = +thumb.getAttribute('data-id');
+      var i = frames.findIndex(function(f) { return f.id === id; });
+      if (i >= 0) open(i);
+    });
+  }
+  lb.querySelector('.frames-lightbox-close').addEventListener('click', close);
+  lb.querySelector('.frames-lightbox-prev').addEventListener('click', function() { navigate(-1); });
+  lb.querySelector('.frames-lightbox-next').addEventListener('click', function() { navigate(+1); });
+  // Close when click lands on the dark backdrop OR on the stage's empty
+  // areas (gap above/below image and panel). Stage on small viewports is
+  // nearly fullscreen, so requiring the click to land on the dark border
+  // makes outside-click unusable on mobile.
+  lb.addEventListener('click', function(e) {
+    if (e.target === lb || e.target.classList.contains('frames-lightbox-stage')) close();
+  });
+
+  // Touch swipe — replaces prev/next buttons on mobile (buttons display:none'd
+  // via CSS @media). 50px horizontal threshold; vertical-dominant gestures are
+  // ignored so the stage's overflow-y scroll continues to work. Left swipe
+  // (dx < 0) advances to next, right swipe goes back — matches Photos.app and
+  // every other mobile gallery.
+  var touchX0 = 0, touchY0 = 0, touchActive = false;
+  lb.addEventListener('touchstart', function(e) {
+    if (e.touches.length !== 1) { touchActive = false; return; }
+    touchX0 = e.touches[0].clientX;
+    touchY0 = e.touches[0].clientY;
+    touchActive = true;
+  }, { passive: true });
+  lb.addEventListener('touchend', function(e) {
+    if (!touchActive || !e.changedTouches.length) return;
+    touchActive = false;
+    var dx = e.changedTouches[0].clientX - touchX0;
+    var dy = e.changedTouches[0].clientY - touchY0;
+    if (Math.abs(dx) < 50) return;                  // too short — treat as tap
+    if (Math.abs(dy) > Math.abs(dx)) return;        // vertical-dominant — let stage scroll
+    if (frames.length < 2) return;
+    navigate(dx < 0 ? +1 : -1);
+  }, { passive: true });
+  document.addEventListener('keydown', function lbKey(e) {
+    if (lb.style.display === 'none') { document.removeEventListener('keydown', lbKey); return; }
+    if (e.key === 'Escape')          close();
+    else if (e.key === 'ArrowLeft')  navigate(-1);
+    else if (e.key === 'ArrowRight') navigate(+1);
   });
 }
 

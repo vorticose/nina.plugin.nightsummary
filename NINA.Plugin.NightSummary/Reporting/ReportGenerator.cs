@@ -86,7 +86,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             sb.AppendLine("<!DOCTYPE html>");
-            sb.AppendLine($"<html data-theme='{(lightMode ? "light" : "dark")}'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><style>");
+            // viewport: width=800 (fixed) so mobile browsers render the report at the
+            // designed 800px width and scale it down to fit the screen — preserves the
+            // desktop layout. width=device-width would cause reflow at narrow widths,
+            // which the report CSS isn't designed for (body max-width is 800px below).
+            // Same value works in WebView2 (NINA preview) and in the dashboard iframe
+            // on desktop, since both display ≥800px in practice.
+            sb.AppendLine($"<html data-theme='{(lightMode ? "light" : "dark")}'><head><meta charset='UTF-8'><meta name='viewport' content='width=800'><style>");
 
             // Theme colors via CSS custom properties
             if (lightMode) {
