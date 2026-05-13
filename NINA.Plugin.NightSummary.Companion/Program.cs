@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using NINA.Plugin.NightSummary.Companion.Adapters;
 using NINA.Plugin.NightSummary.Companion.Sync;
+using NINA.Plugin.NightSummary.Dashboard.Abstractions;
 using NINA.Plugin.NightSummary.Dashboard.WebAssets;
 using NINA.Plugin.NightSummary.Server;
 
@@ -16,8 +17,8 @@ internal static class Program {
 @"NightSummaryCompanion — pull a synced copy of your Night Summary data and serve the dashboard.
 
 Usage:
-  NightSummaryCompanion sync     [--config <path>]              one-shot sync, then exit
-  NightSummaryCompanion serve    [--config <path>] [--no-sync]  sync (unless --no-sync) then run dashboard server forever
+  NightSummaryCompanion sync     [--config <path>]                              one-shot sync, then exit
+  NightSummaryCompanion serve    [--config <path>] [--no-sync] [--web <dir>]    sync (unless --no-sync) then run dashboard server forever
   NightSummaryCompanion version
   NightSummaryCompanion help
 
@@ -25,6 +26,13 @@ Default config path:
   ./companion.json (next to the executable)
 
 On first run a default companion.json is written and the program exits so you can fill it in.
+
+--web <dir>
+  Serve dashboard.html / .css / .js / plugin-icon.png from this directory
+  instead of the embedded resources baked into the binary. Each request hits
+  the disk fresh, so editing a CSS file + refreshing the browser is enough
+  to iterate on UI without rebuilding. Intended for development; production
+  installs should omit it. Falls back to embedded assets when omitted.
 ";
 
     public static async Task<int> Main(string[] args) {
@@ -41,11 +49,12 @@ On first run a default companion.json is written and the program exits so you ca
         }
 
         var configPath = ResolveArg(args, "--config") ?? DefaultConfigPath();
+        var webDir     = ResolveArg(args, "--web");
         var cmd = args[0];
         try {
             return cmd switch {
                 "sync"  => await RunSyncAsync(configPath),
-                "serve" => await RunServeAsync(configPath, noSync: HasFlag(args, "--no-sync")),
+                "serve" => await RunServeAsync(configPath, noSync: HasFlag(args, "--no-sync"), webDir: webDir),
                 _ => UnknownCommand(cmd),
             };
         } catch (Exception ex) {
@@ -74,7 +83,7 @@ On first run a default companion.json is written and the program exits so you ca
         return result.Success ? 0 : 3;
     }
 
-    private static async Task<int> RunServeAsync(string configPath, bool noSync) {
+    private static async Task<int> RunServeAsync(string configPath, bool noSync, string? webDir) {
         var (config, paths, log) = Bootstrap(configPath);
         // Don't Validate() here — serve must come up even when config is fresh
         // so the user can complete setup from the dashboard. Loops below skip
@@ -94,10 +103,29 @@ On first run a default companion.json is written and the program exits so you ca
         }
 
         var settings = new CompanionPluginSettings();
+
+        // --web <dir> hot-reloads HTML/CSS/JS straight from disk so UI iteration
+        // doesn't need a rebuild + re-publish + scp cycle. Each request hits the
+        // filesystem fresh; the server skips its assembled-HTML cache when the
+        // asset source advertises HotReload=true. Otherwise fall back to the
+        // embedded resources baked into the binary (the production path).
+        IWebAssets webAssets;
+        if (!string.IsNullOrWhiteSpace(webDir)) {
+            var resolved = Path.GetFullPath(webDir);
+            if (!Directory.Exists(resolved)) {
+                Console.Error.WriteLine($"error: --web '{resolved}' is not a directory");
+                return 5;
+            }
+            log.Info($"Web assets: disk (hot-reload) → {resolved}");
+            webAssets = new DiskWebAssets(resolved);
+        } else {
+            webAssets = new EmbeddedWebAssets();
+        }
+
         var server = new DashboardServer(
             data:        new CompanionDataSource(paths.DatabasePath, paths.TsDatabasePath, log),
             settings:    settings,
-            webAssets:   new EmbeddedWebAssets(),
+            webAssets:   webAssets,
             externalLog: log,
             paths:       paths,
             regen:       null,
