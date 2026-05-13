@@ -70,6 +70,11 @@ internal sealed class DevDashboardDataSource : IDashboardDataSource {
         return Task.FromResult<TsApiSettings?>(new TsApiSettings(enabled, port, tsApiHost));
     }
 
+    public Task<TsImageAugment?> GetTsImageAugmentAsync(string targetName, string filterName, System.DateTime timestamp, int windowSeconds, double exposureDurationSeconds, CancellationToken ct = default) {
+        if (noTs || !tsReader.IsAvailable) return Task.FromResult<TsImageAugment?>(null);
+        return Task.FromResult<TsImageAugment?>(tsReader.GetImageAugment(targetName, filterName, timestamp, windowSeconds, exposureDurationSeconds));
+    }
+
     public Task<string?> LoadReportHtmlAsync(string sessionId, CancellationToken ct = default)
         => Task.FromResult<string?>(null);
 

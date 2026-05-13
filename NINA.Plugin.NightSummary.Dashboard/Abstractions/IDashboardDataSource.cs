@@ -22,6 +22,12 @@ public interface IDashboardDataSource {
     Task<bool> IsTargetSchedulerAvailableAsync(CancellationToken ct = default);
     Task<IReadOnlyList<TsProjectInfo>> GetTSProjectsAsync(CancellationToken ct = default);
     Task<TsApiSettings?> GetTSApiSettingsAsync(CancellationToken ct = default);
+    // Per-image TS augmentation for the lightbox metrics panel — null when TS is
+    // not installed or no row matches the (target, filter, ts ± window) tuple.
+    // <paramref name="exposureDurationSeconds"/> lets the impl fall back to a
+    // legacy match (NS pre-fix Timestamp = ImageSaved time = ExposureStart + duration);
+    // pass 0 to skip the fallback.
+    Task<TsImageAugment?> GetTsImageAugmentAsync(string targetName, string filterName, System.DateTime timestamp, int windowSeconds, double exposureDurationSeconds, CancellationToken ct = default);
 
     // --- Report artifacts (disk-backed) ---
     Task<string?> LoadReportHtmlAsync(string sessionId, CancellationToken ct = default);

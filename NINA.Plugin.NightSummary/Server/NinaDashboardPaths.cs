@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using NINA.Plugin.NightSummary.Data;
 using NINA.Plugin.NightSummary.Dashboard.Abstractions;
 
 namespace NINA.Plugin.NightSummary.Server;
@@ -16,6 +17,9 @@ internal sealed class NinaDashboardPaths : IDashboardPaths {
     public string LogsDir      => Path.Combine(Root, "logs");
     public string HipsCacheDir => Path.Combine(Root, "hips-cache");
     public string DatabasePath => Path.Combine(Root, "nightsummary.sqlite");
+    // Honors the user's ThumbnailStorageDir override; falls back to default.
+    // Resolved per-call so settings changes are picked up immediately.
+    public string ThumbsRoot   => Thumbnails.GetThumbnailsRoot(SettingsManager.Instance.Current?.ThumbnailStorageDir);
 
     public string ReportHtmlPath(string sessionId)        => Path.Combine(ReportsDir, $"{sessionId}.html");
     public string ReportSettingsPath(string sessionId)    => Path.Combine(ReportsDir, $"{sessionId}.settings.json");

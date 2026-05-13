@@ -167,8 +167,10 @@ header.scrolled {
   align-items: center;
   gap: 10px;
   font-size: 10px;
-  color: var(--dim);
-  opacity: 0.6;
+  /* --dim + opacity 0.6 stacked to near-invisible. Step up to text-tertiary
+     and drop the opacity multiplier — still clearly secondary chrome but
+     readable at a glance. */
+  color: var(--text-tertiary);
 }
 .header-meta-links { display: flex; gap: 6px; }
 .header-meta-btn {
@@ -176,15 +178,51 @@ header.scrolled {
   align-items: center;
   padding: 3px 9px;
   border-radius: 20px;
-  border: 1px solid rgba(230,232,240,0.15);
-  color: var(--dim);
+  border: 1px solid rgba(230,232,240,0.22);
+  color: var(--text-tertiary);
   font-size: 10px;
   text-decoration: none;
   transition: border-color var(--t-fast), color var(--t-fast);
 }
 .header-meta-btn:hover {
-  border-color: rgba(230,232,240,0.3);
+  border-color: rgba(230,232,240,0.4);
   color: var(--text-secondary);
+}
+
+/* Donate pill: brand-color fill matched to the h1 title color, with a
+   subtle 3D dome (top-to-bottom gradient + inset highlights) and a soft
+   outer glow that picks up the accent color. Inline SVG telescope icon
+   inherits currentColor (white). */
+.header-meta-donate svg {
+  width: 12px;
+  height: 12px;
+  vertical-align: -2px;
+  margin-right: 4px;
+}
+.header-meta-donate {
+  color: #fff;
+  background: linear-gradient(180deg, var(--accent-light), var(--accent));
+  border-color: var(--accent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18),
+    0 1px 3px rgba(0, 0, 0, 0.35),
+    0 0 12px rgba(var(--accent-rgb), 0.45);
+  transition:
+    border-color var(--t-fast),
+    color var(--t-fast),
+    box-shadow var(--t-fast),
+    background var(--t-fast);
+}
+.header-meta-donate:hover {
+  color: #fff;
+  background: linear-gradient(180deg, var(--accent-lighter), var(--accent-light));
+  border-color: var(--accent-light);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.14),
+    0 2px 6px rgba(0, 0, 0, 0.4),
+    0 0 18px rgba(var(--accent-rgb), 0.65);
 }
 
 header h1 {
@@ -206,6 +244,18 @@ header h1 {
   text-shadow:
     0 0 8px rgba(37,99,184,0.25),
     0 0 20px rgba(37,99,184,0.12);
+}
+
+/* Header title is a clickable link to the home (sessions) view — visually
+   identical to plain text, no hover effect. Just an invisible box that
+   navigates when clicked. */
+.header-home {
+  color: inherit;
+  text-decoration: none;
+  text-shadow: inherit;
+  display: flex;
+  align-items: center;
+  gap: inherit;
 }
 
 .header-icon {
@@ -1798,27 +1848,10 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   padding: 8px 16px 0;
 }
 
-.report-nav-info {
-  flex: 1;
-  display: flex;
-  gap: 12px;
-  align-items: baseline;
-}
-
-.report-nav-date {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.report-nav-targets {
-  font-size: 13px;
-  color: var(--muted);
-}
-
 .report-nav-actions {
   display: flex;
   gap: 8px;
+  margin-left: auto;
 }
 
 .report-btn {
@@ -2095,7 +2128,10 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   border: none;
   background: #fff;
   display: block;
+  opacity: 0;
+  transition: opacity 150ms ease-out;
 }
+.report-iframe.is-loaded { opacity: 1; }
 
 /* ── Stats page ── */
 .detail-section {
@@ -4136,6 +4172,10 @@ html.light .tdp-project-action-btn:hover {
 @keyframes tdp-fade-in { from { opacity: 0; } to { opacity: 1; } }
 .tdp-backdrop.tdp-hiding { animation: tdp-fade-out 160ms forwards; }
 @keyframes tdp-fade-out { from { opacity: 1; } to { opacity: 0; } }
+/* Skip fade-in when the modal is restored synchronously alongside the
+   Stats page (e.g. back-nav from session detail). The fade was making the
+   modal invisible for 180ms while Stats was visible underneath. */
+.tdp-backdrop.tdp-no-anim { animation: none; }
 
 .tdp-modal {
   background: var(--surface);
@@ -5212,10 +5252,24 @@ html.light .tdp-project-action-btn:hover {
   body.report-view header h1 { font-size: 16px; gap: 6px; }
   body.report-view .header-icon { width: 22px; height: 22px; }
   body.report-view .subtitle { display: none; }
-  body.report-view header .report-nav { padding: 6px 12px; margin-bottom: 0; flex-direction: row; align-items: center; gap: 8px; border-top: 1px solid var(--border); }
-  body.report-view .report-nav-info { display: none; }
-  body.report-view .report-nav-actions { gap: 8px; }
-  body.report-view .report-btn, body.report-view .back-btn { min-height: 36px; padding: 4px 12px; font-size: 12px; }
+  body.report-view header .report-nav { padding: 6px 12px; margin-bottom: 0; flex-direction: row; flex-wrap: nowrap; align-items: center; gap: 6px; border-top: 1px solid var(--border); }
+  /* Flatten actions wrapper so back-btn + 3 report-btns become equal-share
+     flex children of .report-nav — fits all 4 on one row without wrapping.
+     min-width:0 + ellipsis handles long labels (e.g. target-name back-btn). */
+  body.report-view .report-nav-actions { display: contents; }
+  body.report-view .report-nav .back-btn,
+  body.report-view .report-nav .report-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 36px;
+    padding: 4px 6px;
+    font-size: 12px;
+    justify-content: center;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   body.report-view .settings-panel { margin: 0 12px 6px; }
   .report-viewer { border-radius: 0; border-left: none; border-right: none; border: none; overflow: visible; }
   .report-shadow-host { width: 100%; }
@@ -5523,4 +5577,614 @@ html.light .tdp-project-action-btn:hover {
   padding: 1px 4px;
   border-radius: 3px;
   font-style: normal;
+}
+
+/* ── Raw Image Frames Gallery (RAW_THUMBNAILS_DESIGN.md) ─────────────────── */
+
+.frames-count {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--surface-well);
+  padding: 1px 8px;
+  border-radius: 10px;
+  margin-left: 8px;
+  /* Vertically center on the h2's text x-height instead of baseline (which
+     drops the pill ~2px below the cap line of the title text). */
+  display: inline-block;
+  vertical-align: middle;
+  position: relative;
+  top: -2px;
+}
+
+/* Group container — wraps all per-target sections */
+.frames-groups {
+  margin: 16px 0 32px;
+}
+
+.frames-target-group {
+  margin-bottom: 28px;
+}
+
+.frames-target-h {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 8px 0 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  /* Center the pill on the target name's x-height instead of baseline so
+     it doesn't sit ~2px low. */
+  align-items: center;
+  gap: 10px;
+}
+.frames-target-count {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--surface-well);
+  padding: 1px 8px;
+  border-radius: 10px;
+}
+
+.frames-subgroup {
+  margin: 12px 0 16px;
+}
+.frames-subgroup-h {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+.frames-subgroup-h .sg-filter {
+  color: var(--text);
+  font-weight: 600;
+  font-size: 16px;
+}
+.frames-subgroup-h .sg-sep { color: var(--text-secondary); opacity: 0.6; }
+.frames-subgroup-h .sg-exposure { font-variant-numeric: tabular-nums; }
+.frames-subgroup-h .sg-count {
+  color: var(--text-secondary);
+}
+
+.frames-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-auto-rows: min-content;
+  align-items: start;
+  gap: 8px;
+}
+
+.frames-thumb {
+  position: relative;
+  background: var(--surface-well);
+  border: none;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.12s ease-out, box-shadow 0.12s ease-out;
+  /* Multi-layer 3D shadow stack — matches session-card depth: 1px ring,
+     close direct shadow, soft drop shadow, inset highlight bevel. */
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.07),
+    0 2px 4px rgba(0,0,0,0.3),
+    0 6px 12px -2px rgba(0,0,0,0.25),
+    inset 0 1px 0 rgba(255,255,255,0.05);
+}
+:root.light .frames-thumb {
+  box-shadow:
+    0 0 0 1px rgba(0,0,0,0.06),
+    0 2px 4px rgba(0,0,0,0.08),
+    0 6px 12px -2px rgba(0,0,0,0.06),
+    inset 0 1px 0 rgba(255,255,255,0.4);
+}
+
+.frames-thumb:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 0 0 1px rgba(212,160,106,0.45),
+    0 0 14px rgba(212,160,106,0.22),
+    0 4px 8px rgba(0,0,0,0.35),
+    0 12px 24px -4px rgba(0,0,14,0.35),
+    inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+.frames-thumb.rejected {
+  opacity: 0.55;
+}
+
+.frames-thumb.rejected::before {
+  content: 'REJECT';
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(180, 40, 40, 0.85);
+  color: #fff;
+  font-size: 10px;
+  font-weight: bold;
+  padding: 1px 5px;
+  border-radius: 3px;
+  z-index: 2;
+}
+
+.frames-thumb img {
+  display: block;
+  width: 100%;
+  height: auto;             /* native aspect ratio of the source thumb */
+  object-fit: contain;
+  background: #000;         /* letterbox fill if any */
+}
+
+.frames-thumb-meta {
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 4px 6px;
+  border-top: 1px solid var(--border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Lightbox — semi-transparent dim + backdrop blur so the dashboard fades
+   into a soft background, focus stays on the image and metrics card. */
+.frames-lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 12, 16, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Stage = vertically stacked image + metrics panel, scrollable on small screens. */
+.frames-lightbox-stage {
+  width: min(96vw, 1280px);
+  max-height: 94vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+/* Wrap auto-sizes to the image so the 3D shadow hugs its edges (no top/bottom
+   letterbox bars). Caps via max-width/max-height keep it within viewport. */
+.frames-lightbox-imgwrap {
+  position: relative;
+  max-width: min(92vw, 1100px);
+  max-height: 58vh;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  flex-shrink: 0;
+  line-height: 0; /* drop the stray inline gap below the image */
+}
+
+.frames-lightbox img {
+  /* Sizes to its natural dimensions (capped by viewport). Wrap auto-fits.
+     Border-radius 8px matches the stat boxes; 3D shadow hugs the image edges. */
+  display: block;
+  max-width: min(92vw, 1100px);
+  max-height: 58vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 8px;
+  background: transparent;
+  opacity: 1;
+  transition: opacity 0.18s ease-out;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.10),
+    0 4px 10px rgba(0,0,0,0.4),
+    0 16px 32px -8px rgba(0,0,0,0.5),
+    inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+/* While the lb has .lb-pending (set on first open until both image + metrics
+   are ready), hide the image and panel content. The skeleton still sets layout
+   dimensions so the box doesn't pop when content reveals. Both fade in
+   together on .lb-pending removal — single transition, no transients. */
+.frames-lightbox.lb-pending #frames-lightbox-img,
+.frames-lightbox.lb-pending #frames-lightbox-panel {
+  opacity: 0;
+}
+.frames-lightbox #frames-lightbox-img,
+.frames-lightbox #frames-lightbox-panel {
+  transition: opacity 0.22s ease-out;
+}
+
+.frames-lightbox img.lb-upscaled {
+  /* JS adds this class when the served thumb is small (192px source — typically
+     an imported TS row that has no medium). Force the image up to a usable
+     viewport size; height auto-derives from aspect so the wrap hugs the image. */
+  width: min(92vw, 1100px);
+  height: auto;
+  max-width: none;
+  max-height: 58vh;
+}
+
+/* (.frames-lightbox-imgwrap is defined above with stable dimensions for
+   smooth prev/next navigation — this comment block left as a marker.) */
+
+.lb-badge {
+  background: rgba(0, 0, 0, 0.7);
+  color: #ffd28a;
+  font-size: 10px;
+  line-height: 1.4;
+  font-weight: bold;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 210, 138, 0.3);
+  /* Matching 3D depth — same recipe as the counter pill for visual cohesion. */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 1px 4px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+/* Lightbox position counter (top-center of the image) — "1 / 23" style. */
+.lb-counter {
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.4;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.3px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 1px 4px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+/* Sticky header — badge | counter (centered) | close. Lives at the top of
+   .frames-lightbox-stage; position:sticky keeps it pinned to the visible top
+   when the metrics panel scrolls. Slides with the stage during prev/next
+   nav (acceptable, brief).
+
+   3-column grid (1fr auto 1fr) true-centers the counter regardless of badge
+   width — flex with `margin: auto` doesn't, because auto margins only
+   equalize their own side, not the sibling widths. Badge hidden (display:none)
+   leaves an empty 1fr column on the left, counter still centered. */
+.lb-header {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  width: min(92vw, 1100px);
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px;
+  /* Pull the image up so the pills sit just above the image's top edge.
+     Stage gap (12px desktop / 6px mobile) is preserved for the
+     image↔panel spacing below — only the header↔image gap is tightened. */
+  margin-bottom: -10px;
+  /* Transparent — the badge/counter pills carry their own backgrounds, no
+     wrapper tint needed. */
+}
+/* Pin each child to its own grid column. Without this, when the badge is
+   display:none (medium thumbs — no "Original res" upscale notice), grid
+   auto-placement shifts the counter into column 1 and the close into
+   column 2, leaving column 3 empty and the pills clustered on the left.
+   Explicit grid-column keeps positions stable across badge visibility. */
+.lb-header .lb-badge   { grid-column: 1; justify-self: start; }
+.lb-header .lb-counter { grid-column: 2; justify-self: center; }
+.lb-header .frames-lightbox-close {
+  grid-column: 3;
+  position: static;
+  justify-self: end;
+  /* Match the pill height so the header doesn't bulk up to the original
+     44px close size (which left ~12px of empty space below the centered
+     pills — read as a visible gap between pills and image). */
+  width: 28px;
+  height: 28px;
+  font-size: 22px;
+  /* The × glyph (U+00D7) sits low in its line box per typical font
+     metrics. padding-bottom shrinks the centering region so flex pushes
+     the character up toward optical center. */
+  padding-bottom: 3px;
+}
+
+.frames-lightbox-close,
+.frames-lightbox-prev,
+.frames-lightbox-next {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  font-size: 28px;
+  line-height: 1;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Matching 3D depth — same recipe as the badge + counter pills. */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 1px 4px rgba(0, 0, 0, 0.4);
+  /* z-index needed because navigate() animates .frames-lightbox-stage with
+     fill: 'forwards' — the lingering transform creates a stacking context on
+     the stage, which then paints over these absolute siblings (DOM order
+     wins among auto-z positioned/transformed siblings). z-index: 2 keeps
+     close/prev/next on top regardless. */
+  z-index: 2;
+}
+
+.frames-lightbox-close:hover,
+.frames-lightbox-prev:hover,
+.frames-lightbox-next:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.frames-lightbox-close { top: 16px; right: 16px; }
+.frames-lightbox-prev  { top: 50%; left: 16px;  transform: translateY(-50%); }
+.frames-lightbox-next  { top: 50%; right: 16px; transform: translateY(-50%); }
+
+/* Optical-center fix for the ‹ › glyphs — same issue as × in the close
+   button (the angle quotation marks sit low in their line box). Bigger
+   font here (28px vs 22px in the close), so slightly more padding. */
+.frames-lightbox-prev,
+.frames-lightbox-next { padding-bottom: 4px; }
+
+/* ── Per-frame metrics panel ──────────────────────────────────────────── */
+.frames-lightbox-panel {
+  width: min(92vw, 1100px);
+  color: var(--text-primary, #fff);
+  font-size: 12px;
+  /* Outer panel is mostly transparent — the inner .m-group cards carry the
+     visual weight (matches the session-card layout pattern). */
+  padding: 0;
+}
+
+.m-loading {
+  color: rgba(255, 255, 255, 0.55);
+  text-align: center;
+  padding: 20px;
+}
+
+/* Header strip — quick-glance key stats inline, styled as a single elevated card.
+   Centered so the strip reads symmetrically regardless of whether a status
+   pill is present (non-TS users won't see one). */
+.m-strip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 22px;
+  padding: 10px 14px;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.04) 0%, transparent 60%), var(--surface);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.04),
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    0 2px 6px rgba(0,0,0,0.28),
+    0 1px 2px rgba(0,0,0,0.18);
+  margin-bottom: 0;
+}
+:root.light .m-strip {
+  background: linear-gradient(to bottom, rgba(255,255,255,0.6) 0%, transparent 60%), var(--surface);
+  border-color: rgba(0,0,0,0.06);
+}
+.m-strip .m-row { gap: 6px; }
+.m-strip .m-k {
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.55));
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  font-weight: 600;
+}
+.m-strip .m-v {
+  color: var(--text-primary, #fff);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.m-strip-status {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.m-status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+.m-status-accepted { background: rgba(70, 160, 90, 0.35); color: #c8f0d2; }
+.m-status-rejected { background: rgba(180, 40, 40, 0.55); color: #ffd6d6; }
+.m-status-pending  { background: rgba(180, 140, 40, 0.4); color: #ffe9b8; }
+.m-status-ungraded { background: rgba(120, 120, 130, 0.35); color: #d8d8e0; }
+/* Light mode: dark-on-light pills (dark-mode pastels look washed out on
+   the light surface). Reject reason gets a darker red too. */
+:root.light .m-status-accepted { background: rgba(34, 139, 67, 0.18);  color: #1f6a36; }
+:root.light .m-status-rejected { background: rgba(180, 40, 40, 0.18);  color: #8b1a1a; }
+:root.light .m-status-pending  { background: rgba(180, 140, 40, 0.22); color: #7a5500; }
+:root.light .m-status-ungraded { background: rgba(80, 80, 90, 0.18);   color: #4a4a55; }
+.m-reject {
+  font-size: 11px;
+  color: #ffd6d6;
+  font-style: italic;
+}
+:root.light .m-reject { color: #8b1a1a; }
+
+/* Five-column grid of stat boxes — matches the session-card aesthetic on the
+   sessions page (multi-layer shadow, subtle inset highlight, gradient surface). */
+.m-grid {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+@media (max-width: 1000px) { .m-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 640px)  { .m-grid { grid-template-columns: repeat(2, 1fr); } }
+
+.m-group {
+  min-width: 0;
+  /* Locked floor so prev/next nav doesn't reshuffle the panel — sized to fit
+     the tallest groups (Capture, Environment) which carry up to 9 rows. */
+  min-height: 180px;
+  /* 3-col grid:
+       col 1 = label (auto, sized to widest label in this group)
+       col 2 = spacer (1fr) — pushes values toward the right side of the box
+       col 3 = value (max-content, sized to widest value in this group)
+     Values are left-aligned within col 3 so their LEFT edges line up at
+     the same X. The 1fr spacer keeps the value column anchored to the
+     right side of the m-group regardless of label width. */
+  display: grid;
+  grid-template-columns: auto 1fr max-content;
+  column-gap: 8px;
+  row-gap: 2px;
+  align-content: start;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.04) 0%, transparent 60%), var(--surface);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  padding: 10px 12px 10px;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.02),
+    inset 0 1px 0 rgba(255,255,255,0.04),
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    0 2px 6px rgba(0,0,0,0.28),
+    0 1px 2px rgba(0,0,0,0.18);
+}
+/* Group header spans both columns of the grid. */
+.m-group > .m-group-h { grid-column: 1 / -1; }
+/* m-rows inside a group flatten so their .m-k / .m-v become direct grid
+   items of .m-group — that's what lets labels in a group sync widths. */
+.m-group > .m-row { display: contents; }
+/* Values left-align within col 3 so all value left edges line up at the
+   same X. Col 3 itself sits flush to the right of the group via the 1fr
+   spacer in col 2 — so the column reads as "right side of box" while
+   keeping value starts aligned. */
+.m-group > .m-row > .m-v {
+  grid-column: 3;
+  text-align: left;
+  min-width: 0;
+}
+/* Label sits in col 1; the spacer in col 2 has no element. */
+.m-group > .m-row > .m-k { grid-column: 1; }
+/* Long mono values (file paths) span cols 2+3 instead of forcing col 3
+   wider than the other numeric values. min-width:0 lets the cell shrink
+   so the nowrap+ellipsis truncation kicks in at the group's right edge. */
+.m-group > .m-row > .m-v.m-mono {
+  grid-column: 2 / -1;
+  min-width: 0;
+  max-width: 100%;
+}
+:root.light .m-group {
+  background: linear-gradient(to bottom, rgba(255,255,255,0.6) 0%, transparent 60%), var(--surface);
+  border-color: rgba(0,0,0,0.06);
+}
+
+/* Group header — uppercase pill with letter-spacing, like the session-card stat-label. */
+.m-group-h {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.55));
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+:root.light .m-group-h {
+  border-bottom-color: rgba(0,0,0,0.06);
+}
+
+.m-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  min-width: 0;
+}
+.m-row-wide { display: block; min-width: 0; }
+.m-row-wide .m-v {
+  display: block;
+  margin-top: 2px;
+  text-align: left;
+  /* Re-assert truncation on wide rows — base .m-v has these but the
+     block-display override here can confuse cascade resolution in some
+     embedded browsers (WebView2). Explicit keeps the filename on one
+     line regardless of viewport; the title attribute carries the full
+     path for hover. */
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.m-k {
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.5));
+  font-size: 11px;
+}
+.m-v {
+  color: var(--text-primary, #fff);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  font-weight: 600;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.m-mono {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+@media (max-width: 700px) {
+  .frames-gallery {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 6px;
+  }
+  .frames-thumb-meta { font-size: 10px; padding: 3px 5px; }
+  /* Mobile lightbox: swipe replaces prev/next buttons. Close button stays.
+     Counter shows '‹ 3 / 12 ›' chevrons as a swipe affordance — wrapped via
+     pseudo-elements so JS only manages the numeric content + data-multi. */
+  .frames-lightbox-prev, .frames-lightbox-next { display: none; }
+  .lb-counter[data-multi]::before { content: '‹ '; opacity: 0.55; margin-right: 1px; }
+  .lb-counter[data-multi]::after  { content: ' ›'; opacity: 0.55; margin-left: 1px; }
+  /* Tighter header on phone — smaller close button, less padding. */
+  .lb-header { min-height: 36px; padding: 2px 4px; gap: 6px; }
+  .lb-header .frames-lightbox-close { width: 32px; height: 32px; font-size: 22px; }
+  /* Tighten lightbox vertical layout — row/padding shrinks scale with row
+     count (5 groups × up to 9 rows each), so this actually moves the needle
+     on a 2-col mobile grid where the tallest group sets each row's height. */
+  .frames-lightbox-stage { gap: 6px; padding: 0; }
+  /* Tighter chip layout so Date + Target + Filter + Stars + HFR + FWHM
+     + Eccen. fit on two lines instead of three on iPhone-class viewports.
+     Cuts column gap, internal chip gap, label letter-spacing, and font
+     size — together saves ~50px per line. */
+  .m-strip { padding: 5px 8px; gap: 4px 10px; }
+  .m-strip .m-row { gap: 4px; }
+  .m-strip .m-k { font-size: 9px; letter-spacing: 0.4px; }
+  .m-strip .m-v { font-size: 12px; }
+  .m-strip-status { margin-top: 4px; }
+  .m-group { min-height: auto; padding: 6px 10px; }
+  .m-group-h { padding-bottom: 4px; margin-bottom: 4px; }
+  .m-grid  { margin-top: 4px; gap: 6px; }
+  .m-row   { font-size: 11px; line-height: 1.25; }
+  .m-k, .m-v { font-size: 11px; }
 }
