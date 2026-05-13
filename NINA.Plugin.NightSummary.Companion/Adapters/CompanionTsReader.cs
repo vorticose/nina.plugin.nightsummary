@@ -159,6 +159,89 @@ internal sealed class CompanionTsReader {
         return (false, 0);
     }
 
+    // Mirror of TargetSchedulerDatabase.GetImageAugment — needed by the dashboard's
+    // /api/frames/{id}/metrics endpoint to overlay TS grading/project context on
+    // the lightbox. Tries direct match (new NS rows where Timestamp = ExposureStart)
+    // then legacy-shifted match (pre-fix NS rows where Timestamp = ImageSaved).
+    // Returns null on no match or TS DB unavailable.
+    public TsImageAugment? GetImageAugment(string targetName, string filterName, DateTime ts, int windowSeconds, double exposureDurationSeconds = 0) {
+        if (!IsAvailable) return null;
+        if (string.IsNullOrEmpty(targetName)) return null;
+        try {
+            var cs = $"Data Source={_dbPath};Version=3;Read Only=True;";
+            using var conn = new SQLiteConnection(cs);
+            conn.Open();
+            long centerDirect = new DateTimeOffset(ts.ToUniversalTime()).ToUnixTimeSeconds();
+
+            var aug = QueryAugment(conn, targetName, filterName, centerDirect, windowSeconds);
+            if (aug != null) return aug;
+
+            if (exposureDurationSeconds > 0) {
+                long centerShifted = centerDirect - (long)exposureDurationSeconds;
+                return QueryAugment(conn, targetName, filterName, centerShifted, windowSeconds);
+            }
+            return null;
+        } catch (Exception ex) {
+            _log.Error("Companion TS: GetImageAugment failed", ex);
+            return null;
+        }
+    }
+
+    private static TsImageAugment? QueryAugment(SQLiteConnection conn, string targetName, string filterName, long center, int windowSeconds) {
+        const string sql = @"
+            SELECT a.metadata, a.gradingStatus, a.rejectreason,
+                   p.name AS projectName, et.name AS templateName
+            FROM acquiredimage a
+            JOIN target           t  ON a.targetId   = t.id
+            LEFT JOIN project     p  ON a.projectId  = p.id
+            LEFT JOIN exposureplan ep ON a.exposureId = ep.id
+            LEFT JOIN exposuretemplate et ON et.id = ep.exposureTemplateId
+            WHERE a.acquireddate BETWEEN @Lo AND @Hi
+              AND t.name       = @Target COLLATE NOCASE
+              AND a.filtername = @Filter COLLATE NOCASE
+            ORDER BY ABS(a.acquireddate - @Center)
+            LIMIT 1";
+        using var cmd = new SQLiteCommand(sql, conn);
+        cmd.Parameters.AddWithValue("@Lo",     center - windowSeconds);
+        cmd.Parameters.AddWithValue("@Hi",     center + windowSeconds);
+        cmd.Parameters.AddWithValue("@Center", center);
+        cmd.Parameters.AddWithValue("@Target", targetName);
+        cmd.Parameters.AddWithValue("@Filter", filterName ?? "");
+        using var reader = cmd.ExecuteReader();
+        if (!reader.Read()) return null;
+
+        var aug = new TsImageAugment {
+            ProjectName          = reader["projectName"] as string,
+            ExposureTemplateName = reader["templateName"] as string,
+            GradingStatus        = reader["gradingStatus"] == DBNull.Value ? (int?)null : Convert.ToInt32(reader["gradingStatus"]),
+            RejectReason         = reader["rejectreason"] as string,
+        };
+
+        var json = reader["metadata"] as string;
+        if (!string.IsNullOrEmpty(json)) {
+            try {
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                aug.HFRStDev            = TryDouble(root, "HFRStDev");
+                aug.GuidingRMSRA        = TryDouble(root, "GuidingRMSRA");
+                aug.GuidingRMSRAArcSec  = TryDouble(root, "GuidingRMSRAArcSec");
+                aug.GuidingRMSDEC       = TryDouble(root, "GuidingRMSDEC");
+                aug.GuidingRMSDECArcSec = TryDouble(root, "GuidingRMSDECArcSec");
+            } catch { /* malformed JSON — leave nulls */ }
+        }
+        return aug;
+    }
+
+    private static double? TryDouble(System.Text.Json.JsonElement root, string name) {
+        if (root.ValueKind != System.Text.Json.JsonValueKind.Object) return null;
+        if (!root.TryGetProperty(name, out var prop)) return null;
+        if (prop.ValueKind == System.Text.Json.JsonValueKind.Number && prop.TryGetDouble(out var d)) return d;
+        if (prop.ValueKind == System.Text.Json.JsonValueKind.String
+            && double.TryParse(prop.GetString(), System.Globalization.NumberStyles.Float,
+                               System.Globalization.CultureInfo.InvariantCulture, out var ds)) return ds;
+        return null;
+    }
+
     private static string ProjectStateName(int v) => v switch {
         0 => "Draft", 1 => "Active", 2 => "Inactive", 3 => "Closed", _ => "Unknown",
     };

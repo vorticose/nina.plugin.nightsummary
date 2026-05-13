@@ -67,6 +67,11 @@ internal sealed class CompanionDataSource : IDashboardDataSource {
         return Task.FromResult<TsApiSettings?>(new TsApiSettings(enabled, port));
     }
 
+    public Task<TsImageAugment?> GetTsImageAugmentAsync(string targetName, string filterName, System.DateTime timestamp, int windowSeconds, double exposureDurationSeconds, CancellationToken ct = default) {
+        if (!_ts.IsAvailable) return Task.FromResult<TsImageAugment?>(null);
+        return Task.FromResult<TsImageAugment?>(_ts.GetImageAugment(targetName, filterName, timestamp, windowSeconds, exposureDurationSeconds));
+    }
+
     public Task<string?> LoadReportHtmlAsync(string sessionId, CancellationToken ct = default)
         => Task.FromResult<string?>(null);
     public Task<byte[]?> LoadLivestackImageAsync(string sessionId, string filename, CancellationToken ct = default)

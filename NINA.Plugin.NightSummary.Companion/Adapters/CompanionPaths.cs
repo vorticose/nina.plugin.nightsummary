@@ -16,6 +16,9 @@ public sealed class CompanionPaths : IDashboardPaths {
     public string LogsDir      => Path.Combine(_root, "logs");
     public string HipsCacheDir => Path.Combine(_root, "hips-cache");
     public string DatabasePath => Path.Combine(_root, "nightsummary.sqlite");
+    // Companion mirrors the NINA-side layout: thumbnails live under {dataDir}/thumbs.
+    // Sync engine writes synced JPEGs here; dashboard reads them via /api/frames/{id}/thumb.
+    public string ThumbsRoot   => Path.Combine(_root, "thumbs");
 
     public string ReportHtmlPath(string sessionId)        => Path.Combine(ReportsDir, $"{sessionId}.html");
     public string ReportSettingsPath(string sessionId)    => Path.Combine(ReportsDir, $"{sessionId}.settings.json");
