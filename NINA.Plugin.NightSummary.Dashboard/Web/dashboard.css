@@ -5635,6 +5635,10 @@ html.light .tonight-cached-pill {
   font-size: 13px;
   transition: box-shadow var(--t-fast, 150ms ease), border-color var(--t-fast, 150ms ease);
 }
+/* Author `display: flex` above wins over UA `[hidden] { display: none }`, so
+   primary mode (HTML attribute hidden, no JS unhide) was leaking the banner.
+   Explicit override restores hidden semantics. */
+.companion-banner[hidden] { display: none !important; }
 .companion-banner.is-syncing { opacity: 0.92; }
 .companion-banner.is-stale {
   border-color: rgba(199, 154, 58, 0.55);
