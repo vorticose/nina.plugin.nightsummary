@@ -10,13 +10,13 @@
 
 **Improvements**
 - Dashboard header title is clickable and returns to the session list.
-- Smoother dashboard navigation with multiple fixes and polishes
+- Smoother dashboard navigation with additional polish and multiple fixes
 
 **Bug fixes**
 - Sessions page activity waveform fixes: re-renders on browser resize, click-to-open works at any desktop window width (not just ≥720 px), hover tooltip dismisses on click and hash change.
 - Activity waveform and calendar heatmap on the Sessions page opened the static report in a new tab when clicked; now open in the in-app session view, matching the session-card click behavior.
-- Reports opened on mobile (Discord/email/Pushover link) were reflowing to phone width instead of scaling the desktop layout. Fixed viewport meta restores scale-to-fit.
-- Per-image timestamps now record exposure-start time to match FITS `DATE-OBS` headers, filenames, and Target Scheduler's convention.
+- Reports opened on mobile (Discord/email) were reflowing to phone width instead of scaling the desktop layout. Fixed viewport meta restores scale-to-fit.
+- Per-image timestamps now record exposure-start time rather than save time to match FITS `DATE-OBS` headers, filenames, and Target Scheduler's convention.
 
 
 ## v3.0.0

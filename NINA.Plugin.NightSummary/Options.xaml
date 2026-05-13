@@ -744,9 +744,9 @@
                                         </Style.Triggers>
                                     </Style>
                                 </StackPanel.Style>
-                                <TextBlock Text="Also save Medium" Width="200" VerticalAlignment="Center" />
+                                <TextBlock Text="Larger Size" Width="200" VerticalAlignment="Center" />
                                 <CheckBox IsChecked="{Binding CaptureMediumThumbnails}" VerticalAlignment="Center" />
-                                <TextBlock Text="Adds an 800px-tall JPEG (~80 KB) used by the dashboard lightbox."
+                                <TextBlock Text="Also saves an 800px-tall JPEG (~80 KB) alongside the 192px thumbnail. The dashboard lightbox uses the larger one for sharper detail; the gallery grid keeps using the small one for fast loading."
                                            FontStyle="Italic" Foreground="Gray" FontSize="11" Margin="20,0,0,0" MaxWidth="380" TextWrapping="Wrap" VerticalAlignment="Center" />
                             </StackPanel>
 
