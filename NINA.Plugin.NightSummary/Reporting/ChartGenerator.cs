@@ -321,7 +321,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var rightPoly = string.Join(" ", rightPts.Select(p => $"{ToXPx(p.x):F1},{ToYR(p.y):F1}"));
                 sb.AppendLine($"<polyline points=\"{rightPoly}\" fill=\"none\" stroke=\"{ColorSecondary}\" stroke-width=\"2\" stroke-linejoin=\"round\" stroke-dasharray=\"6,3\"/>");
                 string secUnit = GetTooltipUnit(secondaryMetric, false);
-                string secFmt  = GetValueFormat(secondaryMetric, false);
+                string secFmt  = GetTooltipFormat(secondaryMetric, false);
                 foreach (var p in rightPts) {
                     var filter = filterByTime.TryGetValue(p.t, out var f) && !string.IsNullOrEmpty(f) ? $" [{f}]" : "";
                     string tip = FormatTooltipX(p, xAxisMetric, minX) + $" — {p.y.ToString(secFmt)}{secUnit}{filter}";
@@ -334,7 +334,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine($"<polyline points=\"{leftPoly}\" fill=\"none\" stroke=\"{leftColor}\" stroke-width=\"2\" stroke-linejoin=\"round\"/>");
             int leftMetricIdx = swapped ? secondaryMetric : primaryMetric;
             string leftUnit    = GetTooltipUnit(leftMetricIdx, !swapped);
-            string leftTipFmt  = GetValueFormat(leftMetricIdx, !swapped);
+            string leftTipFmt  = GetTooltipFormat(leftMetricIdx, !swapped);
             foreach (var p in leftPts) {
                 var filter = filterByTime.TryGetValue(p.t, out var f) && !string.IsNullOrEmpty(f) ? $" [{f}]" : "";
                 string tip = FormatTooltipX(p, xAxisMetric, minX) + $" — {p.y.ToString(leftTipFmt)}{leftUnit}{filter}";
