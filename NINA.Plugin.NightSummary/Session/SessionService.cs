@@ -335,9 +335,37 @@ namespace NINA.Plugin.NightSummary.Session {
 
                 await Task.WhenAll(tasks);
                 Notification.ShowSuccess("Night Summary: Report delivered successfully");
+
+                // Push companion notification AFTER the report file is on disk
+                // so the companion's pull picks up the fresh DB + new HTML in
+                // one round trip. Fire-and-forget — never block / never throw.
+                _ = NotifyCompanionAsync(S.CompanionUrl);
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to generate/send report. {ex.Message}");
                 Notification.ShowError($"Night Summary: Failed to send report — {ex.Message}");
+            }
+        }
+
+        // Tells a configured companion (Mac mini, etc.) to pull fresh data
+        // immediately rather than waiting for its scheduled poll. POSTs to
+        // {CompanionUrl}/api/companion/sync; the companion coalesces concurrent
+        // triggers, so a duplicate call from a manual click is a no-op.
+        //
+        // Hard 5s timeout. Failures are logged but never surfaced to the user
+        // — the companion's own scheduler will catch up on the next interval.
+        private static async Task NotifyCompanionAsync(string companionUrl) {
+            if (string.IsNullOrWhiteSpace(companionUrl)) return;
+            try {
+                var url = companionUrl.TrimEnd('/') + "/api/companion/sync";
+                using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+                using var resp = await http.PostAsync(url, new System.Net.Http.StringContent(""));
+                if (resp.IsSuccessStatusCode) {
+                    Logger.Info($"NightSummary: Companion notified at {url} (HTTP {(int)resp.StatusCode})");
+                } else {
+                    Logger.Warning($"NightSummary: Companion notify returned HTTP {(int)resp.StatusCode} for {url}");
+                }
+            } catch (Exception ex) {
+                Logger.Info($"NightSummary: Companion notify failed ({ex.Message}) — companion will pull on its own schedule");
             }
         }
 

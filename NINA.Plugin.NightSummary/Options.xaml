@@ -822,6 +822,18 @@
                                         Margin="8,0,0,0" Padding="8,2" FontSize="11" />
                             </StackPanel>
 
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,2">
+                                <TextBlock Text="Push URL" Width="200" VerticalAlignment="Center" />
+                                <TextBox Text="{Binding CompanionUrl, UpdateSourceTrigger=PropertyChanged}"
+                                         MinWidth="380" FontFamily="Consolas, Courier New" FontSize="11"
+                                         VerticalAlignment="Center" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                <TextBlock Width="200" />
+                                <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="400" VerticalAlignment="Center"
+                                           Text="Optional. When set, this machine notifies the companion at session end so it syncs immediately instead of waiting for its scheduled poll. Example: http://mac-mini:8182" />
+                            </StackPanel>
+
                             </StackPanel>
 
                         </StackPanel>

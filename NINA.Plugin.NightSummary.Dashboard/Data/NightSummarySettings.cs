@@ -45,6 +45,14 @@ namespace NINA.Plugin.NightSummary.Data {
         // at server start so the user can copy from plugin settings without prompting.
         public string CompanionApiKey   { get; set; } = "";
 
+        // Companion push URL. When non-empty, the plugin POSTs to
+        // {CompanionUrl}/api/companion/sync at session end so the companion
+        // pulls a fresh DB + reports the moment a session finishes (instead of
+        // waiting up to 4 h for its scheduled poll). Empty = no push, companion
+        // syncs on its own schedule. Fire-and-forget; failure is logged and
+        // never blocks session completion.
+        public string CompanionUrl      { get; set; } = "";
+
         // ── Report display ────────────────────────────────────────────────────
         public int    ReportDetailLevel      { get; set; } = 2;
         public bool   ReportLightMode        { get; set; } = false;

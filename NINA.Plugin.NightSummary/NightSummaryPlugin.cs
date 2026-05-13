@@ -684,6 +684,14 @@ namespace NINA.Plugin.NightSummary {
         // their companion's companion.json without an interactive prompt.
         public string CompanionApiKey => SettingsManager.Instance.EnsureCompanionApiKey();
 
+        // Companion push URL — when set, plugin POSTs to /api/companion/sync
+        // at session end so the companion picks up new data immediately rather
+        // than waiting for its 4h scheduled poll. Empty = feature off.
+        public string CompanionUrl {
+            get => S.CompanionUrl;
+            set { S.CompanionUrl = value?.Trim() ?? ""; SaveSettings(); RaisePropertyChanged(); }
+        }
+
         public ICommand CopyCompanionApiKeyCommand => new RelayCommand(async () => {
             var key = CompanionApiKey;
             if (!string.IsNullOrEmpty(key))
