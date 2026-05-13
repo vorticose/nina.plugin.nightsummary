@@ -383,6 +383,8 @@ function route() {
       renderSessionDetail(path.split('/')[2]);
     } else if (path === '/stats') {
       renderStats();
+    } else if (path === '/settings') {
+      renderSettingsPage();
     } else {
       renderSessionList(params);
     }
@@ -8462,4 +8464,295 @@ window.addEventListener('scroll', function() {
 window.addEventListener('hashchange', route);
 window.addEventListener('resize', repositionViewToggle);
 route();
+initCompanionBanner();
 logInfo('Dashboard ready');
+
+// ── Companion sync banner ────────────────────────────────────────────────
+// Hidden in primary mode; in companion mode shows last-sync time + a Sync Now
+// button. Polls every 30 s so the banner reflects scheduler runs without a
+// page reload. Status reads come from /api/companion/status; the button POSTs
+// /api/companion/sync (server coalesces concurrent triggers).
+var COMPANION_MODE = false;
+
+function initCompanionBanner() {
+  fetch('/api/mode').then(function(r){ return r.json(); }).then(function(j){
+    if (!j || j.mode !== 'companion') return;
+    COMPANION_MODE = true;
+    var banner = document.getElementById('companion-banner');
+    if (banner) banner.hidden = false;
+    var settingsLink = document.querySelector('.nav-link.companion-only[data-page="settings"]');
+    if (settingsLink) settingsLink.hidden = false;
+    var btn = document.getElementById('companion-sync-btn');
+    // Use .onclick (not addEventListener) so renderCompanionStatus can swap
+    // the handler when the button morphs into "Open Settings" during setup.
+    if (btn) btn.onclick = companionSyncNow;
+    refreshCompanionStatus();
+    setInterval(refreshCompanionStatus, 10000);
+    // If config is incomplete on first paint, redirect to setup so the user
+    // doesn't land on an empty Sessions tab and wonder what to do.
+    fetch('/api/companion/config').then(function(r){ return r.json(); }).then(function(c){
+      if (c && c.isComplete === false && location.hash !== '#/settings') {
+        navigate('#/settings');
+      }
+    }).catch(function(){});
+  }).catch(function(){ /* ignore — primary mode or transient failure */ });
+}
+
+function refreshCompanionStatus() {
+  fetch('/api/companion/status').then(function(r){
+    if (!r.ok) throw new Error('status ' + r.status);
+    return r.json();
+  }).then(renderCompanionStatus).catch(function(){
+    var el = document.getElementById('companion-banner-status');
+    if (el) el.textContent = 'Status unavailable';
+  });
+}
+
+function companionSyncNow() {
+  var btn = document.getElementById('companion-sync-btn');
+  var banner = document.getElementById('companion-banner');
+  var statusEl = document.getElementById('companion-banner-status');
+  if (btn) btn.disabled = true;
+  if (banner) banner.classList.add('is-syncing');
+  if (statusEl) statusEl.textContent = 'Syncing…';
+  fetch('/api/companion/sync', { method: 'POST' }).then(function(r){
+    if (!r.ok) throw new Error('sync ' + r.status);
+    return r.json();
+  }).then(function(s){
+    renderCompanionStatus(s);
+  }).catch(function(err){
+    if (statusEl) statusEl.textContent = 'Sync failed: ' + (err && err.message || 'unknown');
+    if (banner) banner.classList.add('is-error');
+  }).finally(function(){
+    if (btn) btn.disabled = false;
+    if (banner) banner.classList.remove('is-syncing');
+  });
+}
+
+function renderCompanionStatus(s) {
+  var statusEl = document.getElementById('companion-banner-status');
+  var banner = document.getElementById('companion-banner');
+  var btn = document.getElementById('companion-sync-btn');
+  if (!statusEl || !banner) return;
+  banner.classList.remove('is-stale', 'is-error', 'is-setup');
+
+  // Setup-required path takes precedence — no point talking about syncs or
+  // reachability when there's no host to reach.
+  if (s.isComplete === false) {
+    banner.classList.add('is-setup');
+    statusEl.textContent = 'Setup required — ' + (s.incompleteReason || 'finish configuration to start syncing');
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Open Settings';
+      btn.onclick = function() { navigate('#/settings'); };
+    }
+    return;
+  }
+  // Restore Sync Now wiring if we previously hijacked the button for setup.
+  if (btn && btn.textContent !== 'Sync Now') {
+    btn.textContent = 'Sync Now';
+    btn.onclick = companionSyncNow;
+  }
+
+  // Reachability prefix — only when we have a definitive answer. Disable Sync Now
+  // when offline so the user gets immediate feedback rather than a slow timeout.
+  var reachPrefix = '';
+  if (s.primaryReachable === false) {
+    reachPrefix = 'Primary offline · ';
+    banner.classList.add('is-error');
+    if (btn) btn.disabled = true;
+  } else if (s.primaryReachable === true) {
+    reachPrefix = 'Primary online · ';
+    if (btn && !s.isRunning) btn.disabled = false;
+  } else {
+    if (btn && !s.isRunning) btn.disabled = false;
+  }
+
+  if (s.isRunning) {
+    statusEl.textContent = reachPrefix + 'Sync in progress…';
+    return;
+  }
+  if (s.lastError) {
+    banner.classList.add('is-error');
+    statusEl.textContent = reachPrefix + 'Last sync failed: ' + s.lastError;
+    return;
+  }
+  if (!s.lastSuccessUtc) {
+    statusEl.textContent = reachPrefix + 'No sync yet — click Sync Now to pull from the primary.';
+    return;
+  }
+  var when = new Date(s.lastSuccessUtc);
+  var ageMin = (Date.now() - when.getTime()) / 60000;
+  if (ageMin > 60 * 24) banner.classList.add('is-stale');
+  statusEl.textContent = reachPrefix + 'Last synced ' + relativeTime(ageMin) +
+    ' (primary v' + (s.primaryVersion || '?') + ')';
+}
+
+function relativeTime(ageMin) {
+  if (ageMin < 1)   return 'just now';
+  if (ageMin < 60)  return Math.round(ageMin) + ' min ago';
+  var ageH = ageMin / 60;
+  if (ageH < 24)    return ageH.toFixed(1) + ' h ago';
+  return (ageH / 24).toFixed(1) + ' d ago';
+}
+
+// ── Companion Settings tab ────────────────────────────────────────────────
+// Edits companion.json via /api/companion/config. The api key is masked when
+// loaded; the input shows a placeholder and only sends a value on save when
+// the user actually types one (else the server keeps the existing key).
+function renderSettingsPage() {
+  document.getElementById('page-subtitle').textContent = 'Companion settings';
+  var content = document.getElementById('content');
+  if (!COMPANION_MODE) {
+    content.innerHTML = '<div class="settings-shell"><div class="settings-card"><p>Settings are only available when running in companion mode.</p></div></div>';
+    return;
+  }
+  content.innerHTML = '<div class="settings-shell"><div class="settings-card"><p>Loading…</p></div></div>';
+  fetch('/api/companion/config').then(function(r){
+    if (!r.ok) throw new Error('config ' + r.status);
+    return r.json();
+  }).then(function(c){
+    content.innerHTML = settingsHtml(c);
+    bindSettingsForm(c);
+  }).catch(function(err){
+    content.innerHTML = '<div class="settings-shell"><div class="settings-card is-error"><p>Failed to load config: ' + esc(err.message || 'unknown') + '</p></div></div>';
+  });
+}
+
+function settingsHtml(c) {
+  var setupBanner = c.isComplete ? '' :
+    '<div class="settings-card is-setup"><strong>Setup required</strong><p>' +
+    esc(c.incompleteReason || 'Fill in the fields below to start syncing from your NINA machine.') +
+    '</p></div>';
+  return '' +
+    '<div class="settings-shell">' +
+      setupBanner +
+      '<form class="settings-card" id="settings-form" autocomplete="off">' +
+        '<h2>Primary NINA</h2>' +
+        '<label class="settings-row">' +
+          '<span class="settings-label">Host <span class="settings-hint">IP, hostname, or Tailnet name</span></span>' +
+          '<input type="text" id="cfg-host" value="' + esc(c.host || '') + '" placeholder="100.x.y.z or nina-rig" required>' +
+        '</label>' +
+        '<label class="settings-row">' +
+          '<span class="settings-label">Port <span class="settings-hint">NINA Night Summary plugin port (default 8181)</span></span>' +
+          '<input type="number" id="cfg-port" value="' + (c.port || 8181) + '" min="1" max="65535" required>' +
+        '</label>' +
+        '<label class="settings-row">' +
+          '<span class="settings-label">API key <span class="settings-hint">Copy from the NS plugin settings on the primary</span></span>' +
+          '<div class="settings-key-row">' +
+            '<input type="password" id="cfg-apikey" placeholder="' + (c.apiKeySet ? esc(c.apiKeyMasked) + ' (leave blank to keep)' : 'paste api key') + '">' +
+            '<button type="button" class="settings-key-toggle" id="cfg-apikey-show" title="Show/hide">show</button>' +
+          '</div>' +
+        '</label>' +
+        '<h2>Sync schedule</h2>' +
+        '<label class="settings-row settings-row-inline">' +
+          '<input type="checkbox" id="cfg-onboot"' + (c.onBoot ? ' checked' : '') + '>' +
+          '<span>Sync once when the companion server starts</span>' +
+        '</label>' +
+        '<label class="settings-row">' +
+          '<span class="settings-label">Interval after success <span class="settings-hint">Hours between syncs while the primary is reachable</span></span>' +
+          '<input type="number" id="cfg-success" value="' + (c.pollingIntervalHoursOnSuccess || 4) + '" min="1" max="168">' +
+        '</label>' +
+        '<label class="settings-row">' +
+          '<span class="settings-label">Interval after failure <span class="settings-hint">Minutes between retries while the primary is offline</span></span>' +
+          '<input type="number" id="cfg-failure" value="' + (c.pollingIntervalMinutesOnFailure || 30) + '" min="1" max="1440">' +
+        '</label>' +
+        '<h2>Storage</h2>' +
+        '<div class="settings-row">' +
+          '<span class="settings-label">Data directory <span class="settings-hint">Read-only; edit companion.json directly to relocate (will orphan existing data)</span></span>' +
+          '<input type="text" value="' + esc(c.dataDir || '') + '" readonly>' +
+        '</div>' +
+        '<div class="settings-row">' +
+          '<span class="settings-label">Dashboard port <span class="settings-hint">Edit companion.json directly; restart required</span></span>' +
+          '<input type="text" value="' + (c.dashboardPort || '') + '" readonly>' +
+        '</div>' +
+        '<div class="settings-actions">' +
+          '<div class="settings-status" id="cfg-status"></div>' +
+          '<button type="button" class="settings-btn" id="cfg-test">Test connection</button>' +
+          '<button type="submit" class="settings-btn settings-btn-primary" id="cfg-save">Save</button>' +
+        '</div>' +
+      '</form>' +
+    '</div>';
+}
+
+function bindSettingsForm(initial) {
+  var form    = document.getElementById('settings-form');
+  var hostEl  = document.getElementById('cfg-host');
+  var portEl  = document.getElementById('cfg-port');
+  var keyEl   = document.getElementById('cfg-apikey');
+  var keyToggle = document.getElementById('cfg-apikey-show');
+  var bootEl  = document.getElementById('cfg-onboot');
+  var sucEl   = document.getElementById('cfg-success');
+  var failEl  = document.getElementById('cfg-failure');
+  var status  = document.getElementById('cfg-status');
+  var testBtn = document.getElementById('cfg-test');
+  var saveBtn = document.getElementById('cfg-save');
+
+  keyToggle.addEventListener('click', function() {
+    var showing = keyEl.type === 'text';
+    keyEl.type = showing ? 'password' : 'text';
+    keyToggle.textContent = showing ? 'show' : 'hide';
+  });
+
+  function readEdit() {
+    return {
+      host: hostEl.value.trim(),
+      port: parseInt(portEl.value, 10) || 0,
+      // Empty string from the form means "leave the saved key alone".
+      apiKey: keyEl.value === '' ? null : keyEl.value,
+      onBoot: !!bootEl.checked,
+      pollingIntervalHoursOnSuccess:   parseInt(sucEl.value, 10) || 0,
+      pollingIntervalMinutesOnFailure: parseInt(failEl.value, 10) || 0,
+    };
+  }
+
+  function setStatus(text, cls) {
+    status.textContent = text || '';
+    status.className = 'settings-status' + (cls ? ' ' + cls : '');
+  }
+
+  testBtn.addEventListener('click', function() {
+    var edit = readEdit();
+    setStatus('Testing…', '');
+    testBtn.disabled = true;
+    fetch('/api/companion/test-connection', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ host: edit.host, port: edit.port, apiKey: edit.apiKey || '' }),
+    }).then(function(r){ return r.json(); }).then(function(j){
+      if (j.ok) {
+        var info = j.version ? ' · primary v' + j.version : '';
+        setStatus('Connected' + info, 'is-ok');
+      } else {
+        setStatus('Failed: ' + (j.error || 'unknown'), 'is-error');
+      }
+    }).catch(function(err){
+      setStatus('Failed: ' + (err.message || 'network error'), 'is-error');
+    }).finally(function(){ testBtn.disabled = false; });
+  });
+
+  form.addEventListener('submit', function(e) {
+    e.preventDefault();
+    var edit = readEdit();
+    setStatus('Saving…', '');
+    saveBtn.disabled = true;
+    fetch('/api/companion/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(edit),
+    }).then(function(r){ return r.json().then(function(j){ return { status: r.status, body: j }; }); }).then(function(o){
+      if (o.body && o.body.ok) {
+        setStatus('Saved. ' + (o.body.config && o.body.config.isComplete ? 'Initial sync starting.' : 'Setup still incomplete.'), 'is-ok');
+        // Re-render so the masked key reflects whatever was saved and to flip
+        // any "setup required" banner off.
+        renderSettingsPage();
+        // Refresh the top banner immediately too — config changes affect reachability.
+        if (typeof refreshCompanionStatus === 'function') refreshCompanionStatus();
+      } else {
+        setStatus('Save failed: ' + (o.body && o.body.error || ('http ' + o.status)), 'is-error');
+      }
+    }).catch(function(err){
+      setStatus('Save failed: ' + (err.message || 'network error'), 'is-error');
+    }).finally(function(){ saveBtn.disabled = false; });
+  });
+}

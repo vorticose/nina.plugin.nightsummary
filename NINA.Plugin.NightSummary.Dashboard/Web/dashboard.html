@@ -19,6 +19,7 @@
       <nav id="nav">
         <a href="#/sessions" class="nav-link active" data-page="sessions">Sessions</a>
         <a href="#/stats" class="nav-link" data-page="stats">Targets</a>
+        <a href="#/settings" class="nav-link companion-only" data-page="settings" hidden>Settings</a>
       </nav>
       <button class="theme-toggle" id="theme-toggle" title="Toggle light/dark mode"></button>
     </div>
@@ -32,6 +33,13 @@
   </div>
 </header>
 <div class="shell">
+  <div id="companion-banner" class="companion-banner" hidden>
+    <div class="companion-banner-info">
+      <span class="companion-banner-label">Companion</span>
+      <span id="companion-banner-status">Checking sync status…</span>
+    </div>
+    <button id="companion-sync-btn" class="companion-banner-btn" type="button">Sync Now</button>
+  </div>
   <div id="content">
     <div class="loading">Loading...</div>
   </div>

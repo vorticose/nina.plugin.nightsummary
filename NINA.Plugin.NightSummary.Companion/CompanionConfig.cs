@@ -93,4 +93,24 @@ public sealed class CompanionConfig {
         if (Port <= 0 || Port > 65535)
             throw new InvalidOperationException($"companion.json: port {Port} out of range");
     }
+
+    // Non-throwing variant — drives "setup needed" UX in the dashboard so
+    // serve can start before the user has filled in host/key.
+    public bool IsComplete(out string? reason) {
+        if (string.IsNullOrWhiteSpace(Nina.Host)) { reason = "nina.host is empty"; return false; }
+        if (string.IsNullOrWhiteSpace(Nina.ApiKey)) { reason = "nina.apiKey is empty"; return false; }
+        if (Nina.Port <= 0 || Nina.Port > 65535) { reason = $"nina.port {Nina.Port} out of range"; return false; }
+        if (Port <= 0 || Port > 65535) { reason = $"port {Port} out of range"; return false; }
+        reason = null; return true;
+    }
+
+    public bool IsComplete() => IsComplete(out _);
+
+    // Last 4 chars of the api key, with the rest replaced by bullets. Used in
+    // GET /api/companion/config so the secret never round-trips to the browser.
+    public string MaskedApiKey() {
+        var k = Nina.ApiKey ?? "";
+        if (k.Length <= 4) return new string('•', k.Length);
+        return new string('•', k.Length - 4) + k.Substring(k.Length - 4);
+    }
 }

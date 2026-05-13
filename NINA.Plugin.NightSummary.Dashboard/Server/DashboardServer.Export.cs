@@ -97,7 +97,11 @@ namespace NINA.Plugin.NightSummary.Server {
                 done?.Invoke(404, "ts-db absent");
                 return;
             }
-            await StreamSqliteSnapshot(tsPath, res, done, "schedulerdb.sqlite");
+            // imagedata holds JPEG thumbnails (~95% of TS DB volume) and the
+            // companion never reads it. Slim the snapshot before streaming so
+            // sync time stays in seconds, not minutes.
+            await StreamSqliteSnapshot(tsPath, res, done, "schedulerdb.sqlite",
+                postSnapshotSql: "DELETE FROM imagedata; VACUUM;");
         }
 
         // Default TS DB location matches TargetSchedulerDatabase.DefaultDbPath
@@ -109,7 +113,9 @@ namespace NINA.Plugin.NightSummary.Server {
         // VACUUM INTO produces a consistent snapshot of a live SQLite DB without
         // racing the writer. The destination temp file is streamed to the client
         // and deleted afterward. Falls back to a 500 if VACUUM INTO fails.
-        private async Task StreamSqliteSnapshot(string sourceDb, TcpHttpResponse res, Action<int, string> done, string filename) {
+        // postSnapshotSql, when non-null, runs against the temp snapshot before
+        // streaming — used by ts-database to drop the imagedata thumbnail blobs.
+        private async Task StreamSqliteSnapshot(string sourceDb, TcpHttpResponse res, Action<int, string> done, string filename, string postSnapshotSql = null) {
             if (!File.Exists(sourceDb)) {
                 await WriteJson(res, 404, new { error = "database not found" });
                 done?.Invoke(404, $"db absent: {filename}");
@@ -129,6 +135,15 @@ namespace NINA.Plugin.NightSummary.Server {
                     conn.Open();
                     using var cmd = conn.CreateCommand();
                     cmd.CommandText = $"VACUUM INTO '{tempPath.Replace("'", "''")}'";
+                    cmd.ExecuteNonQuery();
+                }
+
+                if (!string.IsNullOrEmpty(postSnapshotSql)) {
+                    var rwCs = $"Data Source={tempPath};Version=3;";
+                    using var conn = new SQLiteConnection(rwCs);
+                    conn.Open();
+                    using var cmd = conn.CreateCommand();
+                    cmd.CommandText = postSnapshotSql;
                     cmd.ExecuteNonQuery();
                 }
 

@@ -28,16 +28,36 @@ public sealed class SyncEngine {
     private readonly CompanionConfig _config;
     private readonly CompanionPaths _paths;
     private readonly IDashboardLogger _log;
-    private readonly HttpClient _http;
+    private readonly object _httpGate = new();
+    private HttpClient _http;
+    private readonly bool _externalHttp;
 
     public SyncEngine(CompanionConfig config, CompanionPaths paths, IDashboardLogger log, HttpClient? http = null) {
         _config = config;
         _paths  = paths;
         _log    = log;
-        _http   = http ?? new HttpClient { BaseAddress = new Uri(config.ResolvedNinaUrl()) };
-        _http.DefaultRequestHeaders.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", config.Nina.ApiKey);
-        _http.Timeout = TimeSpan.FromMinutes(30);
+        _externalHttp = http != null;
+        _http   = http ?? BuildHttp(config);
+    }
+
+    private static HttpClient BuildHttp(CompanionConfig config) {
+        var c = new HttpClient { BaseAddress = new Uri(config.ResolvedNinaUrl()) };
+        c.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", config.Nina.ApiKey ?? "");
+        c.Timeout = TimeSpan.FromMinutes(30);
+        return c;
+    }
+
+    // Hot-reload after the user edits config in the dashboard. Swap the live
+    // HttpClient — in-flight calls keep using the old one until they finish;
+    // next call uses the new one. We deliberately don't dispose the old client
+    // because in-flight requests still hold the reference; let the GC collect
+    // it when nothing's using it. No-op when the engine was constructed with
+    // an externally owned HttpClient — that owner controls its lifecycle.
+    public void Reconfigure() {
+        if (_externalHttp) return;
+        var fresh = BuildHttp(_config);
+        lock (_httpGate) { _http = fresh; }
     }
 
     public sealed record SyncResult(
@@ -109,7 +129,7 @@ public sealed class SyncEngine {
 
     // ── Step 1: health ──────────────────────────────────────────────────────
 
-    private async Task<(bool reachable, string? version, int? schema)> CheckHealthAsync(CancellationToken ct) {
+    public async Task<(bool reachable, string? version, int? schema)> CheckHealthAsync(CancellationToken ct) {
         try {
             using var resp = await _http.GetAsync("/api/health", ct);
             if (!resp.IsSuccessStatusCode) return (false, null, null);

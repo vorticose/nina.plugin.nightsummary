@@ -31,6 +31,7 @@ namespace NINA.Plugin.NightSummary.Server {
         private readonly IWebAssets _webAssets;
         private readonly IDashboardLogger _external;
         private readonly IReportRegenerator _regen;
+        private readonly ICompanionController _companion;  // null in primary mode
         private string cachedDashboardHtml;
         private DashboardLog log;
         private readonly HashSet<string> _loggedUserAgents = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -152,12 +153,14 @@ namespace NINA.Plugin.NightSummary.Server {
             IWebAssets webAssets,
             IDashboardLogger externalLog,
             IDashboardPaths paths,
-            IReportRegenerator regen) {
+            IReportRegenerator regen,
+            ICompanionController companion = null) {
             _data       = data       ?? throw new ArgumentNullException(nameof(data));
             _settings   = settings   ?? throw new ArgumentNullException(nameof(settings));
             _webAssets  = webAssets  ?? throw new ArgumentNullException(nameof(webAssets));
             _external   = externalLog ?? throw new ArgumentNullException(nameof(externalLog));
             _regen      = regen;     // optional — null in dev when regeneration is disabled
+            _companion  = companion; // optional — non-null only in companion mode
 
             // Path roots come from IDashboardPaths; the legacy fields stay so the rest
             // of the file's File.Exists/Path.Combine calls keep working unchanged.
@@ -431,6 +434,10 @@ namespace NINA.Plugin.NightSummary.Server {
                         await HandleExportTsDatabase(req, res, done);
                     } else if (path == "/api/export/reports") {
                         await HandleExportReports(req, res, done);
+                    } else if (path == "/api/companion/status") {
+                        await HandleCompanionStatus(res, done);
+                    } else if (path == "/api/companion/config") {
+                        await HandleCompanionConfigGet(res, done);
                     } else if (path == "/api/sessions") {
                         await HandleGetSessions(res, done);
                     } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/images")) {
@@ -530,6 +537,12 @@ namespace NINA.Plugin.NightSummary.Server {
                         await HandleCustomProjects(req, res, done);
                     } else if (path == "/api/clientlog") {
                         await HandleClientLog(req, res, done);
+                    } else if (path == "/api/companion/sync") {
+                        await HandleCompanionSync(res, done);
+                    } else if (path == "/api/companion/config") {
+                        await HandleCompanionConfigSave(req, res, done);
+                    } else if (path == "/api/companion/test-connection") {
+                        await HandleCompanionTestConnection(req, res, done);
                     } else if (path == "/api/stats/projects/reset") {
                         await HandleProjectsReset(req, res, done);
                     } else if (path.StartsWith("/api/stats/projects/") && path.EndsWith("/reset")) {

@@ -9,20 +9,22 @@ namespace NINA.Plugin.NightSummary.Companion.Adapters;
 
 // IDashboardDataSource for companion mode. Wraps the same SqliteSessionReader
 // the plugin uses, pointed at the synced nightsummary.sqlite. Target Scheduler
-// lookups intentionally return empty — the live TS DB lives on the NINA box;
-// the companion will gain a synced TS read path in a later phase. Disk-backed
-// loaders return null so the dashboard server falls back to its existing
-// reports/ filesystem reads.
+// reads come from the synced schedulerdb.sqlite via CompanionTsReader (the
+// plugin's TargetSchedulerDatabase is net8.0-windows + NINA.Core, so the SQL
+// is mirrored in CompanionTsReader). Disk-backed loaders return null so the
+// dashboard server falls back to its existing reports/ filesystem reads.
 internal sealed class CompanionDataSource : IDashboardDataSource {
 
     private readonly string _dbPath;
     private readonly string _connectionString;
     private readonly IDashboardLogger _log;
+    private readonly CompanionTsReader _ts;
 
-    public CompanionDataSource(string dbPath, IDashboardLogger log) {
+    public CompanionDataSource(string dbPath, string tsDbPath, IDashboardLogger log) {
         _dbPath = dbPath;
         _connectionString = $"Data Source={dbPath};Version=3;Read Only=True;";
         _log = log;
+        _ts = new CompanionTsReader(tsDbPath, log);
     }
 
     private SqliteSessionReader Reader() => new(_connectionString, _log);
@@ -52,14 +54,18 @@ internal sealed class CompanionDataSource : IDashboardDataSource {
     public Task<IReadOnlyDictionary<string, double>> GetLatestPositionAnglesAsync(CancellationToken ct = default)
         => Task.FromResult<IReadOnlyDictionary<string, double>>(new Dictionary<string, double>());
 
-    // TS not available in companion mode (yet). The dashboard already handles this
-    // gracefully — Tonight's Preview hides, TS progress bars hide, etc.
+    // TS reads served from the synced schedulerdb.sqlite. TS API settings
+    // returned but the Host stays "localhost" — live TS API hits the NINA box
+    // and is out of scope here (see noon-boundary cache work in COMPANION_PLAN).
     public Task<bool> IsTargetSchedulerAvailableAsync(CancellationToken ct = default)
-        => Task.FromResult(false);
+        => Task.FromResult(_ts.IsAvailable);
     public Task<IReadOnlyList<TsProjectInfo>> GetTSProjectsAsync(CancellationToken ct = default)
-        => Task.FromResult<IReadOnlyList<TsProjectInfo>>(new List<TsProjectInfo>());
-    public Task<TsApiSettings?> GetTSApiSettingsAsync(CancellationToken ct = default)
-        => Task.FromResult<TsApiSettings?>(null);
+        => Task.FromResult<IReadOnlyList<TsProjectInfo>>(_ts.GetAllProjects());
+    public Task<TsApiSettings?> GetTSApiSettingsAsync(CancellationToken ct = default) {
+        if (!_ts.IsAvailable) return Task.FromResult<TsApiSettings?>(null);
+        var (enabled, port) = _ts.GetApiSettings();
+        return Task.FromResult<TsApiSettings?>(new TsApiSettings(enabled, port));
+    }
 
     public Task<string?> LoadReportHtmlAsync(string sessionId, CancellationToken ct = default)
         => Task.FromResult<string?>(null);
