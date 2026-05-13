@@ -7,7 +7,7 @@ using System.Runtime.InteropServices;
 [assembly: Guid("682531D1-5A23-4627-B961-0794282ECB4E")]
 // AssemblyVersion and AssemblyFileVersion are auto-generated at build time
 // from VersionPrefix in the .csproj + git commit count (see SetGitBuildNumber target)
-[assembly: AssemblyInformationalVersion("3.0.0")]
+[assembly: AssemblyInformationalVersion("3.1.0")]
 [assembly: AssemblyTitle("Night Summary")]
 [assembly: AssemblyDescription("Records your imaging session and delivers a detailed HTML report via email, Discord, or Pushover when your sequence ends. Includes a built-in local web dashboard for browsing session history and lifetime statistics from any device on your network.\n\nFree and open source — support development: https://ko-fi.com/sleepypuppy15\n\nTo update: download the latest release from the link above and extract the zip to your existing NightSummary plugin folder, overwriting existing files.")]
 [assembly: AssemblyCompany("Evan Pegors")]
