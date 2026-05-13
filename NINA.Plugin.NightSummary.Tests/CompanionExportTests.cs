@@ -291,6 +291,7 @@ namespace NINA.Plugin.NightSummary.Tests {
             public string LogsDir      => Path.Combine(_root, "logs");
             public string HipsCacheDir => Path.Combine(_root, "hips-cache");
             public string DatabasePath => Path.Combine(_root, "nightsummary.sqlite");
+            public string ThumbsRoot   => Path.Combine(_root, "thumbs");
             public string ReportHtmlPath(string id)        => Path.Combine(ReportsDir, $"{id}.html");
             public string ReportSettingsPath(string id)    => Path.Combine(ReportsDir, $"{id}.settings.json");
             public string LivestackDir(string id)          => Path.Combine(ReportsDir, id, "livestack");
@@ -348,6 +349,8 @@ namespace NINA.Plugin.NightSummary.Tests {
                 => Task.FromResult<IReadOnlyList<TsProjectInfo>>(Array.Empty<TsProjectInfo>());
             public Task<TsApiSettings?> GetTSApiSettingsAsync(CancellationToken ct = default)
                 => Task.FromResult<TsApiSettings?>(null);
+            public Task<TsImageAugment?> GetTsImageAugmentAsync(string targetName, string filterName, DateTime ts, int windowSeconds, double exposureDurationSeconds, CancellationToken ct = default)
+                => Task.FromResult<TsImageAugment?>(null);
             public Task<string?> LoadReportHtmlAsync(string sessionId, CancellationToken ct = default)
                 => Task.FromResult<string?>(null);
             public Task<byte[]?> LoadLivestackImageAsync(string sessionId, string filename, CancellationToken ct = default)

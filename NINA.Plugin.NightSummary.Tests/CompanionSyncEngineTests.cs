@@ -226,6 +226,7 @@ namespace NINA.Plugin.NightSummary.Tests {
             public string LogsDir      => Path.Combine(_r, "logs");
             public string HipsCacheDir => Path.Combine(_r, "hips-cache");
             public string DatabasePath => Path.Combine(_r, "nightsummary.sqlite");
+            public string ThumbsRoot   => Path.Combine(_r, "thumbs");
             public string ReportHtmlPath(string id)        => Path.Combine(ReportsDir, $"{id}.html");
             public string ReportSettingsPath(string id)    => Path.Combine(ReportsDir, $"{id}.settings.json");
             public string LivestackDir(string id)          => Path.Combine(ReportsDir, id, "livestack");
@@ -263,6 +264,7 @@ namespace NINA.Plugin.NightSummary.Tests {
             public Task<bool> IsTargetSchedulerAvailableAsync(CancellationToken ct = default) => Task.FromResult(false);
             public Task<IReadOnlyList<TsProjectInfo>> GetTSProjectsAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<TsProjectInfo>>(Array.Empty<TsProjectInfo>());
             public Task<TsApiSettings?> GetTSApiSettingsAsync(CancellationToken ct = default) => Task.FromResult<TsApiSettings?>(null);
+            public Task<TsImageAugment?> GetTsImageAugmentAsync(string targetName, string filterName, DateTime ts, int windowSeconds, double exposureDurationSeconds, CancellationToken ct = default) => Task.FromResult<TsImageAugment?>(null);
             public Task<string?> LoadReportHtmlAsync(string id, CancellationToken ct = default) => Task.FromResult<string?>(null);
             public Task<byte[]?> LoadLivestackImageAsync(string id, string f, CancellationToken ct = default) => Task.FromResult<byte[]?>(null);
             public Task<string?> LoadLivestackManifestAsync(string id, CancellationToken ct = default) => Task.FromResult<string?>(null);
