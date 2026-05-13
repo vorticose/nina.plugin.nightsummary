@@ -87,6 +87,9 @@ public sealed record CompanionSyncStatus(
     int FilesAdded,
     int FilesUpdated,
     int FilesDeleted,
+    int ThumbsAdded,
+    int ThumbsUpdated,
+    int ThumbsDeleted,
     bool IsRunning,
     // Cheap reachability ping result, refreshed on a faster cadence than full sync.
     // Lets the banner flip to "online" within ~minute of the primary coming back,

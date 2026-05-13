@@ -85,6 +85,9 @@ public sealed class CompanionController : ICompanionController {
             FilesAdded:            0,
             FilesUpdated:          0,
             FilesDeleted:          0,
+            ThumbsAdded:           0,
+            ThumbsUpdated:         0,
+            ThumbsDeleted:         0,
             IsRunning:             IsSyncing,
             PrimaryReachable:      reachable,
             PrimaryLastCheckedUtc: checkedAt);
@@ -108,11 +111,14 @@ public sealed class CompanionController : ICompanionController {
         // Status reflects what got persisted by SyncEngine; layer in this run's counts.
         var s = GetStatus();
         return s with {
-            DbBytes      = result.DbBytes,
-            TsDbBytes    = result.TsDbBytes,
-            FilesAdded   = result.FilesAdded,
-            FilesUpdated = result.FilesUpdated,
-            FilesDeleted = result.FilesDeleted,
+            DbBytes        = result.DbBytes,
+            TsDbBytes      = result.TsDbBytes,
+            FilesAdded     = result.FilesAdded,
+            FilesUpdated   = result.FilesUpdated,
+            FilesDeleted   = result.FilesDeleted,
+            ThumbsAdded    = result.ThumbsAdded,
+            ThumbsUpdated  = result.ThumbsUpdated,
+            ThumbsDeleted  = result.ThumbsDeleted,
         };
     }
 

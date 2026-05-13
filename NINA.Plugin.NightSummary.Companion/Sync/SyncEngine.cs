@@ -69,6 +69,9 @@ public sealed class SyncEngine {
         int FilesAdded,
         int FilesUpdated,
         int FilesDeleted,
+        int ThumbsAdded,
+        int ThumbsUpdated,
+        int ThumbsDeleted,
         string? PrimaryVersion);
 
     public async Task<SyncResult> SyncAsync(CancellationToken ct = default) {
@@ -86,7 +89,7 @@ public sealed class SyncEngine {
                 state.LastError = "primary unreachable";
                 state.Save(statePath);
                 _log.Warn($"Sync: primary unreachable at {_config.ResolvedNinaUrl()}");
-                return new SyncResult(false, false, "primary unreachable", 0, 0, 0, 0, 0, null);
+                return new SyncResult(false, false, "primary unreachable", 0, 0, 0, 0, 0, 0, 0, 0, null);
             }
 
             // 2 — Full remote manifest (used for orphan reconcile)
@@ -102,9 +105,19 @@ public sealed class SyncEngine {
             // 5 — TS DB (optional)
             var tsBytes = await TryPullSqliteAsync("/api/export/ts-database", _paths.TsDatabasePath, ct);
 
-            // 6 — Orphan reconcile (only when manifest is non-empty — never nuke on bad response)
+            // 6a — Reports orphan reconcile (only when manifest is non-empty — never nuke on bad response)
             int deleted = manifest.Files.Length > 0
                 ? DeleteOrphans(manifest)
+                : 0;
+
+            // 6b — Thumbs: separate manifest + zip + orphan pass. Primary may
+            // not have raw thumbnails enabled (older sessions, feature off) — the
+            // server returns an empty manifest/zip in that case and we no-op.
+            var thumbsManifest = await FetchThumbsManifestAsync(since: null, ct);
+            _log.Info($"Sync: remote thumbs manifest reports {thumbsManifest.Files.Length} file(s)");
+            var (tAdded, tUpdated) = await PullThumbsZipAsync(state.LastThumbMtimeUtc, ct);
+            int tDeleted = thumbsManifest.Files.Length > 0
+                ? DeleteThumbOrphans(thumbsManifest)
                 : 0;
 
             // 7 — Persist
@@ -112,18 +125,24 @@ public sealed class SyncEngine {
                 ? manifest.Files.Max(f => f.Mtime).ToUniversalTime()
                 : (DateTime?)null;
             if (maxMtime.HasValue) state.LastReportMtimeUtc = maxMtime;
+            var maxThumbMtime = thumbsManifest.Files.Length > 0
+                ? thumbsManifest.Files.Max(f => f.Mtime).ToUniversalTime()
+                : (DateTime?)null;
+            if (maxThumbMtime.HasValue) state.LastThumbMtimeUtc = maxThumbMtime;
             state.LastSuccessUtc = DateTime.UtcNow;
             state.LastError      = null;
             state.Save(statePath);
 
-            _log.Info($"Sync: ok — db={dbBytes}B ts={tsBytes}B reports added={added} updated={updated} deleted={deleted}");
-            return new SyncResult(true, true, null, dbBytes, tsBytes, added, updated, deleted, primaryVersion);
+            _log.Info($"Sync: ok — db={dbBytes}B ts={tsBytes}B reports added={added} updated={updated} deleted={deleted}" +
+                      $" thumbs added={tAdded} updated={tUpdated} deleted={tDeleted}");
+            return new SyncResult(true, true, null, dbBytes, tsBytes, added, updated, deleted,
+                                  tAdded, tUpdated, tDeleted, primaryVersion);
 
         } catch (Exception ex) {
             state.LastError = ex.Message;
             state.Save(statePath);
             _log.Error("Sync failed", ex);
-            return new SyncResult(true, false, ex.Message, 0, 0, 0, 0, 0, null);
+            return new SyncResult(true, false, ex.Message, 0, 0, 0, 0, 0, 0, 0, 0, null);
         }
     }
 
@@ -292,4 +311,98 @@ public sealed class SyncEngine {
     }
 
     private static string Normalize(string p) => p.Replace('\\', '/').TrimStart('/');
+
+    // ── Step 6b: thumbnail tree (manifest + zip + orphan) ───────────────────
+
+    // Mirrors FetchManifestAsync against the separate thumbs endpoint so the
+    // reports orphan pass can never touch the thumbs tree and vice versa.
+    private async Task<ManifestResponse> FetchThumbsManifestAsync(DateTime? since, CancellationToken ct) {
+        var url = "/api/export/thumbs-manifest";
+        if (since.HasValue) url += "?since=" + Uri.EscapeDataString(since.Value.ToString("o"));
+        using var resp = await _http.GetAsync(url, ct);
+        // Primary that predates the thumbs endpoint returns 404. Treat as
+        // "nothing to sync" — server side will eventually be upgraded.
+        if (resp.StatusCode == System.Net.HttpStatusCode.NotFound) {
+            _log.Info("Sync: /api/export/thumbs-manifest → 404 (primary predates thumb sync)");
+            return new ManifestResponse();
+        }
+        resp.EnsureSuccessStatusCode();
+        var json = await resp.Content.ReadAsStringAsync(ct);
+        return JsonSerializer.Deserialize<ManifestResponse>(json,
+            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })
+            ?? new ManifestResponse();
+    }
+
+    // Same approach as PullReportsZipAsync but rooted at ThumbsRoot. Thumbnails
+    // are JPEGs — already compressed — so the server uses CompressionLevel.NoCompression.
+    private async Task<(int added, int updated)> PullThumbsZipAsync(DateTime? since, CancellationToken ct) {
+        var root = _paths.ThumbsRoot;
+        if (string.IsNullOrEmpty(root)) return (0, 0);
+
+        var url = "/api/export/thumbs";
+        if (since.HasValue) url += "?since=" + Uri.EscapeDataString(since.Value.ToString("o"));
+
+        var tempZip = Path.Combine(Path.GetTempPath(), $"ns-companion-thumbs-{Guid.NewGuid():N}.zip");
+        try {
+            using (var resp = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct)) {
+                // Primary without the endpoint → silent skip (paired with manifest 404).
+                if (resp.StatusCode == System.Net.HttpStatusCode.NotFound) return (0, 0);
+                resp.EnsureSuccessStatusCode();
+                using var src = await resp.Content.ReadAsStreamAsync(ct);
+                using var dst = new FileStream(tempZip, FileMode.Create, FileAccess.Write, FileShare.None,
+                                               81920, useAsync: true);
+                await src.CopyToAsync(dst, ct);
+            }
+
+            Directory.CreateDirectory(root);
+            int added = 0, updated = 0;
+            using var fs = new FileStream(tempZip, FileMode.Open, FileAccess.Read);
+            using var archive = new ZipArchive(fs, ZipArchiveMode.Read);
+            foreach (var entry in archive.Entries) {
+                if (entry.FullName.EndsWith("/", StringComparison.Ordinal)) continue;
+                var safeRel = SanitizeRelativePath(entry.FullName);
+                if (safeRel == null) {
+                    _log.Warn($"Sync: skipping suspicious thumb zip entry '{entry.FullName}'");
+                    continue;
+                }
+                var dest = Path.Combine(root, safeRel);
+                Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+                bool existed = File.Exists(dest);
+                using (var es = entry.Open())
+                using (var ds = new FileStream(dest, FileMode.Create, FileAccess.Write, FileShare.None)) {
+                    await es.CopyToAsync(ds, ct);
+                }
+                File.SetLastWriteTime(dest, entry.LastWriteTime.DateTime);
+                if (existed) updated++; else added++;
+            }
+            return (added, updated);
+        } finally {
+            try { if (File.Exists(tempZip)) File.Delete(tempZip); } catch { }
+        }
+    }
+
+    // Same orphan-delete pattern as DeleteOrphans, rooted at ThumbsRoot.
+    private int DeleteThumbOrphans(ManifestResponse remote) {
+        var root = _paths.ThumbsRoot;
+        if (string.IsNullOrEmpty(root) || !Directory.Exists(root)) return 0;
+
+        var remotePaths = new HashSet<string>(
+            remote.Files.Select(f => Normalize(f.Path)),
+            StringComparer.OrdinalIgnoreCase);
+
+        int deleted = 0;
+        foreach (var local in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)) {
+            var rel = Path.GetRelativePath(root, local).Replace('\\', '/');
+            if (!remotePaths.Contains(rel)) {
+                try { File.Delete(local); deleted++; }
+                catch (Exception ex) { _log.Warn($"Sync: could not delete orphan thumb '{rel}': {ex.Message}"); }
+            }
+        }
+        foreach (var dir in Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories)
+                                     .OrderByDescending(d => d.Length)) {
+            try { if (!Directory.EnumerateFileSystemEntries(dir).Any()) Directory.Delete(dir); }
+            catch { /* ignore */ }
+        }
+        return deleted;
+    }
 }

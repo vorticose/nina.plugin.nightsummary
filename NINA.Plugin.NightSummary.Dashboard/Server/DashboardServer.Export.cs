@@ -224,6 +224,92 @@ namespace NINA.Plugin.NightSummary.Server {
             }
         }
 
+        // ── /api/export/thumbs-manifest ───────────────────────────────────────
+
+        // Separate from the reports manifest so orphan-reconcile in each tree
+        // operates independently (deleting a stale report should never nuke
+        // thumbnails; deleting an old session's thumbs should never touch the
+        // reports tree). Paths are relative to ThumbsRoot, mtime-filterable.
+        private async Task HandleExportThumbsManifest(TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
+            if (!await RequireCompanionAuth(req, res, done)) return;
+
+            DateTimeOffset? since = ParseIsoQuery(req.QueryString["since"]);
+            var root = _paths.ThumbsRoot;
+            var files = new List<object>();
+            if (!string.IsNullOrEmpty(root) && Directory.Exists(root)) {
+                foreach (var path in Directory.EnumerateFiles(root, "*.jpg", SearchOption.AllDirectories)) {
+                    var info = new FileInfo(path);
+                    if (since.HasValue && info.LastWriteTimeUtc <= since.Value.UtcDateTime) continue;
+                    var relative = Path.GetRelativePath(root, path).Replace('\\', '/');
+                    files.Add(new {
+                        path  = relative,
+                        size  = info.Length,
+                        mtime = new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero).ToString("o"),
+                    });
+                }
+            }
+            await WriteJson(res, 200, new { files });
+            done?.Invoke(200, $"thumbs manifest: {files.Count} file(s)");
+        }
+
+        // ── /api/export/thumbs ────────────────────────────────────────────────
+
+        // Streams the thumbs/ tree as a zip. Per-file mtime filter matches the
+        // manifest. Returns an empty zip (not 404) when the dir is missing so
+        // the companion's sync path doesn't need a special case for "thumbnails
+        // never captured on this primary."
+        private async Task HandleExportThumbs(TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
+            if (!await RequireCompanionAuth(req, res, done)) return;
+
+            DateTimeOffset? since = ParseIsoQuery(req.QueryString["since"]);
+            var root = _paths.ThumbsRoot;
+
+            var tempDir = Path.Combine(Path.GetTempPath(), "nightsummary-export");
+            Directory.CreateDirectory(tempDir);
+            var tempZip = Path.Combine(tempDir, $"{Guid.NewGuid():N}.zip");
+            int included = 0;
+
+            try {
+                using (var fs = new FileStream(tempZip, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                                               bufferSize: 81920, useAsync: true))
+                using (var archive = new ZipArchive(fs, ZipArchiveMode.Create, leaveOpen: false)) {
+                    if (!string.IsNullOrEmpty(root) && Directory.Exists(root)) {
+                        foreach (var path in Directory.EnumerateFiles(root, "*.jpg", SearchOption.AllDirectories)) {
+                            var info = new FileInfo(path);
+                            if (since.HasValue && info.LastWriteTimeUtc <= since.Value.UtcDateTime) continue;
+                            var entryName = Path.GetRelativePath(root, path).Replace('\\', '/');
+                            // JPEGs do not compress meaningfully — NoCompression cuts
+                            // CPU + temp-file size with no real size penalty.
+                            var entry = archive.CreateEntry(entryName, CompressionLevel.NoCompression);
+                            entry.LastWriteTime = info.LastWriteTime;
+                            using var entryStream = entry.Open();
+                            using var fileStream  = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+                            await fileStream.CopyToAsync(entryStream);
+                            included++;
+                        }
+                    }
+                }
+
+                var zipInfo = new FileInfo(tempZip);
+                using var zipStream = new FileStream(tempZip, FileMode.Open, FileAccess.Read, FileShare.Read,
+                                                    bufferSize: 81920, useAsync: true);
+                res.StatusCode = 200;
+                var headers = new Dictionary<string, string> {
+                    { "Content-Disposition", "attachment; filename=\"thumbs.zip\"" },
+                    { "Access-Control-Allow-Origin", "*" },
+                    { "X-Thumbs-File-Count", included.ToString() },
+                };
+                await res.StreamAsync("application/zip", zipStream, zipInfo.Length, headers);
+                done?.Invoke(200, $"thumbs zip: {included} file(s), {zipInfo.Length} bytes");
+            } catch (Exception ex) {
+                log?.Error("Thumbs export failed", ex);
+                try { await WriteJson(res, 500, new { error = "export failed" }); } catch { }
+                done?.Invoke(500, ex.Message);
+            } finally {
+                try { if (File.Exists(tempZip)) File.Delete(tempZip); } catch { /* best-effort */ }
+            }
+        }
+
         // ── Shared helpers ────────────────────────────────────────────────────
 
         private static DateTimeOffset? ParseIsoQuery(string raw) {

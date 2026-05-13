@@ -436,6 +436,10 @@ namespace NINA.Plugin.NightSummary.Server {
                         await HandleExportTsDatabase(req, res, done);
                     } else if (path == "/api/export/reports") {
                         await HandleExportReports(req, res, done);
+                    } else if (path == "/api/export/thumbs-manifest") {
+                        await HandleExportThumbsManifest(req, res, done);
+                    } else if (path == "/api/export/thumbs") {
+                        await HandleExportThumbs(req, res, done);
                     } else if (path == "/api/companion/status") {
                         await HandleCompanionStatus(res, done);
                     } else if (path == "/api/companion/config") {

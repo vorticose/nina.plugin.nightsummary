@@ -21,6 +21,12 @@ public sealed class SyncState {
     [JsonPropertyName("lastReportMtimeUtc")]
     public DateTime? LastReportMtimeUtc { get; set; }
 
+    // Same idea for the raw thumbnail tree — tracked separately so the two
+    // incremental pulls don't fight each other. Thumbs are immutable once
+    // written, so a missed mtime here just means a re-pull, never a stale read.
+    [JsonPropertyName("lastThumbMtimeUtc")]
+    public DateTime? LastThumbMtimeUtc { get; set; }
+
     private static readonly JsonSerializerOptions JsonOpts = new() {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
