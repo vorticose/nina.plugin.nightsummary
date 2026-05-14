@@ -78,6 +78,35 @@ namespace NINA.Plugin.NightSummary {
             set { _tsImportStatus = value; RaisePropertyChanged(); }
         }
 
+        // Set up the SQLitePCLRaw native-library resolver before any code path
+        // touches Microsoft.Data.Sqlite. The runtimes/win-x64/native convention
+        // doesn't fire in NINA's plugin AssemblyLoadContext (the host's runtime
+        // identifier resolver doesn't recurse into plugin folders), so the
+        // default Batteries_V2.Init throws TypeInitializationException with a
+        // "cannot load e_sqlite3" inner. Pointing the resolver at the plugin's
+        // own bundled native shim fixes it for every consumer in this assembly
+        // and every assembly it ProjectReferences (Dashboard).
+        static NightSummaryPlugin() {
+            try {
+                var pluginDir = System.IO.Path.GetDirectoryName(typeof(NightSummaryPlugin).Assembly.Location);
+                if (string.IsNullOrEmpty(pluginDir)) return;
+                var nativePath = System.IO.Path.Combine(pluginDir, "runtimes", "win-x64", "native", "e_sqlite3.dll");
+                if (!System.IO.File.Exists(nativePath)) return;
+                // The P/Invoke "e_sqlite3" import lives on the SQLitePCLRaw provider
+                // assembly — register the resolver there, not on Microsoft.Data.Sqlite.
+                var providerAsm = typeof(SQLitePCL.SQLite3Provider_e_sqlite3).Assembly;
+                System.Runtime.InteropServices.NativeLibrary.SetDllImportResolver(providerAsm,
+                    (name, asm, path) => name == "e_sqlite3"
+                        ? System.Runtime.InteropServices.NativeLibrary.Load(nativePath)
+                        : IntPtr.Zero);
+            } catch (Exception ex) {
+                // Static ctor must never throw — log via NINA Logger if available,
+                // and let Batteries_V2.Init take its normal failure path so the
+                // dashboard's existing error surface still triggers.
+                try { NINA.Core.Utility.Logger.Warning($"NightSummary: SQLite resolver setup failed — {ex.Message}"); } catch { }
+            }
+        }
+
         [ImportingConstructor]
         public NightSummaryPlugin(
             IProfileService profileService,
