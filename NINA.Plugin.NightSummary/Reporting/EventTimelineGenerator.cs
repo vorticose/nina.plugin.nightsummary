@@ -93,30 +93,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             // Build all imaging blocks across all targets before rendering,
             // so we can compute idle gaps and hatch only those regions.
-            static DateTime EstimatedStart(ImageRecord r) =>
-                r.Timestamp.AddSeconds(-(r.ExposureDuration > 0 ? r.ExposureDuration : 60));
-
+            // Uses the shared ImagingBlockHelper so the gap-merge logic stays in one place.
             var allBlocks = new List<(string Name, string Color, DateTime Start, DateTime End)>();
             foreach (var target in targets) {
-                var sorted = target.Images.OrderBy(i => i.Timestamp).ToList();
-                if (!sorted.Any()) continue;
-
-                var blockStart = EstimatedStart(sorted[0]);
-                var blockEnd   = sorted[0].Timestamp;
-
-                for (int i = 1; i <= sorted.Count; i++) {
-                    if (i < sorted.Count) {
-                        var gap = (EstimatedStart(sorted[i]) - blockEnd).TotalMinutes;
-                        if (gap <= 15) {
-                            blockEnd = sorted[i].Timestamp;
-                            continue;
-                        }
-                    }
-                    allBlocks.Add((target.Name, target.Color, blockStart, blockEnd));
-                    if (i < sorted.Count) {
-                        blockStart = EstimatedStart(sorted[i]);
-                        blockEnd   = sorted[i].Timestamp;
-                    }
+                foreach (var (winStart, winEnd) in ImagingBlockHelper.DetectWindows(target.Images)) {
+                    allBlocks.Add((target.Name, target.Color, winStart, winEnd));
                 }
             }
             allBlocks.Sort((a, b) => a.Start.CompareTo(b.Start));
