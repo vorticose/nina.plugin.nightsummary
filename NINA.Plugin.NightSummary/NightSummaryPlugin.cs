@@ -30,6 +30,13 @@ namespace NINA.Plugin.NightSummary {
         private readonly IProfileService profileService;
         private readonly string liveDbPath;
         private DashboardServer dashboardServer;
+        // Optional second instance bound to ReadOnlyMirrorPort when EnableReadOnlyMirror
+        // is true. Reads the same DB and serves the same dashboard HTML but refuses every
+        // non-GET method at the server level (see DashboardServer ctor `readOnly` param)
+        // and tags responses with X-Read-Only + a data-readonly attribute on the HTML so
+        // CSS hides destructive UI. Designed to sit behind a user-managed reverse proxy
+        // (Caddy / nginx / CF Tunnel) or Tailscale Funnel for safe public exposure.
+        private DashboardServer readOnlyMirrorServer;
         private ObservableCollection<SessionRecord> _availableSessions = new ObservableCollection<SessionRecord>();
         public ObservableCollection<SessionRecord> AvailableSessions {
             get => _availableSessions;
@@ -457,9 +464,78 @@ namespace NINA.Plugin.NightSummary {
             await dashboardServer.StartAsync(S.LocalServerPort);
             var notifyUrl = dashboardServer.TailscaleUrl ?? dashboardServer.ZeroTierUrl ?? dashboardServer.Url;
             Notification.ShowInformation($"Night Summary dashboard live: {notifyUrl}");
+
+            // If a read-only mirror port is configured, spin a second DashboardServer
+            // bound to that port with readOnly: true. Reads the same DB and same web
+            // assets — only difference is the constructor flag.
+            //
+            // Validation checks happen here at start time (not in the setter) so the
+            // user can adjust both fields atomically in Options without an intermediate
+            // invalid state triggering a failed start.
+            if (S.EnableReadOnlyMirror) {
+                await StartReadOnlyMirrorAsync(paths);
+            }
+        }
+
+        private async Task StartReadOnlyMirrorAsync(NinaDashboardPaths paths) {
+            if (readOnlyMirrorServer?.IsRunning == true) return;
+
+            int port = S.ReadOnlyMirrorPort;
+            if (port < 1024 || port > 65535) {
+                Logger.Warning($"NightSummary: Read-only mirror port {port} is out of range (1024-65535); mirror not started");
+                return;
+            }
+            if (port == S.LocalServerPort) {
+                Logger.Warning($"NightSummary: Read-only mirror port {port} matches main dashboard port; mirror not started");
+                return;
+            }
+
+            try {
+                readOnlyMirrorServer = new DashboardServer(
+                    data:        new NinaDashboardDataSource(paths.DatabasePath),
+                    settings:    new NinaPluginSettings(),
+                    webAssets:   new EmbeddedWebAssets(),
+                    externalLog: new NinaDashboardLogger(),
+                    paths:       paths,
+                    regen:       null,   // regen path is a no-op in read-only — POSTs are 403'd
+                    readOnly:    true);
+                await readOnlyMirrorServer.StartAsync(port);
+                Logger.Info($"NightSummary: Read-only mirror dashboard started on port {port}");
+                var mirrorUrl = readOnlyMirrorServer.TailscaleUrl ?? readOnlyMirrorServer.ZeroTierUrl ?? readOnlyMirrorServer.Url;
+                Notification.ShowInformation($"Night Summary read-only mirror live: {mirrorUrl}");
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Failed to start read-only mirror on port {port}: {ex.Message}");
+                readOnlyMirrorServer = null;
+            }
+        }
+
+        // Stop + (optionally) restart the read-only mirror in response to a runtime toggle
+        // from Options. Called by the EnableReadOnlyMirror setter so users don't have to
+        // restart NINA to start/stop the mirror.
+        private async Task ApplyReadOnlyMirrorStateAsync() {
+            try {
+                if (readOnlyMirrorServer != null) {
+                    await readOnlyMirrorServer.StopAsync();
+                    readOnlyMirrorServer = null;
+                    Logger.Info("NightSummary: Read-only mirror stopped");
+                }
+                // Only start a fresh mirror if the user wants it enabled AND the main
+                // dashboard is already running — without the main server the mirror has
+                // nothing meaningful to mirror, and the auto-start path in
+                // StartLocalServerAsync will pick it up the next time the main starts.
+                if (S.EnableReadOnlyMirror && dashboardServer?.IsRunning == true) {
+                    await StartReadOnlyMirrorAsync(new NinaDashboardPaths());
+                }
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Failed to apply read-only mirror state change: {ex.Message}");
+            }
         }
 
         private async Task StopLocalServerAsync() {
+            if (readOnlyMirrorServer != null) {
+                try { await readOnlyMirrorServer.StopAsync(); } catch { /* logged at start path */ }
+                readOnlyMirrorServer = null;
+            }
             if (dashboardServer != null) {
                 await dashboardServer.StopAsync();
                 dashboardServer = null;
@@ -652,6 +728,26 @@ namespace NINA.Plugin.NightSummary {
         public int LocalServerPort {
             get => S.LocalServerPort;
             set { S.LocalServerPort = value; SaveSettings(); RaisePropertyChanged(); }
+        }
+
+        // Read-only mirror exposure. Toggling EnableReadOnlyMirror applies immediately
+        // via ApplyReadOnlyMirrorStateAsync — the user doesn't have to restart NINA.
+        // Port changes during a running mirror need a toggle off + on (or NINA restart)
+        // since the listener is bound at start; the port setter just persists the value.
+        public bool EnableReadOnlyMirror {
+            get => S.EnableReadOnlyMirror;
+            set {
+                if (S.EnableReadOnlyMirror == value) return;
+                S.EnableReadOnlyMirror = value;
+                SaveSettings();
+                RaisePropertyChanged();
+                _ = ApplyReadOnlyMirrorStateAsync();
+            }
+        }
+
+        public int ReadOnlyMirrorPort {
+            get => S.ReadOnlyMirrorPort;
+            set { S.ReadOnlyMirrorPort = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
         public bool IsLocalServerRunning => dashboardServer?.IsRunning == true;

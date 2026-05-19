@@ -798,6 +798,34 @@
                                            TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="400" VerticalAlignment="Center" />
                             </StackPanel>
 
+                            <!-- ── Read-only mirror (public exposure) ─────────────────── -->
+                            <Separator Margin="0,16,0,8" />
+
+                            <StackPanel Orientation="Horizontal" Margin="0,5">
+                                <TextBlock Text="Read-Only Mirror" Width="200" VerticalAlignment="Center" FontWeight="SemiBold" />
+                                <CheckBox IsChecked="{Binding EnableReadOnlyMirror}" VerticalAlignment="Center" />
+                            </StackPanel>
+
+                            <StackPanel IsEnabled="{Binding EnableReadOnlyMirror}">
+                                <StackPanel Orientation="Horizontal" Margin="0,5">
+                                    <TextBlock Text="Mirror Port" Width="200" VerticalAlignment="Center" />
+                                    <TextBox MinWidth="80" Text="{Binding ReadOnlyMirrorPort, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Text="(default 8281; must differ from main port)" Foreground="Gray" FontSize="11" Margin="10,0,0,0" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,2">
+                                <TextBlock Width="200" />
+                                <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="500" VerticalAlignment="Center"
+                                           Text="Exposes a read-only mirror of the dashboard on a separate port for safe public exposure. All write actions (regenerate reports, edit project stats) are blocked on the mirror. Point your reverse proxy (Caddy / nginx / Cloudflare Tunnel) or Tailscale Funnel at this port — NOT the main dashboard port. Toggling the checkbox starts/stops immediately; port changes need a toggle off + on to apply." />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,2">
+                                <TextBlock Width="200" />
+                                <TextBlock FontSize="11" Foreground="Gray">
+                                    <Hyperlink NavigateUri="https://vorticose.github.io/nina.plugin.nightsummary/public-exposure" RequestNavigate="Hyperlink_RequestNavigate">How to expose this safely &#8594;</Hyperlink>
+                                </TextBlock>
+                            </StackPanel>
+
                             </StackPanel>
 
                         </StackPanel>

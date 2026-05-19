@@ -32,6 +32,13 @@ namespace NINA.Plugin.NightSummary.Server {
         private readonly IWebAssets _webAssets;
         private readonly IDashboardLogger _external;
         private readonly IReportRegenerator _regen;
+        // Read-only mode: when true, this DashboardServer instance refuses every non-GET
+        // request with HTTP 403, suppresses destructive UI in the dashboard HTML via a
+        // data-readonly attribute on the <html> element, and tags every response with an
+        // X-Read-Only header. Designed for parallel-port deployment behind a reverse
+        // proxy or Tailscale Funnel so the public-facing instance can't mutate state.
+        private readonly bool _readOnly;
+        public bool ReadOnly => _readOnly;
         private string cachedDashboardHtml;
         private DashboardLog log;
         private readonly HashSet<string> _loggedUserAgents = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -153,12 +160,14 @@ namespace NINA.Plugin.NightSummary.Server {
             IWebAssets webAssets,
             IDashboardLogger externalLog,
             IDashboardPaths paths,
-            IReportRegenerator regen) {
+            IReportRegenerator regen,
+            bool readOnly = false) {
             _data       = data       ?? throw new ArgumentNullException(nameof(data));
             _settings   = settings   ?? throw new ArgumentNullException(nameof(settings));
             _webAssets  = webAssets  ?? throw new ArgumentNullException(nameof(webAssets));
             _external   = externalLog ?? throw new ArgumentNullException(nameof(externalLog));
             _regen      = regen;     // optional — null in dev when regeneration is disabled
+            _readOnly   = readOnly;
 
             // Path roots come from IDashboardPaths; the legacy fields stay so the rest
             // of the file's File.Exists/Path.Combine calls keep working unchanged.
@@ -406,6 +415,24 @@ namespace NINA.Plugin.NightSummary.Server {
                     if (_loggedUserAgents.Add(ua))
                         log?.Info($"Client: {ua}");
                 }
+            }
+
+            // Stamp every response from a read-only instance with X-Read-Only: true so
+            // proxies, monitoring, and integration tests can detect the mode without
+            // having to inspect the HTML. Header is set before any 403 short-circuit
+            // so even rejection responses carry the signal.
+            if (_readOnly) {
+                res.Headers["X-Read-Only"] = "true";
+            }
+
+            // Read-only servers refuse every non-GET/HEAD method up front. This is a
+            // single chokepoint that doesn't depend on per-route discipline, so new
+            // POST/PUT/DELETE routes added later are auto-blocked without needing to
+            // be added to an allowlist or remembered in code review.
+            if (_readOnly && req.HttpMethod != "GET" && req.HttpMethod != "HEAD") {
+                await WriteJson(res, 403, new { error = "Read-only mode — write actions disabled" });
+                done?.Invoke(403, "readonly");
+                return;
             }
 
             try {
@@ -3880,11 +3907,17 @@ private static string FormatSettingsForLog(NightSummarySettings s) {
                 var iconBase64 = iconBytes != null
                     ? "data:image/png;base64," + Convert.ToBase64String(iconBytes)
                     : "";
+                // {{READONLY_ATTR}} → ' data-readonly="true"' on the <html> element when
+                // this is a read-only mirror; empty otherwise. Lets CSS hide destructive UI
+                // (regenerate, project-stats edits) via [data-readonly] selector without any
+                // JS race on initial paint, and lets dashboard.js branch on the attribute
+                // when truly needed.
                 cachedDashboardHtml = html
                     .Replace("{{STYLES}}", css)
                     .Replace("{{SCRIPTS}}", js)
                     .Replace("{{ICON}}", iconBase64)
-                    .Replace("{{VERSION}}", _settings.PluginVersion ?? "");
+                    .Replace("{{VERSION}}", _settings.PluginVersion ?? "")
+                    .Replace("{{READONLY_ATTR}}", _readOnly ? " data-readonly=\"true\"" : "");
             } catch (Exception ex) {
                 _external.Error($"NightSummary: Failed to load dashboard resources. {ex.Message}");
                 cachedDashboardHtml = "<!DOCTYPE html><html><body><h1>Dashboard failed to load</h1>" +

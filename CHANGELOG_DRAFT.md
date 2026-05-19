@@ -3,6 +3,9 @@
 
 ## Unreleased — v3.1.1 (in progress)
 
+**New features**
+- Read-Only Mirror — a second dashboard instance bound to a separate port that refuses every write action at the server level, designed to sit behind a reverse proxy (Caddy / nginx / Cloudflare Tunnel) or Tailscale Funnel so the public-facing dashboard cannot mutate state. Enable in Options → Local Dashboard → Read-Only Mirror; default port 8281. See the new Public Exposure docs page for setup recipes for all four exposers.
+
 **Bug fixes**
 - Targets imaged in two or more non-continuous windows during a single session (e.g., the target set before the meridian and rose again later, or Target Scheduler swapped it out and back in) no longer render as one continuous block. The altitude chart highlights each imaging window separately, and the per-target filter table is split into one sub-table per window with a Grand Total row across all windows.
 
