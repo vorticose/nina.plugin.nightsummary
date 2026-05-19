@@ -1,6 +1,12 @@
 # Night Summary — Changelog
 
 
+## Unreleased — v3.1.1 (in progress)
+
+**Bug fixes**
+- Targets imaged in two or more non-continuous windows during a single session (e.g., the target set before the meridian and rose again later, or Target Scheduler swapped it out and back in) no longer render as one continuous block. The altitude chart highlights each imaging window separately, and the per-target filter table is split into one sub-table per window with a Grand Total row across all windows.
+
+
 ## Unreleased — v3.1.0 (in progress)
 
 **New features**
