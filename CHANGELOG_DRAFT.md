@@ -6,6 +6,7 @@
 **Bug fixes**
 - Targets imaged in two or more non-continuous windows during a single session (e.g., the target set before the meridian and rose again later, or Target Scheduler swapped it out and back in) no longer render as one continuous block. The altitude chart highlights each imaging window separately, and the per-target filter table is split into one sub-table per window with a Grand Total row across all windows.
 - Dashboard: opening the Frames gallery from a session report that was launched from a target or project detail panel no longer breaks the in-page back button — back now returns to the originating TDP/PDP via the report, instead of dead-ending on the Sessions list.
+- Dashboard: long values in the Frames lightbox stat boxes (e.g., a long Target Scheduler project name or Exposure Profile name) no longer overflow the box on mobile — they now truncate with an ellipsis like file paths already did.
 
 
 ## Unreleased — v3.1.0 (in progress)
