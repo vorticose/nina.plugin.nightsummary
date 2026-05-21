@@ -36,6 +36,12 @@ namespace NINA.Plugin.NightSummary.Tests.Replay {
         private readonly MockSequenceMediator _sequenceMediator = new();
 
         private SessionService _service;
+        // Redirects SettingsManager.Instance.Current to the isolated test settings
+        // (with all delivery channels disabled) for the lifetime of this runner.
+        // Without this, SessionService reads the production settings.json on the host
+        // and will actually fire emails + Discord with real credentials when EndSession
+        // triggers GenerateAndSendAsync.
+        private readonly IDisposable _settingsOverride;
 
         private static readonly JsonSerializerOptions _jsonOptions = new() {
             PropertyNameCaseInsensitive = true,
@@ -59,12 +65,19 @@ namespace NINA.Plugin.NightSummary.Tests.Replay {
             // Initialize settings with defaults
             var settingsMgr = new SettingsManager(_settingsPath, attemptMigration: false);
             settingsMgr.Load();
-            // Disable all delivery channels by default — tests opt in as needed
+            // Disable all delivery channels by default — tests opt in as needed.
+            // CRITICAL: SessionService reads from SettingsManager.Instance.Current
+            // (the static singleton), not from this isolated manager. Redirect the
+            // singleton below via UseInstanceForTesting so these disabled flags
+            // are actually what SessionService sees when EndSession fires
+            // GenerateAndSendAsync — otherwise the test host's real settings.json
+            // is read and real emails/Discord messages are sent.
             settingsMgr.Current.SaveReportLocally = false;
             settingsMgr.Current.EmailEnabled = false;
             settingsMgr.Current.DiscordEnabled = false;
             settingsMgr.Current.PushoverEnabled = false;
             settingsMgr.Save();
+            _settingsOverride = SettingsManager.UseInstanceForTesting(settingsMgr);
         }
 
         /// <summary>
@@ -227,6 +240,10 @@ namespace NINA.Plugin.NightSummary.Tests.Replay {
         }
 
         public void Dispose() {
+            // Restore SettingsManager.Instance before deleting the test settings file —
+            // anything that still holds a reference to Instance.Current must not see
+            // a half-cleaned-up state.
+            _settingsOverride?.Dispose();
             Clock.Reset();
             try { if (File.Exists(_dbPath)) File.Delete(_dbPath); } catch { }
             try { if (File.Exists(_settingsPath)) File.Delete(_settingsPath); } catch { }
