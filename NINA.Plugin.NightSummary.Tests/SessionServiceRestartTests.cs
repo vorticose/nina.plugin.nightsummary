@@ -55,6 +55,14 @@ namespace NINA.Plugin.NightSummary.Tests {
         }
 
         public void Dispose() {
+            // Drain pending report tasks before releasing the settings override — see
+            // SessionReplayRunner.Dispose for the race this prevents. These tests don't
+            // end sessions with content so this is normally a no-op, but it's a cheap
+            // guarantee against future tests in this class growing into the same hazard.
+            try {
+                _service?.WaitForPendingReportsAsync(TimeSpan.FromSeconds(10))
+                         .GetAwaiter().GetResult();
+            } catch { }
             _settingsOverride?.Dispose();
             if (File.Exists(_dbPath))       File.Delete(_dbPath);
             if (File.Exists(_settingsPath)) File.Delete(_settingsPath);

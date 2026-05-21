@@ -240,9 +240,18 @@ namespace NINA.Plugin.NightSummary.Tests.Replay {
         }
 
         public void Dispose() {
-            // Restore SettingsManager.Instance before deleting the test settings file —
-            // anything that still holds a reference to Instance.Current must not see
-            // a half-cleaned-up state.
+            // Drain any in-flight report-generation tasks BEFORE releasing the settings
+            // override. EndSession kicks off report generation on Task.Run; if Dispose
+            // runs before that task reads SettingsManager.Instance.Current.EmailEnabled
+            // (which is the gate that short-circuits real sends), the override will be
+            // gone and the task will see the production singleton → real email/Discord
+            // send. 10s is generous: the only work in-flight is local HTML generation
+            // since senders are disabled by config.
+            try {
+                _service?.WaitForPendingReportsAsync(TimeSpan.FromSeconds(10))
+                         .GetAwaiter().GetResult();
+            } catch { /* individual tasks log their own errors */ }
+
             _settingsOverride?.Dispose();
             Clock.Reset();
             try { if (File.Exists(_dbPath)) File.Delete(_dbPath); } catch { }
