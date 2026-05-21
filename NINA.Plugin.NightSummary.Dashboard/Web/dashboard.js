@@ -421,11 +421,11 @@ function route() {
     if (path === '/sessions') {
       renderSessionList(params);
     } else if (isFrames) {
-      renderFramesGallery({ kind: 'session', id: decodeURIComponent(isFrames[1]) });
+      renderFramesGallery({ kind: 'session', id: decodeURIComponent(isFrames[1]), params: params });
     } else if (isTargetFrames) {
-      renderFramesGallery({ kind: 'target', id: decodeURIComponent(isTargetFrames[1]) });
+      renderFramesGallery({ kind: 'target', id: decodeURIComponent(isTargetFrames[1]), params: params });
     } else if (isProjectFrames) {
-      renderFramesGallery({ kind: 'project', id: decodeURIComponent(isProjectFrames[1]) });
+      renderFramesGallery({ kind: 'project', id: decodeURIComponent(isProjectFrames[1]), params: params });
     } else if (isReport) {
       renderSessionDetail(path.split('/')[2], params);
     } else if (path === '/stats') {
@@ -6693,10 +6693,21 @@ function renderSessionDetail(sessionId, params) {
     var targets = detail.targets.map(function(t) { return t.target; }).join(', ') || 'Unknown';
     if (sub) sub.textContent = getSubtitleText();
 
+    // Forward TDP/PDP origin context to Frames so its in-page back link
+     // can return through the report (and ultimately to the TDP/PDP) rather
+     // than to the bare Sessions list.
+    var framesQs = '';
+    if (from === 'tdp' && fromTarget) {
+      framesQs = '?from=tdp&target=' + encodeURIComponent(fromTarget);
+    } else if (from === 'pdp' && fromPid) {
+      framesQs = '?from=pdp&pid=' + encodeURIComponent(fromPid) +
+        (fromPname ? '&pname=' + encodeURIComponent(fromPname) : '');
+    }
+
     var navHtml = '<div class="report-nav" id="header-report-nav">' +
       '<a class="back-btn" href="' + backHref + '">\u2190 ' + esc(backLabel) + '</a>' +
       '<div class="report-nav-actions">' +
-        '<a class="report-btn" href="#/sessions/' + encodeURIComponent(sessionId) + '/frames">\ud83d\uddbc Frames</a>' +
+        '<a class="report-btn" href="#/sessions/' + encodeURIComponent(sessionId) + '/frames' + framesQs + '">\ud83d\uddbc Frames</a>' +
         '<button class="report-btn" id="btn-settings">\u2699 Settings</button>';
 
     if (detail.hasReport) {
@@ -8664,11 +8675,27 @@ function renderFramesGallery(view) {
   var el = document.getElementById('content');
   var cancelLoader = deferLoader(el, 'Loading frames...');
 
+  // Preserve TDP/PDP origin so the back-link returns through the
+   // report carrying the same from= context (avoids dead-ending on
+   // the bare Sessions list — bug from feature/frames-back-nav).
+  var p = view.params;
+  var vFrom    = p && p.get ? p.get('from')   : null;
+  var vTarget  = p && p.get ? p.get('target') : null;
+  var vPid     = p && p.get ? p.get('pid')    : null;
+  var vPname   = p && p.get ? p.get('pname')  : null;
+  var sessionBackQs = '';
+  if (vFrom === 'tdp' && vTarget) {
+    sessionBackQs = '?from=tdp&target=' + encodeURIComponent(vTarget);
+  } else if (vFrom === 'pdp' && vPid) {
+    sessionBackQs = '?from=pdp&pid=' + encodeURIComponent(vPid) +
+      (vPname ? '&pname=' + encodeURIComponent(vPname) : '');
+  }
+
   var url, title, backHref;
   if (view.kind === 'session') {
     url = '/api/sessions/' + encodeURIComponent(view.id) + '/images';
     title = 'Frames';
-    backHref = '#/sessions/' + encodeURIComponent(view.id);
+    backHref = '#/sessions/' + encodeURIComponent(view.id) + sessionBackQs;
   } else if (view.kind === 'target') {
     url = '/api/targets/' + encodeURIComponent(view.id) + '/frames';
     title = 'Frames — ' + view.id;

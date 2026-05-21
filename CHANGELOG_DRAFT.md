@@ -1,6 +1,16 @@
 # Night Summary — Changelog
 
 
+## Unreleased — v3.1.1 (in progress)
+
+**Bug fixes**
+- Targets imaged in two or more non-continuous windows during a single session (e.g., the target set before the meridian and rose again later, or Target Scheduler swapped it out and back in) no longer render as one continuous block. The altitude chart highlights each imaging window separately, and the per-target filter table is split into one sub-table per window with a Grand Total row across all windows.
+- Dashboard: opening the Frames gallery from a session report that was launched from a target or project detail panel no longer breaks the in-page back button — back now returns to the originating TDP/PDP via the report, instead of dead-ending on the Sessions list.
+- Dashboard: long values in the Frames lightbox stat boxes (e.g., a long Target Scheduler project name or Exposure Profile name) no longer overflow the box on mobile — they now truncate with an ellipsis like file paths already did.
+- Overhead Analysis: fixed a phantom multi-hour "Wait" category that could appear on sessions where a `WaitForTimeSpan` was started inside a safety-recovery container (When Unsafe / OnceSafe / WhenPlugin IfContainer) and then orphaned when the parent container exited without logging a finish line for the child wait. A later sequence interrupt would flush the stale wait with its wall-clock span. Wait events are now capped at the requested duration parsed from the log, with a small grace.
+- Overhead Analysis: "Overhead Accounted %" no longer silently pegs at 100%. Several issues conspired to push the numerator past the denominator and clamp the ratio: overhead events running concurrently with exposures (image saves, plate solves, derived camera-download tail) were counted in the numerator but excluded from the denominator; and on sessions where the safety monitor logged duplicate RoofClosed/RoofOpen pairs in tight succession, `ExtendForAbortedExposures` pulled them all back to the same aborted-exposure timestamp and the overlapping intervals double-counted. The numerator now subtracts integration intervals built from the saved images list, and overlapping roof-closed intervals are merged before subtraction.
+
+
 ## Unreleased — v3.1.0 (in progress)
 
 **New features**

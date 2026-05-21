@@ -8,7 +8,8 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyFileVersion("2.1.0.0")]
 
 [assembly: AssemblyTitle("Night Summary")]
-[assembly: AssemblyDescription("Logs imaging session data and emails a summary report at sequence completion")]
+[assembly: AssemblyDescription("Logs imaging session data and emails a summary report at sequence completion *** DEV BUILD ***")]
+[assembly: AssemblyInformationalVersion("3.1.1-dev")]
 
 [assembly: AssemblyCompany("Evan Pegors")]
 [assembly: AssemblyProduct("Night Summary")]

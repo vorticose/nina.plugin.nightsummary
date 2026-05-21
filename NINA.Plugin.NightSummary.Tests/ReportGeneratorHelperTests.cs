@@ -2,6 +2,7 @@ using NINA.Plugin.NightSummary.Data;
 using NINA.Plugin.NightSummary.Reporting;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Xunit;
 
 namespace NINA.Plugin.NightSummary.Tests {
@@ -231,6 +232,83 @@ namespace NINA.Plugin.NightSummary.Tests {
                 MakeEvent(0, 3, "ImageSave")
             };
             Assert.Equal(180, ReportGenerator.MergeOverheadIntervals(events)); // 3 min, not 6
+        }
+
+        // ── SubtractIntervals ───────────────────────────────────────────────
+        // Used to remove exposure overlap from merged overhead so the Overhead
+        // Accounted % numerator and denominator are commensurable (both exclude
+        // exposure time).
+
+        private static (DateTime start, DateTime end) Iv(int startMin, int endMin) {
+            var baseTime = new DateTime(2026, 3, 31, 0, 0, 0);
+            return (baseTime.AddMinutes(startMin), baseTime.AddMinutes(endMin));
+        }
+
+        [Fact]
+        public void SubtractIntervals_EmptyMinus_ReturnsFromUnchanged() {
+            var from = new List<(DateTime, DateTime)> { Iv(0, 10) };
+            var result = ReportGenerator.SubtractIntervals(from, new List<(DateTime, DateTime)>());
+            Assert.Single(result);
+            Assert.Equal(10 * 60, (result[0].end - result[0].start).TotalSeconds);
+        }
+
+        [Fact]
+        public void SubtractIntervals_NoOverlap_ReturnsFromUnchanged() {
+            var from  = new List<(DateTime, DateTime)> { Iv(0, 10) };
+            var minus = new List<(DateTime, DateTime)> { Iv(20, 30) };
+            var result = ReportGenerator.SubtractIntervals(from, minus);
+            Assert.Single(result);
+        }
+
+        [Fact]
+        public void SubtractIntervals_FullyContained_RemovesEntireFromSegment() {
+            // 5-min overhead entirely inside a 10-min exposure → contributes 0s
+            var from  = new List<(DateTime, DateTime)> { Iv(2, 7) };
+            var minus = new List<(DateTime, DateTime)> { Iv(0, 10) };
+            var result = ReportGenerator.SubtractIntervals(from, minus);
+            Assert.Empty(result);
+        }
+
+        [Fact]
+        public void SubtractIntervals_PartialOverlap_TrimsTail() {
+            // Overhead 0–10 with exposure 5–15 → keeps 0–5
+            var from  = new List<(DateTime, DateTime)> { Iv(0, 10) };
+            var minus = new List<(DateTime, DateTime)> { Iv(5, 15) };
+            var result = ReportGenerator.SubtractIntervals(from, minus);
+            Assert.Single(result);
+            Assert.Equal(5 * 60, (result[0].end - result[0].start).TotalSeconds);
+        }
+
+        [Fact]
+        public void SubtractIntervals_MinusInsideFrom_SplitsIntoTwo() {
+            // Overhead 0–10 with a 4–6 exposure carved out → 0–4 + 6–10 = 8 min
+            var from  = new List<(DateTime, DateTime)> { Iv(0, 10) };
+            var minus = new List<(DateTime, DateTime)> { Iv(4, 6) };
+            var result = ReportGenerator.SubtractIntervals(from, minus);
+            Assert.Equal(2, result.Count);
+            var totalMin = result.Sum(r => (r.end - r.start).TotalMinutes);
+            Assert.Equal(8, totalMin);
+        }
+
+        [Fact]
+        public void SubtractIntervals_MultipleMinusIntervals_AllCarvedOut() {
+            // Overhead 0–20 with two exposures 2–5 and 12–15 → 4 segments summing to 14 min
+            var from  = new List<(DateTime, DateTime)> { Iv(0, 20) };
+            var minus = new List<(DateTime, DateTime)> { Iv(2, 5), Iv(12, 15) };
+            var result = ReportGenerator.SubtractIntervals(from, minus);
+            var totalMin = result.Sum(r => (r.end - r.start).TotalMinutes);
+            Assert.Equal(14, totalMin);
+        }
+
+        [Fact]
+        public void SubtractIntervals_RegressionImageSaveDuringExposure_DoesNotDoubleCount() {
+            // Image save 100–105 runs during exposure 90–150 (i.e. concurrent overhead).
+            // Without subtraction it would inflate coverage > 100%.
+            // After subtraction it contributes 0s — the time is already inside exposure.
+            var from  = new List<(DateTime, DateTime)> { Iv(100, 105) };
+            var minus = new List<(DateTime, DateTime)> { Iv(90, 150) };
+            var result = ReportGenerator.SubtractIntervals(from, minus);
+            Assert.Empty(result);
         }
     }
 }

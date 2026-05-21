@@ -18,6 +18,6 @@
   -->
   <ItemGroup>
     <Compile Include="..\..\NINA.Plugin.NightSummary\Data\NinaLogParser.cs" Link="NinaLogParser.cs" />
-    <Compile Include="..\..\NINA.Plugin.NightSummary\Data\TimingEvent.cs" Link="TimingEvent.cs" />
+    <Compile Include="..\..\NINA.Plugin.NightSummary.Dashboard\Data\TimingEvent.cs" Link="TimingEvent.cs" />
   </ItemGroup>
 </Project>
