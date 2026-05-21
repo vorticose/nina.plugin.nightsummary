@@ -407,6 +407,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
             // that were interrupted by the unsafe trigger (weather-lost time, not overhead).
             var roofIntervals = RoofClosedHelper.GetIntervals(data.Events, windowStart, windowEnd);
             roofIntervals = RoofClosedHelper.ExtendForAbortedExposures(roofIntervals, timingEvents);
+            // Dedup overlapping roof intervals. NS can record multiple RoofClosed/RoofOpen
+            // pairs in tight succession (e.g. two safety monitors triggering, or a mediator
+            // double-subscribe), and ExtendForAbortedExposures pulls each interval's start
+            // back to the same aborted-exposure timestamp — so unmerged sums double-count
+            // the overlapping period. That inflates roofClosedSec and shrinks impliedOverhead,
+            // making merged > implied and pegging Overhead Accounted % at the 100% ceiling.
+            roofIntervals = MergeIntervalList(roofIntervals);
             var roofClosedSec = RoofClosedHelper.TotalSeconds(roofIntervals);
 
             // Exclude Target Scheduler wait intervals — the scheduler was idle waiting for
@@ -455,8 +462,33 @@ namespace NINA.Plugin.NightSummary.Reporting {
             // Exclude AbortedExposure: the window end is deliberately capped at the last
             // non-aborted event, so the aborted exposure's interval extends past windowEnd
             // and would inflate mergedOverheadSec above impliedOverheadSec (causing >100%).
-            var mergedOverheadSec = MergeOverheadIntervals(
-                effectiveOverheadEvents.Where(e => e.EventType != "AbortedExposure").ToList());
+            //
+            // Also subtract exposure overlap from the merged overhead. Some overhead events
+            // (image save, plate solve, derived camera-download tail) run concurrently with
+            // the next exposure. Their wall-clock seconds are inside `totalIntegrationSec`
+            // already, so the implied-overhead denominator excludes them — but without the
+            // subtraction below, mergedOverheadSec includes them and we hit >100% coverage,
+            // which the old code clamped with Math.Min(…,100). The clamp masked real
+            // accounting issues (notably the WaitForTimeSpan orphan phantom). Subtracting
+            // exposure overlap makes numerator and denominator commensurable.
+            var mergedOverheadIntervals = MergeIntervalList(effectiveOverheadEvents
+                .Where(e => e.EventType != "AbortedExposure"
+                            && e.EndTime > e.StartTime)
+                .Select(e => (e.StartTime, e.EndTime))
+                .ToList());
+            // Exposure intervals are built from the images list (Timestamp = exposure
+            // start, +ExposureDuration = exposure end) rather than from the parsed
+            // `Exposure` timing events. The timing-event intervals run from exposure
+            // start through the camera download tail (Finishing line), which would
+            // subtract the download from the numerator even though it isn't subtracted
+            // from impliedOverheadSec (which only subtracts integration seconds).
+            // Using image intervals keeps numerator and denominator semantically aligned.
+            var mergedExposureIntervals = MergeIntervalList((data.Images ?? new List<ImageRecord>())
+                .Where(i => i.ExposureDuration > 0)
+                .Select(i => (i.Timestamp, i.Timestamp.AddSeconds(i.ExposureDuration)))
+                .ToList());
+            var netOverheadIntervals = SubtractIntervals(mergedOverheadIntervals, mergedExposureIntervals);
+            var mergedOverheadSec = netOverheadIntervals.Sum(i => (i.end - i.start).TotalSeconds);
             var coveragePct = impliedOverheadSec > 0
                 ? Math.Min(mergedOverheadSec / impliedOverheadSec * 100.0, 100.0) : 0;
             var unaccountedSec = Math.Max(0, impliedOverheadSec - mergedOverheadSec);
@@ -623,10 +655,45 @@ namespace NINA.Plugin.NightSummary.Reporting {
         }
 
         /// <summary>
+        /// Subtracts one merged interval set from another and returns the difference
+        /// as a sorted, non-overlapping list. Used to remove exposure overlap from
+        /// overhead intervals so "Overhead Accounted %" doesn't double-count overhead
+        /// that runs concurrently with an exposure (image save, plate solve, derived
+        /// camera download tail).
+        /// </summary>
+        internal static List<(DateTime start, DateTime end)> SubtractIntervals(
+            List<(DateTime start, DateTime end)> from,
+            List<(DateTime start, DateTime end)> minus) {
+            var result = new List<(DateTime start, DateTime end)>();
+            if (minus == null || minus.Count == 0) {
+                result.AddRange(from);
+                return result;
+            }
+            foreach (var f in from) {
+                var pieces = new List<(DateTime start, DateTime end)> { f };
+                foreach (var m in minus) {
+                    var next = new List<(DateTime start, DateTime end)>();
+                    foreach (var p in pieces) {
+                        if (m.end <= p.start || m.start >= p.end) {
+                            next.Add(p);
+                        } else {
+                            if (m.start > p.start) next.Add((p.start, m.start));
+                            if (m.end   < p.end)   next.Add((m.end,   p.end));
+                        }
+                    }
+                    pieces = next;
+                    if (pieces.Count == 0) break;
+                }
+                result.AddRange(pieces);
+            }
+            return result;
+        }
+
+        /// <summary>
         /// Merges a list of (start, end) intervals into a sorted, non-overlapping list.
         /// Used by the overhead-gap diagnostic to compute uncovered stretches.
         /// </summary>
-        private static List<(DateTime start, DateTime end)> MergeIntervalList(List<(DateTime start, DateTime end)> intervals) {
+        internal static List<(DateTime start, DateTime end)> MergeIntervalList(List<(DateTime start, DateTime end)> intervals) {
             var result = new List<(DateTime start, DateTime end)>();
             var sorted = intervals.Where(i => i.end > i.start).OrderBy(i => i.start).ToList();
             if (sorted.Count == 0) return result;

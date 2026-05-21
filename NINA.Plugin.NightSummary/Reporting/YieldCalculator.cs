@@ -30,6 +30,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var windowSec  = (lastImage - firstImage).TotalSeconds;
 
             var roofIntervals = RoofClosedHelper.GetIntervals(events, firstImage, lastImage);
+            // Dedup overlapping intervals — duplicate RoofClosed/RoofOpen pairs (e.g.
+            // double-subscribed mediator events) would otherwise double-count and shrink
+            // the effective window, inflating yield. Mirrors the same fix in
+            // ReportGenerator.BuildOverheadBreakdownSection.
+            roofIntervals = MergeIntervalsSimple(roofIntervals);
             var roofClosedSec = RoofClosedHelper.TotalSeconds(roofIntervals);
 
             var effectiveWindowSec = windowSec - roofClosedSec;
@@ -42,6 +47,27 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 YieldPct = yieldPct,
                 HasSafetyMonitor = events?.Any(e => e.EventType == "RoofClosed" || e.EventType == "RoofOpen") ?? false
             };
+        }
+
+        // Local copy of the merge so YieldCalculator stays free of a dependency
+        // on ReportGenerator's helper. Same algorithm.
+        private static List<(DateTime start, DateTime end)> MergeIntervalsSimple(List<(DateTime start, DateTime end)> intervals) {
+            var result = new List<(DateTime start, DateTime end)>();
+            var sorted = intervals.Where(i => i.end > i.start).OrderBy(i => i.start).ToList();
+            if (sorted.Count == 0) return result;
+            var curStart = sorted[0].start;
+            var curEnd   = sorted[0].end;
+            for (int i = 1; i < sorted.Count; i++) {
+                if (sorted[i].start <= curEnd) {
+                    if (sorted[i].end > curEnd) curEnd = sorted[i].end;
+                } else {
+                    result.Add((curStart, curEnd));
+                    curStart = sorted[i].start;
+                    curEnd   = sorted[i].end;
+                }
+            }
+            result.Add((curStart, curEnd));
+            return result;
         }
     }
 }

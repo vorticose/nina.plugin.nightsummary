@@ -144,6 +144,15 @@ namespace NINA.Plugin.NightSummary.Data {
 
             // Generic tracker for all non-exposure SequenceItem Starting/Finishing pairs
             var pendingStarts = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+            // Parallel tracker for WaitForTimeSpan requested duration. NINA logs the wait
+            // as `Item: WaitForTimeSpan, Time: 60s` on Start. Capturing the requested time
+            // lets us cap the emitted duration when the parent container (WhenPlugin
+            // IfContainer, OnceSafe recovery, etc.) exits before the wait finishes — those
+            // exits don't log a Finishing line for the child wait, so without a cap the
+            // orphan can be flushed by a later "Canceling sequence" with a duration
+            // spanning hours. Same shape as the AbortedExposure cap below.
+            var pendingWaitSeconds = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            const double WaitDurationGraceSeconds = 5;
             DateTime? plateSolveStart = null;
             DateTime? meridianFlipTriggerStart = null;
             DateTime? schedulerWaitStart = null;
@@ -210,6 +219,11 @@ namespace NINA.Plugin.NightSummary.Data {
                             exposureRequestedSeconds = ExtractExposureTime(message);
                         } else if (ItemCategoryMap.ContainsKey(itemName)) {
                             pendingStarts[itemName] = timestamp;
+                            if (itemName.Equals("WaitForTimeSpan", StringComparison.OrdinalIgnoreCase)) {
+                                var requested = ExtractWaitForTimeSpanSeconds(message);
+                                if (requested > 0) pendingWaitSeconds[itemName] = requested;
+                                else               pendingWaitSeconds.Remove(itemName);
+                            }
                         } else {
                             skippedItems[itemName] = skippedItems.GetValueOrDefault(itemName) + 1;
                         }
@@ -273,11 +287,26 @@ namespace NINA.Plugin.NightSummary.Data {
                             if (itemName == "RunAutofocus")
                                 lastFilterMoveTimestamp = null;
 
+                            var rawDuration = (timestamp - startTime).TotalSeconds;
+                            var emitDuration = rawDuration;
+                            var emitEnd      = timestamp;
+                            if (itemName.Equals("WaitForTimeSpan", StringComparison.OrdinalIgnoreCase) &&
+                                pendingWaitSeconds.TryGetValue(itemName, out var requestedSecs) &&
+                                requestedSecs > 0) {
+                                var cap = requestedSecs + WaitDurationGraceSeconds;
+                                if (rawDuration > cap) {
+                                    emitDuration = cap;
+                                    emitEnd      = startTime.AddSeconds(cap);
+                                    Logger.Warning($"NightSummary: LogParser — WaitForTimeSpan started at {startTime:o} capped at {cap:F0}s (raw {rawDuration:F0}s) — likely orphaned by parent container exit");
+                                }
+                            }
+                            pendingWaitSeconds.Remove(itemName);
+
                             events.Add(new TimingEvent {
                                 EventType = eventType,
                                 StartTime = startTime,
-                                EndTime = timestamp,
-                                DurationSeconds = (timestamp - startTime).TotalSeconds,
+                                EndTime = emitEnd,
+                                DurationSeconds = emitDuration,
                                 Details = level == "ERROR" ? "Failed" : ExtractItemDetails(itemName, message)
                             });
                         }
@@ -394,15 +423,34 @@ namespace NINA.Plugin.NightSummary.Data {
                          && message.StartsWith("Canceling sequence")) {
                     foreach (var kvp in pendingStarts) {
                         var cancelType = ItemCategoryMap.TryGetValue(kvp.Key, out var cm) ? cm : kvp.Key;
+                        var rawDuration = (timestamp - kvp.Value).TotalSeconds;
+                        var emitDuration = rawDuration;
+                        var emitEnd      = timestamp;
+                        // Cap WaitForTimeSpan at its requested duration + grace. Without
+                        // this, a wait orphaned by an earlier parent-container exit (no
+                        // Finishing line emitted for the child wait) sits in pendingStarts
+                        // until the next cancel and gets flushed with a wall-clock span
+                        // potentially measured in hours.
+                        if (kvp.Key.Equals("WaitForTimeSpan", StringComparison.OrdinalIgnoreCase) &&
+                            pendingWaitSeconds.TryGetValue(kvp.Key, out var requestedCancel) &&
+                            requestedCancel > 0) {
+                            var cap = requestedCancel + WaitDurationGraceSeconds;
+                            if (rawDuration > cap) {
+                                emitDuration = cap;
+                                emitEnd      = kvp.Value.AddSeconds(cap);
+                                Logger.Warning($"NightSummary: LogParser — orphaned WaitForTimeSpan started at {kvp.Value:o} flushed by Canceling sequence — capped at {cap:F0}s (raw {rawDuration:F0}s)");
+                            }
+                        }
                         events.Add(new TimingEvent {
                             EventType = cancelType,
                             StartTime = kvp.Value,
-                            EndTime = timestamp,
-                            DurationSeconds = (timestamp - kvp.Value).TotalSeconds,
+                            EndTime = emitEnd,
+                            DurationSeconds = emitDuration,
                             Details = "Cancelled"
                         });
                     }
                     pendingStarts.Clear();
+                    pendingWaitSeconds.Clear();
 
                     // Center/CenterAndRotate aren't tracked in pendingStarts (they aren't in
                     // ItemCategoryMap), so cancellation mid-Centering would leave centeringDepth
@@ -568,6 +616,15 @@ namespace NINA.Plugin.NightSummary.Data {
 
         private static double ExtractExposureTime(string message) {
             var match = Regex.Match(message, @"ExposureTime (\d+(?:\.\d+)?)");
+            if (match.Success && double.TryParse(match.Groups[1].Value, CultureInfo.InvariantCulture, out var seconds))
+                return seconds;
+            return 0;
+        }
+
+        private static double ExtractWaitForTimeSpanSeconds(string message) {
+            // "Starting Category: Utility, Item: WaitForTimeSpan, Time: 60s"
+            // (Also seen in older logs as `Wait: 120s` — accept either label.)
+            var match = Regex.Match(message, @"(?:Time|Wait):\s*(\d+(?:\.\d+)?)s\b");
             if (match.Success && double.TryParse(match.Groups[1].Value, CultureInfo.InvariantCulture, out var seconds))
                 return seconds;
             return 0;
