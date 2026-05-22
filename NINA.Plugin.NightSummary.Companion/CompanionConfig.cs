@@ -26,6 +26,17 @@ public sealed class CompanionConfig {
         [JsonPropertyName("host")]    public string Host    { get; set; } = "";
         [JsonPropertyName("port")]    public int    Port    { get; set; } = 8181;
         [JsonPropertyName("apiKey")]  public string ApiKey  { get; set; } = "";
+
+        // Per-companion pairing token issued by the primary's pairing wizard.
+        // Sent as Authorization: Bearer; takes precedence over ApiKey when
+        // both are set. See COMPANION_PAIRING_DESIGN.md.
+        [JsonPropertyName("pairingToken")] public string PairingToken { get; set; } = "";
+
+        // Returns the bearer secret to use for outbound HTTP — pairing token
+        // when set, legacy api key otherwise. The primary's auth shim accepts
+        // either as Bearer; we just need to send something.
+        public string EffectiveBearer() =>
+            !string.IsNullOrWhiteSpace(PairingToken) ? PairingToken : (ApiKey ?? "");
     }
 
     public sealed class SyncConfig {
@@ -86,8 +97,8 @@ public sealed class CompanionConfig {
     public void Validate() {
         if (string.IsNullOrWhiteSpace(Nina.Host))
             throw new InvalidOperationException("companion.json: nina.host is required");
-        if (string.IsNullOrWhiteSpace(Nina.ApiKey))
-            throw new InvalidOperationException("companion.json: nina.apiKey is required (copy from plugin settings)");
+        if (string.IsNullOrWhiteSpace(Nina.ApiKey) && string.IsNullOrWhiteSpace(Nina.PairingToken))
+            throw new InvalidOperationException("companion.json: nina.pairingToken or nina.apiKey is required (run the setup wizard or paste from plugin settings)");
         if (Nina.Port <= 0 || Nina.Port > 65535)
             throw new InvalidOperationException($"companion.json: nina.port {Nina.Port} out of range");
         if (Port <= 0 || Port > 65535)
@@ -98,7 +109,9 @@ public sealed class CompanionConfig {
     // serve can start before the user has filled in host/key.
     public bool IsComplete(out string? reason) {
         if (string.IsNullOrWhiteSpace(Nina.Host)) { reason = "nina.host is empty"; return false; }
-        if (string.IsNullOrWhiteSpace(Nina.ApiKey)) { reason = "nina.apiKey is empty"; return false; }
+        if (string.IsNullOrWhiteSpace(Nina.ApiKey) && string.IsNullOrWhiteSpace(Nina.PairingToken)) {
+            reason = "no pairing token or apiKey set — run the setup wizard"; return false;
+        }
         if (Nina.Port <= 0 || Nina.Port > 65535) { reason = $"nina.port {Nina.Port} out of range"; return false; }
         if (Port <= 0 || Port > 65535) { reason = $"port {Port} out of range"; return false; }
         reason = null; return true;

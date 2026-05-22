@@ -39,7 +39,43 @@ public interface ICompanionController {
     // Probes an arbitrary host/port/apiKey triple against /api/health. Does
     // not mutate any state — purely informational for the Settings form.
     Task<CompanionConfigTestResult> TestConnectionAsync(string host, int port, string apiKey, CancellationToken ct = default);
+
+    // Unauthenticated probe of the primary's /api/companion/info endpoint.
+    // Used by the setup wizard's "Test Connection" step BEFORE any token is
+    // available — distinguishes "wrong host" / "not NS" / "version mismatch"
+    // so the wizard can show a specific message. Does not mutate state.
+    Task<CompanionProbeResult> ProbePrimaryAsync(string host, int port, CancellationToken ct = default);
+
+    // Forwards a pairing claim to the primary's /api/companion/pair endpoint.
+    // On 200, persists the token + host/port to companion.json and reloads
+    // the SyncEngine so the first sync uses the freshly issued bearer.
+    Task<CompanionClaimResult> ClaimPairingAsync(string host, int port, string token, string companionName, CancellationToken ct = default);
 }
+
+// Result of an unauthenticated /api/companion/info probe. Ok=true means the
+// server responded as a Night Summary primary; the wizard inspects the
+// fields to decide whether pairing can proceed.
+public sealed record CompanionProbeResult(
+    bool Ok,
+    string? NsVersion,
+    string? NinaVersion,
+    bool HasNs,
+    int PairedCount,
+    string? MinCompanionVersion,
+    string? Error);
+
+// Result of forwarding a pair request to the primary. Ok=true means the
+// primary returned 200 and the companion has persisted the new token.
+// ErrorCode mirrors the primary's wire codes ("unknown_token", "revoked",
+// "already_paired") so the wizard can pick the right user-facing message.
+public sealed record CompanionClaimResult(
+    bool Ok,
+    string? CompanionId,
+    string? NinaVersion,
+    string? NsVersion,
+    string? ErrorCode,
+    string? Error,
+    string? AlreadyPairedCompanionName);
 
 // Editable surface of companion.json. ApiKey == null means "leave unchanged"
 // so the dashboard can re-save other fields without round-tripping the secret.
@@ -62,7 +98,11 @@ public sealed record CompanionConfigSnapshot(
     int PollingIntervalMinutesOnFailure,
     int DashboardPort,
     bool IsComplete,
-    string? IncompleteReason);
+    string? IncompleteReason,
+    // True iff a per-companion pairing token is currently configured. The
+    // wizard checks this to decide whether to show "you're paired" UX or the
+    // full setup flow.
+    bool PairingTokenSet = false);
 
 public sealed record CompanionConfigSaveResult(
     bool Ok,

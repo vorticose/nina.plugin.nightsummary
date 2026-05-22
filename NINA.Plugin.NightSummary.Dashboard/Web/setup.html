@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Night Summary Companion — Setup</title>
+    <link rel="stylesheet" href="/setup.css" />
+</head>
+<body>
+    <main class="card">
+        <header>
+            <h1>Set up Night Summary Companion</h1>
+            <ol class="steps" id="steps">
+                <li data-step="1">●</li>
+                <li data-step="2">○</li>
+                <li data-step="3">○</li>
+                <li data-step="4">○</li>
+                <li data-step="5">○</li>
+            </ol>
+        </header>
+
+        <!-- Step 1: Welcome -->
+        <section class="step" data-step="1">
+            <h2>Welcome</h2>
+            <p>Connect this companion to the Night Summary plugin running in NINA on your astrophotography machine. Takes about 30 seconds.</p>
+            <div class="actions">
+                <button class="primary" data-action="next">Get Started</button>
+            </div>
+        </section>
+
+        <!-- Step 2: Connect to NINA -->
+        <section class="step" data-step="2" hidden>
+            <h2>Connect to NINA</h2>
+            <label>
+                Host or IP
+                <input id="host" type="text" placeholder="100.x.x.x (Tailscale) or rig.local" autocomplete="off" />
+            </label>
+            <label>
+                Dashboard port
+                <input id="port" type="number" value="8181" min="1" max="65535" />
+            </label>
+            <p class="hint">The address of the machine running NINA. If you use Tailscale, the IP shown in the Tailscale app works.</p>
+            <div id="probeStatus" class="status" hidden></div>
+            <div class="actions">
+                <button data-action="back">Back</button>
+                <button id="testBtn" data-action="probe">Test Connection</button>
+                <button id="nextBtn2" class="primary" data-action="next" disabled>Next</button>
+            </div>
+        </section>
+
+        <!-- Step 3: Pair -->
+        <section class="step" data-step="3" hidden>
+            <h2>Pair with NINA</h2>
+            <ol class="instructions">
+                <li>In NINA, open the Night Summary plugin settings.</li>
+                <li>Scroll to <strong>Companion Pairing</strong>.</li>
+                <li>Click <strong>+ Generate Token</strong>.</li>
+                <li>Paste the token below.</li>
+            </ol>
+            <label>
+                Token
+                <input id="token" type="text" placeholder="K4M2-9N3X-7QR5-8VH2" autocomplete="off" spellcheck="false" />
+            </label>
+            <label>
+                Companion name
+                <input id="companionName" type="text" placeholder="Mac mini" autocomplete="off" />
+                <span class="hint">Shown in NINA after pairing so you know which device is connected.</span>
+            </label>
+            <div id="pairStatus" class="status" hidden></div>
+            <div class="actions">
+                <button data-action="back">Back</button>
+                <button id="pairBtn" class="primary" data-action="pair">Pair</button>
+            </div>
+        </section>
+
+        <!-- Step 4: Sync settings -->
+        <section class="step" data-step="4" hidden>
+            <h2>Sync settings</h2>
+            <fieldset>
+                <legend>Sync schedule</legend>
+                <label><input type="radio" name="schedule" value="hourly" /> Hourly while the companion is running</label>
+                <label><input type="radio" name="schedule" value="four" checked /> Every 4 hours</label>
+                <label><input type="radio" name="schedule" value="daily" /> Once daily</label>
+                <label><input type="radio" name="schedule" value="manual" /> Manual only</label>
+            </fieldset>
+            <label>
+                <input id="onBoot" type="checkbox" checked />
+                Sync immediately when the companion starts
+            </label>
+            <label>
+                Dashboard port (this machine)
+                <input id="dashboardPort" type="number" value="8182" min="1" max="65535" />
+                <span class="hint">Where the companion serves the dashboard locally.</span>
+            </label>
+            <div id="saveStatus" class="status" hidden></div>
+            <div class="actions">
+                <button data-action="back">Back</button>
+                <button id="saveBtn" class="primary" data-action="save">Save &amp; Run First Sync</button>
+            </div>
+        </section>
+
+        <!-- Step 5: First sync -->
+        <section class="step" data-step="5" hidden>
+            <h2>First sync</h2>
+            <p id="syncProgress">Connecting…</p>
+            <div id="syncStatus" class="status" hidden></div>
+            <div class="actions">
+                <button id="retryBtn" data-action="retry" hidden>Retry</button>
+                <button id="goDashboardBtn" class="primary" data-action="goto-dashboard" hidden>Go to Dashboard</button>
+            </div>
+        </section>
+
+        <footer>
+            <a href="https://github.com/vorticose/nina.plugin.nightsummary" target="_blank" rel="noopener">Night Summary</a>
+        </footer>
+    </main>
+
+    <script src="/setup.js"></script>
+</body>
+</html>

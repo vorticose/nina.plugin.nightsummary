@@ -141,7 +141,8 @@ public sealed class CompanionController : ICompanionController {
             PollingIntervalMinutesOnFailure: _config.Sync.PollingIntervalMinutesOnFailure,
             DashboardPort:                   _config.Port,
             IsComplete:                      complete,
-            IncompleteReason:                reason);
+            IncompleteReason:                reason,
+            PairingTokenSet:                 !string.IsNullOrEmpty(_config.Nina.PairingToken));
     }
 
     public async Task<CompanionConfigSaveResult> SaveConfigAsync(CompanionConfigEdit edit, CancellationToken ct = default) {
@@ -213,5 +214,106 @@ public sealed class CompanionController : ICompanionController {
         var effectiveKey = string.IsNullOrEmpty(apiKey) ? _config.Nina.ApiKey : apiKey;
         var r = await ConnectionTester.TestAsync(host, port, effectiveKey ?? "", ct);
         return new CompanionConfigTestResult(r.Ok, r.Version, r.Schema, r.Error);
+    }
+
+    // ── Setup wizard — primary-side calls (no token required yet) ────────
+
+    public async Task<CompanionProbeResult> ProbePrimaryAsync(string host, int port, CancellationToken ct = default) {
+        if (string.IsNullOrWhiteSpace(host))     return new CompanionProbeResult(false, null, null, false, 0, null, "host is empty");
+        if (port <= 0 || port > 65535)            return new CompanionProbeResult(false, null, null, false, 0, null, $"port {port} out of range");
+
+        using var http = new System.Net.Http.HttpClient { BaseAddress = new Uri($"http://{host}:{port}") };
+        http.Timeout = TimeSpan.FromSeconds(5);
+        try {
+            using var resp = await http.GetAsync("/api/companion/info", ct);
+            if (resp.StatusCode == System.Net.HttpStatusCode.NotFound) {
+                // The server is reachable but doesn't expose pair endpoints —
+                // probably an older Night Summary (pre-wizard release) or some
+                // other server that happens to be on that host:port.
+                return new CompanionProbeResult(false, null, null, false, 0, null,
+                    "server responded but does not support pairing — upgrade Night Summary on the NINA machine");
+            }
+            if (!resp.IsSuccessStatusCode) {
+                return new CompanionProbeResult(false, null, null, false, 0, null,
+                    $"primary returned {(int)resp.StatusCode}");
+            }
+            var json = await resp.Content.ReadAsStringAsync(ct);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var r = doc.RootElement;
+            return new CompanionProbeResult(
+                Ok:                  true,
+                NsVersion:           r.TryGetProperty("nsVersion",           out var v1) ? v1.GetString() : null,
+                NinaVersion:         r.TryGetProperty("ninaVersion",         out var v2) ? v2.GetString() : null,
+                HasNs:               r.TryGetProperty("hasNs",               out var v3) && v3.GetBoolean(),
+                PairedCount:         r.TryGetProperty("pairedCount",         out var v4) && v4.ValueKind == System.Text.Json.JsonValueKind.Number ? v4.GetInt32() : 0,
+                MinCompanionVersion: r.TryGetProperty("minCompanionVersion", out var v5) ? v5.GetString() : null,
+                Error:               null);
+        } catch (TaskCanceledException) {
+            return new CompanionProbeResult(false, null, null, false, 0, null, "timed out (5s) — primary not reachable");
+        } catch (Exception ex) {
+            return new CompanionProbeResult(false, null, null, false, 0, null, ex.Message);
+        }
+    }
+
+    public async Task<CompanionClaimResult> ClaimPairingAsync(string host, int port, string token, string companionName, CancellationToken ct = default) {
+        if (string.IsNullOrWhiteSpace(host))          return new CompanionClaimResult(false, null, null, null, "bad_host",          "host is empty", null);
+        if (port <= 0 || port > 65535)                 return new CompanionClaimResult(false, null, null, null, "bad_port",          $"port {port} out of range", null);
+        if (string.IsNullOrWhiteSpace(token))         return new CompanionClaimResult(false, null, null, null, "missing_token",     "token is empty", null);
+        if (string.IsNullOrWhiteSpace(companionName)) return new CompanionClaimResult(false, null, null, null, "missing_name",      "companion name is empty", null);
+
+        using var http = new System.Net.Http.HttpClient { BaseAddress = new Uri($"http://{host}:{port}") };
+        http.Timeout = TimeSpan.FromSeconds(10);
+        var body = System.Text.Json.JsonSerializer.Serialize(new { token = token.Trim(), companionName = companionName.Trim() });
+        var content = new System.Net.Http.StringContent(body, System.Text.Encoding.UTF8, "application/json");
+
+        try {
+            using var resp = await http.PostAsync("/api/companion/pair", content, ct);
+            var json = await resp.Content.ReadAsStringAsync(ct);
+            using var doc = System.Text.Json.JsonDocument.Parse(string.IsNullOrEmpty(json) ? "{}" : json);
+            var r = doc.RootElement;
+
+            if (resp.IsSuccessStatusCode) {
+                var companionId = r.TryGetProperty("companionId", out var ci) ? ci.GetString() : null;
+                // Persist the token + host/port so subsequent /api/export/*
+                // calls authenticate as the new pairing. The api key (if any)
+                // is left untouched — the dual-auth shim accepts either.
+                lock (_gate) {
+                    _config.Nina.Host         = host.Trim();
+                    _config.Nina.Port         = port;
+                    _config.Nina.PairingToken = token.Trim();
+                    try {
+                        CompanionConfig.Save(_config, _configPath);
+                    } catch (Exception ex) {
+                        _log.Error("Companion: failed to write companion.json after pair", ex);
+                        return new CompanionClaimResult(false, null, null, null, "save_failed",
+                            $"paired with primary but could not write companion.json: {ex.Message}", null);
+                    }
+                    _engine.Reconfigure();
+                }
+                _log.Info($"Companion: paired with primary as '{companionName}' (companionId={companionId})");
+                // Probe reachability immediately so the banner doesn't lag.
+                try { await PingPrimaryAsync(ct); } catch { }
+                return new CompanionClaimResult(
+                    Ok:           true,
+                    CompanionId:  companionId,
+                    NinaVersion:  r.TryGetProperty("ninaVersion", out var nv) ? nv.GetString() : null,
+                    NsVersion:    r.TryGetProperty("nsVersion",   out var sv) ? sv.GetString() : null,
+                    ErrorCode:    null,
+                    Error:        null,
+                    AlreadyPairedCompanionName: null);
+            }
+
+            // Surface the primary's wire-format error code so the wizard can pick
+            // the right message — "unknown_token" vs "revoked" vs "already_paired"
+            // all need distinct user-facing copy.
+            var errorCode = r.TryGetProperty("error", out var ec) ? ec.GetString() : null;
+            var otherName = r.TryGetProperty("companionName", out var on) ? on.GetString() : null;
+            return new CompanionClaimResult(false, null, null, null,
+                errorCode, errorCode ?? $"primary returned {(int)resp.StatusCode}", otherName);
+        } catch (TaskCanceledException) {
+            return new CompanionClaimResult(false, null, null, null, "timeout", "timed out (10s) — primary not reachable", null);
+        } catch (Exception ex) {
+            return new CompanionClaimResult(false, null, null, null, "network_error", ex.Message, null);
+        }
     }
 }

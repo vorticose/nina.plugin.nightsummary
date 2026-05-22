@@ -1,0 +1,232 @@
+/* Setup wizard — companion mode. Self-contained styles (no shared
+   dashboard.css dependency) so the wizard renders before any companion
+   data is available. */
+
+:root {
+    --bg: #1a1d23;
+    --panel: #242830;
+    --text: #e8eaed;
+    --muted: #9aa0a6;
+    --accent: #7b68ee;
+    --accent-hover: #6952d4;
+    --border: #353a44;
+    --error: #e57373;
+    --success: #66bb6a;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100vh;
+}
+
+body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+
+.card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 32px 28px 24px;
+    max-width: 480px;
+    width: 100%;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+header {
+    margin-bottom: 24px;
+}
+
+h1 {
+    margin: 0 0 16px;
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+h2 {
+    margin: 0 0 12px;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+p {
+    margin: 0 0 16px;
+    color: var(--text);
+}
+
+.steps {
+    display: flex;
+    gap: 8px;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    font-size: 18px;
+    color: var(--muted);
+}
+
+.steps li.active {
+    color: var(--accent);
+}
+
+.steps li.done {
+    color: var(--success);
+}
+
+.step {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    color: var(--text);
+    font-weight: 500;
+}
+
+label.inline {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    font-weight: 400;
+}
+
+input[type="text"], input[type="number"] {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 10px;
+    color: var(--text);
+    font-size: 14px;
+    font-family: "Consolas", "Courier New", monospace;
+}
+
+input[type="text"]:focus, input[type="number"]:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.hint {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 400;
+}
+
+fieldset {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 12px;
+    margin: 0;
+}
+
+fieldset legend {
+    color: var(--muted);
+    font-size: 12px;
+    padding: 0 6px;
+}
+
+fieldset label {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    font-weight: 400;
+    margin: 4px 0;
+}
+
+.instructions {
+    margin: 0 0 8px;
+    padding-left: 20px;
+    color: var(--text);
+}
+
+.instructions li {
+    margin: 4px 0;
+}
+
+.actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 8px;
+}
+
+button {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    font-family: inherit;
+}
+
+button:hover:not(:disabled) {
+    border-color: var(--accent);
+}
+
+button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+
+button.primary:hover:not(:disabled) {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.status {
+    padding: 10px 12px;
+    border-radius: 4px;
+    font-size: 13px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+}
+
+.status.error {
+    border-color: var(--error);
+    color: var(--error);
+}
+
+.status.success {
+    border-color: var(--success);
+    color: var(--success);
+}
+
+footer {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    text-align: center;
+    color: var(--muted);
+    font-size: 11px;
+}
+
+footer a {
+    color: var(--muted);
+    text-decoration: none;
+}
+
+footer a:hover {
+    color: var(--accent);
+}

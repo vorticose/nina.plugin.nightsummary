@@ -558,9 +558,31 @@ namespace NINA.Plugin.NightSummary.Server {
                     } else if (path == "/api/settings") {
                         await HandleGetSettings(res);
                         done?.Invoke(200, null);
+                    } else if (path == "/setup") {
+                        // Companion-only wizard page. When already paired, bounce
+                        // back to the main dashboard so users don't reach setup
+                        // accidentally after onboarding.
+                        if (_companion != null && _companion.GetConfig().IsComplete) {
+                            await Redirect(res, "/", done, "setup → /");
+                        } else {
+                            await HandleSetupHtml(res, done);
+                        }
+                    } else if (path == "/setup.js") {
+                        await HandleSetupAsset(res, "setup.js", "application/javascript; charset=utf-8", done);
+                    } else if (path == "/setup.css") {
+                        await HandleSetupAsset(res, "setup.css", "text/css; charset=utf-8", done);
+                    } else if (path == "/api/setup/probe") {
+                        await HandleSetupProbe(req, res, done);
                     } else if (path == "/") {
-                        await WriteHtml(res, 200, GetDashboardHtml());
-                        done?.Invoke(200, "dashboard html");
+                        // Companion mode + setup not done → redirect to the wizard.
+                        // Primary mode (no _companion) always falls through to
+                        // the dashboard so the regular UI loads.
+                        if (_companion != null && !_companion.GetConfig().IsComplete) {
+                            await Redirect(res, "/setup", done, "/ → setup");
+                        } else {
+                            await WriteHtml(res, 200, GetDashboardHtml());
+                            done?.Invoke(200, "dashboard html");
+                        }
                     } else {
                         await WriteJson(res, 404, new { error = "Not found" });
                         done?.Invoke(404, null);
@@ -596,6 +618,8 @@ namespace NINA.Plugin.NightSummary.Server {
                         await HandleCompanionPair(req, res, done);
                     } else if (path == "/api/companion/revoke") {
                         await HandleCompanionRevoke(req, res, done);
+                    } else if (path == "/api/setup/claim") {
+                        await HandleSetupClaim(req, res, done);
                     } else if (path == "/api/stats/projects/reset") {
                         await HandleProjectsReset(req, res, done);
                     } else if (path.StartsWith("/api/stats/projects/") && path.EndsWith("/reset")) {
@@ -3882,6 +3906,15 @@ private static string FormatSettingsForLog(NightSummarySettings s) {
         }
 
         // ── Response Helpers ──────────────────────────────────────────────────
+
+        // 302 redirect with an empty body. Used by the companion setup flow
+        // to bounce / ↔ /setup based on IsComplete state.
+        private static Task Redirect(TcpHttpResponse res, string location, Action<int, string> done, string traceMsg) {
+            res.StatusCode = 302;
+            res.Headers.Add("Location", location);
+            done?.Invoke(302, traceMsg);
+            return Task.CompletedTask;
+        }
 
         private static async Task WriteJson(TcpHttpResponse res, int status, object data) {
             res.StatusCode = status;

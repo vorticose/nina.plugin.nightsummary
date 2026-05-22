@@ -42,8 +42,11 @@ public sealed class SyncEngine {
 
     private static HttpClient BuildHttp(CompanionConfig config) {
         var c = new HttpClient { BaseAddress = new Uri(config.ResolvedNinaUrl()) };
+        // Prefer the pairing token when present; the primary's auth shim
+        // accepts either Bearer value, so we always send "the new one if
+        // we have it" without needing per-call branching.
         c.DefaultRequestHeaders.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", config.Nina.ApiKey ?? "");
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", config.Nina.EffectiveBearer());
         c.Timeout = TimeSpan.FromMinutes(30);
         return c;
     }
