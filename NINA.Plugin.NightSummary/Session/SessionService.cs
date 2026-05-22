@@ -1019,34 +1019,18 @@ namespace NINA.Plugin.NightSummary.Session {
         }
 
         /// <summary>
-        /// Queries the Target Scheduler database for grading results that overlap the session window
-        /// and batch-updates our Images rows. Matched on filter name + timestamp within ±60 s.
-        /// Entirely wrapped in try/catch — TS unavailability or schema differences are non-fatal.
+        /// Delegates to <see cref="TsGradingResync.Sync"/> with try/catch — session-end sync
+        /// is non-fatal (a TS schema mismatch or missing DB should not block report generation).
+        /// The dashboard's on-demand resync uses the same helper directly.
         /// </summary>
         private static void SyncTsGrading(SessionDatabase database, string sessionId,
                                            DateTime sessionStart, DateTime sessionEnd,
                                            List<ImageRecord> images) {
             try {
                 var tsDb = new TargetSchedulerDatabase();
-                if (!tsDb.IsAvailable) return;
-
-                var tsRows = tsDb.GetAcquiredImagesForDateRange(sessionStart, sessionEnd);
-                if (tsRows.Count == 0) return;
-
-                var updates = new List<(int imageId, int gradingStatus, string rejectReason)>();
-                foreach (var img in images) {
-                    // Match by filter (case-insensitive) and timestamp within ±60 s
-                    var match = tsRows.FirstOrDefault(r =>
-                        string.Equals(r.FilterName, img.Filter, StringComparison.OrdinalIgnoreCase) &&
-                        Math.Abs((r.AcquiredAt - img.Timestamp).TotalSeconds) <= 60);
-
-                    if (match != null)
-                        updates.Add((img.Id, match.GradingStatus, match.RejectReason));
-                }
-
-                if (updates.Count > 0) {
-                    database.UpdateImageGradingFromTs(sessionId, updates);
-                    Logger.Info($"NightSummary: Synced TS grading for {updates.Count}/{images.Count} images");
+                int changed = TsGradingResync.Sync(database, tsDb, sessionId, sessionStart, sessionEnd, images);
+                if (changed > 0) {
+                    Logger.Info($"NightSummary: Synced TS grading for {changed}/{images.Count} images");
                 }
             } catch (Exception ex) {
                 Logger.Warning($"NightSummary: TS grading sync failed (non-fatal). {ex.Message}");
@@ -1284,7 +1268,8 @@ namespace NINA.Plugin.NightSummary.Session {
             var events   = reportData.Events ?? new List<Data.SessionEvent>();
 
             var totalExpSec  = images.Sum(i => i.ExposureDuration);
-            var accepted     = images.Count(i => i.Accepted);
+            // Pending counts as accepted — see ImageRecord.CountsAsAccepted.
+            var accepted     = images.Count(i => i.CountsAsAccepted);
             var hfrImages    = images.Where(i => i.HFR > 0).ToList();
             var rmsImages    = images.Where(i => i.GuidingRMSTotal > 0).ToList();
 

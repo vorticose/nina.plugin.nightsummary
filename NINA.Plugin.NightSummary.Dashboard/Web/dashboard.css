@@ -6175,7 +6175,12 @@ html.light .companion-banner-label { background: rgba(37, 99, 184, 0.08); }
      the same X. The 1fr spacer keeps the value column anchored to the
      right side of the m-group regardless of label width. */
   display: grid;
-  grid-template-columns: auto 1fr max-content;
+  /* col 3 = minmax(0, max-content) so a long value (project name,
+     exposure-profile name) can't force the track wider than the
+     m-group on narrow viewports. .m-v already has
+     overflow:hidden + text-overflow:ellipsis to truncate cleanly
+     once the track shrinks under pressure. */
+  grid-template-columns: auto 1fr minmax(0, max-content);
   column-gap: 8px;
   row-gap: 2px;
   align-content: start;

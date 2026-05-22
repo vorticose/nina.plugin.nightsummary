@@ -62,9 +62,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
         private static bool IsExcluded(string filter) => FilterHelper.IsExcluded(filter);
         private static int FilterSortKey(string filter) => FilterHelper.SortKey(filter);
 
-        // GradingStatus enum (TS): 0=Pending, 1=Accepted, 2=Rejected, -1=unknown/legacy.
-        // Pending images have Accepted=false but are not rejected — exclude from reject counts.
-        private static bool IsRejected(ImageRecord i) => !i.Accepted && i.GradingStatus != 0;
+        // Inverse of ImageRecord.CountsAsAccepted — Pending (GradingStatus=0) is not
+        // a rejection, even if Accepted=false on legacy rows.
+        private static bool IsRejected(ImageRecord i) => !i.CountsAsAccepted;
 
         public async Task<string> GenerateHtmlReport(ReportData data) {
             Warnings.Clear();
@@ -198,6 +198,16 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("details.livestack-section > summary::-webkit-details-marker { display: none; }");
             sb.AppendLine("details.livestack-section > summary::before { content: '\\25B6\\00A0'; }");
             sb.AppendLine("details.livestack-section[open] > summary::before { content: '\\25BC\\00A0'; }");
+            // Per-imaging-window expanders shown beneath the grand-total filter table on
+            // multi-window targets. First expander gets a larger top margin so it sits clearly
+            // below the totals table; consecutive expanders space themselves with margin-top.
+            sb.AppendLine("details.window-section { margin-top: 10px; }");
+            sb.AppendLine("details.window-section:first-of-type { margin-top: 18px; }");
+            sb.AppendLine("details.window-section > summary { cursor: pointer; color: var(--accent-light); font-size: 14px; font-weight: bold; list-style: none; }");
+            sb.AppendLine("details.window-section > summary strong { color: var(--accent-light); }");
+            sb.AppendLine("details.window-section > summary::-webkit-details-marker { display: none; }");
+            sb.AppendLine("details.window-section > summary::before { content: '\\25B6\\00A0'; }");
+            sb.AppendLine("details.window-section[open] > summary::before { content: '\\25BC\\00A0'; }");
             sb.AppendLine(".iq-table { width: 100%; margin-top: 8px; }");
             sb.AppendLine(".iq-row-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr; }");
             sb.AppendLine(".iq-header { background-color: var(--border); color: var(--accent); padding: 8px; text-align: left; font-weight: bold; }");
@@ -397,6 +407,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
             // that were interrupted by the unsafe trigger (weather-lost time, not overhead).
             var roofIntervals = RoofClosedHelper.GetIntervals(data.Events, windowStart, windowEnd);
             roofIntervals = RoofClosedHelper.ExtendForAbortedExposures(roofIntervals, timingEvents);
+            // Dedup overlapping roof intervals. NS can record multiple RoofClosed/RoofOpen
+            // pairs in tight succession (e.g. two safety monitors triggering, or a mediator
+            // double-subscribe), and ExtendForAbortedExposures pulls each interval's start
+            // back to the same aborted-exposure timestamp — so unmerged sums double-count
+            // the overlapping period. That inflates roofClosedSec and shrinks impliedOverhead,
+            // making merged > implied and pegging Overhead Accounted % at the 100% ceiling.
+            roofIntervals = MergeIntervalList(roofIntervals);
             var roofClosedSec = RoofClosedHelper.TotalSeconds(roofIntervals);
 
             // Exclude Target Scheduler wait intervals — the scheduler was idle waiting for
@@ -445,8 +462,33 @@ namespace NINA.Plugin.NightSummary.Reporting {
             // Exclude AbortedExposure: the window end is deliberately capped at the last
             // non-aborted event, so the aborted exposure's interval extends past windowEnd
             // and would inflate mergedOverheadSec above impliedOverheadSec (causing >100%).
-            var mergedOverheadSec = MergeOverheadIntervals(
-                effectiveOverheadEvents.Where(e => e.EventType != "AbortedExposure").ToList());
+            //
+            // Also subtract exposure overlap from the merged overhead. Some overhead events
+            // (image save, plate solve, derived camera-download tail) run concurrently with
+            // the next exposure. Their wall-clock seconds are inside `totalIntegrationSec`
+            // already, so the implied-overhead denominator excludes them — but without the
+            // subtraction below, mergedOverheadSec includes them and we hit >100% coverage,
+            // which the old code clamped with Math.Min(…,100). The clamp masked real
+            // accounting issues (notably the WaitForTimeSpan orphan phantom). Subtracting
+            // exposure overlap makes numerator and denominator commensurable.
+            var mergedOverheadIntervals = MergeIntervalList(effectiveOverheadEvents
+                .Where(e => e.EventType != "AbortedExposure"
+                            && e.EndTime > e.StartTime)
+                .Select(e => (e.StartTime, e.EndTime))
+                .ToList());
+            // Exposure intervals are built from the images list (Timestamp = exposure
+            // start, +ExposureDuration = exposure end) rather than from the parsed
+            // `Exposure` timing events. The timing-event intervals run from exposure
+            // start through the camera download tail (Finishing line), which would
+            // subtract the download from the numerator even though it isn't subtracted
+            // from impliedOverheadSec (which only subtracts integration seconds).
+            // Using image intervals keeps numerator and denominator semantically aligned.
+            var mergedExposureIntervals = MergeIntervalList((data.Images ?? new List<ImageRecord>())
+                .Where(i => i.ExposureDuration > 0)
+                .Select(i => (i.Timestamp, i.Timestamp.AddSeconds(i.ExposureDuration)))
+                .ToList());
+            var netOverheadIntervals = SubtractIntervals(mergedOverheadIntervals, mergedExposureIntervals);
+            var mergedOverheadSec = netOverheadIntervals.Sum(i => (i.end - i.start).TotalSeconds);
             var coveragePct = impliedOverheadSec > 0
                 ? Math.Min(mergedOverheadSec / impliedOverheadSec * 100.0, 100.0) : 0;
             var unaccountedSec = Math.Max(0, impliedOverheadSec - mergedOverheadSec);
@@ -613,10 +655,45 @@ namespace NINA.Plugin.NightSummary.Reporting {
         }
 
         /// <summary>
+        /// Subtracts one merged interval set from another and returns the difference
+        /// as a sorted, non-overlapping list. Used to remove exposure overlap from
+        /// overhead intervals so "Overhead Accounted %" doesn't double-count overhead
+        /// that runs concurrently with an exposure (image save, plate solve, derived
+        /// camera download tail).
+        /// </summary>
+        internal static List<(DateTime start, DateTime end)> SubtractIntervals(
+            List<(DateTime start, DateTime end)> from,
+            List<(DateTime start, DateTime end)> minus) {
+            var result = new List<(DateTime start, DateTime end)>();
+            if (minus == null || minus.Count == 0) {
+                result.AddRange(from);
+                return result;
+            }
+            foreach (var f in from) {
+                var pieces = new List<(DateTime start, DateTime end)> { f };
+                foreach (var m in minus) {
+                    var next = new List<(DateTime start, DateTime end)>();
+                    foreach (var p in pieces) {
+                        if (m.end <= p.start || m.start >= p.end) {
+                            next.Add(p);
+                        } else {
+                            if (m.start > p.start) next.Add((p.start, m.start));
+                            if (m.end   < p.end)   next.Add((m.end,   p.end));
+                        }
+                    }
+                    pieces = next;
+                    if (pieces.Count == 0) break;
+                }
+                result.AddRange(pieces);
+            }
+            return result;
+        }
+
+        /// <summary>
         /// Merges a list of (start, end) intervals into a sorted, non-overlapping list.
         /// Used by the overhead-gap diagnostic to compute uncovered stretches.
         /// </summary>
-        private static List<(DateTime start, DateTime end)> MergeIntervalList(List<(DateTime start, DateTime end)> intervals) {
+        internal static List<(DateTime start, DateTime end)> MergeIntervalList(List<(DateTime start, DateTime end)> intervals) {
             var result = new List<(DateTime start, DateTime end)>();
             var sorted = intervals.Where(i => i.end > i.start).OrderBy(i => i.start).ToList();
             if (sorted.Count == 0) return result;
@@ -723,12 +800,35 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     if (coordImg != null) { raH = coordImg.RaHours; decD = coordImg.DecDegrees; }
                 }
 
-                // Imaging window for this target: first to last image timestamp
-                var targetImgStart = target.Min(i => i.Timestamp);
-                var targetImgEnd   = target.Max(i => i.Timestamp);
+                // Imaging windows for this target. Most sessions yield exactly one window per
+                // target, but a target imaged before and after a long idle gap (e.g. setting
+                // pre-meridian and rising again later, or a Target Scheduler swap-out/swap-in)
+                // produces multiple windows. The altitude chart and filter table render one
+                // section per window when there are 2+; the rest of the section (TS progress,
+                // session history, sky thumbnail, IQ stats) stays aggregated.
+                var imagingWindows = ImagingBlockHelper.DetectWindows(target).ToList();
+                DateTime targetImgStart, targetImgEnd;
+                if (imagingWindows.Count > 0) {
+                    targetImgStart = imagingWindows.First().Start;
+                    targetImgEnd   = imagingWindows.Last().End;
+                } else {
+                    // Defensive fallback — DetectWindows returned empty (no images).
+                    targetImgStart = target.Min(i => i.Timestamp);
+                    targetImgEnd   = target.Max(i => i.Timestamp);
+                }
+                bool multiWindow = imagingWindows.Count > 1;
 
-                // Build subtitle for the h3 heading: start/end times, coords, moon separation
-                var timePart   = $"Start: {targetImgStart:HH:mm} &nbsp;&#8594;&nbsp; End: {targetImgEnd:HH:mm}";
+                // Build subtitle for the h3 heading: start/end times, coords, moon separation.
+                // For multi-window targets, list each window inline so the heading is honest
+                // about the discontinuity rather than implying one continuous block.
+                string timePart;
+                if (multiWindow) {
+                    var winList = string.Join(", ",
+                        imagingWindows.Select(w => $"{w.Start:HH:mm}&#8211;{w.End:HH:mm}"));
+                    timePart = $"{imagingWindows.Count} windows: {winList}";
+                } else {
+                    timePart = $"Start: {targetImgStart:HH:mm} &nbsp;&#8594;&nbsp; End: {targetImgEnd:HH:mm}";
+                }
                 // Sky position angle: prefer TS data, fall back to plate solve PA from images
                 double rotation = (tsFirst != null && tsFirst.Rotation != 0) ? tsFirst.Rotation
                     : target.Where(i => i.PositionAngle.HasValue && i.PositionAngle.Value != 0)
@@ -784,7 +884,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     if (showSideBySideChart) {
                         double minAlt = SettingsManager.Instance.Current.ShowMinAltitude ? (tsFirst?.MinimumAltitude ?? 0) : 0;
                         var altChart = BuildAltitudeChart(raH, decD, data.ObserverLatitude, data.ObserverLongitude,
-                                                          targetImgStart, targetImgEnd, width: 500,
+                                                          imagingWindows, width: 500,
                                                           minimumAltitude: minAlt);
                         if (!string.IsNullOrEmpty(altChart))
                             sb.Append($"<div style='flex:1; min-width:0; margin-top:-20px;'>{altChart}</div>");
@@ -817,52 +917,83 @@ namespace NINA.Plugin.NightSummary.Reporting {
                         $"available targets: {string.Join(", ", data.LiveStackImages.Select(i => i.Target).Distinct())}");
                 }
 
-                // Session filter table
+                // Session filter table. Rejection columns are conditional on the whole target
+                // having any rejected frames — keep that consistent across sub-tables so the
+                // column count doesn't change between per-window tables.
                 bool hasRejections = target.Any(IsRejected);
-                sb.AppendLine("<table>");
-                sb.AppendLine(hasRejections
-                    ? "<tr><th>Filter</th><th>Images</th><th>Rejected</th><th>Exposure</th><th>Total Time</th></tr>"
-                    : "<tr><th>Filter</th><th>Images</th><th>Exposure</th><th>Total Time</th></tr>");
-                var filterGroups = target
-                    .GroupBy(i => (i.Filter, i.ExposureDuration))
-                    .OrderBy(g => FilterSortKey(g.Key.Filter)).ThenBy(g => g.Key.Filter).ThenBy(g => g.Key.ExposureDuration);
-                foreach (var filterGroup in filterGroups) {
-                    var totalTime     = TimeSpan.FromSeconds(filterGroup.Sum(i => i.ExposureDuration));
-                    var rejectedCount = filterGroup.Count(IsRejected);
-                    if (hasRejections) {
-                        string rejectedCell;
-                        if (rejectedCount > 0) {
-                            var reasons = filterGroup
-                                .Where(i => IsRejected(i) && !string.IsNullOrEmpty(i.RejectReason))
-                                .GroupBy(i => i.RejectReason)
-                                .OrderByDescending(g => g.Count())
-                                .Select(g => $"{System.Net.WebUtility.HtmlEncode(g.Key)}: {g.Count()}");
-                            var tooltip = string.Join("&#10;", reasons);
-                            var tdStyle = !string.IsNullOrEmpty(tooltip) ? $" title='{tooltip}' style='cursor:help;'" : "";
-                            rejectedCell = $"<td{tdStyle}>{rejectedCount}</td>";
+
+                // Local helper: emits one filter table for a given image set, with the
+                // supplied caption (HTML, may be empty) above and a total row at the bottom.
+                // The total-row label is parameterized so per-window tables can say "Window
+                // Total" while the single-window case keeps the legacy "Total" wording.
+                void EmitFilterTable(IList<ImageRecord> rows, string captionHtml, string totalLabel) {
+                    if (!string.IsNullOrEmpty(captionHtml))
+                        sb.AppendLine(captionHtml);
+                    sb.AppendLine("<table>");
+                    sb.AppendLine(hasRejections
+                        ? "<tr><th>Filter</th><th>Images</th><th>Rejected</th><th>Exposure</th><th>Total Time</th></tr>"
+                        : "<tr><th>Filter</th><th>Images</th><th>Exposure</th><th>Total Time</th></tr>");
+                    var groups = rows
+                        .GroupBy(i => (i.Filter, i.ExposureDuration))
+                        .OrderBy(g => FilterSortKey(g.Key.Filter)).ThenBy(g => g.Key.Filter).ThenBy(g => g.Key.ExposureDuration);
+                    foreach (var fg in groups) {
+                        var totalTime     = TimeSpan.FromSeconds(fg.Sum(i => i.ExposureDuration));
+                        var rejectedCount = fg.Count(IsRejected);
+                        if (hasRejections) {
+                            string rejectedCell;
+                            if (rejectedCount > 0) {
+                                var reasons = fg
+                                    .Where(i => IsRejected(i) && !string.IsNullOrEmpty(i.RejectReason))
+                                    .GroupBy(i => i.RejectReason)
+                                    .OrderByDescending(g => g.Count())
+                                    .Select(g => $"{System.Net.WebUtility.HtmlEncode(g.Key)}: {g.Count()}");
+                                var tooltip = string.Join("&#10;", reasons);
+                                var tdStyle = !string.IsNullOrEmpty(tooltip) ? $" title='{tooltip}' style='cursor:help;'" : "";
+                                rejectedCell = $"<td{tdStyle}>{rejectedCount}</td>";
+                            } else {
+                                rejectedCell = "<td>—</td>";
+                            }
+                            sb.AppendLine($"<tr><td>{fg.Key.Filter}</td><td>{fg.Count()}</td>{rejectedCell}<td>{fg.Key.ExposureDuration:F0}s</td><td>{FormatDuration(totalTime.TotalSeconds)}</td></tr>");
                         } else {
-                            rejectedCell = "<td>—</td>";
+                            sb.AppendLine($"<tr><td>{fg.Key.Filter}</td><td>{fg.Count()}</td><td>{fg.Key.ExposureDuration:F0}s</td><td>{FormatDuration(totalTime.TotalSeconds)}</td></tr>");
                         }
-                        sb.AppendLine($"<tr><td>{filterGroup.Key.Filter}</td><td>{filterGroup.Count()}</td>{rejectedCell}<td>{filterGroup.Key.ExposureDuration:F0}s</td><td>{FormatDuration(totalTime.TotalSeconds)}</td></tr>");
-                    } else {
-                        sb.AppendLine($"<tr><td>{filterGroup.Key.Filter}</td><td>{filterGroup.Count()}</td><td>{filterGroup.Key.ExposureDuration:F0}s</td><td>{FormatDuration(totalTime.TotalSeconds)}</td></tr>");
                     }
+                    var tt   = TimeSpan.FromSeconds(rows.Sum(i => i.ExposureDuration));
+                    var rejT = rows.Count(IsRejected);
+                    if (hasRejections) {
+                        var allReasons = rows
+                            .Where(i => IsRejected(i) && !string.IsNullOrEmpty(i.RejectReason))
+                            .GroupBy(i => i.RejectReason)
+                            .OrderByDescending(g => g.Count())
+                            .Select(g => $"{System.Net.WebUtility.HtmlEncode(g.Key)}: {g.Count()}");
+                        var totalTooltip = string.Join("&#10;", allReasons);
+                        var totalTdStyle = !string.IsNullOrEmpty(totalTooltip) ? $" title='{totalTooltip}' style='cursor:help;'" : "";
+                        sb.AppendLine($"<tr><td><strong>{totalLabel}</strong></td><td><strong>{rows.Count}</strong></td><td{totalTdStyle}><strong>{rejT}</strong></td><td></td><td><strong>{FormatDuration(tt.TotalSeconds)}</strong></td></tr>");
+                    } else {
+                        sb.AppendLine($"<tr><td><strong>{totalLabel}</strong></td><td><strong>{rows.Count}</strong></td><td></td><td><strong>{FormatDuration(tt.TotalSeconds)}</strong></td></tr>");
+                    }
+                    sb.AppendLine("</table>");
                 }
-                var targetTotal         = TimeSpan.FromSeconds(target.Sum(i => i.ExposureDuration));
-                var targetRejectedTotal = target.Count(IsRejected);
-                if (hasRejections) {
-                    var allReasons = target
-                        .Where(i => IsRejected(i) && !string.IsNullOrEmpty(i.RejectReason))
-                        .GroupBy(i => i.RejectReason)
-                        .OrderByDescending(g => g.Count())
-                        .Select(g => $"{System.Net.WebUtility.HtmlEncode(g.Key)}: {g.Count()}");
-                    var totalTooltip = string.Join("&#10;", allReasons);
-                    var totalTdStyle = !string.IsNullOrEmpty(totalTooltip) ? $" title='{totalTooltip}' style='cursor:help;'" : "";
-                    sb.AppendLine($"<tr><td><strong>Total</strong></td><td><strong>{target.Count()}</strong></td><td{totalTdStyle}><strong>{targetRejectedTotal}</strong></td><td></td><td><strong>{FormatDuration(targetTotal.TotalSeconds)}</strong></td></tr>");
+
+                if (multiWindow) {
+                    // Grand total table on top (the at-a-glance summary), followed by one
+                    // collapsible details block per imaging window. Per-window expanders are
+                    // closed by default — viewers who only want the totals get them
+                    // immediately, viewers who want the per-window split can expand any window.
+                    EmitFilterTable(target.ToList(), captionHtml: "", totalLabel: "Grand Total");
+                    for (int wi = 0; wi < imagingWindows.Count; wi++) {
+                        var w = imagingWindows[wi];
+                        var winImages = target.Where(i => i.Timestamp >= w.Start && i.Timestamp <= w.End).ToList();
+                        sb.AppendLine("<details class='window-section'>");
+                        sb.AppendLine($"<summary><strong>Window {wi + 1}</strong> " +
+                                      $"<span style='color:var(--muted); font-weight:normal;'>" +
+                                      $"({w.Start:HH:mm} &#8211; {w.End:HH:mm}, {winImages.Count} frames)</span></summary>");
+                        EmitFilterTable(winImages, captionHtml: "", totalLabel: "Window Total");
+                        sb.AppendLine("</details>");
+                    }
                 } else {
-                    sb.AppendLine($"<tr><td><strong>Total</strong></td><td><strong>{target.Count()}</strong></td><td></td><td><strong>{FormatDuration(targetTotal.TotalSeconds)}</strong></td></tr>");
+                    EmitFilterTable(target.ToList(), captionHtml: "", totalLabel: "Total");
                 }
-                sb.AppendLine("</table>");
 
                 if (detailLevel >= 1 && SettingsManager.Instance.Current.ShowStarCountCV) {
                     // Star count CV
@@ -894,7 +1025,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     }
                 }
 
-                // Per-target image quality (collapsible) — only for multi-target sessions
+                // Per-target image quality (collapsible) — only for multi-target sessions.
+                // For multi-window targets the panel opens with the aggregate stats (across
+                // all windows) at the top, matching the filter-table layout above, then one
+                // collapsed expander per imaging window with the same metric table inside.
+                // Per-window sample sizes are usually small so the CV column will be noisy —
+                // viewer can compare windows at a glance but should weight by frame count.
                 if (detailLevel >= 1 && multiTarget && SettingsManager.Instance.Current.ShowPerTargetIQ) {
                     var targetList = target.ToList();
                     bool hasData = targetList.Any(i => i.HFR > 0 || i.FWHM > 0 || i.Eccentricity > 0 || i.GuidingRMSTotal > 0);
@@ -905,6 +1041,25 @@ namespace NINA.Plugin.NightSummary.Reporting {
                         sb.AppendLine("<div class='iq-row-grid'><div class='iq-header'>Metric</div><div class='iq-header'>Min</div><div class='iq-header'>Max</div><div class='iq-header'>Mean</div><div class='iq-header'>CV</div></div>");
                         AppendIqRows(sb, targetList, detailsOpen);
                         sb.AppendLine("</div>");
+
+                        if (multiWindow) {
+                            for (int wi = 0; wi < imagingWindows.Count; wi++) {
+                                var w = imagingWindows[wi];
+                                var winImages = targetList.Where(i => i.Timestamp >= w.Start && i.Timestamp <= w.End).ToList();
+                                bool winHasData = winImages.Any(i => i.HFR > 0 || i.FWHM > 0 || i.Eccentricity > 0 || i.GuidingRMSTotal > 0);
+                                if (!winHasData) continue;
+                                sb.AppendLine("<details class='window-section'>");
+                                sb.AppendLine($"<summary><strong>Window {wi + 1}</strong> " +
+                                              $"<span style='color:var(--muted); font-weight:normal;'>" +
+                                              $"({w.Start:HH:mm} &#8211; {w.End:HH:mm}, {winImages.Count} frames)</span></summary>");
+                                sb.AppendLine("<div class='iq-table'>");
+                                sb.AppendLine("<div class='iq-row-grid'><div class='iq-header'>Metric</div><div class='iq-header'>Min</div><div class='iq-header'>Max</div><div class='iq-header'>Mean</div><div class='iq-header'>CV</div></div>");
+                                AppendIqRows(sb, winImages, detailsOpen);
+                                sb.AppendLine("</div>");
+                                sb.AppendLine("</details>");
+                            }
+                        }
+
                         sb.AppendLine("</details>");
                     }
                 }
@@ -1440,11 +1595,17 @@ namespace NINA.Plugin.NightSummary.Reporting {
         }
 
         private string BuildAltitudeChart(double raHours, double decDeg, double latDeg, double lonDeg,
-                                          DateTime sessionStart, DateTime sessionEnd, int width = 560,
+                                          IReadOnlyList<(DateTime Start, DateTime End)> windows,
+                                          int width = 560,
                                           double minimumAltitude = 0) {
             if (latDeg == 0 && lonDeg == 0) return string.Empty;
+            if (windows == null || windows.Count == 0) return string.Empty;
 
-            // Chart window: sunset to sunrise (zoomed in to the imaging night)
+            // Chart window: sunset to sunrise (zoomed in to the imaging night). Anchor on the
+            // first imaging window's start so the night-window math matches the legacy single
+            // window case exactly when there's only one window.
+            var sessionStart = windows[0].Start;
+            var sessionEnd   = windows[windows.Count - 1].End;
             var (dayStart, dayEnd) = AltitudeCalculator.FindNightWindow(latDeg, lonDeg, sessionStart);
 
             int svgW     = width;
@@ -1467,8 +1628,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             double X(DateTime t) => padL + ((t - dayStart).TotalMinutes / totalMin * plotW);
             double Y(double alt)  => padT + plotH - (alt / altRange * plotH);
 
-            double xSessStart = X(sessionStart);
-            double xSessEnd   = X(sessionEnd);
+            bool multiWindow = windows.Count > 1;
 
             // Collect above-horizon segments for segmented polylines
             var segments = new List<List<(DateTime t, double alt)>>();
@@ -1494,8 +1654,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine($"<rect x='{padL}' y='{padT}' width='{plotW}' height='{plotH}' fill='{svgChartBg}' rx='4'/>");
             sb.AppendLine($"<rect x='{padL}' y='{padT}' width='{plotW}' height='{plotH}' fill='none' stroke='{altGrid}' stroke-width='1' rx='4'/>");
 
-            // Session window subtle highlight
-            sb.AppendLine($"<rect x='{xSessStart:F1}' y='{padT}' width='{(xSessEnd - xSessStart):F1}' height='{plotH}' fill='{altAccent}' opacity='0.07'/>");
+            // Imaging window highlights — one subtle rect per window. For multi-window targets
+            // each block stands out individually so the visible gaps line up with the filter
+            // table sub-sections beneath the chart.
+            foreach (var w in windows) {
+                double wxStart = X(w.Start);
+                double wxEnd   = X(w.End);
+                sb.AppendLine($"<rect x='{wxStart:F1}' y='{padT}' width='{(wxEnd - wxStart):F1}' height='{plotH}' fill='{altAccent}' opacity='0.07'/>");
+            }
 
             // Grid lines at 30° and 60°
             foreach (var gridAlt in new[] { 30.0, 60.0 }) {
@@ -1547,19 +1713,29 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 }
             }
 
-            // Session start line with tooltip
-            sb.AppendLine("<g>");
-            sb.AppendLine($"  <title>Start: {sessionStart:HH:mm}</title>");
-            sb.AppendLine($"  <line x1='{xSessStart:F1}' y1='{padT}' x2='{xSessStart:F1}' y2='{padT + plotH}' stroke='{altAccent}' stroke-width='1.5' stroke-dasharray='4,3' opacity='0.7'/>");
-            sb.AppendLine($"  <text x='{xSessStart:F1}' y='{padT - 5}' text-anchor='middle' font-size='9' fill='{altAccent}'>Start</text>");
-            sb.AppendLine("</g>");
+            // Per-window start/end markers. Single-window: keep the legacy "Start" / "End"
+            // text labels above the line. Multi-window: drop the text labels (they'd overlap
+            // each other) and rely on the SVG tooltip when the viewer hovers a line — this
+            // matches how the timeline event markers are surfaced.
+            for (int wi = 0; wi < windows.Count; wi++) {
+                var w = windows[wi];
+                double wxStart = X(w.Start);
+                double wxEnd   = X(w.End);
 
-            // Session end line with tooltip
-            sb.AppendLine("<g>");
-            sb.AppendLine($"  <title>End: {sessionEnd:HH:mm}</title>");
-            sb.AppendLine($"  <line x1='{xSessEnd:F1}' y1='{padT}' x2='{xSessEnd:F1}' y2='{padT + plotH}' stroke='{altAccent}' stroke-width='1.5' stroke-dasharray='4,3' opacity='0.7'/>");
-            sb.AppendLine($"  <text x='{xSessEnd:F1}' y='{padT - 5}' text-anchor='middle' font-size='9' fill='{altAccent}'>End</text>");
-            sb.AppendLine("</g>");
+                sb.AppendLine("<g>");
+                sb.AppendLine($"  <title>{(multiWindow ? $"Window {wi + 1} start" : "Start")}: {w.Start:HH:mm}</title>");
+                sb.AppendLine($"  <line x1='{wxStart:F1}' y1='{padT}' x2='{wxStart:F1}' y2='{padT + plotH}' stroke='{altAccent}' stroke-width='1.5' stroke-dasharray='4,3' opacity='0.7'/>");
+                if (!multiWindow)
+                    sb.AppendLine($"  <text x='{wxStart:F1}' y='{padT - 5}' text-anchor='middle' font-size='9' fill='{altAccent}'>Start</text>");
+                sb.AppendLine("</g>");
+
+                sb.AppendLine("<g>");
+                sb.AppendLine($"  <title>{(multiWindow ? $"Window {wi + 1} end" : "End")}: {w.End:HH:mm}</title>");
+                sb.AppendLine($"  <line x1='{wxEnd:F1}' y1='{padT}' x2='{wxEnd:F1}' y2='{padT + plotH}' stroke='{altAccent}' stroke-width='1.5' stroke-dasharray='4,3' opacity='0.7'/>");
+                if (!multiWindow)
+                    sb.AppendLine($"  <text x='{wxEnd:F1}' y='{padT - 5}' text-anchor='middle' font-size='9' fill='{altAccent}'>End</text>");
+                sb.AppendLine("</g>");
+            }
 
             // Sunset / sunrise edge markers
             sb.AppendLine($"<text x='{padL + 2}' y='{padT + plotH - 4}' font-size='10' fill='{svgSunrise}' opacity='0.8'>&#9660; Sunset {dayStart:HH:mm}</text>");
@@ -2056,26 +2232,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             var colorMap = targets.ToDictionary(t => t.Name, t => t.Color);
 
-            // Build imaging blocks (same gap-merge logic as EventTimelineGenerator)
-            static DateTime EstimatedStart(ImageRecord r) =>
-                r.Timestamp.AddSeconds(-(r.ExposureDuration > 0 ? r.ExposureDuration : 60));
-
+            // Build imaging blocks via the shared helper (same gap-merge logic as
+            // EventTimelineGenerator) — preserves per-target color + name decoration.
             var allBlocks = new List<(string Name, string Color, DateTime Start, DateTime End)>();
             foreach (var target in targets) {
-                var sorted = target.Images.OrderBy(i => i.Timestamp).ToList();
-                if (!sorted.Any()) continue;
-                var blockStart = EstimatedStart(sorted[0]);
-                var blockEnd   = sorted[0].Timestamp;
-                for (int i = 1; i <= sorted.Count; i++) {
-                    if (i < sorted.Count) {
-                        var gap = (EstimatedStart(sorted[i]) - blockEnd).TotalMinutes;
-                        if (gap <= 15) { blockEnd = sorted[i].Timestamp; continue; }
-                    }
-                    allBlocks.Add((target.Name, target.Color, blockStart, blockEnd));
-                    if (i < sorted.Count) {
-                        blockStart = EstimatedStart(sorted[i]);
-                        blockEnd   = sorted[i].Timestamp;
-                    }
+                foreach (var (winStart, winEnd) in ImagingBlockHelper.DetectWindows(target.Images)) {
+                    allBlocks.Add((target.Name, target.Color, winStart, winEnd));
                 }
             }
             allBlocks.Sort((a, b) => a.Start.CompareTo(b.Start));

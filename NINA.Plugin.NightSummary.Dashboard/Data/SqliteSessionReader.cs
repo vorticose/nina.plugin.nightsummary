@@ -194,10 +194,11 @@ public sealed class SqliteSessionReader {
         var result = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
         using var conn = new SqliteConnection(connectionString);
         conn.Open();
+        // Pending (GradingStatus=0) counts as not-rejected; see ImageRecord.CountsAsAccepted.
         const string sql = @"
             SELECT TargetName, SUM(ExposureDuration) AS TotalSeconds
             FROM Images
-            WHERE Accepted = 1 AND SessionId != @SessionId
+            WHERE (Accepted = 1 OR GradingStatus = 0) AND SessionId != @SessionId
             GROUP BY TargetName";
         using var cmd = new SqliteCommand(sql, conn);
         cmd.Parameters.AddWithValue("@SessionId", excludeSessionId ?? "");
@@ -217,17 +218,19 @@ public sealed class SqliteSessionReader {
         using var conn = new SqliteConnection(connectionString);
         conn.Open();
 
+        // "Not rejected" gate: Accepted=1 OR GradingStatus=0 (TS Pending). See
+        // ImageRecord.CountsAsAccepted.
         const string sqlAgg = @"
             SELECT
                 i.TargetName,
-                SUM(CASE WHEN i.Accepted = 1 THEN i.ExposureDuration ELSE 0 END) AS TotalSeconds,
+                SUM(CASE WHEN i.Accepted = 1 OR i.GradingStatus = 0 THEN i.ExposureDuration ELSE 0 END) AS TotalSeconds,
                 COUNT(DISTINCT i.SessionId) AS SessionCount,
                 MAX(s.SessionStart) AS LastSessionStart,
                 COUNT(*) AS TotalFrames,
-                SUM(CASE WHEN i.Accepted = 1 THEN 1 ELSE 0 END) AS AcceptedFrames,
-                AVG(CASE WHEN i.Accepted = 1 AND i.HFR > 0 THEN i.HFR END) AS AvgHFR,
-                AVG(CASE WHEN i.Accepted = 1 AND i.FWHM > 0 THEN i.FWHM END) AS AvgFWHM,
-                AVG(CASE WHEN i.Accepted = 1 AND i.GuidingRMSTotal > 0 THEN i.GuidingRMSTotal END) AS AvgGuidingRMS
+                SUM(CASE WHEN i.Accepted = 1 OR i.GradingStatus = 0 THEN 1 ELSE 0 END)                  AS AcceptedFrames,
+                AVG(CASE WHEN (i.Accepted = 1 OR i.GradingStatus = 0) AND i.HFR > 0 THEN i.HFR END)     AS AvgHFR,
+                AVG(CASE WHEN (i.Accepted = 1 OR i.GradingStatus = 0) AND i.FWHM > 0 THEN i.FWHM END)   AS AvgFWHM,
+                AVG(CASE WHEN (i.Accepted = 1 OR i.GradingStatus = 0) AND i.GuidingRMSTotal > 0 THEN i.GuidingRMSTotal END) AS AvgGuidingRMS
             FROM Images i
             JOIN Sessions s ON s.SessionId = i.SessionId
             WHERE i.TargetName IS NOT NULL AND i.TargetName != ''
@@ -254,12 +257,13 @@ public sealed class SqliteSessionReader {
             }
         }
 
+        // Same "not rejected" gate as sqlAgg above.
         const string sqlFilters = @"
             SELECT
                 i.TargetName, i.Filter,
-                SUM(CASE WHEN i.Accepted = 1 THEN i.ExposureDuration ELSE 0 END) AS TotalSeconds,
+                SUM(CASE WHEN i.Accepted = 1 OR i.GradingStatus = 0 THEN i.ExposureDuration ELSE 0 END) AS TotalSeconds,
                 COUNT(*) AS FrameCount,
-                SUM(CASE WHEN i.Accepted = 1 THEN 1 ELSE 0 END) AS AcceptedCount
+                SUM(CASE WHEN i.Accepted = 1 OR i.GradingStatus = 0 THEN 1 ELSE 0 END) AS AcceptedCount
             FROM Images i
             WHERE i.TargetName IS NOT NULL AND i.TargetName != ''
               AND (i.ImageType IS NULL OR i.ImageType = '' OR i.ImageType = 'LIGHT')
@@ -326,10 +330,13 @@ public sealed class SqliteSessionReader {
         var result = new List<TargetSessionHistory>();
         using var conn = new SqliteConnection(connectionString);
         conn.Open();
+        // "Not rejected" = Accepted=1 OR GradingStatus=0 (TS Pending).
+        // Mirrors ImageRecord.CountsAsAccepted and ReportGenerator.IsRejected so
+        // pending images contribute to integration totals until TS grades them.
         const string sql = @"
             SELECT
                 s.SessionStart,
-                SUM(CASE WHEN i.Accepted = 1 THEN i.ExposureDuration ELSE 0 END) AS IntegrationSeconds,
+                SUM(CASE WHEN i.Accepted = 1 OR i.GradingStatus = 0 THEN i.ExposureDuration ELSE 0 END) AS IntegrationSeconds,
                 AVG(CASE WHEN i.HFR > 0 THEN i.HFR END)               AS AvgHFR,
                 AVG(CASE WHEN i.FWHM > 0 THEN i.FWHM END)             AS AvgFWHM,
                 AVG(CASE WHEN i.GuidingRMSTotal > 0 THEN i.GuidingRMSTotal END) AS AvgGuidingRMS
@@ -363,14 +370,16 @@ public sealed class SqliteSessionReader {
         using var conn = new SqliteConnection(connectionString);
         conn.Open();
 
+        // "Not rejected" gate: Accepted=1 OR GradingStatus=0 (TS Pending). See
+        // ImageRecord.CountsAsAccepted for the rationale.
         const string sqlAgg = @"
             SELECT
                 s.SessionId, s.SessionStart, s.SessionEnd,
-                SUM(CASE WHEN i.Accepted = 1 THEN i.ExposureDuration ELSE 0 END) AS IntegrationSeconds,
-                COUNT(*)                                                         AS FrameCount,
-                SUM(CASE WHEN i.Accepted = 1 THEN 1 ELSE 0 END)                 AS AcceptedFrames,
-                AVG(CASE WHEN i.Accepted = 1 AND i.HFR > 0 THEN i.HFR END)       AS AvgHFR,
-                AVG(CASE WHEN i.Accepted = 1 AND i.GuidingRMSTotal > 0 THEN i.GuidingRMSTotal END) AS AvgGuidingRMS
+                SUM(CASE WHEN i.Accepted = 1 OR i.GradingStatus = 0 THEN i.ExposureDuration ELSE 0 END) AS IntegrationSeconds,
+                COUNT(*)                                                                                AS FrameCount,
+                SUM(CASE WHEN i.Accepted = 1 OR i.GradingStatus = 0 THEN 1 ELSE 0 END)                  AS AcceptedFrames,
+                AVG(CASE WHEN (i.Accepted = 1 OR i.GradingStatus = 0) AND i.HFR > 0 THEN i.HFR END)     AS AvgHFR,
+                AVG(CASE WHEN (i.Accepted = 1 OR i.GradingStatus = 0) AND i.GuidingRMSTotal > 0 THEN i.GuidingRMSTotal END) AS AvgGuidingRMS
             FROM Images i
             JOIN Sessions s ON s.SessionId = i.SessionId
             WHERE i.TargetName = @TargetName COLLATE NOCASE
@@ -399,14 +408,15 @@ public sealed class SqliteSessionReader {
 
         if (sessions.Count == 0) return new List<TargetSessionDetail>();
 
+        // Same "not rejected" gate as sqlAgg above.
         const string sqlFilters = @"
             SELECT
                 i.SessionId, i.Filter,
-                SUM(CASE WHEN i.Accepted = 1 THEN i.ExposureDuration ELSE 0 END) AS IntegrationSeconds,
-                COUNT(*)                                                         AS FrameCount,
-                SUM(CASE WHEN i.Accepted = 1 THEN 1 ELSE 0 END)                 AS AcceptedFrames,
-                AVG(CASE WHEN i.Accepted = 1 AND i.HFR > 0 THEN i.HFR END)       AS AvgHFR,
-                AVG(CASE WHEN i.Accepted = 1 AND i.GuidingRMSTotal > 0 THEN i.GuidingRMSTotal END) AS AvgGuidingRMS
+                SUM(CASE WHEN i.Accepted = 1 OR i.GradingStatus = 0 THEN i.ExposureDuration ELSE 0 END) AS IntegrationSeconds,
+                COUNT(*)                                                                                AS FrameCount,
+                SUM(CASE WHEN i.Accepted = 1 OR i.GradingStatus = 0 THEN 1 ELSE 0 END)                  AS AcceptedFrames,
+                AVG(CASE WHEN (i.Accepted = 1 OR i.GradingStatus = 0) AND i.HFR > 0 THEN i.HFR END)     AS AvgHFR,
+                AVG(CASE WHEN (i.Accepted = 1 OR i.GradingStatus = 0) AND i.GuidingRMSTotal > 0 THEN i.GuidingRMSTotal END) AS AvgGuidingRMS
             FROM Images i
             WHERE i.TargetName = @TargetName COLLATE NOCASE
               AND (i.ImageType IS NULL OR i.ImageType = '' OR i.ImageType = 'LIGHT')
@@ -498,12 +508,14 @@ public sealed class SqliteSessionReader {
     }
 
     // Shared SELECT for session-list methods that need image/target/integration counts
-    // for display in the dropdown. Counts use Accepted = 1 to match what the report shows.
+    // for display in the dropdown. "Not rejected" gate is (Accepted=1 OR GradingStatus=0):
+    // TS Pending counts toward totals until TS reaches a verdict — matches what the
+    // report shows (ReportGenerator.IsRejected) and ImageRecord.CountsAsAccepted.
     private const string SessionListWithCountsSql = @"
         SELECT s.*,
-            (SELECT COUNT(*) FROM Images WHERE SessionId = s.SessionId AND Accepted = 1) AS ImageCount,
-            (SELECT COUNT(DISTINCT TargetName) FROM Images WHERE SessionId = s.SessionId AND Accepted = 1 AND TargetName IS NOT NULL AND TargetName <> '') AS TargetCount,
-            (SELECT COALESCE(SUM(ExposureDuration), 0) FROM Images WHERE SessionId = s.SessionId AND Accepted = 1) AS IntegrationSeconds
+            (SELECT COUNT(*) FROM Images WHERE SessionId = s.SessionId AND (Accepted = 1 OR GradingStatus = 0)) AS ImageCount,
+            (SELECT COUNT(DISTINCT TargetName) FROM Images WHERE SessionId = s.SessionId AND (Accepted = 1 OR GradingStatus = 0) AND TargetName IS NOT NULL AND TargetName <> '') AS TargetCount,
+            (SELECT COALESCE(SUM(ExposureDuration), 0) FROM Images WHERE SessionId = s.SessionId AND (Accepted = 1 OR GradingStatus = 0)) AS IntegrationSeconds
         FROM Sessions s";
 
     private static SessionRecord ReadEnrichedSessionRecord(SchemaSafeReader reader) {

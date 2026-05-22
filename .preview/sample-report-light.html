@@ -94,6 +94,13 @@ details.livestack-section > summary { cursor: pointer; color: var(--accent-light
 details.livestack-section > summary::-webkit-details-marker { display: none; }
 details.livestack-section > summary::before { content: '\25B6\00A0'; }
 details.livestack-section[open] > summary::before { content: '\25BC\00A0'; }
+details.window-section { margin-top: 10px; }
+details.window-section:first-of-type { margin-top: 18px; }
+details.window-section > summary { cursor: pointer; color: var(--accent-light); font-size: 14px; font-weight: bold; list-style: none; }
+details.window-section > summary strong { color: var(--accent-light); }
+details.window-section > summary::-webkit-details-marker { display: none; }
+details.window-section > summary::before { content: '\25B6\00A0'; }
+details.window-section[open] > summary::before { content: '\25BC\00A0'; }
 .iq-table { width: 100%; margin-top: 8px; }
 .iq-row-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr; }
 .iq-header { background-color: var(--border); color: var(--accent); padding: 8px; text-align: left; font-weight: bold; }
@@ -160,10 +167,6 @@ svg g:has(> title), svg circle:has(> title), svg line:has(> title), svg [data-ti
 <rect x='146.8' y='20' width='241.3' height='200' fill='#4e79a7' opacity='0.15'/>
 <line x1='146.8' y1='20' x2='146.8' y2='220' stroke='#4e79a7' stroke-width='1' opacity='0.5'/>
 <line x1='388.1' y1='20' x2='388.1' y2='220' stroke='#4e79a7' stroke-width='1' opacity='0.5'/>
-</g>
-<g><title>Moon</title>
-<polyline points='38.0,170.0 47.9,168.0 57.8,166.0 67.7,164.0 77.6,162.0 87.4,160.0 97.3,157.9 107.2,155.9 117.1,153.9 127.0,151.9 136.9,149.9 146.8,147.9 156.7,145.9 166.6,143.9 176.4,141.9 186.3,139.9 196.2,137.9 206.1,135.9 216.0,133.9 225.9,131.9 235.8,130.0 245.7,128.0 255.6,126.1 265.4,124.1 275.3,122.2 285.2,120.3 295.1,118.4 305.0,116.5 314.9,114.6 324.8,112.8 334.7,111.0 344.6,109.1 354.4,107.3 364.3,105.6 374.2,103.8 384.1,102.1 394.0,100.4 403.9,98.7 413.8,97.1 423.7,95.4 433.6,93.9 443.4,92.3 453.3,90.8 463.2,89.4 473.1,88.0 483.0,86.6 492.9,85.4 502.8,84.1 512.7,82.9 522.6,81.8 532.4,80.8 542.3,79.8 552.2,78.9 562.1,78.1 572.0,77.3 581.9,76.7 591.8,76.1 601.7,75.6 611.6,75.3 621.4,75.0 631.3,74.8 641.2,74.7 651.1,74.7 661.0,74.9 670.9,75.1 680.8,75.4 690.7,75.8 700.6,76.3 710.4,76.9 720.3,77.6 730.2,78.3 740.1,79.2 750.0,80.1 ' fill='none' stroke='transparent' stroke-width='12'/>
-<polyline points='38.0,170.0 47.9,168.0 57.8,166.0 67.7,164.0 77.6,162.0 87.4,160.0 97.3,157.9 107.2,155.9 117.1,153.9 127.0,151.9 136.9,149.9 146.8,147.9 156.7,145.9 166.6,143.9 176.4,141.9 186.3,139.9 196.2,137.9 206.1,135.9 216.0,133.9 225.9,131.9 235.8,130.0 245.7,128.0 255.6,126.1 265.4,124.1 275.3,122.2 285.2,120.3 295.1,118.4 305.0,116.5 314.9,114.6 324.8,112.8 334.7,111.0 344.6,109.1 354.4,107.3 364.3,105.6 374.2,103.8 384.1,102.1 394.0,100.4 403.9,98.7 413.8,97.1 423.7,95.4 433.6,93.9 443.4,92.3 453.3,90.8 463.2,89.4 473.1,88.0 483.0,86.6 492.9,85.4 502.8,84.1 512.7,82.9 522.6,81.8 532.4,80.8 542.3,79.8 552.2,78.9 562.1,78.1 572.0,77.3 581.9,76.7 591.8,76.1 601.7,75.6 611.6,75.3 621.4,75.0 631.3,74.8 641.2,74.7 651.1,74.7 661.0,74.9 670.9,75.1 680.8,75.4 690.7,75.8 700.6,76.3 710.4,76.9 720.3,77.6 730.2,78.3 740.1,79.2 750.0,80.1 ' fill='none' stroke='#7a8a9e' stroke-width='1.5' stroke-dasharray='5,4' opacity='0.75'/>
 </g>
 <g><title>AF: AF @ L @ 22:12:00</title>
 <line x1='180.4' y1='20' x2='180.4' y2='220' stroke='#7c3aed' stroke-width='1' stroke-dasharray='4,3' opacity='0.7'/>
@@ -296,7 +299,7 @@ svg g:has(> title), svg circle:has(> title), svg line:has(> title), svg [data-ti
 <p style='font-size:11px; color:var(--muted); margin-top:4px;'>* Yield calculated without cloud exclusion — no safety monitor events recorded</p>
 <h2>Targets Imaged</h2>
 <div class='target-section'>
-<h3>NGC 7000 <span style='font-weight:normal; font-size:12px; color:var(--muted);'>— Start: 22:00 &nbsp;&#8594;&nbsp; End: 23:57</span></h3>
+<h3>NGC 7000 <span style='font-weight:normal; font-size:12px; color:var(--muted);'>— Start: 21:55 &nbsp;&#8594;&nbsp; End: 23:57</span></h3>
 <table>
 <tr><th>Filter</th><th>Images</th><th>Exposure</th><th>Total Time</th></tr>
 <tr><td>L</td><td>10</td><td>300s</td><td>50m</td></tr>

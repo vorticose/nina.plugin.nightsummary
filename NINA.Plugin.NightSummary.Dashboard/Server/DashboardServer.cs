@@ -566,6 +566,9 @@ namespace NINA.Plugin.NightSummary.Server {
                     } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/regenerate")) {
                         var sessionId = ExtractSessionId(path, "/regenerate");
                         await HandleRegenerateReport(req, res, sessionId, done);
+                    } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/resync-ts-grading")) {
+                        var sessionId = ExtractSessionId(path, "/resync-ts-grading");
+                        await HandleResyncTsGrading(res, sessionId, done);
                     } else if (path == "/api/stats/ts/override") {
                         await HandleTsStatusOverride(req, res, done);
                     } else if (path == "/api/stats/ts/link") {
@@ -651,7 +654,7 @@ namespace NINA.Plugin.NightSummary.Server {
                     targets = lightImages
                         .Where(i => !string.IsNullOrEmpty(i.TargetName))
                         .Select(i => i.TargetName).Distinct().ToList(),
-                    totalIntegrationSeconds = lightImages.Where(i => i.Accepted).Sum(i => i.ExposureDuration),
+                    totalIntegrationSeconds = lightImages.Where(i => i.CountsAsAccepted).Sum(i => i.ExposureDuration),
                     avgHfr = lightImages.Where(i => i.HFR > 0).Select(i => i.HFR).DefaultIfEmpty(0).Average(),
                     avgFwhm = lightImages.Where(i => i.FWHM > 0).Select(i => i.FWHM).DefaultIfEmpty(0).Average(),
                     avgGuiding = lightImages.Where(i => i.GuidingRMSTotal > 0).Select(i => i.GuidingRMSTotal).DefaultIfEmpty(0).Average(),
@@ -689,9 +692,9 @@ namespace NINA.Plugin.NightSummary.Server {
                 .Select(g => new {
                     target = g.Key,
                     imageCount = g.Count(),
-                    accepted = g.Count(i => i.Accepted),
-                    rejected = g.Count(i => !i.Accepted),
-                    integrationSeconds = g.Where(i => i.Accepted).Sum(i => i.ExposureDuration),
+                    accepted = g.Count(i => i.CountsAsAccepted),
+                    rejected = g.Count(i => !i.CountsAsAccepted),
+                    integrationSeconds = g.Where(i => i.CountsAsAccepted).Sum(i => i.ExposureDuration),
                     avgHfr = g.Where(i => i.HFR > 0).Select(i => i.HFR).DefaultIfEmpty(0).Average(),
                     avgFwhm = g.Where(i => i.FWHM > 0).Select(i => i.FWHM).DefaultIfEmpty(0).Average(),
                     avgGuiding = g.Where(i => i.GuidingRMSTotal > 0).Select(i => i.GuidingRMSTotal).DefaultIfEmpty(0).Average(),
@@ -699,8 +702,8 @@ namespace NINA.Plugin.NightSummary.Server {
                     filters = g.GroupBy(i => i.Filter ?? "Unknown").Select(fg => new {
                         filter = fg.Key,
                         count = fg.Count(),
-                        accepted = fg.Count(i => i.Accepted),
-                        integrationSeconds = fg.Where(i => i.Accepted).Sum(i => i.ExposureDuration)
+                        accepted = fg.Count(i => i.CountsAsAccepted),
+                        integrationSeconds = fg.Where(i => i.CountsAsAccepted).Sum(i => i.ExposureDuration)
                     }).ToList()
                 }).ToList();
 
@@ -733,9 +736,9 @@ namespace NINA.Plugin.NightSummary.Server {
                 },
                 summary = new {
                     totalImages = lightImages.Count,
-                    accepted = lightImages.Count(i => i.Accepted),
-                    rejected = lightImages.Count(i => !i.Accepted),
-                    totalIntegrationSeconds = lightImages.Where(i => i.Accepted).Sum(i => i.ExposureDuration),
+                    accepted = lightImages.Count(i => i.CountsAsAccepted),
+                    rejected = lightImages.Count(i => !i.CountsAsAccepted),
+                    totalIntegrationSeconds = lightImages.Where(i => i.CountsAsAccepted).Sum(i => i.ExposureDuration),
                     avgHfr = lightImages.Where(i => i.HFR > 0).Select(i => i.HFR).DefaultIfEmpty(0).Average(),
                     avgFwhm = lightImages.Where(i => i.FWHM > 0).Select(i => i.FWHM).DefaultIfEmpty(0).Average(),
                     avgGuiding = lightImages.Where(i => i.GuidingRMSTotal > 0).Select(i => i.GuidingRMSTotal).DefaultIfEmpty(0).Average(),
@@ -751,6 +754,26 @@ namespace NINA.Plugin.NightSummary.Server {
             done?.Invoke(200, $"{sessionId} — {targetBreakdown.Count} targets, {lightImages.Count} images");
         }
 
+        // Fire-and-forget from the dashboard on session-detail load. Queries TS for any
+        // late grading verdicts on Pending images and updates the NS DB. Cheap pre-check
+        // in the data source skips the TS query entirely when nothing is Pending.
+        private async Task HandleResyncTsGrading(TcpHttpResponse res, string sessionId, Action<int, string> done) {
+            if (string.IsNullOrEmpty(sessionId)) {
+                await WriteJson(res, 400, new { error = "Missing session id" });
+                done?.Invoke(400, null);
+                return;
+            }
+            try {
+                int updated = await _data.ResyncTsGradingAsync(sessionId);
+                await WriteJson(res, 200, new { updated });
+                done?.Invoke(200, $"{sessionId} — {updated} grading row(s) refreshed");
+            } catch (Exception ex) {
+                log?.Warn($"Resync TS grading failed for {sessionId}: {ex.Message}");
+                await WriteJson(res, 500, new { error = ex.Message });
+                done?.Invoke(500, ex.Message);
+            }
+        }
+
         private async Task HandleGetSessionImages(TcpHttpResponse res, string sessionId, Action<int, string> done) {
             if (!File.Exists(dbPath)) {
                 await WriteJson(res, 200, Array.Empty<object>());
@@ -763,8 +786,8 @@ namespace NINA.Plugin.NightSummary.Server {
             // when TS is unavailable so frame tiles don't render as rejected for
             // a non-TS user (see HandleGetFrameMetrics for the same gating).
             // Also reset accepted=true when TS sync had previously written accepted=false
-            // (UpdateImageGradingFromTs sets accepted = gradingStatus==1, so a non-1
-            // gradingStatus implies accepted came from TS, not NINA-side rejection).
+            // for a Pending row (legacy DBs from before the UpdateImageGradingFromTs
+            // fix), or when TS isn't installed at all (stale TS-import residue).
             bool tsAvailable = await _data.IsTargetSchedulerAvailableAsync();
             var result = images.Select(i => new {
                 id = i.Id,
@@ -773,7 +796,8 @@ namespace NINA.Plugin.NightSummary.Server {
                 filter = i.Filter,
                 exposureDuration = i.ExposureDuration,
                 imageType = i.ImageType,
-                accepted = (!tsAvailable && i.GradingStatus >= 0) ? true : i.Accepted,
+                // Pending (gradingStatus=0) is "TS hasn't graded yet" — render as accepted.
+                accepted = (!tsAvailable && i.GradingStatus >= 0) ? true : i.CountsAsAccepted,
                 hfr = i.HFR,
                 fwhm = i.FWHM,
                 eccentricity = i.Eccentricity,
@@ -1052,7 +1076,10 @@ namespace NINA.Plugin.NightSummary.Server {
             bool tsAvailable = await _data.IsTargetSchedulerAvailableAsync();
             int finalGrading;
             string finalReject;
-            bool effectivelyAccepted = img.Accepted;
+            // Pending (GradingStatus=0) counts as accepted — see ImageRecord.CountsAsAccepted.
+            // Heals legacy DB rows where UpdateImageGradingFromTs wrote Accepted=false for
+            // Pending images before the fix.
+            bool effectivelyAccepted = img.CountsAsAccepted;
             if (tsAvailable) {
                 finalGrading = img.GradingStatus >= 0
                     ? img.GradingStatus
@@ -1204,7 +1231,8 @@ namespace NINA.Plugin.NightSummary.Server {
                         timestamp = img.Timestamp.ToString("o"),
                         filter = img.Filter,
                         exposureDuration = img.ExposureDuration,
-                        accepted = (!tsAvailable && img.GradingStatus >= 0) ? true : img.Accepted,
+                        // Pending (gradingStatus=0) is "TS hasn't graded yet" — render as accepted.
+                        accepted = (!tsAvailable && img.GradingStatus >= 0) ? true : img.CountsAsAccepted,
                         gradingStatus = tsAvailable ? img.GradingStatus : -1,
                         thumbnailVersion = img.ThumbnailVersion
                     });
@@ -1254,7 +1282,8 @@ namespace NINA.Plugin.NightSummary.Server {
                         targetName = img.TargetName,
                         filter = img.Filter,
                         exposureDuration = img.ExposureDuration,
-                        accepted = img.Accepted,
+                        // Pending (gradingStatus=0) is "TS hasn't graded yet" — render as accepted.
+                        accepted = img.CountsAsAccepted,
                         gradingStatus = img.GradingStatus,
                         thumbnailVersion = img.ThumbnailVersion
                     });
@@ -2700,7 +2729,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 }).ToList();
                 if (matching.Count == 0) continue;
 
-                var accepted = matching.Where(i => i.Accepted).ToList();
+                var accepted = matching.Where(i => i.CountsAsAccepted).ToList();
                 double integSec = accepted.Sum(i => i.ExposureDuration);
                 var hfrs = accepted.Where(i => i.HFR > 0).Select(i => i.HFR).ToList();
                 var guides = accepted.Where(i => i.GuidingRMSTotal > 0).Select(i => i.GuidingRMSTotal).ToList();
@@ -2710,7 +2739,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 var byFilter = matching
                     .GroupBy(i => i.Filter ?? "Unknown")
                     .Select(g => {
-                        var acc = g.Where(i => i.Accepted).ToList();
+                        var acc = g.Where(i => i.CountsAsAccepted).ToList();
                         var fHfrs   = acc.Where(i => i.HFR > 0).Select(i => i.HFR).ToList();
                         var fGuides = acc.Where(i => i.GuidingRMSTotal > 0).Select(i => i.GuidingRMSTotal).ToList();
                         double fSec = acc.Sum(i => i.ExposureDuration);
@@ -3897,8 +3926,8 @@ private static string FormatSettingsForLog(NightSummarySettings s) {
             foreach (var s in sessions) {
                 var images = DbImages(s.SessionId);
                 var lights = images.Where(i => string.IsNullOrEmpty(i.ImageType) || i.ImageType == "LIGHT").ToList();
-                totalImages += lights.Count(i => i.Accepted);
-                totalIntegration += lights.Where(i => i.Accepted).Sum(i => i.ExposureDuration);
+                totalImages += lights.Count(i => i.CountsAsAccepted);
+                totalIntegration += lights.Where(i => i.CountsAsAccepted).Sum(i => i.ExposureDuration);
                 foreach (var t in lights.Where(i => !string.IsNullOrEmpty(i.TargetName)).Select(i => i.TargetName))
                     allTargets.Add(t);
             }

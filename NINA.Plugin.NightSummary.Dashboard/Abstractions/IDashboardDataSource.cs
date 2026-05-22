@@ -28,6 +28,13 @@ public interface IDashboardDataSource {
     // legacy match (NS pre-fix Timestamp = ImageSaved time = ExposureStart + duration);
     // pass 0 to skip the fallback.
     Task<TsImageAugment?> GetTsImageAugmentAsync(string targetName, string filterName, System.DateTime timestamp, int windowSeconds, double exposureDurationSeconds, CancellationToken ct = default);
+    // On-demand TS grading resync for a single session. Re-queries the TS database
+    // and updates any NS image rows whose grading has changed since the last sync
+    // (typically when TS was Pending at session-end and has since reached a verdict).
+    // Returns the number of changed rows; 0 when TS is unavailable, the session has
+    // no Pending images, or nothing has moved. Dashboard fires this fire-and-forget
+    // after the session detail renders.
+    Task<int> ResyncTsGradingAsync(string sessionId, CancellationToken ct = default);
 
     // --- Report artifacts (disk-backed) ---
     Task<string?> LoadReportHtmlAsync(string sessionId, CancellationToken ct = default);
