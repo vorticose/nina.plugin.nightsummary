@@ -351,6 +351,8 @@ namespace NINA.Plugin.NightSummary.Tests {
                 => Task.FromResult<TsApiSettings?>(null);
             public Task<TsImageAugment?> GetTsImageAugmentAsync(string targetName, string filterName, DateTime ts, int windowSeconds, double exposureDurationSeconds, CancellationToken ct = default)
                 => Task.FromResult<TsImageAugment?>(null);
+            public Task<int> ResyncTsGradingAsync(string sessionId, CancellationToken ct = default)
+                => Task.FromResult(0);
             public Task<string?> LoadReportHtmlAsync(string sessionId, CancellationToken ct = default)
                 => Task.FromResult<string?>(null);
             public Task<byte[]?> LoadLivestackImageAsync(string sessionId, string filename, CancellationToken ct = default)

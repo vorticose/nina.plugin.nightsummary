@@ -72,6 +72,13 @@ internal sealed class CompanionDataSource : IDashboardDataSource {
         return Task.FromResult<TsImageAugment?>(_ts.GetImageAugment(targetName, filterName, timestamp, windowSeconds, exposureDurationSeconds));
     }
 
+    // Companion DB is opened read-only (Mode=ReadOnly above) and writes belong to
+    // the primary rig — the synced schedulerdb is a snapshot, not a live source.
+    // Resync is a no-op here; primary-side resync runs when the user opens the
+    // session on the NINA box and any updates propagate via the next companion sync.
+    public Task<int> ResyncTsGradingAsync(string sessionId, CancellationToken ct = default)
+        => Task.FromResult(0);
+
     public Task<string?> LoadReportHtmlAsync(string sessionId, CancellationToken ct = default)
         => Task.FromResult<string?>(null);
     public Task<byte[]?> LoadLivestackImageAsync(string sessionId, string filename, CancellationToken ct = default)
