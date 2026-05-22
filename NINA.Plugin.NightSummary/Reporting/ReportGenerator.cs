@@ -62,9 +62,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
         private static bool IsExcluded(string filter) => FilterHelper.IsExcluded(filter);
         private static int FilterSortKey(string filter) => FilterHelper.SortKey(filter);
 
-        // GradingStatus enum (TS): 0=Pending, 1=Accepted, 2=Rejected, -1=unknown/legacy.
-        // Pending images have Accepted=false but are not rejected — exclude from reject counts.
-        private static bool IsRejected(ImageRecord i) => !i.Accepted && i.GradingStatus != 0;
+        // Inverse of ImageRecord.CountsAsAccepted — Pending (GradingStatus=0) is not
+        // a rejection, even if Accepted=false on legacy rows.
+        private static bool IsRejected(ImageRecord i) => !i.CountsAsAccepted;
 
         public async Task<string> GenerateHtmlReport(ReportData data) {
             Warnings.Clear();

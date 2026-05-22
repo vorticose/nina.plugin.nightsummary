@@ -75,6 +75,12 @@ internal sealed class DevDashboardDataSource : IDashboardDataSource {
         return Task.FromResult<TsImageAugment?>(tsReader.GetImageAugment(targetName, filterName, timestamp, windowSeconds, exposureDurationSeconds));
     }
 
+    // Dev harness has no SessionDatabase write path (snapshot is read-only by convention)
+    // and no live TS pipeline, so resync is a no-op. Returns 0 so the JS trigger never
+    // refetches in dev — matches the dev expectation that grading is frozen at snapshot time.
+    public Task<int> ResyncTsGradingAsync(string sessionId, CancellationToken ct = default)
+        => Task.FromResult(0);
+
     public Task<string?> LoadReportHtmlAsync(string sessionId, CancellationToken ct = default)
         => Task.FromResult<string?>(null);
 

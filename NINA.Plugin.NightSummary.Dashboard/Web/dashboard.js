@@ -6688,6 +6688,19 @@ function renderSessionDetail(sessionId, params) {
     logInfo('Session detail loaded:', sessionId);
     logDebug('Settings received:', JSON.stringify(currentSettings, null, 2));
 
+    // Fire-and-forget: ask the server to re-query Target Scheduler for any
+    // late grading verdicts on Pending images. Server-side pre-check skips the
+    // TS read entirely when no Pending rows exist, so this is near-free on
+    // already-graded sessions. Updated counts surface on the next session-list
+    // visit; we deliberately don't re-render this view (the embedded report is
+    // a static artifact — regeneration is a separate user action).
+    fetch('/api/sessions/' + encodeURIComponent(sessionId) + '/resync-ts-grading', { method: 'POST' })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(j) {
+        if (j && j.updated > 0) logInfo('TS grading resync:', j.updated, 'row(s) updated for', sessionId);
+      })
+      .catch(function(err) { logDebug('TS grading resync skipped:', err && err.message); });
+
     var targets = detail.targets.map(function(t) { return t.target; }).join(', ') || 'Unknown';
     if (sub) sub.textContent = getSubtitleText();
 
@@ -8757,7 +8770,10 @@ function renderFramesGallery(view) {
     function renderThumb(ff, viewKind) {
       var sid2 = ff.sessionId || view.id;
       var src = '/api/frames/' + ff.id + '/thumb?size=sm';
-      var rejected = (ff.gradingStatus === 2) || (ff.accepted === false);
+      // Pending (gradingStatus===0) is "TS hasn't graded yet" — never rejected,
+      // even if accepted===false sneaks through from a legacy DB row that hasn't
+      // been healed by the server-side CountsAsAccepted gate yet.
+      var rejected = (ff.gradingStatus === 2) || (ff.accepted === false && ff.gradingStatus !== 0);
       // Tile caption: filter is already shown in the subgroup header above,
       // and target is shown in the group header — only the project view
       // mixes multiple targets per subgroup, so only there is a per-tile
@@ -8963,17 +8979,21 @@ function bindFramesGallery(frames) {
     // -1/null with accepted=true = no grading data anywhere → "Not graded"
     // when TS is available, but suppressed entirely for non-TS users since
     // an ungraded label is meaningless without grading as a concept.
+    //
+    // Pending (gradingStatus===0) takes precedence over accepted===false so a
+    // legacy DB row that hasn't been healed by the server-side CountsAsAccepted
+    // gate still renders as "TS Pending" rather than "Manual Rejected".
     var status = '';
     if (m.gradingStatus === 2) {
       status = '<span class="m-status m-status-rejected">TS Rejected</span>';
       if (m.rejectReason) status += '<span class="m-reject">' + esc(m.rejectReason) + '</span>';
+    } else if (m.gradingStatus === 0) {
+      status = '<span class="m-status m-status-pending">TS Pending</span>';
     } else if (m.accepted === false) {
       status = '<span class="m-status m-status-rejected">Manual Rejected</span>';
       if (m.rejectReason) status += '<span class="m-reject">' + esc(m.rejectReason) + '</span>';
     } else if (m.gradingStatus === 1) {
       status = '<span class="m-status m-status-accepted">TS Accepted</span>';
-    } else if (m.gradingStatus === 0) {
-      status = '<span class="m-status m-status-pending">TS Pending</span>';
     } else if (m.tsAvailable !== false) {
       status = '<span class="m-status m-status-ungraded">Not graded</span>';
     }
