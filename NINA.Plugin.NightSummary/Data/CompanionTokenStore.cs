@@ -11,28 +11,6 @@ using System.Threading;
 
 namespace NINA.Plugin.NightSummary.Data {
 
-    /// <summary>
-    /// One pairing token entry in <c>companion_tokens.json</c>. Only the
-    /// SHA-256 hash of the plain token is persisted — the plain token is
-    /// shown to the user once at generation time and never re-read.
-    /// </summary>
-    public class CompanionTokenEntry {
-        public string Id { get; set; } = "";
-        public string? Name { get; set; }
-        public string Hash { get; set; } = "";
-        public DateTime CreatedAt { get; set; }
-        public DateTime? PairedAt { get; set; }
-        public DateTime? LastUsedAt { get; set; }
-        public string? CompanionName { get; set; }
-        public DateTime? RevokedAt { get; set; }
-
-        [JsonIgnore]
-        public bool IsRevoked => RevokedAt.HasValue;
-
-        [JsonIgnore]
-        public bool IsPaired => PairedAt.HasValue;
-    }
-
     internal class CompanionTokenFile {
         public int Version { get; set; } = 1;
         public List<CompanionTokenEntry> Tokens { get; set; } = new();
@@ -44,8 +22,12 @@ namespace NINA.Plugin.NightSummary.Data {
     /// companions and survives DB migrations. Reads, writes, and lookups are
     /// thread-safe via an internal lock; writes are atomic (temp file + rename)
     /// so a torn write can never corrupt the store.
+    ///
+    /// <see cref="CompanionTokenEntry"/> + <see cref="ICompanionTokenStore"/>
+    /// live in the Dashboard assembly so the server endpoints can use them
+    /// without a project reference back to this file.
     /// </summary>
-    public class CompanionTokenStore {
+    public class CompanionTokenStore : ICompanionTokenStore {
 
         public static readonly string ProductionPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),

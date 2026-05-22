@@ -15,4 +15,10 @@ public interface IPluginSettings {
     // Surfaced via /api/mode so the dashboard JS can show sync UI / staleness banner
     // without changing any business logic on the server.
     string Mode { get; }
+
+    // NINA host version (NOT the plugin version). Surfaced via
+    // /api/companion/info so the wizard can show which NINA build it's
+    // pairing against. Default-implemented as empty so non-NINA hosts
+    // (dev harness, companion binary, test stubs) don't have to override.
+    string NinaVersion => "";
 }

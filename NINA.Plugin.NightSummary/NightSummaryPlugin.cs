@@ -483,7 +483,8 @@ namespace NINA.Plugin.NightSummary {
                 webAssets:   new EmbeddedWebAssets(),
                 externalLog: new NinaDashboardLogger(),
                 paths:       paths,
-                regen:       new NinaReportRegenerator(this.sessionService, paths.DatabasePath, paths.ReportsDir));
+                regen:       new NinaReportRegenerator(this.sessionService, paths.DatabasePath, paths.ReportsDir),
+                tokenStore:  CompanionTokenStore.Instance);
             await dashboardServer.StartAsync(S.LocalServerPort);
             var notifyUrl = dashboardServer.TailscaleUrl ?? dashboardServer.ZeroTierUrl ?? dashboardServer.Url;
             Notification.ShowInformation($"Night Summary dashboard live: {notifyUrl}");
