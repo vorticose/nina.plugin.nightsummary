@@ -1,6 +1,33 @@
 # Night Summary — Changelog
 
 
+## Unreleased — Companion pairing (feature/companion-rd)
+
+Pairing-token rollout for the standalone Night Summary Companion app. The shared `CompanionApiKey` field stays in place for the transition window — existing companions keep syncing without changes — but new companions can now be set up entirely in a browser via a generated per-companion token, without copy-pasting JSON. Fold this section into whichever release pulls `feature/companion-rd` into `dev`.
+
+**New features**
+- **Companion Pairing panel in Options** — under Dashboard Server → Companion Pairing. Click **+ Generate Token** to issue a 16-character per-companion token (formatted as `XXXX-XXXX-XXXX-XXXX`); the plain token is shown once with a Copy button. Lists paired companions and unclaimed tokens with humanized timestamps; **Revoke** is per-entry and confirms before disabling the pairing.
+- **Setup wizard in the Companion app** — fresh installs now redirect from the dashboard to a 5-step browser wizard (Welcome → Connect → Pair → Sync settings → First sync). Specific user-facing messages for each failure mode: unknown token, revoked token, already-paired-with-another-companion, server-doesn't-support-pairing, connection refused, timeout.
+- **`/api/companion/info`** (unauthenticated) returns the Night Summary version, NINA version, and paired-companion count so the wizard can distinguish "wrong host" from "wrong software" before any token exists.
+- **`/api/companion/pair` and `/api/companion/revoke`** — claim and revoke pairing tokens over HTTP. The companion side sends these via new `/api/setup/probe` and `/api/setup/claim` proxy endpoints so the wizard isn't blocked by browser CORS.
+
+**Improvements**
+- **Dual-auth on existing sync endpoints** — `/api/export/*` accepts either the new per-companion pairing token (preferred) or the legacy shared `CompanionApiKey` as `Authorization: Bearer`. When a request uses the legacy key, a one-shot deprecation warning is logged ("Re-pair the companion to migrate to a pairing token") and the request still succeeds. Companions can migrate at any time without downtime.
+- **Pairing tokens are stored separately** from the main settings file — in `%LOCALAPPDATA%\NINA\NightSummary\companion_tokens.json` — so they survive plugin updates and database migrations, and don't get included in companion sync payloads.
+- **Token storage uses SHA-256 hashing + constant-time lookup** so the plain token can never be recovered from the sidecar file even with full disk access. Atomic write with `.tmp` + rename and retry-on-sharing-violation so concurrent reads can't see a torn file.
+
+**Migration notes**
+- Existing companions with only `nina.apiKey` set keep working. The deprecation warning is informational; nothing breaks.
+- The legacy `nina.apiKey` fallback is scheduled for removal "next release after wizard ships" (two releases out by current plan) — see `COMPANION_PAIRING_DESIGN.md` for the full migration timeline.
+- After re-pairing through the wizard, `companion.json` gains a `nina.pairingToken` field. The old `nina.apiKey` is left in place but ignored when the pairing token is set (token takes precedence).
+
+**Internal / API surface**
+- New `CompanionTokenStore` (`Add` / `FindByToken` / `Revoke` / `MarkPaired` / `TouchLastUsed`) backed by `companion_tokens.json` with atomic writes, soft-delete revocation, and constant-time lookups.
+- `IPluginSettings` gains a default `NinaVersion` property (returns "" unless the host overrides) so `/api/companion/info` can surface the NINA build version.
+- `ICompanionController` gains `ProbePrimaryAsync` and `ClaimPairingAsync`.
+- 85 new tests across `CompanionTokenStoreTests`, `CompanionTokenViewTests`, `CompanionPairingEndpointsTests`, `CompanionAuthShimTests`, `CompanionWizardEndpointsTests`. Full suite at 818 passing.
+
+
 ## Unreleased — v3.1.1 (in progress)
 
 **Bug fixes**
