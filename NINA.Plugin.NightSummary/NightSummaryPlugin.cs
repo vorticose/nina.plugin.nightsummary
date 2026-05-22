@@ -117,6 +117,10 @@ namespace NINA.Plugin.NightSummary {
             this.sessionService = sessionService;
             this.profileService = profileService;
 
+            // Populate the pairing token lists once at startup so the Options
+            // panel renders the current state without waiting for a user action.
+            RefreshCompanionTokens();
+
             TestEmailCommand = new RelayCommand(async () => {
                 EmailTestStatus.Text = "";
                 var senderAddr = S.SenderAddress;
@@ -740,6 +744,106 @@ namespace NINA.Plugin.NightSummary {
             RaisePropertyChanged(nameof(CompanionApiKey));
         });
 
+        // ── Companion Pairing ────────────────────────────────────────────────
+        // New per-companion token flow. Replaces the shared CompanionApiKey
+        // long-term — see COMPANION_PAIRING_DESIGN.md. The plain token is
+        // shown ONCE at generation time and never re-read; only the SHA-256
+        // hash is persisted (in companion_tokens.json, separate from settings).
+
+        public ObservableCollection<CompanionTokenView> PairedCompanions { get; } = new();
+        public ObservableCollection<CompanionTokenView> UnpairedTokens   { get; } = new();
+
+        public bool HasPairedCompanions => PairedCompanions.Count > 0;
+        public bool HasUnpairedTokens   => UnpairedTokens.Count > 0;
+        public bool HasAnyTokens        => HasPairedCompanions || HasUnpairedTokens;
+
+        private string _newCompanionToken = "";
+        // Plain token, hyphenated for display. Bound read-only to a TextBox so
+        // the user can copy it. Cleared when the user dismisses the panel.
+        public string NewCompanionToken {
+            get => _newCompanionToken;
+            private set { _newCompanionToken = value; RaisePropertyChanged(); }
+        }
+
+        private bool _showNewCompanionToken;
+        // Drives a DataTrigger on the "new token" panel's Visibility. Flipped
+        // true by GenerateCompanionTokenCommand; flipped false by Dismiss.
+        public bool ShowNewCompanionToken {
+            get => _showNewCompanionToken;
+            private set { _showNewCompanionToken = value; RaisePropertyChanged(); }
+        }
+
+        public ICommand GenerateCompanionTokenCommand => new RelayCommand(async () => {
+            var plain = GeneratePairingTokenPlain();
+            CompanionTokenStore.Instance.Add(plain);
+            NewCompanionToken     = FormatPairingTokenForDisplay(plain);
+            ShowNewCompanionToken = true;
+            RefreshCompanionTokens();
+            await Task.CompletedTask;
+        });
+
+        public ICommand CopyNewCompanionTokenCommand => new RelayCommand(async () => {
+            if (!string.IsNullOrEmpty(_newCompanionToken))
+                System.Windows.Clipboard.SetText(_newCompanionToken);
+            await Task.CompletedTask;
+        });
+
+        public ICommand DismissNewCompanionTokenCommand => new RelayCommand(async () => {
+            NewCompanionToken     = "";
+            ShowNewCompanionToken = false;
+            await Task.CompletedTask;
+        });
+
+        // Called by Options.xaml.cs revoke-button click handler with the
+        // entry's Id from the Button Tag. Confirms, revokes, refreshes.
+        public void RevokeCompanionToken(string id) {
+            if (string.IsNullOrEmpty(id)) return;
+            var entry = CompanionTokenStore.Instance.FindById(id);
+            var label = entry?.CompanionName ?? entry?.Name ?? id;
+            var ok = System.Windows.MessageBox.Show(
+                $"Revoke pairing for \"{label}\"?\n\nThe companion will stop syncing immediately and must be re-paired to resume.",
+                "Revoke Companion Token",
+                System.Windows.MessageBoxButton.OKCancel,
+                System.Windows.MessageBoxImage.Warning);
+            if (ok != System.Windows.MessageBoxResult.OK) return;
+            if (CompanionTokenStore.Instance.Revoke(id)) RefreshCompanionTokens();
+        }
+
+        // Rebuilds PairedCompanions + UnpairedTokens from the store. Cheap —
+        // store reads from JSON once on first access and cache-hits after.
+        public void RefreshCompanionTokens() {
+            var entries = CompanionTokenStore.Instance.List();
+            PairedCompanions.Clear();
+            UnpairedTokens.Clear();
+            foreach (var e in entries) {
+                if (e.IsRevoked) continue;
+                var view = new CompanionTokenView(e);
+                if (e.IsPaired) PairedCompanions.Add(view);
+                else            UnpairedTokens.Add(view);
+            }
+            RaisePropertyChanged(nameof(HasPairedCompanions));
+            RaisePropertyChanged(nameof(HasUnpairedTokens));
+            RaisePropertyChanged(nameof(HasAnyTokens));
+        }
+
+        // 16-char token from base32 minus visually ambiguous characters
+        // (0/O/1/I/L). Matches COMPANION_PAIRING_DESIGN — 80 bits of entropy.
+        private static string GeneratePairingTokenPlain() {
+            const string alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+            var bytes = new byte[16];
+            System.Security.Cryptography.RandomNumberGenerator.Fill(bytes);
+            var sb = new System.Text.StringBuilder(16);
+            foreach (var b in bytes) sb.Append(alphabet[b % alphabet.Length]);
+            return sb.ToString();
+        }
+
+        // 4-4-4-4 with hyphens for human readability. The wizard strips
+        // hyphens on submit so either form works on paste.
+        private static string FormatPairingTokenForDisplay(string raw) {
+            if (raw == null || raw.Length != 16) return raw ?? "";
+            return $"{raw.Substring(0, 4)}-{raw.Substring(4, 4)}-{raw.Substring(8, 4)}-{raw.Substring(12, 4)}";
+        }
+
         public int ReportDetailLevel {
             get => S.ReportDetailLevel;
             set {
@@ -1222,6 +1326,41 @@ namespace NINA.Plugin.NightSummary {
     /// <summary>
     /// Minimal async-capable relay command for the Options UI.
     /// </summary>
+    /// <summary>
+    /// UI projection of <see cref="CompanionTokenEntry"/> for the Options
+    /// panel's pairing lists. Just enough fields for the row template +
+    /// a humanized "paired 2d ago" string; the Id is what the Revoke
+    /// button passes back through its Tag.
+    /// </summary>
+    public class CompanionTokenView {
+        public string Id            { get; }
+        public string DisplayName   { get; }
+        public string TimestampText { get; }
+        public bool   IsPaired      { get; }
+
+        public CompanionTokenView(CompanionTokenEntry e) {
+            Id          = e.Id;
+            IsPaired    = e.IsPaired;
+            DisplayName = !string.IsNullOrWhiteSpace(e.CompanionName) ? e.CompanionName!
+                        : !string.IsNullOrWhiteSpace(e.Name)          ? e.Name!
+                        : "(unnamed)";
+
+            if (e.IsPaired && e.PairedAt.HasValue) {
+                TimestampText = $"paired {Relative(DateTime.UtcNow - e.PairedAt.Value)}";
+            } else {
+                TimestampText = $"created {Relative(DateTime.UtcNow - e.CreatedAt)} — not yet claimed";
+            }
+        }
+
+        private static string Relative(TimeSpan span) {
+            if (span.TotalSeconds < 60) return "just now";
+            if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes}m ago";
+            if (span.TotalHours   < 24) return $"{(int)span.TotalHours}h ago";
+            if (span.TotalDays    < 30) return $"{(int)span.TotalDays}d ago";
+            return $"{(int)(span.TotalDays / 30)}mo ago";
+        }
+    }
+
     internal class RelayCommand : ICommand {
         private readonly Func<Task> execute;
         private bool isExecuting;
