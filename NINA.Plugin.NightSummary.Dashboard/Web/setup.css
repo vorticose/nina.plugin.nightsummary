@@ -1,18 +1,6 @@
-/* Setup wizard — companion mode. Self-contained styles (no shared
-   dashboard.css dependency) so the wizard renders before any companion
-   data is available. */
-
-:root {
-    --bg: #1a1d23;
-    --panel: #242830;
-    --text: #e8eaed;
-    --muted: #9aa0a6;
-    --accent: #7b68ee;
-    --accent-hover: #6952d4;
-    --border: #353a44;
-    --error: #e57373;
-    --success: #66bb6a;
-}
+/* Setup wizard — companion mode.
+   Inherits design tokens (--bg, --surface, --accent, text hierarchy, etc.)
+   from dashboard.css. This file is wizard-specific layout only. */
 
 * { box-sizing: border-box; }
 
@@ -20,7 +8,7 @@ html, body {
     margin: 0;
     padding: 0;
     background: var(--bg);
-    color: var(--text);
+    color: var(--text-primary);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
     font-size: 14px;
     line-height: 1.5;
@@ -34,67 +22,94 @@ body {
     padding: 24px;
 }
 
-.card {
-    background: var(--panel);
+.wizard-card {
+    background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 32px 28px 24px;
-    max-width: 480px;
+    border-radius: 10px;
+    padding: 28px 28px 20px;
+    max-width: 500px;
     width: 100%;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45),
+                0 0 0 1px rgba(255, 255, 255, 0.02) inset;
 }
 
-header {
+.wizard-card header {
     margin-bottom: 24px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--border);
 }
 
-h1 {
-    margin: 0 0 16px;
-    font-size: 20px;
+.wizard-card h1 {
+    margin: 0 0 14px;
+    font-size: 18px;
     font-weight: 600;
-    color: var(--text);
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
 }
 
-h2 {
+.wizard-card h2 {
     margin: 0 0 12px;
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 600;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
 }
 
-p {
-    margin: 0 0 16px;
-    color: var(--text);
+.wizard-card p {
+    margin: 0 0 14px;
+    color: var(--text-secondary);
 }
+
+/* ── Step progress (5 dots) ─────────────────────────────────────────── */
 
 .steps {
     display: flex;
-    gap: 8px;
+    gap: 6px;
     list-style: none;
     padding: 0;
     margin: 0;
-    font-size: 18px;
-    color: var(--muted);
+    align-items: center;
+}
+
+.steps li {
+    flex: 1;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    color: transparent;
+    overflow: hidden;
+    transition: background-color var(--t-fast);
 }
 
 .steps li.active {
-    color: var(--accent);
+    background: var(--accent);
+    box-shadow: 0 0 6px rgba(var(--accent-rgb), 0.5);
 }
 
 .steps li.done {
-    color: var(--success);
+    background: var(--green, #3fb950);
 }
 
-.step {
+/* ── Step panels (hide/show) ─────────────────────────────────────────
+   Critical fix: `.step { display: flex }` would override the [hidden]
+   attribute, leaking every step into one long scroll. Scope display:
+   to :not([hidden]) so the attribute keeps doing its job. */
+
+.step:not([hidden]) {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 14px;
 }
+
+/* ── Form rows ──────────────────────────────────────────────────────── */
 
 label {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    color: var(--text);
+    gap: 6px;
+    color: var(--text-primary);
+    font-size: 13px;
     font-weight: 500;
 }
 
@@ -106,36 +121,42 @@ label.inline {
 }
 
 input[type="text"], input[type="number"] {
-    background: var(--bg);
+    background: var(--surface-well, var(--bg));
     border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 8px 10px;
-    color: var(--text);
+    border-radius: 5px;
+    padding: 9px 11px;
+    color: var(--text-primary);
     font-size: 14px;
-    font-family: "Consolas", "Courier New", monospace;
+    font-family: "Consolas", "Courier New", ui-monospace, monospace;
+    transition: border-color var(--t-fast), box-shadow var(--t-fast);
 }
 
 input[type="text"]:focus, input[type="number"]:focus {
     outline: none;
     border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.18);
 }
 
 .hint {
-    color: var(--muted);
+    color: var(--text-tertiary);
     font-size: 12px;
     font-weight: 400;
+    line-height: 1.45;
 }
 
 fieldset {
     border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 12px;
+    border-radius: 6px;
+    padding: 12px 14px;
     margin: 0;
+    background: var(--surface-well, var(--bg));
 }
 
 fieldset legend {
-    color: var(--muted);
-    font-size: 12px;
+    color: var(--text-tertiary);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
     padding: 0 6px;
 }
 
@@ -144,35 +165,47 @@ fieldset label {
     align-items: center;
     gap: 8px;
     font-weight: 400;
-    margin: 4px 0;
+    margin: 5px 0;
+    color: var(--text-secondary);
 }
 
 .instructions {
-    margin: 0 0 8px;
-    padding-left: 20px;
-    color: var(--text);
+    margin: 0 0 6px;
+    padding-left: 22px;
+    color: var(--text-secondary);
+    font-size: 13px;
 }
 
 .instructions li {
-    margin: 4px 0;
+    margin: 5px 0;
 }
+
+.instructions strong {
+    color: var(--text-primary);
+}
+
+/* ── Actions row (buttons) ──────────────────────────────────────────── */
 
 .actions {
     display: flex;
     gap: 8px;
     justify-content: flex-end;
-    margin-top: 8px;
+    margin-top: 12px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
 }
 
 button {
-    background: var(--panel);
+    background: var(--surface-well, var(--bg));
     border: 1px solid var(--border);
-    color: var(--text);
+    color: var(--text-primary);
     padding: 8px 16px;
-    border-radius: 4px;
+    border-radius: 5px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 13px;
+    font-weight: 500;
     font-family: inherit;
+    transition: border-color var(--t-fast), background-color var(--t-fast);
 }
 
 button:hover:not(:disabled) {
@@ -182,51 +215,68 @@ button:hover:not(:disabled) {
 button.primary {
     background: var(--accent);
     border-color: var(--accent);
-    color: #fff;
+    color: var(--bg);
 }
 
 button.primary:hover:not(:disabled) {
-    background: var(--accent-hover);
-    border-color: var(--accent-hover);
+    background: var(--accent-light);
+    border-color: var(--accent-light);
 }
 
 button:disabled {
-    opacity: 0.5;
+    opacity: 0.4;
     cursor: not-allowed;
 }
 
+/* ── Status banner ──────────────────────────────────────────────────── */
+
 .status {
-    padding: 10px 12px;
-    border-radius: 4px;
-    font-size: 13px;
+    padding: 9px 12px;
+    border-radius: 5px;
+    font-size: 12px;
     border: 1px solid var(--border);
-    background: var(--bg);
+    background: var(--surface-well, var(--bg));
+    color: var(--text-secondary);
+    line-height: 1.45;
 }
 
 .status.error {
-    border-color: var(--error);
-    color: var(--error);
+    border-color: var(--red, #f85149);
+    color: var(--red, #f85149);
+    background: rgba(248, 81, 73, 0.08);
 }
 
 .status.success {
-    border-color: var(--success);
-    color: var(--success);
+    border-color: var(--green, #3fb950);
+    color: var(--green, #3fb950);
+    background: rgba(63, 185, 80, 0.08);
 }
 
-footer {
-    margin-top: 24px;
-    padding-top: 16px;
+/* ── Footer ─────────────────────────────────────────────────────────── */
+
+.wizard-card footer {
+    margin-top: 22px;
+    padding-top: 14px;
     border-top: 1px solid var(--border);
     text-align: center;
-    color: var(--muted);
+    color: var(--text-tertiary);
     font-size: 11px;
 }
 
-footer a {
-    color: var(--muted);
+.wizard-card footer a {
+    color: var(--text-tertiary);
     text-decoration: none;
+    transition: color var(--t-fast);
 }
 
-footer a:hover {
+.wizard-card footer a:hover {
     color: var(--accent);
+}
+
+/* ── Mobile tweaks ──────────────────────────────────────────────────── */
+
+@media (max-width: 540px) {
+    body { padding: 12px; }
+    .wizard-card { padding: 20px 18px 16px; }
+    .wizard-card h1 { font-size: 17px; }
 }

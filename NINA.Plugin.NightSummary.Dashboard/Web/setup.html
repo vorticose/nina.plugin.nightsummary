@@ -4,18 +4,23 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Night Summary Companion — Setup</title>
+    <!-- dashboard.css ships the project's design tokens (colors, typography,
+         dark/light vars) and a few base resets. The wizard layers wizard-only
+         layout on top via setup.css. No class collisions: wizard uses its
+         own .wizard-* / .step / .actions namespace. -->
+    <link rel="stylesheet" href="/dashboard.css" />
     <link rel="stylesheet" href="/setup.css" />
 </head>
 <body>
-    <main class="card">
+    <main class="wizard-card">
         <header>
             <h1>Set up Night Summary Companion</h1>
             <ol class="steps" id="steps">
-                <li data-step="1">●</li>
-                <li data-step="2">○</li>
-                <li data-step="3">○</li>
-                <li data-step="4">○</li>
-                <li data-step="5">○</li>
+                <li data-step="1">1</li>
+                <li data-step="2">2</li>
+                <li data-step="3">3</li>
+                <li data-step="4">4</li>
+                <li data-step="5">5</li>
             </ol>
         </header>
 

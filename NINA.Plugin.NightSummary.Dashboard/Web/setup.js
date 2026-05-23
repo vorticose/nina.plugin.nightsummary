@@ -35,7 +35,6 @@
             const i = parseInt(li.dataset.step, 10);
             li.classList.toggle('active', i === n);
             li.classList.toggle('done', i < n);
-            li.textContent = i < n ? '●' : (i === n ? '●' : '○');
         });
         window.scrollTo(0, 0);
     }
