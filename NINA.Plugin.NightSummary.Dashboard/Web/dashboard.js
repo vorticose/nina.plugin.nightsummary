@@ -6843,16 +6843,34 @@ function bindDetailEvents(sessionId) {
       regenBtn.disabled = true;
       var regenStart = performance.now();
 
-      fetch('/api/sessions/' + sessionId + '/regenerate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings)
+      // In companion mode the regen response (data.proxied=true) comes back
+      // BEFORE the new HTML has synced over. Capture the pre-regen success
+      // timestamp so we can wait for it to advance before reloading the
+      // iframe — otherwise we'd just re-display the old cached version.
+      var preRegenLastSuccess = null;
+      var capturePre = COMPANION_MODE
+        ? fetch('/api/companion/status').then(function(r){ return r.json(); })
+            .then(function(s){ preRegenLastSuccess = s && s.lastSuccessUtc; })
+            .catch(function(){ /* fine, fall through */ })
+        : Promise.resolve();
+
+      capturePre.then(function() {
+        return fetch('/api/sessions/' + sessionId + '/regenerate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(settings)
+        });
       }).then(function(r) { return r.json(); }).then(function(data) {
-        if (data.status === 'ok') {
-          logInfo('Regenerate complete:', sessionId, '(' + Math.round(performance.now() - regenStart) + 'ms)');
-          status.textContent = 'Done';
-          status.className = 'regen-status regen-ok';
-          // Reload report — iframe on desktop, shadow DOM on mobile
+        if (data.status !== 'ok') {
+          logError('Regenerate failed:', sessionId, data.error);
+          status.textContent = data.error || 'Failed';
+          status.className = 'regen-status regen-err';
+          regenBtn.disabled = false;
+          return;
+        }
+        logInfo('Regenerate complete:', sessionId, '(' + Math.round(performance.now() - regenStart) + 'ms)');
+
+        function reloadReportView() {
           var iframe = document.getElementById('report-iframe');
           var shadowHost = document.getElementById('report-shadow-host');
           if (iframe) {
@@ -6860,20 +6878,53 @@ function bindDetailEvents(sessionId) {
           } else if (shadowHost) {
             loadReportIntoShadow(sessionId);
           } else {
-            // Report didn't exist before — re-render the whole page
             sessionsCache = []; initialLoadDone = false; // Clear cache to refresh hasReport
             renderSessionDetail(sessionId);
           }
+          regenBtn.disabled = false;
+        }
+
+        if (data.proxied) {
+          // Companion proxy path — primary regenerated, background sync is
+          // pulling the new HTML. Poll status until lastSuccessUtc advances
+          // past where it was when we started, then reload. ~30s timeout.
+          status.textContent = 'Syncing new report…';
+          status.className = 'regen-status';
+          var pollStart = Date.now();
+          var poll = setInterval(function() {
+            fetch('/api/companion/status', { cache: 'no-store' })
+              .then(function(r){ return r.json(); })
+              .then(function(s){
+                var advanced = s && s.lastSuccessUtc
+                            && s.lastSuccessUtc !== preRegenLastSuccess;
+                if (advanced) {
+                  clearInterval(poll);
+                  status.textContent = 'Done';
+                  status.className = 'regen-status regen-ok';
+                  reloadReportView();
+                } else if (Date.now() - pollStart > 30000) {
+                  clearInterval(poll);
+                  // Sync didn't complete in time — reload anyway and let
+                  // the user see whatever state we have. Their next sync
+                  // will eventually pick up the new HTML.
+                  status.textContent = 'Done (sync slow)';
+                  status.className = 'regen-status regen-ok';
+                  reloadReportView();
+                }
+              })
+              .catch(function(){ /* keep polling */ });
+          }, 500);
         } else {
-          logError('Regenerate failed:', sessionId, data.error);
-          status.textContent = data.error || 'Failed';
-          status.className = 'regen-status regen-err';
+          // Primary-mode (or no companion controller): regen wrote the HTML
+          // directly to disk before responding. Safe to reload immediately.
+          status.textContent = 'Done';
+          status.className = 'regen-status regen-ok';
+          reloadReportView();
         }
       }).catch(function(err) {
         logError('Regenerate error:', sessionId, err.message);
         status.textContent = err.message;
         status.className = 'regen-status regen-err';
-      }).finally(function() {
         regenBtn.disabled = false;
       });
     });
