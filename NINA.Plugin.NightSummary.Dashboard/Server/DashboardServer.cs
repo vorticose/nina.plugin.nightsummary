@@ -597,6 +597,11 @@ namespace NINA.Plugin.NightSummary.Server {
                         await HandleSetupAsset(res, "setup.js", "application/javascript; charset=utf-8", done);
                     } else if (path == "/setup.css") {
                         await HandleSetupAsset(res, "setup.css", "text/css; charset=utf-8", done);
+                    } else if (path == "/dashboard.css") {
+                        // Standalone-served so the wizard can <link> it for
+                        // design-token inheritance. The dashboard itself still
+                        // inlines via {{STYLES}} for fewer requests on /.
+                        await HandleStaticAsset(res, "dashboard.css", "text/css; charset=utf-8", done);
                     } else if (path == "/api/setup/probe") {
                         await HandleSetupProbe(req, res, done);
                     } else if (path == "/") {

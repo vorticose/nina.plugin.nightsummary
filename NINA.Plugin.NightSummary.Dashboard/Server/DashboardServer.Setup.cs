@@ -37,6 +37,14 @@ namespace NINA.Plugin.NightSummary.Server {
                 done?.Invoke(404, null);
                 return;
             }
+            await HandleStaticAsset(res, asset, contentType, done);
+        }
+
+        // GET /dashboard.css and similar standalone assets. Companion-mode
+        // agnostic — works in both primary and companion servers so the
+        // wizard's <link> tag resolves in companion mode and any future
+        // shared standalone asset works in either.
+        private async Task HandleStaticAsset(TcpHttpResponse res, string asset, string contentType, Action<int, string> done) {
             var bytes = await _webAssets.ReadAsync(asset);
             if (bytes == null) {
                 await WriteJson(res, 404, new { error = $"{asset} not found" });
