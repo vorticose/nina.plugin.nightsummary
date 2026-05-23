@@ -6576,3 +6576,46 @@ html.light .companion-banner-label { background: rgba(37, 99, 184, 0.08); }
   .m-row   { font-size: 11px; line-height: 1.25; }
   .m-k, .m-v { font-size: 11px; }
 }
+
+/* ── Read-only mirror mode ────────────────────────────────────────────────
+   Activated by `data-readonly="true"` on the <html> element, injected by
+   DashboardServer when constructed with `readOnly: true`. The selectors
+   below hide every destructive UI surface so a publicly-exposed instance
+   shows the same read paths but no edit affordances. Pure CSS — no JS
+   coupling, no race conditions on initial paint.
+
+   Adding a new destructive button later? Easiest path is to tag it with
+   `class="ns-readonly-hide"` and it will be auto-hidden under this mode. */
+html[data-readonly] .settings-actions,
+html[data-readonly] .tdp-ts-actions,
+html[data-readonly] .tdp-project-actions,
+html[data-readonly] .targets-manage-projects-btn,
+html[data-readonly] .ts-override-reset,
+html[data-readonly] .tdp-project-action-btn,
+html[data-readonly] #btn-settings,
+html[data-readonly] #settings-panel,
+html[data-readonly] .settings-panel,
+html[data-readonly] .ns-readonly-hide {
+  display: none !important;
+}
+
+/* Read-only mode pill in the header. Hidden in normal mode, shown when the
+   data-readonly attribute is set. Styled to match the donate/nav chrome. */
+.readonly-pill {
+  display: none;
+}
+html[data-readonly] .readonly-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  margin-left: 8px;
+  border-radius: 999px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.08));
+  color: var(--accent-light, #7eb8f7);
+  border: 1px solid var(--accent-light, #7eb8f7);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  cursor: help;
+}

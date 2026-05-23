@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en"{{READONLY_ATTR}}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -21,6 +21,10 @@
         <a href="#/stats" class="nav-link" data-page="stats">Targets</a>
         <a href="#/settings" class="nav-link companion-only" data-page="settings" hidden>Settings</a>
       </nav>
+      <!-- Visible only when the dashboard is served from a read-only mirror instance.
+           Surfaces the mode to public viewers so they know writes are intentionally
+           blocked rather than broken. -->
+      <span class="readonly-pill" title="This dashboard is in read-only mode. Write actions are disabled.">Read-Only</span>
       <button class="theme-toggle" id="theme-toggle" title="Toggle light/dark mode"></button>
     </div>
   </div>

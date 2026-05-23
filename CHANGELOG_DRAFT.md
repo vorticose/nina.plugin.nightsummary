@@ -30,6 +30,9 @@ Pairing-token rollout for the standalone Night Summary Companion app. The shared
 
 ## Unreleased — v3.1.1 (in progress)
 
+**New features**
+- Read-Only Mirror — a second dashboard instance bound to a separate port that refuses every write action at the server level, designed to sit behind a reverse proxy (Caddy / nginx / Cloudflare Tunnel) or Tailscale Funnel so the public-facing dashboard cannot mutate state. Enable in Options → Local Dashboard → Read-Only Mirror; default port 8281. See the new Public Exposure docs page for setup recipes for all four exposers.
+
 **Bug fixes**
 - Target Scheduler grading: frames that TS hasn't finished grading yet (status: Pending) no longer render as "Manual Rejected" in the dashboard Frames view and lightbox, and no longer drop out of integration totals / frame counts on the session card, target detail panel, and lifetime stats. The session-end TS sync was writing Accepted=false for Pending images; the dashboard now treats Pending as not-rejected everywhere and the session-end sync only flips Accepted=false on an explicit TS Rejected (2) verdict.
 - Target Scheduler grading: when TS reaches a verdict for an image after the session has ended (e.g., it needed more frames to compare against), the dashboard now picks up the new grading the next time you open the session — a background re-sync runs after the session detail loads and refreshes the NS database in place. Skipped automatically when nothing is Pending, so already-graded sessions pay no cost.
