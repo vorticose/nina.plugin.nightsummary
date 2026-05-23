@@ -32,8 +32,8 @@ On first run a default companion.json is written and the program exits so you ca
   Default behavior opens the wizard in the user's default browser when the
   companion starts up and companion.json is not yet complete. Pass this flag
   when running under launchd / Task Scheduler / systemd so the service start
-  doesn't pop a browser window on every reboot. Auto-open is also suppressed
-  automatically when stdout isn't a terminal (typical for service installs).
+  doesn't pop a browser window on every reboot. install-service sets it
+  automatically per platform.
 
 --web <dir>
   Serve dashboard.html / .css / .js / plugin-icon.png from this directory
@@ -147,13 +147,16 @@ On first run a default companion.json is written and the program exits so you ca
         log.Info("Press Ctrl+C to stop.");
 
         // First-run convenience: pop the wizard in the user's default browser
-        // when the companion is freshly installed. Skipped when:
-        //   - --no-browser passed explicitly
-        //   - stdout isn't a terminal (typical of launchd / Task Scheduler /
-        //     systemd service installs, which redirect to a log file)
-        //   - config is already complete (returning user — they're going to
-        //     /api/companion/status or hitting / directly, no need to interrupt)
-        if (!noBrowser && !Console.IsOutputRedirected && !config.IsComplete()) {
+        // when the companion is freshly installed. Gated on:
+        //   - --no-browser NOT passed (service installs opt out via the flag;
+        //     install-service will set this automatically per platform)
+        //   - config is incomplete (returning user with a working install
+        //     gets no surprise tab; complete config = silent boot)
+        //
+        // We deliberately don't check Console.IsOutputRedirected here — Finder
+        // launches of a .app bundle redirect stdout to Console.app, which would
+        // suppress the auto-open in exactly the case we want it to fire.
+        if (!noBrowser && !config.IsComplete()) {
             TryOpenBrowser($"http://localhost:{config.Port}/setup", log);
         }
 
