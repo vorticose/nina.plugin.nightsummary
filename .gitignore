@@ -110,3 +110,6 @@ DASHBOARD_BOOTSTRAP.md
 
 # Dev dashboard snapshot data
 tools/dev-dashboard/data/
+
+# Companion distribution build artifacts
+/build/
