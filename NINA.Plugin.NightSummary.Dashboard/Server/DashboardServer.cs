@@ -302,8 +302,16 @@ namespace NINA.Plugin.NightSummary.Server {
                     client.ReceiveTimeout = 10_000;
                     client.SendTimeout    = 30_000;
                     var stream = client.GetStream();
+                    // Capture the peer IP up front so it survives the request parse.
+                    // Used by the auth middleware to auto-detect each companion's
+                    // reachable push URL — no manual configuration needed.
+                    IPAddress remoteIp = null;
+                    try {
+                        if (client.Client?.RemoteEndPoint is IPEndPoint ep) remoteIp = ep.Address;
+                    } catch { /* socket may have closed already; non-fatal */ }
                     var req = await ParseHttpRequestAsync(stream, ct);
                     if (req == null) return;
+                    req.RemoteIp = remoteIp;
                     var res = new TcpHttpResponse(stream);
                     try {
                         await HandleRequest(req, res);
@@ -344,6 +352,7 @@ namespace NINA.Plugin.NightSummary.Server {
             long contentLength = 0;
             string userAgent = null;
             string authorization = null;
+            int? companionDashPort = null;
             for (int i = 1; i < lines.Length; i++) {
                 var colon = lines[i].IndexOf(':');
                 if (colon <= 0) continue;
@@ -355,6 +364,9 @@ namespace NINA.Plugin.NightSummary.Server {
                     userAgent = val;
                 else if (string.Equals(name, "Authorization", StringComparison.OrdinalIgnoreCase))
                     authorization = val;
+                else if (string.Equals(name, "X-Companion-Dashboard-Port", StringComparison.OrdinalIgnoreCase)
+                         && int.TryParse(val, out var p) && p > 0 && p <= 65535)
+                    companionDashPort = p;
             }
 
             if (!rawPath.StartsWith("/")) rawPath = "/" + rawPath;
@@ -377,13 +389,15 @@ namespace NINA.Plugin.NightSummary.Server {
             }
 
             return new TcpHttpRequest {
-                HttpMethod      = method,
-                Url             = uri,
-                QueryString     = queryString,
-                ContentLength64 = contentLength,
-                InputStream     = bodyStream,
-                UserAgent       = userAgent,
-                Authorization   = authorization,
+                HttpMethod              = method,
+                Url                     = uri,
+                QueryString             = queryString,
+                ContentLength64         = contentLength,
+                InputStream             = bodyStream,
+                UserAgent               = userAgent,
+                Authorization           = authorization,
+                CompanionDashboardPort  = companionDashPort,
+                // RemoteIp set by HandleTcpClient after this returns.
             };
         }
 
@@ -421,6 +435,13 @@ namespace NINA.Plugin.NightSummary.Server {
             try {
                 if (req.HttpMethod == "GET") {
                     if (path == "/api/health") {
+                        // Unauthenticated — used by the dashboard's reconnect
+                        // poller and external uptime checks. But if the caller
+                        // happens to carry a valid bearer + the companion port
+                        // header (the companion's own ping loop does), use the
+                        // opportunity to refresh that entry's PushUrl. Cheap
+                        // self-healing for IP / port drift.
+                        TrySideUpdatePushUrlIfAuthorized(req);
                         await WriteJson(res, 200, new {
                             status         = "ok",
                             ok             = true,

@@ -711,15 +711,6 @@ namespace NINA.Plugin.NightSummary {
                 System.Windows.Clipboard.SetText(ZeroTierUrl);
         });
 
-        // ── Companion (R&D) ──────────────────────────────────────────────────
-        // Companion push URL — when set, plugin POSTs to /api/companion/sync
-        // at session end so the companion picks up new data immediately rather
-        // than waiting for its 4h scheduled poll. Empty = feature off.
-        public string CompanionUrl {
-            get => S.CompanionUrl;
-            set { S.CompanionUrl = value?.Trim() ?? ""; SaveSettings(); RaisePropertyChanged(); }
-        }
-
         // ── Companion Pairing ────────────────────────────────────────────────
         // New per-companion token flow. Replaces the shared CompanionApiKey
         // long-term — see COMPANION_PAIRING_DESIGN.md. The plain token is

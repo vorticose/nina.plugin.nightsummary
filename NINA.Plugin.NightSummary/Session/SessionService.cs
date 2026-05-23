@@ -339,33 +339,55 @@ namespace NINA.Plugin.NightSummary.Session {
                 // Push companion notification AFTER the report file is on disk
                 // so the companion's pull picks up the fresh DB + new HTML in
                 // one round trip. Fire-and-forget — never block / never throw.
-                _ = NotifyCompanionAsync(S.CompanionUrl);
+                _ = NotifyAllPairedCompanionsAsync();
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to generate/send report. {ex.Message}");
                 Notification.ShowError($"Night Summary: Failed to send report — {ex.Message}");
             }
         }
 
-        // Tells a configured companion (Mac mini, etc.) to pull fresh data
-        // immediately rather than waiting for its scheduled poll. POSTs to
-        // {CompanionUrl}/api/companion/sync; the companion coalesces concurrent
-        // triggers, so a duplicate call from a manual click is a no-op.
+        // Pings every paired companion's auto-detected push URL so they pull
+        // fresh data immediately instead of waiting for their scheduled poll.
+        // URLs come from CompanionTokenStore — captured at pair time + refreshed
+        // on every authenticated request, so they self-heal across DHCP / port
+        // changes. No manual configuration anywhere.
         //
-        // Hard 5s timeout. Failures are logged but never surfaced to the user
-        // — the companion's own scheduler will catch up on the next interval.
-        private static async Task NotifyCompanionAsync(string companionUrl) {
-            if (string.IsNullOrWhiteSpace(companionUrl)) return;
+        // Hard 5s timeout per companion, fire-and-forget. Failures are logged
+        // but never surfaced to the user — companion's own scheduler catches
+        // up on the next interval.
+        private static async Task NotifyAllPairedCompanionsAsync() {
+            IReadOnlyList<CompanionTokenEntry> entries;
+            try {
+                entries = CompanionTokenStore.Instance.List();
+            } catch (Exception ex) {
+                Logger.Info($"NightSummary: Companion notify skipped ({ex.Message}) — token store unavailable");
+                return;
+            }
+            var tasks = new List<Task>();
+            foreach (var e in entries) {
+                if (e.IsRevoked || !e.IsPaired) continue;
+                if (string.IsNullOrWhiteSpace(e.PushUrl)) continue;
+                tasks.Add(NotifyCompanionAsync(e.PushUrl, e.CompanionName ?? e.Id));
+            }
+            if (tasks.Count == 0) {
+                Logger.Info("NightSummary: No paired companions with a known push URL — skipping notify.");
+                return;
+            }
+            try { await Task.WhenAll(tasks); } catch { /* per-call errors already logged */ }
+        }
+
+        private static async Task NotifyCompanionAsync(string companionUrl, string label) {
             try {
                 var url = companionUrl.TrimEnd('/') + "/api/companion/sync";
                 using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(5) };
                 using var resp = await http.PostAsync(url, new System.Net.Http.StringContent(""));
                 if (resp.IsSuccessStatusCode) {
-                    Logger.Info($"NightSummary: Companion notified at {url} (HTTP {(int)resp.StatusCode})");
+                    Logger.Info($"NightSummary: Companion '{label}' notified at {url} (HTTP {(int)resp.StatusCode})");
                 } else {
-                    Logger.Warning($"NightSummary: Companion notify returned HTTP {(int)resp.StatusCode} for {url}");
+                    Logger.Warning($"NightSummary: Companion '{label}' notify returned HTTP {(int)resp.StatusCode} for {url}");
                 }
             } catch (Exception ex) {
-                Logger.Info($"NightSummary: Companion notify failed ({ex.Message}) — companion will pull on its own schedule");
+                Logger.Info($"NightSummary: Companion '{label}' notify failed ({ex.Message}) — will pull on schedule");
             }
         }
 

@@ -285,6 +285,10 @@ namespace NINA.Plugin.NightSummary.Server {
                 }
 
                 _tokenStore.MarkPaired(entry.Id, companionName);
+                // Capture initial push URL from the pairing request itself so
+                // session-end pushes work immediately after pairing — no need
+                // to wait for the first authenticated sync to refresh it.
+                UpdatePushUrlFromRequest(req, entry.Id);
                 await WriteJson(res, 200, new {
                     companionId = entry.Id,
                     ninaVersion = _settings.NinaVersion ?? "",

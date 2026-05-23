@@ -242,6 +242,61 @@ namespace NINA.Plugin.NightSummary.Tests {
             Assert.True(after > before);
         }
 
+        // ---- UpdatePushUrl ---------------------------------------------------
+
+        [Fact]
+        public void UpdatePushUrl_SetsValueAndPersists() {
+            var mgr   = Make();
+            var entry = mgr.Add(FreshToken());
+
+            Assert.True(mgr.UpdatePushUrl(entry.Id, "http://10.0.0.5:8182"));
+            var reloaded = Make().FindById(entry.Id)!;
+            Assert.Equal("http://10.0.0.5:8182", reloaded.PushUrl);
+        }
+
+        [Fact]
+        public void UpdatePushUrl_NoopWhenUnchanged_AvoidsDiskChurn() {
+            // Per-request callers fire this on every auth; the store should
+            // short-circuit when the value already matches what's on disk.
+            var mgr   = Make();
+            var entry = mgr.Add(FreshToken());
+            mgr.UpdatePushUrl(entry.Id, "http://10.0.0.5:8182");
+
+            var beforeMtime = File.GetLastWriteTimeUtc(_path);
+            Thread.Sleep(15);
+            mgr.UpdatePushUrl(entry.Id, "http://10.0.0.5:8182");
+            var afterMtime = File.GetLastWriteTimeUtc(_path);
+
+            Assert.Equal(beforeMtime, afterMtime);
+        }
+
+        [Fact]
+        public void UpdatePushUrl_ChangesOverwriteOnDisk() {
+            // Reflects a port change in companion.json — should refresh.
+            var mgr   = Make();
+            var entry = mgr.Add(FreshToken());
+            mgr.UpdatePushUrl(entry.Id, "http://10.0.0.5:8182");
+            mgr.UpdatePushUrl(entry.Id, "http://10.0.0.5:8186");
+
+            Assert.Equal("http://10.0.0.5:8186", Make().FindById(entry.Id)!.PushUrl);
+        }
+
+        [Fact]
+        public void UpdatePushUrl_ReturnsFalseForUnknownId() {
+            var mgr = Make();
+            Assert.False(mgr.UpdatePushUrl("deadbe", "http://anything"));
+        }
+
+        [Fact]
+        public void UpdatePushUrl_NullValueClears() {
+            var mgr   = Make();
+            var entry = mgr.Add(FreshToken());
+            mgr.UpdatePushUrl(entry.Id, "http://10.0.0.5:8182");
+            mgr.UpdatePushUrl(entry.Id, null);
+
+            Assert.Null(Make().FindById(entry.Id)!.PushUrl);
+        }
+
         // ---- List ------------------------------------------------------------
 
         [Fact]

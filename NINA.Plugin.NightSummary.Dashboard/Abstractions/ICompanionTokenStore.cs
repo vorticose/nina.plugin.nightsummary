@@ -23,6 +23,13 @@ namespace NINA.Plugin.NightSummary.Data {
         public string? CompanionName { get; set; }
         public DateTime? RevokedAt { get; set; }
 
+        // Reverse-direction URL the primary uses for session-end push triggers.
+        // Auto-detected from the companion's TCP peer IP + X-Companion-Dashboard-Port
+        // header at pair time and refreshed on every authenticated request, so it
+        // self-heals across DHCP renewals, port edits, and network switches.
+        // Format: "http://<host>:<port>". Null until first auth'd request lands.
+        public string? PushUrl { get; set; }
+
         [JsonIgnore] public bool IsRevoked => RevokedAt.HasValue;
         [JsonIgnore] public bool IsPaired  => PairedAt.HasValue;
     }
@@ -41,5 +48,9 @@ namespace NINA.Plugin.NightSummary.Data {
         bool Revoke(string id);
         bool MarkPaired(string id, string companionName);
         bool TouchLastUsed(string id);
+        // Updates push URL only when the new value differs from the stored one
+        // (avoids disk churn from per-request rewrites). Returns true if the
+        // entry exists, false if id not found.
+        bool UpdatePushUrl(string id, string? pushUrl);
     }
 }

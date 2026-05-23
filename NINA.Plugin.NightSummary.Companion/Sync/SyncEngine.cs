@@ -44,6 +44,12 @@ public sealed class SyncEngine {
         var c = new HttpClient { BaseAddress = new Uri(config.ResolvedNinaUrl()) };
         c.DefaultRequestHeaders.Authorization =
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", config.Nina.PairingToken ?? "");
+        // Advertise our own dashboard port on every request so the primary
+        // can auto-detect the reachable push URL (no manual entry needed in
+        // NS Options). Pairs with TcpHttpRequest.CompanionDashboardPort +
+        // RequireCompanionAuth.UpdatePushUrlFromRequest on the primary.
+        c.DefaultRequestHeaders.TryAddWithoutValidation(
+            "X-Companion-Dashboard-Port", config.Port.ToString());
         c.Timeout = TimeSpan.FromMinutes(30);
         return c;
     }

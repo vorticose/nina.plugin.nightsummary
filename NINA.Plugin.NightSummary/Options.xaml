@@ -798,26 +798,6 @@
                                            TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="400" VerticalAlignment="Center" />
                             </StackPanel>
 
-                            <!-- ── Companion App push URL ─────────────────────────── -->
-                            <Separator Margin="0,16,0,8" />
-                            <StackPanel Orientation="Horizontal" Margin="0,4">
-                                <TextBlock Text="Companion App" Width="200" FontWeight="Bold" VerticalAlignment="Center" />
-                                <Border Background="#7B68EE" CornerRadius="3" Padding="6,2" VerticalAlignment="Center">
-                                    <TextBlock Text="R&amp;D" FontSize="10" FontWeight="Bold" Foreground="White" />
-                                </Border>
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,8,0,2">
-                                <TextBlock Text="Push URL" Width="200" VerticalAlignment="Center" />
-                                <TextBox Text="{Binding CompanionUrl, UpdateSourceTrigger=PropertyChanged}"
-                                         MinWidth="380" FontFamily="Consolas, Courier New" FontSize="11"
-                                         VerticalAlignment="Center" />
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                <TextBlock Width="200" />
-                                <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="400" VerticalAlignment="Center"
-                                           Text="Optional. When set, this machine notifies the companion at session end so it syncs immediately instead of waiting for its scheduled poll. Example: http://mac-mini:8182" />
-                            </StackPanel>
-
                             <!-- ── Companion Pairing ─────────────────────────────── -->
                             <Separator Margin="0,16,0,8" />
                             <StackPanel Orientation="Horizontal" Margin="0,4">

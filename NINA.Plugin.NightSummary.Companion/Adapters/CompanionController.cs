@@ -272,6 +272,11 @@ public sealed class CompanionController : ICompanionController {
 
         using var http = new System.Net.Http.HttpClient { BaseAddress = new Uri($"http://{host}:{port}") };
         http.Timeout = TimeSpan.FromSeconds(10);
+        // Advertise our dashboard port so the primary captures the reachable
+        // push URL at pair time, not just on the first sync. Avoids a ~4h
+        // gap where session-end push wouldn't reach us.
+        http.DefaultRequestHeaders.TryAddWithoutValidation(
+            "X-Companion-Dashboard-Port", _config.Port.ToString());
         var body = System.Text.Json.JsonSerializer.Serialize(new { token = token.Trim(), companionName = companionName.Trim() });
         var content = new System.Net.Http.StringContent(body, System.Text.Encoding.UTF8, "application/json");
 

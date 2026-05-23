@@ -22,6 +22,15 @@ namespace NINA.Plugin.NightSummary.Server {
         public Stream InputStream { get; internal set; } = Stream.Null;
         public string UserAgent { get; internal set; }
         public string Authorization { get; internal set; }
+        // IP address of the TCP peer. Captured at accept time so the auth
+        // middleware can derive the companion's reachable push URL without
+        // needing the companion to advertise its own IP. Null on synthetic
+        // requests (tests / dev harness).
+        public System.Net.IPAddress RemoteIp { get; internal set; }
+        // Companion-advertised dashboard port for the originating companion.
+        // Combined with RemoteIp to build "http://<ip>:<port>/" — the URL
+        // the primary uses to push session-end sync triggers.
+        public int? CompanionDashboardPort { get; internal set; }
     }
 
     /// <summary>

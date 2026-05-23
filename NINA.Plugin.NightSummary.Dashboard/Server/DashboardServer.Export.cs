@@ -23,6 +23,11 @@ namespace NINA.Plugin.NightSummary.Server {
         // companion_tokens.json. The legacy CompanionApiKey shim was removed
         // — all companions must pair through the wizard.
         //
+        // Side effect: when the request carries an X-Companion-Dashboard-Port
+        // header alongside a valid bearer, the auth path refreshes the entry's
+        // PushUrl so session-end push triggers always reach the companion at
+        // its current IP+port. Self-healing across DHCP / port edits.
+        //
         // Returns true on success; on failure writes 401 and returns false.
         private async Task<bool> RequireCompanionAuth(TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
             var authHeader = req.Authorization;
@@ -41,7 +46,38 @@ namespace NINA.Plugin.NightSummary.Server {
                 return false;
             }
             _tokenStore.TouchLastUsed(entry.Id);
+            UpdatePushUrlFromRequest(req, entry.Id);
             return true;
+        }
+
+        // Best-effort attempt to call this from unauthenticated endpoints
+        // (currently /api/health) too — when companions send their bearer + port
+        // header on routes that don't strictly require auth, we still want to
+        // capture the fresh push URL. Silent no-op when any piece is missing.
+        private void TrySideUpdatePushUrlIfAuthorized(TcpHttpRequest req) {
+            if (_tokenStore == null) return;
+            var authHeader = req.Authorization;
+            if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer ", StringComparison.Ordinal)) return;
+            var entry = _tokenStore.FindByToken(authHeader.Substring("Bearer ".Length));
+            if (entry == null || entry.IsRevoked) return;
+            UpdatePushUrlFromRequest(req, entry.Id);
+        }
+
+        // Builds "http://<remoteIp>:<advertisedPort>" from the request's TCP
+        // peer + the X-Companion-Dashboard-Port header and writes it through
+        // the store (no-op when unchanged). Skips loopback IPs because the
+        // primary would push to itself, not the companion.
+        private void UpdatePushUrlFromRequest(TcpHttpRequest req, string entryId) {
+            if (_tokenStore == null) return;
+            if (req.RemoteIp == null) return;
+            if (System.Net.IPAddress.IsLoopback(req.RemoteIp)) return;
+            if (!req.CompanionDashboardPort.HasValue) return;
+            // IPv6 addresses need bracketing in URLs per RFC 3986.
+            var host = req.RemoteIp.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6
+                ? "[" + req.RemoteIp + "]"
+                : req.RemoteIp.ToString();
+            var url = $"http://{host}:{req.CompanionDashboardPort.Value}";
+            try { _tokenStore.UpdatePushUrl(entryId, url); } catch { /* best-effort */ }
         }
 
         // ── /api/mode ─────────────────────────────────────────────────────────

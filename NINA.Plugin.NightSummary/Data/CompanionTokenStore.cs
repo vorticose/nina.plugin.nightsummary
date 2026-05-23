@@ -183,6 +183,23 @@ namespace NINA.Plugin.NightSummary.Data {
             }
         }
 
+        /// <summary>
+        /// Refreshes the reverse-direction push URL the primary uses for
+        /// session-end sync triggers. No-op when the value already matches
+        /// what's persisted, so per-request callers don't drive disk churn.
+        /// </summary>
+        public bool UpdatePushUrl(string id, string? pushUrl) {
+            lock (_lock) {
+                EnsureLoaded();
+                var entry = _file.Tokens.FirstOrDefault(t => t.Id == id);
+                if (entry == null) return false;
+                if (string.Equals(entry.PushUrl, pushUrl, StringComparison.Ordinal)) return true;
+                entry.PushUrl = pushUrl;
+                Persist();
+                return true;
+            }
+        }
+
         // ---- internals --------------------------------------------------------
 
         private void EnsureLoaded() {
@@ -271,6 +288,7 @@ namespace NINA.Plugin.NightSummary.Data {
             LastUsedAt    = e.LastUsedAt,
             CompanionName = e.CompanionName,
             RevokedAt     = e.RevokedAt,
+            PushUrl       = e.PushUrl,
         };
 
         private static readonly JsonSerializerOptions SerializerOptions = new() {
