@@ -77,15 +77,12 @@ public sealed record CompanionClaimResult(
     string? Error,
     string? AlreadyPairedCompanionName);
 
-// Editable surface of companion.json. ApiKey == null means "leave unchanged"
-// so the dashboard can re-save other fields without round-tripping the secret.
-// DashboardPort == null means "leave unchanged" too (most config saves
-// don't touch it); when set, takes effect on the next companion restart
-// since the TCP listener is bound at startup.
+// Editable surface of companion.json. DashboardPort == null means "leave
+// unchanged" (most config saves don't touch it); when set, takes effect on
+// the next companion restart since the TCP listener is bound at startup.
 public sealed record CompanionConfigEdit(
     string Host,
     int Port,
-    string? ApiKey,
     bool OnBoot,
     int PollingIntervalHoursOnSuccess,
     int PollingIntervalMinutesOnFailure,
@@ -94,8 +91,6 @@ public sealed record CompanionConfigEdit(
 public sealed record CompanionConfigSnapshot(
     string Host,
     int Port,
-    string ApiKeyMasked,
-    bool ApiKeySet,
     string DataDir,
     bool OnBoot,
     int PollingIntervalHoursOnSuccess,
@@ -103,9 +98,7 @@ public sealed record CompanionConfigSnapshot(
     int DashboardPort,
     bool IsComplete,
     string? IncompleteReason,
-    // True iff a per-companion pairing token is currently configured. The
-    // wizard checks this to decide whether to show "you're paired" UX or the
-    // full setup flow.
+    // True iff a per-companion pairing token is currently configured.
     bool PairingTokenSet = false);
 
 public sealed record CompanionConfigSaveResult(

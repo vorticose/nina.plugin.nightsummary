@@ -14,19 +14,19 @@ public static class ConnectionTester {
 
     public sealed record Result(bool Ok, string? Version, int? Schema, string? Error);
 
-    public static async Task<Result> TestAsync(string host, int port, string apiKey, CancellationToken ct = default) {
+    public static async Task<Result> TestAsync(string host, int port, string bearer, CancellationToken ct = default) {
         if (string.IsNullOrWhiteSpace(host)) return new Result(false, null, null, "host is empty");
         if (port <= 0 || port > 65535)        return new Result(false, null, null, $"port {port} out of range");
-        if (string.IsNullOrWhiteSpace(apiKey)) return new Result(false, null, null, "apiKey is empty");
+        if (string.IsNullOrWhiteSpace(bearer)) return new Result(false, null, null, "no pairing token configured — run setup wizard");
 
         using var http = new HttpClient { BaseAddress = new Uri($"http://{host}:{port}") };
-        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
         http.Timeout = TimeSpan.FromSeconds(5);
 
         try {
             using var resp = await http.GetAsync("/api/health", ct);
             if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-                return new Result(false, null, null, "unauthorized — check apiKey");
+                return new Result(false, null, null, "unauthorized — pairing token rejected (revoked or stale)");
             if (!resp.IsSuccessStatusCode)
                 return new Result(false, null, null, $"primary returned {(int)resp.StatusCode}");
 

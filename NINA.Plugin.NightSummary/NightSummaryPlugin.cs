@@ -479,7 +479,6 @@ namespace NINA.Plugin.NightSummary {
 
         private async Task StartLocalServerAsync() {
             if (dashboardServer?.IsRunning == true) return;
-            SettingsManager.Instance.EnsureCompanionApiKey();
             var paths = new NinaDashboardPaths();
             dashboardServer = new DashboardServer(
                 data:        new NinaDashboardDataSource(paths.DatabasePath),
@@ -713,11 +712,6 @@ namespace NINA.Plugin.NightSummary {
         });
 
         // ── Companion (R&D) ──────────────────────────────────────────────────
-        // Bearer token for /api/export/* endpoints. Auto-generated on first
-        // read and persisted to settings.json so the user can copy it into
-        // their companion's companion.json without an interactive prompt.
-        public string CompanionApiKey => SettingsManager.Instance.EnsureCompanionApiKey();
-
         // Companion push URL — when set, plugin POSTs to /api/companion/sync
         // at session end so the companion picks up new data immediately rather
         // than waiting for its 4h scheduled poll. Empty = feature off.
@@ -725,24 +719,6 @@ namespace NINA.Plugin.NightSummary {
             get => S.CompanionUrl;
             set { S.CompanionUrl = value?.Trim() ?? ""; SaveSettings(); RaisePropertyChanged(); }
         }
-
-        public ICommand CopyCompanionApiKeyCommand => new RelayCommand(async () => {
-            var key = CompanionApiKey;
-            if (!string.IsNullOrEmpty(key))
-                System.Windows.Clipboard.SetText(key);
-        });
-
-        public ICommand RegenerateCompanionApiKeyCommand => new RelayCommand(async () => {
-            var result = System.Windows.MessageBox.Show(
-                "Regenerate the companion API key?\n\nAny existing companion installations will stop syncing until you paste the new key into their companion.json.",
-                "Regenerate Companion API Key",
-                System.Windows.MessageBoxButton.OKCancel,
-                System.Windows.MessageBoxImage.Warning);
-            if (result != System.Windows.MessageBoxResult.OK) return;
-            S.CompanionApiKey = "";
-            SettingsManager.Instance.EnsureCompanionApiKey();
-            RaisePropertyChanged(nameof(CompanionApiKey));
-        });
 
         // ── Companion Pairing ────────────────────────────────────────────────
         // New per-companion token flow. Replaces the shared CompanionApiKey

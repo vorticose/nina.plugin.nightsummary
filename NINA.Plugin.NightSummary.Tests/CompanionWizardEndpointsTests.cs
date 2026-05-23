@@ -277,7 +277,7 @@ namespace NINA.Plugin.NightSummary.Tests {
             public Task PingPrimaryAsync(CancellationToken ct = default) => Task.CompletedTask;
 
             public CompanionConfigSnapshot GetConfig() => new(
-                Host: "", Port: 0, ApiKeyMasked: "", ApiKeySet: false,
+                Host: "", Port: 0,
                 DataDir: "", OnBoot: true,
                 PollingIntervalHoursOnSuccess: 4, PollingIntervalMinutesOnFailure: 30,
                 DashboardPort: 8182, IsComplete: IsComplete, IncompleteReason: null);

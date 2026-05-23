@@ -9458,34 +9458,18 @@ function settingsHtml(c) {
     esc(c.incompleteReason || 'Fill in the fields below to start syncing from your NINA machine.') +
     '</p></div>';
 
-  // Authentication block depends on pairing status.
-  //   - pairingTokenSet=true  -> paired via per-companion token (new flow).
-  //     Show a status row + Re-pair link to /setup?force=1. Hide the legacy
-  //     API key field entirely; auth happens through the pairing token.
-  //   - pairingTokenSet=false, apiKeySet=true -> legacy install. Show the
-  //     API key field with the masked current value + a "Migrate to pairing
-  //     token" hint linking to the wizard.
-  //   - neither -> first run. Wizard handles it; this branch just shows a
-  //     "Run setup wizard" link in case the user somehow landed here first.
+  // Authentication block. Either paired (show status + Re-pair link) or
+  // not configured (link to wizard). Legacy api-key auth was removed.
   var authBlock;
   if (c.pairingTokenSet) {
     authBlock =
       '<div class="settings-row">' +
-        '<span class="settings-label">Authentication <span class="settings-hint">Per-companion pairing token (new)</span></span>' +
+        '<span class="settings-label">Authentication <span class="settings-hint">Per-companion pairing token</span></span>' +
         '<div class="settings-auth-status">' +
           '<span class="settings-auth-pill is-paired">Paired</span>' +
           '<a href="/setup?force=1" class="settings-btn settings-btn-link">Re-pair</a>' +
         '</div>' +
       '</div>';
-  } else if (c.apiKeySet) {
-    authBlock =
-      '<label class="settings-row">' +
-        '<span class="settings-label">API key <span class="settings-hint">Legacy shared key. <a href="/setup?force=1">Migrate to pairing token</a> for per-companion revocation.</span></span>' +
-        '<div class="settings-key-row">' +
-          '<input type="password" id="cfg-apikey" placeholder="' + esc(c.apiKeyMasked) + ' (leave blank to keep)">' +
-          '<button type="button" class="settings-key-toggle" id="cfg-apikey-show" title="Show/hide">show</button>' +
-        '</div>' +
-      '</label>';
   } else {
     authBlock =
       '<div class="settings-row">' +
@@ -9552,10 +9536,6 @@ function bindSettingsForm(initial) {
   var form     = document.getElementById('settings-form');
   var hostEl   = document.getElementById('cfg-host');
   var portEl   = document.getElementById('cfg-port');
-  // Auth block is either the API key input (legacy) or a status row with no
-  // input (pairing-token paired). keyEl null = token-paired, skip key in payload.
-  var keyEl    = document.getElementById('cfg-apikey');
-  var keyToggle = document.getElementById('cfg-apikey-show');
   var bootEl   = document.getElementById('cfg-onboot');
   var sucEl    = document.getElementById('cfg-success');
   var failEl   = document.getElementById('cfg-failure');
@@ -9567,21 +9547,10 @@ function bindSettingsForm(initial) {
   var quitBtn  = document.getElementById('cfg-quit');
   var procStatus = document.getElementById('proc-status');
 
-  if (keyToggle && keyEl) {
-    keyToggle.addEventListener('click', function() {
-      var showing = keyEl.type === 'text';
-      keyEl.type = showing ? 'password' : 'text';
-      keyToggle.textContent = showing ? 'show' : 'hide';
-    });
-  }
-
   function readEdit() {
     return {
       host: hostEl.value.trim(),
       port: parseInt(portEl.value, 10) || 0,
-      // Empty string from the form means "leave the saved key alone".
-      // keyEl missing means token-paired -> always null (don't touch apiKey).
-      apiKey: keyEl ? (keyEl.value === '' ? null : keyEl.value) : null,
       onBoot: !!bootEl.checked,
       pollingIntervalHoursOnSuccess:   parseInt(sucEl.value, 10) || 0,
       pollingIntervalMinutesOnFailure: parseInt(failEl.value, 10) || 0,
@@ -9608,7 +9577,10 @@ function bindSettingsForm(initial) {
     fetch('/api/companion/test-connection', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ host: edit.host, port: edit.port, apiKey: edit.apiKey || '' }),
+      // apiKey field kept on the wire for back-compat with older companions
+      // but the server now ignores it and authenticates via the configured
+      // pairing token.
+      body: JSON.stringify({ host: edit.host, port: edit.port, apiKey: '' }),
     }).then(function(r){ return r.json(); }).then(function(j){
       if (j.ok) {
         var info = j.version ? ' · primary v' + j.version : '';
@@ -9659,6 +9631,43 @@ function bindSettingsForm(initial) {
   // The companion's executable is a watchdog shell script that re-runs the
   // real binary on exit code 88 and stops on exit code 0. The two endpoints
   // here just trigger the right exit code; the script does the rest.
+  //
+  // Port-aware: after a dashboardPort change, the new server comes up on a
+  // different port than the page's current origin. Both Restart and the
+  // Quit "Reconnect" affordance compare the saved port (from /api/companion/config
+  // captured BEFORE we exit the process) against window.location.port and
+  // probe the right one. CORS headers on /api/health make cross-port fetch
+  // work without extra config.
+
+  function probeCompanionUp(host, port, opts) {
+    // Polls http://host:port/api/health every 1s, up to opts.maxAttempts.
+    // Calls opts.onUp(host, port) on first 200. Calls opts.onTimeout if we
+    // give up. Returns a cancel function the caller can use to stop early.
+    var attempts = 0;
+    var max = opts.maxAttempts || 60;
+    var timer = setInterval(function() {
+      attempts++;
+      // Per-attempt timeout via AbortController so a hung TCP connect on a
+      // dead port doesn't stall the polling cadence.
+      var ac = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+      var to = ac ? setTimeout(function(){ ac.abort(); }, 800) : null;
+      fetch('http://' + host + ':' + port + '/api/health',
+            { cache: 'no-store', signal: ac ? ac.signal : undefined })
+        .then(function(r){
+          if (to) clearTimeout(to);
+          if (r.ok) {
+            clearInterval(timer);
+            opts.onUp && opts.onUp(host, port);
+          }
+        })
+        .catch(function(){ if (to) clearTimeout(to); /* still down */ });
+      if (attempts >= max) {
+        clearInterval(timer);
+        opts.onTimeout && opts.onTimeout();
+      }
+    }, 1000);
+    return function cancel() { clearInterval(timer); };
+  }
 
   if (restartBtn) {
     restartBtn.addEventListener('click', function() {
@@ -9666,30 +9675,37 @@ function bindSettingsForm(initial) {
       setProcStatus('Restarting…', '');
       restartBtn.disabled = true;
       quitBtn && (quitBtn.disabled = true);
-      fetch('/api/companion/restart', { method: 'POST' })
-        .then(function(){
-          // Server has exited by the time we get here (or moments after).
-          // Poll /api/health until the new process is up, then reload.
-          var attempts = 0;
-          var max = 60; // ~60s total at 1s intervals; watchdog respawn is usually under 2s
-          var poll = setInterval(function() {
-            attempts++;
-            fetch('/api/health', { cache: 'no-store' })
-              .then(function(r){
-                if (r.ok) {
-                  clearInterval(poll);
-                  setProcStatus('Companion is back. Reloading…', 'is-ok');
-                  setTimeout(function(){ window.location.reload(); }, 400);
-                }
-              })
-              .catch(function(){ /* still down, keep polling */ });
-            if (attempts >= max) {
-              clearInterval(poll);
+
+      // Capture the SAVED dashboard port before exit so we know where to
+      // poll. If the user just changed the port in the form but didn't
+      // save, the new companion will still come up on the OLD saved port.
+      fetch('/api/companion/config')
+        .then(function(r){ return r.json(); })
+        .then(function(cfg) {
+          var host = window.location.hostname;
+          var savedPort = cfg.dashboardPort || parseInt(window.location.port, 10) || 8182;
+          return fetch('/api/companion/restart', { method: 'POST' })
+            .then(function(){ return { host: host, port: savedPort }; });
+        })
+        .then(function(target) {
+          probeCompanionUp(target.host, target.port, {
+            maxAttempts: 60,
+            onUp: function(host, port) {
+              setProcStatus('Companion is back. Reloading…', 'is-ok');
+              var currentPort = parseInt(window.location.port, 10) || 80;
+              if (port !== currentPort) {
+                // Port change: navigate to the new origin instead of reload.
+                window.location.href = 'http://' + host + ':' + port + '/';
+              } else {
+                setTimeout(function(){ window.location.reload(); }, 400);
+              }
+            },
+            onTimeout: function() {
               setProcStatus('Companion did not come back in 60s. Check Console.app or relaunch the app.', 'is-error');
               restartBtn.disabled = false;
               quitBtn && (quitBtn.disabled = false);
-            }
-          }, 1000);
+            },
+          });
         })
         .catch(function(err){
           setProcStatus('Restart request failed: ' + (err.message || 'network error'), 'is-error');
@@ -9705,23 +9721,72 @@ function bindSettingsForm(initial) {
       setProcStatus('Stopping companion…', '');
       restartBtn && (restartBtn.disabled = true);
       quitBtn.disabled = true;
-      fetch('/api/companion/quit', { method: 'POST' })
-        .then(function(){
-          // Give the server a beat to actually exit before swapping the UI.
-          setTimeout(function(){
-            document.body.innerHTML =
-              '<div style="font-family:-apple-system,system-ui,sans-serif;max-width:480px;margin:80px auto;padding:24px;border:1px solid #ccc;border-radius:8px;text-align:center;">' +
-              '<h2>Companion stopped</h2>' +
-              '<p>The companion server is no longer running. The dashboard cannot reconnect from here.</p>' +
-              '<p>To restart: open <strong>NightSummaryCompanion</strong> from your Applications folder.</p>' +
-              '</div>';
-          }, 500);
-        })
-        .catch(function(err){
-          setProcStatus('Quit request failed: ' + (err.message || 'network error'), 'is-error');
-          restartBtn && (restartBtn.disabled = false);
-          quitBtn.disabled = false;
-        });
+
+      // Capture saved port BEFORE quit so the Reconnect button knows
+      // where to look after the user relaunches the .app.
+      var savedPort = parseInt(window.location.port, 10) || 8182;
+      fetch('/api/companion/config').then(function(r){ return r.json(); }).then(function(cfg) {
+        if (cfg && cfg.dashboardPort) savedPort = cfg.dashboardPort;
+      }).catch(function(){ /* fall back to window.location.port */ }).finally(function() {
+        fetch('/api/companion/quit', { method: 'POST' })
+          .then(function(){
+            setTimeout(function(){ swapToStoppedPage(savedPort); }, 500);
+          })
+          .catch(function(err){
+            setProcStatus('Quit request failed: ' + (err.message || 'network error'), 'is-error');
+            restartBtn && (restartBtn.disabled = false);
+            quitBtn.disabled = false;
+          });
+      });
+    });
+  }
+
+  function swapToStoppedPage(savedPort) {
+    // Replaces the whole document with a stopped-state page that includes
+    // a Reconnect button. Reconnect probes http://currentHost:savedPort
+    // until /api/health responds, then navigates there. Auto-polls in the
+    // background so a manual click isn't strictly needed for the common
+    // "user relaunches .app" path.
+    document.body.innerHTML =
+      '<div style="font-family:-apple-system,system-ui,sans-serif;max-width:480px;margin:80px auto;padding:24px;border:1px solid #ccc;border-radius:8px;text-align:center;">' +
+        '<h2>Companion stopped</h2>' +
+        '<p>The companion server is no longer running.</p>' +
+        '<p>To restart: open <strong>NightSummaryCompanion</strong> from your Applications folder.</p>' +
+        '<p id="reconnect-status" style="color:#888;font-size:13px;margin-top:16px;">Watching for companion on port ' + savedPort + '…</p>' +
+        '<button id="reconnect-btn" style="margin-top:12px;padding:8px 16px;font-size:14px;cursor:pointer;">Reconnect now</button>' +
+      '</div>';
+
+    var host = window.location.hostname;
+    var statusEl = document.getElementById('reconnect-status');
+    var btn = document.getElementById('reconnect-btn');
+
+    function navigateToCompanion(h, p) {
+      statusEl.textContent = 'Companion detected. Loading…';
+      window.location.href = 'http://' + h + ':' + p + '/';
+    }
+
+    // Background poll: tries to reconnect automatically when companion
+    // comes back. ~5 minute window. Manual button bypasses the wait.
+    var cancel = probeCompanionUp(host, savedPort, {
+      maxAttempts: 300,
+      onUp: navigateToCompanion,
+      onTimeout: function() {
+        statusEl.textContent = 'No companion seen for 5 minutes. Click Reconnect to retry.';
+      },
+    });
+
+    btn.addEventListener('click', function() {
+      cancel();
+      btn.disabled = true;
+      statusEl.textContent = 'Probing…';
+      probeCompanionUp(host, savedPort, {
+        maxAttempts: 20,
+        onUp: navigateToCompanion,
+        onTimeout: function() {
+          statusEl.textContent = 'Still not responding on port ' + savedPort + '. Make sure the app is launched.';
+          btn.disabled = false;
+        },
+      });
     });
   }
 }

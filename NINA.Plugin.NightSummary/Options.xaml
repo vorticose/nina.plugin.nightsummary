@@ -798,7 +798,7 @@
                                            TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="400" VerticalAlignment="Center" />
                             </StackPanel>
 
-                            <!-- ── Companion (R&D) ────────────────────────────────── -->
+                            <!-- ── Companion App push URL ─────────────────────────── -->
                             <Separator Margin="0,16,0,8" />
                             <StackPanel Orientation="Horizontal" Margin="0,4">
                                 <TextBlock Text="Companion App" Width="200" FontWeight="Bold" VerticalAlignment="Center" />
@@ -806,22 +806,6 @@
                                     <TextBlock Text="R&amp;D" FontSize="10" FontWeight="Bold" Foreground="White" />
                                 </Border>
                             </StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,2">
-                                <TextBlock Width="200" />
-                                <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="400" VerticalAlignment="Center"
-                                           Text="Authenticates the standalone companion app when it pulls data from this machine. Paste this key into the companion's companion.json file." />
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,8">
-                                <TextBlock Text="API Key" Width="200" VerticalAlignment="Center" />
-                                <TextBox Text="{Binding CompanionApiKey, Mode=OneWay}" IsReadOnly="True"
-                                         MinWidth="380" FontFamily="Consolas, Courier New" FontSize="11"
-                                         VerticalAlignment="Center" />
-                                <Button Content="Copy" Command="{Binding CopyCompanionApiKeyCommand}"
-                                        Margin="8,0,0,0" Padding="8,2" FontSize="11" />
-                                <Button Content="Regenerate" Command="{Binding RegenerateCompanionApiKeyCommand}"
-                                        Margin="8,0,0,0" Padding="8,2" FontSize="11" />
-                            </StackPanel>
-
                             <StackPanel Orientation="Horizontal" Margin="0,8,0,2">
                                 <TextBlock Text="Push URL" Width="200" VerticalAlignment="Center" />
                                 <TextBox Text="{Binding CompanionUrl, UpdateSourceTrigger=PropertyChanged}"

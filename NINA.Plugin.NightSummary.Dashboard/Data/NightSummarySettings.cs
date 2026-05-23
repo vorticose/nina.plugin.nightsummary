@@ -40,11 +40,6 @@ namespace NINA.Plugin.NightSummary.Data {
         public int    LocalServerPort    { get; set; } = 8181;
 
         // ── Companion (R&D) ───────────────────────────────────────────────────
-        // Bearer token for /api/export/* endpoints. Empty = endpoints reject all
-        // requests with 401. Auto-populated by SettingsManager.EnsureCompanionApiKey()
-        // at server start so the user can copy from plugin settings without prompting.
-        public string CompanionApiKey   { get; set; } = "";
-
         // Companion push URL. When non-empty, the plugin POSTs to
         // {CompanionUrl}/api/companion/sync at session end so the companion
         // pulls a fresh DB + reports the moment a session finishes (instead of

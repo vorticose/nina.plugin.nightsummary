@@ -64,9 +64,9 @@ namespace NINA.Plugin.NightSummary.Server {
         }
 
         // POST /api/companion/config — save edits, hot-reload SyncEngine.
-        // Body: { host, port, apiKey?, onBoot, pollingIntervalHoursOnSuccess,
-        //         pollingIntervalMinutesOnFailure }
-        // Omit apiKey to keep the existing one.
+        // Body: { host, port, onBoot, pollingIntervalHoursOnSuccess,
+        //         pollingIntervalMinutesOnFailure, dashboardPort? }
+        // Pairing tokens are managed via /api/setup/claim (wizard), not here.
         private async Task HandleCompanionConfigSave(TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
             if (_companion == null) {
                 await WriteJson(res, 404, new { error = "companion mode not active" });
@@ -81,7 +81,6 @@ namespace NINA.Plugin.NightSummary.Server {
                 var edit = new CompanionConfigEdit(
                     Host:                            GetStr(root, "host", ""),
                     Port:                            GetInt(root, "port", 0),
-                    ApiKey:                          GetOptionalStr(root, "apiKey"),
                     OnBoot:                          GetBool(root, "onBoot", true),
                     PollingIntervalHoursOnSuccess:   GetInt(root, "pollingIntervalHoursOnSuccess", 4),
                     PollingIntervalMinutesOnFailure: GetInt(root, "pollingIntervalMinutesOnFailure", 30),
@@ -143,8 +142,6 @@ namespace NINA.Plugin.NightSummary.Server {
         private static object ConfigToWire(CompanionConfigSnapshot s) => new {
             host                            = s.Host,
             port                            = s.Port,
-            apiKeyMasked                    = s.ApiKeyMasked,
-            apiKeySet                       = s.ApiKeySet,
             dataDir                         = s.DataDir,
             onBoot                          = s.OnBoot,
             pollingIntervalHoursOnSuccess   = s.PollingIntervalHoursOnSuccess,
@@ -152,8 +149,6 @@ namespace NINA.Plugin.NightSummary.Server {
             dashboardPort                   = s.DashboardPort,
             isComplete                      = s.IsComplete,
             incompleteReason                = s.IncompleteReason,
-            // Drives dashboard.js Settings tab branching: pairing token = new
-            // per-companion auth, hide legacy api key field; false = legacy.
             pairingTokenSet                 = s.PairingTokenSet,
         };
 
@@ -366,8 +361,6 @@ namespace NINA.Plugin.NightSummary.Server {
         // and may omit fields; treat missing/null as the default.
         private static string GetStr(JsonElement e, string name, string def) =>
             e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? (v.GetString() ?? def) : def;
-        private static string? GetOptionalStr(JsonElement e, string name) =>
-            e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
         private static int GetInt(JsonElement e, string name, int def) =>
             e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var i) ? i : def;
         private static int? GetOptionalInt(JsonElement e, string name) =>

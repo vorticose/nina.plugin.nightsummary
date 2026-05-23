@@ -28,15 +28,18 @@ namespace NINA.Plugin.NightSummary.Tests {
         private string _tempRoot = null!;
         private string _reportsDir = null!;
         private string _dbPath = null!;
+        private string _tokenStorePath = null!;
+        private CompanionTokenStore _tokenStore = null!;
         private DashboardServer _server = null!;
         private int _port;
         private HttpClient _http = null!;
-        private const string ApiKey = "test-companion-key-abc123";
+        private string _bearerToken = null!;
 
         public async Task InitializeAsync() {
             _tempRoot   = Path.Combine(Path.GetTempPath(), $"ns_companion_test_{Guid.NewGuid():N}");
             _reportsDir = Path.Combine(_tempRoot, "reports");
             _dbPath     = Path.Combine(_tempRoot, "nightsummary.sqlite");
+            _tokenStorePath = Path.Combine(_tempRoot, "companion_tokens.json");
             Directory.CreateDirectory(_reportsDir);
 
             // Live SQLite DB so VACUUM INTO has something real to copy
@@ -55,15 +58,24 @@ namespace NINA.Plugin.NightSummary.Tests {
             File.WriteAllText(Path.Combine(lsDir, "livestack.json"), "{}");
             File.WriteAllBytes(Path.Combine(lsDir, "M101_L.jpg"), new byte[] { 0xFF, 0xD8, 0xFF });
 
+            // Pairing-token-only auth. Pre-populate the store with one token
+            // we'll use as the bearer for every authorized request below.
+            _tokenStore = new CompanionTokenStore(_tokenStorePath);
+            _bearerToken = "TESTTOKEN16CHARS";
+            var entry = _tokenStore.Add(_bearerToken);
+            _tokenStore.MarkPaired(entry.Id, "test-companion");
+
             var paths    = new StubPaths(_tempRoot);
-            var settings = new StubSettings { ApiKeyValue = ApiKey, ModeValue = "primary" };
+            var settings = new StubSettings { ModeValue = "primary" };
             _server = new DashboardServer(
                 data:        new StubDataSource(),
                 settings:    settings,
                 webAssets:   new StubWebAssets(),
                 externalLog: new StubLogger(),
                 paths:       paths,
-                regen:       null);
+                regen:       null,
+                companion:   null,
+                tokenStore:  _tokenStore);
 
             _port = GetFreePort();
             await _server.StartAsync(_port);
@@ -121,7 +133,7 @@ namespace NINA.Plugin.NightSummary.Tests {
         [Fact]
         public async Task Export_NonBearerScheme_Returns401() {
             using var req = new HttpRequestMessage(HttpMethod.Get, "/api/export/database");
-            req.Headers.Add("Authorization", "Basic " + Convert.ToBase64String(Encoding.ASCII.GetBytes("user:" + ApiKey)));
+            req.Headers.Add("Authorization", "Basic " + Convert.ToBase64String(Encoding.ASCII.GetBytes("user:" + _bearerToken)));
             var resp = await _http.SendAsync(req);
             Assert.Equal(HttpStatusCode.Unauthorized, resp.StatusCode);
         }
@@ -192,7 +204,7 @@ namespace NINA.Plugin.NightSummary.Tests {
         [Fact]
         public async Task ExportManifest_WithAuth_ListsAllReportFiles() {
             using var req = new HttpRequestMessage(HttpMethod.Get, "/api/export/manifest");
-            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", ApiKey);
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _bearerToken);
             var resp = await _http.SendAsync(req);
             Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
@@ -220,7 +232,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
             var since = now.AddSeconds(-5).ToString("o");
             using var req = new HttpRequestMessage(HttpMethod.Get, $"/api/export/manifest?since={Uri.EscapeDataString(since)}");
-            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", ApiKey);
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _bearerToken);
             var resp = await _http.SendAsync(req);
             var body = await resp.Content.ReadAsStringAsync();
             using var doc = JsonDocument.Parse(body);
@@ -254,7 +266,7 @@ namespace NINA.Plugin.NightSummary.Tests {
         public async Task ExportTsDatabase_WhenAbsent_Returns404() {
             // Stub paths point at a temp dir; no TS DB on disk → 404 expected
             using var req = new HttpRequestMessage(HttpMethod.Get, "/api/export/ts-database");
-            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", ApiKey);
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _bearerToken);
             var resp = await _http.SendAsync(req);
             // The export uses the real default TS path under %LOCALAPPDATA%; this CI box
             // may or may not have it. Accept either 404 (absent) or 200 (present) as
@@ -267,7 +279,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         private async Task<byte[]> GetAuthorizedBytes(string path) {
             using var req = new HttpRequestMessage(HttpMethod.Get, path);
-            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", ApiKey);
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _bearerToken);
             var resp = await _http.SendAsync(req);
             Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
             return await resp.Content.ReadAsByteArrayAsync();
@@ -301,12 +313,6 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         private sealed class StubSettings : IPluginSettings {
             public NightSummarySettings Current { get; } = new NightSummarySettings();
-            // Object initializer runs after the constructor, so write through to Current
-            // here instead of caching a separate field that the auth check would not see.
-            public string ApiKeyValue {
-                get => Current.CompanionApiKey;
-                set => Current.CompanionApiKey = value;
-            }
             public string ModeValue { get; set; } = "primary";
             public void Save() { }
             public string PluginVersion => "test";

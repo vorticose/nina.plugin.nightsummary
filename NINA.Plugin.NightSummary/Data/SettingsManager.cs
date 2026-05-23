@@ -2,7 +2,6 @@ using NINA.Core.Utility;
 using NINA.Plugin.NightSummary.MyPluginProperties;
 using System;
 using System.IO;
-using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace NINA.Plugin.NightSummary.Data {
@@ -101,28 +100,6 @@ namespace NINA.Plugin.NightSummary.Data {
                 settings.EquipmentVisibleFields = defaults.EquipmentVisibleFields;
             if (!json.Contains("SaveReportFilePattern"))
                 settings.SaveReportFilePattern = defaults.SaveReportFilePattern;
-        }
-
-        /// <summary>
-        /// Generates and persists a CompanionApiKey if one is not already set. Called
-        /// at dashboard server startup so /api/export/* endpoints have a valid bearer
-        /// token to compare against. Returns the (possibly newly generated) key.
-        /// </summary>
-        public string EnsureCompanionApiKey() {
-            var current = Current;
-            if (!string.IsNullOrEmpty(current.CompanionApiKey)) return current.CompanionApiKey;
-            current.CompanionApiKey = GenerateApiKey();
-            Save();
-            Logger.Info("NightSummary: Generated new CompanionApiKey for export endpoints");
-            return current.CompanionApiKey;
-        }
-
-        private static string GenerateApiKey() {
-            // 32 bytes → 43-char URL-safe base64 (no padding). Plenty of entropy for a LAN bearer token.
-            var bytes = new byte[32];
-            RandomNumberGenerator.Fill(bytes);
-            return Convert.ToBase64String(bytes)
-                .Replace("+", "-").Replace("/", "_").TrimEnd('=');
         }
 
         public void Save() {

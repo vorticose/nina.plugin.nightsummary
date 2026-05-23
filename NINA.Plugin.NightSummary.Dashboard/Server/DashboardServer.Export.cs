@@ -19,73 +19,29 @@ namespace NINA.Plugin.NightSummary.Server {
 
         // ── Auth ──────────────────────────────────────────────────────────────
 
-        // Pairing-token rollout: every authenticated companion endpoint accepts
-        // EITHER a pairing token from the companion_tokens.json store (preferred)
-        // OR the legacy CompanionApiKey from settings.json (transition window).
-        //
-        // The legacy fallback is scheduled for removal one release after the
-        // pairing wizard ships — see COMPANION_PAIRING_DESIGN.md "Migration
-        // from nina.apiKey". A one-shot warning fires the first time the legacy
-        // path is used per server session so users see they need to re-pair.
+        // Pairing-token only. Bearer must match a non-revoked entry in
+        // companion_tokens.json. The legacy CompanionApiKey shim was removed
+        // — all companions must pair through the wizard.
         //
         // Returns true on success; on failure writes 401 and returns false.
         private async Task<bool> RequireCompanionAuth(TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
             var authHeader = req.Authorization;
             if (string.IsNullOrEmpty(authHeader) ||
-                !authHeader.StartsWith("Bearer ", StringComparison.Ordinal)) {
+                !authHeader.StartsWith("Bearer ", StringComparison.Ordinal) ||
+                _tokenStore == null) {
                 await WriteJson(res, 401, new { error = "unauthorized" });
                 done?.Invoke(401, null);
                 return false;
             }
             var bearer = authHeader.Substring("Bearer ".Length);
-
-            // Path A — pairing token (preferred). Revoked entries fall through
-            // to the legacy check rather than short-circuiting; a stale token
-            // in the store should not unconditionally lock out a user who
-            // still has a valid CompanionApiKey configured.
-            if (_tokenStore != null) {
-                var entry = _tokenStore.FindByToken(bearer);
-                if (entry != null && !entry.IsRevoked) {
-                    _tokenStore.TouchLastUsed(entry.Id);
-                    return true;
-                }
+            var entry = _tokenStore.FindByToken(bearer);
+            if (entry == null || entry.IsRevoked) {
+                await WriteJson(res, 401, new { error = "unauthorized" });
+                done?.Invoke(401, null);
+                return false;
             }
-
-            // Path B — legacy CompanionApiKey. Constant-time compare so timing
-            // can't leak the configured value character by character.
-            var configured = _settings.Current.CompanionApiKey;
-            if (!string.IsNullOrEmpty(configured)
-                && ConstantTimeEquals(bearer, configured)) {
-                WarnLegacyApiKeyUseOnce();
-                return true;
-            }
-
-            await WriteJson(res, 401, new { error = "unauthorized" });
-            done?.Invoke(401, null);
-            return false;
-        }
-
-        // Length-aware constant-time compare so a remote attacker cannot use
-        // response-time differences to leak the configured key character by character.
-        private static bool ConstantTimeEquals(string a, string b) {
-            if (a == null || b == null) return false;
-            if (a.Length != b.Length) return false;
-            int diff = 0;
-            for (int i = 0; i < a.Length; i++) diff |= a[i] ^ b[i];
-            return diff == 0;
-        }
-
-        // One-shot deprecation warning per server session. The flag stays set
-        // until the server is restarted; that's intentional — log spam adds no
-        // value once the user has been told once.
-        private int _legacyApiKeyWarned;
-        private void WarnLegacyApiKeyUseOnce() {
-            if (System.Threading.Interlocked.Exchange(ref _legacyApiKeyWarned, 1) != 0) return;
-            const string msg = "Companion authenticated via legacy CompanionApiKey — "
-                             + "this fallback will be removed next release. "
-                             + "Re-pair the companion to migrate to a pairing token.";
-            log?.Warn(msg);
-            _external?.Warn("NightSummary: " + msg);
+            _tokenStore.TouchLastUsed(entry.Id);
+            return true;
         }
 
         // ── /api/mode ─────────────────────────────────────────────────────────

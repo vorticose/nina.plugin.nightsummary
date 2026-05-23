@@ -35,9 +35,11 @@ namespace NINA.Plugin.NightSummary.Tests {
         private string _primaryRoot   = null!;
         private string _companionRoot = null!;
         private string _primaryDb     = null!;
+        private string _tokenStorePath = null!;
+        private CompanionTokenStore _tokenStore = null!;
         private DashboardServer _primary = null!;
         private int _primaryPort;
-        private const string ApiKey = "sync-test-key-xyz789";
+        private const string Token = "SYNCTEST16CHARS!";
 
         public async Task InitializeAsync() {
             var stamp = Guid.NewGuid().ToString("N");
@@ -62,13 +64,20 @@ namespace NINA.Plugin.NightSummary.Tests {
             Directory.CreateDirectory(ls);
             File.WriteAllText(Path.Combine(ls, "livestack.json"), "{ \"v\": 1 }");
 
+            _tokenStorePath = Path.Combine(_primaryRoot, "companion_tokens.json");
+            _tokenStore = new CompanionTokenStore(_tokenStorePath);
+            var paired = _tokenStore.Add(Token);
+            _tokenStore.MarkPaired(paired.Id, "sync-test-companion");
+
             _primary = new DashboardServer(
                 data:        new EmptyDataSource(),
                 settings:    new PrimarySettings(),
                 webAssets:   new EmptyWebAssets(),
                 externalLog: new SilentLogger(),
                 paths:       new RootPaths(_primaryRoot),
-                regen:       null);
+                regen:       null,
+                companion:   null,
+                tokenStore:  _tokenStore);
             _primaryPort = GetFreePort();
             await _primary.StartAsync(_primaryPort);
             await Task.Delay(50);
@@ -84,8 +93,8 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task Sync_FromScratch_PullsDbAndAllReports() {
-            var (config, paths, log) = MakeCompanion(ApiKey);
-            using var http = MakeHttp(ApiKey);
+            var (config, paths, log) = MakeCompanion(Token);
+            using var http = MakeHttp(Token);
             var engine = new SyncEngine(config, paths, log, http);
 
             var result = await engine.SyncAsync();
@@ -106,8 +115,8 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task Sync_DbContentMatchesPrimary() {
-            var (config, paths, log) = MakeCompanion(ApiKey);
-            using var http = MakeHttp(ApiKey);
+            var (config, paths, log) = MakeCompanion(Token);
+            using var http = MakeHttp(Token);
             var engine = new SyncEngine(config, paths, log, http);
 
             await engine.SyncAsync();
@@ -124,8 +133,8 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task Sync_OrphansLocallyAfterPrimaryDeletion() {
-            var (config, paths, log) = MakeCompanion(ApiKey);
-            using var http = MakeHttp(ApiKey);
+            var (config, paths, log) = MakeCompanion(Token);
+            using var http = MakeHttp(Token);
             var engine = new SyncEngine(config, paths, log, http);
             await engine.SyncAsync();
             Assert.True(File.Exists(Path.Combine(paths.ReportsDir, "session-1.html")));
@@ -141,9 +150,9 @@ namespace NINA.Plugin.NightSummary.Tests {
         }
 
         [Fact]
-        public async Task Sync_MissingApiKey_Fails() {
-            var (config, paths, log) = MakeCompanion("WRONG-KEY");
-            using var http = MakeHttp("WRONG-KEY");
+        public async Task Sync_WrongToken_Fails() {
+            var (config, paths, log) = MakeCompanion("WRONGTOKEN16CHRS");
+            using var http = MakeHttp("WRONGTOKEN16CHRS");
             var engine = new SyncEngine(config, paths, log, http);
 
             var result = await engine.SyncAsync();
@@ -153,9 +162,9 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task Sync_ReachabilityCheck_FailsCleanly_WhenPrimaryDown() {
-            var (config, paths, log) = MakeCompanion(ApiKey, hostOverride: "127.0.0.1", portOverride: GetFreePort());
+            var (config, paths, log) = MakeCompanion(Token, hostOverride: "127.0.0.1", portOverride: GetFreePort());
             using var http = new HttpClient { BaseAddress = new Uri(config.ResolvedNinaUrl()), Timeout = TimeSpan.FromSeconds(2) };
-            http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", ApiKey);
+            http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Token);
             var engine = new SyncEngine(config, paths, log, http);
 
             var result = await engine.SyncAsync();
@@ -165,8 +174,8 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public async Task Sync_PreservesEntryMtimesFromZip() {
-            var (config, paths, log) = MakeCompanion(ApiKey);
-            using var http = MakeHttp(ApiKey);
+            var (config, paths, log) = MakeCompanion(Token);
+            using var http = MakeHttp(Token);
             var engine = new SyncEngine(config, paths, log, http);
 
             // Stamp a known mtime on the primary. DOS zip format only carries the
@@ -186,14 +195,14 @@ namespace NINA.Plugin.NightSummary.Tests {
         // ── Helpers ──────────────────────────────────────────────────────────
 
         private (CompanionConfig, CompanionPaths, IDashboardLogger) MakeCompanion(
-            string apiKey, string? hostOverride = null, int? portOverride = null) {
+            string token, string? hostOverride = null, int? portOverride = null) {
             var config = new CompanionConfig {
                 Port    = GetFreePort(),
                 DataDir = _companionRoot,
                 Nina = new CompanionConfig.NinaConfig {
                     Host   = hostOverride ?? "127.0.0.1",
                     Port   = portOverride ?? _primaryPort,
-                    ApiKey = apiKey,
+                    PairingToken = token,
                 },
             };
             var paths = new CompanionPaths(_companionRoot);
@@ -235,7 +244,7 @@ namespace NINA.Plugin.NightSummary.Tests {
         }
 
         private sealed class PrimarySettings : IPluginSettings {
-            public NightSummarySettings Current { get; } = new NightSummarySettings { CompanionApiKey = ApiKey };
+            public NightSummarySettings Current { get; } = new NightSummarySettings();
             public void Save() { }
             public string PluginVersion => "test";
             public string Mode => "primary";

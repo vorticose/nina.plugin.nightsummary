@@ -133,8 +133,6 @@ public sealed class CompanionController : ICompanionController {
         return new CompanionConfigSnapshot(
             Host:                            _config.Nina.Host ?? "",
             Port:                            _config.Nina.Port,
-            ApiKeyMasked:                    _config.MaskedApiKey(),
-            ApiKeySet:                       !string.IsNullOrEmpty(_config.Nina.ApiKey),
             DataDir:                         _config.ResolvedDataDir(),
             OnBoot:                          _config.Sync.OnBoot,
             PollingIntervalHoursOnSuccess:   _config.Sync.PollingIntervalHoursOnSuccess,
@@ -158,10 +156,6 @@ public sealed class CompanionController : ICompanionController {
                 return Fail("success interval must be at least 1 hour");
             if (edit.PollingIntervalMinutesOnFailure < 1)
                 return Fail("failure interval must be at least 1 minute");
-            // ApiKey == null means "leave unchanged". Disallow blank-replacements
-            // because a working key going to empty bricks the sync.
-            if (edit.ApiKey != null && string.IsNullOrWhiteSpace(edit.ApiKey))
-                return Fail("apiKey cannot be empty (omit the field to keep the existing value)");
             // DashboardPort == null means "leave unchanged". Range-validate
             // when set so a typo doesn't write 0 / negative to companion.json.
             if (edit.DashboardPort.HasValue && (edit.DashboardPort.Value <= 0 || edit.DashboardPort.Value > 65535))
@@ -169,7 +163,6 @@ public sealed class CompanionController : ICompanionController {
 
             _config.Nina.Host = edit.Host.Trim();
             _config.Nina.Port = edit.Port;
-            if (edit.ApiKey != null) _config.Nina.ApiKey = edit.ApiKey.Trim();
             _config.Sync.OnBoot = edit.OnBoot;
             _config.Sync.PollingIntervalHoursOnSuccess   = edit.PollingIntervalHoursOnSuccess;
             _config.Sync.PollingIntervalMinutesOnFailure = edit.PollingIntervalMinutesOnFailure;
@@ -192,7 +185,7 @@ public sealed class CompanionController : ICompanionController {
             }
             _engine.Reconfigure();
             _log.Info($"Companion: config saved (host={_config.Nina.Host}, port={_config.Nina.Port}, " +
-                      $"keyChanged={edit.ApiKey != null}, success={_config.Sync.PollingIntervalHoursOnSuccess}h, " +
+                      $"success={_config.Sync.PollingIntervalHoursOnSuccess}h, " +
                       $"failure={_config.Sync.PollingIntervalMinutesOnFailure}m" +
                       (dashboardPortChanged ? $", dashboardPort={_config.Port} (restart required)" : "") + ")");
         }
@@ -224,10 +217,11 @@ public sealed class CompanionController : ICompanionController {
     }
 
     public async Task<CompanionConfigTestResult> TestConnectionAsync(string host, int port, string apiKey, CancellationToken ct = default) {
-        // Empty apiKey from the form means "use the saved one" — same convention
-        // as SaveConfigAsync, so the user can test without re-typing the key.
-        var effectiveKey = string.IsNullOrEmpty(apiKey) ? _config.Nina.ApiKey : apiKey;
-        var r = await ConnectionTester.TestAsync(host, port, effectiveKey ?? "", ct);
+        // apiKey param kept for interface compatibility but no longer used —
+        // ignore the form value and always authenticate via the configured
+        // pairing token. (Settings tab UI no longer presents an api key field
+        // for token-paired companions either.)
+        var r = await ConnectionTester.TestAsync(host, port, _config.Nina.PairingToken ?? "", ct);
         return new CompanionConfigTestResult(r.Ok, r.Version, r.Schema, r.Error);
     }
 
