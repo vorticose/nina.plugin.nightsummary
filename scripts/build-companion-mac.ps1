@@ -78,8 +78,55 @@ function Build-Arch {
     $macOs    = Join-Path $contents 'MacOS'
     New-Item -ItemType Directory -Path $macOs -Force | Out-Null
 
-    Copy-Item "$publishDir/NightSummaryCompanion"    $macOs/
+    # Copy the real binary under a -bin suffix so the launcher script can
+    # carry the canonical CFBundleExecutable name (NightSummaryCompanion).
+    # macOS doesn't care that the actual executable is a shell script; the
+    # script runs the real binary in a loop and respawns it on exit code 88
+    # (Dashboard "Restart" button) or stops on exit code 0 (Dashboard "Quit").
+    Copy-Item "$publishDir/NightSummaryCompanion"    "$macOs/NightSummaryCompanion-bin"
     Copy-Item "$publishDir/libe_sqlite3.dylib"       $macOs/
+
+    # Watchdog launcher script. macOS treats this as the bundle's executable
+    # (CFBundleExecutable=NightSummaryCompanion). The script:
+    #   - resolves its own directory so relative paths work regardless of cwd
+    #     (LaunchServices launches with cwd=/)
+    #   - loops, running the real binary
+    #   - exit 88 from binary  -> respawn (Dashboard "Restart" hit)
+    #   - exit 0  from binary  -> break and stop (Dashboard "Quit" or clean shutdown)
+    #   - any other exit       -> log and stop (don't spin on a crash loop)
+    $watchdog = @'
+#!/bin/bash
+# NightSummaryCompanion launcher + watchdog.
+# Respawns the binary on exit code 88 (dashboard Restart), exits on 0 (Quit).
+DIR="$(cd "$(dirname "$0")" && pwd)"
+BIN="$DIR/NightSummaryCompanion-bin"
+while :; do
+    "$BIN" "$@"
+    code=$?
+    case $code in
+        88)
+            # Restart requested via dashboard. Small breather so the OS
+            # releases the TCP port before the next bind attempt.
+            sleep 1
+            ;;
+        0)
+            # Clean quit. Stop the loop and exit the .app process group.
+            exit 0
+            ;;
+        *)
+            # Crash / unexpected exit. Don't spin -- propagate the code so
+            # the user can see "it died" in Console.app or via `open -W`.
+            exit $code
+            ;;
+    esac
+done
+'@
+    $watchdogPath = Join-Path $macOs 'NightSummaryCompanion'
+    # PowerShell on Windows writes CRLF by default which bash chokes on.
+    # Use [System.IO.File]::WriteAllText with UTF8NoBOM + explicit LF.
+    [System.IO.File]::WriteAllText($watchdogPath,
+        ($watchdog -replace "`r`n", "`n"),
+        (New-Object System.Text.UTF8Encoding $false))
 
     # 3. Info.plist
     #
