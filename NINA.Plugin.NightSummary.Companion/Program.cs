@@ -18,7 +18,7 @@ internal static class Program {
 
 Usage:
   NightSummaryCompanion sync     [--config <path>]                              one-shot sync, then exit
-  NightSummaryCompanion serve    [--config <path>] [--no-sync] [--web <dir>]    sync (unless --no-sync) then run dashboard server forever
+  NightSummaryCompanion serve    [--config <path>] [--no-sync] [--no-browser] [--web <dir>]    sync (unless --no-sync) then run dashboard server forever
   NightSummaryCompanion version
   NightSummaryCompanion help
 
@@ -26,6 +26,14 @@ Default config path:
   ./companion.json (next to the executable)
 
 On first run a default companion.json is written and the program exits so you can fill it in.
+
+--no-browser
+  Suppress the auto-opening of http://localhost:<port>/setup on first run.
+  Default behavior opens the wizard in the user's default browser when the
+  companion starts up and companion.json is not yet complete. Pass this flag
+  when running under launchd / Task Scheduler / systemd so the service start
+  doesn't pop a browser window on every reboot. Auto-open is also suppressed
+  automatically when stdout isn't a terminal (typical for service installs).
 
 --web <dir>
   Serve dashboard.html / .css / .js / plugin-icon.png from this directory
@@ -54,7 +62,10 @@ On first run a default companion.json is written and the program exits so you ca
         try {
             return cmd switch {
                 "sync"  => await RunSyncAsync(configPath),
-                "serve" => await RunServeAsync(configPath, noSync: HasFlag(args, "--no-sync"), webDir: webDir),
+                "serve" => await RunServeAsync(configPath,
+                                               noSync:      HasFlag(args, "--no-sync"),
+                                               noBrowser:   HasFlag(args, "--no-browser"),
+                                               webDir:      webDir),
                 _ => UnknownCommand(cmd),
             };
         } catch (Exception ex) {
@@ -83,7 +94,7 @@ On first run a default companion.json is written and the program exits so you ca
         return result.Success ? 0 : 3;
     }
 
-    private static async Task<int> RunServeAsync(string configPath, bool noSync, string? webDir) {
+    private static async Task<int> RunServeAsync(string configPath, bool noSync, bool noBrowser, string? webDir) {
         var (config, paths, log) = Bootstrap(configPath);
         // Don't Validate() here — serve must come up even when config is fresh
         // so the user can complete setup from the dashboard. Loops below skip
@@ -134,6 +145,17 @@ On first run a default companion.json is written and the program exits so you ca
         await server.StartAsync(config.Port);
         log.Info($"Dashboard serving on http://localhost:{config.Port} (companion mode)");
         log.Info("Press Ctrl+C to stop.");
+
+        // First-run convenience: pop the wizard in the user's default browser
+        // when the companion is freshly installed. Skipped when:
+        //   - --no-browser passed explicitly
+        //   - stdout isn't a terminal (typical of launchd / Task Scheduler /
+        //     systemd service installs, which redirect to a log file)
+        //   - config is already complete (returning user — they're going to
+        //     /api/companion/status or hitting / directly, no need to interrupt)
+        if (!noBrowser && !Console.IsOutputRedirected && !config.IsComplete()) {
+            TryOpenBrowser($"http://localhost:{config.Port}/setup", log);
+        }
 
         // Park forever — Ctrl+C kills the process; in service mode the host
         // signals SIGTERM and the runtime shuts everything down too.
@@ -245,6 +267,35 @@ On first run a default companion.json is written and the program exits so you ca
             ? $"Primary: {config.ResolvedNinaUrl()}"
             : "Primary: <not configured> — finish setup in the dashboard.");
         return (config, paths, log);
+    }
+
+    // Cross-platform "open URL in default browser." UseShellExecute=true lets
+    // .NET resolve the protocol handler. Best-effort: log + swallow on failure
+    // (headless box, missing $BROWSER, sandboxed shell, etc.) — the URL is
+    // also printed to the log above so the user can copy/paste as a fallback.
+    private static void TryOpenBrowser(string url, IDashboardLogger log) {
+        try {
+            if (OperatingSystem.IsMacOS()) {
+                System.Diagnostics.Process.Start("open", url);
+            } else if (OperatingSystem.IsLinux()) {
+                System.Diagnostics.Process.Start("xdg-open", url);
+            } else if (OperatingSystem.IsWindows()) {
+                // Windows ShellExecute via /c start handles default-browser
+                // resolution correctly under all .NET single-file edge cases.
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo {
+                    FileName        = "cmd",
+                    Arguments       = $"/c start \"\" \"{url}\"",
+                    CreateNoWindow  = true,
+                    UseShellExecute = false,
+                });
+            } else {
+                log.Info($"Auto-open browser: unsupported platform, please open {url} manually.");
+                return;
+            }
+            log.Info($"Opened setup wizard in default browser: {url}");
+        } catch (Exception ex) {
+            log.Warn($"Could not auto-open browser ({ex.Message}). Open {url} manually.");
+        }
     }
 
     private static string DefaultConfigPath() {
