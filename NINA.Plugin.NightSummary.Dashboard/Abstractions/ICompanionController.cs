@@ -50,6 +50,14 @@ public interface ICompanionController {
     // On 200, persists the token + host/port to companion.json and reloads
     // the SyncEngine so the first sync uses the freshly issued bearer.
     Task<CompanionClaimResult> ClaimPairingAsync(string host, int port, string token, string companionName, CancellationToken ct = default);
+
+    // Forwards a regenerate-report request to the primary using the saved
+    // pairing token. On success, triggers a background sync so the new HTML
+    // lands in the companion's local reports tree without the user having
+    // to wait for the next scheduled poll. Body is forwarded verbatim
+    // (per-session settings overrides) so the primary respects whatever the
+    // companion's UI sent.
+    Task<CompanionRegenResult> RegenerateOnPrimaryAsync(string sessionId, string bodyJson, CancellationToken ct = default);
 }
 
 // Result of an unauthenticated /api/companion/info probe. Ok=true means the
@@ -76,6 +84,13 @@ public sealed record CompanionClaimResult(
     string? ErrorCode,
     string? Error,
     string? AlreadyPairedCompanionName);
+
+// Result of forwarding a regenerate-report request to the primary. Ok=true
+// means primary responded 200; the companion has kicked off a background
+// sync to pull the new HTML.
+public sealed record CompanionRegenResult(
+    bool Ok,
+    string? Error);
 
 // Editable surface of companion.json. DashboardPort == null means "leave
 // unchanged" (most config saves don't touch it); when set, takes effect on

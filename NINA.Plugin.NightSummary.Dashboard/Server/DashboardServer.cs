@@ -3515,10 +3515,35 @@ namespace NINA.Plugin.NightSummary.Server {
         }
 
         private async Task HandleRegenerateReport(TcpHttpRequest req, TcpHttpResponse res, string sessionId, Action<int, string> done) {
+            // Companion mode (no local regenerator) → proxy to the paired
+            // primary so the user can hit "Regenerate" from the companion's
+            // dashboard. The companion's controller forwards using the saved
+            // pairing token and kicks a background sync to pull the new HTML.
             if (_regen == null || !_regen.IsAvailable) {
+                if (_companion != null) {
+                    var bodyForProxy = await ReadBodyCappedAsync(req, res, done);
+                    if (bodyForProxy == null) return;
+                    var r = await _companion.RegenerateOnPrimaryAsync(sessionId, bodyForProxy);
+                    if (r.Ok) {
+                        await WriteJson(res, 200, new { status = "ok", sessionId, proxied = true });
+                        done?.Invoke(200, $"{sessionId} (proxied to primary, sync pending)");
+                    } else {
+                        await WriteJson(res, 502, new { error = r.Error ?? "primary refused regenerate" });
+                        done?.Invoke(502, r.Error);
+                    }
+                    return;
+                }
                 await WriteJson(res, 500, new { error = "Report generation not available" });
                 done?.Invoke(500, "no regenerator");
                 return;
+            }
+
+            // Primary mode (local _regen). If a bearer is present on the
+            // request, require it to match a valid pairing token — that's the
+            // companion-proxy path. Without a bearer, this is the local
+            // primary dashboard (no auth needed; same-origin only).
+            if (!string.IsNullOrEmpty(req.Authorization)) {
+                if (!await RequireCompanionAuth(req, res, done)) return;
             }
 
             try {
