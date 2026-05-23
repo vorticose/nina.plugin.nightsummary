@@ -35,12 +35,12 @@ body {
 
 .wizard-card header {
     margin-bottom: 24px;
-    padding-bottom: 18px;
+    padding-bottom: 22px;
     border-bottom: 1px solid var(--border);
 }
 
 .wizard-card h1 {
-    margin: 0 0 14px;
+    margin: 0 0 20px;
     font-size: 18px;
     font-weight: 600;
     color: var(--text-primary);
@@ -195,6 +195,18 @@ fieldset label {
     border-top: 1px solid var(--border);
 }
 
+/* When all buttons in an actions row are [hidden] the row is visually empty
+   but the border-top still paints — looked like a stray rule on the First
+   Sync page (both Retry + Go to Dashboard start hidden). Drop the chrome
+   when there are no visible children to separate. Uses :has() which is
+   supported in every browser shipped since late 2023 (Safari 15.4+,
+   Firefox 121, Chromium 105). */
+.actions:not(:has(button:not([hidden]))) {
+    border-top: 0;
+    padding-top: 0;
+    margin-top: 0;
+}
+
 button {
     background: var(--surface-well, var(--bg));
     border: 1px solid var(--border);
@@ -231,13 +243,13 @@ button:disabled {
 /* ── Status banner ──────────────────────────────────────────────────── */
 
 .status {
-    padding: 9px 12px;
+    padding: 14px 16px;
     border-radius: 5px;
     font-size: 12px;
     border: 1px solid var(--border);
     background: var(--surface-well, var(--bg));
     color: var(--text-secondary);
-    line-height: 1.45;
+    line-height: 1.5;
 }
 
 .status.error {
