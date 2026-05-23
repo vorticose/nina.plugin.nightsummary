@@ -118,13 +118,14 @@
         <h2>Connect to NINA</h2>
         <label>
             Host or IP
-            <input id="host" type="text" placeholder="100.x.x.x (Tailscale) or rig.local" autocomplete="off" value="100.86.208.29" />
+            <input id="host" type="text" placeholder="rig.local or 192.168.x.x" autocomplete="off" value="100.86.208.29" />
+            <span class="hint">The address of the machine running NINA. Use its IP or hostname on a local network, or its assigned IP if you connect over a VPN such as Tailscale.</span>
         </label>
         <label>
-            Dashboard port
+            Night Summary port
             <input id="port" type="number" value="8181" min="1" max="65535" />
+            <span class="hint">Port of the Night Summary dashboard server in NINA. Default <strong>8181</strong> — only change if you set a custom port.</span>
         </label>
-        <p class="hint">The address of the machine running NINA. If you use Tailscale, the IP shown in the Tailscale app works.</p>
         <div id="probeStatus" class="status" hidden></div>
         <div class="actions">
             <button data-action="back">Back</button>
@@ -148,7 +149,7 @@
         </label>
         <label>
             Companion name
-            <input id="companionName" type="text" placeholder="Mac mini" autocomplete="off" value="Mac mini" />
+            <input id="companionName" type="text" placeholder="e.g., Office laptop" autocomplete="off" />
             <span class="hint">Shown in NINA after pairing so you know which device is connected.</span>
         </label>
         <div id="pairStatus" class="status" hidden></div>

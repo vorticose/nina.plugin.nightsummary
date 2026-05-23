@@ -29,8 +29,8 @@ body {
     /* Padding sized so even a long title doesn't visually crowd the card
        border. Top + sides intentionally generous since the wizard is the
        user's first impression of the product. */
-    padding: 40px 44px 32px !important;
-    max-width: 520px;
+    padding: 40px 56px 32px !important;
+    max-width: 560px;
     width: 100%;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45),
                 0 0 0 1px rgba(255, 255, 255, 0.02) inset;
@@ -38,8 +38,6 @@ body {
 
 .wizard-header {
     margin-bottom: 24px;
-    padding-bottom: 22px;
-    border-bottom: 1px solid var(--border);
 }
 
 .wizard-card h1 {
