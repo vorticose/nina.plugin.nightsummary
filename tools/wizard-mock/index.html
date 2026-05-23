@@ -162,22 +162,32 @@
     <!-- Step 4: Sync settings -->
     <section class="step" data-step="4" hidden>
         <h2>Sync settings</h2>
-        <fieldset>
-            <legend>Sync schedule</legend>
-            <label><input type="radio" name="schedule" value="hourly" /> Hourly while the companion is running</label>
-            <label><input type="radio" name="schedule" value="four" checked /> Every 4 hours</label>
-            <label><input type="radio" name="schedule" value="daily" /> Once daily</label>
-            <label><input type="radio" name="schedule" value="manual" /> Manual only</label>
-        </fieldset>
+
+        <h3 class="wizard-subhead">Push from NINA</h3>
+        <p class="hint">NINA pushes new sessions to this companion the moment a sequence ends — the dashboard updates within seconds. This is the default sync mechanism.</p>
+        <label class="inline">
+            <input id="acceptPush" type="checkbox" checked />
+            Accept push notifications from NINA
+        </label>
+
+        <h3 class="wizard-subhead">Scheduled poll</h3>
+        <p class="hint">Backup safety net in case a push is missed (companion was offline, network drop, etc.). The companion pulls fresh data on a fixed interval regardless of push state.</p>
+        <label>
+            Sync every
+            <input id="pollHours" type="number" value="4" min="1" max="168" style="max-width:80px;display:inline-block;" /> hours
+        </label>
         <label class="inline">
             <input id="onBoot" type="checkbox" checked />
-            Sync immediately when the companion starts
+            Also sync when the companion starts
         </label>
+
+        <h3 class="wizard-subhead">This companion</h3>
         <label>
-            Dashboard port (this machine)
+            Dashboard port
             <input id="dashboardPort" type="number" value="8182" min="1" max="65535" />
-            <span class="hint">Where the companion serves the dashboard locally. Changing this takes effect after restarting the companion.</span>
+            <span class="hint">Local port for this companion's dashboard. Changing takes effect after restarting the companion.</span>
         </label>
+
         <div id="saveStatus" class="status" hidden></div>
         <div class="actions">
             <button data-action="back">Back</button>

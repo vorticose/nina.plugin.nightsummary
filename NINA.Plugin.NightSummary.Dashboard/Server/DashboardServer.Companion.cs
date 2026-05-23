@@ -33,15 +33,28 @@ namespace NINA.Plugin.NightSummary.Server {
         }
 
         // POST /api/companion/sync — coalesces concurrent calls inside the controller.
-        private async Task HandleCompanionSync(TcpHttpResponse res, Action<int, string> done) {
+        // X-Sync-Trigger: push  marks the request as a session-end push from the
+        // primary. When the user has disabled AcceptPush, push-triggered calls
+        // return 200 with skipped=true and no sync runs. Manual user-clicked
+        // syncs (no header / non-push value) always run.
+        private async Task HandleCompanionSync(TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
             if (_companion == null) {
                 await WriteJson(res, 404, new { error = "companion mode not active" });
                 done?.Invoke(404, null);
                 return;
             }
+            var c = _companion.GetConfig();
+            var isPush = req.Headers != null
+                         && req.Headers.TryGetValue("X-Sync-Trigger", out var tr)
+                         && string.Equals(tr, "push", StringComparison.OrdinalIgnoreCase);
+            if (isPush && !c.AcceptPush) {
+                await WriteJson(res, 200, new { ok = true, skipped = true, reason = "push notifications disabled" });
+                done?.Invoke(200, "push skipped (user-disabled)");
+                return;
+            }
             try {
                 var s = await _companion.TriggerSyncAsync();
-                var c = _companion.GetConfig();
+                c = _companion.GetConfig();
                 await WriteJson(res, 200, ToWire(s, c));
                 done?.Invoke(200, s.LastError == null ? "sync ok" : $"sync failed: {s.LastError}");
             } catch (Exception ex) {
@@ -84,7 +97,8 @@ namespace NINA.Plugin.NightSummary.Server {
                     OnBoot:                          GetBool(root, "onBoot", true),
                     PollingIntervalHoursOnSuccess:   GetInt(root, "pollingIntervalHoursOnSuccess", 4),
                     PollingIntervalMinutesOnFailure: GetInt(root, "pollingIntervalMinutesOnFailure", 30),
-                    DashboardPort:                   GetOptionalInt(root, "dashboardPort"));
+                    DashboardPort:                   GetOptionalInt(root, "dashboardPort"),
+                    AcceptPush:                      GetOptionalBool(root, "acceptPush"));
 
                 var result = await _companion.SaveConfigAsync(edit);
                 if (!result.Ok) {
@@ -150,6 +164,7 @@ namespace NINA.Plugin.NightSummary.Server {
             isComplete                      = s.IsComplete,
             incompleteReason                = s.IncompleteReason,
             pairingTokenSet                 = s.PairingTokenSet,
+            acceptPush                      = s.AcceptPush,
         };
 
         // POST /api/companion/quit  — companion-only. Returns 200 then exits
@@ -369,6 +384,8 @@ namespace NINA.Plugin.NightSummary.Server {
             e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var i) ? i : def;
         private static int? GetOptionalInt(JsonElement e, string name) =>
             e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var i) ? i : (int?)null;
+        private static bool? GetOptionalBool(JsonElement e, string name) =>
+            e.TryGetProperty(name, out var v) && (v.ValueKind == JsonValueKind.True || v.ValueKind == JsonValueKind.False) ? v.GetBoolean() : (bool?)null;
         private static bool GetBool(JsonElement e, string name, bool def) =>
             e.TryGetProperty(name, out var v) && (v.ValueKind == JsonValueKind.True || v.ValueKind == JsonValueKind.False) ? v.GetBoolean() : def;
 

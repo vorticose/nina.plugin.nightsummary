@@ -9448,10 +9448,14 @@ function renderSettingsPage() {
     return;
   }
   content.innerHTML = '<div class="settings-shell"><div class="settings-card"><p>Loading…</p></div></div>';
-  fetch('/api/companion/config').then(function(r){
-    if (!r.ok) throw new Error('config ' + r.status);
-    return r.json();
-  }).then(function(c){
+  // Fetch config + status in parallel — push-status pill needs lastSuccessUtc
+  // from status, the rest of the form comes from config.
+  Promise.all([
+    fetch('/api/companion/config').then(function(r){ if (!r.ok) throw new Error('config ' + r.status); return r.json(); }),
+    fetch('/api/companion/status').then(function(r){ if (!r.ok) throw new Error('status ' + r.status); return r.json(); }),
+  ]).then(function(arr){
+    var c = arr[0], s = arr[1];
+    window.__lastSyncSuccessUtc = s && s.lastSuccessUtc;
     content.innerHTML = settingsHtml(c);
     bindSettingsForm(c);
   }).catch(function(err){
@@ -9485,42 +9489,71 @@ function settingsHtml(c) {
       '</div>';
   }
 
+  // Push status indicator. PushUrl gets captured server-side on every
+  // authenticated request, so any successful sync (incl. boot sync) means
+  // primary almost certainly has the URL. We don't have direct visibility
+  // into the primary's token store from the companion, so derive from
+  // status: lastSuccessUtc != null + AcceptPush on  = "Active".
+  var pushActive = !!(window.__lastSyncSuccessUtc) && c.acceptPush !== false;
+  var pushPill, pushDesc;
+  if (c.acceptPush === false) {
+    pushPill = '<span class="settings-auth-pill is-off">Disabled</span>';
+    pushDesc = 'Push notifications from NINA are turned off. The companion only updates on its scheduled poll.';
+  } else if (pushActive) {
+    pushPill = '<span class="settings-auth-pill is-paired">Active</span>';
+    pushDesc = 'NINA pushes new sessions to this companion the moment a sequence ends.';
+  } else {
+    pushPill = '<span class="settings-auth-pill is-pending">Pending</span>';
+    pushDesc = 'Push will activate after the first successful sync.';
+  }
+
   return '' +
     '<div class="settings-shell">' +
       setupBanner +
       '<form class="settings-card" id="settings-form" autocomplete="off">' +
         '<h2>Primary NINA</h2>' +
         '<label class="settings-row">' +
-          '<span class="settings-label">Host <span class="settings-hint">IP, hostname, or Tailnet name</span></span>' +
-          '<input type="text" id="cfg-host" value="' + esc(c.host || '') + '" placeholder="100.x.y.z or nina-rig" required>' +
+          '<span class="settings-label">Host <span class="settings-hint">IP, hostname, or VPN-assigned address (e.g., Tailscale)</span></span>' +
+          '<input type="text" id="cfg-host" value="' + esc(c.host || '') + '" placeholder="rig.local or 192.168.x.x" required>' +
         '</label>' +
         '<label class="settings-row">' +
-          '<span class="settings-label">Port <span class="settings-hint">NINA Night Summary plugin port (default 8181)</span></span>' +
+          '<span class="settings-label">Port <span class="settings-hint">Night Summary dashboard port in NINA (default 8181)</span></span>' +
           '<input type="number" id="cfg-port" value="' + (c.port || 8181) + '" min="1" max="65535" required>' +
         '</label>' +
         authBlock +
-        '<h2>Sync schedule</h2>' +
+
+        '<h2>Push from NINA</h2>' +
+        '<div class="settings-row">' +
+          '<span class="settings-label">Status</span>' +
+          '<div class="settings-auth-status">' + pushPill + '</div>' +
+        '</div>' +
+        '<p class="settings-hint" style="margin-top:-4px;">' + esc(pushDesc) + '</p>' +
+        '<label class="settings-row settings-row-inline">' +
+          '<input type="checkbox" id="cfg-acceptpush"' + (c.acceptPush !== false ? ' checked' : '') + '>' +
+          '<span>Accept push notifications from NINA</span>' +
+        '</label>' +
+
+        '<h2>Scheduled poll</h2>' +
+        '<p class="settings-hint">Backup sync that runs on a fixed interval in case a push is missed (companion offline, network drop). Failure retries are automatic and faster.</p>' +
+        '<label class="settings-row">' +
+          '<span class="settings-label">Sync every <span class="settings-hint">Hours between scheduled syncs</span></span>' +
+          '<input type="number" id="cfg-hours" value="' + (c.pollingIntervalHoursOnSuccess || 4) + '" min="1" max="168">' +
+        '</label>' +
         '<label class="settings-row settings-row-inline">' +
           '<input type="checkbox" id="cfg-onboot"' + (c.onBoot ? ' checked' : '') + '>' +
-          '<span>Sync once when the companion server starts</span>' +
+          '<span>Also sync when the companion starts</span>' +
         '</label>' +
-        '<label class="settings-row">' +
-          '<span class="settings-label">Interval after success <span class="settings-hint">Hours between syncs while the primary is reachable</span></span>' +
-          '<input type="number" id="cfg-success" value="' + (c.pollingIntervalHoursOnSuccess || 4) + '" min="1" max="168">' +
-        '</label>' +
-        '<label class="settings-row">' +
-          '<span class="settings-label">Interval after failure <span class="settings-hint">Minutes between retries while the primary is offline</span></span>' +
-          '<input type="number" id="cfg-failure" value="' + (c.pollingIntervalMinutesOnFailure || 30) + '" min="1" max="1440">' +
-        '</label>' +
-        '<h2>Storage</h2>' +
+
+        '<h2>This companion</h2>' +
         '<div class="settings-row">' +
-          '<span class="settings-label">Data directory <span class="settings-hint">Read-only; edit companion.json directly to relocate (will orphan existing data)</span></span>' +
+          '<span class="settings-label">Data directory <span class="settings-hint">Read-only; edit companion.json directly to relocate (orphans existing data)</span></span>' +
           '<input type="text" value="' + esc(c.dataDir || '') + '" readonly>' +
         '</div>' +
         '<label class="settings-row">' +
-          '<span class="settings-label">Dashboard port <span class="settings-hint">This machine. Takes effect after restarting the companion.</span></span>' +
+          '<span class="settings-label">Dashboard port <span class="settings-hint">Local port for this companion. Takes effect after restart.</span></span>' +
           '<input type="number" id="cfg-dashport" value="' + (c.dashboardPort || 8182) + '" min="1" max="65535">' +
         '</label>' +
+
         '<div class="settings-actions">' +
           '<div class="settings-status" id="cfg-status"></div>' +
           '<button type="button" class="settings-btn" id="cfg-test">Test connection</button>' +
@@ -9544,8 +9577,8 @@ function bindSettingsForm(initial) {
   var hostEl   = document.getElementById('cfg-host');
   var portEl   = document.getElementById('cfg-port');
   var bootEl   = document.getElementById('cfg-onboot');
-  var sucEl    = document.getElementById('cfg-success');
-  var failEl   = document.getElementById('cfg-failure');
+  var hoursEl  = document.getElementById('cfg-hours');
+  var pushEl   = document.getElementById('cfg-acceptpush');
   var dashEl   = document.getElementById('cfg-dashport');
   var status   = document.getElementById('cfg-status');
   var testBtn  = document.getElementById('cfg-test');
@@ -9559,8 +9592,11 @@ function bindSettingsForm(initial) {
       host: hostEl.value.trim(),
       port: parseInt(portEl.value, 10) || 0,
       onBoot: !!bootEl.checked,
-      pollingIntervalHoursOnSuccess:   parseInt(sucEl.value, 10) || 0,
-      pollingIntervalMinutesOnFailure: parseInt(failEl.value, 10) || 0,
+      pollingIntervalHoursOnSuccess:   parseInt(hoursEl.value, 10) || 0,
+      // Failure interval is no longer user-tunable — settle on a sane
+      // default. Companion's scheduler caps at >= 1 min via Math.Max.
+      pollingIntervalMinutesOnFailure: 30,
+      acceptPush: !!pushEl.checked,
       // Dashboard port: takes effect after companion restart. Server saves
       // the value; user gets a banner suggesting Restart.
       dashboardPort: dashEl ? (parseInt(dashEl.value, 10) || 0) : 0,

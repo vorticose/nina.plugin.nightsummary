@@ -16,8 +16,9 @@
         token: '',
         companionName: '',
         companionId: null,
-        schedule: 'four',
+        pollHours: 4,
         onBoot: true,
+        acceptPush: true,
         dashboardPort: 8182,
     };
 
@@ -66,28 +67,18 @@
     }
 
     async function saveConfig() {
-        // Map the radio choice to the existing /api/companion/config schema.
-        // "manual" → very long success interval; primary still allows the
-        // user to trigger sync from the dashboard.
-        const mapping = {
-            hourly: { hours: 1,   minutes: 30 },
-            four:   { hours: 4,   minutes: 30 },
-            daily:  { hours: 24,  minutes: 60 },
-            manual: { hours: 9999, minutes: 60 },
-        };
-        const m = mapping[state.schedule] || mapping.four;
         const resp = await fetch('/api/companion/config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 host: state.host,
                 port: state.port,
-                // apiKey deliberately omitted — pairing token is now the auth.
-                // The companion's SaveConfigAsync treats null apiKey as "leave
-                // unchanged," which is what we want for token-paired companions.
                 onBoot: state.onBoot,
-                pollingIntervalHoursOnSuccess:   m.hours,
-                pollingIntervalMinutesOnFailure: m.minutes,
+                // Single user-facing knob; failure interval is derived
+                // server-side / hardcoded to a sensible default.
+                pollingIntervalHoursOnSuccess:   state.pollHours,
+                pollingIntervalMinutesOnFailure: 30,
+                acceptPush: state.acceptPush,
                 // dashboardPort is the companion's own listener port. Save
                 // takes effect on next companion restart (server is already
                 // bound to the old port for the current process). The hint
@@ -221,9 +212,9 @@
     }
 
     async function onSaveClick() {
-        const radio = $$('input[name="schedule"]').find(r => r.checked);
-        state.schedule      = radio ? radio.value : 'four';
+        state.pollHours     = parseInt($('pollHours').value, 10) || 4;
         state.onBoot        = !!$('onBoot').checked;
+        state.acceptPush    = !!$('acceptPush').checked;
         state.dashboardPort = parseInt($('dashboardPort').value, 10) || 8182;
 
         setStatus('saveStatus', 'Saving…', null);

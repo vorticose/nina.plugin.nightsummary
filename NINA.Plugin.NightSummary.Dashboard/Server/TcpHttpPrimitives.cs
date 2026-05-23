@@ -31,6 +31,11 @@ namespace NINA.Plugin.NightSummary.Server {
         // Combined with RemoteIp to build "http://<ip>:<port>/" — the URL
         // the primary uses to push session-end sync triggers.
         public int? CompanionDashboardPort { get; internal set; }
+        // Arbitrary headers not surfaced by a typed property. Used for low-
+        // traffic custom headers like X-Sync-Trigger so we don't have to add
+        // a new property for every signal. Keys are case-insensitive.
+        public System.Collections.Generic.Dictionary<string, string> Headers { get; internal set; }
+            = new(System.StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>

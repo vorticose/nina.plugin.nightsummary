@@ -140,7 +140,8 @@ public sealed class CompanionController : ICompanionController {
             DashboardPort:                   _config.Port,
             IsComplete:                      complete,
             IncompleteReason:                reason,
-            PairingTokenSet:                 !string.IsNullOrEmpty(_config.Nina.PairingToken));
+            PairingTokenSet:                 !string.IsNullOrEmpty(_config.Nina.PairingToken),
+            AcceptPush:                      _config.Sync.AcceptPush);
     }
 
     public async Task<CompanionConfigSaveResult> SaveConfigAsync(CompanionConfigEdit edit, CancellationToken ct = default) {
@@ -166,6 +167,9 @@ public sealed class CompanionController : ICompanionController {
             _config.Sync.OnBoot = edit.OnBoot;
             _config.Sync.PollingIntervalHoursOnSuccess   = edit.PollingIntervalHoursOnSuccess;
             _config.Sync.PollingIntervalMinutesOnFailure = edit.PollingIntervalMinutesOnFailure;
+            // null = leave unchanged (e.g. for clients that haven't been
+            // updated to send the field). Explicit toggle persists.
+            if (edit.AcceptPush.HasValue) _config.Sync.AcceptPush = edit.AcceptPush.Value;
             // Dashboard port is the companion's own TCP listener port. Saving
             // here updates companion.json but does NOT rebind the live server
             // (would need to tear down + restart Kestrel, ugly mid-request).

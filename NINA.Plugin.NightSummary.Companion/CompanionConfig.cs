@@ -41,6 +41,16 @@ public sealed class CompanionConfig {
 
         [JsonPropertyName("pollingIntervalHoursOnSuccess")]
         public int PollingIntervalHoursOnSuccess { get; set; } = 4;
+
+        // Accept session-end push notifications from the primary (NINA).
+        // When true (default) the companion's /api/companion/sync endpoint
+        // triggers a sync whenever the primary POSTs to it after a session
+        // ends. When false, push-triggered requests no-op (the user-clicked
+        // Sync button still works — push is identified by an X-Sync-Trigger
+        // header). Toggling this off pushes the companion onto the polling
+        // schedule only.
+        [JsonPropertyName("acceptPush")]
+        public bool AcceptPush { get; set; } = true;
     }
 
     // Where the synced data lives on disk. Defaults to a platform-appropriate

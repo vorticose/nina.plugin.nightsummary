@@ -353,6 +353,7 @@ namespace NINA.Plugin.NightSummary.Server {
             string userAgent = null;
             string authorization = null;
             int? companionDashPort = null;
+            var headers = new System.Collections.Generic.Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             for (int i = 1; i < lines.Length; i++) {
                 var colon = lines[i].IndexOf(':');
                 if (colon <= 0) continue;
@@ -367,6 +368,10 @@ namespace NINA.Plugin.NightSummary.Server {
                 else if (string.Equals(name, "X-Companion-Dashboard-Port", StringComparison.OrdinalIgnoreCase)
                          && int.TryParse(val, out var p) && p > 0 && p <= 65535)
                     companionDashPort = p;
+                // Anything else (X-Sync-Trigger, future low-traffic custom
+                // headers) lives in the generic Headers bag for handlers to
+                // pluck by name without growing the typed property surface.
+                headers[name] = val;
             }
 
             if (!rawPath.StartsWith("/")) rawPath = "/" + rawPath;
@@ -397,6 +402,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 UserAgent               = userAgent,
                 Authorization           = authorization,
                 CompanionDashboardPort  = companionDashPort,
+                Headers                 = headers,
                 // RemoteIp set by HandleTcpClient after this returns.
             };
         }
@@ -640,7 +646,7 @@ namespace NINA.Plugin.NightSummary.Server {
                     } else if (path == "/api/clientlog") {
                         await HandleClientLog(req, res, done);
                     } else if (path == "/api/companion/sync") {
-                        await HandleCompanionSync(res, done);
+                        await HandleCompanionSync(req, res, done);
                     } else if (path == "/api/companion/quit") {
                         await HandleCompanionQuit(res, done);
                     } else if (path == "/api/companion/restart") {

@@ -86,7 +86,11 @@ public sealed record CompanionConfigEdit(
     bool OnBoot,
     int PollingIntervalHoursOnSuccess,
     int PollingIntervalMinutesOnFailure,
-    int? DashboardPort = null);
+    int? DashboardPort = null,
+    // null = leave unchanged; true/false = explicit toggle. Controls whether
+    // the companion's /api/companion/sync endpoint reacts to session-end push
+    // triggers from the primary (manual user-clicked syncs always run).
+    bool? AcceptPush = null);
 
 public sealed record CompanionConfigSnapshot(
     string Host,
@@ -99,7 +103,9 @@ public sealed record CompanionConfigSnapshot(
     bool IsComplete,
     string? IncompleteReason,
     // True iff a per-companion pairing token is currently configured.
-    bool PairingTokenSet = false);
+    bool PairingTokenSet = false,
+    // Mirrors CompanionConfig.SyncConfig.AcceptPush. Default true.
+    bool AcceptPush = true);
 
 public sealed record CompanionConfigSaveResult(
     bool Ok,

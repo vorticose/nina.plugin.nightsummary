@@ -380,7 +380,14 @@ namespace NINA.Plugin.NightSummary.Session {
             try {
                 var url = companionUrl.TrimEnd('/') + "/api/companion/sync";
                 using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-                using var resp = await http.PostAsync(url, new System.Net.Http.StringContent(""));
+                using var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Post, url) {
+                    Content = new System.Net.Http.StringContent(""),
+                };
+                // Tag the request so the companion can distinguish push-driven
+                // triggers from user-clicked manual syncs. Lets users disable
+                // push without losing the Sync button.
+                req.Headers.TryAddWithoutValidation("X-Sync-Trigger", "push");
+                using var resp = await http.SendAsync(req);
                 if (resp.IsSuccessStatusCode) {
                     Logger.Info($"NightSummary: Companion '{label}' notified at {url} (HTTP {(int)resp.StatusCode})");
                 } else {
