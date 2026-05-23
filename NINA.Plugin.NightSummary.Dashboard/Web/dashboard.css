@@ -6487,6 +6487,45 @@ html.light .companion-banner-label { background: rgba(37, 99, 184, 0.08); }
     inset 0 -1px 0 rgba(0, 0, 0, 0.12),
     0 1px 2px rgba(0, 0, 0, 0.22);
 }
+
+/* Auth pill in the Settings tab. Indicates whether the companion is paired
+   via a per-companion token (new) or still using the legacy shared apiKey. */
+.settings-auth-status {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.settings-auth-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid transparent;
+}
+.settings-auth-pill.is-paired {
+  background: rgba(95, 160, 82, 0.15);
+  color: #5fa052;
+  border-color: rgba(95, 160, 82, 0.4);
+}
+
+/* Danger button for Quit. Same shape as .settings-btn but warns visually. */
+.settings-btn-danger {
+  border-color: rgba(194, 85, 62, 0.55);
+  color: #c2553e;
+}
+.settings-btn-danger:hover:not(:disabled) {
+  background: rgba(194, 85, 62, 0.12);
+  border-color: #c2553e;
+}
+
+/* Plain-link variant for "Re-pair" in the auth row. */
+.settings-btn-link {
+  text-decoration: none;
+}
+
 .m-mono {
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 11px;

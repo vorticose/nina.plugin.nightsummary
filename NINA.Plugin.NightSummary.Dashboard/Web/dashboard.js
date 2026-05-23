@@ -9457,6 +9457,43 @@ function settingsHtml(c) {
     '<div class="settings-card is-setup"><strong>Setup required</strong><p>' +
     esc(c.incompleteReason || 'Fill in the fields below to start syncing from your NINA machine.') +
     '</p></div>';
+
+  // Authentication block depends on pairing status.
+  //   - pairingTokenSet=true  -> paired via per-companion token (new flow).
+  //     Show a status row + Re-pair link to /setup?force=1. Hide the legacy
+  //     API key field entirely; auth happens through the pairing token.
+  //   - pairingTokenSet=false, apiKeySet=true -> legacy install. Show the
+  //     API key field with the masked current value + a "Migrate to pairing
+  //     token" hint linking to the wizard.
+  //   - neither -> first run. Wizard handles it; this branch just shows a
+  //     "Run setup wizard" link in case the user somehow landed here first.
+  var authBlock;
+  if (c.pairingTokenSet) {
+    authBlock =
+      '<div class="settings-row">' +
+        '<span class="settings-label">Authentication <span class="settings-hint">Per-companion pairing token (new)</span></span>' +
+        '<div class="settings-auth-status">' +
+          '<span class="settings-auth-pill is-paired">Paired</span>' +
+          '<a href="/setup?force=1" class="settings-btn settings-btn-link">Re-pair</a>' +
+        '</div>' +
+      '</div>';
+  } else if (c.apiKeySet) {
+    authBlock =
+      '<label class="settings-row">' +
+        '<span class="settings-label">API key <span class="settings-hint">Legacy shared key. <a href="/setup?force=1">Migrate to pairing token</a> for per-companion revocation.</span></span>' +
+        '<div class="settings-key-row">' +
+          '<input type="password" id="cfg-apikey" placeholder="' + esc(c.apiKeyMasked) + ' (leave blank to keep)">' +
+          '<button type="button" class="settings-key-toggle" id="cfg-apikey-show" title="Show/hide">show</button>' +
+        '</div>' +
+      '</label>';
+  } else {
+    authBlock =
+      '<div class="settings-row">' +
+        '<span class="settings-label">Authentication <span class="settings-hint">Not configured</span></span>' +
+        '<a href="/setup?force=1" class="settings-btn settings-btn-primary">Run setup wizard</a>' +
+      '</div>';
+  }
+
   return '' +
     '<div class="settings-shell">' +
       setupBanner +
@@ -9470,13 +9507,7 @@ function settingsHtml(c) {
           '<span class="settings-label">Port <span class="settings-hint">NINA Night Summary plugin port (default 8181)</span></span>' +
           '<input type="number" id="cfg-port" value="' + (c.port || 8181) + '" min="1" max="65535" required>' +
         '</label>' +
-        '<label class="settings-row">' +
-          '<span class="settings-label">API key <span class="settings-hint">Copy from the NS plugin settings on the primary</span></span>' +
-          '<div class="settings-key-row">' +
-            '<input type="password" id="cfg-apikey" placeholder="' + (c.apiKeySet ? esc(c.apiKeyMasked) + ' (leave blank to keep)' : 'paste api key') + '">' +
-            '<button type="button" class="settings-key-toggle" id="cfg-apikey-show" title="Show/hide">show</button>' +
-          '</div>' +
-        '</label>' +
+        authBlock +
         '<h2>Sync schedule</h2>' +
         '<label class="settings-row settings-row-inline">' +
           '<input type="checkbox" id="cfg-onboot"' + (c.onBoot ? ' checked' : '') + '>' +
@@ -9495,53 +9526,79 @@ function settingsHtml(c) {
           '<span class="settings-label">Data directory <span class="settings-hint">Read-only; edit companion.json directly to relocate (will orphan existing data)</span></span>' +
           '<input type="text" value="' + esc(c.dataDir || '') + '" readonly>' +
         '</div>' +
-        '<div class="settings-row">' +
-          '<span class="settings-label">Dashboard port <span class="settings-hint">Edit companion.json directly; restart required</span></span>' +
-          '<input type="text" value="' + (c.dashboardPort || '') + '" readonly>' +
-        '</div>' +
+        '<label class="settings-row">' +
+          '<span class="settings-label">Dashboard port <span class="settings-hint">This machine. Takes effect after restarting the companion.</span></span>' +
+          '<input type="number" id="cfg-dashport" value="' + (c.dashboardPort || 8182) + '" min="1" max="65535">' +
+        '</label>' +
         '<div class="settings-actions">' +
           '<div class="settings-status" id="cfg-status"></div>' +
           '<button type="button" class="settings-btn" id="cfg-test">Test connection</button>' +
           '<button type="submit" class="settings-btn settings-btn-primary" id="cfg-save">Save</button>' +
         '</div>' +
       '</form>' +
+      '<div class="settings-card">' +
+        '<h2>Companion process</h2>' +
+        '<p class="settings-hint">Restart applies a port change or refreshes the in-memory state. Quit stops the companion entirely — relaunch the app from the Applications folder to bring it back.</p>' +
+        '<div class="settings-actions">' +
+          '<div class="settings-status" id="proc-status"></div>' +
+          '<button type="button" class="settings-btn" id="cfg-restart">Restart companion</button>' +
+          '<button type="button" class="settings-btn settings-btn-danger" id="cfg-quit">Quit companion</button>' +
+        '</div>' +
+      '</div>' +
     '</div>';
 }
 
 function bindSettingsForm(initial) {
-  var form    = document.getElementById('settings-form');
-  var hostEl  = document.getElementById('cfg-host');
-  var portEl  = document.getElementById('cfg-port');
-  var keyEl   = document.getElementById('cfg-apikey');
+  var form     = document.getElementById('settings-form');
+  var hostEl   = document.getElementById('cfg-host');
+  var portEl   = document.getElementById('cfg-port');
+  // Auth block is either the API key input (legacy) or a status row with no
+  // input (pairing-token paired). keyEl null = token-paired, skip key in payload.
+  var keyEl    = document.getElementById('cfg-apikey');
   var keyToggle = document.getElementById('cfg-apikey-show');
-  var bootEl  = document.getElementById('cfg-onboot');
-  var sucEl   = document.getElementById('cfg-success');
-  var failEl  = document.getElementById('cfg-failure');
-  var status  = document.getElementById('cfg-status');
-  var testBtn = document.getElementById('cfg-test');
-  var saveBtn = document.getElementById('cfg-save');
+  var bootEl   = document.getElementById('cfg-onboot');
+  var sucEl    = document.getElementById('cfg-success');
+  var failEl   = document.getElementById('cfg-failure');
+  var dashEl   = document.getElementById('cfg-dashport');
+  var status   = document.getElementById('cfg-status');
+  var testBtn  = document.getElementById('cfg-test');
+  var saveBtn  = document.getElementById('cfg-save');
+  var restartBtn = document.getElementById('cfg-restart');
+  var quitBtn  = document.getElementById('cfg-quit');
+  var procStatus = document.getElementById('proc-status');
 
-  keyToggle.addEventListener('click', function() {
-    var showing = keyEl.type === 'text';
-    keyEl.type = showing ? 'password' : 'text';
-    keyToggle.textContent = showing ? 'show' : 'hide';
-  });
+  if (keyToggle && keyEl) {
+    keyToggle.addEventListener('click', function() {
+      var showing = keyEl.type === 'text';
+      keyEl.type = showing ? 'password' : 'text';
+      keyToggle.textContent = showing ? 'show' : 'hide';
+    });
+  }
 
   function readEdit() {
     return {
       host: hostEl.value.trim(),
       port: parseInt(portEl.value, 10) || 0,
       // Empty string from the form means "leave the saved key alone".
-      apiKey: keyEl.value === '' ? null : keyEl.value,
+      // keyEl missing means token-paired -> always null (don't touch apiKey).
+      apiKey: keyEl ? (keyEl.value === '' ? null : keyEl.value) : null,
       onBoot: !!bootEl.checked,
       pollingIntervalHoursOnSuccess:   parseInt(sucEl.value, 10) || 0,
       pollingIntervalMinutesOnFailure: parseInt(failEl.value, 10) || 0,
+      // Dashboard port: takes effect after companion restart. Server saves
+      // the value; user gets a banner suggesting Restart.
+      dashboardPort: dashEl ? (parseInt(dashEl.value, 10) || 0) : 0,
     };
   }
 
   function setStatus(text, cls) {
     status.textContent = text || '';
     status.className = 'settings-status' + (cls ? ' ' + cls : '');
+  }
+  function setProcStatus(text, cls) {
+    if (!procStatus) return;
+    procStatus.textContent = text || '';
+    procStatus.className = 'settings-status' + (cls ? ' ' + cls : '');
   }
 
   testBtn.addEventListener('click', function() {
@@ -9567,6 +9624,7 @@ function bindSettingsForm(initial) {
   form.addEventListener('submit', function(e) {
     e.preventDefault();
     var edit = readEdit();
+    var portChanged = edit.dashboardPort && initial && edit.dashboardPort !== initial.dashboardPort;
     setStatus('Saving…', '');
     saveBtn.disabled = true;
     fetch('/api/companion/config', {
@@ -9575,7 +9633,15 @@ function bindSettingsForm(initial) {
       body: JSON.stringify(edit),
     }).then(function(r){ return r.json().then(function(j){ return { status: r.status, body: j }; }); }).then(function(o){
       if (o.body && o.body.ok) {
-        setStatus('Saved. ' + (o.body.config && o.body.config.isComplete ? 'Initial sync starting.' : 'Setup still incomplete.'), 'is-ok');
+        var msg = 'Saved.';
+        if (portChanged) {
+          msg += ' Dashboard port change takes effect after you restart the companion.';
+        } else if (o.body.config && o.body.config.isComplete) {
+          msg += ' Initial sync starting.';
+        } else {
+          msg += ' Setup still incomplete.';
+        }
+        setStatus(msg, 'is-ok');
         // Re-render so the masked key reflects whatever was saved and to flip
         // any "setup required" banner off.
         renderSettingsPage();
@@ -9588,4 +9654,74 @@ function bindSettingsForm(initial) {
       setStatus('Save failed: ' + (err.message || 'network error'), 'is-error');
     }).finally(function(){ saveBtn.disabled = false; });
   });
+
+  // ── Quit / Restart ────────────────────────────────────────────────────
+  // The companion's executable is a watchdog shell script that re-runs the
+  // real binary on exit code 88 and stops on exit code 0. The two endpoints
+  // here just trigger the right exit code; the script does the rest.
+
+  if (restartBtn) {
+    restartBtn.addEventListener('click', function() {
+      if (!confirm('Restart the companion now? The dashboard will disconnect briefly while the process respawns.')) return;
+      setProcStatus('Restarting…', '');
+      restartBtn.disabled = true;
+      quitBtn && (quitBtn.disabled = true);
+      fetch('/api/companion/restart', { method: 'POST' })
+        .then(function(){
+          // Server has exited by the time we get here (or moments after).
+          // Poll /api/health until the new process is up, then reload.
+          var attempts = 0;
+          var max = 60; // ~60s total at 1s intervals; watchdog respawn is usually under 2s
+          var poll = setInterval(function() {
+            attempts++;
+            fetch('/api/health', { cache: 'no-store' })
+              .then(function(r){
+                if (r.ok) {
+                  clearInterval(poll);
+                  setProcStatus('Companion is back. Reloading…', 'is-ok');
+                  setTimeout(function(){ window.location.reload(); }, 400);
+                }
+              })
+              .catch(function(){ /* still down, keep polling */ });
+            if (attempts >= max) {
+              clearInterval(poll);
+              setProcStatus('Companion did not come back in 60s. Check Console.app or relaunch the app.', 'is-error');
+              restartBtn.disabled = false;
+              quitBtn && (quitBtn.disabled = false);
+            }
+          }, 1000);
+        })
+        .catch(function(err){
+          setProcStatus('Restart request failed: ' + (err.message || 'network error'), 'is-error');
+          restartBtn.disabled = false;
+          quitBtn && (quitBtn.disabled = false);
+        });
+    });
+  }
+
+  if (quitBtn) {
+    quitBtn.addEventListener('click', function() {
+      if (!confirm('Quit the companion? The dashboard will go offline. To restart, open NightSummaryCompanion from your Applications folder.')) return;
+      setProcStatus('Stopping companion…', '');
+      restartBtn && (restartBtn.disabled = true);
+      quitBtn.disabled = true;
+      fetch('/api/companion/quit', { method: 'POST' })
+        .then(function(){
+          // Give the server a beat to actually exit before swapping the UI.
+          setTimeout(function(){
+            document.body.innerHTML =
+              '<div style="font-family:-apple-system,system-ui,sans-serif;max-width:480px;margin:80px auto;padding:24px;border:1px solid #ccc;border-radius:8px;text-align:center;">' +
+              '<h2>Companion stopped</h2>' +
+              '<p>The companion server is no longer running. The dashboard cannot reconnect from here.</p>' +
+              '<p>To restart: open <strong>NightSummaryCompanion</strong> from your Applications folder.</p>' +
+              '</div>';
+          }, 500);
+        })
+        .catch(function(err){
+          setProcStatus('Quit request failed: ' + (err.message || 'network error'), 'is-error');
+          restartBtn && (restartBtn.disabled = false);
+          quitBtn.disabled = false;
+        });
+    });
+  }
 }

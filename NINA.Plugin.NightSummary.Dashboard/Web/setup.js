@@ -89,6 +89,11 @@
                 onBoot: state.onBoot,
                 pollingIntervalHoursOnSuccess:   m.hours,
                 pollingIntervalMinutesOnFailure: m.minutes,
+                // dashboardPort is the companion's own listener port. Save
+                // takes effect on next companion restart (server is already
+                // bound to the old port for the current process). The hint
+                // text in step 4 tells the user.
+                dashboardPort: state.dashboardPort,
             }),
         });
         return resp.json();

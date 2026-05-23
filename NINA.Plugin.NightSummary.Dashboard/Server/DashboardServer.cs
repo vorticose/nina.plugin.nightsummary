@@ -561,8 +561,13 @@ namespace NINA.Plugin.NightSummary.Server {
                     } else if (path == "/setup") {
                         // Companion-only wizard page. When already paired, bounce
                         // back to the main dashboard so users don't reach setup
-                        // accidentally after onboarding.
-                        if (_companion != null && _companion.GetConfig().IsComplete) {
+                        // accidentally after onboarding. ?force=1 bypasses the
+                        // bounce so the user can re-enter the wizard from the
+                        // Settings tab (re-pair, switch primary, etc.).
+                        var force = req.QueryString["force"];
+                        if (_companion != null
+                            && _companion.GetConfig().IsComplete
+                            && string.IsNullOrEmpty(force)) {
                             await Redirect(res, "/", done, "setup → /");
                         } else {
                             await HandleSetupHtml(res, done);
@@ -610,6 +615,10 @@ namespace NINA.Plugin.NightSummary.Server {
                         await HandleClientLog(req, res, done);
                     } else if (path == "/api/companion/sync") {
                         await HandleCompanionSync(res, done);
+                    } else if (path == "/api/companion/quit") {
+                        await HandleCompanionQuit(res, done);
+                    } else if (path == "/api/companion/restart") {
+                        await HandleCompanionRestart(res, done);
                     } else if (path == "/api/companion/config") {
                         await HandleCompanionConfigSave(req, res, done);
                     } else if (path == "/api/companion/test-connection") {

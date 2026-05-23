@@ -84,7 +84,8 @@ namespace NINA.Plugin.NightSummary.Server {
                     ApiKey:                          GetOptionalStr(root, "apiKey"),
                     OnBoot:                          GetBool(root, "onBoot", true),
                     PollingIntervalHoursOnSuccess:   GetInt(root, "pollingIntervalHoursOnSuccess", 4),
-                    PollingIntervalMinutesOnFailure: GetInt(root, "pollingIntervalMinutesOnFailure", 30));
+                    PollingIntervalMinutesOnFailure: GetInt(root, "pollingIntervalMinutesOnFailure", 30),
+                    DashboardPort:                   GetOptionalInt(root, "dashboardPort"));
 
                 var result = await _companion.SaveConfigAsync(edit);
                 if (!result.Ok) {
@@ -151,7 +152,51 @@ namespace NINA.Plugin.NightSummary.Server {
             dashboardPort                   = s.DashboardPort,
             isComplete                      = s.IsComplete,
             incompleteReason                = s.IncompleteReason,
+            // Drives dashboard.js Settings tab branching: pairing token = new
+            // per-companion auth, hide legacy api key field; false = legacy.
+            pairingTokenSet                 = s.PairingTokenSet,
         };
+
+        // POST /api/companion/quit  — companion-only. Returns 200 then exits
+        // process with code 0. Watchdog wrapper in the .app sees the clean
+        // exit and stops the respawn loop, so the companion really goes away
+        // until the user relaunches the .app.
+        private async Task HandleCompanionQuit(TcpHttpResponse res, Action<int, string> done) {
+            if (_companion == null) {
+                await WriteJson(res, 404, new { error = "companion mode not active" });
+                done?.Invoke(404, null);
+                return;
+            }
+            await WriteJson(res, 200, new { ok = true, action = "quit" });
+            done?.Invoke(200, "quit requested");
+            // Brief delay so the response actually flushes to the client
+            // before the process dies. Fire-and-forget — not awaited.
+            _ = Task.Run(async () => {
+                await Task.Delay(250);
+                log?.Info("Companion: quit requested via dashboard — exiting cleanly (code 0).");
+                Environment.Exit(0);
+            });
+        }
+
+        // POST /api/companion/restart  — companion-only. Returns 200 then
+        // exits with code 88 (sentinel for "respawn me"). The watchdog
+        // wrapper sees the non-zero/non-0 exit code and restarts the binary
+        // within ~1s. Dashboard polls /api/health to detect when the new
+        // process is ready, then reloads the page.
+        private async Task HandleCompanionRestart(TcpHttpResponse res, Action<int, string> done) {
+            if (_companion == null) {
+                await WriteJson(res, 404, new { error = "companion mode not active" });
+                done?.Invoke(404, null);
+                return;
+            }
+            await WriteJson(res, 200, new { ok = true, action = "restart" });
+            done?.Invoke(200, "restart requested");
+            _ = Task.Run(async () => {
+                await Task.Delay(250);
+                log?.Info("Companion: restart requested via dashboard — exiting code 88 for watchdog respawn.");
+                Environment.Exit(88);
+            });
+        }
 
         // ── Pairing endpoints (primary only) ─────────────────────────────────
         //
@@ -325,6 +370,8 @@ namespace NINA.Plugin.NightSummary.Server {
             e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
         private static int GetInt(JsonElement e, string name, int def) =>
             e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var i) ? i : def;
+        private static int? GetOptionalInt(JsonElement e, string name) =>
+            e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var i) ? i : (int?)null;
         private static bool GetBool(JsonElement e, string name, bool def) =>
             e.TryGetProperty(name, out var v) && (v.ValueKind == JsonValueKind.True || v.ValueKind == JsonValueKind.False) ? v.GetBoolean() : def;
 

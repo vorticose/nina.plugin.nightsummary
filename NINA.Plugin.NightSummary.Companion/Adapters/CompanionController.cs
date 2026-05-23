@@ -162,6 +162,10 @@ public sealed class CompanionController : ICompanionController {
             // because a working key going to empty bricks the sync.
             if (edit.ApiKey != null && string.IsNullOrWhiteSpace(edit.ApiKey))
                 return Fail("apiKey cannot be empty (omit the field to keep the existing value)");
+            // DashboardPort == null means "leave unchanged". Range-validate
+            // when set so a typo doesn't write 0 / negative to companion.json.
+            if (edit.DashboardPort.HasValue && (edit.DashboardPort.Value <= 0 || edit.DashboardPort.Value > 65535))
+                return Fail($"dashboard port {edit.DashboardPort.Value} out of range");
 
             _config.Nina.Host = edit.Host.Trim();
             _config.Nina.Port = edit.Port;
@@ -169,6 +173,16 @@ public sealed class CompanionController : ICompanionController {
             _config.Sync.OnBoot = edit.OnBoot;
             _config.Sync.PollingIntervalHoursOnSuccess   = edit.PollingIntervalHoursOnSuccess;
             _config.Sync.PollingIntervalMinutesOnFailure = edit.PollingIntervalMinutesOnFailure;
+            // Dashboard port is the companion's own TCP listener port. Saving
+            // here updates companion.json but does NOT rebind the live server
+            // (would need to tear down + restart Kestrel, ugly mid-request).
+            // Caller is responsible for telling the user "restart companion
+            // to apply" when the port changes.
+            var dashboardPortChanged = false;
+            if (edit.DashboardPort.HasValue && edit.DashboardPort.Value != _config.Port) {
+                _config.Port = edit.DashboardPort.Value;
+                dashboardPortChanged = true;
+            }
 
             try {
                 CompanionConfig.Save(_config, _configPath);
@@ -179,7 +193,8 @@ public sealed class CompanionController : ICompanionController {
             _engine.Reconfigure();
             _log.Info($"Companion: config saved (host={_config.Nina.Host}, port={_config.Nina.Port}, " +
                       $"keyChanged={edit.ApiKey != null}, success={_config.Sync.PollingIntervalHoursOnSuccess}h, " +
-                      $"failure={_config.Sync.PollingIntervalMinutesOnFailure}m)");
+                      $"failure={_config.Sync.PollingIntervalMinutesOnFailure}m" +
+                      (dashboardPortChanged ? $", dashboardPort={_config.Port} (restart required)" : "") + ")");
         }
 
         // If we just crossed the "incomplete → complete" line, kick a sync so

@@ -79,13 +79,17 @@ public sealed record CompanionClaimResult(
 
 // Editable surface of companion.json. ApiKey == null means "leave unchanged"
 // so the dashboard can re-save other fields without round-tripping the secret.
+// DashboardPort == null means "leave unchanged" too (most config saves
+// don't touch it); when set, takes effect on the next companion restart
+// since the TCP listener is bound at startup.
 public sealed record CompanionConfigEdit(
     string Host,
     int Port,
     string? ApiKey,
     bool OnBoot,
     int PollingIntervalHoursOnSuccess,
-    int PollingIntervalMinutesOnFailure);
+    int PollingIntervalMinutesOnFailure,
+    int? DashboardPort = null);
 
 public sealed record CompanionConfigSnapshot(
     string Host,
