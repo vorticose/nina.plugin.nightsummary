@@ -105,7 +105,12 @@ public sealed record CompanionConfigEdit(
     // null = leave unchanged; true/false = explicit toggle. Controls whether
     // the companion's /api/companion/sync endpoint reacts to session-end push
     // triggers from the primary (manual user-clicked syncs always run).
-    bool? AcceptPush = null);
+    bool? AcceptPush = null,
+    // null = leave unchanged; true/false = explicit toggle / port change.
+    // Both fields take effect on the next companion restart (the second
+    // DashboardServer is bound at startup, like DashboardPort).
+    bool? EnableReadOnlyMirror = null,
+    int? ReadOnlyMirrorPort = null);
 
 public sealed record CompanionConfigSnapshot(
     string Host,
@@ -120,7 +125,12 @@ public sealed record CompanionConfigSnapshot(
     // True iff a per-companion pairing token is currently configured.
     bool PairingTokenSet = false,
     // Mirrors CompanionConfig.SyncConfig.AcceptPush. Default true.
-    bool AcceptPush = true);
+    bool AcceptPush = true,
+    // Mirrors CompanionConfig.EnableReadOnlyMirror / ReadOnlyMirrorPort.
+    // Changes require companion restart since the second listener is bound
+    // at startup.
+    bool EnableReadOnlyMirror = false,
+    int ReadOnlyMirrorPort = 8282);
 
 public sealed record CompanionConfigSaveResult(
     bool Ok,

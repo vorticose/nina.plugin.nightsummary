@@ -22,6 +22,18 @@ public sealed class CompanionConfig {
     [JsonPropertyName("sync")]
     public SyncConfig Sync { get; set; } = new();
 
+    // Optional second DashboardServer instance bound to a separate port with
+    // readOnly: true. Designed for parallel-port public exposure behind a
+    // reverse proxy / Tailscale Funnel — the public port refuses every non-GET
+    // request server-side and hides destructive UI. Mirrors the primary-side
+    // EnableReadOnlyMirror + ReadOnlyMirrorPort settings (default 8281 there,
+    // 8282 here so the two don't collide on a box running both).
+    [JsonPropertyName("enableReadOnlyMirror")]
+    public bool EnableReadOnlyMirror { get; set; } = false;
+
+    [JsonPropertyName("readOnlyMirrorPort")]
+    public int ReadOnlyMirrorPort { get; set; } = 8282;
+
     public sealed class NinaConfig {
         [JsonPropertyName("host")]    public string Host    { get; set; } = "";
         [JsonPropertyName("port")]    public int    Port    { get; set; } = 8181;

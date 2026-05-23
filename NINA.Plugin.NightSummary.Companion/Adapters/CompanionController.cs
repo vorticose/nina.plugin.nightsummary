@@ -141,7 +141,9 @@ public sealed class CompanionController : ICompanionController {
             IsComplete:                      complete,
             IncompleteReason:                reason,
             PairingTokenSet:                 !string.IsNullOrEmpty(_config.Nina.PairingToken),
-            AcceptPush:                      _config.Sync.AcceptPush);
+            AcceptPush:                      _config.Sync.AcceptPush,
+            EnableReadOnlyMirror:            _config.EnableReadOnlyMirror,
+            ReadOnlyMirrorPort:              _config.ReadOnlyMirrorPort);
     }
 
     public async Task<CompanionConfigSaveResult> SaveConfigAsync(CompanionConfigEdit edit, CancellationToken ct = default) {
@@ -161,6 +163,17 @@ public sealed class CompanionController : ICompanionController {
             // when set so a typo doesn't write 0 / negative to companion.json.
             if (edit.DashboardPort.HasValue && (edit.DashboardPort.Value <= 0 || edit.DashboardPort.Value > 65535))
                 return Fail($"dashboard port {edit.DashboardPort.Value} out of range");
+            if (edit.ReadOnlyMirrorPort.HasValue && (edit.ReadOnlyMirrorPort.Value < 1024 || edit.ReadOnlyMirrorPort.Value > 65535))
+                return Fail($"read-only mirror port {edit.ReadOnlyMirrorPort.Value} out of range (1024-65535)");
+            // Reject a mirror port that collides with the main dashboard port —
+            // catch the conflict here so the mirror doesn't silently fail to bind
+            // on next restart. Compare against the post-edit DashboardPort if the
+            // user changed both at once.
+            int effectiveDashPort = edit.DashboardPort ?? _config.Port;
+            int effectiveRoPort   = edit.ReadOnlyMirrorPort ?? _config.ReadOnlyMirrorPort;
+            bool roWantedOn       = edit.EnableReadOnlyMirror ?? _config.EnableReadOnlyMirror;
+            if (roWantedOn && effectiveDashPort == effectiveRoPort)
+                return Fail($"read-only mirror port must differ from dashboard port (both {effectiveDashPort})");
 
             _config.Nina.Host = edit.Host.Trim();
             _config.Nina.Port = edit.Port;
@@ -180,6 +193,18 @@ public sealed class CompanionController : ICompanionController {
                 _config.Port = edit.DashboardPort.Value;
                 dashboardPortChanged = true;
             }
+            // Read-only mirror toggle / port. Both take effect on next companion
+            // restart (the second listener is bound at startup). Save here so
+            // a one-shot edit persists; user gets a "restart required" banner.
+            var roMirrorChanged = false;
+            if (edit.EnableReadOnlyMirror.HasValue && edit.EnableReadOnlyMirror.Value != _config.EnableReadOnlyMirror) {
+                _config.EnableReadOnlyMirror = edit.EnableReadOnlyMirror.Value;
+                roMirrorChanged = true;
+            }
+            if (edit.ReadOnlyMirrorPort.HasValue && edit.ReadOnlyMirrorPort.Value != _config.ReadOnlyMirrorPort) {
+                _config.ReadOnlyMirrorPort = edit.ReadOnlyMirrorPort.Value;
+                roMirrorChanged = true;
+            }
 
             try {
                 CompanionConfig.Save(_config, _configPath);
@@ -191,7 +216,8 @@ public sealed class CompanionController : ICompanionController {
             _log.Info($"Companion: config saved (host={_config.Nina.Host}, port={_config.Nina.Port}, " +
                       $"success={_config.Sync.PollingIntervalHoursOnSuccess}h, " +
                       $"failure={_config.Sync.PollingIntervalMinutesOnFailure}m" +
-                      (dashboardPortChanged ? $", dashboardPort={_config.Port} (restart required)" : "") + ")");
+                      (dashboardPortChanged ? $", dashboardPort={_config.Port} (restart required)" : "") +
+                      (roMirrorChanged ? $", readOnlyMirror={_config.EnableReadOnlyMirror}@{_config.ReadOnlyMirrorPort} (restart required)" : "") + ")");
         }
 
         // If we just crossed the "incomplete → complete" line, kick a sync so

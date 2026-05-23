@@ -9605,6 +9605,17 @@ function settingsHtml(c) {
           '<input type="number" id="cfg-dashport" value="' + (c.dashboardPort || 8182) + '" min="1" max="65535">' +
         '</label>' +
 
+        '<h2>Read-only mirror</h2>' +
+        '<p class="settings-hint">Optional second dashboard on a separate port that refuses every write. Point a reverse proxy (Caddy / nginx / Cloudflare Tunnel) or <code>tailscale funnel</code> at this port for safe public exposure — never expose the main dashboard port directly. Toggle requires a companion restart.</p>' +
+        '<label class="settings-row settings-row-inline">' +
+          '<input type="checkbox" id="cfg-romirror"' + (c.enableReadOnlyMirror ? ' checked' : '') + '>' +
+          '<span>Enable read-only mirror</span>' +
+        '</label>' +
+        '<label class="settings-row">' +
+          '<span class="settings-label">Mirror port <span class="settings-hint">Default 8282; must differ from the main port above</span></span>' +
+          '<input type="number" id="cfg-roport" value="' + (c.readOnlyMirrorPort || 8282) + '" min="1024" max="65535">' +
+        '</label>' +
+
         '<div class="settings-actions">' +
           '<div class="settings-status" id="cfg-status"></div>' +
           '<button type="button" class="settings-btn" id="cfg-test">Test connection</button>' +
@@ -9631,6 +9642,8 @@ function bindSettingsForm(initial) {
   var hoursEl  = document.getElementById('cfg-hours');
   var pushEl   = document.getElementById('cfg-acceptpush');
   var dashEl   = document.getElementById('cfg-dashport');
+  var roMirrorEl = document.getElementById('cfg-romirror');
+  var roPortEl = document.getElementById('cfg-roport');
   var status   = document.getElementById('cfg-status');
   var testBtn  = document.getElementById('cfg-test');
   var saveBtn  = document.getElementById('cfg-save');
@@ -9651,6 +9664,11 @@ function bindSettingsForm(initial) {
       // Dashboard port: takes effect after companion restart. Server saves
       // the value; user gets a banner suggesting Restart.
       dashboardPort: dashEl ? (parseInt(dashEl.value, 10) || 0) : 0,
+      // Read-only mirror: separate DashboardServer on its own port, refuses
+      // every non-GET request. Mirror state changes (toggle or port) require
+      // a companion restart since the listener is bound at startup.
+      enableReadOnlyMirror: !!(roMirrorEl && roMirrorEl.checked),
+      readOnlyMirrorPort: roPortEl ? (parseInt(roPortEl.value, 10) || 0) : 0,
     };
   }
 

@@ -41,6 +41,13 @@ On first run a default companion.json is written and the program exits so you ca
   the disk fresh, so editing a CSS file + refreshing the browser is enough
   to iterate on UI without rebuilding. Intended for development; production
   installs should omit it. Falls back to embedded assets when omitted.
+
+--readonly-port <int>
+  Override companion.json's readOnlyMirrorPort for this invocation. When
+  combined with enableReadOnlyMirror=true in the config (or just present at
+  all — sets enable to true implicitly), the companion spins a second
+  DashboardServer on this port with readOnly=true. Used for ad-hoc testing
+  without editing the config.
 ";
 
     public static async Task<int> Main(string[] args) {
@@ -58,6 +65,7 @@ On first run a default companion.json is written and the program exits so you ca
 
         var configPath = ResolveArg(args, "--config") ?? DefaultConfigPath();
         var webDir     = ResolveArg(args, "--web");
+        var roPortOverride = ResolveArg(args, "--readonly-port");
         // No-arg invocation defaults to `serve` so double-clicking the .app
         // bundle from Finder (which passes zero args) does the obvious thing
         // instead of printing usage to a hidden stdout and exiting silently.
@@ -69,7 +77,8 @@ On first run a default companion.json is written and the program exits so you ca
                 "serve" => await RunServeAsync(configPath,
                                                noSync:      HasFlag(args, "--no-sync"),
                                                noBrowser:   HasFlag(args, "--no-browser"),
-                                               webDir:      webDir),
+                                               webDir:      webDir,
+                                               roPortOverride: roPortOverride),
                 _ => UnknownCommand(cmd),
             };
         } catch (Exception ex) {
@@ -98,7 +107,7 @@ On first run a default companion.json is written and the program exits so you ca
         return result.Success ? 0 : 3;
     }
 
-    private static async Task<int> RunServeAsync(string configPath, bool noSync, bool noBrowser, string? webDir) {
+    private static async Task<int> RunServeAsync(string configPath, bool noSync, bool noBrowser, string? webDir, string? roPortOverride) {
         var (config, paths, log) = Bootstrap(configPath);
         // Don't Validate() here — serve must come up even when config is fresh
         // so the user can complete setup from the dashboard. Loops below skip
@@ -148,6 +157,17 @@ On first run a default companion.json is written and the program exits so you ca
 
         await server.StartAsync(config.Port);
         log.Info($"Dashboard serving on http://localhost:{config.Port} (companion mode)");
+
+        // Optional second instance with readOnly=true for safe public exposure.
+        // --readonly-port CLI flag implies enable=true even when companion.json
+        // says otherwise, so testers don't need to edit the file.
+        DashboardServer? roServer = null;
+        bool roEnabled = config.EnableReadOnlyMirror || !string.IsNullOrWhiteSpace(roPortOverride);
+        int roPort     = ParseRoPort(roPortOverride) ?? config.ReadOnlyMirrorPort;
+        if (roEnabled) {
+            roServer = await StartReadOnlyMirrorAsync(roPort, config.Port, paths, settings, webAssets, log);
+        }
+
         log.Info("Press Ctrl+C to stop.");
 
         // First-run convenience: pop the wizard in the user's default browser
@@ -180,8 +200,61 @@ On first run a default companion.json is written and the program exits so you ca
         log.Info("Stopping server…");
         schedulerCts.Cancel();
         try { await Task.WhenAll(scheduler, pinger); } catch (OperationCanceledException) { }
+        if (roServer != null) {
+            try { await roServer.StopAsync(); } catch (Exception ex) { log.Warn($"Read-only mirror stop: {ex.Message}"); }
+        }
         await server.StopAsync();
         return 0;
+    }
+
+    // Same shape as the primary's StartReadOnlyMirrorAsync in NightSummaryPlugin.cs —
+    // separate DashboardServer instance bound to its own port, reads the same data
+    // dir, refuses every non-GET request with 403 via the readOnly ctor flag.
+    // Validation lives here (not in the setter) so the user can change the port
+    // and toggle in one Settings save without going through an invalid mid-state.
+    // Failures log + return null; the main server keeps running.
+    private static async Task<DashboardServer?> StartReadOnlyMirrorAsync(
+            int port,
+            int mainPort,
+            CompanionPaths paths,
+            CompanionPluginSettings settings,
+            IWebAssets webAssets,
+            CompanionLogger log) {
+        if (port < 1024 || port > 65535) {
+            log.Warn($"Read-only mirror port {port} out of range (1024-65535); mirror not started");
+            return null;
+        }
+        if (port == mainPort) {
+            log.Warn($"Read-only mirror port {port} matches main dashboard port; mirror not started");
+            return null;
+        }
+        try {
+            // Mirror reads the same DB + same web assets — only difference is the
+            // readOnly flag. Pass companion=null/regen=null on purpose: the public
+            // surface should never reach pairing-management or regenerate endpoints,
+            // and the 403 chokepoint catches the rest.
+            var mirror = new DashboardServer(
+                data:        new CompanionDataSource(paths.DatabasePath, paths.TsDatabasePath, log),
+                settings:    settings,
+                webAssets:   webAssets,
+                externalLog: log,
+                paths:       paths,
+                regen:       null,
+                companion:   null,
+                tokenStore:  null,
+                readOnly:    true);
+            await mirror.StartAsync(port);
+            log.Info($"Read-only mirror serving on http://localhost:{port}");
+            return mirror;
+        } catch (Exception ex) {
+            log.Warn($"Failed to start read-only mirror on port {port}: {ex.Message}");
+            return null;
+        }
+    }
+
+    private static int? ParseRoPort(string? s) {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        return int.TryParse(s, out var n) ? n : null;
     }
 
     // Cheap reachability poll. Hits /api/health on a fast cadence so the banner

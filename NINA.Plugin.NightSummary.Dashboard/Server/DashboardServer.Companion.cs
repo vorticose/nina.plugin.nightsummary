@@ -98,7 +98,9 @@ namespace NINA.Plugin.NightSummary.Server {
                     PollingIntervalHoursOnSuccess:   GetInt(root, "pollingIntervalHoursOnSuccess", 4),
                     PollingIntervalMinutesOnFailure: GetInt(root, "pollingIntervalMinutesOnFailure", 30),
                     DashboardPort:                   GetOptionalInt(root, "dashboardPort"),
-                    AcceptPush:                      GetOptionalBool(root, "acceptPush"));
+                    AcceptPush:                      GetOptionalBool(root, "acceptPush"),
+                    EnableReadOnlyMirror:            GetOptionalBool(root, "enableReadOnlyMirror"),
+                    ReadOnlyMirrorPort:              GetOptionalInt(root, "readOnlyMirrorPort"));
 
                 var result = await _companion.SaveConfigAsync(edit);
                 if (!result.Ok) {
@@ -165,6 +167,8 @@ namespace NINA.Plugin.NightSummary.Server {
             incompleteReason                = s.IncompleteReason,
             pairingTokenSet                 = s.PairingTokenSet,
             acceptPush                      = s.AcceptPush,
+            enableReadOnlyMirror            = s.EnableReadOnlyMirror,
+            readOnlyMirrorPort              = s.ReadOnlyMirrorPort,
         };
 
         // POST /api/companion/quit  — companion-only. Returns 200 then exits
