@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>NS Companion Setup — Design Mock</title>
+
+    <!--
+        Wizard design mock. Edit /NINA.Plugin.NightSummary.Dashboard/Web/setup.css
+        or dashboard.css and refresh this file to see changes instantly — no
+        build, no deploy. Renders the real wizard markup with the real CSS but
+        no backend dependency: API calls are stubbed, a designer toolbar at
+        the top lets you flip between steps and trigger status states.
+
+        Open by double-clicking from Finder/Explorer (file:// scheme works).
+        Some browsers block fetch() over file:// — the toolbar's "Stub
+        responses" toggle defaults on so JS never actually hits the network.
+    -->
+
+    <link rel="stylesheet" href="../../NINA.Plugin.NightSummary.Dashboard/Web/dashboard.css" />
+    <link rel="stylesheet" href="../../NINA.Plugin.NightSummary.Dashboard/Web/setup.css" />
+
+    <style>
+        /* Designer toolbar — only in the mock. Sits fixed at the top of the
+           viewport, swatches the step + status state controls. Never ships. */
+        #mock-toolbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(40, 42, 55, 0.95);
+            border-bottom: 1px solid #444;
+            padding: 8px 12px;
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            font-family: -apple-system, system-ui, sans-serif;
+            font-size: 12px;
+            color: #ccc;
+            z-index: 9999;
+            backdrop-filter: blur(8px);
+        }
+        #mock-toolbar strong { color: #fff; margin-right: 4px; }
+        #mock-toolbar button {
+            background: #2a2c3a;
+            border: 1px solid #555;
+            color: #ddd;
+            padding: 4px 10px;
+            font-size: 12px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        #mock-toolbar button:hover { background: #3a3c4a; border-color: #7eb8f7; }
+        #mock-toolbar button.active {
+            background: #7eb8f7;
+            border-color: #7eb8f7;
+            color: #111;
+        }
+        #mock-toolbar .group { display: flex; gap: 4px; align-items: center; }
+        #mock-toolbar label {
+            font-family: inherit;
+            font-weight: normal;
+            font-size: 12px;
+            color: #ccc;
+            display: inline-flex;
+            gap: 6px;
+            align-items: center;
+            flex-direction: row;
+        }
+        body { padding-top: 56px !important; }
+    </style>
+</head>
+<body>
+
+<div id="mock-toolbar">
+    <strong>Step:</strong>
+    <div class="group">
+        <button data-jump="1" class="active">1 Welcome</button>
+        <button data-jump="2">2 Connect</button>
+        <button data-jump="3">3 Pair</button>
+        <button data-jump="4">4 Settings</button>
+        <button data-jump="5">5 Sync</button>
+    </div>
+    <strong>Status:</strong>
+    <div class="group">
+        <button data-status="clear">Clear</button>
+        <button data-status="info">Info</button>
+        <button data-status="success">Success</button>
+        <button data-status="error">Error</button>
+    </div>
+    <label style="margin-left:auto;"><input type="checkbox" id="light-toggle" /> Light mode</label>
+</div>
+
+<main class="wizard-card">
+    <header>
+        <h1>Set up Night Summary Companion</h1>
+        <ol class="steps" id="steps">
+            <li data-step="1">1</li>
+            <li data-step="2">2</li>
+            <li data-step="3">3</li>
+            <li data-step="4">4</li>
+            <li data-step="5">5</li>
+        </ol>
+    </header>
+
+    <!-- Step 1: Welcome -->
+    <section class="step" data-step="1">
+        <h2>Welcome</h2>
+        <p>Connect this companion to the Night Summary plugin running in NINA on your astrophotography machine. Takes about 30 seconds.</p>
+        <div class="actions">
+            <button class="primary" data-action="next">Get Started</button>
+        </div>
+    </section>
+
+    <!-- Step 2: Connect to NINA -->
+    <section class="step" data-step="2" hidden>
+        <h2>Connect to NINA</h2>
+        <label>
+            Host or IP
+            <input id="host" type="text" placeholder="100.x.x.x (Tailscale) or rig.local" autocomplete="off" value="100.86.208.29" />
+        </label>
+        <label>
+            Dashboard port
+            <input id="port" type="number" value="8181" min="1" max="65535" />
+        </label>
+        <p class="hint">The address of the machine running NINA. If you use Tailscale, the IP shown in the Tailscale app works.</p>
+        <div id="probeStatus" class="status" hidden></div>
+        <div class="actions">
+            <button data-action="back">Back</button>
+            <button id="testBtn" data-action="probe">Test Connection</button>
+            <button id="nextBtn2" class="primary" data-action="next">Next</button>
+        </div>
+    </section>
+
+    <!-- Step 3: Pair -->
+    <section class="step" data-step="3" hidden>
+        <h2>Pair with NINA</h2>
+        <ol class="instructions">
+            <li>In NINA, open the Night Summary plugin settings.</li>
+            <li>Scroll to <strong>Companion Pairing</strong>.</li>
+            <li>Click <strong>+ Generate Token</strong>.</li>
+            <li>Paste the token below.</li>
+        </ol>
+        <label>
+            Token
+            <input id="token" type="text" placeholder="K4M2-9N3X-7QR5-8VH2" autocomplete="off" spellcheck="false" />
+        </label>
+        <label>
+            Companion name
+            <input id="companionName" type="text" placeholder="Mac mini" autocomplete="off" value="Mac mini" />
+            <span class="hint">Shown in NINA after pairing so you know which device is connected.</span>
+        </label>
+        <div id="pairStatus" class="status" hidden></div>
+        <div class="actions">
+            <button data-action="back">Back</button>
+            <button id="pairBtn" class="primary" data-action="pair">Pair</button>
+        </div>
+    </section>
+
+    <!-- Step 4: Sync settings -->
+    <section class="step" data-step="4" hidden>
+        <h2>Sync settings</h2>
+        <fieldset>
+            <legend>Sync schedule</legend>
+            <label><input type="radio" name="schedule" value="hourly" /> Hourly while the companion is running</label>
+            <label><input type="radio" name="schedule" value="four" checked /> Every 4 hours</label>
+            <label><input type="radio" name="schedule" value="daily" /> Once daily</label>
+            <label><input type="radio" name="schedule" value="manual" /> Manual only</label>
+        </fieldset>
+        <label class="inline">
+            <input id="onBoot" type="checkbox" checked />
+            Sync immediately when the companion starts
+        </label>
+        <label>
+            Dashboard port (this machine)
+            <input id="dashboardPort" type="number" value="8182" min="1" max="65535" />
+            <span class="hint">Where the companion serves the dashboard locally. Changing this takes effect after restarting the companion.</span>
+        </label>
+        <div id="saveStatus" class="status" hidden></div>
+        <div class="actions">
+            <button data-action="back">Back</button>
+            <button id="saveBtn" class="primary" data-action="save">Save &amp; Run First Sync</button>
+        </div>
+    </section>
+
+    <!-- Step 5: First sync -->
+    <section class="step" data-step="5" hidden>
+        <h2>First sync</h2>
+        <p id="syncProgress">Connecting…</p>
+        <div id="syncStatus" class="status" hidden></div>
+        <div class="actions">
+            <button id="retryBtn" data-action="retry" hidden>Retry</button>
+            <button id="goDashboardBtn" class="primary" data-action="goto-dashboard" hidden>Go to Dashboard</button>
+        </div>
+    </section>
+
+    <footer>
+        <a href="https://github.com/vorticose/nina.plugin.nightsummary" target="_blank" rel="noopener">Night Summary</a>
+    </footer>
+</main>
+
+<script>
+// Minimal showStep + status helpers, copied from setup.js so the mock doesn't
+// depend on the live JS file (which would try real fetch() calls).
+function $(id) { return document.getElementById(id); }
+function $$(s) { return Array.from(document.querySelectorAll(s)); }
+
+function showStep(n) {
+    $$('.step').forEach(s => { s.hidden = parseInt(s.dataset.step, 10) !== n; });
+    $$('.steps li').forEach(li => {
+        const i = parseInt(li.dataset.step, 10);
+        li.classList.toggle('active', i === n);
+        li.classList.toggle('done', i < n);
+    });
+    $$('#mock-toolbar [data-jump]').forEach(b => {
+        b.classList.toggle('active', parseInt(b.dataset.jump, 10) === n);
+    });
+}
+
+function setStatus(elId, text, kind) {
+    const el = $(elId);
+    if (!el) return;
+    if (!text) { el.hidden = true; el.textContent = ''; el.className = 'status'; return; }
+    el.hidden = false;
+    el.textContent = text;
+    el.className = 'status' + (kind ? ' ' + kind : '');
+}
+
+// Designer toolbar wiring
+$$('#mock-toolbar [data-jump]').forEach(b => {
+    b.addEventListener('click', () => showStep(parseInt(b.dataset.jump, 10)));
+});
+
+const STATUS_TARGETS = {
+    1: null,
+    2: 'probeStatus',
+    3: 'pairStatus',
+    4: 'saveStatus',
+    5: 'syncStatus',
+};
+const STATUS_SAMPLES = {
+    info:    'Testing connection…',
+    success: '✓ Connected — Night Summary v3.1.1 on NINA 3.2.0.9001 (1 companion already paired)',
+    error:   'That token has been revoked. Generate a fresh one in NINA.',
+};
+$$('#mock-toolbar [data-status]').forEach(b => {
+    b.addEventListener('click', () => {
+        const currentStep = parseInt(
+            document.querySelector('.steps li.active')?.dataset.step || '1', 10);
+        const target = STATUS_TARGETS[currentStep];
+        if (!target) return;
+        const kind = b.dataset.status;
+        if (kind === 'clear') { setStatus(target, null); return; }
+        setStatus(target, STATUS_SAMPLES[kind] || kind, kind === 'info' ? null : kind);
+    });
+});
+
+$('light-toggle').addEventListener('change', e => {
+    document.documentElement.classList.toggle('light', e.target.checked);
+});
+
+// In-card Back/Next/etc — no real API, just navigate steps locally so the
+// mock behaves like the real wizard would.
+document.addEventListener('click', e => {
+    const action = e.target.dataset.action;
+    if (!action) return;
+    const current = parseInt(
+        document.querySelector('.steps li.active')?.dataset.step || '1', 10);
+    if (action === 'next' || action === 'pair' || action === 'save')
+        showStep(Math.min(5, current + 1));
+    else if (action === 'back')
+        showStep(Math.max(1, current - 1));
+    else if (action === 'probe')
+        setStatus('probeStatus', STATUS_SAMPLES.success, 'success');
+});
+
+// Boot
+showStep(1);
+</script>
+</body>
+</html>

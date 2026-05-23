@@ -9321,6 +9321,13 @@ function initCompanionBanner() {
     if (btn) btn.onclick = companionSyncNow;
     refreshCompanionStatus();
     setInterval(refreshCompanionStatus, 10000);
+    // Post-restart reload race: if the URL hash is already #/settings (user
+    // hit Restart from the Settings tab), renderSettingsPage() ran before
+    // /api/mode resolved and painted the "primary mode" placeholder. Now
+    // that COMPANION_MODE is known true, re-render the real settings view.
+    if (location.hash === '#/settings') {
+      renderSettingsPage();
+    }
     // If config is incomplete on first paint, redirect to setup so the user
     // doesn't land on an empty Sessions tab and wonder what to do.
     fetch('/api/companion/config').then(function(r){ return r.json(); }).then(function(c){
