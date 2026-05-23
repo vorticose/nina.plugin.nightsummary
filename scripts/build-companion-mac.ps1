@@ -112,61 +112,98 @@ function Build-Arch {
 "@
     Set-Content -Path (Join-Path $contents 'Info.plist') -Value $plist -Encoding UTF8 -NoNewline
 
-    # 4. Zip the .app with Unix exec bits preserved on the binary.
-    #
-    # PowerShell's Compress-Archive uses Windows file attributes only -- the
-    # produced zip lacks the Info-ZIP Unix permission extension, so macOS
-    # Archive Utility unzips the binary without +x and Finder refuses to
-    # launch the .app. We drop down to System.IO.Compression.ZipArchive and
-    # write ExternalAttributes for the executable + dylib so the receiving
-    # Mac sees them as 100755 (rwxr-xr-x).
-    Add-Type -AssemblyName System.IO.Compression
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    # 4. Ship a "Fix Permissions.command" alongside the .app so the user can
+    # double-click it from Finder to ad-hoc codesign without opening Terminal.
+    # macOS treats *.command files as double-click-executable shell scripts.
+    # CI will replace this with proper codesign in the build step itself; until
+    # then this is the no-terminal workaround for the arm64-must-be-signed rule.
+    $fixCmd = @"
+#!/bin/bash
+# Run once after installing NightSummaryCompanion.app. Ad-hoc signs the
+# binary so the arm64 kernel will let it run. Safe to run multiple times.
+set -e
+APP="/Applications/NightSummaryCompanion.app"
+if [ ! -d "`$APP" ]; then
+    echo "NightSummaryCompanion.app not found in /Applications."
+    echo "Drag it there first, then run this script again."
+    read -p "Press Enter to close..."
+    exit 1
+fi
+echo "Fixing permissions on `$APP ..."
+chmod +x "`$APP/Contents/MacOS/"*
+codesign --force --deep --sign - "`$APP"
+echo ""
+echo "Done. You can close this window."
+echo "Double-click NightSummaryCompanion.app to launch."
+read -p "Press Enter to close..."
+"@
+    $fixPath = Join-Path $staging 'Fix Permissions.command'
+    Set-Content -Path $fixPath -Value $fixCmd -Encoding UTF8 -NoNewline
 
-    $zipName = "NightSummaryCompanion-mac-$archLabel.zip"
-    $zipPath = Join-Path $buildDir $zipName
-    if (Test-Path $zipPath) { Remove-Item $zipPath }
+    # 5. Build a .tar.gz instead of .zip. Tar preserves Unix mode bits by spec
+    # (POSIX-1.2001 / pax) so macOS Archive Utility unpacks the binary with
+    # 0755 intact. PowerShell's Compress-Archive emits Windows-style zips
+    # that drop the exec bit -- tested, doesn't work on Mac without a follow-
+    # up chmod step. macOS' Finder happily double-clicks .tar.gz and extracts
+    # in place via Archive Utility.
+    $tarName = "NightSummaryCompanion-mac-$archLabel.tar.gz"
+    $tarPath = Join-Path $buildDir $tarName
+    if (Test-Path $tarPath) { Remove-Item $tarPath }
 
-    # Unix mode bits in the high 16 of ExternalAttributes per Info-ZIP spec:
-    #   0o100755 = regular file + rwxr-xr-x  -> exec
-    #   0o100644 = regular file + rw-r--r--  -> non-exec
-    $execMode    = [int]([Convert]::ToInt32('100755', 8))
-    $nonExecMode = [int]([Convert]::ToInt32('100644', 8))
-    $dirMode     = [int]([Convert]::ToInt32('040755', 8))
+    # Unix mode bits per POSIX tar:
+    #   0o755 = rwxr-xr-x
+    #   0o644 = rw-r--r--
+    #   0o755 = rwxr-xr-x  (dirs)
+    $execMode = [int]([Convert]::ToInt32('755', 8))
+    $fileMode = [int]([Convert]::ToInt32('644', 8))
+    $dirMode  = [int]([Convert]::ToInt32('755', 8))
+    $cmdMode  = [int]([Convert]::ToInt32('755', 8))  # the .command file
 
     $stagingFull = (Resolve-Path $staging).Path
-    $fs = [System.IO.File]::Open($zipPath, [System.IO.FileMode]::CreateNew)
+    $gz = [System.IO.File]::Open($tarPath, [System.IO.FileMode]::CreateNew)
     try {
-        $archive = New-Object System.IO.Compression.ZipArchive(
-            $fs, [System.IO.Compression.ZipArchiveMode]::Create)
+        $gzStream = New-Object System.IO.Compression.GZipStream(
+            $gz, [System.IO.Compression.CompressionLevel]::Optimal)
         try {
-            foreach ($file in Get-ChildItem -Path $appRoot -Recurse -File) {
-                # Entry name relative to staging dir so the zip's top-level is
-                # NightSummaryCompanion.app/, matching what the user expects.
-                $relative = $file.FullName.Substring($stagingFull.Length + 1).Replace('\', '/')
-                $entry = $archive.CreateEntry($relative,
-                    [System.IO.Compression.CompressionLevel]::Optimal)
+            $writer = New-Object System.Formats.Tar.TarWriter(
+                $gzStream, [System.Formats.Tar.TarEntryFormat]::Pax, $true)
+            try {
+                # Stable enumeration: directories first via Get-ChildItem -Recurse.
+                $entries = Get-ChildItem -Path $staging -Recurse -Force | Sort-Object FullName
+                foreach ($item in $entries) {
+                    $relative = $item.FullName.Substring($stagingFull.Length + 1).Replace('\', '/')
 
-                # Pick exec bit by filename. Anything under MacOS/ is the
-                # executable + native dylib -- both need exec. Info.plist and
-                # any future Resources/ files stay 644.
-                $needsExec = $relative -like 'NightSummaryCompanion.app/Contents/MacOS/*'
-                $mode      = if ($needsExec) { $execMode } else { $nonExecMode }
-                $entry.ExternalAttributes = $mode -shl 16
+                    if ($item.PSIsContainer) {
+                        $entry = New-Object System.Formats.Tar.PaxTarEntry(
+                            [System.Formats.Tar.TarEntryType]::Directory, "$relative/")
+                        $entry.Mode = [System.IO.UnixFileMode]$dirMode
+                        $writer.WriteEntry($entry)
+                    } else {
+                        # Mode picker:
+                        #   .app binary + dylib -> exec
+                        #   .command helper      -> exec
+                        #   everything else      -> 644
+                        $mode = $fileMode
+                        if ($relative -like 'NightSummaryCompanion.app/Contents/MacOS/*') {
+                            $mode = $execMode
+                        } elseif ($relative -like '*.command') {
+                            $mode = $cmdMode
+                        }
+                        $entry = New-Object System.Formats.Tar.PaxTarEntry(
+                            [System.Formats.Tar.TarEntryType]::RegularFile, $relative)
+                        $entry.Mode = [System.IO.UnixFileMode]$mode
 
-                # Stream the file content into the entry.
-                $entryStream = $entry.Open()
-                try {
-                    $srcStream = [System.IO.File]::OpenRead($file.FullName)
-                    try { $srcStream.CopyTo($entryStream) }
-                    finally { $srcStream.Dispose() }
-                } finally { $entryStream.Dispose() }
-            }
-        } finally { $archive.Dispose() }
-    } finally { $fs.Dispose() }
+                        $srcStream = [System.IO.File]::OpenRead($item.FullName)
+                        try { $entry.DataStream = $srcStream; $writer.WriteEntry($entry) }
+                        finally { $srcStream.Dispose() }
+                    }
+                }
+            } finally { $writer.Dispose() }
+        } finally { $gzStream.Dispose() }
+    } finally { $gz.Dispose() }
 
-    $zipMb = [math]::Round((Get-Item $zipPath).Length / 1MB, 1)
-    Write-Host "  -> $zipPath ($zipMb MB, exec bits preserved)" -ForegroundColor Green
+    $tarMb = [math]::Round((Get-Item $tarPath).Length / 1MB, 1)
+    Write-Host "  -> $tarPath ($tarMb MB, exec bits preserved)" -ForegroundColor Green
 }
 
 switch ($Arch) {
@@ -182,12 +219,11 @@ Write-Host ""
 Write-Host "Done. Artifacts in $buildDir" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "To install on a fresh Mac:" -ForegroundColor Yellow
-Write-Host "  1. Transfer the .zip to the Mac (AirDrop / scp / download)."
-Write-Host "  2. Unzip. Finder shows NightSummaryCompanion.app."
-Write-Host "  3. Drag it into /Applications."
-Write-Host "  4. Right-click the .app -> Open. Gatekeeper warns once; click Open."
-Write-Host "  5. The setup wizard opens in your default browser. Done."
+Write-Host "  1. Transfer the .tar.gz to the Mac (AirDrop / scp / download)."
+Write-Host "  2. Double-click the .tar.gz in Finder. Archive Utility extracts a folder."
+Write-Host "  3. Drag NightSummaryCompanion.app into /Applications."
+Write-Host "  4. Double-click 'Fix Permissions.command' (one-time ad-hoc codesign)."
+Write-Host "  5. Right-click NightSummaryCompanion.app -> Open. Gatekeeper warns once; click Open."
+Write-Host "  6. Setup wizard opens in your default browser. Done."
 Write-Host ""
-Write-Host "If the binary refuses to run with a permission error:" -ForegroundColor Yellow
-Write-Host "  Right-click .app -> Show Package Contents -> Contents/MacOS/."
-Write-Host "  Run: chmod +x NightSummaryCompanion"
+Write-Host "Steps 4 + 5 go away once CI does proper codesign + .dmg on macos-latest." -ForegroundColor DarkGray
