@@ -26,14 +26,17 @@ body {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 10px;
-    padding: 28px 28px 20px;
-    max-width: 500px;
+    /* Padding sized so even a long title doesn't visually crowd the card
+       border. Top + sides intentionally generous since the wizard is the
+       user's first impression of the product. */
+    padding: 40px 44px 32px !important;
+    max-width: 520px;
     width: 100%;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45),
                 0 0 0 1px rgba(255, 255, 255, 0.02) inset;
 }
 
-.wizard-card header {
+.wizard-header {
     margin-bottom: 24px;
     padding-bottom: 22px;
     border-bottom: 1px solid var(--border);
@@ -243,8 +246,8 @@ button:disabled {
 /* ── Status banner ──────────────────────────────────────────────────── */
 
 .status {
-    padding: 14px 16px;
-    border-radius: 5px;
+    padding: 18px 22px;
+    border-radius: 6px;
     font-size: 12px;
     border: 1px solid var(--border);
     background: var(--surface-well, var(--bg));
@@ -266,7 +269,7 @@ button:disabled {
 
 /* ── Footer ─────────────────────────────────────────────────────────── */
 
-.wizard-card footer {
+.wizard-footer {
     margin-top: 22px;
     padding-top: 14px;
     border-top: 1px solid var(--border);
@@ -275,13 +278,13 @@ button:disabled {
     font-size: 11px;
 }
 
-.wizard-card footer a {
+.wizard-footer a {
     color: var(--text-tertiary);
     text-decoration: none;
     transition: color var(--t-fast);
 }
 
-.wizard-card footer a:hover {
+.wizard-footer a:hover {
     color: var(--accent);
 }
 
