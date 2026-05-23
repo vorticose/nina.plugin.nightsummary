@@ -112,19 +112,61 @@ function Build-Arch {
 "@
     Set-Content -Path (Join-Path $contents 'Info.plist') -Value $plist -Encoding UTF8 -NoNewline
 
-    # 4. Zip the .app. PowerShell's Compress-Archive preserves file structure
-    # but does not preserve the Unix executable bit -- the receiving Mac sees
-    # the binary as read-only. README install steps remind the user to do
-    # `chmod +x NightSummaryCompanion.app/Contents/MacOS/NightSummaryCompanion`
-    # on first install, and gatekeeper's right-click->Open is required anyway.
-    # CI on macos-latest runners will produce a .dmg later, which preserves
-    # exec bits natively.
+    # 4. Zip the .app with Unix exec bits preserved on the binary.
+    #
+    # PowerShell's Compress-Archive uses Windows file attributes only -- the
+    # produced zip lacks the Info-ZIP Unix permission extension, so macOS
+    # Archive Utility unzips the binary without +x and Finder refuses to
+    # launch the .app. We drop down to System.IO.Compression.ZipArchive and
+    # write ExternalAttributes for the executable + dylib so the receiving
+    # Mac sees them as 100755 (rwxr-xr-x).
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+
     $zipName = "NightSummaryCompanion-mac-$archLabel.zip"
     $zipPath = Join-Path $buildDir $zipName
     if (Test-Path $zipPath) { Remove-Item $zipPath }
-    Compress-Archive -Path $appRoot -DestinationPath $zipPath
+
+    # Unix mode bits in the high 16 of ExternalAttributes per Info-ZIP spec:
+    #   0o100755 = regular file + rwxr-xr-x  -> exec
+    #   0o100644 = regular file + rw-r--r--  -> non-exec
+    $execMode    = [int]([Convert]::ToInt32('100755', 8))
+    $nonExecMode = [int]([Convert]::ToInt32('100644', 8))
+    $dirMode     = [int]([Convert]::ToInt32('040755', 8))
+
+    $stagingFull = (Resolve-Path $staging).Path
+    $fs = [System.IO.File]::Open($zipPath, [System.IO.FileMode]::CreateNew)
+    try {
+        $archive = New-Object System.IO.Compression.ZipArchive(
+            $fs, [System.IO.Compression.ZipArchiveMode]::Create)
+        try {
+            foreach ($file in Get-ChildItem -Path $appRoot -Recurse -File) {
+                # Entry name relative to staging dir so the zip's top-level is
+                # NightSummaryCompanion.app/, matching what the user expects.
+                $relative = $file.FullName.Substring($stagingFull.Length + 1).Replace('\', '/')
+                $entry = $archive.CreateEntry($relative,
+                    [System.IO.Compression.CompressionLevel]::Optimal)
+
+                # Pick exec bit by filename. Anything under MacOS/ is the
+                # executable + native dylib -- both need exec. Info.plist and
+                # any future Resources/ files stay 644.
+                $needsExec = $relative -like 'NightSummaryCompanion.app/Contents/MacOS/*'
+                $mode      = if ($needsExec) { $execMode } else { $nonExecMode }
+                $entry.ExternalAttributes = $mode -shl 16
+
+                # Stream the file content into the entry.
+                $entryStream = $entry.Open()
+                try {
+                    $srcStream = [System.IO.File]::OpenRead($file.FullName)
+                    try { $srcStream.CopyTo($entryStream) }
+                    finally { $srcStream.Dispose() }
+                } finally { $entryStream.Dispose() }
+            }
+        } finally { $archive.Dispose() }
+    } finally { $fs.Dispose() }
+
     $zipMb = [math]::Round((Get-Item $zipPath).Length / 1MB, 1)
-    Write-Host "  -> $zipPath ($zipMb MB)" -ForegroundColor Green
+    Write-Host "  -> $zipPath ($zipMb MB, exec bits preserved)" -ForegroundColor Green
 }
 
 switch ($Arch) {
