@@ -44,11 +44,11 @@ On first run a default companion.json is written and the program exits so you ca
 ";
 
     public static async Task<int> Main(string[] args) {
-        if (args.Length == 0 || args[0] is "help" or "-h" or "--help") {
+        if (args.Length > 0 && args[0] is "help" or "-h" or "--help") {
             Console.WriteLine(Usage);
             return 0;
         }
-        if (args[0] is "version" or "-v" or "--version") {
+        if (args.Length > 0 && args[0] is "version" or "-v" or "--version") {
             var ver = typeof(Program).Assembly
                 .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
                 ?.InformationalVersion ?? "unknown";
@@ -58,7 +58,11 @@ On first run a default companion.json is written and the program exits so you ca
 
         var configPath = ResolveArg(args, "--config") ?? DefaultConfigPath();
         var webDir     = ResolveArg(args, "--web");
-        var cmd = args[0];
+        // No-arg invocation defaults to `serve` so double-clicking the .app
+        // bundle from Finder (which passes zero args) does the obvious thing
+        // instead of printing usage to a hidden stdout and exiting silently.
+        // Explicit `help` still works for users at a terminal.
+        var cmd = args.Length > 0 ? args[0] : "serve";
         try {
             return cmd switch {
                 "sync"  => await RunSyncAsync(configPath),
