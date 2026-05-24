@@ -3338,21 +3338,62 @@ namespace NINA.Plugin.NightSummary.Server {
                     ? (int)rawOffsets[0].start.Offset.TotalMinutes
                     : (int)TimeZoneInfo.Local.GetUtcOffset(now).TotalMinutes;
 
+                // Per-target RA/Dec lookup from the TS DB. Preview entries
+                // don't carry coords themselves — the dashboard's altitude
+                // chart needs them to plot per-target curves. Match by Guid
+                // first (stable across TS DB rebuilds), then by exact-case
+                // Id, then case-insensitive Name as a last resort.
+                var tsTargets = TsProjects()
+                    .SelectMany(p => p.Targets ?? new List<TsProjectTarget>())
+                    .ToList();
+                var byGuid = tsTargets
+                    .Where(t => !string.IsNullOrEmpty(t.Guid))
+                    .GroupBy(t => t.Guid, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+                var byId = tsTargets
+                    .Where(t => t.Id != 0)
+                    .GroupBy(t => t.Id.ToString())
+                    .ToDictionary(g => g.Key, g => g.First());
+                var byName = tsTargets
+                    .Where(t => !string.IsNullOrEmpty(t.Name))
+                    .GroupBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+                (double ra, double dec) Lookup(TsPreviewEntry e) {
+                    if (e.WaitPeriod) return (0, 0);
+                    if (e.Id != null && byGuid.TryGetValue(e.Id, out var t1)) return (t1.RA, t1.Dec);
+                    if (e.Id != null && byId.TryGetValue(e.Id, out var t2))   return (t2.RA, t2.Dec);
+                    if (e.Name != null && byName.TryGetValue(e.Name, out var t3)) return (t3.RA, t3.Dec);
+                    return (0, 0);
+                }
+
                 var responseObj = new {
-                    entries = entries.Select((e, i) => new {
-                        id         = e.Id,
-                        name       = e.Name,
-                        waitPeriod = e.WaitPeriod,
-                        startTime  = (i < rawOffsets.Count ? rawOffsets[i].start : new DateTimeOffset(e.StartTime)).ToString("o"),
-                        endTime    = (i < rawOffsets.Count ? rawOffsets[i].end   : new DateTimeOffset(e.EndTime  )).ToString("o"),
-                        exposurePlan = e.ExposurePlan.Select(ep => new {
-                            filterName = ep.FilterName,
-                            exposure   = ep.Exposure,
-                            count      = ep.Count
-                        }).ToList()
+                    entries = entries.Select((e, i) => {
+                        var (ra, dec) = Lookup(e);
+                        return new {
+                            id         = e.Id,
+                            name       = e.Name,
+                            waitPeriod = e.WaitPeriod,
+                            startTime  = (i < rawOffsets.Count ? rawOffsets[i].start : new DateTimeOffset(e.StartTime)).ToString("o"),
+                            endTime    = (i < rawOffsets.Count ? rawOffsets[i].end   : new DateTimeOffset(e.EndTime  )).ToString("o"),
+                            ra         = ra,   // decimal hours; 0 when wait period or unknown target
+                            dec        = dec,  // decimal degrees
+                            exposurePlan = e.ExposurePlan.Select(ep => new {
+                                filterName = ep.FilterName,
+                                exposure   = ep.Exposure,
+                                count      = ep.Count
+                            }).ToList()
+                        };
                     }).ToList(),
                     startTime       = startTime.ToString("o"),
-                    tzOffsetMinutes = tzOffsetMinutes
+                    tzOffsetMinutes = tzOffsetMinutes,
+                    // Observer coords from primary's active profile so the
+                    // dashboard's altitude chart can render. Companion mirror
+                    // gets these via the synced tonight-preview-cache.json —
+                    // the value is "where the telescope is" regardless of
+                    // where the viewer's browser is.
+                    observerLat = _settings.ObserverLatitude,
+                    observerLon = _settings.ObserverLongitude
                 };
 
                 _tonightPreviewJson = JsonSerializer.Serialize(responseObj, JsonOpts);

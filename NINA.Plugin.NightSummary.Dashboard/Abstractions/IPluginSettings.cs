@@ -21,4 +21,15 @@ public interface IPluginSettings {
     // pairing against. Default-implemented as empty so non-NINA hosts
     // (dev harness, companion binary, test stubs) don't have to override.
     string NinaVersion => "";
+
+    // Observer coordinates from NINA's active profile AstrometrySettings.
+    // Surfaced in the Tonight's Preview response so the dashboard's altitude
+    // chart can compute per-target altitude curves. Both default to 0 (the
+    // "unset" sentinel the JS already handles by hiding the curves) so
+    // non-NINA hosts and pre-profile-load conditions don't need to override.
+    // Companion mirrors get these via the synced tonight-preview-cache.json,
+    // not from this property directly — companion mode never hits the live
+    // path that reads them.
+    double ObserverLatitude  => 0;
+    double ObserverLongitude => 0;
 }

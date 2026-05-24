@@ -489,7 +489,7 @@ namespace NINA.Plugin.NightSummary {
             var paths = new NinaDashboardPaths();
             dashboardServer = new DashboardServer(
                 data:        new NinaDashboardDataSource(paths.DatabasePath),
-                settings:    new NinaPluginSettings(),
+                settings:    new NinaPluginSettings(profileService),
                 webAssets:   new EmbeddedWebAssets(),
                 externalLog: new NinaDashboardLogger(),
                 paths:       paths,
@@ -527,7 +527,7 @@ namespace NINA.Plugin.NightSummary {
             try {
                 readOnlyMirrorServer = new DashboardServer(
                     data:        new NinaDashboardDataSource(paths.DatabasePath),
-                    settings:    new NinaPluginSettings(),
+                    settings:    new NinaPluginSettings(profileService),
                     webAssets:   new EmbeddedWebAssets(),
                     externalLog: new NinaDashboardLogger(),
                     paths:       paths,
