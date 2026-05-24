@@ -515,12 +515,20 @@ namespace NINA.Plugin.NightSummary {
             if (readOnlyMirrorServer?.IsRunning == true) return;
 
             int port = S.ReadOnlyMirrorPort;
+            // Surface validation failures as a toast in addition to the log line —
+            // users who fix the port in Options then hit Start expect feedback when
+            // the mirror still won't bind. The silent log-only path bit us when a
+            // tester picked a colliding port and saw nothing happen.
             if (port < 1024 || port > 65535) {
-                Logger.Warning($"NightSummary: Read-only mirror port {port} is out of range (1024-65535); mirror not started");
+                var msg = $"Read-only mirror port {port} is out of range (1024-65535); mirror not started";
+                Logger.Warning("NightSummary: " + msg);
+                Notification.ShowError("Night Summary: " + msg);
                 return;
             }
             if (port == S.LocalServerPort) {
-                Logger.Warning($"NightSummary: Read-only mirror port {port} matches main dashboard port; mirror not started");
+                var msg = $"Read-only mirror port {port} matches main dashboard port ({S.LocalServerPort}); mirror not started. Pick a different port.";
+                Logger.Warning("NightSummary: " + msg);
+                Notification.ShowError("Night Summary: " + msg);
                 return;
             }
 
@@ -539,6 +547,7 @@ namespace NINA.Plugin.NightSummary {
                 Notification.ShowInformation($"Night Summary read-only mirror live: {mirrorUrl}");
             } catch (Exception ex) {
                 Logger.Warning($"NightSummary: Failed to start read-only mirror on port {port}: {ex.Message}");
+                Notification.ShowError($"Night Summary: Read-only mirror failed to bind on port {port}: {ex.Message}");
                 readOnlyMirrorServer = null;
             }
         }
@@ -766,8 +775,10 @@ namespace NINA.Plugin.NightSummary {
 
         // Read-only mirror exposure. Toggling EnableReadOnlyMirror applies immediately
         // via ApplyReadOnlyMirrorStateAsync — the user doesn't have to restart NINA.
-        // Port changes during a running mirror need a toggle off + on (or NINA restart)
-        // since the listener is bound at start; the port setter just persists the value.
+        // Port changes ALSO apply immediately (stop + restart on the new port) provided
+        // the mirror is enabled. The XAML TextBox commits on LostFocus (default trigger)
+        // so the setter doesn't fire mid-typing — keeps the rebind from chasing every
+        // keystroke from "8" to "8281".
         public bool EnableReadOnlyMirror {
             get => S.EnableReadOnlyMirror;
             set {
@@ -781,7 +792,17 @@ namespace NINA.Plugin.NightSummary {
 
         public int ReadOnlyMirrorPort {
             get => S.ReadOnlyMirrorPort;
-            set { S.ReadOnlyMirrorPort = value; SaveSettings(); RaisePropertyChanged(); }
+            set {
+                if (S.ReadOnlyMirrorPort == value) return;
+                S.ReadOnlyMirrorPort = value;
+                SaveSettings();
+                RaisePropertyChanged();
+                // Auto-restart when enabled so the user doesn't have to remember to
+                // toggle the checkbox off+on after changing the port. No-op when the
+                // mirror is disabled or the main dashboard isn't running — the next
+                // StartLocalServerAsync picks up the new port.
+                if (S.EnableReadOnlyMirror) _ = ApplyReadOnlyMirrorStateAsync();
+            }
         }
 
         public bool IsLocalServerRunning => dashboardServer?.IsRunning == true;

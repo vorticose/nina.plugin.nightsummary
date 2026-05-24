@@ -155,8 +155,24 @@ On first run a default companion.json is written and the program exits so you ca
             regen:       null,
             companion:   controller);
 
-        await server.StartAsync(config.Port);
-        log.Info($"Dashboard serving on http://localhost:{config.Port} (companion mode)");
+        // Wrap StartAsync so a bind failure (port in use, permission denied) lands
+        // in companion-YYYY-MM-DD.log instead of an unhandled throw → stderr →
+        // exit 2 → watchdog dies on `exit $code`. Without this, a save-then-restart
+        // that picks a busy port leaves the user with a dead companion and zero
+        // log evidence of WHY. Bonus: tell them exactly how to recover.
+        try {
+            await server.StartAsync(config.Port);
+            log.Info($"Dashboard serving on http://localhost:{config.Port} (companion mode)");
+        } catch (System.Net.Sockets.SocketException ex) {
+            log.Error($"Cannot bind dashboard on port {config.Port}: {ex.Message}");
+            log.Error($"Another process is using port {config.Port}. To recover:");
+            log.Error($"  1. Edit {configPath} and set \"port\" to a free value (default 8182)");
+            log.Error($"  2. Or stop the process holding the port (try: lsof -iTCP:{config.Port} -nP)");
+            log.Error("Companion is exiting cleanly so the watchdog stops; relaunch after fixing.");
+            Console.Error.WriteLine($"error: cannot bind dashboard on port {config.Port}: {ex.Message}");
+            Console.Error.WriteLine($"See {Path.Combine(paths.LogsDir, "companion-" + DateTime.Now.ToString("yyyy-MM-dd") + ".log")} for recovery steps.");
+            return 0;  // clean exit so the bash watchdog stops instead of looping/dying noisily
+        }
 
         // Optional second instance with readOnly=true for safe public exposure.
         // --readonly-port CLI flag implies enable=true even when companion.json

@@ -210,7 +210,17 @@ namespace NINA.Plugin.NightSummary.Server {
                 var logsDir = Path.Combine(dataDir, "logs");
                 Directory.CreateDirectory(logsDir);
                 DashboardLog.PurgeOldLogs(logsDir);
-                log = DashboardLog.Init(Path.Combine(logsDir, $"dashboard-{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.log"));
+                // Per-instance DashboardLog (NOT the static Init/Shutdown singleton).
+                // When two servers run in the same process (main 8186 + read-only
+                // mirror 8282), the static path had the mirror's Init clobber the
+                // main's writer + replace the singleton — main's per-request log
+                // calls then went to a closed writer and silently no-op'd. We then
+                // had zero visibility into restart attempts on the main port.
+                // Filename includes the port so the two instances don't share a
+                // file when they happen to init in the same second.
+                var logPath = Path.Combine(logsDir, $"dashboard-{DateTime.Now:yyyy-MM-dd_HH-mm-ss}-{port}.log");
+                log = new DashboardLog(logPath);
+                log.Open();
 
                 cts = new CancellationTokenSource();
                 _tcpListener = new TcpListener(bindAddress, port);
@@ -276,7 +286,10 @@ namespace NINA.Plugin.NightSummary.Server {
                 ZeroTierUrl  = null;
                 log?.Info("Server stopped");
                 _external.Info("NightSummary: Local dashboard stopped");
-                DashboardLog.Shutdown();
+                // Close THIS server's log only — don't touch DashboardLog.Instance
+                // (the static singleton) because the other server in this process
+                // (mirror or main) may still own it.
+                log?.Close();
                 log = null;
             } catch (Exception ex) {
                 _external.Error($"NightSummary: Error stopping local dashboard. {ex.Message}");
