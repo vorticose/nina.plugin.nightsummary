@@ -6282,13 +6282,27 @@ function repositionViewToggle() {
   // Pick the freshest toggle (last in DOM, just rendered in filter bar)
   var keep = toggles[toggles.length - 1];
   var onSessionsPage = !location.hash || location.hash === '#/sessions' || location.hash.slice(1) === '/sessions';
+  // Companion mode unhides a Settings nav link in header-right. That extra pill
+  // turns the mobile header from "Sessions/Targets + view-toggle + theme" into
+  // "Sessions/Targets/Settings + view-toggle + theme" — five flex items in a
+  // no-wrap, overflow:hidden row, which clips and overlaps. Detect the Settings
+  // link being visible (companion mode) and skip moving the toggle into the
+  // header; let it stay in the filter-bar where the row can wrap naturally.
+  var settingsNav = document.querySelector('.nav-link[data-page="settings"]');
+  var inCompanionMode = settingsNav && !settingsNav.hasAttribute('hidden');
   if (window.innerWidth <= 700) {
-    if (headerRight && onSessionsPage) {
+    if (headerRight && onSessionsPage && !inCompanionMode) {
       headerRight.appendChild(keep);
       keep.style.display = '';
     } else if (headerRight) {
-      // On non-session pages, hide it from header
-      if (keep.parentNode === headerRight) keep.style.display = 'none';
+      // Non-session pages OR companion mode: keep the toggle in the filter-bar
+      // (where it was rendered). If a previous call already moved it into the
+      // header, evict it back so the header doesn't carry a stray pill.
+      if (keep.parentNode === headerRight) {
+        if (filterBar) filterBar.appendChild(keep);
+        else keep.style.display = 'none';
+      }
+      keep.style.display = '';
     }
   } else {
     if (filterBar && keep.parentNode !== filterBar) {

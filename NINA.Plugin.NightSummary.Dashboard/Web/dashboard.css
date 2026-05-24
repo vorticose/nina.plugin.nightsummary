@@ -5237,10 +5237,20 @@ html.light .tdp-project-action-btn:hover {
   .filter-bar > label.target-check { order: 11; padding: 0 7px; font-size: 11px; }
   .filter-bar > #unhide-all { order: 12; }
   .filter-bar .filter-link { padding: 0 8px; font-size: 11px; }
-  /* View toggle lives in header on mobile (moved by JS) */
+  /* View toggle: in primary mode it gets reparented into .header-right by JS.
+     In companion mode it stays in the filter-bar (the extra Settings nav pill
+     makes the header too crowded). Base style has order:99 + margin-left:auto,
+     which would push it to its own line right-aligned — looks orphaned. Reset
+     to flow inline with the other Row 2 buttons. */
   .header-right .view-toggle {
     margin-left: 0;
     margin-top: 0;
+  }
+  .filter-bar > .view-toggle {
+    order: 13;
+    margin-left: 0;
+    margin-top: 0;
+    flex: 0 0 auto;
   }
   .report-nav { flex-direction: column; align-items: flex-start; gap: 8px; }
 
