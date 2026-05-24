@@ -6595,7 +6595,14 @@ html[data-readonly] .tdp-project-action-btn,
 html[data-readonly] #btn-settings,
 html[data-readonly] #settings-panel,
 html[data-readonly] .settings-panel,
-html[data-readonly] .ns-readonly-hide {
+html[data-readonly] .ns-readonly-hide,
+/* Companion-only UI surfaces hidden by default via [hidden] but un-hidden by
+   JS once /api/mode resolves to "companion". In readonly mode the viewer is
+   anonymous public — they don't care that this happens to be a companion
+   mirror vs primary, and the Settings tab / Sync Now button would 403 anyway.
+   Keep them hidden no matter what the mode probe says. */
+html[data-readonly] .nav-link[data-page="settings"],
+html[data-readonly] #companion-banner {
   display: none !important;
 }
 
