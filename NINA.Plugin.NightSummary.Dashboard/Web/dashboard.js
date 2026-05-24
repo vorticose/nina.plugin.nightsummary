@@ -3525,9 +3525,20 @@ function initWaveformScrubber(container) {
   var bars = [];
   try { bars = JSON.parse(svg.getAttribute('data-bars') || '[]'); } catch (e) {}
   if (!bars.length) return;
-  var info = slot.querySelector('.lw-scrubber-info');
+  // Locate the tooltip popup. First init finds it inside the slot (rendered
+  // by renderLifetimeStrip). Subsequent re-inits — triggered by the window
+  // resize handler when iOS Safari collapses its address bar on first scroll
+  // — find an EMPTY slot because the prior init already moved the popup to
+  // <body>. Fall back to the body-level lookup so the closure binds to the
+  // existing live popup instead of null (which would silently skip the
+  // tooltip render in showAt() while bar selection still appeared to work).
+  var info = slot.querySelector('.lw-scrubber-info')
+           || Array.prototype.find.call(document.body.children, function(n) {
+                return n.classList && n.classList.contains('lw-scrubber-info');
+              });
   // Move popup to body so iOS scroll-container touch capture can't block it.
-  if (info) document.body.appendChild(info);
+  // Idempotent — no-op when it already lives there from a prior init.
+  if (info && info.parentNode !== document.body) document.body.appendChild(info);
   var barRects = Array.prototype.slice.call(svg.querySelectorAll('.lw-bar'));
   var currentBar = null;
   var currentBarData = null;
@@ -3611,14 +3622,32 @@ function initWaveformScrubber(container) {
         navigate('#/sessions/' + b.sid);
       });
     }
-    // Close on outside tap. Deferred one tick so the touchend that triggered
-    // pin() doesn't fire its own synthetic click and immediately dismiss.
+    // Close on outside tap. Registered in CAPTURE phase + stopPropagation so
+    // the dismiss runs BEFORE the click bubbles up to .lifetime-strip's inline
+    // onclick (which would collapse the panel). Without this, a single tap
+    // outside the tooltip simultaneously dismissed the tooltip AND collapsed
+    // the waveform strip — user had to expand the strip again to see the bars.
+    // Now first tap = dismiss tooltip (strip stays expanded); next tap on the
+    // strip = collapse, as expected.
+    //
+    // Deferred one tick so the touchend that triggered pin() doesn't fire its
+    // own synthetic click and immediately dismiss.
     setTimeout(function() {
-      function outsideHandler() {
-        if (pinned) hide();
-        document.removeEventListener('click', outsideHandler);
+      function outsideHandler(e) {
+        if (!pinned) {
+          document.removeEventListener('click', outsideHandler, true);
+          return;
+        }
+        // Tooltip itself swallows its own clicks via the info.click stopPropagation
+        // below — if we got here, the click was outside the tooltip. Eat it so
+        // sibling onclick handlers (strip expand/collapse, link navigations)
+        // don't also fire on a tap that the user intended only as "dismiss".
+        e.stopPropagation();
+        e.preventDefault();
+        hide();
+        document.removeEventListener('click', outsideHandler, true);
       }
-      document.addEventListener('click', outsideHandler);
+      document.addEventListener('click', outsideHandler, true);
     }, 0);
     // Dismiss on scroll — iOS position:fixed breaks once chart scrolls off-screen
     window.addEventListener('scroll', hide, { passive: true, capture: true, once: true });
@@ -3682,9 +3711,19 @@ function initWaveformScrubber(container) {
       var dx = Math.abs(e.changedTouches[0].clientX - touchStartX);
       var dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
       if (dx < 10 && dy < 10) { showAt(touchStartX); pin(); }
+    } else {
+      // Dismissing a pinned tooltip via a tap on the SVG. touchstart already
+      // ran hide() so `pinned` is false now — that means the synthetic click
+      // that fires after touchend would pass through our outsideHandler
+      // (which gates on `pinned`) and bubble up to .lifetime-strip's onclick,
+      // collapsing the panel on the same tap that the user intended only as
+      // "dismiss tooltip". preventDefault here suppresses the synthetic click
+      // entirely so the strip stays expanded. Requires non-passive touchend
+      // (default — no {passive: true} option set above).
+      e.preventDefault();
     }
     dismissing = false;
-  });
+  }, {passive: false});
 
   svg.addEventListener('touchcancel', function() {
     cancelLongPress();
@@ -3800,9 +3839,19 @@ function initCalendarScrubber(container) {
         e.stopPropagation(); e.preventDefault(); hide(); navigate('#/sessions/' + c.sid);
       });
     }
+    // Capture-phase + stopPropagation so the dismiss runs BEFORE the click
+    // bubbles to .lifetime-strip's onclick (would collapse the panel on the
+    // same tap that dismisses the tooltip — see waveform scrubber for the
+    // longer comment).
     setTimeout(function() {
-      function outsideHandler() { if (pinned) hide(); document.removeEventListener('click', outsideHandler); }
-      document.addEventListener('click', outsideHandler);
+      function outsideHandler(e) {
+        if (!pinned) { document.removeEventListener('click', outsideHandler, true); return; }
+        e.stopPropagation();
+        e.preventDefault();
+        hide();
+        document.removeEventListener('click', outsideHandler, true);
+      }
+      document.addEventListener('click', outsideHandler, true);
     }, 0);
     // Dismiss on scroll — iOS position:fixed breaks once chart scrolls off-screen
     window.addEventListener('scroll', hide, { passive: true, capture: true, once: true });
@@ -3861,9 +3910,14 @@ function initCalendarScrubber(container) {
       var dx = Math.abs(e.changedTouches[0].clientX - touchStartX);
       var dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
       if (dx < 10 && dy < 10) { showAt(touchStartX, touchStartY); pin(); }
+    } else {
+      // Dismissing — suppress the synthetic click so it doesn't bubble to
+      // .lifetime-strip's onclick and collapse the panel. See waveform
+      // scrubber for the longer comment.
+      e.preventDefault();
     }
     dismissing = false;
-  });
+  }, {passive: false});
 
   svg.addEventListener('touchcancel', function() {
     cancelLongPress(); scrubbing = false; dismissing = false; hide();
