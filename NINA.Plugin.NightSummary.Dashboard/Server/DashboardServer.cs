@@ -497,6 +497,8 @@ namespace NINA.Plugin.NightSummary.Server {
                         await HandleExportThumbsManifest(req, res, done);
                     } else if (path == "/api/export/thumbs") {
                         await HandleExportThumbs(req, res, done);
+                    } else if (path == "/api/export/tonight-cache") {
+                        await HandleExportTonightCache(req, res, done);
                     } else if (path == "/api/companion/status") {
                         await HandleCompanionStatus(res, done);
                     } else if (path == "/api/companion/config") {
@@ -3211,8 +3213,36 @@ namespace NINA.Plugin.NightSummary.Server {
             return true;
         }
 
+        // In-process refresh trigger (called from HandleExportTonightCache when
+        // the cache is stale, so the next companion sync pulls fresh data).
+        // Best-effort — caller doesn't await, errors logged + swallowed.
+        // Skip refresh when running in companion mode (it'd be a no-op since
+        // _companion != null short-circuits the handler at entry).
+        private async Task RefreshTonightPreviewInBackground() {
+            if (_companion != null) return;
+            // Reuse the handler's full path but throw the HTTP write into
+            // Stream.Null — we only care about the side effect (TsApiCache.Save
+            // when the TS API call succeeds). The handler also self-coalesces
+            // via the 5-min hot cache so concurrent refreshes don't pile up.
+            var sink = new TcpHttpResponse(Stream.Null);
+            await HandleGetTonightPreview(sink, (_, _) => { });
+        }
+
         private async Task HandleGetTonightPreview(TcpHttpResponse res, Action<int, string> done) {
             try {
+                // Companion mode: live TS API call is pointless — the TS API
+                // listens on the primary's loopback inside NINA, not reachable
+                // from the companion's network. Serve straight from the synced
+                // disk cache (populated by SyncEngine pulling /api/export/tonight-cache
+                // from primary each sync). If the cache is missing/stale, show
+                // a clear message instead of trying to call the unreachable API.
+                if (_companion != null) {
+                    if (await ServeTonightFromDiskCacheOrFail(res, done, "tonight: companion mode")) return;
+                    await WriteJson(res, 200, new { error = "Tonight's Preview not yet synced from primary. Wait for the next sync (or click Sync Now) and reload." });
+                    done?.Invoke(200, "tonight: companion mode, no cache yet");
+                    return;
+                }
+
                 // Return hot-cached data if still fresh (5 min TTL — preview call takes ~25s)
                 if (_tonightPreviewJson != null &&
                     (DateTime.UtcNow - _tonightPreviewCachedAt).TotalSeconds < 300) {

@@ -354,6 +354,67 @@ namespace NINA.Plugin.NightSummary.Server {
             }
         }
 
+        // ── /api/export/tonight-cache ─────────────────────────────────────────
+
+        // Streams the primary's tonight-preview-cache.json so the companion can
+        // serve Tonight's Preview without reaching the primary's TS API (the
+        // companion can't — the TS API only listens on the primary's loopback
+        // and runs in NINA's process). Returns 404 if the file doesn't exist
+        // yet (no human has loaded Tonight on primary AND no proactive refresh
+        // has run); the companion logs + shows "no data" gracefully.
+        //
+        // Side effect: if the cache is missing or stale-past-noon, kick off a
+        // background refresh of Tonight's Preview before responding so the
+        // NEXT sync pulls fresh data. Doesn't block this response (TS API call
+        // takes ~25s); we serve whatever's currently on disk.
+        private async Task HandleExportTonightCache(TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
+            if (!await RequireCompanionAuth(req, res, done)) return;
+
+            var cachePath = Path.Combine(_paths.DataDir, "tonight-preview-cache.json");
+
+            // Trigger a background refresh if stale. We don't await it — caller
+            // gets last-good immediately; next companion sync (4h cadence) gets
+            // the refreshed payload.
+            try {
+                var cache = TsApiCache.Load(cachePath);
+                if (cache == null || !cache.IsValidAt(DateTime.Now)) {
+                    _ = Task.Run(async () => {
+                        try {
+                            // Hit our own Tonight handler via the in-process path. The
+                            // handler writes the file on success — no need to capture
+                            // the response here.
+                            await RefreshTonightPreviewInBackground();
+                        } catch (Exception ex) {
+                            log?.Info($"Tonight cache background refresh failed: {ex.Message}");
+                        }
+                    });
+                }
+            } catch { /* best-effort — fall through to serve whatever's on disk */ }
+
+            if (!File.Exists(cachePath)) {
+                await WriteJson(res, 404, new { error = "no tonight cache yet" });
+                done?.Invoke(404, "tonight cache absent");
+                return;
+            }
+            try {
+                var bytes = await File.ReadAllBytesAsync(cachePath);
+                var info = new FileInfo(cachePath);
+                res.StatusCode = 200;
+                var headers = new Dictionary<string, string> {
+                    { "Content-Disposition", "attachment; filename=\"tonight-preview-cache.json\"" },
+                    { "Access-Control-Allow-Origin", "*" },
+                    { "Last-Modified", info.LastWriteTimeUtc.ToString("R") },
+                };
+                using var ms = new MemoryStream(bytes);
+                await res.StreamAsync("application/json", ms, bytes.Length, headers);
+                done?.Invoke(200, $"tonight cache: {bytes.Length} bytes");
+            } catch (Exception ex) {
+                log?.Error("Tonight cache export failed", ex);
+                try { await WriteJson(res, 500, new { error = "export failed" }); } catch { }
+                done?.Invoke(500, ex.Message);
+            }
+        }
+
         // ── Shared helpers ────────────────────────────────────────────────────
 
         private static DateTimeOffset? ParseIsoQuery(string raw) {

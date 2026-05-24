@@ -116,6 +116,19 @@ public sealed class SyncEngine {
                 ? DeleteOrphans(manifest)
                 : 0;
 
+            // 5b — Tonight's Preview cache. Primary serves a snapshot of its
+            // tonight-preview-cache.json so the companion can render the Stats
+            // → Tonight tab without trying to hit the primary's TS API (which
+            // listens on the primary's loopback in NINA's process and is
+            // unreachable from the companion's network). 404 = primary has no
+            // cache yet (no human loaded Tonight + no proactive refresh has
+            // run). Best-effort — sync continues on failure.
+            try {
+                await TryPullTonightCacheAsync(ct);
+            } catch (Exception ex) {
+                _log.Warn($"Sync: tonight cache pull skipped — {ex.Message}");
+            }
+
             // 6b — Thumbs: separate manifest + zip + orphan pass. Primary may
             // not have raw thumbnails enabled (older sessions, feature off) — the
             // server returns an empty manifest/zip in that case and we no-op.
@@ -287,6 +300,45 @@ public sealed class SyncEngine {
             }
         } catch (HttpRequestException ex) {
             _log.Warn($"Sync: {url} failed ({ex.Message}); continuing without TS DB");
+            return 0;
+        }
+    }
+
+    // Pulls the primary's tonight-preview-cache.json into the companion's data
+    // dir. Atomic write via temp + replace. 404 = no cache yet, returns 0 (not
+    // an error). The dashboard's HandleGetTonightPreview short-circuits to this
+    // file in companion mode so Tonight tab renders without the unreachable
+    // live TS API call. Side effect on the primary: stale cache triggers a
+    // background TS refresh server-side, so the NEXT companion sync gets fresh
+    // data even if no human ever loads Tonight on the primary.
+    private async Task<long> TryPullTonightCacheAsync(CancellationToken ct) {
+        var url = "/api/export/tonight-cache";
+        try {
+            using var resp = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
+            if (resp.StatusCode == System.Net.HttpStatusCode.NotFound) {
+                _log.Info($"Sync: {url} → 404 (primary has no cache yet — will populate on next sync)");
+                return 0;
+            }
+            resp.EnsureSuccessStatusCode();
+            var destPath = Path.Combine(_paths.DataDir, "tonight-preview-cache.json");
+            var temp = destPath + ".incoming";
+            try {
+                using (var src = await resp.Content.ReadAsStreamAsync(ct))
+                using (var dst = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None,
+                                                81920, useAsync: true)) {
+                    await src.CopyToAsync(dst, ct);
+                }
+                if (File.Exists(destPath)) File.Replace(temp, destPath, null, ignoreMetadataErrors: true);
+                else                       File.Move(temp, destPath);
+                var bytes = new FileInfo(destPath).Length;
+                _log.Info($"Sync: tonight cache pulled ({bytes} bytes)");
+                return bytes;
+            } catch {
+                try { if (File.Exists(temp)) File.Delete(temp); } catch { }
+                throw;
+            }
+        } catch (HttpRequestException ex) {
+            _log.Warn($"Sync: {url} failed ({ex.Message}); continuing without tonight cache");
             return 0;
         }
     }
