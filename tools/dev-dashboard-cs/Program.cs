@@ -19,6 +19,10 @@ internal static class Program {
         "  --ts-api-host  Hostname/IP for TS API calls (default 'localhost'). Use rig's tailnet IP when TS runs on a remote box.\n" +
         "  --no-ts        Hide Target Scheduler from the dashboard (simulates a non-TS user). Overrides --ts-db / --ts-api-host.\n" +
         "  --empty-projects  TS available but 0 projects (simulates TS installed, never configured).\n" +
+        "  --companion-mode  Wire a stub ICompanionController so the dashboard renders its companion-mode\n" +
+        "                    UI (sync banner, pairing wizard, settings tab variants). Hot-reload of JS/CSS\n" +
+        "                    still works via --web. Useful for iterating on mobile UI bugs without\n" +
+        "                    rebuilding + redeploying the actual companion binary.\n" +
         "  --web          Source dir for HTML/CSS/JS (default <repo>/NINA.Plugin.NightSummary.Dashboard/Web)\n" +
         "  --data         Cache + logs root (default ./data under exe)\n" +
         "  --reports      Reports dir (default %LOCALAPPDATA%/NINA/NightSummary/reports)";
@@ -37,10 +41,25 @@ internal static class Program {
         var paths    = new DevDashboardPaths(opts.DataDir, opts.ReportsDir, opts.DbPath);
         var data     = new DevDashboardDataSource(opts.DbPath, log, opts.TsDbPath, opts.TsApiHost, opts.NoTs, opts.EmptyProjects);
         var settings = new DevPluginSettings();
+        if (opts.CompanionMode) settings.Mode = "companion";
         var assets   = new DiskWebAssets(opts.WebDir, opts.AssetsDir);
         var regen    = new DevReportRegenerator();
 
-        var server = new DashboardServer(data, settings, assets, log, paths, regen);
+        // --companion-mode flips DashboardServer to its companion-mode wiring by
+        // passing a non-null ICompanionController. Stub returns plausible static
+        // values so the UI renders banners + sync status + pairing wizard pages
+        // without a real primary or sync engine. Keeps the hot-reload --web
+        // path intact for fast mobile UI iteration.
+        var companion = opts.CompanionMode ? new DevStubCompanionController(log) : null;
+
+        var server = new DashboardServer(
+            data:        data,
+            settings:    settings,
+            webAssets:   assets,
+            externalLog: log,
+            paths:       paths,
+            regen:       regen,
+            companion:   companion);
 
         log.Info($"DB:      {opts.DbPath} (exists: {File.Exists(opts.DbPath)})");
         if (opts.NoTs) {
@@ -83,6 +102,7 @@ internal static class Program {
         public string TsApiHost  { get; set; } = "localhost";
         public bool   NoTs           { get; set; } = false;
         public bool   EmptyProjects  { get; set; } = false;
+        public bool   CompanionMode  { get; set; } = false;
         public string WebDir     { get; set; } = "";
         public string AssetsDir  { get; set; } = "";
         public string DataDir    { get; set; } = "";
@@ -109,6 +129,7 @@ internal static class Program {
                 case "--ts-api-host": opts.TsApiHost = next() ?? "localhost"; break;
                 case "--no-ts":          opts.NoTs          = true; break;
                 case "--empty-projects": opts.EmptyProjects  = true; break;
+                case "--companion-mode": opts.CompanionMode  = true; break;
                 case "--web":     opts.WebDir     = next() ?? ""; break;
                 case "--assets":  opts.AssetsDir  = next() ?? ""; break;
                 case "--data":    opts.DataDir    = next() ?? ""; break;

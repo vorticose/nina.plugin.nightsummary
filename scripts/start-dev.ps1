@@ -1,8 +1,12 @@
 # Night Summary - Start Dev Dashboard Server
 #
 # Usage:
-#   .\scripts\start-dev.ps1              # launch (kills stale instance, uses existing binary)
-#   .\scripts\start-dev.ps1 -Rebuild     # rebuild C# server first, then launch
+#   .\scripts\start-dev.ps1                       # launch (kills stale, uses existing binary, primary mode)
+#   .\scripts\start-dev.ps1 -Rebuild              # rebuild C# server first, then launch
+#   .\scripts\start-dev.ps1 -CompanionMode        # wire a stub ICompanionController so the dashboard
+#                                                 # renders its companion-mode UI (banner, sync panel,
+#                                                 # pairing wizard). For iterating on mobile UI bugs.
+#   .\scripts\start-dev.ps1 -Rebuild -CompanionMode
 #
 # Hot reload: JS/CSS changes in Web/ are served live — no rebuild needed.
 # Rebuild only when tools/dev-dashboard-cs C# code changes.
@@ -11,7 +15,8 @@
 # URL:  http://100.126.185.10:8183/  (Tailscale — iPad/tablet access)
 
 param(
-    [switch]$Rebuild
+    [switch]$Rebuild,
+    [switch]$CompanionMode
 )
 
 $ErrorActionPreference = "Stop"
@@ -56,6 +61,9 @@ if (-not (Test-Path $WebDir))     { Write-Error "Web dir missing: $WebDir`n(Wron
 $TsArgs = @()
 if (Test-Path $SnapshotTs) { $TsArgs = @('--ts-db', $SnapshotTs) }
 
+$ModeArgs = @()
+if ($CompanionMode) { $ModeArgs = @('--companion-mode') }
+
 # --- Launch ---
 Write-Host ""
 Write-Host "Night Summary dev server" -ForegroundColor Cyan
@@ -68,6 +76,11 @@ if (Test-Path $SnapshotTs) {
     Write-Host "  TS DB    : (not found - TS augment disabled)" -ForegroundColor DarkGray
 }
 Write-Host "  URL      : http://100.126.185.10:$Port/" -ForegroundColor White
+if ($CompanionMode) {
+    Write-Host "  Mode     : COMPANION (stub controller — sync/pair/regen are no-ops)" -ForegroundColor Magenta
+} else {
+    Write-Host "  Mode     : primary" -ForegroundColor Gray
+}
 Write-Host ""
 
 & $Exe --host $BindHost --port $Port `
@@ -76,4 +89,5 @@ Write-Host ""
        --reports $SnapshotRp `
        --web     $WebDir `
        --assets  $AssetsDir `
-       @TsArgs
+       @TsArgs `
+       @ModeArgs
