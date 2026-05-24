@@ -5252,6 +5252,12 @@ html.light .tdp-project-action-btn:hover {
     margin-top: 0;
     flex: 0 0 auto;
   }
+
+  /* Companion sync banner mobile fix lives in a separate @media block
+     AFTER the base .companion-banner rules (around line 5664+). Same selector
+     specificity, so later-in-source wins — keeping the override here got
+     clobbered by the base. See the dedicated @media block below the banner
+     base styles. */
   .report-nav { flex-direction: column; align-items: flex-start; gap: 8px; }
 
   /* ── Report view: compact header and controls ── */
@@ -5287,6 +5293,11 @@ html.light .tdp-project-action-btn:hover {
   /* ── Touch-friendly tap targets (44px minimum) ── */
   .report-btn, .back-btn { min-height: 44px; display: inline-flex; align-items: center; }
   .nav-link { min-height: 44px; display: inline-flex; align-items: center; }
+  /* `display: inline-flex` above overrides the UA `[hidden] { display: none }`
+     declaration, so the Settings nav-link (HTML attribute `hidden` until
+     companion mode unhides it) was leaking into the primary dashboard's nav
+     row on mobile. Same fix shape as .companion-banner[hidden] above. */
+  .nav-link[hidden] { display: none !important; }
   .theme-toggle { width: 44px; height: 44px; flex-shrink: 0; }
   .target-dropdown-btn { min-height: 36px; }
   .sort-dropdown-btn { min-height: 36px; }
@@ -5714,6 +5725,54 @@ html.light .companion-banner-label { background: rgba(37, 99, 184, 0.08); }
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+
+/* ── Companion sync banner: stack on mobile ──────────────────────────────
+   Default layout is a single flex row (label + status + Sync button) with
+   #companion-banner-status set to white-space:nowrap + ellipsis. On phone
+   widths the status text ("Primary online · Last sync 5 min ago · …") gets
+   squeezed between the fixed-width label pill and Sync button — usually
+   down to just "Primary…" before the ellipsis kicks in.
+
+   Fix: let the banner wrap. .companion-banner-info (label + status) takes
+   a full row, status wraps naturally onto multiple lines if needed. Sync
+   button drops to its own row, right-aligned. No truncation.
+
+   This block lives AFTER the base .companion-banner rules so its same-
+   specificity selectors win on source order at mobile widths. The earlier
+   attempt to nest these inside the existing @media block at line ~5022
+   was clobbered by the base rules defined after it. */
+@media (max-width: 700px) {
+  /* Two-row layout — balanced:
+       Row 1: [Companion pill]  Status text (wraps freely)
+       Row 2: [─── Sync Now (full width) ───]
+     Label stays inline with status on row 1 (HTML nests them inside
+     .companion-banner-info so we can't reparent via order). Button drops
+     below as a full-width CTA — reads as intentional instead of a lonely
+     pill right-aligned on its own row. */
+  .companion-banner {
+    flex-wrap: wrap;
+    gap: 10px 12px;
+    padding: 10px 12px;
+    align-items: flex-start;
+  }
+  .companion-banner-info {
+    flex: 1 1 100%;
+    min-width: 0;
+    align-items: flex-start;  /* label hugs top of multi-line status */
+  }
+  #companion-banner-status {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    line-height: 1.4;
+  }
+  .companion-banner-btn {
+    flex: 1 1 100%;
+    justify-content: center;
+    padding: 8px 14px;  /* slightly taller for tap target */
+  }
+}
+
 /* ── Raw Image Frames Gallery (RAW_THUMBNAILS_DESIGN.md) ─────────────────── */
 
 .frames-count {
