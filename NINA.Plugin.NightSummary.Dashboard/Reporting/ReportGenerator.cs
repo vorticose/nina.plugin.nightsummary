@@ -1,4 +1,4 @@
-using NINA.Core.Utility;
+using NINA.Plugin.NightSummary.Dashboard.Abstractions;
 using NINA.Plugin.NightSummary.Data;
 using System;
 using System.Collections.Generic;
@@ -18,6 +18,16 @@ namespace NINA.Plugin.NightSummary.Reporting {
     /// can be toggled on/off in a future release.
     /// </summary>
     public class ReportGenerator {
+
+        private readonly IPluginSettings _settings;
+        private readonly IDashboardLogger _log;
+        private readonly ITargetSchedulerDatabase _tsDb;
+
+        public ReportGenerator(IPluginSettings settings, IDashboardLogger log, ITargetSchedulerDatabase tsDb) {
+            _settings = settings;
+            _log      = log;
+            _tsDb     = tsDb;
+        }
 
         // CDS HiPS2FITS: primary thumbnail service. 8s tolerates slow-but-healthy responses
         // (typical is 2-5s) while keeping fallback to SkyView quick when CDS is degraded.
@@ -68,10 +78,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
         public async Task<string> GenerateHtmlReport(ReportData data) {
             Warnings.Clear();
-            FilterHelper.ReloadOverrides();
+            FilterHelper.LoadClassifications(_settings.Current.FilterClassifications);
             var sb = new StringBuilder();
 
-            bool lightMode = SettingsManager.Instance.Current.ReportLightMode;
+            bool lightMode = _settings.Current.ReportLightMode;
+            // ChartGenerator reads colors off this static so SVG output themes correctly.
+            // Set before any chart-emitting code runs.
+            ChartGenerator.LightMode = lightMode;
 
             // Set SVG theme colors (SVG attributes can't use CSS variables)
             // Altitude chart keeps dark background in both modes for better line visibility
@@ -234,8 +247,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
             const string warningsPlaceholder = "<!--WARNINGS_PLACEHOLDER-->";
             sb.AppendLine(warningsPlaceholder);
 
-            int detailLevel = SettingsManager.Instance.Current.ReportDetailLevel;
-            string detailsOpen = SettingsManager.Instance.Current.ExpandSectionsDefault ? " open" : "";
+            int detailLevel = _settings.Current.ReportDetailLevel;
+            string detailsOpen = _settings.Current.ExpandSectionsDefault ? " open" : "";
 
             if (!data.Images.Any()) {
                 sb.AppendLine("<p><em>No images were recorded during this session.</em></p>");
@@ -247,11 +260,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             if (detailLevel >= 1) sb.Append(BuildEventTimelineSection(data));
             sb.Append(BuildOverviewStatsSection(data, detailLevel));
-            if (detailLevel >= 2 && SettingsManager.Instance.Current.ShowOverheadBreakdown) {
-                Logger.Info($"NightSummary: Overhead section — TimingEvents={data.TimingEvents?.Count ?? -1}, detailLevel={detailLevel}, ShowOverheadBreakdown={SettingsManager.Instance.Current.ShowOverheadBreakdown}");
+            if (detailLevel >= 2 && _settings.Current.ShowOverheadBreakdown) {
+                _log.Info($"NightSummary: Overhead section — TimingEvents={data.TimingEvents?.Count ?? -1}, detailLevel={detailLevel}, ShowOverheadBreakdown={_settings.Current.ShowOverheadBreakdown}");
                 sb.Append(BuildOverheadBreakdownSection(data, detailsOpen));
             } else {
-                Logger.Info($"NightSummary: Overhead section SKIPPED — TimingEvents={data.TimingEvents?.Count ?? -1}, detailLevel={detailLevel}, ShowOverheadBreakdown={SettingsManager.Instance.Current.ShowOverheadBreakdown}");
+                _log.Info($"NightSummary: Overhead section SKIPPED — TimingEvents={data.TimingEvents?.Count ?? -1}, detailLevel={detailLevel}, ShowOverheadBreakdown={_settings.Current.ShowOverheadBreakdown}");
             }
             sb.Append(await BuildTargetSection(data, detailLevel, detailsOpen));
             if (detailLevel >= 1) sb.Append(BuildImageQualitySection(data, detailLevel, detailsOpen));
@@ -300,7 +313,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine($"<p><strong>Profile:</strong> {data.Session.ProfileName}</p>");
 
             // Equipment profile section (collapsed by default)
-            if (SettingsManager.Instance.Current.ShowEquipmentProfile && data.Equipment != null && data.Equipment.Count > 0) {
+            if (_settings.Current.ShowEquipmentProfile && data.Equipment != null && data.Equipment.Count > 0) {
                 sb.AppendLine("<details class='equipment-section' open>");
                 sb.AppendLine("<summary>Equipment</summary>");
                 sb.AppendLine("<div class='equipment-grid'>");
@@ -493,7 +506,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 ? Math.Min(mergedOverheadSec / impliedOverheadSec * 100.0, 100.0) : 0;
             var unaccountedSec = Math.Max(0, impliedOverheadSec - mergedOverheadSec);
 
-            Logger.Info($"NightSummary: Overhead — window={windowSec:F0}s, integration={totalIntegrationSec:F0}s, " +
+            _log.Info($"NightSummary: Overhead — window={windowSec:F0}s, integration={totalIntegrationSec:F0}s, " +
                 $"roofClosed={roofClosedSec:F0}s, schedulerWait={schedulerWaitSec:F0}s, effective={effectiveWindowSec:F0}s, " +
                 $"implied={impliedOverheadSec:F0}s, merged={mergedOverheadSec:F0}s, " +
                 $"coverage={coveragePct:F1}%, unaccounted={unaccountedSec:F0}s");
@@ -530,8 +543,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 if (topGaps.Any()) {
                     var gapStr = string.Join(", ",
                         topGaps.Select(g => $"{g.sec:F0}s@{g.start:HH:mm:ss}→{g.end:HH:mm:ss}"));
-                    Logger.Info($"NightSummary: Overhead — top uncovered gaps (≥5s): {gapStr}");
-                    Logger.Info($"NightSummary: Overhead — total uncovered gap count={gaps.Count}, sum={gaps.Sum(g => g.sec):F0}s");
+                    _log.Info($"NightSummary: Overhead — top uncovered gaps (≥5s): {gapStr}");
+                    _log.Info($"NightSummary: Overhead — total uncovered gap count={gaps.Count}, sum={gaps.Sum(g => g.sec):F0}s");
                 }
             }
 
@@ -744,7 +757,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var fovH     = data.CameraFovHeightDeg;
             var thumbFov = Math.Max(fovW, fovH) * 1.5;
             if (thumbFov <= 0) thumbFov = 1.0;
-            Logger.Info($"NightSummary: Thumbnail FOV — fovW={fovW:F4}° fovH={fovH:F4}° thumbFov={thumbFov:F4}°");
+            _log.Info($"NightSummary: Thumbnail FOV — fovW={fovW:F4}° fovH={fovH:F4}° thumbFov={thumbFov:F4}°");
             double boxW = (fovW / thumbFov) * thumbPx;
             double boxH = (fovH / thumbFov) * thumbPx;
             double cx   = thumbPx / 2.0;
@@ -752,7 +765,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             // ── Pre-fetch all sky thumbnails in parallel ──────────────────────
             var thumbResults = new Dictionary<string, (string imgSrc, bool usedFallback)>();
-            if (SettingsManager.Instance.Current.ShowSkyThumbnails) {
+            if (_settings.Current.ShowSkyThumbnails) {
                 var thumbTasks = new List<(string targetName, double raDeg, double decD, Task<(string imgSrc, bool usedFallback)> task)>();
 
                 foreach (var target in targets) {
@@ -770,7 +783,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 }
 
                 if (thumbTasks.Any()) {
-                    Logger.Info($"NightSummary: Fetching {thumbTasks.Count} sky thumbnail(s) in parallel...");
+                    _log.Info($"NightSummary: Fetching {thumbTasks.Count} sky thumbnail(s) in parallel...");
                     await Task.WhenAll(thumbTasks.Select(t => t.task));
                     bool anyFallback = false;
                     foreach (var t in thumbTasks) {
@@ -850,8 +863,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine("<div class='target-section'>");
                 sb.AppendLine($"<h3>{target.Key}{h3Subtitle}</h3>");
 
-                bool showThumb         = (raH != 0 || decD != 0) && SettingsManager.Instance.Current.ShowSkyThumbnails;
-                bool showSideBySideChart = (raH != 0 || decD != 0) && detailLevel >= 1 && SettingsManager.Instance.Current.ShowAltitudeChart;
+                bool showThumb         = (raH != 0 || decD != 0) && _settings.Current.ShowSkyThumbnails;
+                bool showSideBySideChart = (raH != 0 || decD != 0) && detailLevel >= 1 && _settings.Current.ShowAltitudeChart;
 
                 // Build thumbnail HTML from pre-fetched results
                 string thumbHtml = "";
@@ -882,7 +895,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     sb.AppendLine("<div class='ts-target-header'>");
                     sb.Append(thumbHtml);
                     if (showSideBySideChart) {
-                        double minAlt = SettingsManager.Instance.Current.ShowMinAltitude ? (tsFirst?.MinimumAltitude ?? 0) : 0;
+                        double minAlt = _settings.Current.ShowMinAltitude ? (tsFirst?.MinimumAltitude ?? 0) : 0;
                         var altChart = BuildAltitudeChart(raH, decD, data.ObserverLatitude, data.ObserverLongitude,
                                                           imagingWindows, width: 500,
                                                           minimumAltitude: minAlt);
@@ -893,12 +906,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 }
 
                 // Live Stack images
-                if (SettingsManager.Instance.Current.ShowLiveStackImages && data.LiveStackImages.Count > 0) {
+                if (_settings.Current.ShowLiveStackImages && data.LiveStackImages.Count > 0) {
                     var targetImages = data.LiveStackImages
                         .Where(i => i.Target.Equals(target.Key, StringComparison.OrdinalIgnoreCase))
                         .ToList();
                     if (targetImages.Count > 0) {
-                        Logger.Info($"NightSummary: Rendering {targetImages.Count} live stack image(s) for target '{target.Key}'");
+                        _log.Info($"NightSummary: Rendering {targetImages.Count} live stack image(s) for target '{target.Key}'");
                         // Build filter → total integration lookup from session image records
                         var filterIntegration = target
                             .GroupBy(i => i.Filter, StringComparer.OrdinalIgnoreCase)
@@ -909,11 +922,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
                         sb.AppendLine("</details>");
                     }
                 } else if (data.LiveStackImages == null || data.LiveStackImages.Count == 0) {
-                    Logger.Info($"NightSummary: No live stack images for target '{target.Key}' — " +
-                        $"ShowLiveStackImages={SettingsManager.Instance.Current.ShowLiveStackImages}, " +
+                    _log.Info($"NightSummary: No live stack images for target '{target.Key}' — " +
+                        $"ShowLiveStackImages={_settings.Current.ShowLiveStackImages}, " +
                         $"totalImages={data.LiveStackImages?.Count ?? 0}");
                 } else {
-                    Logger.Info($"NightSummary: No live stack images matched target '{target.Key}' — " +
+                    _log.Info($"NightSummary: No live stack images matched target '{target.Key}' — " +
                         $"available targets: {string.Join(", ", data.LiveStackImages.Select(i => i.Target).Distinct())}");
                 }
 
@@ -995,7 +1008,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     EmitFilterTable(target.ToList(), captionHtml: "", totalLabel: "Total");
                 }
 
-                if (detailLevel >= 1 && SettingsManager.Instance.Current.ShowStarCountCV) {
+                if (detailLevel >= 1 && _settings.Current.ShowStarCountCV) {
                     // Star count CV
                     var broadbandImages  = target.Where(i => IsBroadband(i.Filter)  && i.StarCount > 0).ToList();
                     var narrowbandImages = target.Where(i => IsNarrowband(i.Filter) && i.StarCount > 0).ToList();
@@ -1031,7 +1044,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 // collapsed expander per imaging window with the same metric table inside.
                 // Per-window sample sizes are usually small so the CV column will be noisy —
                 // viewer can compare windows at a glance but should weight by frame count.
-                if (detailLevel >= 1 && multiTarget && SettingsManager.Instance.Current.ShowPerTargetIQ) {
+                if (detailLevel >= 1 && multiTarget && _settings.Current.ShowPerTargetIQ) {
                     var targetList = target.ToList();
                     bool hasData = targetList.Any(i => i.HFR > 0 || i.FWHM > 0 || i.Eccentricity > 0 || i.GuidingRMSTotal > 0);
                     if (hasData) {
@@ -1065,7 +1078,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 }
 
                 // Session history (collapsible)
-                if (detailLevel >= 2 && SettingsManager.Instance.Current.ShowSessionHistory) {
+                if (detailLevel >= 2 && _settings.Current.ShowSessionHistory) {
                     List<TargetSessionHistory> history = null;
                     data.SessionHistory?.TryGetValue(target.Key, out history);
                     if (history != null && history.Any()) {
@@ -1085,14 +1098,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     }
                 }
 
-                if (!tsTargets.Any() && detailLevel >= 1 && SettingsManager.Instance.Current.ShowTSProgressBars && TargetSchedulerDatabase.IsPluginInstalled) {
+                if (!tsTargets.Any() && detailLevel >= 1 && _settings.Current.ShowTSProgressBars && _tsDb.IsPluginInstalled) {
                     if (data.TsData != null && data.TsData.Count > 0) {
                         // TS is installed but this specific target wasn't found in it
                         Warnings.Add($"Target Scheduler progress bars unavailable for {target.Key} — target not found in Target Scheduler");
                     }
                     // If TS isn't installed at all, silently skip — the Options UI already shows it's unavailable
                 }
-                if (tsTargets.Any() && detailLevel >= 1 && SettingsManager.Instance.Current.ShowTSProgressBars && TargetSchedulerDatabase.IsPluginInstalled) {
+                if (tsTargets.Any() && detailLevel >= 1 && _settings.Current.ShowTSProgressBars && _tsDb.IsPluginInstalled) {
                     // TS progress bars — one section per (project, target) pair; label project when multiple exist
                     var multiProject = tsTargets.Count > 1;
                     sb.AppendLine("<p style='margin: 12px 0 4px; font-size: 13px; color: var(--accent-light);'><strong>Target Scheduler Progress</strong></p>");
@@ -1310,15 +1323,15 @@ namespace NINA.Plugin.NightSummary.Reporting {
             AppendIqRows(sb, data.Images, detailsOpen);
             sb.AppendLine("</div>"); // iq-table
 
-            if (detailLevel >= 2 && SettingsManager.Instance.Current.ShowHFRGraph) {
-                int primary   = SettingsManager.Instance.Current.ChartPrimaryMetric;
-                int secondary = SettingsManager.Instance.Current.ChartSecondaryMetric;
-                int xAxis     = SettingsManager.Instance.Current.ChartXAxisMetric;
+            if (detailLevel >= 2 && _settings.Current.ShowHFRGraph) {
+                int primary   = _settings.Current.ChartPrimaryMetric;
+                int secondary = _settings.Current.ChartSecondaryMetric;
+                int xAxis     = _settings.Current.ChartXAxisMetric;
 
                 // Build event marker list from enabled event types
                 var eventMarkers = new List<(DateTime timestamp, string eventType, string description)>();
                 if (data.Events != null) {
-                    var settings = SettingsManager.Instance.Current;
+                    var settings = _settings.Current;
                     if (settings.ShowChartAfMarkers)
                         eventMarkers.AddRange(data.Events.Where(e => e.EventType == "AutoFocus")
                             .Select(e => (e.Timestamp, e.EventType, e.Description)));
@@ -1334,7 +1347,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine($"<h2>{ChartGenerator.GetChartTitle(primary, secondary, xAxis)}</h2>");
                 EmitMetricChart(sb, data.Images, primary, secondary, xAxis, markers);
 
-                var additionalRaw = SettingsManager.Instance.Current.AdditionalChartConfigs;
+                var additionalRaw = _settings.Current.AdditionalChartConfigs;
                 if (!string.IsNullOrWhiteSpace(additionalRaw)) {
                     foreach (var part in additionalRaw.Split('|')) {
                         var tokens = part.Split(':');
@@ -1386,7 +1399,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var filters = model.Filters;
             var targets = model.Targets;
 
-            var settings    = SettingsManager.Instance.Current;
+            var settings    = _settings.Current;
             bool hasFilters = filters.Count >= 2 && settings.ShowChartFilterChips;
             bool hasTargets = targets.Count >= 2 && settings.ShowChartTargetChips;
 
@@ -1533,7 +1546,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("<h2>Session Timeline</h2>");
 
             // Which view is default?
-            bool altDefault = SettingsManager.Instance.Current.TimelineAltitudeDefault;
+            bool altDefault = _settings.Current.TimelineAltitudeDefault;
             string altChecked = altDefault ? " checked" : "";
             string simChecked = altDefault ? "" : " checked";
             string hiddenView = altDefault ? "simple" : "altitude";
@@ -1689,7 +1702,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             // ── Moon altitude curve ──────────────────────────────────────────────
-            if (SettingsManager.Instance.Current.ShowMoonCurve) {
+            if (_settings.Current.ShowMoonCurve) {
                 var moonPoints = AltitudeCalculator.GetMoonAltitudeCurve(latDeg, lonDeg, dayStart, dayEnd, stepMinutes: 5);
                 var moonSegments = new List<List<(DateTime t, double alt)>>();
                 List<(DateTime t, double alt)> moonSeg = null;
@@ -1767,22 +1780,22 @@ namespace NINA.Plugin.NightSummary.Reporting {
         }
 
         private async Task<string> BuildNextNightPreviewSection(ReportData data) {
-            if (!SettingsManager.Instance.Current.ShowNextNightPreview) return "";
+            if (!_settings.Current.ShowNextNightPreview) return "";
 
-            var tsDb = new TargetSchedulerDatabase();
+            var tsDb = _tsDb;
             if (!tsDb.IsAvailable)
                 return "";  // TS not installed — silently skip, Options UI already indicates it's unavailable
 
             var (apiEnabled, apiPort) = tsDb.GetApiSettings(data.ActiveProfileId);
             if (!apiEnabled) {
                 // API not enabled is a normal default state — silently skip, no report warning
-                Logger.Info($"NightSummary: Tonight's Preview skipped — TS API not enabled for profile '{data.ActiveProfileId ?? "unknown"}'");
+                _log.Info($"NightSummary: Tonight's Preview skipped — TS API not enabled for profile '{data.ActiveProfileId ?? "unknown"}'");
                 return "";
             }
 
             try {
                 var baseUrl = $"http://localhost:{apiPort}/ts/v0";
-                Logger.Info($"NightSummary: Tonight's Preview — connecting to TS API at {baseUrl}");
+                _log.Info($"NightSummary: Tonight's Preview — connecting to TS API at {baseUrl}");
                 var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 
                 // Step 1: Get active profile ID
@@ -1843,7 +1856,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                         if (!coordLookup.ContainsKey(tt.TargetName))
                             coordLookup[tt.TargetName] = (tt.RA, tt.Dec);
                 } catch (Exception ex) {
-                    Logger.Warning($"NightSummary: Could not look up coordinates for preview targets: {ex.Message}");
+                    _log.Warn($"NightSummary: Could not look up coordinates for preview targets: {ex.Message}");
                 }
 
                 // ── Timeline with toggle (Altitude / Simple) ──
@@ -1854,7 +1867,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 if (!string.IsNullOrEmpty(altChart) && !string.IsNullOrEmpty(simpleChart)) {
                     int ci = _chartIndex++;
                     string pfx = $"nsc{ci}";
-                    bool pvAltDefault = SettingsManager.Instance.Current.PreviewAltitudeDefault;
+                    bool pvAltDefault = _settings.Current.PreviewAltitudeDefault;
                     string pvAltChecked = pvAltDefault ? " checked" : "";
                     string pvSimChecked = pvAltDefault ? "" : " checked";
                     string pvHidden = pvAltDefault ? "simple" : "altitude";
@@ -1912,7 +1925,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     var filterGroups = allExposures
                         .GroupBy(e => (e.FilterName, e.Exposure))
                         .OrderBy(g => FilterSortKey(g.Key.FilterName)).ThenBy(g => g.Key.FilterName).ThenBy(g => g.Key.Exposure);
-                    string detailsOpen = SettingsManager.Instance.Current.ExpandSectionsDefault ? " open" : "";
+                    string detailsOpen = _settings.Current.ExpandSectionsDefault ? " open" : "";
                     sb.AppendLine($"<details class='history-section'{detailsOpen}>");
                     sb.AppendLine($"<summary>{targetGroup.Key} - Filter Breakdown</summary>");
                     sb.AppendLine("<table style='margin-top:8px;width:auto;'>");
@@ -1934,7 +1947,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine("</div>");
                 return sb.ToString();
             } catch (Exception ex) {
-                Logger.Warning($"NightSummary: Next night preview unavailable. {ex.Message}");
+                _log.Warn($"NightSummary: Next night preview unavailable. {ex.Message}");
                 var reason = ex.InnerException is TaskCanceledException
                     ? "Target Scheduler API did not respond in time — the server may not be running."
                     : $"Could not connect to Target Scheduler API (port {apiPort}). Ensure NINA and Target Scheduler are running.";
@@ -1995,7 +2008,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             // Moon altitude curve
-            if (SettingsManager.Instance.Current.ShowMoonCurve) {
+            if (_settings.Current.ShowMoonCurve) {
                 var moonPts  = AltitudeCalculator.GetMoonAltitudeCurve(latDeg, lonDeg, nightStart, nightEnd, stepMinutes: 5);
                 var moonSegs = BuildAltSegments(moonPts, maxAlt);
                 foreach (var seg in moonSegs) {
@@ -2088,7 +2101,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             double totalSeconds = (timelineEnd - timelineStart).TotalSeconds;
             if (totalSeconds <= 0) return string.Empty;
 
-            bool light = SettingsManager.Instance.Current.ReportLightMode;
+            bool light = _settings.Current.ReportLightMode;
             string idleBg     = light ? "#d0d4da" : "#0f0f23";
             string idleStripe = light ? "#b04040" : "#7a1a1a";
             string tickColor  = light ? "#888" : "#555";
@@ -2211,7 +2224,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             double totalSeconds = (sessionEnd - sessionStart).TotalSeconds;
             if (totalSeconds <= 0) return string.Empty;
 
-            bool light = SettingsManager.Instance.Current.ReportLightMode;
+            bool light = _settings.Current.ReportLightMode;
 
             // Event marker colors (match ChartGenerator and EventTimelineGenerator)
             string colorAF   = light ? "#7c3aed" : "#a78bfa";
@@ -2313,7 +2326,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             // Moon altitude curve
-            if (SettingsManager.Instance.Current.ShowMoonCurve) {
+            if (_settings.Current.ShowMoonCurve) {
                 var moonPts  = AltitudeCalculator.GetMoonAltitudeCurve(data.ObserverLatitude, data.ObserverLongitude, sessionStart, sessionEnd, stepMinutes: 5);
                 var moonSegs = BuildAltSegments(moonPts, maxAlt);
                 foreach (var seg in moonSegs) {
@@ -2417,9 +2430,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
             return sb.ToString();
         }
 
-        private static List<SessionEvent> FilterEventsBySettings(List<SessionEvent> events) {
+        private List<SessionEvent> FilterEventsBySettings(List<SessionEvent> events) {
             if (events == null) return new List<SessionEvent>();
-            var s = SettingsManager.Instance.Current;
+            var s = _settings.Current;
             return events.Where(e => e.EventType switch {
                 "AutoFocus"                  => s.ShowChartAfMarkers,
                 "MeridianFlip"               => s.ShowChartFlipMarkers,
@@ -2432,7 +2445,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var sb = new StringBuilder();
             sb.AppendLine("<p class='footnote'>CV (Coefficient of Variation) measures consistency as a percentage of the mean. Lower values indicate more stable conditions. Star count CV is calculated per target and filter type.</p>");
             var pluginVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "?";
-            var ninaVersion = CoreUtil.Version ?? "?";
+            var ninaVersion = string.IsNullOrEmpty(_settings.NinaVersion) ? "?" : _settings.NinaVersion;
             sb.AppendLine($"<p class='footnote'>Generated by Night Summary v{pluginVersion} · N.I.N.A. {ninaVersion} · Created by Evan Pegors (@sleepypuppy15)</p>");
             return sb.ToString();
         }
@@ -2489,12 +2502,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var cdsUrl = $"https://alasky.cds.unistra.fr/hips-image-services/hips2fits?hips=CDS/P/DSS2/color&ra={raDeg:F6}&dec={decDeg:F6}&fov={fovDeg:F6}&width={px}&height={px}&format=jpg";
                 var bytes = await Http.GetByteArrayAsync(cdsUrl);
                 if (bytes.Length > 500) {
-                    Logger.Info($"NightSummary: CDS thumbnail OK for {targetName} ({bytes.Length:N0} bytes)");
+                    _log.Info($"NightSummary: CDS thumbnail OK for {targetName} ({bytes.Length:N0} bytes)");
                     return ($"data:image/jpeg;base64,{Convert.ToBase64String(bytes)}", false);
                 }
-                Logger.Warning($"NightSummary: CDS returned tiny response for {targetName} ({bytes.Length} bytes), trying fallback");
+                _log.Warn($"NightSummary: CDS returned tiny response for {targetName} ({bytes.Length} bytes), trying fallback");
             } catch (Exception ex) {
-                Logger.Warning($"NightSummary: CDS thumbnail failed for {targetName}: {ex.Message}");
+                _log.Warn($"NightSummary: CDS thumbnail failed for {targetName}: {ex.Message}");
             }
 
             // Fallback: NASA SkyView DSS2 Red (monochrome but reliable)
@@ -2502,17 +2515,17 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var svUrl = $"https://skyview.gsfc.nasa.gov/current/cgi/runquery.pl?Position={raDeg:F6},{decDeg:F6}&Survey=DSS2+Red&Pixels={px}&Size={fovDeg:F6}&Return=GIF";
                 var bytes = await SkyViewHttp.GetByteArrayAsync(svUrl);
                 if (bytes.Length > 500) {
-                    Logger.Info($"NightSummary: SkyView fallback OK for {targetName} ({bytes.Length:N0} bytes)");
+                    _log.Info($"NightSummary: SkyView fallback OK for {targetName} ({bytes.Length:N0} bytes)");
                     return ($"data:image/gif;base64,{Convert.ToBase64String(bytes)}", true);
                 }
-                Logger.Warning($"NightSummary: SkyView returned tiny response for {targetName} ({bytes.Length} bytes)");
+                _log.Warn($"NightSummary: SkyView returned tiny response for {targetName} ({bytes.Length} bytes)");
             } catch (Exception ex) {
-                Logger.Warning($"NightSummary: SkyView fallback failed for {targetName}: {ex.Message}");
+                _log.Warn($"NightSummary: SkyView fallback failed for {targetName}: {ex.Message}");
             }
 
             // Both failed — return remote URL as last resort
             var remoteUrl = $"https://alasky.cds.unistra.fr/hips-image-services/hips2fits?hips=CDS/P/DSS2/color&ra={raDeg:F6}&dec={decDeg:F6}&fov={fovDeg:F6}&width={px}&height={px}&format=jpg";
-            Logger.Warning($"NightSummary: All thumbnail services failed for {targetName}, using remote URL");
+            _log.Warn($"NightSummary: All thumbnail services failed for {targetName}, using remote URL");
             return (remoteUrl, true);
         }
     }

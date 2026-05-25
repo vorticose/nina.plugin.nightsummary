@@ -8,11 +8,15 @@ using NINA.Plugin.NightSummary.Dashboard.Abstractions;
 
 namespace NINA.Plugin.NightSummary.Companion.Adapters;
 
-// Mirrors TargetSchedulerDatabase.{GetAllProjects, GetApiSettings} from the
-// plugin assembly. Lives here because the plugin reader is net8.0-windows +
-// NINA.Core; the companion is plain net8.0. SQL kept identical so the two
-// stay in sync.
-internal sealed class CompanionTsReader {
+// Mirrors TargetSchedulerDatabase.{GetAllProjects, GetApiSettings,
+// GetProgressForTargets, GetImageAugment} from the plugin assembly. Lives
+// here because the plugin reader is net8.0-windows + NINA.Core; the
+// companion is plain net8.0. SQL kept identical so the two stay in sync.
+//
+// Also implements ITargetSchedulerDatabase so the cross-platform
+// ReportGenerator can render TS progress sections on the companion without
+// the primary's TargetSchedulerDatabase being reachable.
+internal sealed class CompanionTsReader : ITargetSchedulerDatabase {
 
     private readonly string _dbPath;
     private readonly IDashboardLogger _log;
@@ -23,6 +27,11 @@ internal sealed class CompanionTsReader {
     }
 
     public bool IsAvailable => File.Exists(_dbPath);
+
+    // For companion: "installed" == DB file exists in the synced data tree.
+    // Plugin-side this is a separate disk check for the TS plugin DLL itself;
+    // on companion we don't have that distinction.
+    public bool IsPluginInstalled => IsAvailable;
 
     public List<TsProjectInfo> GetAllProjects(string? profileId = null) {
         if (!IsAvailable) return new List<TsProjectInfo>();
@@ -157,6 +166,95 @@ internal sealed class CompanionTsReader {
             _log.Error("Companion TS: GetApiSettings failed", ex);
         }
         return (false, 0);
+    }
+
+    // Mirror of TargetSchedulerDatabase.GetProgressForTargets + QueryProgress —
+    // returns per-target/per-filter exposure progress for the named targets.
+    // Joins exposureplan → target → project → exposuretemplate the same way
+    // the plugin's SQL does so output matches byte-for-byte.
+    public List<TsTargetData> GetProgressForTargets(IEnumerable<string> sessionTargetNames, string? profileId = null) {
+        if (!IsAvailable) return new List<TsTargetData>();
+
+        var nameSet = new HashSet<string>(
+            sessionTargetNames.Select(n => n.Trim()),
+            StringComparer.OrdinalIgnoreCase);
+
+        try {
+            var cs = $"Data Source={_dbPath};Mode=ReadOnly";
+            using var conn = new SqliteConnection(cs);
+            conn.Open();
+
+            var sql = @"
+                SELECT
+                    t.name        AS TargetName,
+                    p.name        AS ProjectName,
+                    t.ra          AS RA,
+                    t.dec         AS Dec,
+                    t.rotation    AS Rotation,
+                    p.MinimumAltitude AS MinimumAltitude,
+                    et.name       AS TemplateName,
+                    et.filtername AS Filter,
+                    CASE WHEN ep.exposure > 0 THEN ep.exposure ELSE et.defaultexposure END AS ExposureSec,
+                    ep.desired    AS Desired,
+                    ep.acquired   AS Acquired,
+                    ep.accepted   AS Accepted
+                FROM exposureplan ep
+                JOIN target t           ON t.Id  = ep.targetid
+                JOIN project p          ON p.Id  = t.ProjectId
+                JOIN exposuretemplate et ON et.Id = ep.exposureTemplateId
+                WHERE ep.desired > 0" +
+                (profileId != null ? " AND p.ProfileId = @ProfileId" : "") +
+                " ORDER BY p.name, t.name, et.filtername, et.name";
+
+            var rows = new List<(string Name, string ProjectName, double RA, double Dec, double Rotation, double MinimumAltitude, string TemplateName, string Filter, double ExposureSec, int Desired, int Acquired, int Accepted)>();
+
+            using (var cmd = new SqliteCommand(sql, conn)) {
+                if (profileId != null) cmd.Parameters.AddWithValue("@ProfileId", profileId);
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read()) {
+                    var name = reader["TargetName"].ToString() ?? "";
+                    if (!nameSet.Contains(name)) continue;
+
+                    rows.Add((
+                        Name:            name,
+                        ProjectName:     reader["ProjectName"].ToString() ?? "",
+                        RA:              Convert.ToDouble(reader["RA"]),
+                        Dec:             Convert.ToDouble(reader["Dec"]),
+                        Rotation:        reader["Rotation"]        == DBNull.Value ? 0 : Convert.ToDouble(reader["Rotation"]),
+                        MinimumAltitude: reader["MinimumAltitude"] == DBNull.Value ? 0 : Convert.ToDouble(reader["MinimumAltitude"]),
+                        TemplateName:    reader["TemplateName"].ToString() ?? "",
+                        Filter:          reader["Filter"].ToString() ?? "",
+                        ExposureSec:     reader["ExposureSec"] == DBNull.Value ? 0 : Convert.ToDouble(reader["ExposureSec"]),
+                        Desired:         Convert.ToInt32(reader["Desired"]),
+                        Acquired:        Convert.ToInt32(reader["Acquired"]),
+                        Accepted:        Convert.ToInt32(reader["Accepted"])
+                    ));
+                }
+            }
+
+            return rows
+                .GroupBy(r => (r.ProjectName, r.Name))
+                .Select(g => new TsTargetData {
+                    TargetName      = g.Key.Name,
+                    ProjectName     = g.Key.ProjectName,
+                    RA              = g.First().RA,
+                    Dec             = g.First().Dec,
+                    Rotation        = g.First().Rotation,
+                    MinimumAltitude = g.First().MinimumAltitude,
+                    Filters         = g.Select(r => new TsFilterProgress {
+                        TemplateName = r.TemplateName,
+                        Filter       = r.Filter,
+                        ExposureSec  = r.ExposureSec,
+                        Desired      = r.Desired,
+                        Acquired     = r.Acquired,
+                        Accepted     = r.Accepted
+                    }).ToList()
+                })
+                .ToList();
+        } catch (Exception ex) {
+            _log.Error("Companion TS: GetProgressForTargets failed", ex);
+            return new List<TsTargetData>();
+        }
     }
 
     // Mirror of TargetSchedulerDatabase.GetImageAugment — needed by the dashboard's

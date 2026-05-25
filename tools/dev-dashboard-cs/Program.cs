@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using NINA.Plugin.NightSummary.Dashboard.Abstractions;
 using NINA.Plugin.NightSummary.Dashboard.WebAssets;
 using NINA.Plugin.NightSummary.Server;
 
@@ -43,7 +44,14 @@ internal static class Program {
         var settings = new DevPluginSettings();
         if (opts.CompanionMode) settings.Mode = "companion";
         var assets   = new DiskWebAssets(opts.WebDir, opts.AssetsDir);
-        var regen    = new DevReportRegenerator();
+        // In companion mode the regenerator wires the same building blocks the
+        // real companion uses (CompanionReportDataBuilder + ReportGenerator)
+        // against the snapshot DB so devs can exercise the regen path without
+        // a real companion build. Primary mode has no SessionService here, so
+        // regen reports "not available" and the UI hides the button.
+        IReportRegenerator regen = opts.CompanionMode
+            ? new DevCompanionRegenerator(opts.DbPath, settings, log, paths)
+            : new DevReportRegenerator();
 
         // --companion-mode flips DashboardServer to its companion-mode wiring by
         // passing a non-null ICompanionController. Stub returns plausible static

@@ -40,7 +40,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
             var data = BuildLrgbReportData();
 
-            var generator = new ReportGenerator();
+            var generator = TestDeps.NewReportGenerator();
             var html      = await generator.GenerateHtmlReport(data);
 
             // Write to .preview at the worktree root. The test binary lives under
@@ -72,7 +72,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
             var data = BuildImbalancedReportData();
 
-            var generator = new ReportGenerator();
+            var generator = TestDeps.NewReportGenerator();
             var html      = await generator.GenerateHtmlReport(data);
 
             var rootDir = FindWorktreeRoot(AppContext.BaseDirectory);
@@ -178,7 +178,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
             var data = BuildLrgbReportData();
 
-            var generator = new ReportGenerator();
+            var generator = TestDeps.NewReportGenerator();
             var html      = await generator.GenerateHtmlReport(data);
 
             SettingsManager.Instance.Current.ReportLightMode = false; // reset
@@ -263,7 +263,7 @@ namespace NINA.Plugin.NightSummary.Tests {
         public async Task MultiTargetSession_ShowsTargetChipBar() {
             SetupChartSettings();
             var data = TestDataFactory.MakeReportData(imageCount: 10, targets: new[] { "M42", "Orion Nebula" });
-            var html = await new ReportGenerator().GenerateHtmlReport(data);
+            var html = await TestDeps.NewReportGenerator().GenerateHtmlReport(data);
             Assert.Contains("ns-chart-target-btn", html);
             Assert.Contains("All Targets", html);
             Assert.Contains("M42", html);
@@ -274,7 +274,7 @@ namespace NINA.Plugin.NightSummary.Tests {
         public async Task SingleTargetSession_NoTargetChipBar() {
             SetupChartSettings();
             var data = TestDataFactory.MakeReportData(imageCount: 10, targets: new[] { "M42" });
-            var html = await new ReportGenerator().GenerateHtmlReport(data);
+            var html = await TestDeps.NewReportGenerator().GenerateHtmlReport(data);
             Assert.DoesNotContain("ns-chart-target-btn\" for=", html);
             Assert.DoesNotContain("All Targets", html);
         }
@@ -301,7 +301,7 @@ namespace NINA.Plugin.NightSummary.Tests {
                 CumulativeIntegrationSeconds = new Dictionary<string, double>(),
                 SessionHistory = new Dictionary<string, List<TargetSessionHistory>>(),
             };
-            var html = await new ReportGenerator().GenerateHtmlReport(data);
+            var html = await TestDeps.NewReportGenerator().GenerateHtmlReport(data);
             Assert.Contains("ns-chart-target-btn", html);  // target bar
             Assert.Contains("ns-chart-filter-bar",  html);  // filter bar
             Assert.Contains("All Targets", html);

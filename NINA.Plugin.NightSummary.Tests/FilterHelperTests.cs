@@ -121,30 +121,30 @@ namespace NINA.Plugin.NightSummary.Tests {
         public void IsBroadband_WithOverrideForcedB_ReturnsTrue() {
             // "UV" normally not broadband; override forces it to B
             SettingsManager.Instance.Current.FilterClassifications = "UV=B";
-            FilterHelper.ReloadOverrides();
+            FilterHelper.LoadClassifications(SettingsManager.Instance.Current.FilterClassifications);
             Assert.True(FilterHelper.IsBroadband("UV"));
             SettingsManager.Instance.Current.FilterClassifications = "";
-            FilterHelper.ReloadOverrides();
+            FilterHelper.LoadClassifications(SettingsManager.Instance.Current.FilterClassifications);
         }
 
         [Fact]
         public void IsNarrowband_WithOverrideForcedN_ReturnsTrue() {
             // "Lum" normally broadband; override forces it to N
             SettingsManager.Instance.Current.FilterClassifications = "Lum=N";
-            FilterHelper.ReloadOverrides();
+            FilterHelper.LoadClassifications(SettingsManager.Instance.Current.FilterClassifications);
             Assert.True(FilterHelper.IsNarrowband("Lum"));
             Assert.False(FilterHelper.IsBroadband("Lum"));
             SettingsManager.Instance.Current.FilterClassifications = "";
-            FilterHelper.ReloadOverrides();
+            FilterHelper.LoadClassifications(SettingsManager.Instance.Current.FilterClassifications);
         }
 
         [Fact]
         public void IsExcluded_WithOverrideForcedX_ReturnsTrue() {
             SettingsManager.Instance.Current.FilterClassifications = "Ha=X";
-            FilterHelper.ReloadOverrides();
+            FilterHelper.LoadClassifications(SettingsManager.Instance.Current.FilterClassifications);
             Assert.True(FilterHelper.IsExcluded("Ha"));
             SettingsManager.Instance.Current.FilterClassifications = "";
-            FilterHelper.ReloadOverrides();
+            FilterHelper.LoadClassifications(SettingsManager.Instance.Current.FilterClassifications);
         }
 
         // ── ParseClassifications ──────────────────────────────────────────────

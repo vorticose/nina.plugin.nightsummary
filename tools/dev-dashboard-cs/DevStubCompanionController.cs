@@ -121,8 +121,4 @@ internal sealed class DevStubCompanionController : ICompanionController {
             ErrorCode: null, Error: null, AlreadyPairedCompanionName: null));
     }
 
-    public Task<CompanionRegenResult> RegenerateOnPrimaryAsync(string sessionId, string bodyJson, CancellationToken ct = default) {
-        _log.Info($"[stub-companion] RegenerateOnPrimaryAsync (sessionId={sessionId}, bodyLen={bodyJson?.Length ?? 0}) — pretending OK");
-        return Task.FromResult(new CompanionRegenResult(true, null));
-    }
 }

@@ -152,7 +152,7 @@ On first run a default companion.json is written and the program exits so you ca
             webAssets:   webAssets,
             externalLog: log,
             paths:       paths,
-            regen:       null,
+            regen:       new CompanionReportRegenerator(paths.DatabasePath, paths.TsDatabasePath, settings, log, paths),
             companion:   controller);
 
         // Wrap StartAsync so a bind failure (port in use, permission denied) lands

@@ -302,8 +302,6 @@ namespace NINA.Plugin.NightSummary.Tests {
                 return Task.FromResult(ClaimResult);
             }
 
-            public Task<CompanionRegenResult> RegenerateOnPrimaryAsync(string sessionId, string bodyJson, CancellationToken ct = default)
-                => Task.FromResult(new CompanionRegenResult(true, null));
         }
 
         private sealed class StubPaths : IDashboardPaths {

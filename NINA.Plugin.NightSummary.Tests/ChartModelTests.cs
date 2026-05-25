@@ -229,12 +229,12 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public void BuildChartModel_LightMode_SetsFlag() {
-            SettingsManager.Instance.Current.ReportLightMode = true;
+            ChartGenerator.LightMode = true;
             var images = TestDataFactory.MakeImageSeries("t", 5);
 
             var model = ChartGenerator.BuildChartModel(images, ChartGenerator.PrimaryHFR, ChartGenerator.SecNone);
 
-            SettingsManager.Instance.Current.ReportLightMode = false;
+            ChartGenerator.LightMode = false;
             Assert.True(model.LightMode);
         }
 

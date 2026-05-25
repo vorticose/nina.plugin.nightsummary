@@ -28,7 +28,7 @@ namespace NINA.Plugin.NightSummary.Tests {
             SettingsManager.Instance.Current.ShowNextNightPreview   = false;
             SettingsManager.Instance.Current.AdditionalChartConfigs = "";
             SettingsManager.Instance.Current.ExpandSectionsDefault  = false;
-            _generator = new ReportGenerator();
+            _generator = TestDeps.NewReportGenerator();
         }
 
         // ── Filter breakdown stat boxes ────────────────────────────────────────

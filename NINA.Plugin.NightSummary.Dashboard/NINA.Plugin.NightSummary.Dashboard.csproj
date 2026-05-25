@@ -17,6 +17,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Test assembly needs to call internal helpers like ChartGenerator.GetXAxisLabel
+         and ReportGenerator.FormatRA. Matches the same grant in plugin AssemblyInfo. -->
+    <InternalsVisibleTo Include="NINA.Plugin.NightSummary.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <EmbeddedResource Include="Web\dashboard.html">
       <LogicalName>dashboard.html</LogicalName>
     </EmbeddedResource>

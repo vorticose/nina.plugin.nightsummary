@@ -167,7 +167,7 @@ namespace NINA.Plugin.NightSummary.Tests {
                 MakeLiveStackImage("M42", "S", stackCount: 3)
             };
 
-            var gen = new ReportGenerator();
+            var gen = TestDeps.NewReportGenerator();
             var html = await gen.GenerateHtmlReport(data);
 
             Assert.Contains("<details class='livestack-section' open>", html);
@@ -185,7 +185,7 @@ namespace NINA.Plugin.NightSummary.Tests {
                 MakeLiveStackImage("M42", "H")
             };
 
-            var gen = new ReportGenerator();
+            var gen = TestDeps.NewReportGenerator();
             var html = await gen.GenerateHtmlReport(data);
 
             Assert.DoesNotContain("<details class='livestack-section'", html);
@@ -196,7 +196,7 @@ namespace NINA.Plugin.NightSummary.Tests {
             var data = TestDataFactory.MakeReportData(targets: new[] { "M42" });
             // LiveStackImages empty by default
 
-            var gen = new ReportGenerator();
+            var gen = TestDeps.NewReportGenerator();
             var html = await gen.GenerateHtmlReport(data);
 
             Assert.DoesNotContain("<details class='livestack-section'", html);
@@ -213,7 +213,7 @@ namespace NINA.Plugin.NightSummary.Tests {
                 }
             };
 
-            var gen = new ReportGenerator();
+            var gen = TestDeps.NewReportGenerator();
             var html = await gen.GenerateHtmlReport(data);
 
             Assert.Contains("max-width: 520px", html);
@@ -233,7 +233,7 @@ namespace NINA.Plugin.NightSummary.Tests {
                 MakeLiveStackImage("Lagoon", "O", stackCount: 2)
             };
 
-            var gen = new ReportGenerator();
+            var gen = TestDeps.NewReportGenerator();
             var html = await gen.GenerateHtmlReport(data);
 
             // Should have two livestack-row divs (broadband + narrowband), not one with 4+2
@@ -250,7 +250,7 @@ namespace NINA.Plugin.NightSummary.Tests {
                 MakeLiveStackImage("M42", "O", stackCount: 2)
             };
 
-            var gen = new ReportGenerator();
+            var gen = TestDeps.NewReportGenerator();
             var html = await gen.GenerateHtmlReport(data);
 
             var rowCount = System.Text.RegularExpressions.Regex.Matches(html, "<div class='ts-livestack-row'").Count;
@@ -282,7 +282,7 @@ namespace NINA.Plugin.NightSummary.Tests {
                 ActiveProfileId = "test"
             };
 
-            var gen = new ReportGenerator();
+            var gen = TestDeps.NewReportGenerator();
             var html = await gen.GenerateHtmlReport(data);
 
             // 2 x 600s = 1200s = 20m
@@ -296,7 +296,7 @@ namespace NINA.Plugin.NightSummary.Tests {
                 MakeLiveStackImage("M42", "H", stackCount: 5)
             };
 
-            var gen = new ReportGenerator();
+            var gen = TestDeps.NewReportGenerator();
             var html = await gen.GenerateHtmlReport(data);
 
             Assert.Contains("width:400px", html);

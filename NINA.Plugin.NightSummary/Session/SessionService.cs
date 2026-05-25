@@ -112,7 +112,10 @@ namespace NINA.Plugin.NightSummary.Session {
             var database        = databasePath != null ? new SessionDatabase(databasePath) : new SessionDatabase();
             this.collector       = new SessionCollector(imageSaveMediator, sequenceMediator, database);
             this.eventCollector  = new SessionEventCollector(database, safetyMonitorMediator, focuserMediator, telescopeMediator);
-            this.reportGenerator = new ReportGenerator();
+            this.reportGenerator = new ReportGenerator(
+                new Server.NinaPluginSettings(profileService),
+                new Server.NinaDashboardLogger(),
+                new TargetSchedulerDatabase());
 
             // NOTE: SequenceFinished subscription happens in StartSession, not here.
             // At plugin-load time NINA's SequenceMediator has no backing delegate yet and
@@ -331,7 +334,8 @@ namespace NINA.Plugin.NightSummary.Session {
 
                 // Always save a copy to the local dashboard reports directory
                 // so the embedded dashboard server can serve it
-                tasks.Add(SaveReportForDashboardAsync(reportData.Session.SessionId, htmlReport, reportData.LiveStackImages));
+                tasks.Add(SaveReportForDashboardAsync(reportData.Session.SessionId, htmlReport, reportData.LiveStackImages,
+                                                      reportData.ObserverLatitude, reportData.ObserverLongitude));
 
                 await Task.WhenAll(tasks);
                 Notification.ShowSuccess("Night Summary: Report delivered successfully");
@@ -487,7 +491,8 @@ namespace NINA.Plugin.NightSummary.Session {
                 if (S.DashboardEnabled)
                     tasks.Add(SendDashboardWithDataAsync(reportData, htmlReport));
 
-                tasks.Add(SaveReportForDashboardAsync(reportData.Session.SessionId, htmlReport, reportData.LiveStackImages));
+                tasks.Add(SaveReportForDashboardAsync(reportData.Session.SessionId, htmlReport, reportData.LiveStackImages,
+                                                      reportData.ObserverLatitude, reportData.ObserverLongitude));
 
                 await Task.WhenAll(tasks);
                 Notification.ShowSuccess("Night Summary: Report delivered successfully");
@@ -597,7 +602,7 @@ namespace NINA.Plugin.NightSummary.Session {
         /// DashboardServer can serve it. This is always called on report generation,
         /// independent of the user's "Save Report Locally" setting.
         /// </summary>
-        private async Task SaveReportForDashboardAsync(string sessionId, string htmlReport, List<LiveStackImage> liveStackImages = null) {
+        private async Task SaveReportForDashboardAsync(string sessionId, string htmlReport, List<LiveStackImage> liveStackImages = null, double observerLatitude = 0, double observerLongitude = 0) {
             try {
                 var reportsDir = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -667,7 +672,15 @@ namespace NINA.Plugin.NightSummary.Session {
                     thumbnailRetentionMode  = S.ThumbnailRetentionMode,
                     thumbnailRetentionDays  = S.ThumbnailRetentionDays,
                     thumbnailRetentionMaxGB = S.ThumbnailRetentionMaxGB,
-                    thumbnailStorageDir     = S.ThumbnailStorageDir
+                    thumbnailStorageDir     = S.ThumbnailStorageDir,
+                    // Stamped on the sidecar so the companion's local regen
+                    // path can render altitude curves without contacting the
+                    // primary or NINA. (CompanionPluginSettings has no access
+                    // to NINA's profile.) Stored as session-time values rather
+                    // than live-profile reads — closer to "what the report
+                    // was generated with" anyway.
+                    observerLatitude       = observerLatitude,
+                    observerLongitude      = observerLongitude
                 };
                 var json = System.Text.Json.JsonSerializer.Serialize(settings,
                     new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });

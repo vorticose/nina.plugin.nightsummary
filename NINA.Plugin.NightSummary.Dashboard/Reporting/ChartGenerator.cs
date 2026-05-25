@@ -102,7 +102,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
         private const int PadTop       = 20;
         private const int PadBottom    = 45;
 
-        private static bool IsLight => SettingsManager.Instance.Current.ReportLightMode;
+        // Set by the host (ReportGenerator) before rendering so the color getters
+        // can theme the SVG without reaching back into plugin-side settings. Default
+        // false keeps test output deterministic (dark theme) without setup.
+        public static bool LightMode { get; set; }
+
+        private static bool IsLight => LightMode;
 
         private static string ColorBackground   => IsLight ? "#f5f5f5" : "#1a1a2e";
         private static string ColorGrid         => IsLight ? "#c8cdd4" : "#2a2a4a";

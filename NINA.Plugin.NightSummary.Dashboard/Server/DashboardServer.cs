@@ -3626,24 +3626,10 @@ namespace NINA.Plugin.NightSummary.Server {
         }
 
         private async Task HandleRegenerateReport(TcpHttpRequest req, TcpHttpResponse res, string sessionId, Action<int, string> done) {
-            // Companion mode (no local regenerator) → proxy to the paired
-            // primary so the user can hit "Regenerate" from the companion's
-            // dashboard. The companion's controller forwards using the saved
-            // pairing token and kicks a background sync to pull the new HTML.
+            // Both primary and companion now have a local IReportRegenerator;
+            // the older companion→primary proxy path was retired when the
+            // companion gained its own CompanionReportRegenerator.
             if (_regen == null || !_regen.IsAvailable) {
-                if (_companion != null) {
-                    var bodyForProxy = await ReadBodyCappedAsync(req, res, done);
-                    if (bodyForProxy == null) return;
-                    var r = await _companion.RegenerateOnPrimaryAsync(sessionId, bodyForProxy);
-                    if (r.Ok) {
-                        await WriteJson(res, 200, new { status = "ok", sessionId, proxied = true });
-                        done?.Invoke(200, $"{sessionId} (proxied to primary, sync pending)");
-                    } else {
-                        await WriteJson(res, 502, new { error = r.Error ?? "primary refused regenerate" });
-                        done?.Invoke(502, r.Error);
-                    }
-                    return;
-                }
                 await WriteJson(res, 500, new { error = "Report generation not available" });
                 done?.Invoke(500, "no regenerator");
                 return;
@@ -3880,6 +3866,29 @@ namespace NINA.Plugin.NightSummary.Server {
         /// </summary>
         private async Task SaveSessionSettings(string sessionId, NightSummarySettings s) {
             try {
+                // Observer coords come from the IPluginSettings host. On primary
+                // this proxies to NINA's active profile and returns real values.
+                // On companion this returns 0 — preserve whatever is already in
+                // the sidecar so a companion-side regen doesn't clobber the
+                // primary-stamped lat/lon (which the altitude chart needs).
+                double lat = _settings.ObserverLatitude;
+                double lon = _settings.ObserverLongitude;
+                if (lat == 0 && lon == 0) {
+                    var settingsPathExisting = Path.Combine(reportsDir, $"{sessionId}.settings.json");
+                    if (File.Exists(settingsPathExisting)) {
+                        try {
+                            using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(settingsPathExisting));
+                            if (doc.RootElement.TryGetProperty("observerLatitude",  out var elLat)
+                                && elLat.ValueKind == JsonValueKind.Number
+                                && doc.RootElement.TryGetProperty("observerLongitude", out var elLon)
+                                && elLon.ValueKind == JsonValueKind.Number) {
+                                lat = elLat.GetDouble();
+                                lon = elLon.GetDouble();
+                            }
+                        } catch { /* malformed sidecar — fall through to zeros */ }
+                    }
+                }
+
                 var settings = new {
                     reportDetailLevel      = s.ReportDetailLevel,
                     reportLightMode        = s.ReportLightMode,
@@ -3907,7 +3916,9 @@ namespace NINA.Plugin.NightSummary.Server {
                     equipmentVisibleFields = s.EquipmentVisibleFields,
                     filterClassifications  = s.FilterClassifications,
                     filterTypeOverrides    = s.FilterTypeOverrides,
-                    equipmentOverrides     = s.EquipmentOverrides
+                    equipmentOverrides     = s.EquipmentOverrides,
+                    observerLatitude       = lat,
+                    observerLongitude      = lon
                 };
                 var json = JsonSerializer.Serialize(settings, JsonOpts);
                 var settingsPath = Path.Combine(reportsDir, $"{sessionId}.settings.json");

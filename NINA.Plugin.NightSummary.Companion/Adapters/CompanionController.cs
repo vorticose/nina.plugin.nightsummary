@@ -294,60 +294,6 @@ public sealed class CompanionController : ICompanionController {
         }
     }
 
-    public async Task<CompanionRegenResult> RegenerateOnPrimaryAsync(string sessionId, string bodyJson, CancellationToken ct = default) {
-        if (!_config.IsComplete(out var reason))
-            return new CompanionRegenResult(false, $"companion config incomplete: {reason}");
-        if (string.IsNullOrWhiteSpace(sessionId))
-            return new CompanionRegenResult(false, "sessionId is empty");
-
-        // Build a one-shot HttpClient with the saved pairing token. Don't
-        // reuse the SyncEngine's client — its 30-min timeout is too long
-        // for a UI-driven action, and we want a fresh cancellation surface.
-        using var http = new System.Net.Http.HttpClient {
-            BaseAddress = new Uri(_config.ResolvedNinaUrl()),
-            Timeout     = TimeSpan.FromMinutes(2),
-        };
-        http.DefaultRequestHeaders.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _config.Nina.PairingToken ?? "");
-        http.DefaultRequestHeaders.TryAddWithoutValidation(
-            "X-Companion-Dashboard-Port", _config.Port.ToString());
-
-        var url = $"/api/sessions/{Uri.EscapeDataString(sessionId)}/regenerate";
-        var content = new System.Net.Http.StringContent(
-            bodyJson ?? "", System.Text.Encoding.UTF8, "application/json");
-
-        try {
-            using var resp = await http.PostAsync(url, content, ct);
-            var body = await resp.Content.ReadAsStringAsync(ct);
-            if (!resp.IsSuccessStatusCode) {
-                string? err = null;
-                try {
-                    using var doc = System.Text.Json.JsonDocument.Parse(body);
-                    if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString();
-                } catch { /* primary didn't give json, fall through */ }
-                return new CompanionRegenResult(false, err ?? $"primary returned {(int)resp.StatusCode}");
-            }
-
-            // Primary regenerated successfully — fire a background sync so the
-            // new HTML lands in the local reports tree. Don't await: the
-            // dashboard's UI is already telling the user "regenerated."
-            _ = Task.Run(async () => {
-                try {
-                    _log.Info("Companion: regen succeeded, pulling fresh report via background sync.");
-                    await TriggerSyncAsync(CancellationToken.None);
-                } catch (Exception ex) {
-                    _log.Warn($"Companion: post-regen sync failed ({ex.Message}) — will pick up on next interval");
-                }
-            });
-
-            return new CompanionRegenResult(true, null);
-        } catch (TaskCanceledException) {
-            return new CompanionRegenResult(false, "timed out talking to primary");
-        } catch (Exception ex) {
-            return new CompanionRegenResult(false, ex.Message);
-        }
-    }
-
     public async Task<CompanionClaimResult> ClaimPairingAsync(string host, int port, string token, string companionName, CancellationToken ct = default) {
         if (string.IsNullOrWhiteSpace(host))          return new CompanionClaimResult(false, null, null, null, "bad_host",          "host is empty", null);
         if (port <= 0 || port > 65535)                 return new CompanionClaimResult(false, null, null, null, "bad_port",          $"port {port} out of range", null);
