@@ -17,6 +17,7 @@ using System.IO;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Media.Imaging;
 
 namespace NINA.Plugin.NightSummary.Session {
     public class SessionCollector {
@@ -51,6 +52,13 @@ namespace NINA.Plugin.NightSummary.Session {
             = new Dictionary<string, FileSystemWatcher>(StringComparer.OrdinalIgnoreCase);
         private readonly object _watcherLock = new object();
 
+        // Pre-annotation BitmapSource stashed from BeforeFinalizeImageSaved, keyed
+        // by ExposureStart. ImageSavedEventArgs only exposes the (possibly annotated)
+        // Image — we grab IRenderedImage.OriginalImage earlier so thumbnails never
+        // contain NINA's star/HFR overlay even when Annotate Image is enabled.
+        private readonly ConcurrentDictionary<DateTime, BitmapSource> _preAnnotationImages
+            = new ConcurrentDictionary<DateTime, BitmapSource>();
+
         public SessionDatabase Database { get; private set; }
         public int SkippedExposures => skippedExposures;
 
@@ -78,6 +86,8 @@ namespace NINA.Plugin.NightSummary.Session {
             };
             database.CreateSession(currentSession);
             imageSaveMediator.ImageSaved += OnImageSaved;
+            imageSaveMediator.BeforeFinalizeImageSaved += OnBeforeFinalizeImageSaved;
+            _preAnnotationImages.Clear();
 
             // Subscribe to manual grading events from NINA's thumbnail panel
             if (thumbnailVM != null) {
@@ -106,6 +116,8 @@ namespace NINA.Plugin.NightSummary.Session {
         public void EndSession() {
             if (!isCollecting) return;
             imageSaveMediator.ImageSaved -= OnImageSaved;
+            imageSaveMediator.BeforeFinalizeImageSaved -= OnBeforeFinalizeImageSaved;
+            _preAnnotationImages.Clear();
 
             // Unsubscribe manual grading listeners
             if (thumbnailVM != null) {
@@ -305,7 +317,12 @@ namespace NINA.Plugin.NightSummary.Session {
                 // Raw image thumbnail capture — gated, off by default.
                 // Inline encode follows TS pattern (Thumbnails.cs in TS source). 5–15ms
                 // for 192px output; not worth a background queue.
-                TryCaptureThumbnails(e.Image, rowId, currentSession?.SessionId);
+                // Prefer the pre-annotation OriginalImage stashed by BeforeFinalizeImageSaved
+                // so thumbnails never include NINA's star/HFR overlay (Imaging → Annotate Image).
+                BitmapSource thumbSource = null;
+                if (exposureStart.HasValue && exposureStart.Value > DateTime.MinValue)
+                    _preAnnotationImages.TryRemove(exposureStart.Value, out thumbSource);
+                TryCaptureThumbnails(thumbSource ?? e.Image, rowId, currentSession?.SessionId);
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to record image. {ex.Message}");
             }
@@ -363,11 +380,32 @@ namespace NINA.Plugin.NightSummary.Session {
         private static double? NullIfNaN(double? value) =>
             value.HasValue && !double.IsNaN(value.Value) ? value : null;
 
+        // ── BeforeFinalizeImageSaved ────────────────────────────────────────
+        // Fires after PrepareTask completes but before SaveToDisk. IRenderedImage
+        // is fully prepared here, so OriginalImage is the stretched post-debayer
+        // bitmap WITHOUT NINA's star/HFR annotation overlay (which gets baked
+        // into IRenderedImage.Image during DetectStars when AnnotateImage is on).
+        // Stash by ExposureStart so the paired ImageSaved handler can pick it up.
+        private Task OnBeforeFinalizeImageSaved(object sender, BeforeFinalizeImageSavedEventArgs e) {
+            try {
+                if (!S.CaptureRawThumbnails) return Task.CompletedTask;
+                var rendered = e?.Image;
+                var original = rendered?.OriginalImage;
+                var exposureStart = rendered?.RawImageData?.MetaData?.Image?.ExposureStart;
+                if (original == null || !exposureStart.HasValue || exposureStart.Value <= DateTime.MinValue)
+                    return Task.CompletedTask;
+                _preAnnotationImages[exposureStart.Value] = original;
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: BeforeFinalizeImageSaved stash failed: {ex.Message}");
+            }
+            return Task.CompletedTask;
+        }
+
         // ── Raw image thumbnail capture ─────────────────────────────────────
         // See RAW_THUMBNAILS_DESIGN.md. Gated by CaptureRawThumbnails (master) +
         // CaptureMediumThumbnails (extra _md output). Failure here never fails
         // the parent OnImageSaved — capture is best-effort.
-        private void TryCaptureThumbnails(System.Windows.Media.Imaging.BitmapSource src, long imageId, string sessionId) {
+        private void TryCaptureThumbnails(BitmapSource src, long imageId, string sessionId) {
             try {
                 if (src == null || imageId <= 0 || string.IsNullOrEmpty(sessionId)) return;
                 if (!S.CaptureRawThumbnails) return;
