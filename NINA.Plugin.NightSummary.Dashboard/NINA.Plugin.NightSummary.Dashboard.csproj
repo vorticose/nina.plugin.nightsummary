@@ -14,6 +14,12 @@
          Microsoft.Data.Sqlite pulls SQLitePCLRaw.bundle_e_sqlite3 which bundles
          native binaries for win-x64/arm64, linux-*, osx-x64, osx-arm64. -->
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
+    <!-- Cross-platform JPEG decode/encode for companion's livestack-master
+         rescale (2000px master → 760px report embed). Ships RID-specific
+         natives for win-x64/arm64, linux-x64/arm64, osx-x64/arm64 — the
+         same shape as Microsoft.Data.Sqlite. Plugin side uses WPF's
+         JpegBitmapEncoder; it never loads this assembly. -->
+    <PackageReference Include="SkiaSharp" Version="2.88.8" />
   </ItemGroup>
 
   <ItemGroup>

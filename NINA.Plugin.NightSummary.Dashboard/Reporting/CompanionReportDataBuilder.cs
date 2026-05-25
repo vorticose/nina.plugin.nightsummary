@@ -156,10 +156,12 @@ public sealed class CompanionReportDataBuilder {
     // primary, which the reports-export zip carries verbatim to the companion.
     // IDashboardPaths.LivestackDir resolves to a different (`reports/{id}/
     // livestack/`) layout that no actual writer uses, so it can't be the
-    // source of truth here. Companion does NOT rescale the master JPEG to
-    // embed size — that requires a cross-platform image library
-    // (System.Drawing/SkiaSharp); using the master directly keeps regen
-    // dependency-free at the cost of a fatter HTML.
+    // source of truth here.
+    //
+    // Masters are 2000px @ q90 (~500 KB each). Embedding them directly
+    // inflates HTML ~4×; primary rescales to 760px @ q75 via WPF's
+    // JpegBitmapEncoder (Windows-only). JpegRescaler does the same with
+    // SkiaSharp so the companion's output matches primary's size on Mac/Linux.
     private List<LiveStackImage> LoadLiveStackMastersForSession(SessionRecord session) {
         try {
             var lsDir = Path.Combine(_paths.ReportsDir, "livestack", session.SessionId);
@@ -179,11 +181,12 @@ public sealed class CompanionReportDataBuilder {
                 if (!File.Exists(jpgPath)) continue;
 
                 var masterData = File.ReadAllBytes(jpgPath);
+                var embedData  = JpegRescaler.ScaleForReport(masterData);
                 images.Add(new LiveStackImage {
                     Target       = entry.TryGetValue("target", out var t) ? (t.GetString() ?? "") : "",
                     Filter       = entry.TryGetValue("filter", out var f) ? (f.GetString() ?? "") : "",
                     IsMonochrome = entry.TryGetValue("isMonochrome", out var m) && m.GetBoolean(),
-                    JpegData     = masterData,  // embed the master directly; no cross-platform resize
+                    JpegData     = embedData,
                     MasterJpegData  = masterData,
                     StackCount      = entry.TryGetValue("stackCount", out var sc) ? sc.GetInt32() : 0,
                     RedStackCount   = TryNullableInt(entry, "redStackCount"),
