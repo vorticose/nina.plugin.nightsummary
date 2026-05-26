@@ -79,7 +79,7 @@ public sealed class CompanionReportDataBuilder {
             ObserverLongitude            = lon,
             ActiveProfileId              = null,
             SkippedExposures             = session.SkippedExposures,
-            Equipment                    = BuildEquipment(session),
+            Equipment                    = BuildEquipment(session, _settings.Current),
             TimingEvents                 = timingEvents,
             LiveStackImages              = liveStack,
         };
@@ -127,15 +127,30 @@ public sealed class CompanionReportDataBuilder {
         return (1.0, 1.0);
     }
 
-    // Equipment dictionary built from the synced session row. The companion
-    // doesn't apply user override strings or visible-field filters — those are
-    // settings that live in the primary's NightSummarySettings DTO; if the
-    // companion ever surfaces them, swap this for a settings-aware version.
-    private static Dictionary<string, string> BuildEquipment(SessionRecord session) {
+    // Equipment dictionary built from the synced session row, with the same
+    // override + visible-fields filtering the plugin applies on primary
+    // (SessionService.BuildEquipmentDictionary). Reading from settings here
+    // is required for parity — the user's renamed Telescope ("WO Cat 91"
+    // overrides "ZWO Whatever") and hidden fields (Dome/Weather) need to
+    // travel through the regen unchanged.
+    private static Dictionary<string, string> BuildEquipment(SessionRecord session, NightSummarySettings s) {
+        var overrides = ParseEquipmentOverrides(s.EquipmentOverrides);
+        var visible   = new HashSet<string>(
+            (s.EquipmentVisibleFields ?? "").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
+            StringComparer.OrdinalIgnoreCase);
+        // If the setting is empty (e.g. fresh install never touched), fall
+        // back to showing everything — matches the plugin's behavior when
+        // the visible-fields preference hasn't been configured.
+        bool filterByVisible = visible.Count > 0;
+
         var equipment = new Dictionary<string, string>();
-        void Add(string key, string? value) {
+        void Add(string key, string? dbValue) {
+            if (filterByVisible && !visible.Contains(key)) return;
+            var value = overrides.TryGetValue(key, out var ov) && !string.IsNullOrWhiteSpace(ov)
+                        ? ov : dbValue;
             if (!string.IsNullOrWhiteSpace(value)) equipment[key] = value;
         }
+
         Add("Camera",         session.CameraName);
         Add("Telescope",      session.TelescopeName);
         Add("Mount",          session.MountName);
@@ -150,6 +165,16 @@ public sealed class CompanionReportDataBuilder {
         Add("Switch",         session.SwitchName);
         return equipment;
     }
+
+    // Mirrors SessionService.ParseEquipmentOverrides. Format: "Key1:Value1,Key2:Value2"
+    // (the raw form stored in NightSummarySettings.EquipmentOverrides).
+    private static Dictionary<string, string> ParseEquipmentOverrides(string? raw) =>
+        string.IsNullOrWhiteSpace(raw)
+            ? new Dictionary<string, string>()
+            : raw.Split(',')
+                .Select(p => p.Split(':', 2))
+                .Where(p => p.Length == 2)
+                .ToDictionary(p => p[0].Trim(), p => p[1].Trim(), StringComparer.OrdinalIgnoreCase);
 
     // Reads livestack masters via IDashboardPaths.LivestackManifestPath /
     // LivestackImagePath, which now resolves to reports/livestack/{sessionId}/

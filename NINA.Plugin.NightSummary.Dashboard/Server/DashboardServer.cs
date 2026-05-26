@@ -3661,6 +3661,16 @@ namespace NINA.Plugin.NightSummary.Server {
                 var saved = SnapshotSettings(s);
 
                 try {
+                    // Companion: seed from the synced sidecar first so charts /
+                    // equipment overrides / filter classifications / etc match
+                    // what the user had configured when the report was created.
+                    // Without this, CompanionPluginSettings.Current returns
+                    // vanilla defaults and the regen silently swaps user-chosen
+                    // settings for "out-of-the-box."
+                    if (string.Equals(_settings.Mode, "companion", StringComparison.OrdinalIgnoreCase)) {
+                        var sidecar = LoadSidecarAsOverrides(sessionId);
+                        if (sidecar != null) ApplyOverrides(s, sidecar);
+                    }
                     ApplyOverrides(s, overrides);
                     // Primary regen embeds Tonight's Preview via a ~25s TS API call,
                     // and dashboard users already see the same data on the Stats >
@@ -3753,6 +3763,12 @@ namespace NINA.Plugin.NightSummary.Server {
                     var s = _settings.Current;
                     var saved = SnapshotSettings(s);
                     try {
+                        // Companion: snapshot per-session sidecar settings BEFORE
+                        // bulk overrides so each report regenerates with its own
+                        // original chart/equipment/filter choices (the bulk
+                        // override layer applies on top per-session inside the
+                        // loop below). See HandleRegenerate for the rationale.
+                        bool seedFromSidecar = string.Equals(_settings.Mode, "companion", StringComparison.OrdinalIgnoreCase);
                         ApplyOverrides(s, overrides);
                         // see HandleRegenerate for rationale — companion regen keeps
                         // the section since it reads from disk cache, not live TS API.
@@ -3762,8 +3778,25 @@ namespace NINA.Plugin.NightSummary.Server {
                         for (int i = 0; i < sessions.Count; i++) {
                             regenAllCurrent = i + 1;
                             try {
+                                // Per-session seed cycle (companion only): roll s
+                                // back to bulk-override baseline, then seed from
+                                // this session's sidecar, then re-apply the bulk
+                                // overrides on top. Without this, every session
+                                // in the bulk would render with the first one's
+                                // settings (or vanilla defaults).
+                                var perSessionSaved = seedFromSidecar ? SnapshotSettings(s) : null;
+                                if (seedFromSidecar) {
+                                    var sidecar = LoadSidecarAsOverrides(sessions[i].SessionId);
+                                    if (sidecar != null) ApplyOverrides(s, sidecar);
+                                    ApplyOverrides(s, overrides);
+                                }
+
                                 var err = await _regen.RegenerateAsync(sessions[i].SessionId);
-                                if (err != null) { regenAllFailed++; continue; }
+                                if (err != null) {
+                                    regenAllFailed++;
+                                    if (perSessionSaved != null) RestoreSettings(s, perSessionSaved);
+                                    continue;
+                                }
 
                                 await SaveSessionSettings(sessions[i].SessionId, s);
                                 thumbnailCache.TryRemove(sessions[i].SessionId, out _);
@@ -3772,6 +3805,8 @@ namespace NINA.Plugin.NightSummary.Server {
                                 livestackCache.TryRemove(sessions[i].SessionId, out _);
                                 regenAllGenerated++;
                                 log?.Debug($"Bulk regen {regenAllCurrent}/{sessions.Count}: {sessions[i].SessionId} OK");
+
+                                if (perSessionSaved != null) RestoreSettings(s, perSessionSaved);
                             } catch (Exception ex) {
                                 log?.Warn($"Bulk regen {regenAllCurrent}/{sessions.Count}: {sessions[i].SessionId} FAILED — {ex.Message}");
                                 _external.Warn($"NightSummary: Failed to regenerate report for {sessions[i].SessionId}. {ex.Message}");
@@ -4028,6 +4063,36 @@ private static string FormatSettingsForLog(NightSummarySettings s) {
             s.FilterClassifications = (string)saved["FilterClassifications"];
             s.FilterTypeOverrides   = saved.ContainsKey("FilterTypeOverrides") ? (string)saved["FilterTypeOverrides"] : "";
             s.EquipmentOverrides    = (string)saved["EquipmentOverrides"];
+        }
+
+        // Companion-side helper: loads the per-session sidecar JSON as the
+        // override dictionary ApplyOverrides expects. Returns an empty dict
+        // when the sidecar is missing or malformed — callers then layer the
+        // POST body on top of nothing, matching the pre-sidecar behavior.
+        //
+        // Sidecar is the source of truth for "what settings was this report
+        // generated with." On primary, _settings.Current is the user's live
+        // NINA settings, so the sidecar mostly just snapshots them; on
+        // companion CompanionPluginSettings.Current is a vanilla defaults
+        // instance, so seeding from sidecar is the only way the regen
+        // reflects user-configured chart/equipment/filter overrides.
+        private Dictionary<string, JsonElement>? LoadSidecarAsOverrides(string sessionId) {
+            try {
+                var path = Path.Combine(reportsDir, $"{sessionId}.settings.json");
+                if (!File.Exists(path)) return null;
+                var json = File.ReadAllText(path);
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.ValueKind != JsonValueKind.Object) return null;
+                var dict = new Dictionary<string, JsonElement>();
+                // Clone each element so it outlives the using-disposed doc.
+                foreach (var p in doc.RootElement.EnumerateObject()) {
+                    dict[p.Name] = p.Value.Clone();
+                }
+                return dict;
+            } catch (Exception ex) {
+                log?.Warn($"LoadSidecarAsOverrides({sessionId}): {ex.Message}");
+                return null;
+            }
         }
 
         private static void ApplyOverrides(NightSummarySettings s, Dictionary<string, JsonElement> overrides) {
