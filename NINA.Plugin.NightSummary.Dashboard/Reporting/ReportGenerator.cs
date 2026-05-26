@@ -1782,6 +1782,15 @@ namespace NINA.Plugin.NightSummary.Reporting {
         private async Task<string> BuildNextNightPreviewSection(ReportData data) {
             if (!_settings.Current.ShowNextNightPreview) return "";
 
+            // Tonight's Preview talks to localhost's TS API server. On the
+            // companion box there's no NINA + no TS API listening on
+            // localhost, so any attempt would surface an "API unreachable"
+            // notice that's never going to be actionable for the user.
+            // The Stats > Tonight dashboard tab already renders the same
+            // preview from the synced cache anyway.
+            if (string.Equals(_settings.Mode, "companion", StringComparison.OrdinalIgnoreCase))
+                return "";
+
             var tsDb = _tsDb;
             if (!tsDb.IsAvailable)
                 return "";  // TS not installed — silently skip, Options UI already indicates it's unavailable

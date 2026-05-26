@@ -22,7 +22,10 @@ public sealed class CompanionPaths : IDashboardPaths {
 
     public string ReportHtmlPath(string sessionId)        => Path.Combine(ReportsDir, $"{sessionId}.html");
     public string ReportSettingsPath(string sessionId)    => Path.Combine(ReportsDir, $"{sessionId}.settings.json");
-    public string LivestackDir(string sessionId)          => Path.Combine(ReportsDir, sessionId, "livestack");
+    // Matches the on-disk layout the export zip from the primary carries —
+    // reports/livestack/{sessionId}/. Prior value was inverted and pointed at
+    // an empty directory.
+    public string LivestackDir(string sessionId)          => Path.Combine(ReportsDir, "livestack", sessionId);
     public string LivestackManifestPath(string sessionId) => Path.Combine(LivestackDir(sessionId), "livestack.json");
     public string LivestackImagePath(string sessionId, string filename)
                                                           => Path.Combine(LivestackDir(sessionId), filename);

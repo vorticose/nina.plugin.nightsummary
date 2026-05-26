@@ -110,7 +110,7 @@ namespace NINA.Plugin.NightSummary.Tests {
             public string ThumbsRoot    => Path.Combine(_tmp, "thumbs");
             public string ReportHtmlPath(string s)     => Path.Combine(ReportsDir, s + ".html");
             public string ReportSettingsPath(string s) => Path.Combine(ReportsDir, s + ".settings.json");
-            public string LivestackDir(string s)       => Path.Combine(ReportsDir, s, "livestack");
+            public string LivestackDir(string s)       => Path.Combine(ReportsDir, "livestack", s);
             public string LivestackManifestPath(string s) => Path.Combine(LivestackDir(s), "manifest.json");
             public string LivestackImagePath(string s, string f) => Path.Combine(LivestackDir(s), f);
         }

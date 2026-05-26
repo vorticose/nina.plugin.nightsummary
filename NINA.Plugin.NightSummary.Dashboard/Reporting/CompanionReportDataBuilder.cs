@@ -151,12 +151,11 @@ public sealed class CompanionReportDataBuilder {
         return equipment;
     }
 
-    // Reads livestack masters from `reports/livestack/{sessionId}/` — the
-    // layout NinaReportRegenerator.SaveLiveStackMasters writes to on the
-    // primary, which the reports-export zip carries verbatim to the companion.
-    // IDashboardPaths.LivestackDir resolves to a different (`reports/{id}/
-    // livestack/`) layout that no actual writer uses, so it can't be the
-    // source of truth here.
+    // Reads livestack masters via IDashboardPaths.LivestackManifestPath /
+    // LivestackImagePath, which now resolves to reports/livestack/{sessionId}/
+    // — matching NinaReportRegenerator.SaveLiveStackMasters' actual on-disk
+    // layout. The export zip from primary carries files under that prefix
+    // verbatim.
     //
     // Masters are 2000px @ q90 (~500 KB each). Embedding them directly
     // inflates HTML ~4×; primary rescales to 760px @ q75 via WPF's
@@ -164,8 +163,7 @@ public sealed class CompanionReportDataBuilder {
     // SkiaSharp so the companion's output matches primary's size on Mac/Linux.
     private List<LiveStackImage> LoadLiveStackMastersForSession(SessionRecord session) {
         try {
-            var lsDir = Path.Combine(_paths.ReportsDir, "livestack", session.SessionId);
-            var manifestPath = Path.Combine(lsDir, "livestack.json");
+            var manifestPath = _paths.LivestackManifestPath(session.SessionId);
             if (!File.Exists(manifestPath)) return new List<LiveStackImage>();
 
             var json = File.ReadAllText(manifestPath);
@@ -177,7 +175,7 @@ public sealed class CompanionReportDataBuilder {
                 if (!entry.TryGetValue("file", out var fileEl)) continue;
                 var fileName = fileEl.GetString();
                 if (string.IsNullOrEmpty(fileName)) continue;
-                var jpgPath = Path.Combine(lsDir, fileName);
+                var jpgPath = _paths.LivestackImagePath(session.SessionId, fileName);
                 if (!File.Exists(jpgPath)) continue;
 
                 var masterData = File.ReadAllBytes(jpgPath);
