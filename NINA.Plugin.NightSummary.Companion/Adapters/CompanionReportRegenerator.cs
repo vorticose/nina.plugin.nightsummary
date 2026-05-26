@@ -51,7 +51,7 @@ internal sealed class CompanionReportRegenerator : IReportRegenerator {
             if (data == null) return "session not found in companion sync";
 
             ct.ThrowIfCancellationRequested();
-            var generator = new ReportGenerator(_settings, _log, tsDb);
+            var generator = new ReportGenerator(_settings, _log, tsDb, _paths);
             var html      = await generator.GenerateHtmlReport(data);
 
             var reportPath = _paths.ReportHtmlPath(sessionId);

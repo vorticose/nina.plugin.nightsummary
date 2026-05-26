@@ -44,7 +44,7 @@ internal sealed class DevCompanionRegenerator : IReportRegenerator {
             if (data == null) return "session not found in snapshot DB";
 
             ct.ThrowIfCancellationRequested();
-            var generator = new ReportGenerator(_settings, _log, new NullTargetSchedulerDatabase());
+            var generator = new ReportGenerator(_settings, _log, new NullTargetSchedulerDatabase(), _paths);
             var html      = await generator.GenerateHtmlReport(data);
 
             var reportPath = _paths.ReportHtmlPath(sessionId);

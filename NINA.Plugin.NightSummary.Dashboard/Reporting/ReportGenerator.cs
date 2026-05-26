@@ -2,6 +2,7 @@ using NINA.Plugin.NightSummary.Dashboard.Abstractions;
 using NINA.Plugin.NightSummary.Data;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -22,11 +23,17 @@ namespace NINA.Plugin.NightSummary.Reporting {
         private readonly IPluginSettings _settings;
         private readonly IDashboardLogger _log;
         private readonly ITargetSchedulerDatabase _tsDb;
+        private readonly IDashboardPaths? _paths;
 
-        public ReportGenerator(IPluginSettings settings, IDashboardLogger log, ITargetSchedulerDatabase tsDb) {
+        public ReportGenerator(IPluginSettings settings, IDashboardLogger log, ITargetSchedulerDatabase tsDb, IDashboardPaths? paths = null) {
             _settings = settings;
             _log      = log;
             _tsDb     = tsDb;
+            // paths is optional only because the existing test fixture wires
+            // ReportGenerator without one. The companion-cache reader needs
+            // it; when absent (tests / pre-companion-mode hosts) we fall
+            // back gracefully via PreviewNotice.
+            _paths    = paths;
         }
 
         // CDS HiPS2FITS: primary thumbnail service. 8s tolerates slow-but-healthy responses
@@ -1782,186 +1789,320 @@ namespace NINA.Plugin.NightSummary.Reporting {
         private async Task<string> BuildNextNightPreviewSection(ReportData data) {
             if (!_settings.Current.ShowNextNightPreview) return "";
 
-            // Tonight's Preview talks to localhost's TS API server. On the
-            // companion box there's no NINA + no TS API listening on
-            // localhost, so any attempt would surface an "API unreachable"
-            // notice that's never going to be actionable for the user.
-            // The Stats > Tonight dashboard tab already renders the same
-            // preview from the synced cache anyway.
-            if (string.Equals(_settings.Mode, "companion", StringComparison.OrdinalIgnoreCase))
-                return "";
+            // ── Fetch step: produces (entries, observerLat, observerLon, optional cachedAtUtc) ──
+            //
+            // Companion mode reads the synced tonight-preview-cache.json. Live
+            // primary mode hits the TS API. Both yield the same TsPreviewEntry
+            // shape going forward; primary populates entry.Ra/Dec via TS DB
+            // lookup, companion gets them straight from the cached payload.
+            List<TsPreviewEntry> entries;
+            double observerLat;
+            double observerLon;
+            DateTime? cachedAtUtc = null;
+            bool isCompanionMode = string.Equals(_settings.Mode, "companion", StringComparison.OrdinalIgnoreCase);
 
-            var tsDb = _tsDb;
-            if (!tsDb.IsAvailable)
-                return "";  // TS not installed — silently skip, Options UI already indicates it's unavailable
+            if (isCompanionMode) {
+                var loaded = LoadTonightPreviewFromCompanionCache(data);
+                if (loaded.Notice != null) return loaded.Notice;
+                entries     = loaded.Entries!;
+                observerLat = loaded.ObserverLat;
+                observerLon = loaded.ObserverLon;
+                cachedAtUtc = loaded.CachedAtUtc;
+            } else {
+                var tsDb = _tsDb;
+                if (!tsDb.IsAvailable)
+                    return "";  // TS not installed — silently skip, Options UI already indicates it's unavailable
 
-            var (apiEnabled, apiPort) = tsDb.GetApiSettings(data.ActiveProfileId);
-            if (!apiEnabled) {
-                // API not enabled is a normal default state — silently skip, no report warning
-                _log.Info($"NightSummary: Tonight's Preview skipped — TS API not enabled for profile '{data.ActiveProfileId ?? "unknown"}'");
-                return "";
+                var (apiEnabled, apiPort) = tsDb.GetApiSettings(data.ActiveProfileId);
+                if (!apiEnabled) {
+                    // API not enabled is a normal default state — silently skip, no report warning
+                    _log.Info($"NightSummary: Tonight's Preview skipped — TS API not enabled for profile '{data.ActiveProfileId ?? "unknown"}'");
+                    return "";
+                }
+
+                try {
+                    var baseUrl = $"http://localhost:{apiPort}/ts/v0";
+                    _log.Info($"NightSummary: Tonight's Preview — connecting to TS API at {baseUrl}");
+                    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+                    // Step 1: Get active profile ID
+                    var profilesJson = await TsApiClient.GetStringAsync($"{baseUrl}/profiles");
+                    var profiles = JsonSerializer.Deserialize<List<TsProfileInfo>>(profilesJson, options);
+                    var active = profiles?.FirstOrDefault(p => p.Active);
+                    if (active == null)
+                        return PreviewNotice("No active NINA profile found.");
+
+                    // Step 2: Compute tonight's sunset and use as the preview start time
+                    if (data.ObserverLatitude == 0 && data.ObserverLongitude == 0)
+                        return PreviewNotice("Observer location not configured in NINA profile.");
+                    var tomorrow = DateTime.Today.AddDays(1);
+                    var (sunset, sunrise) = AltitudeCalculator.FindNightWindow(
+                        data.ObserverLatitude, data.ObserverLongitude, tomorrow.AddHours(-6));
+                    var startTime = sunset;
+                    var encodedStart = Uri.EscapeDataString(startTime.ToString("o"));
+                    var previewUrl = $"{baseUrl}/profiles/{active.Id}/preview?startTime={encodedStart}";
+
+                    var previewJson = await TsApiClient.GetStringAsync(previewUrl);
+                    var fetched = JsonSerializer.Deserialize<List<TsPreviewEntry>>(previewJson, options);
+                    if (fetched == null) return PreviewNotice("Target Scheduler returned an empty preview — no targets scheduled for tonight.");
+
+                    // Fill in entry.Ra/Dec via TS DB lookup (live TS API doesn't include coords)
+                    try {
+                        var names = fetched.Where(e => !e.WaitPeriod && !string.IsNullOrEmpty(e.Name))
+                                           .Select(e => e.Name).Distinct().ToList();
+                        var tsProgress = tsDb.GetProgressForTargets(names, data.ActiveProfileId);
+                        var byName = new Dictionary<string, (double Ra, double Dec)>(StringComparer.OrdinalIgnoreCase);
+                        foreach (var tt in tsProgress)
+                            if (!byName.ContainsKey(tt.TargetName))
+                                byName[tt.TargetName] = (tt.RA, tt.Dec);
+                        foreach (var e in fetched) {
+                            if (!string.IsNullOrEmpty(e.Name) && byName.TryGetValue(e.Name, out var rd)) {
+                                e.Ra = rd.Ra; e.Dec = rd.Dec;
+                            }
+                        }
+                    } catch (Exception ex) {
+                        _log.Warn($"NightSummary: Could not look up coordinates for preview targets: {ex.Message}");
+                    }
+
+                    entries     = fetched;
+                    observerLat = data.ObserverLatitude;
+                    observerLon = data.ObserverLongitude;
+                } catch (Exception ex) {
+                    _log.Warn($"NightSummary: Next night preview unavailable. {ex.Message}");
+                    var reason = ex.InnerException is TaskCanceledException
+                        ? "Target Scheduler API did not respond in time — the server may not be running."
+                        : $"Could not connect to Target Scheduler API. Ensure NINA and Target Scheduler are running.";
+                    return PreviewNotice(reason);
+                }
             }
 
-            try {
-                var baseUrl = $"http://localhost:{apiPort}/ts/v0";
-                _log.Info($"NightSummary: Tonight's Preview — connecting to TS API at {baseUrl}");
-                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            // ── Common render step ──
 
-                // Step 1: Get active profile ID
-                var profilesJson = await TsApiClient.GetStringAsync($"{baseUrl}/profiles");
-                var profiles = JsonSerializer.Deserialize<List<TsProfileInfo>>(profilesJson, options);
-                var active = profiles?.FirstOrDefault(p => p.Active);
-                if (active == null)
-                    return PreviewNotice("No active NINA profile found.");
+            if (entries == null || !entries.Any())
+                return PreviewNotice("Target Scheduler returned an empty preview — no targets scheduled for tonight.");
 
-                // Step 2: Compute tonight's sunset and use as the preview start time
-                if (data.ObserverLatitude == 0 && data.ObserverLongitude == 0)
-                    return PreviewNotice("Observer location not configured in NINA profile.");
-                var tomorrow = DateTime.Today.AddDays(1);
-                var (sunset, sunrise) = AltitudeCalculator.FindNightWindow(
-                    data.ObserverLatitude, data.ObserverLongitude, tomorrow.AddHours(-6));
-                var startTime = sunset;
-                var encodedStart = Uri.EscapeDataString(startTime.ToString("o"));
-                var previewUrl = $"{baseUrl}/profiles/{active.Id}/preview?startTime={encodedStart}";
+            // Filter to target blocks only (skip wait periods) for the summary
+            var targets = entries.Where(e => !e.WaitPeriod && e.Name != null).ToList();
+            if (!targets.Any())
+                return PreviewNotice("Target Scheduler returned an empty preview — no targets scheduled for tonight.");
 
-                var previewJson = await TsApiClient.GetStringAsync(previewUrl);
-                var entries = JsonSerializer.Deserialize<List<TsPreviewEntry>>(previewJson, options);
-                if (entries == null || !entries.Any())
-                    return PreviewNotice("Target Scheduler returned an empty preview — no targets scheduled for tonight.");
+            // Expiry check (mostly relevant on companion): preview is stale if
+            // its last entry already ended before the user is reading the report.
+            if (targets.Last().EndTime < DateTime.Now) {
+                var pvDay = targets.First().StartTime;
+                var when  = cachedAtUtc.HasValue
+                    ? $" (synced {cachedAtUtc.Value.ToLocalTime():MMM d, h:mm tt})"
+                    : "";
+                return PreviewNotice($"Tonight's Preview for {pvDay:MMMM d, yyyy} has expired{when}. Resync from the primary to refresh.");
+            }
 
-                // Filter to target blocks only (skip wait periods) for the summary
-                var targets = entries.Where(e => !e.WaitPeriod && e.Name != null).ToList();
-                if (!targets.Any())
-                    return PreviewNotice("Target Scheduler returned an empty preview — no targets scheduled for tonight.");
+            // Trim leading wait periods so the timeline starts at the first target block
+            var firstTargetStart = targets.First().StartTime;
+            entries = entries.Where(e => e.EndTime > firstTargetStart).ToList();
 
-                // Trim leading wait periods so the timeline starts at the first target block
-                var firstTargetStart = targets.First().StartTime;
-                entries = entries.Where(e => e.EndTime > firstTargetStart).ToList();
+            // Timeline spans from first target start to last entry end
+            var timelineStart = firstTargetStart;
+            var timelineEnd   = entries.Last().EndTime;
+            var totalSeconds  = (timelineEnd - timelineStart).TotalSeconds;
+            if (totalSeconds <= 0) return "";
 
-                // Timeline spans from first target start to last entry end
-                var timelineStart = firstTargetStart;
-                var timelineEnd   = entries.Last().EndTime;
-                var totalSeconds  = (timelineEnd - timelineStart).TotalSeconds;
-                if (totalSeconds <= 0) return "";
+            // Assign colors to unique target names
+            var uniqueTargets = targets.Select(t => t.Name).Distinct().ToList();
+            var colorMap = new Dictionary<string, string>();
+            for (int i = 0; i < uniqueTargets.Count; i++)
+                colorMap[uniqueTargets[i]] = PreviewColors[i % PreviewColors.Length];
 
-                // Assign colors to unique target names
-                var uniqueTargets = targets.Select(t => t.Name).Distinct().ToList();
-                var colorMap = new Dictionary<string, string>();
-                for (int i = 0; i < uniqueTargets.Count; i++)
-                    colorMap[uniqueTargets[i]] = PreviewColors[i % PreviewColors.Length];
+            var sb = new StringBuilder();
+            sb.AppendLine("<div class='target-section'>");
+            var previewDate = targets.First().StartTime;
+            sb.AppendLine($"<h2 style='display:inline;'>Tonight's Preview</h2>");
+            sb.AppendLine($"<span style='color:var(--dim);font-size:12px;font-style:italic;margin-left:12px;'>Generated by Target Scheduler — actual imaging may differ based on conditions</span>");
+            sb.AppendLine($"<p style='color:var(--muted);margin-top:8px;'>Planned schedule for {previewDate:MMMM d, yyyy} &mdash; {timelineStart:HH:mm} to {timelineEnd:HH:mm}{(cachedAtUtc.HasValue ? $" &middot; cached {cachedAtUtc.Value.ToLocalTime():MMM d h:mm tt}" : "")}</p>");
 
-                var sb = new StringBuilder();
-                sb.AppendLine("<div class='target-section'>");
-                var previewDate = targets.First().StartTime;
-                sb.AppendLine($"<h2 style='display:inline;'>Tonight's Preview</h2>");
-                sb.AppendLine($"<span style='color:var(--dim);font-size:12px;font-style:italic;margin-left:12px;'>Generated by Target Scheduler — actual imaging may differ based on conditions</span>");
-                sb.AppendLine($"<p style='color:var(--muted);margin-top:8px;'>Planned schedule for {previewDate:MMMM d, yyyy} &mdash; {timelineStart:HH:mm} to {timelineEnd:HH:mm}</p>");
-
-                // Look up RA/Dec for preview targets from the TS database
-                var coordLookup = new Dictionary<string, (double Ra, double Dec)>(StringComparer.OrdinalIgnoreCase);
-                try {
-                    var tsProgress = tsDb.GetProgressForTargets(uniqueTargets, data.ActiveProfileId);
-                    foreach (var tt in tsProgress)
-                        if (!coordLookup.ContainsKey(tt.TargetName))
-                            coordLookup[tt.TargetName] = (tt.RA, tt.Dec);
-                } catch (Exception ex) {
-                    _log.Warn($"NightSummary: Could not look up coordinates for preview targets: {ex.Message}");
+            // RA/Dec for the altitude chart now travels on each entry, so the
+            // coord lookup is a straight projection from entry.Ra/Dec.
+            var coordLookup = new Dictionary<string, (double Ra, double Dec)>(StringComparer.OrdinalIgnoreCase);
+            foreach (var t in targets) {
+                if (!coordLookup.ContainsKey(t.Name) && (t.Ra != 0 || t.Dec != 0)) {
+                    coordLookup[t.Name] = (t.Ra, t.Dec);
                 }
+            }
 
-                // ── Timeline with toggle (Altitude / Simple) ──
-                var altChart = BuildPreviewAltitudeChart(targets, colorMap, coordLookup,
-                    data.ObserverLatitude, data.ObserverLongitude, timelineStart, timelineEnd);
-                var simpleChart = BuildPreviewSimpleTimeline(entries, targets, colorMap, timelineStart, timelineEnd);
+            // ── Timeline with toggle (Altitude / Simple) ──
+            var altChart = BuildPreviewAltitudeChart(targets, colorMap, coordLookup,
+                observerLat, observerLon, timelineStart, timelineEnd);
+            var simpleChart = BuildPreviewSimpleTimeline(entries, targets, colorMap, timelineStart, timelineEnd);
 
-                if (!string.IsNullOrEmpty(altChart) && !string.IsNullOrEmpty(simpleChart)) {
-                    int ci = _chartIndex++;
-                    string pfx = $"nsc{ci}";
-                    bool pvAltDefault = _settings.Current.PreviewAltitudeDefault;
-                    string pvAltChecked = pvAltDefault ? " checked" : "";
-                    string pvSimChecked = pvAltDefault ? "" : " checked";
-                    string pvHidden = pvAltDefault ? "simple" : "altitude";
+            if (!string.IsNullOrEmpty(altChart) && !string.IsNullOrEmpty(simpleChart)) {
+                int ci = _chartIndex++;
+                string pfx = $"nsc{ci}";
+                bool pvAltDefault = _settings.Current.PreviewAltitudeDefault;
+                string pvAltChecked = pvAltDefault ? " checked" : "";
+                string pvSimChecked = pvAltDefault ? "" : " checked";
+                string pvHidden = pvAltDefault ? "simple" : "altitude";
 
-                    sb.AppendLine("<style>");
-                    sb.AppendLine($"#{pfx}-altitude:checked ~ .{pfx}-bar label[for=\"{pfx}-altitude\"],");
-                    sb.AppendLine($"#{pfx}-simple:checked ~ .{pfx}-bar label[for=\"{pfx}-simple\"]");
-                    sb.AppendLine("{ background: var(--accent); color: var(--bg); border-color: var(--accent); }");
-                    sb.AppendLine($"#{pfx}-svg-{pvHidden} {{ display: none; }}");
-                    sb.AppendLine($"#{pfx}-simple:checked ~ #{pfx}-svg-altitude {{ display: none; }}");
-                    sb.AppendLine($"#{pfx}-simple:checked ~ #{pfx}-svg-simple {{ display: block !important; }}");
-                    sb.AppendLine($"#{pfx}-altitude:checked ~ #{pfx}-svg-simple {{ display: none; }}");
-                    sb.AppendLine($"#{pfx}-altitude:checked ~ #{pfx}-svg-altitude {{ display: block !important; }}");
-                    sb.AppendLine("</style>");
+                sb.AppendLine("<style>");
+                sb.AppendLine($"#{pfx}-altitude:checked ~ .{pfx}-bar label[for=\"{pfx}-altitude\"],");
+                sb.AppendLine($"#{pfx}-simple:checked ~ .{pfx}-bar label[for=\"{pfx}-simple\"]");
+                sb.AppendLine("{ background: var(--accent); color: var(--bg); border-color: var(--accent); }");
+                sb.AppendLine($"#{pfx}-svg-{pvHidden} {{ display: none; }}");
+                sb.AppendLine($"#{pfx}-simple:checked ~ #{pfx}-svg-altitude {{ display: none; }}");
+                sb.AppendLine($"#{pfx}-simple:checked ~ #{pfx}-svg-simple {{ display: block !important; }}");
+                sb.AppendLine($"#{pfx}-altitude:checked ~ #{pfx}-svg-simple {{ display: none; }}");
+                sb.AppendLine($"#{pfx}-altitude:checked ~ #{pfx}-svg-altitude {{ display: block !important; }}");
+                sb.AppendLine("</style>");
 
-                    sb.AppendLine("<div class='timeline-container'>");
-                    sb.AppendLine($"<input type=\"radio\" name=\"{pfx}\" id=\"{pfx}-altitude\"{pvAltChecked} style=\"display:none\">");
-                    sb.AppendLine($"<input type=\"radio\" name=\"{pfx}\" id=\"{pfx}-simple\"{pvSimChecked} style=\"display:none\">");
-                    sb.Append($"<div class=\"ns-chart-filter-bar {pfx}-bar\">");
-                    sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-altitude\">Altitude</label>");
-                    sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-simple\">Simple</label>");
-                    sb.AppendLine("</div>");
-                    sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-altitude\"{(pvAltDefault ? "" : " style=\"display:none\"")}>{altChart}</div>");
-                    sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-simple\"{(pvAltDefault ? " style=\"display:none\"" : "")}>{simpleChart}</div>");
-                    sb.AppendLine("</div>");
-                } else {
-                    // Fallback — show whichever is available
-                    sb.AppendLine("<div class='timeline-container'>");
-                    sb.AppendLine(!string.IsNullOrEmpty(altChart) ? altChart : simpleChart);
-                    sb.AppendLine("</div>");
-                }
+                sb.AppendLine("<div class='timeline-container'>");
+                sb.AppendLine($"<input type=\"radio\" name=\"{pfx}\" id=\"{pfx}-altitude\"{pvAltChecked} style=\"display:none\">");
+                sb.AppendLine($"<input type=\"radio\" name=\"{pfx}\" id=\"{pfx}-simple\"{pvSimChecked} style=\"display:none\">");
+                sb.Append($"<div class=\"ns-chart-filter-bar {pfx}-bar\">");
+                sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-altitude\">Altitude</label>");
+                sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-simple\">Simple</label>");
+                sb.AppendLine("</div>");
+                sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-altitude\"{(pvAltDefault ? "" : " style=\"display:none\"")}>{altChart}</div>");
+                sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-simple\"{(pvAltDefault ? " style=\"display:none\"" : "")}>{simpleChart}</div>");
+                sb.AppendLine("</div>");
+            } else {
+                // Fallback — show whichever is available
+                sb.AppendLine("<div class='timeline-container'>");
+                sb.AppendLine(!string.IsNullOrEmpty(altChart) ? altChart : simpleChart);
+                sb.AppendLine("</div>");
+            }
 
-                // ── Per-target summary list ──
-                sb.AppendLine("<table style='margin-top:12px;'>");
-                sb.AppendLine("<tr><th>Target</th><th>Window</th><th>Images</th><th>Total Time</th></tr>");
+            // ── Per-target summary list ──
+            sb.AppendLine("<table style='margin-top:12px;'>");
+            sb.AppendLine("<tr><th>Target</th><th>Window</th><th>Images</th><th>Total Time</th></tr>");
 
-                foreach (var target in targets) {
-                    int totalFrames = target.ExposurePlan.Sum(e => e.Count);
-                    double totalIntSec = target.ExposurePlan.Sum(e => e.Exposure * e.Count);
+            foreach (var target in targets) {
+                int totalFrames = target.ExposurePlan.Sum(e => e.Count);
+                double totalIntSec = target.ExposurePlan.Sum(e => e.Exposure * e.Count);
+                sb.AppendLine($"<tr>");
+                sb.AppendLine($"  <td>{target.Name}</td>");
+                sb.AppendLine($"  <td>{target.StartTime:HH:mm} - {target.EndTime:HH:mm}</td>");
+                sb.AppendLine($"  <td>{totalFrames}</td>");
+                sb.AppendLine($"  <td>{FormatDuration(totalIntSec)}</td>");
+                sb.AppendLine($"</tr>");
+            }
+            sb.AppendLine("</table>");
+
+            // ── Expandable per-target filter details ──
+            // Aggregate exposure plans across all timeline blocks for the same target,
+            // then group by (filter, exposure length) — matches main report grouping logic.
+            foreach (var targetGroup in targets.GroupBy(t => t.Name)) {
+                var allExposures = targetGroup.SelectMany(t => t.ExposurePlan).ToList();
+                if (!allExposures.Any()) continue;
+                var filterGroups = allExposures
+                    .GroupBy(e => (e.FilterName, e.Exposure))
+                    .OrderBy(g => FilterSortKey(g.Key.FilterName)).ThenBy(g => g.Key.FilterName).ThenBy(g => g.Key.Exposure);
+                string detailsOpen = _settings.Current.ExpandSectionsDefault ? " open" : "";
+                sb.AppendLine($"<details class='history-section'{detailsOpen}>");
+                sb.AppendLine($"<summary>{targetGroup.Key} - Filter Breakdown</summary>");
+                sb.AppendLine("<table style='margin-top:8px;width:auto;'>");
+                sb.AppendLine("<tr><th>Filter</th><th>Images</th><th>Exposure</th><th>Total Time</th></tr>");
+                foreach (var g in filterGroups) {
+                    int totalCount = g.Sum(e => e.Count);
+                    double intSec = g.Key.Exposure * totalCount;
                     sb.AppendLine($"<tr>");
-                    sb.AppendLine($"  <td>{target.Name}</td>");
-                    sb.AppendLine($"  <td>{target.StartTime:HH:mm} - {target.EndTime:HH:mm}</td>");
-                    sb.AppendLine($"  <td>{totalFrames}</td>");
-                    sb.AppendLine($"  <td>{FormatDuration(totalIntSec)}</td>");
+                    sb.AppendLine($"  <td>{g.Key.FilterName}</td>");
+                    sb.AppendLine($"  <td>{totalCount}</td>");
+                    sb.AppendLine($"  <td>{g.Key.Exposure:F0}s</td>");
+                    sb.AppendLine($"  <td>{FormatDuration(intSec)}</td>");
                     sb.AppendLine($"</tr>");
                 }
                 sb.AppendLine("</table>");
+                sb.AppendLine("</details>");
+            }
 
-                // ── Expandable per-target filter details ──
-                // Aggregate exposure plans across all timeline blocks for the same target,
-                // then group by (filter, exposure length) — matches main report grouping logic.
-                foreach (var targetGroup in targets.GroupBy(t => t.Name)) {
-                    var allExposures = targetGroup.SelectMany(t => t.ExposurePlan).ToList();
-                    if (!allExposures.Any()) continue;
-                    var filterGroups = allExposures
-                        .GroupBy(e => (e.FilterName, e.Exposure))
-                        .OrderBy(g => FilterSortKey(g.Key.FilterName)).ThenBy(g => g.Key.FilterName).ThenBy(g => g.Key.Exposure);
-                    string detailsOpen = _settings.Current.ExpandSectionsDefault ? " open" : "";
-                    sb.AppendLine($"<details class='history-section'{detailsOpen}>");
-                    sb.AppendLine($"<summary>{targetGroup.Key} - Filter Breakdown</summary>");
-                    sb.AppendLine("<table style='margin-top:8px;width:auto;'>");
-                    sb.AppendLine("<tr><th>Filter</th><th>Images</th><th>Exposure</th><th>Total Time</th></tr>");
-                    foreach (var g in filterGroups) {
-                        int totalCount = g.Sum(e => e.Count);
-                        double intSec = g.Key.Exposure * totalCount;
-                        sb.AppendLine($"<tr>");
-                        sb.AppendLine($"  <td>{g.Key.FilterName}</td>");
-                        sb.AppendLine($"  <td>{totalCount}</td>");
-                        sb.AppendLine($"  <td>{g.Key.Exposure:F0}s</td>");
-                        sb.AppendLine($"  <td>{FormatDuration(intSec)}</td>");
-                        sb.AppendLine($"</tr>");
-                    }
-                    sb.AppendLine("</table>");
-                    sb.AppendLine("</details>");
+            sb.AppendLine("</div>");
+            return sb.ToString();
+        }
+
+        // Companion-mode loader for Tonight's Preview. Reads
+        // {DataDir}/tonight-preview-cache.json (produced by the primary's
+        // /api/tonight handler and synced via SyncEngine.TonightPreviewSync).
+        // Returns the entries + observer coords on success, or a pre-built
+        // preview-notice HTML fragment when the cache is missing.
+        //
+        // The "expired" check (last entry already ended) happens in the
+        // caller's common-render block, not here, so we still get a
+        // user-friendly date in the message instead of a generic
+        // "unavailable" notice.
+        private CompanionPreviewLoad LoadTonightPreviewFromCompanionCache(ReportData data) {
+            try {
+                if (_paths == null)
+                    return new CompanionPreviewLoad { Notice = PreviewNotice("Tonight's Preview is unavailable (host did not provide a data path).") };
+                var cachePath = Path.Combine(_paths.DataDir, "tonight-preview-cache.json");
+                if (!File.Exists(cachePath))
+                    return new CompanionPreviewLoad { Notice = PreviewNotice("Tonight's Preview hasn't synced yet from the primary.") };
+
+                using var cacheDoc = JsonDocument.Parse(File.ReadAllText(cachePath));
+                var root = cacheDoc.RootElement;
+
+                DateTime? cachedAt = null;
+                if (root.TryGetProperty("cachedAtUtc", out var elCachedAt)
+                    && elCachedAt.ValueKind == JsonValueKind.String
+                    && DateTime.TryParse(elCachedAt.GetString(), null,
+                        System.Globalization.DateTimeStyles.RoundtripKind, out var ca)) {
+                    cachedAt = ca;
                 }
 
-                sb.AppendLine("</div>");
-                return sb.ToString();
+                // payload is the body returned by /api/tonight — a JSON string
+                // re-encoded inside the cache wrapper. Parse it as a fresh doc.
+                if (!root.TryGetProperty("payload", out var elPayload)
+                    || elPayload.ValueKind != JsonValueKind.String) {
+                    return new CompanionPreviewLoad { Notice = PreviewNotice("Tonight's Preview cache is malformed; resync from the primary.") };
+                }
+
+                using var payloadDoc = JsonDocument.Parse(elPayload.GetString() ?? "{}");
+                var prl = payloadDoc.RootElement;
+
+                double lat = 0, lon = 0;
+                if (prl.TryGetProperty("observerLat", out var elLat) && elLat.ValueKind == JsonValueKind.Number) lat = elLat.GetDouble();
+                if (prl.TryGetProperty("observerLon", out var elLon) && elLon.ValueKind == JsonValueKind.Number) lon = elLon.GetDouble();
+
+                var entries = new List<TsPreviewEntry>();
+                if (prl.TryGetProperty("entries", out var elEntries) && elEntries.ValueKind == JsonValueKind.Array) {
+                    foreach (var e in elEntries.EnumerateArray()) {
+                        var entry = new TsPreviewEntry {
+                            Id         = e.TryGetProperty("id",         out var elId) ? elId.GetString() ?? "" : "",
+                            Name       = e.TryGetProperty("name",       out var elName) ? elName.GetString() ?? "" : "",
+                            WaitPeriod = e.TryGetProperty("waitPeriod", out var elWp) && elWp.GetBoolean(),
+                            StartTime  = e.TryGetProperty("startTime",  out var elSt) && elSt.ValueKind == JsonValueKind.String && DateTime.TryParse(elSt.GetString(), null, System.Globalization.DateTimeStyles.RoundtripKind, out var st) ? st : default,
+                            EndTime    = e.TryGetProperty("endTime",    out var elEt) && elEt.ValueKind == JsonValueKind.String && DateTime.TryParse(elEt.GetString(), null, System.Globalization.DateTimeStyles.RoundtripKind, out var et) ? et : default,
+                            Ra         = e.TryGetProperty("ra",  out var elRa)  && elRa.ValueKind  == JsonValueKind.Number ? elRa.GetDouble()  : 0,
+                            Dec        = e.TryGetProperty("dec", out var elDec) && elDec.ValueKind == JsonValueKind.Number ? elDec.GetDouble() : 0,
+                        };
+                        if (e.TryGetProperty("exposurePlan", out var elPlan) && elPlan.ValueKind == JsonValueKind.Array) {
+                            foreach (var p in elPlan.EnumerateArray()) {
+                                entry.ExposurePlan.Add(new TsPreviewExposure {
+                                    FilterName = p.TryGetProperty("filterName", out var elFn) ? elFn.GetString() ?? "" : "",
+                                    Exposure   = p.TryGetProperty("exposure",   out var elEx) && elEx.ValueKind == JsonValueKind.Number ? elEx.GetDouble() : 0,
+                                    Count      = p.TryGetProperty("count",      out var elCt) && elCt.ValueKind == JsonValueKind.Number ? elCt.GetInt32()  : 0,
+                                });
+                            }
+                        }
+                        entries.Add(entry);
+                    }
+                }
+
+                return new CompanionPreviewLoad {
+                    Entries     = entries,
+                    ObserverLat = lat,
+                    ObserverLon = lon,
+                    CachedAtUtc = cachedAt,
+                };
             } catch (Exception ex) {
-                _log.Warn($"NightSummary: Next night preview unavailable. {ex.Message}");
-                var reason = ex.InnerException is TaskCanceledException
-                    ? "Target Scheduler API did not respond in time — the server may not be running."
-                    : $"Could not connect to Target Scheduler API (port {apiPort}). Ensure NINA and Target Scheduler are running.";
-                return PreviewNotice(reason);
+                _log.Warn($"NightSummary: Tonight's Preview cache read failed — {ex.Message}");
+                return new CompanionPreviewLoad { Notice = PreviewNotice("Tonight's Preview cache could not be read; resync from the primary.") };
             }
+        }
+
+        private sealed class CompanionPreviewLoad {
+            public string? Notice { get; set; }
+            public List<TsPreviewEntry>? Entries { get; set; }
+            public double ObserverLat { get; set; }
+            public double ObserverLon { get; set; }
+            public DateTime? CachedAtUtc { get; set; }
         }
 
         /// <summary>

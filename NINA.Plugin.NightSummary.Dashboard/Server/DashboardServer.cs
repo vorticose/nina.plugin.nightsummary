@@ -3662,10 +3662,14 @@ namespace NINA.Plugin.NightSummary.Server {
 
                 try {
                     ApplyOverrides(s, overrides);
-                    // Tonight's Preview lives on the dashboard's Stats > Tonight tab,
-                    // so the embedded report section is redundant when viewed in-dashboard.
-                    // Not exposed in the per-report settings panel either.
-                    s.ShowNextNightPreview = false;
+                    // Primary regen embeds Tonight's Preview via a ~25s TS API call,
+                    // and dashboard users already see the same data on the Stats >
+                    // Tonight tab — embed is redundant + expensive there.
+                    // Companion regen reads it from disk cache instantly, and reports
+                    // viewed outside the dashboard (download/email) benefit from the
+                    // section being present, so leave it enabled there.
+                    if (!string.Equals(_settings.Mode, "companion", StringComparison.OrdinalIgnoreCase))
+                        s.ShowNextNightPreview = false;
                     log?.Debug($"Regenerate {sessionId} effective settings: {FormatSettingsForLog(s)}");
 
                     var err = await _regen.RegenerateAsync(sessionId);
@@ -3750,7 +3754,10 @@ namespace NINA.Plugin.NightSummary.Server {
                     var saved = SnapshotSettings(s);
                     try {
                         ApplyOverrides(s, overrides);
-                        s.ShowNextNightPreview = false; // see HandleRegenerate for rationale
+                        // see HandleRegenerate for rationale — companion regen keeps
+                        // the section since it reads from disk cache, not live TS API.
+                        if (!string.Equals(_settings.Mode, "companion", StringComparison.OrdinalIgnoreCase))
+                            s.ShowNextNightPreview = false;
 
                         for (int i = 0; i < sessions.Count; i++) {
                             regenAllCurrent = i + 1;
