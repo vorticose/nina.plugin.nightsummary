@@ -1,19 +1,19 @@
 using System;
 using System.Collections.Generic;
-using System.Data.SQLite;
+using Microsoft.Data.Sqlite;
 using System.Linq;
 using NINA.Plugin.NightSummary.Dashboard.Abstractions;
 
 namespace NINA.Plugin.NightSummary.Data;
 
-// Wraps SQLiteDataReader so `reader["MissingCol"]` returns DBNull instead of
+// Wraps SqliteDataReader so `reader["MissingCol"]` returns DBNull instead of
 // throwing IndexOutOfRangeException. Lets the reader run against any schema
 // version the plugin has shipped — the dev harness opens older DBs without
 // running migrations, and a backup restored on a newer plugin must not crash.
 internal sealed class SchemaSafeReader : IDisposable {
-    private readonly SQLiteDataReader r;
+    private readonly SqliteDataReader r;
     private readonly HashSet<string> cols;
-    public SchemaSafeReader(SQLiteDataReader r) {
+    public SchemaSafeReader(SqliteDataReader r) {
         this.r = r;
         cols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < r.FieldCount; i++) cols.Add(r.GetName(i));
@@ -32,16 +32,42 @@ public sealed class SqliteSessionReader {
     private readonly IDashboardLogger? log;
 
     public SqliteSessionReader(string connectionString, IDashboardLogger? log = null) {
-        this.connectionString = connectionString;
+        // Normalize System.Data.SQLite-style connection strings — the plugin's
+        // SessionDatabase still uses Version=3 / Read Only=True (legal for
+        // System.Data.SQLite) but Microsoft.Data.Sqlite rejects both. Strip
+        // them so callers don't need two separate connection strings.
+        this.connectionString = NormalizeConnectionString(connectionString);
         this.log              = log;
+    }
+
+    internal static string NormalizeConnectionString(string cs) {
+        if (string.IsNullOrEmpty(cs)) return cs;
+        // Drop the `Version=N` token wholesale — M.D.Sqlite only speaks SQLite 3.
+        cs = System.Text.RegularExpressions.Regex.Replace(cs, @";\s*Version\s*=\s*[^;]*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        // System.Data.SQLite's "Read Only=True" -> M.D.Sqlite's "Mode=ReadOnly".
+        // Use a one-shot replace; the lib parser tolerates duplicate Mode tokens but the regex avoids them.
+        if (System.Text.RegularExpressions.Regex.IsMatch(cs, @"Read\s*Only\s*=\s*True", System.Text.RegularExpressions.RegexOptions.IgnoreCase)) {
+            cs = System.Text.RegularExpressions.Regex.Replace(cs, @";\s*Read\s*Only\s*=\s*True", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (!System.Text.RegularExpressions.Regex.IsMatch(cs, @";\s*Mode\s*=", System.Text.RegularExpressions.RegexOptions.IgnoreCase)) {
+                cs = cs.TrimEnd(';') + ";Mode=ReadOnly";
+            }
+        }
+        // Disable connection pooling. M.D.Sqlite pools native handles so the
+        // file stays open after Dispose, which blocks File.Delete on Windows
+        // (test teardown, migration cleanup, etc.) and is wholly unnecessary
+        // for our usage — dashboard reads are infrequent and short.
+        if (!System.Text.RegularExpressions.Regex.IsMatch(cs, @";\s*Pooling\s*=", System.Text.RegularExpressions.RegexOptions.IgnoreCase)) {
+            cs = cs.TrimEnd(';') + ";Pooling=False";
+        }
+        return cs;
     }
 
     public List<ImageRecord> GetImagesForSession(string sessionId) {
         var images = new List<ImageRecord>();
-        using var conn = new SQLiteConnection(connectionString);
+        using var conn = new SqliteConnection(connectionString);
         conn.Open();
         const string sql = "SELECT * FROM Images WHERE SessionId = @SessionId ORDER BY Timestamp";
-        using var cmd = new SQLiteCommand(sql, conn);
+        using var cmd = new SqliteCommand(sql, conn);
         cmd.Parameters.AddWithValue("@SessionId", sessionId);
         using var reader = new SchemaSafeReader(cmd.ExecuteReader());
         while (reader.Read()) {
@@ -105,10 +131,10 @@ public sealed class SqliteSessionReader {
     }
 
     public SessionRecord? GetSession(string sessionId) {
-        using var conn = new SQLiteConnection(connectionString);
+        using var conn = new SqliteConnection(connectionString);
         conn.Open();
         const string sql = "SELECT * FROM Sessions WHERE SessionId = @SessionId";
-        using var cmd = new SQLiteCommand(sql, conn);
+        using var cmd = new SqliteCommand(sql, conn);
         cmd.Parameters.AddWithValue("@SessionId", sessionId);
         using var reader = new SchemaSafeReader(cmd.ExecuteReader());
         if (reader.Read()) {
@@ -124,10 +150,10 @@ public sealed class SqliteSessionReader {
 
     public List<SessionEvent> GetEventsForSession(string sessionId) {
         var events = new List<SessionEvent>();
-        using var conn = new SQLiteConnection(connectionString);
+        using var conn = new SqliteConnection(connectionString);
         conn.Open();
         const string sql = "SELECT * FROM SessionEvents WHERE SessionId = @SessionId ORDER BY Timestamp";
-        using var cmd = new SQLiteCommand(sql, conn);
+        using var cmd = new SqliteCommand(sql, conn);
         cmd.Parameters.AddWithValue("@SessionId", sessionId);
         using var reader = new SchemaSafeReader(cmd.ExecuteReader());
         while (reader.Read()) {
@@ -146,10 +172,10 @@ public sealed class SqliteSessionReader {
 
     public List<TimingEvent> GetTimingEventsForSession(string sessionId) {
         var events = new List<TimingEvent>();
-        using var conn = new SQLiteConnection(connectionString);
+        using var conn = new SqliteConnection(connectionString);
         conn.Open();
         const string sql = "SELECT * FROM SessionTimingEvents WHERE SessionId = @SessionId ORDER BY StartTime";
-        using var cmd = new SQLiteCommand(sql, conn);
+        using var cmd = new SqliteCommand(sql, conn);
         cmd.Parameters.AddWithValue("@SessionId", sessionId);
         using var reader = new SchemaSafeReader(cmd.ExecuteReader());
         while (reader.Read()) {
@@ -166,14 +192,15 @@ public sealed class SqliteSessionReader {
 
     public Dictionary<string, double> GetCumulativeIntegrationByTarget(string excludeSessionId) {
         var result = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
-        using var conn = new SQLiteConnection(connectionString);
+        using var conn = new SqliteConnection(connectionString);
         conn.Open();
+        // Pending (GradingStatus=0) counts as not-rejected; see ImageRecord.CountsAsAccepted.
         const string sql = @"
             SELECT TargetName, SUM(ExposureDuration) AS TotalSeconds
             FROM Images
-            WHERE Accepted = 1 AND SessionId != @SessionId
+            WHERE (Accepted = 1 OR GradingStatus = 0) AND SessionId != @SessionId
             GROUP BY TargetName";
-        using var cmd = new SQLiteCommand(sql, conn);
+        using var cmd = new SqliteCommand(sql, conn);
         cmd.Parameters.AddWithValue("@SessionId", excludeSessionId ?? "");
         using var reader = new SchemaSafeReader(cmd.ExecuteReader());
         while (reader.Read()) {
@@ -188,20 +215,22 @@ public sealed class SqliteSessionReader {
     public List<TargetDetail> GetTargetDetails() {
         var targets = new Dictionary<string, TargetDetail>(StringComparer.OrdinalIgnoreCase);
 
-        using var conn = new SQLiteConnection(connectionString);
+        using var conn = new SqliteConnection(connectionString);
         conn.Open();
 
+        // "Not rejected" gate: Accepted=1 OR GradingStatus=0 (TS Pending). See
+        // ImageRecord.CountsAsAccepted.
         const string sqlAgg = @"
             SELECT
                 i.TargetName,
-                SUM(CASE WHEN i.Accepted = 1 THEN i.ExposureDuration ELSE 0 END) AS TotalSeconds,
+                SUM(CASE WHEN i.Accepted = 1 OR i.GradingStatus = 0 THEN i.ExposureDuration ELSE 0 END) AS TotalSeconds,
                 COUNT(DISTINCT i.SessionId) AS SessionCount,
                 MAX(s.SessionStart) AS LastSessionStart,
                 COUNT(*) AS TotalFrames,
-                SUM(CASE WHEN i.Accepted = 1 THEN 1 ELSE 0 END) AS AcceptedFrames,
-                AVG(CASE WHEN i.Accepted = 1 AND i.HFR > 0 THEN i.HFR END) AS AvgHFR,
-                AVG(CASE WHEN i.Accepted = 1 AND i.FWHM > 0 THEN i.FWHM END) AS AvgFWHM,
-                AVG(CASE WHEN i.Accepted = 1 AND i.GuidingRMSTotal > 0 THEN i.GuidingRMSTotal END) AS AvgGuidingRMS
+                SUM(CASE WHEN i.Accepted = 1 OR i.GradingStatus = 0 THEN 1 ELSE 0 END)                  AS AcceptedFrames,
+                AVG(CASE WHEN (i.Accepted = 1 OR i.GradingStatus = 0) AND i.HFR > 0 THEN i.HFR END)     AS AvgHFR,
+                AVG(CASE WHEN (i.Accepted = 1 OR i.GradingStatus = 0) AND i.FWHM > 0 THEN i.FWHM END)   AS AvgFWHM,
+                AVG(CASE WHEN (i.Accepted = 1 OR i.GradingStatus = 0) AND i.GuidingRMSTotal > 0 THEN i.GuidingRMSTotal END) AS AvgGuidingRMS
             FROM Images i
             JOIN Sessions s ON s.SessionId = i.SessionId
             WHERE i.TargetName IS NOT NULL AND i.TargetName != ''
@@ -209,7 +238,7 @@ public sealed class SqliteSessionReader {
             GROUP BY i.TargetName
             ORDER BY TotalSeconds DESC";
 
-        using (var cmd = new SQLiteCommand(sqlAgg, conn))
+        using (var cmd = new SqliteCommand(sqlAgg, conn))
         using (var reader = new SchemaSafeReader(cmd.ExecuteReader())) {
             while (reader.Read()) {
                 var name = reader["TargetName"].ToString();
@@ -228,19 +257,20 @@ public sealed class SqliteSessionReader {
             }
         }
 
+        // Same "not rejected" gate as sqlAgg above.
         const string sqlFilters = @"
             SELECT
                 i.TargetName, i.Filter,
-                SUM(CASE WHEN i.Accepted = 1 THEN i.ExposureDuration ELSE 0 END) AS TotalSeconds,
+                SUM(CASE WHEN i.Accepted = 1 OR i.GradingStatus = 0 THEN i.ExposureDuration ELSE 0 END) AS TotalSeconds,
                 COUNT(*) AS FrameCount,
-                SUM(CASE WHEN i.Accepted = 1 THEN 1 ELSE 0 END) AS AcceptedCount
+                SUM(CASE WHEN i.Accepted = 1 OR i.GradingStatus = 0 THEN 1 ELSE 0 END) AS AcceptedCount
             FROM Images i
             WHERE i.TargetName IS NOT NULL AND i.TargetName != ''
               AND (i.ImageType IS NULL OR i.ImageType = '' OR i.ImageType = 'LIGHT')
             GROUP BY i.TargetName, i.Filter
             ORDER BY i.TargetName, TotalSeconds DESC";
 
-        using (var cmd = new SQLiteCommand(sqlFilters, conn))
+        using (var cmd = new SqliteCommand(sqlFilters, conn))
         using (var reader = new SchemaSafeReader(cmd.ExecuteReader())) {
             while (reader.Read()) {
                 var name   = reader["TargetName"].ToString();
@@ -266,7 +296,7 @@ public sealed class SqliteSessionReader {
         var coordsDone  = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var sessionDone = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        using (var cmd = new SQLiteCommand(sqlCoords, conn))
+        using (var cmd = new SqliteCommand(sqlCoords, conn))
         using (var reader = new SchemaSafeReader(cmd.ExecuteReader())) {
             while (reader.Read()) {
                 var name = reader["TargetName"].ToString();
@@ -298,12 +328,15 @@ public sealed class SqliteSessionReader {
 
     public List<TargetSessionHistory> GetSessionHistoryForTarget(string targetName, string excludeSessionId) {
         var result = new List<TargetSessionHistory>();
-        using var conn = new SQLiteConnection(connectionString);
+        using var conn = new SqliteConnection(connectionString);
         conn.Open();
+        // "Not rejected" = Accepted=1 OR GradingStatus=0 (TS Pending).
+        // Mirrors ImageRecord.CountsAsAccepted and ReportGenerator.IsRejected so
+        // pending images contribute to integration totals until TS grades them.
         const string sql = @"
             SELECT
                 s.SessionStart,
-                SUM(CASE WHEN i.Accepted = 1 THEN i.ExposureDuration ELSE 0 END) AS IntegrationSeconds,
+                SUM(CASE WHEN i.Accepted = 1 OR i.GradingStatus = 0 THEN i.ExposureDuration ELSE 0 END) AS IntegrationSeconds,
                 AVG(CASE WHEN i.HFR > 0 THEN i.HFR END)               AS AvgHFR,
                 AVG(CASE WHEN i.FWHM > 0 THEN i.FWHM END)             AS AvgFWHM,
                 AVG(CASE WHEN i.GuidingRMSTotal > 0 THEN i.GuidingRMSTotal END) AS AvgGuidingRMS
@@ -314,7 +347,7 @@ public sealed class SqliteSessionReader {
             GROUP BY i.SessionId
             ORDER BY s.SessionStart DESC";
 
-        using var cmd = new SQLiteCommand(sql, conn);
+        using var cmd = new SqliteCommand(sql, conn);
         cmd.Parameters.AddWithValue("@TargetName",       targetName       ?? "");
         cmd.Parameters.AddWithValue("@ExcludeSessionId", excludeSessionId ?? "");
         using var reader = new SchemaSafeReader(cmd.ExecuteReader());
@@ -334,17 +367,19 @@ public sealed class SqliteSessionReader {
         var sessions = new Dictionary<string, TargetSessionDetail>(StringComparer.OrdinalIgnoreCase);
         if (string.IsNullOrEmpty(targetName)) return new List<TargetSessionDetail>();
 
-        using var conn = new SQLiteConnection(connectionString);
+        using var conn = new SqliteConnection(connectionString);
         conn.Open();
 
+        // "Not rejected" gate: Accepted=1 OR GradingStatus=0 (TS Pending). See
+        // ImageRecord.CountsAsAccepted for the rationale.
         const string sqlAgg = @"
             SELECT
                 s.SessionId, s.SessionStart, s.SessionEnd,
-                SUM(CASE WHEN i.Accepted = 1 THEN i.ExposureDuration ELSE 0 END) AS IntegrationSeconds,
-                COUNT(*)                                                         AS FrameCount,
-                SUM(CASE WHEN i.Accepted = 1 THEN 1 ELSE 0 END)                 AS AcceptedFrames,
-                AVG(CASE WHEN i.Accepted = 1 AND i.HFR > 0 THEN i.HFR END)       AS AvgHFR,
-                AVG(CASE WHEN i.Accepted = 1 AND i.GuidingRMSTotal > 0 THEN i.GuidingRMSTotal END) AS AvgGuidingRMS
+                SUM(CASE WHEN i.Accepted = 1 OR i.GradingStatus = 0 THEN i.ExposureDuration ELSE 0 END) AS IntegrationSeconds,
+                COUNT(*)                                                                                AS FrameCount,
+                SUM(CASE WHEN i.Accepted = 1 OR i.GradingStatus = 0 THEN 1 ELSE 0 END)                  AS AcceptedFrames,
+                AVG(CASE WHEN (i.Accepted = 1 OR i.GradingStatus = 0) AND i.HFR > 0 THEN i.HFR END)     AS AvgHFR,
+                AVG(CASE WHEN (i.Accepted = 1 OR i.GradingStatus = 0) AND i.GuidingRMSTotal > 0 THEN i.GuidingRMSTotal END) AS AvgGuidingRMS
             FROM Images i
             JOIN Sessions s ON s.SessionId = i.SessionId
             WHERE i.TargetName = @TargetName COLLATE NOCASE
@@ -352,7 +387,7 @@ public sealed class SqliteSessionReader {
             GROUP BY s.SessionId, s.SessionStart, s.SessionEnd
             ORDER BY s.SessionStart DESC";
 
-        using (var cmd = new SQLiteCommand(sqlAgg, conn)) {
+        using (var cmd = new SqliteCommand(sqlAgg, conn)) {
             cmd.Parameters.AddWithValue("@TargetName", targetName);
             using var reader = new SchemaSafeReader(cmd.ExecuteReader());
             while (reader.Read()) {
@@ -373,21 +408,22 @@ public sealed class SqliteSessionReader {
 
         if (sessions.Count == 0) return new List<TargetSessionDetail>();
 
+        // Same "not rejected" gate as sqlAgg above.
         const string sqlFilters = @"
             SELECT
                 i.SessionId, i.Filter,
-                SUM(CASE WHEN i.Accepted = 1 THEN i.ExposureDuration ELSE 0 END) AS IntegrationSeconds,
-                COUNT(*)                                                         AS FrameCount,
-                SUM(CASE WHEN i.Accepted = 1 THEN 1 ELSE 0 END)                 AS AcceptedFrames,
-                AVG(CASE WHEN i.Accepted = 1 AND i.HFR > 0 THEN i.HFR END)       AS AvgHFR,
-                AVG(CASE WHEN i.Accepted = 1 AND i.GuidingRMSTotal > 0 THEN i.GuidingRMSTotal END) AS AvgGuidingRMS
+                SUM(CASE WHEN i.Accepted = 1 OR i.GradingStatus = 0 THEN i.ExposureDuration ELSE 0 END) AS IntegrationSeconds,
+                COUNT(*)                                                                                AS FrameCount,
+                SUM(CASE WHEN i.Accepted = 1 OR i.GradingStatus = 0 THEN 1 ELSE 0 END)                  AS AcceptedFrames,
+                AVG(CASE WHEN (i.Accepted = 1 OR i.GradingStatus = 0) AND i.HFR > 0 THEN i.HFR END)     AS AvgHFR,
+                AVG(CASE WHEN (i.Accepted = 1 OR i.GradingStatus = 0) AND i.GuidingRMSTotal > 0 THEN i.GuidingRMSTotal END) AS AvgGuidingRMS
             FROM Images i
             WHERE i.TargetName = @TargetName COLLATE NOCASE
               AND (i.ImageType IS NULL OR i.ImageType = '' OR i.ImageType = 'LIGHT')
             GROUP BY i.SessionId, i.Filter
             ORDER BY i.SessionId, IntegrationSeconds DESC";
 
-        using (var cmd = new SQLiteCommand(sqlFilters, conn)) {
+        using (var cmd = new SqliteCommand(sqlFilters, conn)) {
             cmd.Parameters.AddWithValue("@TargetName", targetName);
             using var reader = new SchemaSafeReader(cmd.ExecuteReader());
             while (reader.Read()) {
@@ -410,10 +446,10 @@ public sealed class SqliteSessionReader {
 
     public List<SessionRecord> GetRecentSessions(int limit) {
         var result = new List<SessionRecord>();
-        using var conn = new SQLiteConnection(connectionString);
+        using var conn = new SqliteConnection(connectionString);
         conn.Open();
         var sql = SessionListWithCountsSql + " ORDER BY s.SessionStart DESC LIMIT @Limit";
-        using var cmd = new SQLiteCommand(sql, conn);
+        using var cmd = new SqliteCommand(sql, conn);
         cmd.Parameters.AddWithValue("@Limit", limit);
         using var reader = new SchemaSafeReader(cmd.ExecuteReader());
         while (reader.Read()) {
@@ -425,11 +461,11 @@ public sealed class SqliteSessionReader {
 
     public List<SessionRecord> GetSessionsByDateRange(DateTime from, DateTime to) {
         var result = new List<SessionRecord>();
-        using var conn = new SQLiteConnection(connectionString);
+        using var conn = new SqliteConnection(connectionString);
         conn.Open();
         var sql = SessionListWithCountsSql +
             " WHERE s.SessionStart >= @From AND s.SessionStart <= @To ORDER BY s.SessionStart DESC";
-        using var cmd = new SQLiteCommand(sql, conn);
+        using var cmd = new SqliteCommand(sql, conn);
         cmd.Parameters.AddWithValue("@From", from.ToString("o"));
         cmd.Parameters.AddWithValue("@To",   to.Date.AddDays(1).AddSeconds(-1).ToString("o"));
         using var reader = new SchemaSafeReader(cmd.ExecuteReader());
@@ -442,10 +478,10 @@ public sealed class SqliteSessionReader {
 
     public List<SessionRecord> GetAllSessions() {
         var result = new List<SessionRecord>();
-        using var conn = new SQLiteConnection(connectionString);
+        using var conn = new SqliteConnection(connectionString);
         conn.Open();
         const string sql = "SELECT * FROM Sessions ORDER BY SessionStart DESC";
-        using var cmd = new SQLiteCommand(sql, conn);
+        using var cmd = new SqliteCommand(sql, conn);
         using var reader = new SchemaSafeReader(cmd.ExecuteReader());
         while (reader.Read()) {
             try { result.Add(ReadSessionRecord(reader)); }
@@ -455,10 +491,10 @@ public sealed class SqliteSessionReader {
     }
 
     public SessionRecord? GetLatestSession() {
-        using var conn = new SQLiteConnection(connectionString);
+        using var conn = new SqliteConnection(connectionString);
         conn.Open();
         const string sql = "SELECT * FROM Sessions ORDER BY SessionStart DESC LIMIT 1";
-        using var cmd = new SQLiteCommand(sql, conn);
+        using var cmd = new SqliteCommand(sql, conn);
         using var reader = new SchemaSafeReader(cmd.ExecuteReader());
         if (reader.Read()) {
             try {
@@ -472,12 +508,14 @@ public sealed class SqliteSessionReader {
     }
 
     // Shared SELECT for session-list methods that need image/target/integration counts
-    // for display in the dropdown. Counts use Accepted = 1 to match what the report shows.
+    // for display in the dropdown. "Not rejected" gate is (Accepted=1 OR GradingStatus=0):
+    // TS Pending counts toward totals until TS reaches a verdict — matches what the
+    // report shows (ReportGenerator.IsRejected) and ImageRecord.CountsAsAccepted.
     private const string SessionListWithCountsSql = @"
         SELECT s.*,
-            (SELECT COUNT(*) FROM Images WHERE SessionId = s.SessionId AND Accepted = 1) AS ImageCount,
-            (SELECT COUNT(DISTINCT TargetName) FROM Images WHERE SessionId = s.SessionId AND Accepted = 1 AND TargetName IS NOT NULL AND TargetName <> '') AS TargetCount,
-            (SELECT COALESCE(SUM(ExposureDuration), 0) FROM Images WHERE SessionId = s.SessionId AND Accepted = 1) AS IntegrationSeconds
+            (SELECT COUNT(*) FROM Images WHERE SessionId = s.SessionId AND (Accepted = 1 OR GradingStatus = 0)) AS ImageCount,
+            (SELECT COUNT(DISTINCT TargetName) FROM Images WHERE SessionId = s.SessionId AND (Accepted = 1 OR GradingStatus = 0) AND TargetName IS NOT NULL AND TargetName <> '') AS TargetCount,
+            (SELECT COALESCE(SUM(ExposureDuration), 0) FROM Images WHERE SessionId = s.SessionId AND (Accepted = 1 OR GradingStatus = 0)) AS IntegrationSeconds
         FROM Sessions s";
 
     private static SessionRecord ReadEnrichedSessionRecord(SchemaSafeReader reader) {

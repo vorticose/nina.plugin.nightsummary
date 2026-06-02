@@ -22,7 +22,7 @@ namespace NINA.Plugin.NightSummary.Tests {
         public RejectedFramesTests() {
             _dbPath = Path.Combine(Path.GetTempPath(), $"ns_rejected_{Guid.NewGuid():N}.sqlite");
             _db     = new SessionDatabase(_dbPath);
-            _gen    = new ReportGenerator();
+            _gen    = TestDeps.NewReportGenerator();
             // Minimal settings for report tests
             SettingsManager.Instance.Current.ReportLightMode        = false;
             SettingsManager.Instance.Current.ReportDetailLevel      = 2;

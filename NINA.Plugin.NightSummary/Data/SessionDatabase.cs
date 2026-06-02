@@ -1083,8 +1083,11 @@ namespace NINA.Plugin.NightSummary.Data {
 
                     foreach (var (imageId, gradingStatus, rejectReason) in updates) {
                         using (var cmd = new SQLiteCommand(sql, conn, tx)) {
-                            // GradingStatus enum (Target Scheduler plugin, ImageGrader.cs): 0=Pending, 1=Accepted, 2=Rejected
-                            bool accepted = gradingStatus == 1;
+                            // GradingStatus enum (Target Scheduler plugin, ImageGrader.cs): 0=Pending, 1=Accepted, 2=Rejected.
+                            // Pending is "TS hasn't graded yet" — not a rejection. Keep Accepted=true so the
+                            // image counts toward integration totals and doesn't render as rejected in the
+                            // gallery/lightbox. Only an explicit Rejected (2) flips Accepted to false here.
+                            bool accepted = gradingStatus != 2;
                             cmd.Parameters.AddWithValue("@Id",            imageId);
                             cmd.Parameters.AddWithValue("@SessionId",     sessionId);
                             cmd.Parameters.AddWithValue("@GradingStatus", gradingStatus);

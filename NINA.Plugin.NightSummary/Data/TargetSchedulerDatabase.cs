@@ -1,4 +1,5 @@
 using NINA.Core.Utility;
+using NINA.Plugin.NightSummary.Dashboard.Abstractions;
 using System;
 using System.Collections.Generic;
 using System.Data.SQLite;
@@ -12,7 +13,17 @@ namespace NINA.Plugin.NightSummary.Data {
     /// and target coordinates (RA/Dec) for targets that were imaged in the current session.
     /// Gracefully returns empty results if the TS database is not found.
     /// </summary>
-    public class TargetSchedulerDatabase {
+    public class TargetSchedulerDatabase : ITargetSchedulerDatabase {
+
+        // Instance member required by ITargetSchedulerDatabase; delegates to the
+        // existing static check so existing call sites keep working.
+        bool ITargetSchedulerDatabase.IsPluginInstalled => IsPluginInstalled;
+
+        (bool Enabled, int Port) ITargetSchedulerDatabase.GetApiSettings(string? profileId)
+            => GetApiSettings(profileId);
+
+        List<TsTargetData> ITargetSchedulerDatabase.GetProgressForTargets(IEnumerable<string> sessionTargetNames, string? profileId)
+            => GetProgressForTargets(sessionTargetNames, profileId);
 
         private static readonly string DefaultDbPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),

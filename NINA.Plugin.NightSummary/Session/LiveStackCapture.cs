@@ -12,22 +12,9 @@ using System.Windows.Media.Imaging;
 
 namespace NINA.Plugin.NightSummary.Session {
 
-    /// <summary>
-    /// A captured live stack image, stored as compressed JPEG bytes.
-    /// </summary>
-    public class LiveStackImage {
-        public string Target { get; init; }
-        public string Filter { get; init; }
-        public bool IsMonochrome { get; init; }
-        /// <summary>JPEG at report-embed resolution (760px wide, q75).</summary>
-        public byte[] JpegData { get; init; }
-        /// <summary>JPEG master at archive resolution (2000px wide, q90) for persistence.</summary>
-        public byte[] MasterJpegData { get; init; }
-        public int StackCount { get; init; }
-        public int? RedStackCount { get; init; }
-        public int? GreenStackCount { get; init; }
-        public int? BlueStackCount { get; init; }
-    }
+    // LiveStackImage DTO lives in NINA.Plugin.NightSummary.Dashboard/Data/LiveStackImage.cs
+    // so the cross-platform ReportGenerator can reference it without WPF deps.
+    // Namespace kept identical so this file's references work unchanged.
 
     /// <summary>
     /// Subscribes to Live Stack's IMessageBroker broadcasts and captures the latest

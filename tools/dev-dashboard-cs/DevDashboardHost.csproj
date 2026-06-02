@@ -11,4 +11,10 @@
   <ItemGroup>
     <ProjectReference Include="..\..\NINA.Plugin.NightSummary.Dashboard\NINA.Plugin.NightSummary.Dashboard.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- Dev harness inherits Microsoft.Data.Sqlite transitively via Dashboard,
+         but DevTsReader / etc. open SQLite directly via that same package. -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
+  </ItemGroup>
 </Project>

@@ -18,7 +18,7 @@ namespace NINA.Plugin.NightSummary.Tests {
         private readonly ReportGenerator _gen;
 
         public ReportGeneratorTargetTests() {
-            _gen = new ReportGenerator();
+            _gen = TestDeps.NewReportGenerator();
             SettingsManager.Instance.Current.ReportLightMode        = false;
             SettingsManager.Instance.Current.ReportDetailLevel      = 2;
             SettingsManager.Instance.Current.ShowHFRGraph           = false;

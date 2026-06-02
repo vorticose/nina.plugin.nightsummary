@@ -3,8 +3,44 @@
 
 ## Unreleased — v3.2.0 (in progress)
 
+<!-- DRAFT: companion + readonly + bug-fix sections below need stable-to-stable consolidation before release -->
+
+### Companion pairing
+
+Pairing-token rollout for the standalone Night Summary Companion app. The shared `CompanionApiKey` field stays in place for the transition window — existing companions keep syncing without changes — but new companions can now be set up entirely in a browser via a generated per-companion token, without copy-pasting JSON. Fold this section into whichever release pulls `feature/companion-rd` into `dev`.
+
+**New features**
+- **Companion Pairing panel in Options** — under Dashboard Server → Companion Pairing. Click **+ Generate Token** to issue a 16-character per-companion token (formatted as `XXXX-XXXX-XXXX-XXXX`); the plain token is shown once with a Copy button. Lists paired companions and unclaimed tokens with humanized timestamps; **Revoke** is per-entry and confirms before disabling the pairing.
+- **Setup wizard in the Companion app** — fresh installs now redirect from the dashboard to a 5-step browser wizard (Welcome → Connect → Pair → Sync settings → First sync). Specific user-facing messages for each failure mode: unknown token, revoked token, already-paired-with-another-companion, server-doesn't-support-pairing, connection refused, timeout.
+- **`/api/companion/info`** (unauthenticated) returns the Night Summary version, NINA version, and paired-companion count so the wizard can distinguish "wrong host" from "wrong software" before any token exists.
+- **`/api/companion/pair` and `/api/companion/revoke`** — claim and revoke pairing tokens over HTTP. The companion side sends these via new `/api/setup/probe` and `/api/setup/claim` proxy endpoints so the wizard isn't blocked by browser CORS.
+
+**Improvements**
+- **Dual-auth on existing sync endpoints** — `/api/export/*` accepts either the new per-companion pairing token (preferred) or the legacy shared `CompanionApiKey` as `Authorization: Bearer`. When a request uses the legacy key, a one-shot deprecation warning is logged ("Re-pair the companion to migrate to a pairing token") and the request still succeeds. Companions can migrate at any time without downtime.
+- **Pairing tokens are stored separately** from the main settings file — in `%LOCALAPPDATA%\NINA\NightSummary\companion_tokens.json` — so they survive plugin updates and database migrations, and don't get included in companion sync payloads.
+- **Token storage uses SHA-256 hashing + constant-time lookup** so the plain token can never be recovered from the sidecar file even with full disk access. Atomic write with `.tmp` + rename and retry-on-sharing-violation so concurrent reads can't see a torn file.
+
+**Migration notes**
+- Existing companions with only `nina.apiKey` set keep working. The deprecation warning is informational; nothing breaks.
+- The legacy `nina.apiKey` fallback is scheduled for removal "next release after wizard ships" (two releases out by current plan) — see `COMPANION_PAIRING_DESIGN.md` for the full migration timeline.
+- After re-pairing through the wizard, `companion.json` gains a `nina.pairingToken` field. The old `nina.apiKey` is left in place but ignored when the pairing token is set (token takes precedence).
+
+**Internal / API surface**
+- New `CompanionTokenStore` (`Add` / `FindByToken` / `Revoke` / `MarkPaired` / `TouchLastUsed`) backed by `companion_tokens.json` with atomic writes, soft-delete revocation, and constant-time lookups.
+- `IPluginSettings` gains a default `NinaVersion` property (returns "" unless the host overrides) so `/api/companion/info` can surface the NINA build version.
+- `ICompanionController` gains `ProbePrimaryAsync` and `ClaimPairingAsync`.
+- 85 new tests across `CompanionTokenStoreTests`, `CompanionTokenViewTests`, `CompanionPairingEndpointsTests`, `CompanionAuthShimTests`, `CompanionWizardEndpointsTests`. Full suite at 818 passing.
+
+
+### Read-Only Mirror + bug fixes
+
+**New features**
+- Read-Only Mirror — a second dashboard instance bound to a separate port that refuses every write action at the server level, designed to sit behind a reverse proxy (Caddy / nginx / Cloudflare Tunnel) or Tailscale Funnel so the public-facing dashboard cannot mutate state. Enable in Options → Local Dashboard → Read-Only Mirror; default port 8281. See the new Public Exposure docs page for setup recipes for all four exposers.
+
 **Bug fixes**
 - Raw image thumbnails no longer include NINA's star/HFR annotation overlay. When the user's profile had Imaging → Annotate Image enabled, the bitmap NINA delivered to the plugin was the post-annotation version with HFR numbers and detection circles baked in, and that ended up as the saved thumbnail. Thumbnails are now captured from the pre-annotation stretched bitmap, regardless of the Annotate Image setting.
+- Target Scheduler grading: frames that TS hasn't finished grading yet (status: Pending) no longer render as "Manual Rejected" in the dashboard Frames view and lightbox, and no longer drop out of integration totals / frame counts on the session card, target detail panel, and lifetime stats. The session-end TS sync was writing Accepted=false for Pending images; the dashboard now treats Pending as not-rejected everywhere and the session-end sync only flips Accepted=false on an explicit TS Rejected (2) verdict.
+- Target Scheduler grading: when TS reaches a verdict for an image after the session has ended (e.g., it needed more frames to compare against), the dashboard now picks up the new grading the next time you open the session — a background re-sync runs after the session detail loads and refreshes the NS database in place. Skipped automatically when nothing is Pending, so already-graded sessions pay no cost.
 - Targets imaged in two or more non-continuous windows during a single session (e.g., the target set before the meridian and rose again later, or Target Scheduler swapped it out and back in) no longer render as one continuous block. The altitude chart highlights each imaging window separately, and the per-target filter table is split into one sub-table per window with a Grand Total row across all windows.
 - Dashboard: opening the Frames gallery from a session report that was launched from a target or project detail panel no longer breaks the in-page back button — back now returns to the originating TDP/PDP via the report, instead of dead-ending on the Sessions list.
 - Dashboard: long values in the Frames lightbox stat boxes (e.g., a long Target Scheduler project name or Exposure Profile name) no longer overflow the box on mobile — they now truncate with an ellipsis like file paths already did.

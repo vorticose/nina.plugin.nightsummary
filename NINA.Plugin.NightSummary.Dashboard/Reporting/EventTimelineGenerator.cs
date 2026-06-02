@@ -26,7 +26,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
         public static string GenerateTimeline(
             SessionRecord session,
             List<ImageRecord> images,
-            List<SessionEvent> events) {
+            List<SessionEvent> events,
+            bool light = false) {
 
             if (!images.Any()) return string.Empty;
 
@@ -70,7 +71,6 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var sb = new StringBuilder();
 
             // Floating tooltip div — positioned by JS on mousemove
-            bool light = SettingsManager.Instance.Current.ReportLightMode;
             string tooltipBg = light ? "#ffffff" : "#1e1e2e";
             string tooltipFg = light ? "#1a1a2e" : "#e0e0e0";
             string tooltipShadow = light ? "rgba(0,0,0,0.15)" : "rgba(0,0,0,0.6)";
@@ -148,9 +148,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 string tipLabel = evt.EventType switch {
                     "RoofOpen"   => "Safety monitor: safe",
                     "RoofClosed" => "Safety monitor: unsafe",
-                    _            => evt.Description?.Replace("'", "\u2019") ?? ""
+                    _            => evt.Description?.Replace("'", "’") ?? ""
                 };
-                string tipText = $"{evt.Timestamp:HH:mm} \u2014 {tipLabel}";
+                string tipText = $"{evt.Timestamp:HH:mm} — {tipLabel}";
                 markerData.Add((mx, tipText));
                 sb.AppendLine($"<polygon points='{mx:F1},{markerY - half} {mx - half:F1},{markerY + half} {mx + half:F1},{markerY + half}' fill='{markerColor}' opacity='0.95' data-tip='{tipText}' style='cursor:pointer;'/>");
             }

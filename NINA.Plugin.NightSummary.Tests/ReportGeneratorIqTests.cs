@@ -17,7 +17,7 @@ namespace NINA.Plugin.NightSummary.Tests {
         private readonly ReportGenerator _gen;
 
         public ReportGeneratorIqTests() {
-            _gen = new ReportGenerator();
+            _gen = TestDeps.NewReportGenerator();
             // Defaults that exercise the IQ section
             SettingsManager.Instance.Current.ReportLightMode  = false;
             SettingsManager.Instance.Current.ReportDetailLevel = 1;
