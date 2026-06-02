@@ -162,14 +162,14 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public void LightMode_GeneratesChart_WithLightColors() {
-            SettingsManager.Instance.Current.ReportLightMode = true;
+            ChartGenerator.LightMode = true;
             var sessionId = "test-session";
             var images    = TestDataFactory.MakeImageSeries(sessionId, 5);
             foreach (var img in images) img.FocuserTemp = 12.5;
 
             var svg = ChartGenerator.GenerateMetricChart(images, ChartGenerator.PrimaryHFR, ChartGenerator.SecFocuserTemp);
 
-            SettingsManager.Instance.Current.ReportLightMode = false; // reset
+            ChartGenerator.LightMode = false; // reset
             Assert.Contains("<svg", svg);
             // Light mode uses a light background color
             Assert.Contains("#f5f5f5", svg);
@@ -532,6 +532,9 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public void EventMarkers_DifferentTypes_DifferentStyles() {
+            // ChartGenerator.LightMode is process-wide; a prior parallel test may
+            // have set it true. Pin to dark so the expected color hexes hold.
+            ChartGenerator.LightMode = false;
             var images = TestDataFactory.MakeImageSeries("test", 5);
             var markers = new List<(DateTime, string, string)> {
                 (images[1].Timestamp, "AutoFocus", "AF event"),

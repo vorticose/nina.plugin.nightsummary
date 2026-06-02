@@ -102,7 +102,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
         private const int PadTop       = 20;
         private const int PadBottom    = 45;
 
-        private static bool IsLight => SettingsManager.Instance.Current.ReportLightMode;
+        // Set by the host (ReportGenerator) before rendering so the color getters
+        // can theme the SVG without reaching back into plugin-side settings. Default
+        // false keeps test output deterministic (dark theme) without setup.
+        public static bool LightMode { get; set; }
+
+        private static bool IsLight => LightMode;
 
         private static string ColorBackground   => IsLight ? "#f5f5f5" : "#1a1a2e";
         private static string ColorGrid         => IsLight ? "#c8cdd4" : "#2a2a4a";
@@ -321,7 +326,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var rightPoly = string.Join(" ", rightPts.Select(p => $"{ToXPx(p.x):F1},{ToYR(p.y):F1}"));
                 sb.AppendLine($"<polyline points=\"{rightPoly}\" fill=\"none\" stroke=\"{ColorSecondary}\" stroke-width=\"2\" stroke-linejoin=\"round\" stroke-dasharray=\"6,3\"/>");
                 string secUnit = GetTooltipUnit(secondaryMetric, false);
-                string secFmt  = GetValueFormat(secondaryMetric, false);
+                string secFmt  = GetTooltipFormat(secondaryMetric, false);
                 foreach (var p in rightPts) {
                     var filter = filterByTime.TryGetValue(p.t, out var f) && !string.IsNullOrEmpty(f) ? $" [{f}]" : "";
                     string tip = FormatTooltipX(p, xAxisMetric, minX) + $" — {p.y.ToString(secFmt)}{secUnit}{filter}";
@@ -334,7 +339,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine($"<polyline points=\"{leftPoly}\" fill=\"none\" stroke=\"{leftColor}\" stroke-width=\"2\" stroke-linejoin=\"round\"/>");
             int leftMetricIdx = swapped ? secondaryMetric : primaryMetric;
             string leftUnit    = GetTooltipUnit(leftMetricIdx, !swapped);
-            string leftTipFmt  = GetValueFormat(leftMetricIdx, !swapped);
+            string leftTipFmt  = GetTooltipFormat(leftMetricIdx, !swapped);
             foreach (var p in leftPts) {
                 var filter = filterByTime.TryGetValue(p.t, out var f) && !string.IsNullOrEmpty(f) ? $" [{f}]" : "";
                 string tip = FormatTooltipX(p, xAxisMetric, minX) + $" — {p.y.ToString(leftTipFmt)}{leftUnit}{filter}";

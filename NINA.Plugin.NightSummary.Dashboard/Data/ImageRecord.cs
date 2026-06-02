@@ -32,6 +32,13 @@ namespace NINA.Plugin.NightSummary.Data {
         // Whether this image was accepted or rejected by image grader
         public bool Accepted { get; set; }
 
+        // True when the image counts toward integration/frame totals: accepted by
+        // NINA/TS, OR still TS-Pending (GradingStatus 0 = "TS hasn't graded yet",
+        // which is not a rejection). NINA-side manual rejections (Accepted=false,
+        // GradingStatus=-1) and TS-rejected (Accepted=false, GradingStatus=2)
+        // both correctly evaluate to false. Mirrors ReportGenerator.IsRejected.
+        public bool CountsAsAccepted => Accepted || GradingStatus == 0;
+
         // Target coordinates — decimal hours (RA) and decimal degrees (Dec); 0 = unknown
         public double RaHours    { get; set; }
         public double DecDegrees { get; set; }

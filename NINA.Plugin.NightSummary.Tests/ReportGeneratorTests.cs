@@ -12,7 +12,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         public ReportGeneratorTests() {
             SettingsManager.Instance.Current.ReportLightMode = false;
-            _generator = new ReportGenerator();
+            _generator = TestDeps.NewReportGenerator();
         }
 
         // ── Basic rendering ───────────────────────────────────────────────────

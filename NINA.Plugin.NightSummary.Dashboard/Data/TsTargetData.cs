@@ -61,6 +61,13 @@ namespace NINA.Plugin.NightSummary.Data {
         public DateTime                 StartTime    { get; set; }
         public DateTime                 EndTime      { get; set; }
         public List<TsPreviewExposure>  ExposurePlan { get; set; } = new List<TsPreviewExposure>();
+        // Populated by the dashboard's /api/tonight handler when it serializes
+        // the response (and therefore present in the synced tonight-preview-cache
+        // payload the companion reads). The live TS API doesn't return these,
+        // so on the primary path they stay 0 and ReportGenerator falls back to
+        // looking up coords via TargetSchedulerDatabase.GetProgressForTargets.
+        public double                   Ra           { get; set; }   // decimal hours
+        public double                   Dec          { get; set; }   // decimal degrees
     }
 
     /// <summary>

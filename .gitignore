@@ -3,6 +3,12 @@ NINA/External/*/Altair
 NINA/External/*/Canon
 NINA/External/*/Nikon
 
+# Test-time visual preview outputs. ChartPreviewGeneratorTests writes
+# sample-report-*.html to .preview/ every test run for browser diffing.
+# Treating them as build artifacts keeps `git status` clean and avoids
+# committing churn from unrelated test runs.
+.preview/
+
 # Exclude nuget.exe
 /publish/nuget.exe
 
@@ -110,3 +116,6 @@ DASHBOARD_BOOTSTRAP.md
 
 # Dev dashboard snapshot data
 tools/dev-dashboard/data/
+
+# Companion distribution build artifacts
+/build/

@@ -25,7 +25,7 @@ internal sealed class DevDashboardPaths : IDashboardPaths {
 
     public string ReportHtmlPath(string sessionId)        => Path.Combine(ReportsDir, $"{sessionId}.html");
     public string ReportSettingsPath(string sessionId)    => Path.Combine(ReportsDir, $"{sessionId}.settings.json");
-    public string LivestackDir(string sessionId)          => Path.Combine(ReportsDir, sessionId, "livestack");
+    public string LivestackDir(string sessionId)          => Path.Combine(ReportsDir, "livestack", sessionId);
     public string LivestackManifestPath(string sessionId) => Path.Combine(LivestackDir(sessionId), "livestack.json");
     public string LivestackImagePath(string sessionId, string filename)
                                                           => Path.Combine(LivestackDir(sessionId), filename);

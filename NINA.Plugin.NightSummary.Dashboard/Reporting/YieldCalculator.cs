@@ -8,7 +8,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
     /// <summary>
     /// Calculates imaging yield percentage, accounting for roof-closed time exclusion.
     /// </summary>
-    internal static class YieldCalculator {
+    public static class YieldCalculator {
 
         public class YieldResult {
             public double YieldPct { get; set; }
