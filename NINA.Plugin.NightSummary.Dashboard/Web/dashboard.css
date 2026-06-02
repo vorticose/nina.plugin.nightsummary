@@ -5135,8 +5135,14 @@ html.light .tdp-project-action-btn:hover {
     min-height: 44px;
     font-size: 18px;
     display: flex;
-    align-items: center;
-    justify-content: center;
+    /* Anchor the 44px tap target to the very corner and pin the glyph to its
+       top-right, so the visible ✕ sits in the corner with a little padding
+       instead of floating ~20px inward (centered inside the tap box). */
+    align-items: flex-start;
+    justify-content: flex-end;
+    top: 0;
+    right: 0;
+    padding: 7px 9px;
     background: none;
   }
   @media (hover: hover) {
@@ -5144,6 +5150,16 @@ html.light .tdp-project-action-btn:hover {
   }
   .card-body { flex-direction: column; min-height: 0; }
   .card-content { min-width: 0; max-width: 100%; }
+
+  /* Target pills always drop to their own row below the date/time. The card
+     header is a wrapping flex row; without this, short pill sets sit inline
+     with the date and only long ones wrap below — inconsistent. Full-width
+     basis forces a consistent break onto the next row regardless of length. */
+  .card-targets-line { flex-basis: 100%; }
+  /* Equal vertical spacing around the pills row: row-gap (date -> pills) and
+     margin-bottom (pills -> thumbs) match. column-gap stays 10px for the
+     horizontal date <-> time spacing. */
+  .card-header { column-gap: 10px; row-gap: 8px; margin-bottom: 8px; }
 
   /* ── Thumbnails: smaller, horizontal scroll ── */
   .card-thumbs {
