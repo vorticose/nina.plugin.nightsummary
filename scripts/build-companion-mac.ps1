@@ -84,7 +84,15 @@ function Build-Arch {
     # script runs the real binary in a loop and respawns it on exit code 88
     # (Dashboard "Restart" button) or stops on exit code 0 (Dashboard "Quit").
     Copy-Item "$publishDir/NightSummaryCompanion"    "$macOs/NightSummaryCompanion-bin"
-    Copy-Item "$publishDir/libe_sqlite3.dylib"       $macOs/
+    # Copy ALL native dylibs the publish emitted -- PublishSingleFile keeps
+    # natives external, and the companion needs both libe_sqlite3.dylib (SQLite
+    # reads) and libSkiaSharp.dylib (livestack rescale during offline regen).
+    # Globbing future-proofs this against new native deps; a missing dylib only
+    # surfaces as a runtime DllNotFoundException, never a build error.
+    $dylibs = Get-ChildItem "$publishDir/*.dylib"
+    if (-not $dylibs) { throw "no native dylibs found in $publishDir -- expected libe_sqlite3.dylib + libSkiaSharp.dylib" }
+    Copy-Item $dylibs.FullName $macOs/
+    Write-Host ("  bundled natives: " + (($dylibs.Name) -join ', '))
 
     # Watchdog launcher script. macOS treats this as the bundle's executable
     # (CFBundleExecutable=NightSummaryCompanion). The script:
