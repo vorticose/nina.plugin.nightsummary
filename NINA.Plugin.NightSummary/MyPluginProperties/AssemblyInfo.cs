@@ -9,7 +9,7 @@ using System.Runtime.InteropServices;
 
 [assembly: AssemblyTitle("Night Summary")]
 [assembly: AssemblyDescription("Logs imaging session data and emails a summary report at sequence completion *** DEV BUILD ***")]
-[assembly: AssemblyInformationalVersion("3.1.1-dev")]
+[assembly: AssemblyInformationalVersion("3.2.0-dev")]
 
 [assembly: AssemblyCompany("Evan Pegors")]
 [assembly: AssemblyProduct("Night Summary")]

@@ -1,7 +1,7 @@
 # Night Summary — Changelog
 
 
-## Unreleased — v3.1.1 (in progress)
+## Unreleased — v3.2.0 (in progress)
 
 **Bug fixes**
 - Raw image thumbnails no longer include NINA's star/HFR annotation overlay. When the user's profile had Imaging → Annotate Image enabled, the bitmap NINA delivered to the plugin was the post-annotation version with HFR numbers and detection circles baked in, and that ended up as the saved thumbnail. Thumbnails are now captured from the pre-annotation stretched bitmap, regardless of the Annotate Image setting.
