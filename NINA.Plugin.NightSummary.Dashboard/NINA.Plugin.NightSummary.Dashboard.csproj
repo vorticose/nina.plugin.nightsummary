@@ -20,6 +20,11 @@
          same shape as Microsoft.Data.Sqlite. Plugin side uses WPF's
          JpegBitmapEncoder; it never loads this assembly. -->
     <PackageReference Include="SkiaSharp" Version="2.88.8" />
+    <!-- Base SkiaSharp ships win + macOS natives but NOT Linux. Without this the
+         linux-x64/arm64 publish has no libSkiaSharp.so and the companion throws
+         DllNotFoundException when it rescales a livestack master. RID-scoped, so
+         it contributes nothing to win/mac builds. -->
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="2.88.8" />
   </ItemGroup>
 
   <ItemGroup>
