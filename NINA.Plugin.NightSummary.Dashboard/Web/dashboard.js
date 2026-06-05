@@ -9646,7 +9646,7 @@ function settingsHtml(c) {
           '<span class="settings-label">Status</span>' +
           '<div class="settings-auth-status">' + pushPill + '</div>' +
         '</div>' +
-        '<p class="settings-hint" style="margin-top:-4px;">' + esc(pushDesc) + '</p>' +
+        '<p class="settings-hint">' + esc(pushDesc) + '</p>' +
         '<label class="settings-row settings-row-inline">' +
           '<input type="checkbox" id="cfg-acceptpush"' + (c.acceptPush !== false ? ' checked' : '') + '>' +
           '<span>Accept push notifications from NINA</span>' +
