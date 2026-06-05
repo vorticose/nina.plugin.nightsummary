@@ -9691,6 +9691,14 @@ function settingsHtml(c) {
         '</div>' +
       '</form>' +
       '<div class="settings-card">' +
+        '<h2>Start at login</h2>' +
+        '<p class="settings-hint">Launch the companion automatically when you sign in, so the dashboard is always up without opening the app by hand.</p>' +
+        '<div class="settings-actions">' +
+          '<label class="settings-check"><input type="checkbox" id="cfg-autostart"> <span>Start companion at login</span></label>' +
+          '<div class="settings-status" id="autostart-status"></div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="settings-card">' +
         '<h2>Companion process</h2>' +
         '<p class="settings-hint">Restart applies a port change or refreshes the in-memory state. Quit stops the companion entirely — relaunch the app from the Applications folder to bring it back.</p>' +
         '<div class="settings-actions">' +
@@ -9748,6 +9756,51 @@ function bindSettingsForm(initial) {
     if (!procStatus) return;
     procStatus.textContent = text || '';
     procStatus.className = 'settings-status' + (cls ? ' ' + cls : '');
+  }
+
+  // Start-at-login toggle — immediate action, separate from the config form.
+  // Loads the current OS autostart state, greys out if unsupported on this
+  // packaging (dev build / no launcher), and POSTs enable/disable on change.
+  var autostartEl = document.getElementById('cfg-autostart');
+  var autostartStatus = document.getElementById('autostart-status');
+  function setAutostartStatus(text, cls) {
+    if (!autostartStatus) return;
+    autostartStatus.textContent = text || '';
+    autostartStatus.className = 'settings-status' + (cls ? ' ' + cls : '');
+  }
+  if (autostartEl) {
+    fetch('/api/companion/autostart').then(function(r){ return r.json(); }).then(function(j){
+      if (!j.supported) {
+        autostartEl.checked = false; autostartEl.disabled = true;
+        setAutostartStatus(j.detail ? ('Unavailable: ' + j.detail) : 'Not available on this install', '');
+        return;
+      }
+      autostartEl.checked = !!j.enabled;
+      setAutostartStatus(j.enabled ? ('On · ' + (j.mechanism || '')) : '', j.enabled ? 'is-ok' : '');
+    }).catch(function(){ /* leave default */ });
+
+    autostartEl.addEventListener('change', function() {
+      var want = autostartEl.checked;
+      autostartEl.disabled = true;
+      setAutostartStatus(want ? 'Enabling…' : 'Disabling…', '');
+      fetch('/api/companion/autostart', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: want }),
+      }).then(function(r){ return r.json(); }).then(function(j){
+        if (j.ok) {
+          autostartEl.checked = !!j.enabled;
+          var msg = j.enabled ? ('On · ' + (j.mechanism || '')) : 'Off';
+          if (j.detail) msg += ' · ' + j.detail;
+          setAutostartStatus(msg, j.enabled ? 'is-ok' : '');
+        } else {
+          autostartEl.checked = !want;
+          setAutostartStatus('Failed: ' + (j.error || j.detail || 'unknown'), 'is-error');
+        }
+      }).catch(function(err){
+        autostartEl.checked = !want;
+        setAutostartStatus('Failed: ' + (err.message || 'network error'), 'is-error');
+      }).finally(function(){ autostartEl.disabled = false; });
+    });
   }
 
   testBtn.addEventListener('click', function() {

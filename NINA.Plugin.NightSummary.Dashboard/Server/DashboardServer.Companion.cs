@@ -212,6 +212,49 @@ namespace NINA.Plugin.NightSummary.Server {
             });
         }
 
+        // GET /api/companion/autostart — companion-only. Reports whether
+        // "start at login" is supported on this OS/packaging and currently on.
+        private async Task HandleGetAutostart(TcpHttpResponse res, Action<int, string> done) {
+            if (_companion == null) {
+                await WriteJson(res, 404, new { error = "companion mode not active" });
+                done?.Invoke(404, null);
+                return;
+            }
+            var st = CompanionAutostart.GetStatus();
+            await WriteJson(res, 200, new { st.supported, st.enabled, st.mechanism, st.detail });
+            done?.Invoke(200, $"autostart status supported={st.supported} enabled={st.enabled}");
+        }
+
+        // POST /api/companion/autostart — body {"enabled": true|false}. Writes
+        // (or removes) the per-OS user-domain autostart entry, then returns the
+        // refreshed status so the UI can reflect reality (incl. "saved, applies
+        // next login" partial-success cases).
+        private async Task HandleSetAutostart(TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
+            if (_companion == null) {
+                await WriteJson(res, 404, new { error = "companion mode not active" });
+                done?.Invoke(404, null);
+                return;
+            }
+            var body = await ReadBodyCappedAsync(req, res, done);
+            if (body == null) return;
+            bool enabled;
+            try {
+                using var doc = JsonDocument.Parse(body);
+                enabled = doc.RootElement.TryGetProperty("enabled", out var e) && e.GetBoolean();
+            } catch {
+                await WriteJson(res, 400, new { error = "expected { \"enabled\": true|false }" });
+                done?.Invoke(400, "bad body");
+                return;
+            }
+
+            var (ok, error) = enabled ? CompanionAutostart.Enable() : CompanionAutostart.Disable();
+            log?.Info($"Companion: autostart {(enabled ? "enable" : "disable")} -> ok={ok}{(error != null ? $" ({error})" : "")}");
+            var st = CompanionAutostart.GetStatus();
+            await WriteJson(res, ok ? 200 : 500,
+                new { ok, error, st.supported, st.enabled, st.mechanism, st.detail });
+            done?.Invoke(ok ? 200 : 500, $"autostart {(enabled ? "enable" : "disable")} ok={ok}");
+        }
+
         // ── Pairing endpoints (primary only) ─────────────────────────────────
         //
         // _tokenStore is non-null only in primary mode. All three endpoints 404

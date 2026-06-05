@@ -516,6 +516,8 @@ namespace NINA.Plugin.NightSummary.Server {
                         await HandleCompanionStatus(res, done);
                     } else if (path == "/api/companion/config") {
                         await HandleCompanionConfigGet(res, done);
+                    } else if (path == "/api/companion/autostart") {
+                        await HandleGetAutostart(res, done);
                     } else if (path == "/api/companion/info") {
                         await HandleCompanionInfo(res, done);
                     } else if (path == "/api/sessions") {
@@ -693,6 +695,8 @@ namespace NINA.Plugin.NightSummary.Server {
                         await HandleCompanionQuit(res, done);
                     } else if (path == "/api/companion/restart") {
                         await HandleCompanionRestart(res, done);
+                    } else if (path == "/api/companion/autostart") {
+                        await HandleSetAutostart(req, res, done);
                     } else if (path == "/api/companion/config") {
                         await HandleCompanionConfigSave(req, res, done);
                     } else if (path == "/api/companion/test-connection") {
