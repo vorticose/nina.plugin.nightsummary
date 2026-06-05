@@ -167,12 +167,29 @@ done
 "@
     Set-Content -Path (Join-Path $contents 'Info.plist') -Value $plist -Encoding UTF8 -NoNewline
 
-    # 4. Ship a "Fix Permissions.command" alongside the .app so the user can
-    # double-click it from Finder to ad-hoc codesign without opening Terminal.
-    # macOS treats *.command files as double-click-executable shell scripts.
-    # CI will replace this with proper codesign in the build step itself; until
-    # then this is the no-terminal workaround for the arm64-must-be-signed rule.
-    $fixCmd = @"
+    # 4. Code-sign the bundle ad-hoc when codesign is available (macOS only — a
+    # CI macos runner or the Mac mini). A signed bundle means the user just
+    # right-click->Opens once on a downloaded copy; no Fix Permissions step.
+    # Cross-building on Windows we cannot sign (codesign is mac-only), so we fall
+    # back to shipping Fix Permissions.command for the user to ad-hoc sign there.
+    # Ad-hoc only — no Developer ID / notarization, so no Apple account needed.
+    $signed = $false
+    if (Get-Command codesign -ErrorAction SilentlyContinue) {
+        Write-Host "  codesigning bundle (ad-hoc)..."
+        & codesign --force --deep --sign - $appRoot
+        if ($LASTEXITCODE -eq 0) {
+            & codesign --verify --deep --strict $appRoot 2>$null
+            $signed = ($LASTEXITCODE -eq 0)
+        }
+        Write-Host ("  bundle signed: " + $signed)
+    } else {
+        Write-Host "  codesign unavailable (cross-build) — shipping Fix Permissions.command"
+    }
+
+    # Fix Permissions.command is only needed for UNSIGNED (Windows-cross-built)
+    # bundles. Signed bundles skip it entirely.
+    if (-not $signed) {
+        $fixCmd = @"
 #!/bin/bash
 # Run once after installing NightSummaryCompanion.app. Ad-hoc signs the
 # binary so the arm64 kernel will let it run. Safe to run multiple times.
@@ -192,8 +209,9 @@ echo "Done. You can close this window."
 echo "Double-click NightSummaryCompanion.app to launch."
 read -p "Press Enter to close..."
 "@
-    $fixPath = Join-Path $staging 'Fix Permissions.command'
-    Set-Content -Path $fixPath -Value $fixCmd -Encoding UTF8 -NoNewline
+        $fixPath = Join-Path $staging 'Fix Permissions.command'
+        Set-Content -Path $fixPath -Value $fixCmd -Encoding UTF8 -NoNewline
+    }
 
     # 5. Build a .tar.gz instead of .zip. Tar preserves Unix mode bits by spec
     # (POSIX-1.2001 / pax) so macOS Archive Utility unpacks the binary with
@@ -272,13 +290,25 @@ switch ($Arch) {
 
 Write-Host ""
 Write-Host "Done. Artifacts in $buildDir" -ForegroundColor Cyan
+$macSigned = [bool](Get-Command codesign -ErrorAction SilentlyContinue)
 Write-Host ""
 Write-Host "To install on a fresh Mac:" -ForegroundColor Yellow
 Write-Host "  1. Transfer the .tar.gz to the Mac (AirDrop / scp / download)."
 Write-Host "  2. Double-click the .tar.gz in Finder. Archive Utility extracts a folder."
 Write-Host "  3. Drag NightSummaryCompanion.app into /Applications."
-Write-Host "  4. Double-click 'Fix Permissions.command' (one-time ad-hoc codesign)."
-Write-Host "  5. Right-click NightSummaryCompanion.app -> Open. Gatekeeper warns once; click Open."
-Write-Host "  6. Setup wizard opens in your default browser. Done."
-Write-Host ""
-Write-Host "Steps 4 + 5 go away once CI does proper codesign + .dmg on macos-latest." -ForegroundColor DarkGray
+if ($macSigned) {
+    Write-Host "  4. Open it. A scp'd/AirDropped copy double-clicks straight away; a"
+    Write-Host "     browser-DOWNLOADED copy is quarantined -> right-click -> Open once"
+    Write-Host "     ('unidentified developer', not 'damaged', because the bundle is signed)."
+    Write-Host "  5. Setup wizard opens in your default browser. Done."
+    Write-Host ""
+    Write-Host "Bundle is ad-hoc signed (no Apple account). Notarization would remove the" -ForegroundColor DarkGray
+    Write-Host "right-click step but needs a paid dev account -- out of scope by policy."  -ForegroundColor DarkGray
+} else {
+    Write-Host "  4. Double-click 'Fix Permissions.command' (one-time ad-hoc codesign)."
+    Write-Host "  5. Right-click NightSummaryCompanion.app -> Open. Gatekeeper warns once; click Open."
+    Write-Host "  6. Setup wizard opens in your default browser. Done."
+    Write-Host ""
+    Write-Host "This is an UNSIGNED cross-build (codesign is mac-only). Build on a Mac /"  -ForegroundColor DarkGray
+    Write-Host "the CI macos runner to sign the bundle and drop steps 4-5 to one click."   -ForegroundColor DarkGray
+}

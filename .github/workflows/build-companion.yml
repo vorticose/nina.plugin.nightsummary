@@ -1,0 +1,83 @@
+name: Build Companion
+
+# Builds the standalone Night Summary Companion for macOS / Windows / Linux on
+# native runners, so the macOS .app is ad-hoc code-signed ON a Mac (codesign is
+# mac-only) — no Developer account, ad-hoc only. Signed mac bundle means the
+# user just right-click->Opens once on a download; no "Fix Permissions" step.
+#
+# Triggers:
+#   - workflow_dispatch: build artifacts on demand (downloadable from the run)
+#   - push of a v* tag:   build + attach the binaries to that GitHub release
+#
+# Each build-<platform> job just runs the existing scripts/build-companion-*.ps1
+# (all pwsh, all cross-checked locally) on its native runner.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write   # release job attaches assets
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest    # Apple Silicon runner -> native osx-arm64 + codesign
+            platform: mac
+            arch: arm64
+            script: build-companion-mac.ps1
+            artifact: build/companion-mac/*.tar.gz
+          - os: windows-latest
+            platform: win
+            arch: x64
+            script: build-companion-win.ps1
+            artifact: build/companion-win/*.zip
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            script: build-companion-linux.ps1
+            artifact: build/companion-linux/*.tar.gz
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build companion (${{ matrix.platform }}-${{ matrix.arch }})
+        shell: pwsh
+        run: ./scripts/${{ matrix.script }} -Arch ${{ matrix.arch }}
+
+      - name: Verify mac bundle is signed
+        if: matrix.platform == 'mac'
+        run: codesign --verify --deep --strict --verbose=2 build/companion-mac/staging-arm64/NightSummaryCompanion.app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: companion-${{ matrix.platform }}-${{ matrix.arch }}
+          path: ${{ matrix.artifact }}
+          if-no-files-found: error
+
+  # On a v* tag, attach the three binaries to the matching GitHub release.
+  # The release itself is created by the manual release process (gh release
+  # create); this only uploads the companion assets onto it.
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Attach companion binaries to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Assets:"; ls -R artifacts
+          gh release upload "${{ github.ref_name }}" artifacts/* --clobber --repo "${{ github.repository }}"
