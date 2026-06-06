@@ -88,13 +88,18 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4   # for scripts/install-companion.sh (the curl one-liner target)
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
-      - name: Attach companion binaries to the release
+      - name: Attach companion binaries + Linux installer to the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           echo "Assets:"; ls -R artifacts
-          gh release upload "${{ github.ref_name }}" artifacts/* --clobber --repo "${{ github.repository }}"
+          # install-companion.sh is the stable target of the
+          # releases/latest/download/install-companion.sh curl one-liner.
+          gh release upload "${{ github.ref_name }}" \
+            artifacts/* scripts/install-companion.sh \
+            --clobber --repo "${{ github.repository }}"
