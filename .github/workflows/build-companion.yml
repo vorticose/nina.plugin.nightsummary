@@ -40,8 +40,12 @@ jobs:
             platform: linux
             arch: x64
             script: build-companion-linux.ps1
-            # Matches both the tarball and the AppImage; excludes appimagetool-*.
-            artifact: build/companion-linux/NightSummaryCompanion-*
+            # Three Linux deliverables, listed explicitly so the downloaded
+            # appimagetool and the staging/AppDir dirs are never picked up.
+            artifact: |
+              build/companion-linux/NightSummaryCompanion-linux-x64.tar.gz
+              build/companion-linux/NightSummaryCompanion-x86_64.AppImage
+              build/companion-linux/nightsummary-companion_*.deb
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -59,6 +63,12 @@ jobs:
       - name: Pack Linux AppImage
         if: matrix.platform == 'linux'
         run: bash scripts/build-companion-appimage.sh
+
+      # And a .deb (double-click -> App Center -> Install; pulls libfontconfig1/
+      # libfreetype6 automatically). dpkg-deb is preinstalled on ubuntu runners.
+      - name: Pack Linux .deb
+        if: matrix.platform == 'linux'
+        run: bash scripts/build-companion-deb.sh
 
       - name: Verify mac bundle is signed
         if: matrix.platform == 'mac'

@@ -102,7 +102,10 @@ $watchdog = @'
 #!/bin/bash
 # NightSummaryCompanion launcher + watchdog.
 # Respawns the binary on exit code 88 (dashboard Restart), exits on 0 (Quit).
-DIR="$(cd "$(dirname "$0")" && pwd)"
+# readlink -f so a symlink to this script (e.g. the .deb's /usr/bin entry ->
+# /opt/.../NightSummaryCompanion) still resolves the binary next to the REAL
+# script, not next to the symlink.
+DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 BIN="$DIR/NightSummaryCompanion-bin"
 while :; do
     "$BIN" "$@"
