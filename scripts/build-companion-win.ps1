@@ -2,12 +2,12 @@
 #
 # Produces: build/companion-win/NightSummaryCompanion-win-<arch>.zip
 #
-# Layout inside the zip (folder the user unzips + keeps):
+# Layout inside the zip:
 #   NightSummaryCompanion/
-#     NightSummaryCompanion.exe       <- single double-click target: a WinExe (no
-#                                          console window) with the brand icon
-#                                          embedded; self-respawns on Restart
-#     e_sqlite3.dll  libSkiaSharp.dll <- native deps (PublishSingleFile keeps them external)
+#     NightSummaryCompanion.exe       <- the WHOLE app: a WinExe (no console
+#                                          window) with the brand icon embedded
+#                                          and the native deps baked in. Drop it
+#                                          anywhere; self-respawns on Restart.
 #     README.txt                      <- SmartScreen + run instructions
 #
 # Unlike build-companion-{mac,linux}.ps1 (which keep a bash watchdog for the
@@ -82,14 +82,9 @@ New-Item -ItemType Directory -Path $appDir -Force | Out-Null
 # icon embedded (ApplicationIcon in the csproj). It self-respawns on a dashboard
 # Restart, so no external .cmd watchdog or hidden-launch .vbs is needed anymore.
 Copy-Item "$publishDir/NightSummaryCompanion.exe" "$appDir/NightSummaryCompanion.exe"
-
-# Copy ALL native dlls the publish emitted (e_sqlite3.dll + libSkiaSharp.dll).
-# Globbing future-proofs new native deps; a missing one is a runtime
-# DllNotFoundException, never a build error, so assert at least one exists.
-$dlls = Get-ChildItem "$publishDir/*.dll"
-if (-not $dlls) { throw "no native dlls found in $publishDir -- expected e_sqlite3.dll + libSkiaSharp.dll" }
-Copy-Item $dlls.FullName $appDir/
-Write-Host ("  bundled natives: " + (($dlls.Name) -join ', '))
+# Natives (e_sqlite3, libSkiaSharp) are baked INTO the exe via
+# IncludeNativeLibrariesForSelfExtract, so there are no sibling dlls to copy --
+# the exe is a true drop-anywhere single file.
 
 # 3. README with the one-time SmartScreen click-through (no codesigning per
 #    project policy) and run instructions.
@@ -101,13 +96,18 @@ WHAT THIS IS
   primary (NINA) machine. Runs a small web server on http://localhost:8182/.
 
 INSTALL
-  1. Unzip this folder anywhere (e.g. C:\Tools\NightSummaryCompanion).
+  1. NightSummaryCompanion.exe is a single self-contained app -- you can move it
+     anywhere (Desktop, C:\Tools, pin it to the taskbar). No other files needed;
+     this README is just documentation.
   2. Double-click "NightSummaryCompanion.exe". It runs in the background with no
-     console window.
+     console window. (First launch unpacks once, so it may take a second.)
   3. First run: Windows SmartScreen may warn ("Windows protected your PC").
      Click "More info" -> "Run anyway". This is expected for unsigned apps;
      the companion is open source and unsigned by design.
   4. A browser tab opens to the setup wizard. Pair it with your primary machine.
+
+  Config + synced data live in %LOCALAPPDATA%\NightSummaryCompanion (not next to
+  the exe), so moving or replacing the exe never loses your settings or history.
 
 STOP / RESTART
   - Stop: use the dashboard's Quit button (Settings -> Companion process), or end

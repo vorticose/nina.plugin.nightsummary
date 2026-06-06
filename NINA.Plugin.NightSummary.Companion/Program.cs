@@ -395,9 +395,24 @@ On first run a default companion.json is written and the program exits so you ca
     }
 
     private static string DefaultConfigPath() {
-        // AppContext.BaseDirectory is the right call under PublishSingleFile
-        // (Assembly.Location returns empty there).
-        return Path.Combine(AppContext.BaseDirectory, "companion.json");
+        // 1. Honor a companion.json sitting next to the REAL executable (a
+        //    folder-style install, or a user who dropped one beside the exe).
+        //    Use Environment.ProcessPath, NOT AppContext.BaseDirectory — with
+        //    single-file self-extract BaseDirectory is a volatile per-run temp
+        //    dir, never where the user keeps their config.
+        var exeDir = Path.GetDirectoryName(Environment.ProcessPath);
+        if (!string.IsNullOrEmpty(exeDir)) {
+            var beside = Path.Combine(exeDir, "companion.json");
+            if (File.Exists(beside)) return beside;
+        }
+        // 2. Otherwise default into the per-user data dir, so a portable single-
+        //    file exe (dropped on the Desktop, pinned to the taskbar, run from
+        //    anywhere) keeps its config with its data instead of next to the exe.
+        //    Matches CompanionConfig.ResolvedDataDir()'s default base.
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrEmpty(appData))
+            appData = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return Path.Combine(appData, "NightSummaryCompanion", "companion.json");
     }
 
     private static string? ResolveArg(string[] args, string name) {

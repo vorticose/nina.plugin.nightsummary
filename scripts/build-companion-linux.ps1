@@ -4,8 +4,7 @@
 #
 # Layout inside the tar.gz:
 #   NightSummaryCompanion/
-#     NightSummaryCompanion-bin        <- the real self-contained .NET binary
-#     libe_sqlite3.so  libSkiaSharp.so <- native deps (PublishSingleFile keeps them external)
+#     NightSummaryCompanion-bin        <- self-contained .NET binary (natives baked in)
 #     NightSummaryCompanion            <- bash watchdog (respawn on exit 88, quit on 0)
 #     companion.png                    <- app-menu / launcher icon (256px)
 #     nightsummary-companion.desktop   <- desktop-entry template (@DIR@ placeholder)
@@ -83,12 +82,10 @@ $appDir = Join-Path $staging 'NightSummaryCompanion'
 New-Item -ItemType Directory -Path $appDir -Force | Out-Null
 
 Copy-Item "$publishDir/NightSummaryCompanion" "$appDir/NightSummaryCompanion-bin"
-
-# Copy ALL native .so the publish emitted (libe_sqlite3.so + libSkiaSharp.so).
-$sos = Get-ChildItem "$publishDir/*.so"
-if (-not $sos) { throw "no native .so found in $publishDir -- expected libe_sqlite3.so + libSkiaSharp.so" }
-Copy-Item $sos.FullName $appDir/
-Write-Host ("  bundled natives: " + (($sos.Name) -join ', '))
+# Natives (libe_sqlite3.so + libSkiaSharp.so) are baked INTO the binary via
+# IncludeNativeLibrariesForSelfExtract, so there are no sibling .so files to copy
+# -- the -bin is fully self-contained (system libfontconfig1/libfreetype6 are
+# still required at runtime; install.sh checks for them).
 
 # App icon (PNG). install.sh writes a .desktop entry that points Icon= at this
 # file by absolute path, so it shows in the app menu / launcher with no icon-

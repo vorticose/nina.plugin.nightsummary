@@ -39,7 +39,7 @@ Native-feeling install + launch experience for the standalone Companion app on a
 **New features**
 - **Real app icon on every platform** — the Companion now carries the Night Summary brand icon: an embedded `.ico` on the Windows launcher (Explorer + taskbar), a `.icns` in the macOS `.app` (Finder / Login Items), and a `.desktop` entry + PNG on Linux (app menu / launcher, registered by `install.sh`).
 - **Start at login** — a one-click toggle in the Companion's Settings tab enables autostart with no admin rights or code-signing: a Startup-folder shortcut on Windows, a LaunchAgent on macOS, and a `systemd --user` unit on Linux.
-- **One-file Windows launcher** — `NightSummaryCompanion.exe` is now a windowless (no console) app you double-click directly. It replaces the previous `.vbs` + `.cmd` pair; the dashboard Restart button is handled in-process by a self-respawn.
+- **One-file Windows launcher** — `NightSummaryCompanion.exe` is now a single windowless (no console) app you double-click directly, with the native dependencies baked in so you can drop it anywhere (Desktop, pin to taskbar) — no surrounding folder required. It replaces the previous `.vbs` + `.cmd` pair; the dashboard Restart button is handled in-process by a self-respawn. Config + synced data live in `%LOCALAPPDATA%\NightSummaryCompanion`, so moving or updating the exe never loses settings or history. (The macOS `.app` and Linux binary are likewise fully self-contained.)
 
 **Improvements**
 - Settings tab process-control wording, the Quit/Restart confirmations, and the autostart status now match the OS the companion is actually running on (no more macOS "Applications folder" text on Windows/Linux).
