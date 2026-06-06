@@ -509,6 +509,15 @@ namespace NINA.Plugin.NightSummary.Server {
             primaryLastCheckedUtc = s.PrimaryLastCheckedUtc?.ToString("o"),
             isComplete            = c.IsComplete,
             incompleteReason      = c.IncompleteReason,
+            // Live sync progress (null when idle) so the wizard/dashboard can show
+            // a moving phase + byte indicator instead of a silent spinner.
+            progress              = s.Progress == null ? null : new {
+                phase          = s.Progress.Phase,
+                step           = s.Progress.Step,
+                totalSteps     = s.Progress.TotalSteps,
+                bytesThisPhase = s.Progress.BytesThisPhase,
+                detail         = s.Progress.Detail,
+            },
         };
     }
 }

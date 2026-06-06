@@ -66,6 +66,36 @@ public sealed class SyncEngine {
         lock (_httpGate) { _http = fresh; }
     }
 
+    // Live progress callback, set by the controller. Invoked on phase changes
+    // and periodically during the big streamed downloads so the setup wizard can
+    // show a moving indicator. Null = nobody's listening (e.g. CLI sync).
+    public Action<CompanionSyncProgress>? OnProgress { get; set; }
+
+    // User-facing phases the wizard counts through. Kept coarse on purpose — the
+    // engine has ~11 internal steps, but the user only cares about the big ones.
+    private const int TotalPhases = 5;
+
+    private void Report(int step, string phase, long bytes = 0, string? detail = null) {
+        try { OnProgress?.Invoke(new CompanionSyncProgress(phase, step, TotalPhases, bytes, detail)); }
+        catch { /* progress is best-effort — never let it break a sync */ }
+    }
+
+    // CopyToAsync that emits byte progress for the current phase every ~512 KB.
+    // Used for the three large transfers (reports zip, DB, thumbs zip) so a
+    // multi-minute pull doesn't look frozen on a single phase label.
+    private async Task CopyWithProgressAsync(System.IO.Stream src, System.IO.Stream dst,
+                                             int step, string phase, CancellationToken ct) {
+        var buffer = new byte[81920];
+        long total = 0, lastReport = 0;
+        int read;
+        while ((read = await src.ReadAsync(buffer.AsMemory(0, buffer.Length), ct)) > 0) {
+            await dst.WriteAsync(buffer.AsMemory(0, read), ct);
+            total += read;
+            if (total - lastReport >= 524288) { Report(step, phase, total); lastReport = total; }
+        }
+        Report(step, phase, total);
+    }
+
     public sealed record SyncResult(
         bool Reachable,
         bool Success,
@@ -88,6 +118,7 @@ public sealed class SyncEngine {
 
         try {
             // 1 — Reachability + schema check
+            Report(1, "Connecting to your imaging rig");
             var (reachable, primaryVersion, primarySchema) = await CheckHealthAsync(ct);
             state.PrimaryVersion = primaryVersion;
             state.PrimarySchema  = primarySchema;
@@ -103,13 +134,15 @@ public sealed class SyncEngine {
             _log.Info($"Sync: remote manifest reports {manifest.Files.Length} file(s)");
 
             // 3 — Incremental reports zip
-            var (added, updated) = await PullReportsZipAsync(state.LastReportMtimeUtc, ct);
+            Report(2, "Downloading reports");
+            var (added, updated) = await PullReportsZipAsync(state.LastReportMtimeUtc, ct, 2, "Downloading reports");
 
             // 4 — Main DB
-            var dbBytes = await PullSqliteAsync("/api/export/database", _paths.DatabasePath, ct);
+            Report(3, "Downloading database");
+            var dbBytes = await PullSqliteAsync("/api/export/database", _paths.DatabasePath, ct, 3, "Downloading database");
 
             // 5 — TS DB (optional)
-            var tsBytes = await TryPullSqliteAsync("/api/export/ts-database", _paths.TsDatabasePath, ct);
+            var tsBytes = await TryPullSqliteAsync("/api/export/ts-database", _paths.TsDatabasePath, ct, 3, "Downloading database");
 
             // 6a — Reports orphan reconcile (only when manifest is non-empty — never nuke on bad response)
             int deleted = manifest.Files.Length > 0
@@ -132,14 +165,16 @@ public sealed class SyncEngine {
             // 6b — Thumbs: separate manifest + zip + orphan pass. Primary may
             // not have raw thumbnails enabled (older sessions, feature off) — the
             // server returns an empty manifest/zip in that case and we no-op.
+            Report(4, "Downloading thumbnails");
             var thumbsManifest = await FetchThumbsManifestAsync(since: null, ct);
             _log.Info($"Sync: remote thumbs manifest reports {thumbsManifest.Files.Length} file(s)");
-            var (tAdded, tUpdated) = await PullThumbsZipAsync(state.LastThumbMtimeUtc, ct);
+            var (tAdded, tUpdated) = await PullThumbsZipAsync(state.LastThumbMtimeUtc, ct, 4, "Downloading thumbnails");
             int tDeleted = thumbsManifest.Files.Length > 0
                 ? DeleteThumbOrphans(thumbsManifest)
                 : 0;
 
             // 7 — Persist
+            Report(5, "Finishing up");
             var maxMtime = manifest.Files.Length > 0
                 ? manifest.Files.Max(f => f.Mtime).ToUniversalTime()
                 : (DateTime?)null;
@@ -198,7 +233,8 @@ public sealed class SyncEngine {
 
     // ── Step 3: reports zip ─────────────────────────────────────────────────
 
-    private async Task<(int added, int updated)> PullReportsZipAsync(DateTime? since, CancellationToken ct) {
+    private async Task<(int added, int updated)> PullReportsZipAsync(DateTime? since, CancellationToken ct,
+                                                                     int step, string phase) {
         var url = "/api/export/reports";
         if (since.HasValue) url += "?since=" + Uri.EscapeDataString(since.Value.ToString("o"));
 
@@ -209,7 +245,7 @@ public sealed class SyncEngine {
                 using var src = await resp.Content.ReadAsStreamAsync(ct);
                 using var dst = new FileStream(tempZip, FileMode.Create, FileAccess.Write, FileShare.None,
                                                81920, useAsync: true);
-                await src.CopyToAsync(dst, ct);
+                await CopyWithProgressAsync(src, dst, step, phase, ct);
             }
 
             int added = 0, updated = 0;
@@ -254,7 +290,8 @@ public sealed class SyncEngine {
 
     // ── Step 4 & 5: SQLite snapshots ────────────────────────────────────────
 
-    private async Task<long> PullSqliteAsync(string url, string destPath, CancellationToken ct) {
+    private async Task<long> PullSqliteAsync(string url, string destPath, CancellationToken ct,
+                                             int step, string phase) {
         var temp = destPath + ".incoming";
         try {
             using (var resp = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct)) {
@@ -262,7 +299,7 @@ public sealed class SyncEngine {
                 using var src = await resp.Content.ReadAsStreamAsync(ct);
                 using var dst = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None,
                                                81920, useAsync: true);
-                await src.CopyToAsync(dst, ct);
+                await CopyWithProgressAsync(src, dst, step, phase, ct);
             }
             // Atomic replace — never leave a half-written DB at the canonical path
             if (File.Exists(destPath)) File.Replace(temp, destPath, destPath + ".bak", ignoreMetadataErrors: true);
@@ -274,7 +311,8 @@ public sealed class SyncEngine {
         }
     }
 
-    private async Task<long> TryPullSqliteAsync(string url, string destPath, CancellationToken ct) {
+    private async Task<long> TryPullSqliteAsync(string url, string destPath, CancellationToken ct,
+                                                int step, string phase) {
         try {
             using var resp = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
             if (resp.StatusCode == System.Net.HttpStatusCode.NotFound) {
@@ -289,7 +327,7 @@ public sealed class SyncEngine {
                 using (var src = await resp.Content.ReadAsStreamAsync(ct))
                 using (var dst = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None,
                                                 81920, useAsync: true)) {
-                    await src.CopyToAsync(dst, ct);
+                    await CopyWithProgressAsync(src, dst, step, phase, ct);
                 }
                 if (File.Exists(destPath)) File.Replace(temp, destPath, destPath + ".bak", ignoreMetadataErrors: true);
                 else                       File.Move(temp, destPath);
@@ -393,7 +431,8 @@ public sealed class SyncEngine {
 
     // Same approach as PullReportsZipAsync but rooted at ThumbsRoot. Thumbnails
     // are JPEGs — already compressed — so the server uses CompressionLevel.NoCompression.
-    private async Task<(int added, int updated)> PullThumbsZipAsync(DateTime? since, CancellationToken ct) {
+    private async Task<(int added, int updated)> PullThumbsZipAsync(DateTime? since, CancellationToken ct,
+                                                                    int step, string phase) {
         var root = _paths.ThumbsRoot;
         if (string.IsNullOrEmpty(root)) return (0, 0);
 
@@ -409,7 +448,7 @@ public sealed class SyncEngine {
                 using var src = await resp.Content.ReadAsStreamAsync(ct);
                 using var dst = new FileStream(tempZip, FileMode.Create, FileAccess.Write, FileShare.None,
                                                81920, useAsync: true);
-                await src.CopyToAsync(dst, ct);
+                await CopyWithProgressAsync(src, dst, step, phase, ct);
             }
 
             Directory.CreateDirectory(root);

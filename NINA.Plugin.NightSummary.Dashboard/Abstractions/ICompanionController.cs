@@ -132,6 +132,17 @@ public sealed record CompanionConfigTestResult(
     int? Schema,
     string? Error);
 
+// Live progress of an in-flight sync, surfaced so the setup wizard (and the
+// dashboard) can show a moving indicator instead of a silent spinner. Null when
+// no sync is running. BytesThisPhase is the cumulative bytes streamed in the
+// CURRENT phase (resets each phase); 0 for phases that aren't a download.
+public sealed record CompanionSyncProgress(
+    string Phase,
+    int Step,
+    int TotalSteps,
+    long BytesThisPhase,
+    string? Detail);
+
 // Snapshot of companion sync state. Times are UTC; UI converts to local.
 public sealed record CompanionSyncStatus(
     DateTime? LastAttemptUtc,
@@ -152,4 +163,7 @@ public sealed record CompanionSyncStatus(
     // Lets the banner flip to "online" within ~minute of the primary coming back,
     // independent of whether a sync is currently due.
     bool? PrimaryReachable,
-    DateTime? PrimaryLastCheckedUtc);
+    DateTime? PrimaryLastCheckedUtc,
+    // Live phase/byte progress while IsRunning; null when idle. Trailing optional
+    // so existing positional constructions keep compiling.
+    CompanionSyncProgress? Progress = null);

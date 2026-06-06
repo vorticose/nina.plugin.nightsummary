@@ -49,6 +49,12 @@
         el.className = 'status' + (kind ? ' ' + kind : '');
     }
 
+    function fmtBytes(n) {
+        if (!n || n < 1024) return '';
+        const mb = n / 1048576;
+        return mb >= 1 ? mb.toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB';
+    }
+
     // ── API calls ────────────────────────────────────────────────────────
 
     async function probePrimary(host, port) {
@@ -238,23 +244,48 @@
         $('syncProgress').textContent = 'Starting sync…';
         setStatus('syncStatus', null);
 
+        const bar = $('syncBar'), fill = $('syncBarFill');
+        if (bar) bar.hidden = false;
+        if (fill) fill.style.width = '0%';
+
+        // The POST below blocks until the whole sync finishes. Poll /status on a
+        // fast cadence in parallel so the user sees a moving phase + byte counter
+        // instead of a frozen "Starting sync…". The controller coalesces, so the
+        // poll never spawns a second sync.
+        let finished = false;
+        const poll = setInterval(async () => {
+            if (finished) return;
+            try {
+                const s = await pollStatus();
+                if (!s || !s.isRunning || !s.progress) return;
+                const p = s.progress;
+                const mb = fmtBytes(p.bytesThisPhase);
+                $('syncProgress').textContent =
+                    (p.totalSteps ? `Step ${p.step} of ${p.totalSteps} — ` : '') +
+                    (p.phase || 'Working') + '…' + (mb ? '  ' + mb : '');
+                if (fill && p.totalSteps) fill.style.width = Math.round((p.step / p.totalSteps) * 100) + '%';
+            } catch (e) { /* transient — keep polling */ }
+        }, 500);
+
         try {
-            const r = await triggerSync();
-            // The trigger response IS the final state — coalesced inside the
-            // controller, so we don't need to poll separately. Surface any
-            // sync error verbatim; the wizard exposes Retry on failure.
+            const r = await triggerSync();   // resolves to the final coalesced state
+            finished = true; clearInterval(poll);
             if (r.lastError) {
+                if (bar) bar.hidden = true;
                 $('syncProgress').textContent = 'Sync failed.';
                 setStatus('syncStatus', r.lastError, 'error');
                 $('retryBtn').hidden = false;
                 $('goDashboardBtn').hidden = false; // user can still proceed; manual sync available
                 return;
             }
+            if (fill) fill.style.width = '100%';
             $('syncProgress').textContent =
                 `✓ Setup complete — pulled ${r.filesAdded || 0} files, ${r.thumbsAdded || 0} thumbnails.`;
             setStatus('syncStatus', 'Redirecting to the dashboard…', 'success');
             setTimeout(() => { window.location.href = '/'; }, 1500);
         } catch (e) {
+            finished = true; clearInterval(poll);
+            if (bar) bar.hidden = true;
             $('syncProgress').textContent = 'Sync failed.';
             setStatus('syncStatus', e.message || String(e), 'error');
             $('retryBtn').hidden = false;

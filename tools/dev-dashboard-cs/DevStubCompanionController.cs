@@ -21,6 +21,7 @@ internal sealed class DevStubCompanionController : ICompanionController {
     private readonly DevDashboardLogger _log;
     private readonly object _gate = new();
     private bool _syncing;
+    private CompanionSyncProgress? _progress;
     private DateTime _lastAttemptUtc = DateTime.UtcNow.AddMinutes(-15);
     private DateTime _lastSuccessUtc = DateTime.UtcNow.AddMinutes(-15);
     private DateTime _lastPingUtc    = DateTime.UtcNow;
@@ -52,7 +53,8 @@ internal sealed class DevStubCompanionController : ICompanionController {
                 ThumbsDeleted:         0,
                 IsRunning:             _syncing,
                 PrimaryReachable:      _primaryReachable,
-                PrimaryLastCheckedUtc: _lastPingUtc);
+                PrimaryLastCheckedUtc: _lastPingUtc,
+                Progress:              _syncing ? _progress : null);
         }
     }
 
@@ -62,10 +64,25 @@ internal sealed class DevStubCompanionController : ICompanionController {
             _syncing = true;
             _lastAttemptUtc = DateTime.UtcNow;
         }
-        _log.Info("[stub-companion] TriggerSyncAsync — pretending to sync for 500ms");
-        try { await Task.Delay(500, ct); } catch { }
+        _log.Info("[stub-companion] TriggerSyncAsync — simulating a phased sync");
+        // Walk the same phases the real SyncEngine reports so the wizard's
+        // progress UI can be exercised end-to-end in the dev harness.
+        var phases = new (string phase, long bytes)[] {
+            ("Connecting to your imaging rig", 0),
+            ("Downloading reports",            3_100_000),
+            ("Downloading database",           2_500_000),
+            ("Downloading thumbnails",         12_400_000),
+            ("Finishing up",                   0),
+        };
+        try {
+            for (int i = 0; i < phases.Length; i++) {
+                lock (_gate) _progress = new CompanionSyncProgress(phases[i].phase, i + 1, phases.Length, phases[i].bytes, null);
+                await Task.Delay(800, ct);
+            }
+        } catch { }
         lock (_gate) {
             _syncing = false;
+            _progress = null;
             _lastSuccessUtc = DateTime.UtcNow;
         }
         return GetStatus();

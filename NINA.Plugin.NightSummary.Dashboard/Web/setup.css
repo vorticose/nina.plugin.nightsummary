@@ -256,6 +256,25 @@ button:disabled {
     cursor: not-allowed;
 }
 
+/* ── First-sync progress bar ────────────────────────────────────────── */
+
+.sync-bar {
+    height: 8px;
+    border-radius: 999px;
+    background: var(--surface-well, var(--border));
+    overflow: hidden;
+    margin: 4px 0 14px;
+}
+
+.sync-bar-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 999px;
+    background: var(--accent);
+    box-shadow: 0 0 6px rgba(var(--accent-rgb), 0.5);
+    transition: width 0.4s ease;
+}
+
 /* ── Status banner ──────────────────────────────────────────────────── */
 
 .status {
