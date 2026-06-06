@@ -9582,6 +9582,37 @@ function renderSettingsPage() {
   });
 }
 
+// How the user brings the companion back after a Quit, phrased for the OS the
+// companion is actually running on (c.os from the config payload). Avoids the
+// macOS-only "Applications folder" language leaking onto Windows/Linux.
+function companionRelaunchPhrase(os) {
+  switch (os) {
+    case 'windows':
+      return 'double-click "Start NightSummaryCompanion.vbs" in the folder you unzipped';
+    case 'linux':
+      return 'run NightSummaryCompanion from where you installed it';
+    case 'macos':
+      return 'open NightSummaryCompanion from your Applications folder';
+    default:
+      return 'relaunch NightSummaryCompanion';
+  }
+}
+
+// Hover tooltip for the autostart toggle, describing what was installed, per OS
+// mechanism string returned by /api/companion/autostart.
+function autostartTooltip(mechanism) {
+  switch (mechanism) {
+    case 'Startup shortcut':
+      return 'Added a shortcut to your Windows Startup folder so the companion launches when you sign in.';
+    case 'LaunchAgent':
+      return 'Installed a macOS Login Item (LaunchAgent) so the companion launches when you sign in.';
+    case 'systemd --user':
+      return 'Enabled a systemd user service so the companion launches when you sign in.';
+    default:
+      return 'The companion will launch automatically when you sign in.';
+  }
+}
+
 function settingsHtml(c) {
   var setupBanner = c.isComplete ? '' :
     '<div class="settings-card is-setup"><strong>Setup required</strong><p>' +
@@ -9651,16 +9682,16 @@ function settingsHtml(c) {
           '<input type="checkbox" id="cfg-acceptpush"' + (c.acceptPush !== false ? ' checked' : '') + '>' +
           '<span>Accept push notifications from NINA</span>' +
         '</label>' +
+        '<label class="settings-row settings-row-inline">' +
+          '<input type="checkbox" id="cfg-onboot"' + (c.onBoot ? ' checked' : '') + '>' +
+          '<span>Sync when the companion starts</span>' +
+        '</label>' +
 
         '<h2>Scheduled poll</h2>' +
         '<p class="settings-hint">Backup sync that runs on a fixed interval in case a push is missed (companion offline, network drop). Failure retries are automatic and faster.</p>' +
         '<label class="settings-row">' +
           '<span class="settings-label">Sync every <span class="settings-hint">Hours between scheduled syncs</span></span>' +
           '<input type="number" id="cfg-hours" value="' + (c.pollingIntervalHoursOnSuccess || 4) + '" min="1" max="168">' +
-        '</label>' +
-        '<label class="settings-row settings-row-inline">' +
-          '<input type="checkbox" id="cfg-onboot"' + (c.onBoot ? ' checked' : '') + '>' +
-          '<span>Also sync when the companion starts</span>' +
         '</label>' +
 
         '<h2>This companion</h2>' +
@@ -9700,7 +9731,7 @@ function settingsHtml(c) {
       '</div>' +
       '<div class="settings-card">' +
         '<h2>Companion process</h2>' +
-        '<p class="settings-hint">Restart applies a port change or refreshes the in-memory state. Quit stops the companion entirely — relaunch the app from the Applications folder to bring it back.</p>' +
+        '<p class="settings-hint">Restart applies a port change or refreshes the in-memory state. Quit stops the companion entirely — to bring it back, ' + esc(companionRelaunchPhrase(c.os)) + '.</p>' +
         '<div class="settings-actions">' +
           '<div class="settings-status" id="proc-status"></div>' +
           '<button type="button" class="settings-btn" id="cfg-restart">Restart companion</button>' +
@@ -9763,10 +9794,12 @@ function bindSettingsForm(initial) {
   // packaging (dev build / no launcher), and POSTs enable/disable on change.
   var autostartEl = document.getElementById('cfg-autostart');
   var autostartStatus = document.getElementById('autostart-status');
-  function setAutostartStatus(text, cls) {
+  function setAutostartStatus(text, cls, tip) {
     if (!autostartStatus) return;
     autostartStatus.textContent = text || '';
     autostartStatus.className = 'settings-status' + (cls ? ' ' + cls : '');
+    autostartStatus.title = tip || '';
+    autostartStatus.style.cursor = tip ? 'help' : '';
   }
   if (autostartEl) {
     fetch('/api/companion/autostart').then(function(r){ return r.json(); }).then(function(j){
@@ -9776,7 +9809,8 @@ function bindSettingsForm(initial) {
         return;
       }
       autostartEl.checked = !!j.enabled;
-      setAutostartStatus(j.enabled ? ('On · ' + (j.mechanism || '')) : '', j.enabled ? 'is-ok' : '');
+      setAutostartStatus(j.enabled ? 'Enabled' : '', j.enabled ? 'is-ok' : '',
+        j.enabled ? autostartTooltip(j.mechanism) : '');
     }).catch(function(){ /* leave default */ });
 
     autostartEl.addEventListener('change', function() {
@@ -9789,9 +9823,8 @@ function bindSettingsForm(initial) {
       }).then(function(r){ return r.json(); }).then(function(j){
         if (j.ok) {
           autostartEl.checked = !!j.enabled;
-          var msg = j.enabled ? ('On · ' + (j.mechanism || '')) : 'Off';
-          if (j.detail) msg += ' · ' + j.detail;
-          setAutostartStatus(msg, j.enabled ? 'is-ok' : '');
+          setAutostartStatus(j.enabled ? 'Enabled' : 'Off', j.enabled ? 'is-ok' : '',
+            j.enabled ? autostartTooltip(j.mechanism) : '');
         } else {
           autostartEl.checked = !want;
           setAutostartStatus('Failed: ' + (j.error || j.detail || 'unknown'), 'is-error');
@@ -9934,7 +9967,7 @@ function bindSettingsForm(initial) {
               }
             },
             onTimeout: function() {
-              setProcStatus('Companion did not come back in 60s. Check Console.app or relaunch the app.', 'is-error');
+              setProcStatus('Companion did not come back in 60s. Check the logs, or ' + companionRelaunchPhrase(initial && initial.os) + '.', 'is-error');
               restartBtn.disabled = false;
               quitBtn && (quitBtn.disabled = false);
             },
@@ -9950,7 +9983,7 @@ function bindSettingsForm(initial) {
 
   if (quitBtn) {
     quitBtn.addEventListener('click', function() {
-      if (!confirm('Quit the companion? The dashboard will go offline. To restart, open NightSummaryCompanion from your Applications folder.')) return;
+      if (!confirm('Quit the companion? The dashboard will go offline. To bring it back, ' + companionRelaunchPhrase(initial && initial.os) + '.')) return;
       setProcStatus('Stopping companion…', '');
       restartBtn && (restartBtn.disabled = true);
       quitBtn.disabled = true;
@@ -9963,7 +9996,7 @@ function bindSettingsForm(initial) {
       }).catch(function(){ /* fall back to window.location.port */ }).finally(function() {
         fetch('/api/companion/quit', { method: 'POST' })
           .then(function(){
-            setTimeout(function(){ swapToStoppedPage(savedPort); }, 500);
+            setTimeout(function(){ swapToStoppedPage(savedPort, initial && initial.os); }, 500);
           })
           .catch(function(err){
             setProcStatus('Quit request failed: ' + (err.message || 'network error'), 'is-error');
@@ -9974,7 +10007,7 @@ function bindSettingsForm(initial) {
     });
   }
 
-  function swapToStoppedPage(savedPort) {
+  function swapToStoppedPage(savedPort, os) {
     // Replaces the whole document with a stopped-state page that includes
     // a Reconnect button. Reconnect probes http://currentHost:savedPort
     // until /api/health responds, then navigates there. Auto-polls in the
@@ -9984,7 +10017,7 @@ function bindSettingsForm(initial) {
       '<div style="font-family:-apple-system,system-ui,sans-serif;max-width:480px;margin:80px auto;padding:24px;border:1px solid #ccc;border-radius:8px;text-align:center;">' +
         '<h2>Companion stopped</h2>' +
         '<p>The companion server is no longer running.</p>' +
-        '<p>To restart: open <strong>NightSummaryCompanion</strong> from your Applications folder.</p>' +
+        '<p>To restart, ' + companionRelaunchPhrase(os) + '.</p>' +
         '<p id="reconnect-status" style="color:#888;font-size:13px;margin-top:16px;">Watching for companion on port ' + savedPort + '…</p>' +
         '<button id="reconnect-btn" style="margin-top:12px;padding:8px 16px;font-size:14px;cursor:pointer;">Reconnect now</button>' +
       '</div>';

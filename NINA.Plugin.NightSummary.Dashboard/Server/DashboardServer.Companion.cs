@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -169,7 +170,20 @@ namespace NINA.Plugin.NightSummary.Server {
             acceptPush                      = s.AcceptPush,
             enableReadOnlyMirror            = s.EnableReadOnlyMirror,
             readOnlyMirrorPort              = s.ReadOnlyMirrorPort,
+            // OS the companion is running on, so the dashboard can localize
+            // process-control language (e.g. "Applications folder" on macOS vs
+            // "wherever you unzipped it" on Windows). "windows" | "macos" | "linux".
+            os                              = OsName(),
         };
+
+        // Coarse OS bucket for UI string localization. Matches the three
+        // platforms the companion ships builds for.
+        private static string OsName() {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return "windows";
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))     return "macos";
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))   return "linux";
+            return "other";
+        }
 
         // POST /api/companion/quit  — companion-only. Returns 200 then exits
         // process with code 0. Watchdog wrapper in the .app sees the clean
