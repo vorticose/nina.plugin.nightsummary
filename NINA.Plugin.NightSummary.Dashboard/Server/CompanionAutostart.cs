@@ -41,10 +41,19 @@ namespace NINA.Plugin.NightSummary.Server {
             if (string.IsNullOrEmpty(dir))     { detail = "process directory unavailable"; return null; }
 
             string launcher;
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) {
                 launcher = binPath; // the WinExe is its own double-click target (no .vbs/.cmd)
-            else
-                launcher = Path.Combine(dir, "NightSummaryCompanion"); // mac + linux watchdog
+            } else {
+                // Running from a Linux AppImage? $APPIMAGE is the STABLE path to the
+                // .AppImage file; the mount dir (where ProcessPath lives) is a fresh
+                // temp path each run, so an autostart unit must target the AppImage
+                // file itself, not the throwaway mount.
+                var appImage = Environment.GetEnvironmentVariable("APPIMAGE");
+                if (!string.IsNullOrEmpty(appImage) && File.Exists(appImage))
+                    launcher = appImage;
+                else
+                    launcher = Path.Combine(dir, "NightSummaryCompanion"); // mac + linux tarball watchdog
+            }
 
             if (!File.Exists(launcher)) {
                 detail = $"launcher not found at {launcher} (running unpackaged / dev build?)";

@@ -40,7 +40,8 @@ jobs:
             platform: linux
             arch: x64
             script: build-companion-linux.ps1
-            artifact: build/companion-linux/*.tar.gz
+            # Matches both the tarball and the AppImage; excludes appimagetool-*.
+            artifact: build/companion-linux/NightSummaryCompanion-*
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -52,6 +53,12 @@ jobs:
       - name: Build companion (${{ matrix.platform }}-${{ matrix.arch }})
         shell: pwsh
         run: ./scripts/${{ matrix.script }} -Arch ${{ matrix.arch }}
+
+      # Linux also gets a double-click AppImage (idiomatic single-file delivery).
+      # ubuntu-latest has `file`; --appimage-extract-and-run avoids needing FUSE.
+      - name: Pack Linux AppImage
+        if: matrix.platform == 'linux'
+        run: bash scripts/build-companion-appimage.sh
 
       - name: Verify mac bundle is signed
         if: matrix.platform == 'mac'
