@@ -136,6 +136,19 @@ done
         ($watchdog -replace "`r`n", "`n"),
         (New-Object System.Text.UTF8Encoding $false))
 
+    # 2b. App icon. Drop the committed .icns into Contents/Resources and point
+    # CFBundleIconFile at it (below). LSUIElement=true means no Dock icon, but
+    # the .icns is what Finder shows for the .app and what appears in System
+    # Settings -> General -> Login Items / "Allow in the Background".
+    $resources = Join-Path $contents 'Resources'
+    New-Item -ItemType Directory -Path $resources -Force | Out-Null
+    $icnsSrc = Join-Path $repoRoot 'assets/companion-icon/companion.icns'
+    if (Test-Path $icnsSrc) {
+        Copy-Item $icnsSrc (Join-Path $resources 'companion.icns')
+    } else {
+        Write-Host "  WARNING: $icnsSrc missing -- bundle will use the generic app icon" -ForegroundColor Yellow
+    }
+
     # 3. Info.plist
     #
     # LSUIElement=true makes the app a UI Agent -- no dock icon, no menu bar.
@@ -157,6 +170,7 @@ done
     <key>CFBundleVersion</key>               <string>$version</string>
     <key>CFBundleShortVersionString</key>    <string>$version</string>
     <key>CFBundleExecutable</key>            <string>NightSummaryCompanion</string>
+    <key>CFBundleIconFile</key>              <string>companion</string>
     <key>CFBundlePackageType</key>           <string>APPL</string>
     <key>CFBundleInfoDictionaryVersion</key> <string>6.0</string>
     <key>LSUIElement</key>                   <true/>

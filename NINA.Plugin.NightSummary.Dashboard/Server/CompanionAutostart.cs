@@ -42,7 +42,7 @@ namespace NINA.Plugin.NightSummary.Server {
 
             string launcher;
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                launcher = Path.Combine(dir, "Start NightSummaryCompanion.vbs");
+                launcher = binPath; // the WinExe is its own double-click target (no .vbs/.cmd)
             else
                 launcher = Path.Combine(dir, "NightSummaryCompanion"); // mac + linux watchdog
 
@@ -152,15 +152,17 @@ $@"<?xml version=""1.0"" encoding=""UTF-8""?>
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup),
                          "Night Summary Companion.lnk");
 
-        private static (bool, string?) WinEnable(string vbsLauncher) {
+        private static (bool, string?) WinEnable(string exeLauncher) {
             var lnk = WinShortcutPath();
             // Create the .lnk via WScript.Shell COM through PowerShell (no COM ref
-            // needed, no admin). Target = wscript.exe running the hidden .vbs, so
-            // there's no console window and the working dir stays the app folder.
+            // needed, no admin). Target = the WinExe launcher itself — it has no
+            // console (WinExe subsystem) and carries the embedded brand icon, so
+            // the shortcut inherits the icon automatically. Working dir stays the
+            // app folder so the bundled native dlls resolve.
             var ps =
                 "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('" + lnk.Replace("'", "''") + "');" +
-                "$s.TargetPath='" + vbsLauncher.Replace("'", "''") + "';" +
-                "$s.WorkingDirectory='" + (Path.GetDirectoryName(vbsLauncher) ?? "").Replace("'", "''") + "';" +
+                "$s.TargetPath='" + exeLauncher.Replace("'", "''") + "';" +
+                "$s.WorkingDirectory='" + (Path.GetDirectoryName(exeLauncher) ?? "").Replace("'", "''") + "';" +
                 "$s.Description='Night Summary Companion';" +
                 "$s.Save()";
             if (Run("powershell", $"-NoProfile -NonInteractive -Command \"{ps}\"") && File.Exists(lnk))

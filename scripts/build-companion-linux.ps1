@@ -7,7 +7,9 @@
 #     NightSummaryCompanion-bin        <- the real self-contained .NET binary
 #     libe_sqlite3.so  libSkiaSharp.so <- native deps (PublishSingleFile keeps them external)
 #     NightSummaryCompanion            <- bash watchdog (respawn on exit 88, quit on 0)
-#     install.sh                       <- checks SkiaSharp prereqs + prints systemd setup
+#     companion.png                    <- app-menu / launcher icon (256px)
+#     nightsummary-companion.desktop   <- desktop-entry template (@DIR@ placeholder)
+#     install.sh                       <- prereqs + registers .desktop + systemd setup
 #     nightsummary-companion.service   <- systemd --user unit template (@DIR@ placeholder)
 #     README.txt
 #
@@ -88,6 +90,16 @@ if (-not $sos) { throw "no native .so found in $publishDir -- expected libe_sqli
 Copy-Item $sos.FullName $appDir/
 Write-Host ("  bundled natives: " + (($sos.Name) -join ', '))
 
+# App icon (PNG). install.sh writes a .desktop entry that points Icon= at this
+# file by absolute path, so it shows in the app menu / launcher with no icon-
+# theme install needed.
+$pngSrc = Join-Path $repoRoot 'assets/companion-icon/companion-256.png'
+if (Test-Path $pngSrc) {
+    Copy-Item $pngSrc (Join-Path $appDir 'companion.png')
+} else {
+    Write-Host "  WARNING: $pngSrc missing -- .desktop will have no icon" -ForegroundColor Yellow
+}
+
 # 3. Bash watchdog launcher -- identical contract to the macOS bundle launcher.
 $watchdog = @'
 #!/bin/bash
@@ -131,6 +143,23 @@ WantedBy=default.target
     ($unit -replace "`r`n", "`n"),
     (New-Object System.Text.UTF8Encoding $false))
 
+# 4b. Desktop entry template. @DIR@ -> install dir (install.sh substitutes).
+#     Exec runs the bash watchdog so the dashboard Restart/Quit contract holds.
+$desktop = @'
+[Desktop Entry]
+Type=Application
+Name=Night Summary Companion
+Comment=Local dashboard mirroring your Night Summary imaging history
+Exec=@DIR@/NightSummaryCompanion serve
+Icon=@DIR@/companion.png
+Terminal=false
+Categories=Utility;Network;
+StartupNotify=false
+'@
+[System.IO.File]::WriteAllText((Join-Path $appDir 'nightsummary-companion.desktop'),
+    ($desktop -replace "`r`n", "`n"),
+    (New-Object System.Text.UTF8Encoding $false))
+
 # 5. install.sh -- prereq check + run/autostart instructions.
 $install = @'
 #!/bin/bash
@@ -154,6 +183,18 @@ if [ -n "$MISSING" ]; then
 fi
 
 chmod +x "$DIR/NightSummaryCompanion" "$DIR/NightSummaryCompanion-bin"
+
+# Register the desktop entry so the companion shows up in the app menu /
+# launcher with its icon. User-scoped (~/.local), no root needed. Re-runnable.
+if [ -f "$DIR/nightsummary-companion.desktop" ]; then
+    APPS_DIR="$HOME/.local/share/applications"
+    mkdir -p "$APPS_DIR"
+    sed "s|@DIR@|$DIR|g" "$DIR/nightsummary-companion.desktop" > "$APPS_DIR/nightsummary-companion.desktop"
+    chmod +x "$APPS_DIR/nightsummary-companion.desktop" 2>/dev/null || true
+    command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$APPS_DIR" 2>/dev/null || true
+    echo "Installed app-menu entry: $APPS_DIR/nightsummary-companion.desktop"
+    echo
+fi
 
 echo "Run now:"
 echo "  $DIR/NightSummaryCompanion serve"

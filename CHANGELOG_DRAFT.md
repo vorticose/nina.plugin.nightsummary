@@ -32,6 +32,20 @@ Pairing-token rollout for the standalone Night Summary Companion app. The shared
 - 85 new tests across `CompanionTokenStoreTests`, `CompanionTokenViewTests`, `CompanionPairingEndpointsTests`, `CompanionAuthShimTests`, `CompanionWizardEndpointsTests`. Full suite at 818 passing.
 
 
+### Companion desktop integration
+
+Native-feeling install + launch experience for the standalone Companion app on all three platforms. Fold into whichever release ships the companion.
+
+**New features**
+- **Real app icon on every platform** — the Companion now carries the Night Summary brand icon: an embedded `.ico` on the Windows launcher (Explorer + taskbar), a `.icns` in the macOS `.app` (Finder / Login Items), and a `.desktop` entry + PNG on Linux (app menu / launcher, registered by `install.sh`).
+- **Start at login** — a one-click toggle in the Companion's Settings tab enables autostart with no admin rights or code-signing: a Startup-folder shortcut on Windows, a LaunchAgent on macOS, and a `systemd --user` unit on Linux.
+- **One-file Windows launcher** — `NightSummaryCompanion.exe` is now a windowless (no console) app you double-click directly. It replaces the previous `.vbs` + `.cmd` pair; the dashboard Restart button is handled in-process by a self-respawn.
+
+**Improvements**
+- Settings tab process-control wording, the Quit/Restart confirmations, and the autostart status now match the OS the companion is actually running on (no more macOS "Applications folder" text on Windows/Linux).
+- The autostart status shows a simple **Enabled** with a hover tooltip explaining what was installed; the "Sync when the companion starts" option moved next to "Accept push notifications."
+
+
 ### Read-Only Mirror + bug fixes
 
 **New features**

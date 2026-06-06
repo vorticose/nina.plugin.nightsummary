@@ -203,6 +203,29 @@ namespace NINA.Plugin.NightSummary.Server {
             return StartAsync(port, addr);
         }
 
+        // Bind the listener, retrying briefly if the port is still held. The
+        // common path binds on the first attempt with zero delay. The retry
+        // only matters on a dashboard-initiated restart, where the outgoing
+        // process may still be releasing the port for a few hundred ms when the
+        // fresh one starts (notably the Windows companion, which self-respawns
+        // with no external watchdog). Without this the new process would die on
+        // SocketException 10048 and the Restart button would appear broken.
+        private void StartListenerWithRetry(TcpListener listener, int port) {
+            const int maxAttempts = 12;   // ~6s worst case at 500ms spacing
+            const int delayMs     = 500;
+            for (int attempt = 1; ; attempt++) {
+                try {
+                    listener.Start();
+                    if (attempt > 1) log?.Info($"Port {port} acquired on attempt {attempt}.");
+                    return;
+                } catch (SocketException ex)
+                      when (ex.SocketErrorCode == SocketError.AddressAlreadyInUse && attempt < maxAttempts) {
+                    log?.Warn($"Port {port} still in use (attempt {attempt}/{maxAttempts}) — retrying in {delayMs}ms…");
+                    Thread.Sleep(delayMs);
+                }
+            }
+        }
+
         private Task StartAsync(int port, IPAddress bindAddress) {
             if (IsRunning) return Task.CompletedTask;
 
@@ -224,7 +247,7 @@ namespace NINA.Plugin.NightSummary.Server {
 
                 cts = new CancellationTokenSource();
                 _tcpListener = new TcpListener(bindAddress, port);
-                _tcpListener.Start();
+                StartListenerWithRetry(_tcpListener, port);
 
                 var hostname = Dns.GetHostName();
                 Url = $"http://{hostname}:{port}";

@@ -9588,7 +9588,7 @@ function renderSettingsPage() {
 function companionRelaunchPhrase(os) {
   switch (os) {
     case 'windows':
-      return 'double-click "Start NightSummaryCompanion.vbs" in the folder you unzipped';
+      return 'double-click NightSummaryCompanion in the folder you unzipped';
     case 'linux':
       return 'run NightSummaryCompanion from where you installed it';
     case 'macos':
