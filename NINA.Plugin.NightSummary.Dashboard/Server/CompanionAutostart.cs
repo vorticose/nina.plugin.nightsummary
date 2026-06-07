@@ -129,6 +129,11 @@ $@"<?xml version=""1.0"" encoding=""UTF-8""?>
     <array><string>{Xml(launcher)}</string><string>serve</string><string>--no-browser</string></array>
     <key>RunAtLoad</key><true/>
     <key>KeepAlive</key><false/>
+    <!-- The launcher detaches the real server and exits at once (so Finder
+         re-clicks relaunch it instead of sending a dead-end reopen event). Without
+         AbandonProcessGroup, launchd would SIGKILL the detached watchdog when the
+         launcher exits. With it true, the background companion survives. -->
+    <key>AbandonProcessGroup</key><true/>
     <key>ProcessType</key><string>Background</string>
     <key>StandardOutPath</key><string>{Xml(Path.Combine(logDir, "launchd.out"))}</string>
     <key>StandardErrorPath</key><string>{Xml(Path.Combine(logDir, "launchd.err"))}</string>
