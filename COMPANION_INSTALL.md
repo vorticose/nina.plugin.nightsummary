@@ -1,10 +1,10 @@
 # Night Summary Companion — Install
 
-The **Companion** is a separate, read-only dashboard app you run on another computer
-(Mac, Windows, or Linux). It syncs a copy of your Night Summary sessions from the
-machine running NINA and serves the same dashboard — so you can browse your imaging
-history from the couch, another room, or anywhere on your network, without touching
-the imaging rig.
+The **Companion** is a standalone dashboard app you run on another computer
+(Mac, Windows, or Linux). It keeps its own synced copy of your Night Summary sessions
+from the machine running NINA and serves the full dashboard independently — a one-way
+sync, so it never changes anything on the imaging rig. Browse your imaging history from
+the couch, another room, or anywhere on your network.
 
 Download the latest build from the
 [**Releases page**](https://github.com/vorticose/nina.plugin.nightsummary/releases/latest),

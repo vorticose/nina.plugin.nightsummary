@@ -806,7 +806,7 @@
                             <StackPanel Orientation="Horizontal" Margin="0,2">
                                 <TextBlock Width="200" />
                                 <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="400" VerticalAlignment="Center"
-                                           Text="The Companion is a separate read-only dashboard app you run on another computer (Mac, Windows, or Linux) that syncs a copy of your sessions. Generate a token for each companion you set up — each gets its own token, revocable independently. The token is shown ONCE — copy it into that companion's setup wizard." />
+                                           Text="The Companion is a standalone dashboard app you run on another computer (Mac, Windows, or Linux). It keeps its own synced copy of your sessions from this machine and serves the full dashboard independently — the sync is one-way, so it never changes anything on your imaging rig. Generate a token for each companion you set up — each gets its own token, revocable independently. The token is shown ONCE — copy it into that companion's setup wizard." />
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,4">
                                 <TextBlock Width="200" />
