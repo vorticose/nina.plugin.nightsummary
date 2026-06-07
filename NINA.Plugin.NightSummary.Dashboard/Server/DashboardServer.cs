@@ -3573,7 +3573,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 var message = root.TryGetProperty("message", out var mg) && mg.ValueKind == JsonValueKind.String ? mg.GetString() : "";
                 var url     = root.TryGetProperty("url",     out var ul) && ul.ValueKind == JsonValueKind.String ? ul.GetString() : "";
                 var entry   = string.IsNullOrEmpty(url) ? $"[JS] {message}" : $"[JS] {message} (page: {url})";
-                switch (level?.ToLower()) {
+                switch (level?.ToLowerInvariant()) {
                     case "warn":  log?.Warn(entry);  break;
                     case "error": log?.Error(entry); break;
                     default:      log?.Info(entry);  break;

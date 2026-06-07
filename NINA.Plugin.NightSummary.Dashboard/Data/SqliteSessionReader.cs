@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using Microsoft.Data.Sqlite;
 using System.Linq;
 using NINA.Plugin.NightSummary.Dashboard.Abstractions;
@@ -74,7 +75,7 @@ public sealed class SqliteSessionReader {
             images.Add(new ImageRecord {
                 Id               = Convert.ToInt32(reader["Id"]),
                 SessionId        = reader["SessionId"]        == DBNull.Value ? "" : reader["SessionId"].ToString(),
-                Timestamp        = reader["Timestamp"]        == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["Timestamp"].ToString()),
+                Timestamp        = reader["Timestamp"]        == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["Timestamp"].ToString(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
                 TargetName       = reader["TargetName"]       == DBNull.Value ? "" : reader["TargetName"].ToString(),
                 Filter           = reader["Filter"]           == DBNull.Value ? "" : reader["Filter"].ToString(),
                 ExposureDuration = reader["ExposureDuration"] == DBNull.Value ? 0 : Convert.ToDouble(reader["ExposureDuration"]),
@@ -160,7 +161,7 @@ public sealed class SqliteSessionReader {
             events.Add(new SessionEvent {
                 Id          = Convert.ToInt32(reader["Id"]),
                 SessionId   = reader["SessionId"]   == DBNull.Value ? "" : reader["SessionId"].ToString(),
-                Timestamp   = reader["Timestamp"]   == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["Timestamp"].ToString()),
+                Timestamp   = reader["Timestamp"]   == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["Timestamp"].ToString(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
                 EventType   = reader["EventType"]   == DBNull.Value ? "" : reader["EventType"].ToString(),
                 Description = reader["Description"] == DBNull.Value ? "" : reader["Description"].ToString(),
                 AfSucceeded = reader["AfSucceeded"] == DBNull.Value ? (bool?)null : Convert.ToInt32(reader["AfSucceeded"]) == 1,
@@ -181,8 +182,8 @@ public sealed class SqliteSessionReader {
         while (reader.Read()) {
             events.Add(new TimingEvent {
                 EventType       = reader["EventType"]       == DBNull.Value ? "" : reader["EventType"].ToString(),
-                StartTime       = reader["StartTime"]       == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["StartTime"].ToString()),
-                EndTime         = reader["EndTime"]         == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["EndTime"].ToString()),
+                StartTime       = reader["StartTime"]       == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["StartTime"].ToString(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+                EndTime         = reader["EndTime"]         == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["EndTime"].ToString(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
                 DurationSeconds = reader["DurationSeconds"] == DBNull.Value ? 0 : Convert.ToDouble(reader["DurationSeconds"]),
                 Details         = reader["Details"]         == DBNull.Value ? null : reader["Details"].ToString()
             });
@@ -247,7 +248,7 @@ public sealed class SqliteSessionReader {
                     TargetName              = name,
                     TotalIntegrationSeconds = reader["TotalSeconds"]     == DBNull.Value ? 0 : Convert.ToDouble(reader["TotalSeconds"]),
                     SessionCount            = reader["SessionCount"]     == DBNull.Value ? 0 : Convert.ToInt32(reader["SessionCount"]),
-                    LastSessionStart        = reader["LastSessionStart"] == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["LastSessionStart"].ToString()),
+                    LastSessionStart        = reader["LastSessionStart"] == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["LastSessionStart"].ToString(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
                     TotalFrames             = reader["TotalFrames"]      == DBNull.Value ? 0 : Convert.ToInt32(reader["TotalFrames"]),
                     AcceptedFrames          = reader["AcceptedFrames"]   == DBNull.Value ? 0 : Convert.ToInt32(reader["AcceptedFrames"]),
                     AvgHFR                  = reader["AvgHFR"]           == DBNull.Value ? 0 : Math.Round(Convert.ToDouble(reader["AvgHFR"]), 2),
@@ -353,7 +354,7 @@ public sealed class SqliteSessionReader {
         using var reader = new SchemaSafeReader(cmd.ExecuteReader());
         while (reader.Read()) {
             result.Add(new TargetSessionHistory {
-                SessionStart       = reader["SessionStart"]       == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionStart"].ToString()),
+                SessionStart       = reader["SessionStart"]       == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionStart"].ToString(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
                 IntegrationSeconds = reader["IntegrationSeconds"] == DBNull.Value ? 0 : Convert.ToDouble(reader["IntegrationSeconds"]),
                 AvgHFR             = reader["AvgHFR"]             == DBNull.Value ? 0 : Convert.ToDouble(reader["AvgHFR"]),
                 AvgFWHM            = reader["AvgFWHM"]            == DBNull.Value ? 0 : Convert.ToDouble(reader["AvgFWHM"]),
@@ -395,8 +396,8 @@ public sealed class SqliteSessionReader {
                 if (string.IsNullOrEmpty(sid)) continue;
                 sessions[sid] = new TargetSessionDetail {
                     SessionId          = sid,
-                    SessionStart       = reader["SessionStart"]       == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionStart"].ToString()),
-                    SessionEnd         = reader["SessionEnd"]         == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionEnd"].ToString()),
+                    SessionStart       = reader["SessionStart"]       == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionStart"].ToString(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+                    SessionEnd         = reader["SessionEnd"]         == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionEnd"].ToString(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
                     IntegrationSeconds = reader["IntegrationSeconds"] == DBNull.Value ? 0 : Convert.ToDouble(reader["IntegrationSeconds"]),
                     FrameCount         = reader["FrameCount"]         == DBNull.Value ? 0 : Convert.ToInt32(reader["FrameCount"]),
                     AcceptedFrames     = reader["AcceptedFrames"]     == DBNull.Value ? 0 : Convert.ToInt32(reader["AcceptedFrames"]),
@@ -530,8 +531,8 @@ public sealed class SqliteSessionReader {
         return new SessionRecord {
             Id                = Convert.ToInt32(reader["Id"]),
             SessionId         = reader["SessionId"]         == DBNull.Value ? "" : reader["SessionId"].ToString(),
-            SessionStart      = reader["SessionStart"]      == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionStart"].ToString()),
-            SessionEnd        = reader["SessionEnd"]        == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionEnd"].ToString()),
+            SessionStart      = reader["SessionStart"]      == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionStart"].ToString(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+            SessionEnd        = reader["SessionEnd"]        == DBNull.Value ? DateTime.MinValue : DateTime.Parse(reader["SessionEnd"].ToString(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
             ProfileName       = reader["ProfileName"]       == DBNull.Value ? "" : reader["ProfileName"].ToString(),
             Notes             = reader["Notes"]             == DBNull.Value ? "" : reader["Notes"].ToString(),
             ReportSent        = reader["ReportSent"]        == DBNull.Value ? false : Convert.ToInt32(reader["ReportSent"]) == 1,
