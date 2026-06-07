@@ -53,15 +53,15 @@ public class CompanionConfigDurabilityTests {
     public void Load_RecoversFromBak_WhenPrimaryCorrupt() {
         var path = TempPath();
         try {
-            File.WriteAllText(path + ".bak", Good("100.86.208.29", "REAL-TOKEN"));
+            File.WriteAllText(path + ".bak", Good("10.20.30.40", "REAL-TOKEN"));
             File.WriteAllText(path, "{ this is not valid json");
 
             var loaded = CompanionConfig.Load(path);
 
-            Assert.Equal("100.86.208.29", loaded.Nina.Host);
-            Assert.Equal("REAL-TOKEN",    loaded.Nina.PairingToken);
-            Assert.True(File.Exists(path + ".bak"));                                 // backup left intact
-            Assert.Equal("100.86.208.29", CompanionConfig.Load(path).Nina.Host);    // primary restored in place
+            Assert.Equal("10.20.30.40", loaded.Nina.Host);
+            Assert.Equal("REAL-TOKEN",   loaded.Nina.PairingToken);
+            Assert.True(File.Exists(path + ".bak"));                                // backup left intact
+            Assert.Equal("10.20.30.40", CompanionConfig.Load(path).Nina.Host);     // primary restored in place
         } finally { Cleanup(path); }
     }
 
