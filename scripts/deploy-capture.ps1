@@ -12,7 +12,18 @@ $projectDir = Join-Path $repoRoot "NINA.Plugin.SessionCapture"
 $buildDir   = Join-Path $projectDir "bin\Release\net8.0-windows"
 $dll        = Join-Path $buildDir "NINA.Plugin.SessionCapture.dll"
 $localDir   = Join-Path $env:LOCALAPPDATA "NINA\Plugins\3.0.0\Session Capture"
-$remoteDir  = "\\100.86.208.29\Users\RBFocus\AppData\Local\NINA\Plugins\3.0.0\Session Capture"
+
+# Observatory host + Windows user come from env vars so no machine-specific values
+# are committed. Set them once in your shell profile:
+#   $env:NS_OBSERVATORY_HOST = "<your-tailscale-ip-or-hostname>"
+#   $env:NS_OBSERVATORY_USER = "<observatory-windows-username>"
+$remoteHost = $env:NS_OBSERVATORY_HOST
+$remoteUser = $env:NS_OBSERVATORY_USER
+if (-not $remoteHost -or -not $remoteUser) {
+    Write-Error "Set the NS_OBSERVATORY_HOST and NS_OBSERVATORY_USER environment variables before deploying."
+    exit 1
+}
+$remoteDir  = "\\$remoteHost\Users\$remoteUser\AppData\Local\NINA\Plugins\3.0.0\Session Capture"
 
 # --- Build ---
 Write-Host "Building Session Capture..." -ForegroundColor Cyan
