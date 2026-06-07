@@ -438,24 +438,41 @@ On first run a default companion.json is written and the program exits so you ca
     }
 
     private static string DefaultConfigPath() {
-        // 1. Honor a companion.json sitting next to the REAL executable (a
-        //    folder-style install, or a user who dropped one beside the exe).
-        //    Use Environment.ProcessPath, NOT AppContext.BaseDirectory — with
-        //    single-file self-extract BaseDirectory is a volatile per-run temp
-        //    dir, never where the user keeps their config.
-        var exeDir = Path.GetDirectoryName(Environment.ProcessPath);
-        if (!string.IsNullOrEmpty(exeDir)) {
-            var beside = Path.Combine(exeDir, "companion.json");
-            if (File.Exists(beside)) return beside;
-        }
-        // 2. Otherwise default into the per-user data dir, so a portable single-
-        //    file exe (dropped on the Desktop, pinned to the taskbar, run from
-        //    anywhere) keeps its config with its data instead of next to the exe.
-        //    Matches CompanionConfig.ResolvedDataDir()'s default base.
+        // Canonical config home: the per-user app-data dir, alongside the synced
+        // data. This is OUTSIDE the install artifact, so it survives every update
+        // on all three platforms — macOS .app replace, Windows exe replace, Linux
+        // .deb/AppImage/tarball replace. The user pairs once, not once per update.
+        //   macOS   -> ~/Library/Application Support/NightSummaryCompanion/
+        //   Windows -> %LOCALAPPDATA%\NightSummaryCompanion\
+        //   Linux   -> ~/.local/share/NightSummaryCompanion/
+        // (An explicit --config <path> overrides this entirely; handled upstream.)
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         if (string.IsNullOrEmpty(appData))
             appData = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return Path.Combine(appData, "NightSummaryCompanion", "companion.json");
+        var canonical = Path.Combine(appData, "NightSummaryCompanion", "companion.json");
+
+        // One-time migration. Older builds stored companion.json NEXT TO the
+        // binary (inside the macOS .app bundle / beside the Windows exe / in the
+        // Linux install dir) — exactly the spot an update wipes. If a legacy file
+        // is still there and we haven't created the canonical one yet, copy the
+        // host + pairing token across so the user doesn't have to re-pair. After
+        // this the canonical copy is authoritative; the legacy one is ignored.
+        // (On macOS the bundle is replaced wholesale on update, deleting the
+        // legacy file before the new build ever runs, so only that one in-bundle
+        // generation can't be auto-rescued — every later update is safe.)
+        if (!File.Exists(canonical)) {
+            var exeDir = Path.GetDirectoryName(Environment.ProcessPath);
+            if (!string.IsNullOrEmpty(exeDir)) {
+                var legacy = Path.Combine(exeDir, "companion.json");
+                if (File.Exists(legacy)) {
+                    try {
+                        Directory.CreateDirectory(Path.GetDirectoryName(canonical)!);
+                        File.Copy(legacy, canonical, overwrite: false);
+                    } catch { /* best-effort; a fresh canonical file is created on first save */ }
+                }
+            }
+        }
+        return canonical;
     }
 
     private static string? ResolveArg(string[] args, string name) {

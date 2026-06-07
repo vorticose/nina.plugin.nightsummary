@@ -48,6 +48,7 @@ Native-feeling install + launch experience for the standalone Companion app on a
 - The autostart status shows a simple **Enabled** with a hover tooltip explaining what was installed; the "Sync when the companion starts" option moved next to "Accept push notifications."
 - **Live first-sync progress** — the setup wizard's first sync now shows a moving progress bar with the current phase and download size (e.g. "Step 4 of 5 — Downloading thumbnails… 11.8 MB") instead of a silent spinner that looked stuck.
 - **Opening the app always shows the dashboard** — the Companion is a headless background agent, so before this, double-clicking the icon while it was already running (e.g. started at login) appeared to do nothing. Launching it now opens the dashboard in your browser every time — if an instance is already running it just brings that one's dashboard up instead of starting a second. Autostart-at-login stays silent (no surprise browser tab on every boot).
+- **Pairing survives updates on all platforms** — the Companion's config (host + pairing token) now always lives in the per-user app-data dir, outside the install artifact, so replacing the app on update no longer wipes it: pair once, not once per update (macOS `~/Library/Application Support`, Windows `%LOCALAPPDATA%`, Linux `~/.local/share`). A config left over from an older build beside the binary is migrated across automatically on first launch. Config writes are now atomic with a `.bak` fallback, so a crash mid-save can't lose your pairing.
 
 
 ### Read-Only Mirror + bug fixes
