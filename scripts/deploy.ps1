@@ -72,8 +72,17 @@ $repoJson | ConvertTo-Json -Depth 10 | Set-Content $repoJsonPath
 Write-Host "repository.json updated." -ForegroundColor Green
 
 # --- Deploy locally ---
+# Copy the plugin DLL plus its runtime companions. ReportGenerator now lives in
+# Dashboard.dll, and deps.json drives assembly resolution -- omitting either ships
+# a plugin that throws on report generation. (The release zip above already bundles
+# the full build output; this is just the local convenience copy.)
+$deployFiles = @(
+    $dll,
+    (Join-Path $buildDir "NINA.Plugin.NightSummary.Dashboard.dll"),
+    (Join-Path $buildDir "NINA.Plugin.NightSummary.deps.json")
+)
 if (Test-Path $ninaPluginDir) {
-    Copy-Item $dll $ninaPluginDir -Force
+    foreach ($f in $deployFiles) { Copy-Item $f $ninaPluginDir -Force }
     Write-Host "Deployed to local NINA plugins folder." -ForegroundColor Green
 } else {
     Write-Host "Local NINA plugin folder not found - skipping local deploy." -ForegroundColor Yellow

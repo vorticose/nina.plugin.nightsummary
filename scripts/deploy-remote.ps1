@@ -26,7 +26,14 @@ if (-not (Test-Path $remoteDir)) {
     exit 1
 }
 
-# --- Copy DLL ---
+# --- Copy plugin + runtime companions ---
+# Dashboard.dll holds ReportGenerator and deps.json drives assembly resolution;
+# both must ship alongside the main DLL or report generation throws at runtime.
 Write-Host "Deploying to $remoteDir ..." -ForegroundColor Cyan
-Copy-Item $dll $remoteDir -Force
+$deployFiles = @(
+    $dll,
+    (Join-Path $buildDir "NINA.Plugin.NightSummary.Dashboard.dll"),
+    (Join-Path $buildDir "NINA.Plugin.NightSummary.deps.json")
+)
+foreach ($f in $deployFiles) { Copy-Item $f $remoteDir -Force }
 Write-Host "Done. Restart NINA on the telescope machine to load v$versionStr." -ForegroundColor Green

@@ -52,9 +52,17 @@ if ($LASTEXITCODE -ne 0) { Write-Error "Build failed."; exit 1 }
 Write-Host "Build succeeded." -ForegroundColor Green
 
 # --- Deploy ---
+# Copy the plugin DLL plus its runtime companions. ReportGenerator now lives in
+# Dashboard.dll, and deps.json drives assembly resolution -- omitting either ships
+# a plugin that throws on report generation.
 $dll = Join-Path $buildDir "NINA.Plugin.NightSummary.dll"
+$deployFiles = @(
+    $dll,
+    (Join-Path $buildDir "NINA.Plugin.NightSummary.Dashboard.dll"),
+    (Join-Path $buildDir "NINA.Plugin.NightSummary.deps.json")
+)
 if (Test-Path $ninaPluginDir) {
-    Copy-Item $dll $ninaPluginDir -Force
+    foreach ($f in $deployFiles) { Copy-Item $f $ninaPluginDir -Force }
     Write-Host "Deployed to NINA plugins folder." -ForegroundColor Green
 } else {
     Write-Host "NINA plugin folder not found at: $ninaPluginDir" -ForegroundColor Red
