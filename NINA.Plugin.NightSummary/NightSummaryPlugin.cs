@@ -128,6 +128,12 @@ namespace NINA.Plugin.NightSummary {
             // panel renders the current state without waiting for a user action.
             RefreshCompanionTokens();
 
+            // A companion claiming a token happens over HTTP on a server thread
+            // (pair endpoint -> CompanionTokenStore.MarkPaired), out of band from
+            // this panel — so without this the Paired/Unpaired lists only updated
+            // on the next NINA restart. Refresh live whenever the store changes.
+            CompanionTokenStore.Instance.Changed += OnCompanionTokensChanged;
+
             TestEmailCommand = new RelayCommand(async () => {
                 EmailTestStatus.Text = "";
                 var senderAddr = S.SenderAddress;
@@ -859,10 +865,9 @@ namespace NINA.Plugin.NightSummary {
 
         public ICommand GenerateCompanionTokenCommand => new RelayCommand(async () => {
             var plain = GeneratePairingTokenPlain();
-            CompanionTokenStore.Instance.Add(plain);
+            CompanionTokenStore.Instance.Add(plain);   // fires Changed -> OnCompanionTokensChanged refreshes the lists
             NewCompanionToken     = FormatPairingTokenForDisplay(plain);
             ShowNewCompanionToken = true;
-            RefreshCompanionTokens();
             await Task.CompletedTask;
         });
 
@@ -890,7 +895,19 @@ namespace NINA.Plugin.NightSummary {
                 System.Windows.MessageBoxButton.OKCancel,
                 System.Windows.MessageBoxImage.Warning);
             if (ok != System.Windows.MessageBoxResult.OK) return;
-            if (CompanionTokenStore.Instance.Revoke(id)) RefreshCompanionTokens();
+            CompanionTokenStore.Instance.Revoke(id);   // fires Changed -> OnCompanionTokensChanged refreshes the lists
+        }
+
+        // Store-change handler. Fires from a server thread when a companion pairs
+        // or revokes over HTTP, or inline (UI thread) when the user generates /
+        // revokes here. Marshals to the UI thread because RefreshCompanionTokens
+        // edits ObservableCollections, which must happen on the dispatcher.
+        private void OnCompanionTokensChanged() {
+            var disp = System.Windows.Application.Current?.Dispatcher;
+            if (disp != null && !disp.CheckAccess())
+                disp.BeginInvoke(new Action(RefreshCompanionTokens));
+            else
+                RefreshCompanionTokens();
         }
 
         // Rebuilds PairedCompanions + UnpairedTokens from the store. Cheap —

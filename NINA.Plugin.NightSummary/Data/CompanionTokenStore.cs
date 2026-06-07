@@ -43,6 +43,17 @@ namespace NINA.Plugin.NightSummary.Data {
         private CompanionTokenFile _file = new();
         private bool _loaded;
 
+        /// <summary>
+        /// Raised after any change to the visible token set (Add / MarkPaired / Revoke)
+        /// so a UI bound to the store — the WPF Options panel — can refresh without a
+        /// NINA restart. The motivating case: a companion claims a token over HTTP
+        /// (pair endpoint → MarkPaired) and the panel must move it from "Unpaired" to
+        /// "Paired" live. Fired OUTSIDE the lock, possibly on a server thread, so
+        /// handlers must marshal to their own UI thread. NOT raised for the
+        /// LastUsed/PushUrl bumps on every sync (those aren't shown).
+        /// </summary>
+        public event Action? Changed;
+
         public CompanionTokenStore(string path) {
             _path = path;
         }
@@ -91,6 +102,7 @@ namespace NINA.Plugin.NightSummary.Data {
                 _file.Tokens.Add(entry);
                 Persist();
             }
+            Changed?.Invoke();
             return entry;
         }
 
@@ -143,12 +155,12 @@ namespace NINA.Plugin.NightSummary.Data {
             lock (_lock) {
                 EnsureLoaded();
                 var entry = _file.Tokens.FirstOrDefault(t => t.Id == id);
-                if (entry == null) return false;
-                if (entry.RevokedAt.HasValue) return false;
+                if (entry == null || entry.RevokedAt.HasValue) return false;
                 entry.RevokedAt = DateTime.UtcNow;
                 Persist();
-                return true;
             }
+            Changed?.Invoke();
+            return true;
         }
 
         /// <summary>
@@ -167,8 +179,9 @@ namespace NINA.Plugin.NightSummary.Data {
                 entry.CompanionName = companionName;
                 entry.LastUsedAt   = now;
                 Persist();
-                return true;
             }
+            Changed?.Invoke();
+            return true;
         }
 
         /// <summary>Bumps <see cref="CompanionTokenEntry.LastUsedAt"/>. Called on every authenticated sync request.</summary>

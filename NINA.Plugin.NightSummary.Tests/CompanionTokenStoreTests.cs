@@ -43,6 +43,49 @@ namespace NINA.Plugin.NightSummary.Tests {
             return sb.ToString();
         }
 
+        // ---- Changed event (drives live Options-panel refresh, no restart) ----
+
+        [Fact]
+        public void Add_RaisesChanged() {
+            var store = Make();
+            int fired = 0;
+            store.Changed += () => fired++;
+            store.Add(FreshToken());
+            Assert.Equal(1, fired);
+        }
+
+        [Fact]
+        public void MarkPaired_RaisesChanged() {
+            // The bug this fixes: a companion claiming a token over HTTP marks it
+            // paired; the Options panel must refresh without a NINA restart.
+            var store = Make();
+            var entry = store.Add(FreshToken());
+            int fired = 0;
+            store.Changed += () => fired++;   // subscribe AFTER the Add
+            Assert.True(store.MarkPaired(entry.Id, "Mac mini"));
+            Assert.Equal(1, fired);
+        }
+
+        [Fact]
+        public void MarkPaired_UnknownId_DoesNotRaiseChanged() {
+            var store = Make();
+            int fired = 0;
+            store.Changed += () => fired++;
+            Assert.False(store.MarkPaired("does-not-exist", "x"));
+            Assert.Equal(0, fired);
+        }
+
+        [Fact]
+        public void Revoke_RaisesChanged_OnlyOnRealRevocation() {
+            var store = Make();
+            var entry = store.Add(FreshToken());
+            int fired = 0;
+            store.Changed += () => fired++;
+            Assert.True(store.Revoke(entry.Id));
+            Assert.False(store.Revoke(entry.Id));   // already revoked -> no-op, no event
+            Assert.Equal(1, fired);
+        }
+
         // ---- normalization + hashing -----------------------------------------
 
         [Theory]
