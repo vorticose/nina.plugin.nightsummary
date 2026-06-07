@@ -40,7 +40,12 @@ jobs:
             platform: linux
             arch: x64
             script: build-companion-linux.ps1
-            artifact: build/companion-linux/*.tar.gz
+            # Three Linux deliverables, listed explicitly so the downloaded
+            # appimagetool and the staging/AppDir dirs are never picked up.
+            artifact: |
+              build/companion-linux/NightSummaryCompanion-linux-x64.tar.gz
+              build/companion-linux/NightSummaryCompanion-x86_64.AppImage
+              build/companion-linux/nightsummary-companion_*.deb
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -52,6 +57,18 @@ jobs:
       - name: Build companion (${{ matrix.platform }}-${{ matrix.arch }})
         shell: pwsh
         run: ./scripts/${{ matrix.script }} -Arch ${{ matrix.arch }}
+
+      # Linux also gets a double-click AppImage (idiomatic single-file delivery).
+      # ubuntu-latest has `file`; --appimage-extract-and-run avoids needing FUSE.
+      - name: Pack Linux AppImage
+        if: matrix.platform == 'linux'
+        run: bash scripts/build-companion-appimage.sh
+
+      # And a .deb (double-click -> App Center -> Install; pulls libfontconfig1/
+      # libfreetype6 automatically). dpkg-deb is preinstalled on ubuntu runners.
+      - name: Pack Linux .deb
+        if: matrix.platform == 'linux'
+        run: bash scripts/build-companion-deb.sh
 
       - name: Verify mac bundle is signed
         if: matrix.platform == 'mac'
@@ -71,13 +88,18 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4   # for scripts/install-companion.sh (the curl one-liner target)
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
-      - name: Attach companion binaries to the release
+      - name: Attach companion binaries + Linux installer to the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           echo "Assets:"; ls -R artifacts
-          gh release upload "${{ github.ref_name }}" artifacts/* --clobber --repo "${{ github.repository }}"
+          # install-companion.sh is the stable target of the
+          # releases/latest/download/install-companion.sh curl one-liner.
+          gh release upload "${{ github.ref_name }}" \
+            artifacts/* scripts/install-companion.sh \
+            --clobber --repo "${{ github.repository }}"

@@ -28,6 +28,10 @@ public sealed class CompanionController : ICompanionController {
     private bool _primaryReachable;
     private DateTime _primaryLastCheckedUtc;
 
+    // Latest live progress from the running sync; null when idle. volatile so the
+    // request thread's GetStatus() sees the background sync's updates promptly.
+    private volatile CompanionSyncProgress? _progress;
+
     public CompanionController(SyncEngine engine, CompanionConfig config, CompanionPaths paths, string configPath, IDashboardLogger log) {
         _engine     = engine;
         _config     = config;
@@ -35,6 +39,9 @@ public sealed class CompanionController : ICompanionController {
         _configPath = configPath;
         _log        = log;
         _statePath  = Path.Combine(paths.DataDir, "last_synced.json");
+        // Funnel the engine's phase/byte progress into our pollable snapshot so
+        // the setup wizard + dashboard can show a moving indicator.
+        _engine.OnProgress = p => _progress = p;
     }
 
     public bool IsSyncing {
@@ -90,7 +97,8 @@ public sealed class CompanionController : ICompanionController {
             ThumbsDeleted:         0,
             IsRunning:             IsSyncing,
             PrimaryReachable:      reachable,
-            PrimaryLastCheckedUtc: checkedAt);
+            PrimaryLastCheckedUtc: checkedAt,
+            Progress:              IsSyncing ? _progress : null);
     }
 
     public async Task<CompanionSyncStatus> TriggerSyncAsync(CancellationToken ct = default) {
@@ -104,6 +112,7 @@ public sealed class CompanionController : ICompanionController {
             }
         }
         var result = await task;
+        _progress = null;   // sync done — drop the live snapshot
         // The SyncEngine already pinged /api/health as step 1 — propagate the
         // outcome so the banner reflects "online" the moment a sync succeeds,
         // even if the dedicated ping loop hasn't fired since the primary came back.

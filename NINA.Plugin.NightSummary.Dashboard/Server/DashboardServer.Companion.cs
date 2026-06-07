@@ -1,6 +1,8 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -169,7 +171,20 @@ namespace NINA.Plugin.NightSummary.Server {
             acceptPush                      = s.AcceptPush,
             enableReadOnlyMirror            = s.EnableReadOnlyMirror,
             readOnlyMirrorPort              = s.ReadOnlyMirrorPort,
+            // OS the companion is running on, so the dashboard can localize
+            // process-control language (e.g. "Applications folder" on macOS vs
+            // "wherever you unzipped it" on Windows). "windows" | "macos" | "linux".
+            os                              = OsName(),
         };
+
+        // Coarse OS bucket for UI string localization. Matches the three
+        // platforms the companion ships builds for.
+        private static string OsName() {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return "windows";
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))     return "macos";
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))   return "linux";
+            return "other";
+        }
 
         // POST /api/companion/quit  — companion-only. Returns 200 then exits
         // process with code 0. Watchdog wrapper in the .app sees the clean
@@ -192,11 +207,20 @@ namespace NINA.Plugin.NightSummary.Server {
             });
         }
 
-        // POST /api/companion/restart  — companion-only. Returns 200 then
-        // exits with code 88 (sentinel for "respawn me"). The watchdog
-        // wrapper sees the non-zero/non-0 exit code and restarts the binary
-        // within ~1s. Dashboard polls /api/health to detect when the new
-        // process is ready, then reloads the page.
+        // POST /api/companion/restart  — companion-only. Returns 200, then
+        // brings the process back one of two ways depending on platform:
+        //
+        //   macOS / Linux: exit 88 (the "respawn me" sentinel). The bash
+        //     watchdog launcher inside the .app / install dir sees the code
+        //     and relaunches the binary within ~1s.
+        //   Windows: there is no external watchdog (the exe is a WinExe with
+        //     an embedded icon, launched directly — no .cmd/.vbs). So we spawn
+        //     a fresh detached copy of ourselves and exit 0. The new process
+        //     bind-retries the port (see StartAsync) to ride out the brief
+        //     window where this process is still releasing it.
+        //
+        // Either way the dashboard polls /api/health to detect the new process
+        // and reloads.
         private async Task HandleCompanionRestart(TcpHttpResponse res, Action<int, string> done) {
             if (_companion == null) {
                 await WriteJson(res, 404, new { error = "companion mode not active" });
@@ -207,9 +231,38 @@ namespace NINA.Plugin.NightSummary.Server {
             done?.Invoke(200, "restart requested");
             _ = Task.Run(async () => {
                 await Task.Delay(250);
-                log?.Info("Companion: restart requested via dashboard — exiting code 88 for watchdog respawn.");
-                Environment.Exit(88);
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) {
+                    log?.Info("Companion: restart requested via dashboard — self-respawning (Windows, no external watchdog).");
+                    try { RespawnSelfWindows(); }
+                    catch (Exception ex) { log?.Error($"Companion: self-respawn failed: {ex.Message}"); }
+                    Environment.Exit(0);
+                } else {
+                    log?.Info("Companion: restart requested via dashboard — exiting code 88 for watchdog respawn.");
+                    Environment.Exit(88);
+                }
             });
+        }
+
+        // Launch a fresh, detached copy of this exe with the same arguments.
+        // Windows-only: a child started with UseShellExecute=false is NOT tied
+        // to the parent's lifetime (no job object), so it survives our Exit(0).
+        // CreateNoWindow + the WinExe subsystem mean no console flashes up.
+        private void RespawnSelfWindows() {
+            var exe = Environment.ProcessPath;
+            if (string.IsNullOrEmpty(exe)) {
+                log?.Warn("Companion: cannot self-respawn — Environment.ProcessPath is null.");
+                return;
+            }
+            var psi = new ProcessStartInfo {
+                FileName        = exe,
+                UseShellExecute = false,
+                CreateNoWindow  = true,
+                WorkingDirectory = Path.GetDirectoryName(exe) ?? Environment.CurrentDirectory,
+            };
+            // Preserve the original launch args (e.g. "serve", "--config ...").
+            foreach (var a in Environment.GetCommandLineArgs().Skip(1)) psi.ArgumentList.Add(a);
+            Process.Start(psi);
+            log?.Info($"Companion: spawned replacement process: {exe}");
         }
 
         // GET /api/companion/autostart — companion-only. Reports whether
@@ -456,6 +509,15 @@ namespace NINA.Plugin.NightSummary.Server {
             primaryLastCheckedUtc = s.PrimaryLastCheckedUtc?.ToString("o"),
             isComplete            = c.IsComplete,
             incompleteReason      = c.IncompleteReason,
+            // Live sync progress (null when idle) so the wizard/dashboard can show
+            // a moving phase + byte indicator instead of a silent spinner.
+            progress              = s.Progress == null ? null : new {
+                phase          = s.Progress.Phase,
+                step           = s.Progress.Step,
+                totalSteps     = s.Progress.TotalSteps,
+                bytesThisPhase = s.Progress.BytesThisPhase,
+                detail         = s.Progress.Detail,
+            },
         };
     }
 }

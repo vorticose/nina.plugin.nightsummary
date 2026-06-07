@@ -5,9 +5,10 @@ using System.Text.Json.Serialization;
 
 namespace NINA.Plugin.NightSummary.Companion;
 
-// User-editable config for the companion. Lives next to the binary by default,
-// or wherever the user points the --config flag. Reflects the schema documented
-// in COMPANION_PLAN.md.
+// User-editable config for the companion. Lives in the per-user app-data dir by
+// default (see Program.DefaultConfigPath — outside the install artifact so it
+// survives updates), or wherever the user points the --config flag. Reflects the
+// schema documented in COMPANION_PLAN.md.
 public sealed class CompanionConfig {
 
     [JsonPropertyName("port")]
@@ -89,24 +90,63 @@ public sealed class CompanionConfig {
     };
 
     public static CompanionConfig Load(string path) {
-        if (!File.Exists(path)) {
-            // Materialize a default file so the user has something concrete to edit
-            var def = new CompanionConfig();
-            Save(def, path);
-            return def;
+        // 1. Primary file, if present and usable.
+        var primary = TryReadConfig(path);
+        if (primary != null) return primary;
+
+        // 2. Recover from the last-good backup. A torn write or a truncated
+        //    primary must not cost the user their host + pairing token, so fall
+        //    back to companion.json.bak and restore it in place (leaving the
+        //    .bak intact as the safety copy).
+        var bak = path + ".bak";
+        var backup = TryReadConfig(bak);
+        if (backup != null) {
+            try { File.Copy(bak, path, overwrite: true); } catch { /* best-effort restore */ }
+            return backup;
         }
+
+        // 3. Nothing usable → materialize a fresh default so the user has
+        //    something concrete to edit / the setup wizard to fill in.
+        var def = new CompanionConfig();
+        Save(def, path);
+        return def;
+    }
+
+    // Reads + parses a config file, returning null if it's absent, empty, or
+    // unparseable (so the caller can fall through to a backup / a fresh default).
+    // A corrupt config must never brick the companion — it's a re-syncable mirror.
+    private static CompanionConfig? TryReadConfig(string path) {
+        if (!File.Exists(path)) return null;
         try {
             var json = File.ReadAllText(path);
-            var loaded = JsonSerializer.Deserialize<CompanionConfig>(json, JsonOpts);
-            return loaded ?? new CompanionConfig();
-        } catch (Exception ex) {
-            throw new InvalidOperationException($"Failed to read {path}: {ex.Message}", ex);
+            if (string.IsNullOrWhiteSpace(json)) return null;
+            return JsonSerializer.Deserialize<CompanionConfig>(json, JsonOpts);
+        } catch {
+            return null;
         }
     }
 
     public static void Save(CompanionConfig cfg, string path) {
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-        File.WriteAllText(path, JsonSerializer.Serialize(cfg, JsonOpts));
+        var full = Path.GetFullPath(path);
+        Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+        var json = JsonSerializer.Serialize(cfg, JsonOpts);
+        var tmp  = full + ".tmp";
+        File.WriteAllText(tmp, json);
+
+        // Atomic swap that preserves the previous good copy as companion.json.bak.
+        // File.Replace is atomic on NTFS/APFS/ext4 (a reader sees the old or the
+        // new file, never a torn one) and rotates the existing file into the .bak
+        // slot in the same operation — so a crash mid-save can't lose the pairing.
+        if (File.Exists(full)) {
+            try {
+                File.Replace(tmp, full, full + ".bak");
+                return;
+            } catch (IOException)                 { /* rename blocked — fall through */ }
+            catch (UnauthorizedAccessException)    { /* fall through */ }
+            catch (PlatformNotSupportedException)  { /* fall through */ }
+        }
+        // First write, or File.Replace unavailable on this FS — plain overwrite.
+        File.Move(tmp, full, overwrite: true);
     }
 
     public void Validate() {

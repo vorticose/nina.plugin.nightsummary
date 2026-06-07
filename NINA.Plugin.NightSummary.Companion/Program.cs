@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Net.Http;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -113,18 +114,32 @@ On first run a default companion.json is written and the program exits so you ca
         // so the user can complete setup from the dashboard. Loops below skip
         // their work while !IsComplete and pick up automatically once saved.
 
+        // "Show me the dashboard" launch. If a companion is already serving on
+        // this port (the autostart agent is up and the user just double-clicked
+        // the app, or launched a 2nd copy), don't stand up a second server —
+        // open the running dashboard and exit cleanly. The HTTP probe makes this
+        // snappy; without it we'd wait out the bind-retry before discovering the
+        // conflict. A clean first launch sees connection-refused here (instant)
+        // and proceeds normally. Skipped under --no-browser (autostart/service).
+        if (!noBrowser && await AnotherInstanceServingAsync(config.Port)) {
+            log.Info($"A companion is already serving on port {config.Port}; opening it instead of starting a second instance.");
+            TryOpenBrowser($"http://localhost:{config.Port}/", log);
+            return 0;
+        }
+
         // Single SyncEngine + controller so the scheduler and the UI button
         // share coalescing — concurrent runs collapse to one in-flight sync.
         var engine     = new SyncEngine(config, paths, log);
         var controller = new CompanionController(engine, config, paths, configPath, log);
 
-        if (!config.IsComplete(out var setupReason)) {
+        var complete = config.IsComplete(out var setupReason);
+        if (!complete) {
             log.Warn($"Companion config incomplete ({setupReason}). Open the dashboard to finish setup.");
-        } else if (!noSync && config.Sync.OnBoot) {
-            log.Info("Boot sync starting…");
-            var result = await controller.TriggerSyncAsync(CancellationToken.None);
-            if (!string.IsNullOrEmpty(result.LastError)) log.Warn($"Boot sync did not complete cleanly: {result.LastError}");
         }
+        // Boot sync is deferred to AFTER the server is up + the tab is open (see
+        // below) so the dashboard appears instantly instead of waiting out the
+        // network sync. Decide here whether it should run at all.
+        var bootSync = complete && !noSync && config.Sync.OnBoot;
 
         var settings = new CompanionPluginSettings();
 
@@ -164,6 +179,18 @@ On first run a default companion.json is written and the program exits so you ca
             await server.StartAsync(config.Port);
             log.Info($"Dashboard serving on http://localhost:{config.Port} (companion mode)");
         } catch (System.Net.Sockets.SocketException ex) {
+            // Backstop for the pre-probe above: if the port was free at probe
+            // time but got claimed before our bind (race with the autostart
+            // agent), treat AddressAlreadyInUse the same way — open the running
+            // dashboard rather than dying silently.
+            if (ex.SocketErrorCode == System.Net.Sockets.SocketError.AddressAlreadyInUse) {
+                log.Info($"Port {config.Port} already in use — a companion instance is already running.");
+                if (!noBrowser) {
+                    log.Info("Opening the running dashboard instead of starting a second instance.");
+                    TryOpenBrowser($"http://localhost:{config.Port}/", log);
+                }
+                return 0;  // clean exit; the already-running instance keeps serving
+            }
             log.Error($"Cannot bind dashboard on port {config.Port}: {ex.Message}");
             log.Error($"Another process is using port {config.Port}. To recover:");
             log.Error($"  1. Edit {configPath} and set \"port\" to a free value (default 8182)");
@@ -186,18 +213,20 @@ On first run a default companion.json is written and the program exits so you ca
 
         log.Info("Press Ctrl+C to stop.");
 
-        // First-run convenience: pop the wizard in the user's default browser
-        // when the companion is freshly installed. Gated on:
-        //   - --no-browser NOT passed (service installs opt out via the flag;
-        //     install-service will set this automatically per platform)
-        //   - config is incomplete (returning user with a working install
-        //     gets no surprise tab; complete config = silent boot)
+        // Launch convenience: pop the dashboard in the user's default browser so
+        // double-clicking the app icon actually shows something (the companion is
+        // a headless background agent — LSUIElement / no console window — so the
+        // browser tab IS its UI). Incomplete config opens /setup (the wizard);
+        // a complete config opens the dashboard itself. Gated only on:
+        //   - --no-browser NOT passed (autostart/service entries set this flag so
+        //     login/reboot stays silent — no surprise tab every boot)
         //
         // We deliberately don't check Console.IsOutputRedirected here — Finder
         // launches of a .app bundle redirect stdout to Console.app, which would
         // suppress the auto-open in exactly the case we want it to fire.
-        if (!noBrowser && !config.IsComplete()) {
-            TryOpenBrowser($"http://localhost:{config.Port}/setup", log);
+        if (!noBrowser) {
+            var landing = config.IsComplete() ? "" : "setup";
+            TryOpenBrowser($"http://localhost:{config.Port}/{landing}", log);
         }
 
         // Park forever — Ctrl+C kills the process; in service mode the host
@@ -211,6 +240,26 @@ On first run a default companion.json is written and the program exits so you ca
         var schedulerCts = new CancellationTokenSource();
         var scheduler = Task.Run(() => RunSchedulerLoop(controller, config, log, schedulerCts.Token));
         var pinger    = Task.Run(() => RunPingLoop(controller, config, log, schedulerCts.Token));
+
+        // Boot sync, in the background now that the server is up and the tab is
+        // open. The dashboard renders the last-synced data on disk immediately and
+        // live-refreshes when this lands (the web UI watches lastSuccessUtc and
+        // re-renders the current view). Fire-and-forget; coalesces with the
+        // scheduler via the shared controller, cancels cleanly on shutdown.
+        if (bootSync) {
+            _ = Task.Run(async () => {
+                log.Info("Boot sync starting (background)…");
+                try {
+                    var result = await controller.TriggerSyncAsync(schedulerCts.Token);
+                    if (!string.IsNullOrEmpty(result.LastError))
+                        log.Warn($"Boot sync did not complete cleanly: {result.LastError}");
+                } catch (OperationCanceledException) {
+                    // shutting down — ignore
+                } catch (Exception ex) {
+                    log.Warn($"Boot sync failed: {ex.Message}");
+                }
+            });
+        }
 
         await stop.Task;
         log.Info("Stopping server…");
@@ -365,6 +414,21 @@ On first run a default companion.json is written and the program exits so you ca
         return (config, paths, log);
     }
 
+    // Quick check: is a companion already serving on this port? Hits the
+    // companion status endpoint with a short timeout. true => another instance
+    // is live (open it, don't start a second). false => nothing there / not a
+    // companion / unreachable => safe to start our own server. Swallows every
+    // failure (connection refused on a clean first launch is the common case).
+    private static async Task<bool> AnotherInstanceServingAsync(int port) {
+        try {
+            using var http = new HttpClient { Timeout = TimeSpan.FromMilliseconds(1200) };
+            using var resp = await http.GetAsync($"http://localhost:{port}/api/companion/status");
+            return resp.IsSuccessStatusCode;
+        } catch {
+            return false;
+        }
+    }
+
     // Cross-platform "open URL in default browser." UseShellExecute=true lets
     // .NET resolve the protocol handler. Best-effort: log + swallow on failure
     // (headless box, missing $BROWSER, sandboxed shell, etc.) — the URL is
@@ -395,9 +459,41 @@ On first run a default companion.json is written and the program exits so you ca
     }
 
     private static string DefaultConfigPath() {
-        // AppContext.BaseDirectory is the right call under PublishSingleFile
-        // (Assembly.Location returns empty there).
-        return Path.Combine(AppContext.BaseDirectory, "companion.json");
+        // Canonical config home: the per-user app-data dir, alongside the synced
+        // data. This is OUTSIDE the install artifact, so it survives every update
+        // on all three platforms — macOS .app replace, Windows exe replace, Linux
+        // .deb/AppImage/tarball replace. The user pairs once, not once per update.
+        //   macOS   -> ~/Library/Application Support/NightSummaryCompanion/
+        //   Windows -> %LOCALAPPDATA%\NightSummaryCompanion\
+        //   Linux   -> ~/.local/share/NightSummaryCompanion/
+        // (An explicit --config <path> overrides this entirely; handled upstream.)
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrEmpty(appData))
+            appData = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var canonical = Path.Combine(appData, "NightSummaryCompanion", "companion.json");
+
+        // One-time migration. Older builds stored companion.json NEXT TO the
+        // binary (inside the macOS .app bundle / beside the Windows exe / in the
+        // Linux install dir) — exactly the spot an update wipes. If a legacy file
+        // is still there and we haven't created the canonical one yet, copy the
+        // host + pairing token across so the user doesn't have to re-pair. After
+        // this the canonical copy is authoritative; the legacy one is ignored.
+        // (On macOS the bundle is replaced wholesale on update, deleting the
+        // legacy file before the new build ever runs, so only that one in-bundle
+        // generation can't be auto-rescued — every later update is safe.)
+        if (!File.Exists(canonical)) {
+            var exeDir = Path.GetDirectoryName(Environment.ProcessPath);
+            if (!string.IsNullOrEmpty(exeDir)) {
+                var legacy = Path.Combine(exeDir, "companion.json");
+                if (File.Exists(legacy)) {
+                    try {
+                        Directory.CreateDirectory(Path.GetDirectoryName(canonical)!);
+                        File.Copy(legacy, canonical, overwrite: false);
+                    } catch { /* best-effort; a fresh canonical file is created on first save */ }
+                }
+            }
+        }
+        return canonical;
     }
 
     private static string? ResolveArg(string[] args, string name) {

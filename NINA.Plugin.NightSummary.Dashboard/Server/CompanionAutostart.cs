@@ -41,10 +41,19 @@ namespace NINA.Plugin.NightSummary.Server {
             if (string.IsNullOrEmpty(dir))     { detail = "process directory unavailable"; return null; }
 
             string launcher;
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                launcher = Path.Combine(dir, "Start NightSummaryCompanion.vbs");
-            else
-                launcher = Path.Combine(dir, "NightSummaryCompanion"); // mac + linux watchdog
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) {
+                launcher = binPath; // the WinExe is its own double-click target (no .vbs/.cmd)
+            } else {
+                // Running from a Linux AppImage? $APPIMAGE is the STABLE path to the
+                // .AppImage file; the mount dir (where ProcessPath lives) is a fresh
+                // temp path each run, so an autostart unit must target the AppImage
+                // file itself, not the throwaway mount.
+                var appImage = Environment.GetEnvironmentVariable("APPIMAGE");
+                if (!string.IsNullOrEmpty(appImage) && File.Exists(appImage))
+                    launcher = appImage;
+                else
+                    launcher = Path.Combine(dir, "NightSummaryCompanion"); // mac + linux tarball watchdog
+            }
 
             if (!File.Exists(launcher)) {
                 detail = $"launcher not found at {launcher} (running unpackaged / dev build?)";
@@ -117,9 +126,14 @@ $@"<?xml version=""1.0"" encoding=""UTF-8""?>
 <dict>
     <key>Label</key><string>{MacLabel}</string>
     <key>ProgramArguments</key>
-    <array><string>{Xml(launcher)}</string><string>serve</string></array>
+    <array><string>{Xml(launcher)}</string><string>serve</string><string>--no-browser</string></array>
     <key>RunAtLoad</key><true/>
     <key>KeepAlive</key><false/>
+    <!-- The launcher detaches the real server and exits at once (so Finder
+         re-clicks relaunch it instead of sending a dead-end reopen event). Without
+         AbandonProcessGroup, launchd would SIGKILL the detached watchdog when the
+         launcher exits. With it true, the background companion survives. -->
+    <key>AbandonProcessGroup</key><true/>
     <key>ProcessType</key><string>Background</string>
     <key>StandardOutPath</key><string>{Xml(Path.Combine(logDir, "launchd.out"))}</string>
     <key>StandardErrorPath</key><string>{Xml(Path.Combine(logDir, "launchd.err"))}</string>
@@ -152,15 +166,18 @@ $@"<?xml version=""1.0"" encoding=""UTF-8""?>
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup),
                          "Night Summary Companion.lnk");
 
-        private static (bool, string?) WinEnable(string vbsLauncher) {
+        private static (bool, string?) WinEnable(string exeLauncher) {
             var lnk = WinShortcutPath();
             // Create the .lnk via WScript.Shell COM through PowerShell (no COM ref
-            // needed, no admin). Target = wscript.exe running the hidden .vbs, so
-            // there's no console window and the working dir stays the app folder.
+            // needed, no admin). Target = the WinExe launcher itself — it has no
+            // console (WinExe subsystem) and carries the embedded brand icon, so
+            // the shortcut inherits the icon automatically. Working dir stays the
+            // app folder so the bundled native dlls resolve.
             var ps =
                 "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('" + lnk.Replace("'", "''") + "');" +
-                "$s.TargetPath='" + vbsLauncher.Replace("'", "''") + "';" +
-                "$s.WorkingDirectory='" + (Path.GetDirectoryName(vbsLauncher) ?? "").Replace("'", "''") + "';" +
+                "$s.TargetPath='" + exeLauncher.Replace("'", "''") + "';" +
+                "$s.Arguments='serve --no-browser';" +   // login start stays silent (no surprise browser tab)
+                "$s.WorkingDirectory='" + (Path.GetDirectoryName(exeLauncher) ?? "").Replace("'", "''") + "';" +
                 "$s.Description='Night Summary Companion';" +
                 "$s.Save()";
             if (Run("powershell", $"-NoProfile -NonInteractive -Command \"{ps}\"") && File.Exists(lnk))
@@ -191,7 +208,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory={Path.GetDirectoryName(launcher)}
-ExecStart={launcher} serve
+ExecStart={launcher} serve --no-browser
 Restart=on-failure
 RestartSec=5
 

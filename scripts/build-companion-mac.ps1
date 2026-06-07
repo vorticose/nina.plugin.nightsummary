@@ -84,27 +84,41 @@ function Build-Arch {
     # script runs the real binary in a loop and respawns it on exit code 88
     # (Dashboard "Restart" button) or stops on exit code 0 (Dashboard "Quit").
     Copy-Item "$publishDir/NightSummaryCompanion"    "$macOs/NightSummaryCompanion-bin"
-    # Copy ALL native dylibs the publish emitted -- PublishSingleFile keeps
-    # natives external, and the companion needs both libe_sqlite3.dylib (SQLite
-    # reads) and libSkiaSharp.dylib (livestack rescale during offline regen).
-    # Globbing future-proofs this against new native deps; a missing dylib only
-    # surfaces as a runtime DllNotFoundException, never a build error.
-    $dylibs = Get-ChildItem "$publishDir/*.dylib"
-    if (-not $dylibs) { throw "no native dylibs found in $publishDir -- expected libe_sqlite3.dylib + libSkiaSharp.dylib" }
-    Copy-Item $dylibs.FullName $macOs/
-    Write-Host ("  bundled natives: " + (($dylibs.Name) -join ', '))
+    # Natives (libe_sqlite3, libSkiaSharp) are baked INTO the binary via
+    # IncludeNativeLibrariesForSelfExtract, so there are no sibling dylibs to copy
+    # into the bundle -- the -bin is fully self-contained.
 
-    # Watchdog launcher script. macOS treats this as the bundle's executable
-    # (CFBundleExecutable=NightSummaryCompanion). The script:
-    #   - resolves its own directory so relative paths work regardless of cwd
-    #     (LaunchServices launches with cwd=/)
-    #   - loops, running the real binary
-    #   - exit 88 from binary  -> respawn (Dashboard "Restart" hit)
-    #   - exit 0  from binary  -> break and stop (Dashboard "Quit" or clean shutdown)
-    #   - any other exit       -> log and stop (don't spin on a crash loop)
+    # TWO scripts, deliberately split:
+    #
+    #   NightSummaryCompanion           = the bundle's CFBundleExecutable. A thin
+    #                                     LAUNCHER that detaches the watchdog and
+    #                                     EXITS IMMEDIATELY.
+    #   NightSummaryCompanion-watchdog  = the detached background loop that runs
+    #                                     the real binary and respawns it.
+    #
+    # Why split: macOS LaunchServices treats a Finder click on an already-
+    # "running" .app as a "reopen" AppleEvent. A headless agent has no run loop
+    # to answer it, so the reopen times out (-1712) and the click does nothing —
+    # e.g. the user closes the dashboard tab, clicks the app to get it back, and
+    # nothing happens. Because the launcher exits at once, LaunchServices never
+    # sees this .app as "running", so EVERY click launches it fresh; the binary's
+    # own probe ("is a companion already serving? then just open the dashboard")
+    # then runs every time and the tab reliably reappears. Windows always spawns
+    # a fresh process per double-click and Linux launches fresh too, so this
+    # launcher trick is macOS-only.
+    $launcher = @'
+#!/bin/bash
+# NightSummaryCompanion launcher (the .app's CFBundleExecutable). Detaches the
+# real server as a background watchdog, then exits immediately so macOS never
+# considers this .app "running" — that way every Finder click launches us fresh
+# and reliably opens the dashboard instead of sending a dead-end reopen event.
+DIR="$(cd "$(dirname "$0")" && pwd)"
+nohup "$DIR/NightSummaryCompanion-watchdog" "$@" >/dev/null 2>&1 &
+exit 0
+'@
     $watchdog = @'
 #!/bin/bash
-# NightSummaryCompanion launcher + watchdog.
+# NightSummaryCompanion watchdog (detached background loop).
 # Respawns the binary on exit code 88 (dashboard Restart), exits on 0 (Quit).
 DIR="$(cd "$(dirname "$0")" && pwd)"
 BIN="$DIR/NightSummaryCompanion-bin"
@@ -112,29 +126,32 @@ while :; do
     "$BIN" "$@"
     code=$?
     case $code in
-        88)
-            # Restart requested via dashboard. Small breather so the OS
-            # releases the TCP port before the next bind attempt.
-            sleep 1
-            ;;
-        0)
-            # Clean quit. Stop the loop and exit the .app process group.
-            exit 0
-            ;;
-        *)
-            # Crash / unexpected exit. Don't spin -- propagate the code so
-            # the user can see "it died" in Console.app or via `open -W`.
-            exit $code
-            ;;
+        88) sleep 1 ;;     # Restart: let the OS free the TCP port, then respawn
+        0)  exit 0 ;;      # Clean Quit: stop the loop
+        *)  exit $code ;;  # Crash: don't spin; surface the code (Console.app / open -W)
     esac
 done
 '@
-    $watchdogPath = Join-Path $macOs 'NightSummaryCompanion'
     # PowerShell on Windows writes CRLF by default which bash chokes on.
     # Use [System.IO.File]::WriteAllText with UTF8NoBOM + explicit LF.
-    [System.IO.File]::WriteAllText($watchdogPath,
-        ($watchdog -replace "`r`n", "`n"),
-        (New-Object System.Text.UTF8Encoding $false))
+    $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText((Join-Path $macOs 'NightSummaryCompanion'),
+        ($launcher -replace "`r`n", "`n"), $utf8NoBom)
+    [System.IO.File]::WriteAllText((Join-Path $macOs 'NightSummaryCompanion-watchdog'),
+        ($watchdog -replace "`r`n", "`n"), $utf8NoBom)
+
+    # 2b. App icon. Drop the committed .icns into Contents/Resources and point
+    # CFBundleIconFile at it (below). LSUIElement=true means no Dock icon, but
+    # the .icns is what Finder shows for the .app and what appears in System
+    # Settings -> General -> Login Items / "Allow in the Background".
+    $resources = Join-Path $contents 'Resources'
+    New-Item -ItemType Directory -Path $resources -Force | Out-Null
+    $icnsSrc = Join-Path $repoRoot 'assets/companion-icon/companion.icns'
+    if (Test-Path $icnsSrc) {
+        Copy-Item $icnsSrc (Join-Path $resources 'companion.icns')
+    } else {
+        Write-Host "  WARNING: $icnsSrc missing -- bundle will use the generic app icon" -ForegroundColor Yellow
+    }
 
     # 3. Info.plist
     #
@@ -157,6 +174,7 @@ done
     <key>CFBundleVersion</key>               <string>$version</string>
     <key>CFBundleShortVersionString</key>    <string>$version</string>
     <key>CFBundleExecutable</key>            <string>NightSummaryCompanion</string>
+    <key>CFBundleIconFile</key>              <string>companion</string>
     <key>CFBundlePackageType</key>           <string>APPL</string>
     <key>CFBundleInfoDictionaryVersion</key> <string>6.0</string>
     <key>LSUIElement</key>                   <true/>
