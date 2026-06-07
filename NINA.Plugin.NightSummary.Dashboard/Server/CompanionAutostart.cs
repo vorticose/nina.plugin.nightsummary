@@ -126,7 +126,7 @@ $@"<?xml version=""1.0"" encoding=""UTF-8""?>
 <dict>
     <key>Label</key><string>{MacLabel}</string>
     <key>ProgramArguments</key>
-    <array><string>{Xml(launcher)}</string><string>serve</string></array>
+    <array><string>{Xml(launcher)}</string><string>serve</string><string>--no-browser</string></array>
     <key>RunAtLoad</key><true/>
     <key>KeepAlive</key><false/>
     <key>ProcessType</key><string>Background</string>
@@ -171,6 +171,7 @@ $@"<?xml version=""1.0"" encoding=""UTF-8""?>
             var ps =
                 "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('" + lnk.Replace("'", "''") + "');" +
                 "$s.TargetPath='" + exeLauncher.Replace("'", "''") + "';" +
+                "$s.Arguments='serve --no-browser';" +   // login start stays silent (no surprise browser tab)
                 "$s.WorkingDirectory='" + (Path.GetDirectoryName(exeLauncher) ?? "").Replace("'", "''") + "';" +
                 "$s.Description='Night Summary Companion';" +
                 "$s.Save()";
@@ -202,7 +203,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory={Path.GetDirectoryName(launcher)}
-ExecStart={launcher} serve
+ExecStart={launcher} serve --no-browser
 Restart=on-failure
 RestartSec=5
 

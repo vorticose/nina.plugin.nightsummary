@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Net.Http;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -113,6 +114,19 @@ On first run a default companion.json is written and the program exits so you ca
         // so the user can complete setup from the dashboard. Loops below skip
         // their work while !IsComplete and pick up automatically once saved.
 
+        // "Show me the dashboard" launch. If a companion is already serving on
+        // this port (the autostart agent is up and the user just double-clicked
+        // the app, or launched a 2nd copy), don't stand up a second server —
+        // open the running dashboard and exit cleanly. The HTTP probe makes this
+        // snappy; without it we'd wait out the bind-retry before discovering the
+        // conflict. A clean first launch sees connection-refused here (instant)
+        // and proceeds normally. Skipped under --no-browser (autostart/service).
+        if (!noBrowser && await AnotherInstanceServingAsync(config.Port)) {
+            log.Info($"A companion is already serving on port {config.Port}; opening it instead of starting a second instance.");
+            TryOpenBrowser($"http://localhost:{config.Port}/", log);
+            return 0;
+        }
+
         // Single SyncEngine + controller so the scheduler and the UI button
         // share coalescing — concurrent runs collapse to one in-flight sync.
         var engine     = new SyncEngine(config, paths, log);
@@ -164,6 +178,18 @@ On first run a default companion.json is written and the program exits so you ca
             await server.StartAsync(config.Port);
             log.Info($"Dashboard serving on http://localhost:{config.Port} (companion mode)");
         } catch (System.Net.Sockets.SocketException ex) {
+            // Backstop for the pre-probe above: if the port was free at probe
+            // time but got claimed before our bind (race with the autostart
+            // agent), treat AddressAlreadyInUse the same way — open the running
+            // dashboard rather than dying silently.
+            if (ex.SocketErrorCode == System.Net.Sockets.SocketError.AddressAlreadyInUse) {
+                log.Info($"Port {config.Port} already in use — a companion instance is already running.");
+                if (!noBrowser) {
+                    log.Info("Opening the running dashboard instead of starting a second instance.");
+                    TryOpenBrowser($"http://localhost:{config.Port}/", log);
+                }
+                return 0;  // clean exit; the already-running instance keeps serving
+            }
             log.Error($"Cannot bind dashboard on port {config.Port}: {ex.Message}");
             log.Error($"Another process is using port {config.Port}. To recover:");
             log.Error($"  1. Edit {configPath} and set \"port\" to a free value (default 8182)");
@@ -186,18 +212,20 @@ On first run a default companion.json is written and the program exits so you ca
 
         log.Info("Press Ctrl+C to stop.");
 
-        // First-run convenience: pop the wizard in the user's default browser
-        // when the companion is freshly installed. Gated on:
-        //   - --no-browser NOT passed (service installs opt out via the flag;
-        //     install-service will set this automatically per platform)
-        //   - config is incomplete (returning user with a working install
-        //     gets no surprise tab; complete config = silent boot)
+        // Launch convenience: pop the dashboard in the user's default browser so
+        // double-clicking the app icon actually shows something (the companion is
+        // a headless background agent — LSUIElement / no console window — so the
+        // browser tab IS its UI). Incomplete config opens /setup (the wizard);
+        // a complete config opens the dashboard itself. Gated only on:
+        //   - --no-browser NOT passed (autostart/service entries set this flag so
+        //     login/reboot stays silent — no surprise tab every boot)
         //
         // We deliberately don't check Console.IsOutputRedirected here — Finder
         // launches of a .app bundle redirect stdout to Console.app, which would
         // suppress the auto-open in exactly the case we want it to fire.
-        if (!noBrowser && !config.IsComplete()) {
-            TryOpenBrowser($"http://localhost:{config.Port}/setup", log);
+        if (!noBrowser) {
+            var landing = config.IsComplete() ? "" : "setup";
+            TryOpenBrowser($"http://localhost:{config.Port}/{landing}", log);
         }
 
         // Park forever — Ctrl+C kills the process; in service mode the host
@@ -363,6 +391,21 @@ On first run a default companion.json is written and the program exits so you ca
             ? $"Primary: {config.ResolvedNinaUrl()}"
             : "Primary: <not configured> — finish setup in the dashboard.");
         return (config, paths, log);
+    }
+
+    // Quick check: is a companion already serving on this port? Hits the
+    // companion status endpoint with a short timeout. true => another instance
+    // is live (open it, don't start a second). false => nothing there / not a
+    // companion / unreachable => safe to start our own server. Swallows every
+    // failure (connection refused on a clean first launch is the common case).
+    private static async Task<bool> AnotherInstanceServingAsync(int port) {
+        try {
+            using var http = new HttpClient { Timeout = TimeSpan.FromMilliseconds(1200) };
+            using var resp = await http.GetAsync($"http://localhost:{port}/api/companion/status");
+            return resp.IsSuccessStatusCode;
+        } catch {
+            return false;
+        }
     }
 
     // Cross-platform "open URL in default browser." UseShellExecute=true lets
