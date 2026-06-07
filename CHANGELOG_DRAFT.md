@@ -1,77 +1,29 @@
 # Night Summary — Changelog
 
 
-## Unreleased — v3.2.0 (in progress)
+## v3.2.0
 
-<!-- DRAFT: companion + readonly + bug-fix sections below need stable-to-stable consolidation before release -->
+### New Features
 
-### Companion pairing
+- **Night Summary Companion** — a standalone dashboard app for Mac, Windows, and Linux that syncs a copy of your sessions from the NINA machine and serves the full dashboard on its own. One-way sync; it never writes back to the rig.
+  - **Per-companion pairing** — generate a token in NINA (Options → Local Dashboard → Companion Pairing) and paste it into the companion's setup wizard. Each companion gets its own revocable token; the paired list updates live.
+  - **One-click install per OS** — Windows `.exe`, macOS `.app`, Linux `curl | sh` / `.deb` / AppImage / tarball; optional Start at login.
+  - **Instant, self-updating dashboard** — opens immediately on synced data and refreshes itself as new sessions arrive. Pairing and settings survive updates.
+- **Read-Only Mirror** — a second dashboard on a separate port that blocks all writes, for safe public exposure behind a reverse proxy or Tailscale Funnel. Options → Local Dashboard → Read-Only Mirror (default port 8281).
 
-Pairing-token rollout for the standalone Night Summary Companion app. The shared `CompanionApiKey` field stays in place for the transition window — existing companions keep syncing without changes — but new companions can now be set up entirely in a browser via a generated per-companion token, without copy-pasting JSON. Fold this section into whichever release pulls `feature/companion-rd` into `dev`.
+### Bug Fixes
 
-**New features**
-- **Companion Pairing panel in Options** — under Dashboard Server → Companion Pairing. Click **+ Generate Token** to issue a 16-character per-companion token (formatted as `XXXX-XXXX-XXXX-XXXX`); the plain token is shown once with a Copy button. Lists paired companions and unclaimed tokens with humanized timestamps; **Revoke** is per-entry and confirms before disabling the pairing.
-- **Setup wizard in the Companion app** — fresh installs now redirect from the dashboard to a 5-step browser wizard (Welcome → Connect → Pair → Sync settings → First sync). Specific user-facing messages for each failure mode: unknown token, revoked token, already-paired-with-another-companion, server-doesn't-support-pairing, connection refused, timeout.
-- **`/api/companion/info`** (unauthenticated) returns the Night Summary version, NINA version, and paired-companion count so the wizard can distinguish "wrong host" from "wrong software" before any token exists.
-- **`/api/companion/pair` and `/api/companion/revoke`** — claim and revoke pairing tokens over HTTP. The companion side sends these via new `/api/setup/probe` and `/api/setup/claim` proxy endpoints so the wizard isn't blocked by browser CORS.
-
-**Improvements**
-- **Dual-auth on existing sync endpoints** — `/api/export/*` accepts either the new per-companion pairing token (preferred) or the legacy shared `CompanionApiKey` as `Authorization: Bearer`. When a request uses the legacy key, a one-shot deprecation warning is logged ("Re-pair the companion to migrate to a pairing token") and the request still succeeds. Companions can migrate at any time without downtime.
-- **Pairing tokens are stored separately** from the main settings file — in `%LOCALAPPDATA%\NINA\NightSummary\companion_tokens.json` — so they survive plugin updates and database migrations, and don't get included in companion sync payloads.
-- **Token storage uses SHA-256 hashing + constant-time lookup** so the plain token can never be recovered from the sidecar file even with full disk access. Atomic write with `.tmp` + rename and retry-on-sharing-violation so concurrent reads can't see a torn file.
-
-**Migration notes**
-- Existing companions with only `nina.apiKey` set keep working. The deprecation warning is informational; nothing breaks.
-- The legacy `nina.apiKey` fallback is scheduled for removal "next release after wizard ships" (two releases out by current plan) — see `COMPANION_PAIRING_DESIGN.md` for the full migration timeline.
-- After re-pairing through the wizard, `companion.json` gains a `nina.pairingToken` field. The old `nina.apiKey` is left in place but ignored when the pairing token is set (token takes precedence).
-
-**Internal / API surface**
-- New `CompanionTokenStore` (`Add` / `FindByToken` / `Revoke` / `MarkPaired` / `TouchLastUsed`) backed by `companion_tokens.json` with atomic writes, soft-delete revocation, and constant-time lookups.
-- `IPluginSettings` gains a default `NinaVersion` property (returns "" unless the host overrides) so `/api/companion/info` can surface the NINA build version.
-- `ICompanionController` gains `ProbePrimaryAsync` and `ClaimPairingAsync`.
-- 85 new tests across `CompanionTokenStoreTests`, `CompanionTokenViewTests`, `CompanionPairingEndpointsTests`, `CompanionAuthShimTests`, `CompanionWizardEndpointsTests`. Full suite at 818 passing.
+- Raw thumbnails no longer include NINA's star/HFR annotation overlay.
+- Target Scheduler: Pending frames no longer show as "Manual Rejected" or drop from integration totals.
+- Target Scheduler: verdicts reached after a session ends now appear next time you open the session.
+- Targets imaged in multiple windows per session render each window separately.
+- Report view no longer collapses to a sliver on browsers without `dvh` (Firefox < 101, older Safari/WebViews).
+- Frames-gallery Back button fixed; long lightbox values truncate on mobile instead of overflowing.
+- Overhead Analysis: fixed a phantom multi-hour "Wait" and the "Overhead Accounted %" pegging at 100%.
+- Locale/time zones: comma-decimal regions render correctly; timestamps keep their time zone (fixes charts/date grouping east of GMT).
 
 
-### Companion desktop integration
-
-Native-feeling install + launch experience for the standalone Companion app on all three platforms. Fold into whichever release ships the companion.
-
-**New features**
-- **Real app icon on every platform** — the Companion now carries the Night Summary brand icon: an embedded `.ico` on the Windows launcher (Explorer + taskbar), a `.icns` in the macOS `.app` (Finder / Login Items), and a `.desktop` entry + PNG on Linux (app menu / launcher, registered by `install.sh`).
-- **Start at login** — a one-click toggle in the Companion's Settings tab enables autostart with no admin rights or code-signing: a Startup-folder shortcut on Windows, a LaunchAgent on macOS, and a `systemd --user` unit on Linux.
-- **One-file Windows launcher** — `NightSummaryCompanion.exe` is now a single windowless (no console) app you double-click directly, with the native dependencies baked in so you can drop it anywhere (Desktop, pin to taskbar) — no surrounding folder required. It replaces the previous `.vbs` + `.cmd` pair; the dashboard Restart button is handled in-process by a self-respawn. Config + synced data live in `%LOCALAPPDATA%\NightSummaryCompanion`, so moving or updating the exe never loses settings or history. (The macOS `.app` and Linux binary are likewise fully self-contained.)
-- **Linux AppImage** — alongside the tarball, Linux now ships a single double-click `NightSummaryCompanion-x86_64.AppImage` (no extract/install step). Start-at-login on a Linux AppImage correctly points the systemd unit at the stable AppImage file, so autostart survives across runs.
-- **Linux `.deb` package** — for Debian/Ubuntu/Mint/Pop, a `.deb` you double-click to install via the Software Center (or `sudo apt install ./…deb`): no manual `chmod`, it lands in the app menu with its icon, and it auto-pulls the `libfontconfig1`/`libfreetype6` runtime libraries. Three Linux delivery options now: `.deb` (Debian family), AppImage (portable), tarball (manual/headless).
-
-**Improvements**
-- Settings tab process-control wording, the Quit/Restart confirmations, and the autostart status now match the OS the companion is actually running on (no more macOS "Applications folder" text on Windows/Linux).
-- The autostart status shows a simple **Enabled** with a hover tooltip explaining what was installed; the "Sync when the companion starts" option moved next to "Accept push notifications."
-- **Live first-sync progress** — the setup wizard's first sync now shows a moving progress bar with the current phase and download size (e.g. "Step 4 of 5 — Downloading thumbnails… 11.8 MB") instead of a silent spinner that looked stuck.
-- **Opening the app always shows the dashboard** — the Companion is a headless background agent, so before this, double-clicking the icon while it was already running (e.g. started at login) appeared to do nothing. Launching it now opens the dashboard in your browser every time — if an instance is already running it just brings that one's dashboard up instead of starting a second. Autostart-at-login stays silent (no surprise browser tab on every boot).
-- **Pairing survives updates on all platforms** — the Companion's config (host + pairing token) now always lives in the per-user app-data dir, outside the install artifact, so replacing the app on update no longer wipes it: pair once, not once per update (macOS `~/Library/Application Support`, Windows `%LOCALAPPDATA%`, Linux `~/.local/share`). A config left over from an older build beside the binary is migrated across automatically on first launch. Config writes are now atomic with a `.bak` fallback, so a crash mid-save can't lose your pairing.
-- **Dashboard appears instantly and refreshes itself after a sync** — launching the Companion now shows the dashboard immediately (rendering the data already on disk) instead of waiting out the initial sync first; the fresh data fills in automatically when the background sync lands. This live auto-refresh also applies to scheduled and push-triggered syncs while you're looking at the Sessions or Stats view — new sessions show up on their own, no manual reload.
-
-
-### Read-Only Mirror + bug fixes
-
-**New features**
-- Read-Only Mirror — a second dashboard instance bound to a separate port that refuses every write action at the server level, designed to sit behind a reverse proxy (Caddy / nginx / Cloudflare Tunnel) or Tailscale Funnel so the public-facing dashboard cannot mutate state. Enable in Options → Local Dashboard → Read-Only Mirror; default port 8281. See the new Public Exposure docs page for setup recipes for all four exposers.
-
-**Bug fixes**
-- Raw image thumbnails no longer include NINA's star/HFR annotation overlay. When the user's profile had Imaging → Annotate Image enabled, the bitmap NINA delivered to the plugin was the post-annotation version with HFR numbers and detection circles baked in, and that ended up as the saved thumbnail. Thumbnails are now captured from the pre-annotation stretched bitmap, regardless of the Annotate Image setting.
-- Target Scheduler grading: frames that TS hasn't finished grading yet (status: Pending) no longer render as "Manual Rejected" in the dashboard Frames view and lightbox, and no longer drop out of integration totals / frame counts on the session card, target detail panel, and lifetime stats. The session-end TS sync was writing Accepted=false for Pending images; the dashboard now treats Pending as not-rejected everywhere and the session-end sync only flips Accepted=false on an explicit TS Rejected (2) verdict.
-- Target Scheduler grading: when TS reaches a verdict for an image after the session has ended (e.g., it needed more frames to compare against), the dashboard now picks up the new grading the next time you open the session — a background re-sync runs after the session detail loads and refreshes the NS database in place. Skipped automatically when nothing is Pending, so already-graded sessions pay no cost.
-- Targets imaged in two or more non-continuous windows during a single session (e.g., the target set before the meridian and rose again later, or Target Scheduler swapped it out and back in) no longer render as one continuous block. The altitude chart highlights each imaging window separately, and the per-target filter table is split into one sub-table per window with a Grand Total row across all windows.
-- Dashboard: opening the Frames gallery from a session report that was launched from a target or project detail panel no longer breaks the in-page back button — back now returns to the originating TDP/PDP via the report, instead of dead-ending on the Sessions list.
-- Dashboard: long values in the Frames lightbox stat boxes (e.g., a long Target Scheduler project name or Exposure Profile name) no longer overflow the box on mobile — they now truncate with an ellipsis like file paths already did.
-- Dashboard: the report view no longer collapses to a tiny ~150px sliver in browsers without dynamic-viewport (`dvh`) support — Firefox < 101, older Safari, older WebViews. The report height used `calc(100dvh − header)` with no fallback; those browsers couldn't compute it, so the flex layout collapsed and the report iframe fell back to its intrinsic height. Now `@supports`-gated with a `100vh` fallback so the report fills the window in every engine.
-- Overhead Analysis: fixed a phantom multi-hour "Wait" category that could appear on sessions where a `WaitForTimeSpan` was started inside a safety-recovery container (When Unsafe / OnceSafe / WhenPlugin IfContainer) and then orphaned when the parent container exited without logging a finish line for the child wait. A later sequence interrupt would flush the stale wait with its wall-clock span. Wait events are now capped at the requested duration parsed from the log, with a small grace.
-- Overhead Analysis: "Overhead Accounted %" no longer silently pegs at 100%. Several issues conspired to push the numerator past the denominator and clamp the ratio: overhead events running concurrently with exposures (image saves, plate solves, derived camera-download tail) were counted in the numerator but excluded from the denominator; and on sessions where the safety monitor logged duplicate RoofClosed/RoofOpen pairs in tight succession, `ExtendForAbortedExposures` pulled them all back to the same aborted-exposure timestamp and the overlapping intervals double-counted. The numerator now subtracts integration intervals built from the saved images list, and overlapping roof-closed intervals are merged before subtraction.
-- Reports now render correctly for users whose Windows region uses a comma decimal separator (most of Europe). Previously, sky-thumbnail images could silently fail to load and the target framing overlay could render incorrectly on those systems, because numeric values in image URLs and SVG coordinates were formatted with the local decimal separator instead of a dot. All report output is now formatted locale-independently.
-- Session and image timestamps are now read back from the database with their time-zone information preserved, fixing altitude charts and session-date grouping that could shift by the local UTC offset for users in time zones east of GMT.
-
-
-## Unreleased — v3.1.0 (in progress)
+## v3.1.0
 
 **New features**
 - Raw image thumbnails (opt-in) — Night Summary can now save a small JPEG of every LIGHT frame as it's captured and browse them in a new dashboard gallery, accessed via the Frames pill in the session report toolbar. Click any thumb for a lightbox with capture/ADU/guiding/environment metrics; project name, Exposure Profile, and per-axis guiding RMS are pulled from Target Scheduler when available. Arrow-key (desktop) or swipe (mobile) navigation. Optional medium 800px thumbnails for sharper lightbox viewing. Three retention modes (keep all, roll over by days, roll over by disk GB). Existing TS users can backfill TS captured thumbnails from past sessions via one-click "Import from Target Scheduler" in Options. Off by default — enable in Options → Raw Image Thumbnails.
