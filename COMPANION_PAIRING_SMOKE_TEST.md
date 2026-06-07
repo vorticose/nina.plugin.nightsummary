@@ -6,7 +6,7 @@ Repo state assumed: branch `feature/companion-rd` at `d7b55c5` or later, full Re
 
 ## Prerequisites
 
-- [ ] NINA running on the rig (RBFocus or your test box) with the plugin built from this branch deployed to `%LOCALAPPDATA%\NINA\Plugins\3.0.0\Night Summary\`. Deploy *every* DLL the build produces — not just `NINA.Plugin.NightSummary.dll` (Dashboard, deps.json, Microsoft.Data.Sqlite stack — see `feedback_deploy_all_dlls`).
+- [ ] NINA running on the rig (or your test box) with the plugin built from this branch deployed to `%LOCALAPPDATA%\NINA\Plugins\3.0.0\Night Summary\`. Deploy *every* DLL the build produces — not just `NINA.Plugin.NightSummary.dll` (Dashboard, deps.json, Microsoft.Data.Sqlite stack — see `feedback_deploy_all_dlls`).
 - [ ] Companion binary built from this branch and runnable on your Mac mini (or any non-rig machine). The companion's `companion.json` exists; *don't* pre-populate `nina.apiKey` or `nina.pairingToken` — leave both blank for the fresh-install path.
 - [ ] Both machines reachable on the same Tailscale tailnet (or LAN).
 - [ ] A browser open on the machine that'll drive the wizard (typically the same machine as the companion, but the wizard works from any device on the tailnet).

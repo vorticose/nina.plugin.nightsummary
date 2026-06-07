@@ -9,6 +9,7 @@ NINA.Plugin.NightSummary/Properties/AssemblyInfo.cs merge=ours
 manifest.json merge=ours
 repository.json merge=ours
 
-# Shell scripts run on the Linux CI runner — force LF so a Windows commit can't
-# introduce CRLF and break the shebang (`/bin/bash^M: bad interpreter`).
+# Git hooks and shell scripts must stay LF. A CRLF shebang line ("#!/usr/bin/env
+# bash\r") breaks the interpreter under Windows git-bash and in CI.
+scripts/git-hooks/* text eol=lf
 *.sh text eol=lf
