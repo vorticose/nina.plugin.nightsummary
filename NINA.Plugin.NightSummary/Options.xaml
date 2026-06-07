@@ -802,14 +802,11 @@
                             <Separator Margin="0,16,0,8" />
                             <StackPanel Orientation="Horizontal" Margin="0,4">
                                 <TextBlock Text="Companion Pairing" Width="200" FontWeight="Bold" VerticalAlignment="Center" />
-                                <Border Background="#7B68EE" CornerRadius="3" Padding="6,2" VerticalAlignment="Center">
-                                    <TextBlock Text="R&amp;D" FontSize="10" FontWeight="Bold" Foreground="White" />
-                                </Border>
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,2">
                                 <TextBlock Width="200" />
                                 <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="400" VerticalAlignment="Center"
-                                           Text="Generate per-companion tokens to replace the shared API Key above. Each companion gets its own token, revocable independently. The plain token is shown ONCE — copy it into the companion's setup wizard." />
+                                           Text="The Companion is a separate read-only dashboard app you run on another computer (Mac, Windows, or Linux) that syncs a copy of your sessions. Generate a token for each companion you set up — each gets its own token, revocable independently. The token is shown ONCE — copy it into that companion's setup wizard." />
                             </StackPanel>
 
                             <StackPanel Orientation="Horizontal" Margin="0,8">
@@ -843,7 +840,7 @@
                                     <TextBlock TextWrapping="Wrap" Foreground="#B22" FontSize="11" Margin="0,0,0,4"
                                                Text="Copy this token now — it won't be shown again." />
                                     <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="0,0,0,8"
-                                               Text="Paste it into the companion's setup wizard. The shared API Key above continues to work during the transition window." />
+                                               Text="Paste it into the companion's setup wizard to finish pairing." />
                                     <Button Content="Done" Command="{Binding DismissNewCompanionTokenCommand}"
                                             MinWidth="80" Padding="8,2" FontSize="11" HorizontalAlignment="Left" />
                                 </StackPanel>
