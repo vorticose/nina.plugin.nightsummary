@@ -808,6 +808,12 @@
                                 <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="400" VerticalAlignment="Center"
                                            Text="The Companion is a separate read-only dashboard app you run on another computer (Mac, Windows, or Linux) that syncs a copy of your sessions. Generate a token for each companion you set up — each gets its own token, revocable independently. The token is shown ONCE — copy it into that companion's setup wizard." />
                             </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,4">
+                                <TextBlock Width="200" />
+                                <TextBlock FontSize="11" Foreground="Gray">
+                                    <Hyperlink NavigateUri="https://github.com/vorticose/nina.plugin.nightsummary/releases/latest" RequestNavigate="Hyperlink_RequestNavigate">Download the Companion app &#8594;</Hyperlink>
+                                </TextBlock>
+                            </StackPanel>
 
                             <StackPanel Orientation="Horizontal" Margin="0,8">
                                 <TextBlock Width="200" />
