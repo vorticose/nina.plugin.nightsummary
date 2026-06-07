@@ -2,6 +2,7 @@ using NINA.Plugin.NightSummary.Dashboard.Abstractions;
 using NINA.Plugin.NightSummary.Data;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -84,6 +85,17 @@ namespace NINA.Plugin.NightSummary.Reporting {
         private static bool IsRejected(ImageRecord i) => !i.CountsAsAccepted;
 
         public async Task<string> GenerateHtmlReport(ReportData data) {
+            // Locale guard: the report is machine-readable markup. SVG coordinates,
+            // HiPS2FITS URL query params, and data-* attributes are locale-neutral by spec
+            // and MUST use '.' as the decimal separator regardless of the host system locale.
+            // On a comma-decimal locale (de-DE, fr-FR, most of Europe) every :F1/:F2/:F6
+            // interpolation would otherwise emit commas — corrupting SVG transforms (comma is
+            // also the SVG argument separator) and silently breaking thumbnail URLs. Force
+            // InvariantCulture for the whole generation flow (CurrentCulture flows across await
+            // on .NET 5+) and restore it in finally.
+            var savedCulture = CultureInfo.CurrentCulture;
+            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+            try {
             Warnings.Clear();
             FilterHelper.LoadClassifications(_settings.Current.FilterClassifications);
             var sb = new StringBuilder();
@@ -296,6 +308,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             return html;
+            } finally {
+                CultureInfo.CurrentCulture = savedCulture;
+            }
         }
 
         private string BuildHeader(ReportData data) {
