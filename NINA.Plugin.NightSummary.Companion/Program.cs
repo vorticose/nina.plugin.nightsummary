@@ -132,13 +132,14 @@ On first run a default companion.json is written and the program exits so you ca
         var engine     = new SyncEngine(config, paths, log);
         var controller = new CompanionController(engine, config, paths, configPath, log);
 
-        if (!config.IsComplete(out var setupReason)) {
+        var complete = config.IsComplete(out var setupReason);
+        if (!complete) {
             log.Warn($"Companion config incomplete ({setupReason}). Open the dashboard to finish setup.");
-        } else if (!noSync && config.Sync.OnBoot) {
-            log.Info("Boot sync starting…");
-            var result = await controller.TriggerSyncAsync(CancellationToken.None);
-            if (!string.IsNullOrEmpty(result.LastError)) log.Warn($"Boot sync did not complete cleanly: {result.LastError}");
         }
+        // Boot sync is deferred to AFTER the server is up + the tab is open (see
+        // below) so the dashboard appears instantly instead of waiting out the
+        // network sync. Decide here whether it should run at all.
+        var bootSync = complete && !noSync && config.Sync.OnBoot;
 
         var settings = new CompanionPluginSettings();
 
@@ -239,6 +240,26 @@ On first run a default companion.json is written and the program exits so you ca
         var schedulerCts = new CancellationTokenSource();
         var scheduler = Task.Run(() => RunSchedulerLoop(controller, config, log, schedulerCts.Token));
         var pinger    = Task.Run(() => RunPingLoop(controller, config, log, schedulerCts.Token));
+
+        // Boot sync, in the background now that the server is up and the tab is
+        // open. The dashboard renders the last-synced data on disk immediately and
+        // live-refreshes when this lands (the web UI watches lastSuccessUtc and
+        // re-renders the current view). Fire-and-forget; coalesces with the
+        // scheduler via the shared controller, cancels cleanly on shutdown.
+        if (bootSync) {
+            _ = Task.Run(async () => {
+                log.Info("Boot sync starting (background)…");
+                try {
+                    var result = await controller.TriggerSyncAsync(schedulerCts.Token);
+                    if (!string.IsNullOrEmpty(result.LastError))
+                        log.Warn($"Boot sync did not complete cleanly: {result.LastError}");
+                } catch (OperationCanceledException) {
+                    // shutting down — ignore
+                } catch (Exception ex) {
+                    log.Warn($"Boot sync failed: {ex.Message}");
+                }
+            });
+        }
 
         await stop.Task;
         log.Info("Stopping server…");

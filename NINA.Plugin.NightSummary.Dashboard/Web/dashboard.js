@@ -9488,7 +9488,45 @@ function companionSyncNow() {
   });
 }
 
+// When a sync completes (lastSuccessUtc advances) re-render the current data
+// view so freshly-synced sessions/stats appear WITHOUT a manual refresh. Covers
+// the boot sync, the scheduled poll, push-triggered syncs, and the Sync Now
+// button — anything that funnels through renderCompanionStatus. Only acts on the
+// list/stats views where a silent rebuild is safe; skips the report iframe
+// (would reload mid-read), the settings form (would discard edits), frames
+// galleries, and any moment a modal / detail panel is open.
+function maybeAutoRefreshAfterSync(newUtc) {
+  var prev = window.__lastSyncSuccessUtc;
+  if (newUtc) window.__lastSyncSuccessUtc = newUtc;
+  if (!newUtc || prev === undefined || prev === null || newUtc === prev) return;
+  var path = (location.hash.slice(1) || '/sessions').split('?')[0];
+  if (path !== '/sessions' && path !== '/stats') return;
+  if (document.querySelector('[id$="-backdrop"]')) return; // a modal / detail panel is open
+  logInfo('Sync landed — auto-refreshing', path);
+  // Bust the session caches so the list re-fetches; renderStats always re-fetches.
+  sessionsCache = []; initialLoadDone = false;
+  detailCache = {}; thumbnailCache = {}; altitudeChartCache = {};
+  __lwCachedSessions = null; cachedFilters = null; tonightPreviewCache = null;
+  var scroller = document.querySelector('.shell') || document.scrollingElement || document.documentElement;
+  var y = scroller ? scroller.scrollTop : 0;
+  route();
+  reapplyScrollAfterRender(scroller, y);
+}
+
+// The data views fetch async, so the new DOM paints a beat after route(). Re-apply
+// the saved scroll position on each content mutation for a short window so the user
+// stays roughly where they were instead of being yanked to the top.
+function reapplyScrollAfterRender(scroller, y) {
+  if (!scroller || !y || !('MutationObserver' in window)) return;
+  var content = document.getElementById('content');
+  if (!content) return;
+  var obs = new MutationObserver(function() { scroller.scrollTop = y; });
+  obs.observe(content, { childList: true });
+  setTimeout(function() { obs.disconnect(); }, 2500);
+}
+
 function renderCompanionStatus(s) {
+  maybeAutoRefreshAfterSync(s && s.lastSuccessUtc);
   var statusEl = document.getElementById('companion-banner-status');
   var banner = document.getElementById('companion-banner');
   var btn = document.getElementById('companion-sync-btn');
