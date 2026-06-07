@@ -35,6 +35,29 @@ cd .claude/worktrees/<name>
 - Commit frequently so work is never lost to branch switches
 - When done, merge your branch back and clean up: `git worktree remove <path>`
 
+## Security: keep infrastructure and secrets out of this repo
+
+This repository is **public**. Never commit machine-specific or sensitive values:
+
+- **Infrastructure**: Tailscale/LAN IP addresses, the observatory's Windows username,
+  tailnet MagicDNS names, SMB/UNC paths that embed a host, SSH connection strings.
+- **Secrets**: API keys, tokens, passwords, private keys, real Discord/Slack webhook URLs.
+
+Where these belong instead:
+- The real observatory host / username / connection details live **only** in the
+  developer's user-level `~/.claude/CLAUDE.md` (never committed).
+- Deploy scripts read the host (and user) from `$env:NS_OBSERVATORY_HOST` /
+  `$env:NS_OBSERVATORY_USER`. Use placeholders (`<observatory-host>`, `<user>`,
+  `<your-tailscale-ip>`) in any committed file.
+
+This applies to merges from other machines too: if another dev box's CLAUDE.md
+carries real values, strip them before committing here.
+
+Two guardrails enforce this (so a future edit can't silently re-leak):
+- `.github/workflows/secret-scan.yml` fails CI if a forbidden pattern reappears.
+- `scripts/git-hooks/pre-commit` blocks the commit locally. Enable once per clone:
+  `git config core.hooksPath scripts/git-hooks`.
+
 ## Development Setup
 
 - Primary: built and tested on Windows with `dotnet build NINA.Plugin.NightSummary.sln -c Release`
