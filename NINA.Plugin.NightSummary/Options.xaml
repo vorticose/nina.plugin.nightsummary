@@ -868,7 +868,7 @@
                                             <TextBlock Text="•" Width="16" VerticalAlignment="Center" />
                                             <TextBlock Text="{Binding DisplayName}" Width="180" FontWeight="SemiBold" VerticalAlignment="Center" />
                                             <TextBlock Text="{Binding TimestampText}" Foreground="Gray" FontSize="11"
-                                                       Width="200" VerticalAlignment="Center" />
+                                                       Width="280" VerticalAlignment="Center" />
                                             <Button Content="Revoke" Tag="{Binding Id}" Click="RevokeCompanionToken_Click"
                                                     MinWidth="70" Padding="8,2" FontSize="11" Margin="8,0,0,0" />
                                         </StackPanel>
