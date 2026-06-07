@@ -8,3 +8,8 @@
 NINA.Plugin.NightSummary/Properties/AssemblyInfo.cs merge=ours
 manifest.json merge=ours
 repository.json merge=ours
+
+# Git hooks and shell scripts must stay LF. A CRLF shebang line ("#!/usr/bin/env
+# bash\r") breaks the interpreter under Windows git-bash and in CI.
+scripts/git-hooks/* text eol=lf
+*.sh text eol=lf

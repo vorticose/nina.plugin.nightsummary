@@ -8,7 +8,16 @@ $ErrorActionPreference = "Stop"
 $repoRoot  = Split-Path -Parent $PSScriptRoot
 $buildDir  = Join-Path $repoRoot "NINA.Plugin.NightSummary\bin\Release\net8.0-windows"
 $dll       = Join-Path $buildDir "NINA.Plugin.NightSummary.dll"
-$remoteDir = "\\100.86.208.29\Night Summary"
+
+# Observatory host (Tailscale IP or MagicDNS name) comes from an env var so no
+# machine-specific address is committed. Set it once in your shell profile:
+#   $env:NS_OBSERVATORY_HOST = "<your-tailscale-ip-or-hostname>"
+$remoteHost = $env:NS_OBSERVATORY_HOST
+if (-not $remoteHost) {
+    Write-Error "Set the NS_OBSERVATORY_HOST environment variable to the observatory host (Tailscale IP or hostname) before deploying."
+    exit 1
+}
+$remoteDir = "\\$remoteHost\Night Summary"
 
 # --- Verify build exists ---
 if (-not (Test-Path $dll)) {

@@ -35,6 +35,29 @@ cd .claude/worktrees/<name>
 - Commit frequently so work is never lost to branch switches
 - When done, merge your branch back and clean up: `git worktree remove <path>`
 
+## Security: keep infrastructure and secrets out of this repo
+
+This repository is **public**. Never commit machine-specific or sensitive values:
+
+- **Infrastructure**: Tailscale/LAN IP addresses, the observatory's Windows username,
+  tailnet MagicDNS names, SMB/UNC paths that embed a host, SSH connection strings.
+- **Secrets**: API keys, tokens, passwords, private keys, real Discord/Slack webhook URLs.
+
+Where these belong instead:
+- The real observatory host / username / connection details live **only** in the
+  developer's user-level `~/.claude/CLAUDE.md` (never committed).
+- Deploy scripts read the host (and user) from `$env:NS_OBSERVATORY_HOST` /
+  `$env:NS_OBSERVATORY_USER`. Use placeholders (`<observatory-host>`, `<user>`,
+  `<your-tailscale-ip>`) in any committed file.
+
+This applies to merges from other machines too: if another dev box's CLAUDE.md
+carries real values, strip them before committing here.
+
+Two guardrails enforce this (so a future edit can't silently re-leak):
+- `.github/workflows/secret-scan.yml` fails CI if a forbidden pattern reappears.
+- `scripts/git-hooks/pre-commit` blocks the commit locally. Enable once per clone:
+  `git config core.hooksPath scripts/git-hooks`.
+
 ## Development Setup
 
 - Primary: built and tested on Windows with `dotnet build NINA.Plugin.NightSummary.sln -c Release`
@@ -55,7 +78,7 @@ Key facts every agent must know:
 - **Port: 8183** (urlacl reservation exists only for 8183 — default 8182 will fail with Access Denied)
 - **Host: `+`** (all interfaces — required for Tailscale/iPad access; default `localhost` is loopback only)
 - **DB: `~/Documents/ns-snapshot/nightsummary.sqlite`** (dev snapshot, not the production NINA DB)
-- **URL: `http://100.126.185.10:8183/`** (Tailscale IP, used to test from iPad)
+- **URL: `http://<your-tailscale-ip>:8183/`** (Tailscale IP, used to test from iPad)
 - **Hot reload**: JS/CSS in `NINA.Plugin.NightSummary.Dashboard/Web/` is served live from source — edit and refresh, no rebuild
 - **Worktree-aware**: the script derives `--web` from `$PSScriptRoot`, so running it from any worktree's `scripts/` always serves that worktree's files
 - **Stale instance**: the script kills any existing instance automatically
@@ -156,26 +179,20 @@ work directly to `main`.
 - **CAUTION**: after restoring the clean URL, verify `.git/config` has a non-empty URL.
   If the restore command fails (e.g., gh can't detect the remote), the URL will be blank.
   Repo URL: `https://github.com/vorticose/nina.plugin.nightsummary.git`
-- **Quick deploy from Mac**: mount `//RBFocus:@100.86.208.29/Night%20Summary`, copy DLL, unmount:
+- **Quick deploy from Mac**: mount the observatory's `Night Summary` SMB share over
+  Tailscale, copy the DLL, unmount. Host/user live in your private (uncommitted) notes:
   ```
-  mkdir -p /tmp/nina-deploy && mount_smbfs "//RBFocus:@100.86.208.29/Night%20Summary" /tmp/nina-deploy
+  mkdir -p /tmp/nina-deploy && mount_smbfs "//<user>:@<observatory-host>/Night%20Summary" /tmp/nina-deploy
   cp NINA.Plugin.NightSummary/bin/Release/net8.0-windows/NINA.Plugin.NightSummary.dll /tmp/nina-deploy/
   diskutil unmount /tmp/nina-deploy
   ```
-- **SSH access to RBFocus from dev box** (set up 2026-04-24): the Windows rig runs OpenSSH server,
-  scoped to the Tailscale interface only. Used for DB snapshots, log tailing, and ad-hoc remote
-  PowerShell. Connection: `ssh RBFocus@remotetelescope.taile2b1e6.ts.net`. SCP requires `-O`
-  legacy mode and forward slashes in remote paths:
-  ```
-  scp -O 'RBFocus@remotetelescope.taile2b1e6.ts.net:C:/Users/RBFocus/AppData/Local/NINA/NightSummary/nightsummary.sqlite' /local/dest
-  ```
-  Pubkey lives in `C:\ProgramData\ssh\administrators_authorized_keys` on the remote (admin
-  accounts ignore per-user authorized_keys). Server installed via the
-  `PowerShell/Win32-OpenSSH` MSI from GitHub — `Add-WindowsCapability` returned DownloadSize 0
-  on this build, so WU route was abandoned. SMB shares also exist on RBFocus but `net use`
-  hits System error 67 from this dev box; SSH is the working path. Guardrail: never kill/start
-  NINA, deploy DLLs, or mutate remote state without explicit per-action OK — NINA may be
-  imaging.
+- **SSH/SMB access to the observatory PC** (set up 2026-04-24): the Windows rig is reachable
+  over a private Tailscale tailnet — key-only OpenSSH scoped to the Tailscale interface, plus
+  an SMB share. Used for DB snapshots, log tailing, and ad-hoc remote PowerShell. The host,
+  username, and exact connection strings live in the developer's private (uncommitted) notes;
+  deploy scripts read the host from the `NS_OBSERVATORY_HOST` env var. SCP needs `-O` legacy
+  mode and forward slashes in remote paths. Guardrail: never kill/start NINA, deploy DLLs, or
+  mutate remote state without explicit per-action OK — NINA may be imaging.
 - GitHub raw CDN caches aggressively -- use the Contents API for reliable downloads:
   `Invoke-RestMethod "https://api.github.com/repos/.../contents/..."`
 - PowerShell scripts must be pure ASCII -- no em dashes, box-drawing chars, or

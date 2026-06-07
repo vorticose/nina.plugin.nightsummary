@@ -81,7 +81,7 @@ internal sealed class DevStubCompanionController : ICompanionController {
 
     public CompanionConfigSnapshot GetConfig() {
         return new CompanionConfigSnapshot(
-            Host:                            "100.86.208.29",
+            Host:                            "127.0.0.1",
             Port:                            8181,
             DataDir:                         "(dev stub)",
             OnBoot:                          true,

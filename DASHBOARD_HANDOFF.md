@@ -3,8 +3,8 @@
 ## Branch & Worktree
 - **Branch**: `feature/dashboard-polish` (87 commits ahead of `v3-dev`)
 - **Worktree**: `.claude/worktrees/dashboard-polish`
-- **Dashboard URL**: http://100.86.208.29:8181/
-- **Deploy**: On NINA machine (RBFocus), run `.\scripts\dev-v3-deploy.ps1 feature/dashboard-polish`
+- **Dashboard URL**: http://<observatory-tailscale-ip>:8181/
+- **Deploy**: On the NINA machine, run `.\scripts\dev-v3-deploy.ps1 feature/dashboard-polish`
   - Script auto-closes NINA, builds, deploys DLL, relaunches NINA
 
 ## What Was Done
