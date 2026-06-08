@@ -5,19 +5,19 @@
 
 ### New Features
 
-- **Night Summary Companion** — a standalone dashboard app for Mac, Windows, and Linux that syncs a copy of your sessions from the NINA machine and serves the full dashboard on its own. One-way sync; it never writes back to the rig.
-  - **Per-companion pairing** — generate a token in NINA (Options → Local Dashboard → Companion Pairing) and paste it into the companion's setup wizard. Each companion gets its own revocable token; the paired list updates live.
+- **Night Summary Companion** — a standalone dashboard app for Mac, Windows, and Linux that syncs a copy of your sessions from the NINA machine and serves the full dashboard on its own. One-way sync; it never writes back to the rig.  Enables access to the dashboard features without needing your NINA machine to be running. 
+  - **Per-companion pairing** — generate a token in NINA (Options → Local Dashboard → Companion Pairing) and paste it into the companion's setup wizard. Each companion gets its own revocable token
   - **One-click install per OS** — Windows `.exe`, macOS `.app`, Linux `curl | sh` / `.deb` / AppImage / tarball; optional Start at login.
-  - **Instant, self-updating dashboard** — opens immediately on synced data and refreshes itself as new sessions arrive. Pairing and settings survive updates.
-- **Read-Only Mirror** — a second dashboard on a separate port that blocks all writes, for safe public exposure behind a reverse proxy or Tailscale Funnel. Options → Local Dashboard → Read-Only Mirror (default port 8281).
+  - **Instant, self-updating dashboard** — opens immediately on synced data and refreshes itself as new sessions arrive.
+- **Read-Only Mirror** — Enable to create a second dashboard on a separate port that blocks all writes, for safe public exposure behind a reverse proxy or Tailscale Funnel. Options → Local Dashboard → Read-Only Mirror
 
 ### Bug Fixes
 
-- Raw thumbnails no longer include NINA's star/HFR annotation overlay.
+- Fixed an issue where raw thumbnails could include NINA's star/HFR annotation overlay.
 - Target Scheduler: Pending frames no longer show as "Manual Rejected" or drop from integration totals.
 - Target Scheduler: verdicts reached after a session ends now appear next time you open the session.
 - Targets imaged in multiple windows per session render each window separately.
-- Report view no longer collapses to a sliver on browsers without `dvh` (Firefox < 101, older Safari/WebViews).
+- Report view iframe renders properly on browsers without `dvh` (Firefox < 101, older Safari/WebViews).
 - Frames-gallery Back button fixed; long lightbox values truncate on mobile instead of overflowing.
 - Overhead Analysis: fixed a phantom multi-hour "Wait" and the "Overhead Accounted %" pegging at 100%.
 - Locale/time zones: comma-decimal regions render correctly; timestamps keep their time zone (fixes charts/date grouping east of GMT).
