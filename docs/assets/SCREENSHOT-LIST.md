@@ -33,6 +33,9 @@ After capturing, drop the file into `docs/assets/` and the preview server will r
 | `dashboard-sessions.png` | dashboard.md | ❌ needed |
 | `metric-chart-filter.png` | metric-charts.md + report-sections.md | ❌ needed |
 | `rejected-frames.png` | report-sections.md | ❌ needed |
+| `companion-pairing.png` | companion.md | ❌ needed |
+| `companion-wizard.png` | companion.md | ❌ needed |
+| `companion-settings.png` | companion.md | ❌ needed |
 
 ---
 
@@ -66,6 +69,37 @@ Ideal: a session with 2+ targets (e.g. M51, NGC 7000) and 2+ filters (e.g. Ha, O
 The per-target filter table from a session where at least one filter has rejected frames. The table should show the Rejected column with a non-zero count in at least one row. Hover state is not needed — just the table with the count visible.
 
 Ideal: a row with something like "Ha | 42 | 300s | 3.5h | 3 rejected" where the rejected count is clearly visible.
+
+---
+
+### companion-pairing.png
+**Page:** companion.md
+
+The **Companion Pairing** panel in NINA: Options → Night Summary Settings → Local Dashboard, scrolled to the **Companion Pairing** sub-section. Should show, top to bottom:
+- The "Companion Pairing" heading + the intro line
+- The **Download the Companion app →** link
+- The **+ Generate Token** button
+- The **Paired companions** list with at least one real entry (e.g. "Mac mini — paired 2 h ago — Revoke")
+
+Ideal: dark NINA theme, captured at normal width so the labels and the paired row are legible. Generate a token and pair one companion first so the list isn't empty. Do **not** show a freshly generated token's plain value (the one-time reveal box) — capture after dismissing it, so no live token is published.
+
+---
+
+### companion-wizard.png
+**Page:** companion.md
+
+The Companion's browser **setup wizard** on the **Connect & Pair** step — the screen with the NINA host/address field and the pairing-token field. This is the companion-specific screen users haven't seen elsewhere.
+
+Ideal: a fresh/unpaired companion so the wizard shows (point a companion at a throwaway config dir to force setup mode). Capture the wizard card in the browser, dark theme, wide enough to read the field labels and the step indicator. Use a placeholder/example token in the field, not a real one.
+
+---
+
+### companion-settings.png
+**Page:** companion.md
+
+The Companion's **Settings tab** (in the companion dashboard, not NINA), showing the **Start at login** toggle plus the sync options (accept push / sync on start / scheduled poll interval).
+
+Ideal: dark theme, the Start-at-login row clearly visible (toggled on is fine). Crop to the relevant settings card rather than the whole page.
 
 ---
 
