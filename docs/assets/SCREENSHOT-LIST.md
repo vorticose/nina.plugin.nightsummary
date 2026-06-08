@@ -34,7 +34,8 @@ After capturing, drop the file into `docs/assets/` and the preview server will r
 | `metric-chart-filter.png` | metric-charts.md + report-sections.md | ❌ needed |
 | `rejected-frames.png` | report-sections.md | ❌ needed |
 | `companion-pairing.png` | companion.md | ❌ needed |
-| `companion-wizard.png` | companion.md | ❌ needed |
+| `companion-wizard-connect.png` | companion.md | ❌ needed |
+| `companion-wizard-pair.png` | companion.md | ❌ needed |
 | `companion-settings.png` | companion.md | ❌ needed |
 
 ---
@@ -85,12 +86,21 @@ Ideal: dark NINA theme, captured at normal width so the labels and the paired ro
 
 ---
 
-### companion-wizard.png
+### companion-wizard-connect.png
 **Page:** companion.md
 
-The Companion's browser **setup wizard** on the **Connect & Pair** step — the screen with the NINA host/address field and the pairing-token field. This is the companion-specific screen users haven't seen elsewhere.
+The Companion's browser **setup wizard** on the **Connect** step — the screen where you enter the NINA machine's address (host/URL). Show the address field (with an example value filled in, e.g. `http://astro-pc:8181`) and the step indicator.
 
-Ideal: a fresh/unpaired companion so the wizard shows (point a companion at a throwaway config dir to force setup mode). Capture the wizard card in the browser, dark theme, wide enough to read the field labels and the step indicator. Use a placeholder/example token in the field, not a real one.
+Ideal: a fresh/unpaired companion so the wizard shows (point a companion at a throwaway config dir to force setup mode). Dark theme, wide enough to read the field label and Next/Continue button.
+
+---
+
+### companion-wizard-pair.png
+**Page:** companion.md
+
+The Companion's browser **setup wizard** on the **Pair** step — the screen where you paste the pairing token. Show the token field and the step indicator.
+
+Ideal: same fresh companion, dark theme. Use a **placeholder/example token** in the field (e.g. `XXXX-XXXX-XXXX-XXXX`), **not a real one**.
 
 ---
 

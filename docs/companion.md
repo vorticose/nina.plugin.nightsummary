@@ -56,10 +56,13 @@ On first launch the Companion opens a setup wizard in your browser.
 ![The Companion Pairing panel in NINA's Night Summary options](assets/companion-pairing.png)
 
 1. On the **NINA machine**, open **Options → Night Summary Settings → Local Dashboard → Companion Pairing** and click **+ Generate Token**. The token is shown once — copy it.
-2. In the Companion wizard, enter your NINA machine's address (for example `http://astro-pc:8181`) and paste the token.
-3. The Companion runs its first sync and opens the dashboard.
+2. In the Companion wizard's **Connect** step, enter your NINA machine's address (for example `http://astro-pc:8181`).
+3. On the **Pair** step, paste the token.
+4. The Companion runs its first sync and opens the dashboard.
 
-![The Companion setup wizard on the Connect & Pair step](assets/companion-wizard.png)
+![The Companion setup wizard — Connect step (NINA address)](assets/companion-wizard-connect.png)
+
+![The Companion setup wizard — Pair step (pairing token)](assets/companion-wizard-pair.png)
 
 Each companion you set up gets its **own token**, which you can **Revoke** independently from the Companion Pairing panel. The paired list there updates as companions connect.
 
