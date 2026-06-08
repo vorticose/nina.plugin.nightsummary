@@ -33,10 +33,10 @@ After capturing, drop the file into `docs/assets/` and the preview server will r
 | `dashboard-sessions.png` | dashboard.md | ❌ needed |
 | `metric-chart-filter.png` | metric-charts.md + report-sections.md | ❌ needed |
 | `rejected-frames.png` | report-sections.md | ❌ needed |
-| `companion-pairing.png` | companion.md | ❌ needed |
-| `companion-wizard-connect.png` | companion.md | ❌ needed |
-| `companion-wizard-pair.png` | companion.md | ❌ needed |
-| `companion-settings.png` | companion.md | ❌ needed |
+| `companion-pairing.png` | companion.md | ✅ ok |
+| `companion-wizard-connect.png` | companion.md | ✅ ok |
+| `companion-wizard-pair.png` | companion.md | ✅ ok |
+| `companion-settings.png` | companion.md | ✅ ok |
 
 ---
 
