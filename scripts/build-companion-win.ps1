@@ -93,7 +93,7 @@ Night Summary Companion (Windows x64) - v$version
 
 WHAT THIS IS
   A local web dashboard that mirrors your Night Summary imaging history from the
-  primary (NINA) machine. Runs a small web server on http://localhost:8182/.
+  primary (NINA) machine. Runs a small web server on a configurable localhost port.
 
 INSTALL
   1. NightSummaryCompanion.exe is a single self-contained app -- you can move it

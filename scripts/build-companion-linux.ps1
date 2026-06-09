@@ -215,7 +215,7 @@ $readme = @"
 Night Summary Companion (Linux $Arch) - v$version
 
 A local web dashboard mirroring your Night Summary imaging history. Runs a small
-web server on http://localhost:8182/.
+web server on a configurable localhost port.
 
 QUICK START
   tar -xzf NightSummaryCompanion-linux-$Arch.tar.gz

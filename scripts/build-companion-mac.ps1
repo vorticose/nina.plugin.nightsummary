@@ -250,7 +250,7 @@ read -p "Press Enter to close..."
 Night Summary Companion (macOS $archLabel) - v$version
 
 A local web dashboard that mirrors your Night Summary imaging history from the
-primary (NINA) machine. Runs a small web server on http://localhost:8182/.
+primary (NINA) machine. Runs a small web server on a configurable localhost port.
 
 INSTALL
   1. Drag NightSummaryCompanion.app into the Applications folder.
