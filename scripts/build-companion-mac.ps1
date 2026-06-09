@@ -1,7 +1,7 @@
 # Builds the macOS companion app bundle and zips it for distribution.
 #
 # Produces: build/companion-mac/NightSummaryCompanion-mac-<arch>.dmg (on macOS via
-#           hdiutil) plus a .tar.gz fallback for cross-builds where hdiutil is absent.
+#           hdiutil), or a .tar.gz fallback for cross-builds where hdiutil is absent.
 #
 # The .app bundle uses LSUIElement=true so it runs as a background agent (no
 # dock icon, no menu bar). Combined with the first-run auto-open-browser logic
@@ -266,78 +266,19 @@ STOP / RESTART
         ($macReadme -replace "`r`n", "`n"),
         (New-Object System.Text.UTF8Encoding $false))
 
-    # 6. Build a .tar.gz instead of .zip. Tar preserves Unix mode bits by spec
-    # (POSIX-1.2001 / pax) so macOS Archive Utility unpacks the binary with
-    # 0755 intact. PowerShell's Compress-Archive emits Windows-style zips
-    # that drop the exec bit -- tested, doesn't work on Mac without a follow-
-    # up chmod step. macOS' Finder happily double-clicks .tar.gz and extracts
-    # in place via Archive Utility.
-    $tarName = "NightSummaryCompanion-mac-$archLabel.tar.gz"
-    $tarPath = Join-Path $buildDir $tarName
-    if (Test-Path $tarPath) { Remove-Item $tarPath }
+    # 6. Package. On macOS (hdiutil present) the deliverable is a .dmg; a cross-
+    #    build (Windows/Linux, no hdiutil) ships a .tar.gz fallback. Build ONE, not
+    #    both: the macos runner has limited disk and the x64 cross-build pulls an
+    #    extra runtime pack, so duplicating ~100 MB tips hdiutil into "No space
+    #    left on device". Free the whole RID build dir (publish + intermediates)
+    #    first -- the -bin is already in the bundle, so none of it is needed now.
+    $ridDir = Split-Path -Parent $publishDir   # .../bin/Release/net8.0/osx-<arch>
+    if (Test-Path $ridDir) { Remove-Item -Recurse -Force $ridDir }
 
-    # Unix mode bits per POSIX tar:
-    #   0o755 = rwxr-xr-x
-    #   0o644 = rw-r--r--
-    #   0o755 = rwxr-xr-x  (dirs)
-    $execMode = [int]([Convert]::ToInt32('755', 8))
-    $fileMode = [int]([Convert]::ToInt32('644', 8))
-    $dirMode  = [int]([Convert]::ToInt32('755', 8))
-    $cmdMode  = [int]([Convert]::ToInt32('755', 8))  # the .command file
-
-    $stagingFull = (Resolve-Path $staging).Path
-    $gz = [System.IO.File]::Open($tarPath, [System.IO.FileMode]::CreateNew)
-    try {
-        $gzStream = New-Object System.IO.Compression.GZipStream(
-            $gz, [System.IO.Compression.CompressionLevel]::Optimal)
-        try {
-            $writer = New-Object System.Formats.Tar.TarWriter(
-                $gzStream, [System.Formats.Tar.TarEntryFormat]::Pax, $true)
-            try {
-                # Stable enumeration: directories first via Get-ChildItem -Recurse.
-                $entries = Get-ChildItem -Path $staging -Recurse -Force | Sort-Object FullName
-                foreach ($item in $entries) {
-                    $relative = $item.FullName.Substring($stagingFull.Length + 1).Replace('\', '/')
-
-                    if ($item.PSIsContainer) {
-                        $entry = New-Object System.Formats.Tar.PaxTarEntry(
-                            [System.Formats.Tar.TarEntryType]::Directory, "$relative/")
-                        $entry.Mode = [System.IO.UnixFileMode]$dirMode
-                        $writer.WriteEntry($entry)
-                    } else {
-                        # Mode picker:
-                        #   .app binary + dylib -> exec
-                        #   .command helper      -> exec
-                        #   everything else      -> 644
-                        $mode = $fileMode
-                        if ($relative -like 'NightSummaryCompanion.app/Contents/MacOS/*') {
-                            $mode = $execMode
-                        } elseif ($relative -like '*.command') {
-                            $mode = $cmdMode
-                        }
-                        $entry = New-Object System.Formats.Tar.PaxTarEntry(
-                            [System.Formats.Tar.TarEntryType]::RegularFile, $relative)
-                        $entry.Mode = [System.IO.UnixFileMode]$mode
-
-                        $srcStream = [System.IO.File]::OpenRead($item.FullName)
-                        try { $entry.DataStream = $srcStream; $writer.WriteEntry($entry) }
-                        finally { $srcStream.Dispose() }
-                    }
-                }
-            } finally { $writer.Dispose() }
-        } finally { $gzStream.Dispose() }
-    } finally { $gz.Dispose() }
-
-    $tarMb = [math]::Round((Get-Item $tarPath).Length / 1MB, 1)
-    Write-Host "  -> $tarPath ($tarMb MB, exec bits preserved)" -ForegroundColor Green
-
-    # 7. Build a .dmg (the primary macOS deliverable). hdiutil is mac-only, so a
-    #    cross-build on Windows/Linux skips this and ships the .tar.gz fallback;
-    #    the CI macos runner produces the .dmg the release advertises. The volume
-    #    holds the signed .app + an /Applications symlink (drag-to-install) + the
-    #    README. ditto copies the .app so the code signature is preserved (a plain
-    #    Copy-Item can invalidate it).
     if (Get-Command hdiutil -ErrorAction SilentlyContinue) {
+        # .dmg: the signed .app + an /Applications symlink (drag-to-install) +
+        # README. ditto copies the .app so the code signature is preserved (a
+        # plain Copy-Item can invalidate it).
         $dmgName  = "NightSummaryCompanion-mac-$archLabel.dmg"
         $dmgPath  = Join-Path $buildDir $dmgName
         if (Test-Path $dmgPath) { Remove-Item $dmgPath }
@@ -356,7 +297,55 @@ STOP / RESTART
         $dmgMb = [math]::Round((Get-Item $dmgPath).Length / 1MB, 1)
         Write-Host "  -> $dmgPath ($dmgMb MB)" -ForegroundColor Green
     } else {
-        Write-Host "  hdiutil unavailable (cross-build) -- skipping .dmg; .tar.gz is the fallback" -ForegroundColor DarkGray
+        # .tar.gz fallback (cross-build). Pax tar preserves Unix mode bits
+        # (Compress-Archive drops the exec bit); macOS Finder double-clicks it.
+        $tarName = "NightSummaryCompanion-mac-$archLabel.tar.gz"
+        $tarPath = Join-Path $buildDir $tarName
+        if (Test-Path $tarPath) { Remove-Item $tarPath }
+
+        $execMode = [int]([Convert]::ToInt32('755', 8))
+        $fileMode = [int]([Convert]::ToInt32('644', 8))
+        $dirMode  = [int]([Convert]::ToInt32('755', 8))
+        $cmdMode  = [int]([Convert]::ToInt32('755', 8))  # the .command file
+
+        $stagingFull = (Resolve-Path $staging).Path
+        $gz = [System.IO.File]::Open($tarPath, [System.IO.FileMode]::CreateNew)
+        try {
+            $gzStream = New-Object System.IO.Compression.GZipStream(
+                $gz, [System.IO.Compression.CompressionLevel]::Optimal)
+            try {
+                $writer = New-Object System.Formats.Tar.TarWriter(
+                    $gzStream, [System.Formats.Tar.TarEntryFormat]::Pax, $true)
+                try {
+                    $entries = Get-ChildItem -Path $staging -Recurse -Force | Sort-Object FullName
+                    foreach ($item in $entries) {
+                        $relative = $item.FullName.Substring($stagingFull.Length + 1).Replace('\', '/')
+                        if ($item.PSIsContainer) {
+                            $entry = New-Object System.Formats.Tar.PaxTarEntry(
+                                [System.Formats.Tar.TarEntryType]::Directory, "$relative/")
+                            $entry.Mode = [System.IO.UnixFileMode]$dirMode
+                            $writer.WriteEntry($entry)
+                        } else {
+                            $mode = $fileMode
+                            if ($relative -like 'NightSummaryCompanion.app/Contents/MacOS/*') {
+                                $mode = $execMode
+                            } elseif ($relative -like '*.command') {
+                                $mode = $cmdMode
+                            }
+                            $entry = New-Object System.Formats.Tar.PaxTarEntry(
+                                [System.Formats.Tar.TarEntryType]::RegularFile, $relative)
+                            $entry.Mode = [System.IO.UnixFileMode]$mode
+                            $srcStream = [System.IO.File]::OpenRead($item.FullName)
+                            try { $entry.DataStream = $srcStream; $writer.WriteEntry($entry) }
+                            finally { $srcStream.Dispose() }
+                        }
+                    }
+                } finally { $writer.Dispose() }
+            } finally { $gzStream.Dispose() }
+        } finally { $gz.Dispose() }
+
+        $tarMb = [math]::Round((Get-Item $tarPath).Length / 1MB, 1)
+        Write-Host "  -> $tarPath ($tarMb MB, exec bits preserved)" -ForegroundColor Green
     }
 }
 
