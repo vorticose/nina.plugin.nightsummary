@@ -37,17 +37,24 @@ Add the ""Night Summary Start"" instruction near the beginning of your sequence 
 - Equipment profile showing your connected gear (camera, telescope, mount, filter wheel, focuser, rotator, guider, dome, flat panel, safety monitor, weather station, and switch) with customizable display names and per-field visibility
 - Session event timeline showing AutoFocus runs, meridian flips, and safety monitor events
 - Yield and Imaging Overhead Analysis — a per-category timing breakdown showing exactly where your night went (camera download, filter changes, dithering, autofocus, plate solves, centering, slew, and more) with a stacked bar chart and detailed table
-- Per-target imaging summaries with filter breakdown, exposure counts, total integration time, sky position angle, a DSS sky survey thumbnail with FOV overlay, and an altitude chart with optional minimum altitude line from Target Scheduler
+- Per-target imaging summaries with filter breakdown, exposure counts, rejected frame counts, total integration time, sky position angle, a DSS sky survey thumbnail with FOV overlay, and an altitude chart with optional minimum altitude line from Target Scheduler
 - Live Stack thumbnails — when the Live Stack plugin is running, captures and displays the latest stacked image per target and filter
-- Per-target image quality stats: HFR, FWHM and Eccentricity (with Hocus Focus plugin), and guiding RMS with per-filter breakdowns
+- Raw image thumbnails (optional) — saves a small JPEG of every light frame as it's captured; browse them in a Frames gallery with a metadata lightbox (capture settings, ADU, guiding, environment), arrow-key/swipe navigation, and configurable retention. Existing Target Scheduler users can backfill thumbnails from past sessions
+- Per-target image quality stats: HFR, FWHM and Eccentricity (with Hocus Focus plugin), guiding RMS, and Median ADU with per-filter breakdowns
 - Star count consistency — CV (Coefficient of Variation) measures how stable your star counts were across exposures. A low CV means consistent transparency and focus; a high CV suggests passing clouds, dew, or focus drift. Reported separately for broadband and narrowband filters.
 - Target Scheduler integration — shows desired, acquired, and accepted frame counts per filter with a visual progress bar
 - Session history table summarizing all past sessions for each target, including total integration and image quality stats
-- Configurable Metric Charts — add multiple charts, each showing any two metrics with a customizable x-axis. Choose from HFR, FWHM, Eccentricity, Guiding RMS, Focuser Temperature, Ambient Temperature, Altitude, Airmass, Humidity, Focuser Position and more
+- Configurable Metric Charts — add multiple charts, each showing any two metrics with a customizable x-axis. Choose from HFR, FWHM, Eccentricity, Guiding RMS, Focuser Temperature, Ambient Temperature, Altitude, Airmass, Humidity, Focuser Position and more. Per-target and per-filter chip selectors isolate any target/filter combination, and AutoFocus and meridian-flip event markers overlay the chart
 - Tonight's Preview — a visual timeline of what Target Scheduler plans to image tonight, with per-target filter breakdowns
 
 **Live Dashboard**
 Night Summary v3 includes a built-in local web server for browsing all your session history and lifetime statistics from any browser on your network — desktop, laptop, tablet, or phone. The Sessions tab shows session cards with thumbnails, stat boxes, and altitude charts; click any card to open the full embedded report. The **Targets / Projects tab** shows lifetime totals and per-session history for everything you've imaged (the tab label reflects whether Target Scheduler is installed). Enable in Options → Night Summary Settings → Local Dashboard. The settings panel displays all available URLs for reaching the dashboard. Use Generate All Reports on first run to build reports for existing sessions.
+
+**Night Summary Companion (optional, separate download)**
+Run the dashboard on a second computer — Mac, Windows, or Linux — that keeps its own synced copy of your sessions and serves the full dashboard independently, so you can browse your imaging history even when the NINA machine is asleep or off. The sync is one-way; the Companion never writes back to the rig. The Companion is a standalone app and is **not** installed through NINA's plugin manager — download it from the Releases page and pair it with a one-time token from Options → Local Dashboard → Companion Pairing. **[Get it here](https://github.com/vorticose/nina.plugin.nightsummary/releases/latest)**.
+
+**Read-Only Mirror (optional)**
+Expose a second, write-blocked copy of the dashboard on a separate port for safe public/remote sharing behind a reverse proxy or Tailscale Funnel. Enable in Options → Local Dashboard → Read-Only Mirror.
 
 **Report detail levels**
 Three levels let you control how much is included: Snapshot (header and filter table only), Standard (adds timeline, altitude charts, and image quality), and Full (adds overhead analysis, metric charts, session history, and tonight's preview). Each section can also be toggled individually, and all sections can be expanded by default instead of collapsed.
