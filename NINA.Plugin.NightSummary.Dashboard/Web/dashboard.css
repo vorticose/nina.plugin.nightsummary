@@ -5072,7 +5072,12 @@ html.light .tdp-project-action-btn:hover {
     justify-content: center;
     align-items: center;
     gap: 6px;
-    overflow: hidden;
+    /* Clip only horizontally so the no-wrap row can't spill sideways, while the
+       nav-link / view-toggle drop shadows (0 2px 6px) still bleed vertically.
+       Plain `overflow: hidden` clipped the 3D shadow top & bottom on mobile.
+       `clip` on one axis with the default y `visible` is a valid pairing that
+       does not force the other axis to auto. */
+    overflow-x: clip;
   }
   .header-right .theme-toggle { margin-left: 0; flex-shrink: 0; }
   .header-right #nav { flex-shrink: 1; min-width: 0; }
