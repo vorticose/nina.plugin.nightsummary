@@ -288,24 +288,20 @@ STOP / RESTART
     if (Test-Path $ridDir) { Remove-Item -Recurse -Force $ridDir }
 
     if (Get-Command hdiutil -ErrorAction SilentlyContinue) {
-        # .dmg: the signed .app + an /Applications symlink (drag-to-install) +
-        # README. ditto copies the .app so the code signature is preserved (a
-        # plain Copy-Item can invalidate it).
+        # .dmg imaged straight from the staging dir, which already holds the
+        # signed .app + README; just add an /Applications symlink for drag-to-
+        # install. Imaging $staging in place avoids a second ~90 MB copy of the
+        # .app -- the macos runner is disk-tight (the x64 cross-build pulls an
+        # extra runtime pack and was hitting "No space left on device"). hdiutil
+        # preserves the .app's code signature + exec bits when it images the folder.
         $dmgName  = "NightSummaryCompanion-mac-$archLabel.dmg"
         $dmgPath  = Join-Path $buildDir $dmgName
         if (Test-Path $dmgPath) { Remove-Item $dmgPath }
-        $dmgStage = Join-Path $buildDir "dmgstage-$archLabel"
-        if (Test-Path $dmgStage) { Remove-Item -Recurse -Force $dmgStage }
-        New-Item -ItemType Directory -Path $dmgStage -Force | Out-Null
+        $appsLink = Join-Path $staging 'Applications'
+        if (-not (Test-Path $appsLink)) { & ln -s /Applications $appsLink }
 
-        & ditto "$appRoot" (Join-Path $dmgStage 'NightSummaryCompanion.app')
-        if ($LASTEXITCODE -ne 0) { throw "ditto failed staging the .app for the dmg (exit $LASTEXITCODE)" }
-        & ln -s /Applications (Join-Path $dmgStage 'Applications')
-        Copy-Item (Join-Path $staging 'README.txt') (Join-Path $dmgStage 'README.txt')
-
-        & hdiutil create -volname "Night Summary Companion" -srcfolder "$dmgStage" -ov -format UDZO "$dmgPath" | Out-Null
+        & hdiutil create -volname "Night Summary Companion" -srcfolder "$staging" -ov -format UDZO "$dmgPath" | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "hdiutil create failed (exit $LASTEXITCODE)" }
-        Remove-Item -Recurse -Force $dmgStage
         $dmgMb = [math]::Round((Get-Item $dmgPath).Length / 1MB, 1)
         Write-Host "  -> $dmgPath ($dmgMb MB)" -ForegroundColor Green
     } else {
