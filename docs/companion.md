@@ -30,12 +30,13 @@ Grab the latest build from the [**Releases page**](https://github.com/vorticose/
 ### Windows
 
 1. Download `NightSummaryCompanion-win-x64.zip` and unzip it.
-2. Double-click `NightSummaryCompanion.exe` — it's a single file, no install, drop it anywhere.
+2. Double-click `NightSummaryCompanion.exe` — it's a single file, no install, drop it anywhere. First launch may show Windows SmartScreen (*"Windows protected your PC"*) — click **More info → Run anyway** (expected for an unsigned open-source app).
 
 ### macOS
 
-1. Download `NightSummaryCompanion-mac-arm64.tar.gz` (Apple Silicon).
-2. Double-click to extract, drag `NightSummaryCompanion.app` into **Applications**, then open it (first launch on a downloaded copy: right-click → **Open**).
+1. Download the `.dmg` for your Mac: `NightSummaryCompanion-mac-arm64.dmg` (Apple Silicon — M1 and newer) or `NightSummaryCompanion-mac-x64.dmg` (Intel).
+2. Open the `.dmg` and drag `NightSummaryCompanion.app` onto the **Applications** folder.
+3. Launch it. First launch on a downloaded copy: right-click → **Open**, then **Open** in the dialog (ad-hoc signed, not notarized). On **macOS 15 (Sequoia)**, if Open isn't offered, use **System Settings → Privacy & Security → Open Anyway**.
 
 ### Linux
 
@@ -46,6 +47,9 @@ curl -fsSL https://github.com/vorticose/nina.plugin.nightsummary/releases/latest
 ```
 
 Then launch **Night Summary Companion** from your applications menu. Other options: a `.deb` (`sudo apt install ./nightsummary-companion_*.deb`), a portable AppImage, or the tarball.
+
+{: .note }
+> If the AppImage errors about `libfuse.so.2`, install FUSE 2 (`sudo apt install libfuse2`) or run it with `--appimage-extract-and-run`. The `.deb` and `curl | sh` paths don't need this.
 
 ---
 
