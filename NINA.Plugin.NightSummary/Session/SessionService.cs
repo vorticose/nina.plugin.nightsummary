@@ -112,7 +112,10 @@ namespace NINA.Plugin.NightSummary.Session {
             var database        = databasePath != null ? new SessionDatabase(databasePath) : new SessionDatabase();
             this.collector       = new SessionCollector(imageSaveMediator, sequenceMediator, database);
             this.eventCollector  = new SessionEventCollector(database, safetyMonitorMediator, focuserMediator, telescopeMediator);
-            this.reportGenerator = new ReportGenerator();
+            this.reportGenerator = new ReportGenerator(
+                new Server.NinaPluginSettings(profileService),
+                new Server.NinaDashboardLogger(),
+                new TargetSchedulerDatabase());
 
             // NOTE: SequenceFinished subscription happens in StartSession, not here.
             // At plugin-load time NINA's SequenceMediator has no backing delegate yet and
@@ -331,13 +334,71 @@ namespace NINA.Plugin.NightSummary.Session {
 
                 // Always save a copy to the local dashboard reports directory
                 // so the embedded dashboard server can serve it
-                tasks.Add(SaveReportForDashboardAsync(reportData.Session.SessionId, htmlReport, reportData.LiveStackImages));
+                tasks.Add(SaveReportForDashboardAsync(reportData.Session.SessionId, htmlReport, reportData.LiveStackImages,
+                                                      reportData.ObserverLatitude, reportData.ObserverLongitude));
 
                 await Task.WhenAll(tasks);
                 Notification.ShowSuccess("Night Summary: Report delivered successfully");
+
+                // Push companion notification AFTER the report file is on disk
+                // so the companion's pull picks up the fresh DB + new HTML in
+                // one round trip. Fire-and-forget — never block / never throw.
+                _ = NotifyAllPairedCompanionsAsync();
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to generate/send report. {ex.Message}");
                 Notification.ShowError($"Night Summary: Failed to send report — {ex.Message}");
+            }
+        }
+
+        // Pings every paired companion's auto-detected push URL so they pull
+        // fresh data immediately instead of waiting for their scheduled poll.
+        // URLs come from CompanionTokenStore — captured at pair time + refreshed
+        // on every authenticated request, so they self-heal across DHCP / port
+        // changes. No manual configuration anywhere.
+        //
+        // Hard 5s timeout per companion, fire-and-forget. Failures are logged
+        // but never surfaced to the user — companion's own scheduler catches
+        // up on the next interval.
+        private static async Task NotifyAllPairedCompanionsAsync() {
+            IReadOnlyList<CompanionTokenEntry> entries;
+            try {
+                entries = CompanionTokenStore.Instance.List();
+            } catch (Exception ex) {
+                Logger.Info($"NightSummary: Companion notify skipped ({ex.Message}) — token store unavailable");
+                return;
+            }
+            var tasks = new List<Task>();
+            foreach (var e in entries) {
+                if (e.IsRevoked || !e.IsPaired) continue;
+                if (string.IsNullOrWhiteSpace(e.PushUrl)) continue;
+                tasks.Add(NotifyCompanionAsync(e.PushUrl, e.CompanionName ?? e.Id));
+            }
+            if (tasks.Count == 0) {
+                Logger.Info("NightSummary: No paired companions with a known push URL — skipping notify.");
+                return;
+            }
+            try { await Task.WhenAll(tasks); } catch { /* per-call errors already logged */ }
+        }
+
+        private static async Task NotifyCompanionAsync(string companionUrl, string label) {
+            try {
+                var url = companionUrl.TrimEnd('/') + "/api/companion/sync";
+                using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+                using var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Post, url) {
+                    Content = new System.Net.Http.StringContent(""),
+                };
+                // Tag the request so the companion can distinguish push-driven
+                // triggers from user-clicked manual syncs. Lets users disable
+                // push without losing the Sync button.
+                req.Headers.TryAddWithoutValidation("X-Sync-Trigger", "push");
+                using var resp = await http.SendAsync(req);
+                if (resp.IsSuccessStatusCode) {
+                    Logger.Info($"NightSummary: Companion '{label}' notified at {url} (HTTP {(int)resp.StatusCode})");
+                } else {
+                    Logger.Warning($"NightSummary: Companion '{label}' notify returned HTTP {(int)resp.StatusCode} for {url}");
+                }
+            } catch (Exception ex) {
+                Logger.Info($"NightSummary: Companion '{label}' notify failed ({ex.Message}) — will pull on schedule");
             }
         }
 
@@ -430,7 +491,8 @@ namespace NINA.Plugin.NightSummary.Session {
                 if (S.DashboardEnabled)
                     tasks.Add(SendDashboardWithDataAsync(reportData, htmlReport));
 
-                tasks.Add(SaveReportForDashboardAsync(reportData.Session.SessionId, htmlReport, reportData.LiveStackImages));
+                tasks.Add(SaveReportForDashboardAsync(reportData.Session.SessionId, htmlReport, reportData.LiveStackImages,
+                                                      reportData.ObserverLatitude, reportData.ObserverLongitude));
 
                 await Task.WhenAll(tasks);
                 Notification.ShowSuccess("Night Summary: Report delivered successfully");
@@ -540,7 +602,7 @@ namespace NINA.Plugin.NightSummary.Session {
         /// DashboardServer can serve it. This is always called on report generation,
         /// independent of the user's "Save Report Locally" setting.
         /// </summary>
-        private async Task SaveReportForDashboardAsync(string sessionId, string htmlReport, List<LiveStackImage> liveStackImages = null) {
+        private async Task SaveReportForDashboardAsync(string sessionId, string htmlReport, List<LiveStackImage> liveStackImages = null, double observerLatitude = 0, double observerLongitude = 0) {
             try {
                 var reportsDir = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -610,7 +672,15 @@ namespace NINA.Plugin.NightSummary.Session {
                     thumbnailRetentionMode  = S.ThumbnailRetentionMode,
                     thumbnailRetentionDays  = S.ThumbnailRetentionDays,
                     thumbnailRetentionMaxGB = S.ThumbnailRetentionMaxGB,
-                    thumbnailStorageDir     = S.ThumbnailStorageDir
+                    thumbnailStorageDir     = S.ThumbnailStorageDir,
+                    // Stamped on the sidecar so the companion's local regen
+                    // path can render altitude curves without contacting the
+                    // primary or NINA. (CompanionPluginSettings has no access
+                    // to NINA's profile.) Stored as session-time values rather
+                    // than live-profile reads — closer to "what the report
+                    // was generated with" anyway.
+                    observerLatitude       = observerLatitude,
+                    observerLongitude      = observerLongitude
                 };
                 var json = System.Text.Json.JsonSerializer.Serialize(settings,
                     new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });
@@ -991,34 +1061,18 @@ namespace NINA.Plugin.NightSummary.Session {
         }
 
         /// <summary>
-        /// Queries the Target Scheduler database for grading results that overlap the session window
-        /// and batch-updates our Images rows. Matched on filter name + timestamp within ±60 s.
-        /// Entirely wrapped in try/catch — TS unavailability or schema differences are non-fatal.
+        /// Delegates to <see cref="TsGradingResync.Sync"/> with try/catch — session-end sync
+        /// is non-fatal (a TS schema mismatch or missing DB should not block report generation).
+        /// The dashboard's on-demand resync uses the same helper directly.
         /// </summary>
         private static void SyncTsGrading(SessionDatabase database, string sessionId,
                                            DateTime sessionStart, DateTime sessionEnd,
                                            List<ImageRecord> images) {
             try {
                 var tsDb = new TargetSchedulerDatabase();
-                if (!tsDb.IsAvailable) return;
-
-                var tsRows = tsDb.GetAcquiredImagesForDateRange(sessionStart, sessionEnd);
-                if (tsRows.Count == 0) return;
-
-                var updates = new List<(int imageId, int gradingStatus, string rejectReason)>();
-                foreach (var img in images) {
-                    // Match by filter (case-insensitive) and timestamp within ±60 s
-                    var match = tsRows.FirstOrDefault(r =>
-                        string.Equals(r.FilterName, img.Filter, StringComparison.OrdinalIgnoreCase) &&
-                        Math.Abs((r.AcquiredAt - img.Timestamp).TotalSeconds) <= 60);
-
-                    if (match != null)
-                        updates.Add((img.Id, match.GradingStatus, match.RejectReason));
-                }
-
-                if (updates.Count > 0) {
-                    database.UpdateImageGradingFromTs(sessionId, updates);
-                    Logger.Info($"NightSummary: Synced TS grading for {updates.Count}/{images.Count} images");
+                int changed = TsGradingResync.Sync(database, tsDb, sessionId, sessionStart, sessionEnd, images);
+                if (changed > 0) {
+                    Logger.Info($"NightSummary: Synced TS grading for {changed}/{images.Count} images");
                 }
             } catch (Exception ex) {
                 Logger.Warning($"NightSummary: TS grading sync failed (non-fatal). {ex.Message}");
@@ -1256,7 +1310,8 @@ namespace NINA.Plugin.NightSummary.Session {
             var events   = reportData.Events ?? new List<Data.SessionEvent>();
 
             var totalExpSec  = images.Sum(i => i.ExposureDuration);
-            var accepted     = images.Count(i => i.Accepted);
+            // Pending counts as accepted — see ImageRecord.CountsAsAccepted.
+            var accepted     = images.Count(i => i.CountsAsAccepted);
             var hfrImages    = images.Where(i => i.HFR > 0).ToList();
             var rmsImages    = images.Where(i => i.GuidingRMSTotal > 0).ToList();
 

@@ -1,5 +1,15 @@
-# Keep version files branch-local during merges (v3-dev vs dev/main)
+# Keep version/release-metadata files branch-local during merges (v3-dev vs dev/main).
+# NOTE: do NOT add the plugin .csproj here. It carries build logic (e.g. the
+# CopyMicrosoftDataSqlite target), and merge=ours silently discards ALL incoming
+# changes to a file -- a feature branch's csproj fixes vanish on merge with no
+# conflict. That dropped the SQLite bundling target during the companion merge
+# (2026-06-01) and shipped an almost-broken build. Only files that are PURELY
+# version/release metadata (no build logic) belong here.
 NINA.Plugin.NightSummary/Properties/AssemblyInfo.cs merge=ours
-NINA.Plugin.NightSummary/NINA.Plugin.NightSummary.csproj merge=ours
 manifest.json merge=ours
 repository.json merge=ours
+
+# Git hooks and shell scripts must stay LF. A CRLF shebang line ("#!/usr/bin/env
+# bash\r") breaks the interpreter under Windows git-bash and in CI.
+scripts/git-hooks/* text eol=lf
+*.sh text eol=lf

@@ -21,6 +21,21 @@ namespace NINA.Plugin.NightSummary.Server {
         public Encoding ContentEncoding => Encoding.UTF8;
         public Stream InputStream { get; internal set; } = Stream.Null;
         public string UserAgent { get; internal set; }
+        public string Authorization { get; internal set; }
+        // IP address of the TCP peer. Captured at accept time so the auth
+        // middleware can derive the companion's reachable push URL without
+        // needing the companion to advertise its own IP. Null on synthetic
+        // requests (tests / dev harness).
+        public System.Net.IPAddress RemoteIp { get; internal set; }
+        // Companion-advertised dashboard port for the originating companion.
+        // Combined with RemoteIp to build "http://<ip>:<port>/" — the URL
+        // the primary uses to push session-end sync triggers.
+        public int? CompanionDashboardPort { get; internal set; }
+        // Arbitrary headers not surfaced by a typed property. Used for low-
+        // traffic custom headers like X-Sync-Trigger so we don't have to add
+        // a new property for every signal. Keys are case-insensitive.
+        public System.Collections.Generic.Dictionary<string, string> Headers { get; internal set; }
+            = new(System.StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -41,6 +56,42 @@ namespace NINA.Plugin.NightSummary.Server {
         public Stream OutputStream => _body;
 
         public TcpHttpResponse(Stream tcpStream) => _tcp = tcpStream;
+
+        /// <summary>
+        /// Streams the contents of <paramref name="source"/> directly to the underlying TCP
+        /// stream after writing the HTTP status + headers. Bypasses the in-memory body buffer
+        /// used by Close(), so multi-GB exports do not OOM. After this returns, the response
+        /// is considered complete; subsequent Close() calls are no-ops.
+        /// </summary>
+        public async Task StreamAsync(string contentType, Stream source, long contentLength,
+                                      System.Collections.Generic.IDictionary<string, string> extraHeaders = null) {
+            if (_closed) return;
+            _closed = true;
+            try {
+                var sb = new StringBuilder();
+                sb.Append($"HTTP/1.0 {StatusCode} {GetStatusText(StatusCode)}\r\n");
+                if (contentType != null)
+                    sb.Append($"Content-Type: {contentType}\r\n");
+                sb.Append($"Content-Length: {contentLength}\r\n");
+                if (extraHeaders != null) {
+                    foreach (var kv in extraHeaders) {
+                        var lower = kv.Key.ToLowerInvariant();
+                        if (lower == "content-type" || lower == "content-length") continue;
+                        sb.Append($"{kv.Key}: {kv.Value}\r\n");
+                    }
+                }
+                foreach (string key in Headers.AllKeys) {
+                    var lower = key.ToLowerInvariant();
+                    if (lower == "content-type" || lower == "content-length") continue;
+                    sb.Append($"{key}: {Headers[key]}\r\n");
+                }
+                sb.Append("Connection: close\r\n\r\n");
+                var headerBytes = Encoding.ASCII.GetBytes(sb.ToString());
+                await _tcp.WriteAsync(headerBytes, 0, headerBytes.Length);
+                await source.CopyToAsync(_tcp);
+                await _tcp.FlushAsync();
+            } catch { /* client disconnected — ignore */ }
+        }
 
         public void Close() {
             if (_closed) return;

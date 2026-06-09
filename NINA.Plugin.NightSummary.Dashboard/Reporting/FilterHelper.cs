@@ -9,29 +9,24 @@ namespace NINA.Plugin.NightSummary.Reporting {
     /// Shared filter classification, sorting, and statistics helpers.
     /// Used by ReportGenerator, DiscordSender, and SessionService.
     /// </summary>
-    internal static class FilterHelper {
+    public static class FilterHelper {
 
         private static readonly HashSet<char> BroadbandFirstLetters = new HashSet<char> { 'L', 'R', 'G', 'B' };
         private static readonly HashSet<char> NarrowbandFirstLetters = new HashSet<char> { 'H', 'S', 'O' };
         private static readonly char[] SortPriority = { 'L', 'R', 'G', 'B', 'H', 'S', 'O' };
 
-        private static Dictionary<string, string>? _overrides;
+        private static Dictionary<string, string> _overrides = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
-        /// Reloads user filter classification overrides from settings.
-        /// Call at the start of each report generation to pick up changes.
+        /// Loads user filter classification overrides from a serialized string
+        /// (e.g. "Luminance=B,Ha=N,Green=X"). Call at the start of each report
+        /// generation. Pass null/empty to clear overrides.
         /// </summary>
-        public static void ReloadOverrides() {
-            _overrides = null;
+        public static void LoadClassifications(string? raw) {
+            _overrides = ParseClassifications(raw);
         }
 
-        private static Dictionary<string, string> Overrides {
-            get {
-                if (_overrides == null)
-                    _overrides = ParseClassifications(SettingsManager.Instance.Current.FilterClassifications);
-                return _overrides;
-            }
-        }
+        private static Dictionary<string, string> Overrides => _overrides;
 
         /// <summary>
         /// Returns true if the filter is classified as broadband (user override or first-letter fallback).
@@ -74,7 +69,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// <summary>
         /// Parses a serialized filter classification string (e.g. "Luminance=B,Ha=N,Green=X").
         /// </summary>
-        public static Dictionary<string, string> ParseClassifications(string raw) {
+        public static Dictionary<string, string> ParseClassifications(string? raw) {
             var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             if (string.IsNullOrWhiteSpace(raw)) return result;
             foreach (var pair in raw.Split(',')) {

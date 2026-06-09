@@ -28,7 +28,7 @@ namespace NINA.Plugin.NightSummary.Tests {
             SettingsManager.Instance.Current.ShowNextNightPreview   = false;
             SettingsManager.Instance.Current.AdditionalChartConfigs = "";
             SettingsManager.Instance.Current.ExpandSectionsDefault  = false;
-            _generator = new ReportGenerator();
+            _generator = TestDeps.NewReportGenerator();
         }
 
         // ── Filter breakdown stat boxes ────────────────────────────────────────
@@ -267,6 +267,68 @@ namespace NINA.Plugin.NightSummary.Tests {
             var report = await _generator.GenerateHtmlReport(data);
 
             Assert.Contains("Overhead Accounted", report);
+            Assert.DoesNotContain(">100.0%<", report);
+        }
+
+        [Fact]
+        public async Task OverheadCoverage_DuplicateRoofIntervals_DoNotInflateRoofClosedSec() {
+            // Regression: NS could record two RoofClosed/RoofOpen pairs in tight
+            // succession (double-subscribed mediator, two safety monitors, etc.).
+            // ExtendForAbortedExposures then pulled BOTH intervals back to the same
+            // aborted-exposure start, leaving two overlapping intervals. Unmerged,
+            // their seconds were summed via RoofClosedHelper.TotalSeconds, inflating
+            // roofClosedSec and shrinking impliedOverheadSec — so mergedOverheadSec
+            // exceeded implied and coverage pegged at 100.0%. The fix merges
+            // roofIntervals after ExtendForAbortedExposures.
+            SettingsManager.Instance.Current.ShowOverheadBreakdown = true;
+
+            var t0 = new DateTime(2026, 4, 22, 21, 58, 43);
+            var timingEvents = new List<TimingEvent> {
+                new() { EventType = "TempCompFocus",   StartTime = t0,                  EndTime = t0.AddSeconds(7),    DurationSeconds = 7 },
+                new() { EventType = "Exposure",        StartTime = t0.AddSeconds(10),   EndTime = t0.AddSeconds(615),  DurationSeconds = 605 },
+                // AbortedExposure inside window — ExtendForAbortedExposures will pull
+                // both roof intervals back to this start (5 min before each closure).
+                new() { EventType = "AbortedExposure", StartTime = t0.AddSeconds(900),  EndTime = t0.AddSeconds(1230), DurationSeconds = 330 },
+                new() { EventType = "Dither",          StartTime = t0.AddSeconds(1600), EndTime = t0.AddSeconds(1628), DurationSeconds = 28 },
+            };
+
+            var baseData = TestDataFactory.MakeReportData(imageCount: 8);
+            // Replace images so integration math is predictable.
+            var sessionId = baseData.Session.SessionId;
+            var t0Img = new DateTime(2026, 4, 22, 22, 0, 0);
+            var images = new List<ImageRecord>();
+            for (int i = 0; i < 8; i++)
+                images.Add(new ImageRecord {
+                    SessionId = sessionId, TargetName = "Cat 91", Filter = "H",
+                    ExposureDuration = 600,
+                    Timestamp = t0Img.AddSeconds(i * 605 + 5)
+                });
+
+            // Two overlapping RoofClosed/RoofOpen pairs — the bug shape. Both pairs
+            // end within seconds of each other so the merged span is ~the second pair's
+            // length, not the sum of the two.
+            var events = new List<SessionEvent> {
+                new() { SessionId = sessionId, EventType = "RoofClosed", Timestamp = t0.AddSeconds(1230) },
+                new() { SessionId = sessionId, EventType = "RoofOpen",   Timestamp = t0.AddSeconds(1574) },
+                new() { SessionId = sessionId, EventType = "RoofClosed", Timestamp = t0.AddSeconds(1231) },
+                new() { SessionId = sessionId, EventType = "RoofOpen",   Timestamp = t0.AddSeconds(1581) },
+            };
+
+            var data = new ReportData {
+                Session = baseData.Session,
+                Images = images,
+                Events = events,
+                TsData = baseData.TsData,
+                CumulativeIntegrationSeconds = baseData.CumulativeIntegrationSeconds,
+                SessionHistory = baseData.SessionHistory,
+                TimingEvents = timingEvents
+            };
+
+            var report = await _generator.GenerateHtmlReport(data);
+
+            Assert.Contains("Overhead Accounted", report);
+            // Pre-fix: coverage would peg at 100.0% because roofClosedSec was inflated
+            // by the double-counted overlapping interval.
             Assert.DoesNotContain(">100.0%<", report);
         }
 

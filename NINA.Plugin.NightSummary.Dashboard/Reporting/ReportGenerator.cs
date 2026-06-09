@@ -1,7 +1,9 @@
-using NINA.Core.Utility;
+using NINA.Plugin.NightSummary.Dashboard.Abstractions;
 using NINA.Plugin.NightSummary.Data;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -18,6 +20,22 @@ namespace NINA.Plugin.NightSummary.Reporting {
     /// can be toggled on/off in a future release.
     /// </summary>
     public class ReportGenerator {
+
+        private readonly IPluginSettings _settings;
+        private readonly IDashboardLogger _log;
+        private readonly ITargetSchedulerDatabase _tsDb;
+        private readonly IDashboardPaths? _paths;
+
+        public ReportGenerator(IPluginSettings settings, IDashboardLogger log, ITargetSchedulerDatabase tsDb, IDashboardPaths? paths = null) {
+            _settings = settings;
+            _log      = log;
+            _tsDb     = tsDb;
+            // paths is optional only because the existing test fixture wires
+            // ReportGenerator without one. The companion-cache reader needs
+            // it; when absent (tests / pre-companion-mode hosts) we fall
+            // back gracefully via PreviewNotice.
+            _paths    = paths;
+        }
 
         // CDS HiPS2FITS: primary thumbnail service. 8s tolerates slow-but-healthy responses
         // (typical is 2-5s) while keeping fallback to SkyView quick when CDS is degraded.
@@ -62,16 +80,30 @@ namespace NINA.Plugin.NightSummary.Reporting {
         private static bool IsExcluded(string filter) => FilterHelper.IsExcluded(filter);
         private static int FilterSortKey(string filter) => FilterHelper.SortKey(filter);
 
-        // GradingStatus enum (TS): 0=Pending, 1=Accepted, 2=Rejected, -1=unknown/legacy.
-        // Pending images have Accepted=false but are not rejected — exclude from reject counts.
-        private static bool IsRejected(ImageRecord i) => !i.Accepted && i.GradingStatus != 0;
+        // Inverse of ImageRecord.CountsAsAccepted — Pending (GradingStatus=0) is not
+        // a rejection, even if Accepted=false on legacy rows.
+        private static bool IsRejected(ImageRecord i) => !i.CountsAsAccepted;
 
         public async Task<string> GenerateHtmlReport(ReportData data) {
+            // Locale guard: the report is machine-readable markup. SVG coordinates,
+            // HiPS2FITS URL query params, and data-* attributes are locale-neutral by spec
+            // and MUST use '.' as the decimal separator regardless of the host system locale.
+            // On a comma-decimal locale (de-DE, fr-FR, most of Europe) every :F1/:F2/:F6
+            // interpolation would otherwise emit commas — corrupting SVG transforms (comma is
+            // also the SVG argument separator) and silently breaking thumbnail URLs. Force
+            // InvariantCulture for the whole generation flow (CurrentCulture flows across await
+            // on .NET 5+) and restore it in finally.
+            var savedCulture = CultureInfo.CurrentCulture;
+            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+            try {
             Warnings.Clear();
-            FilterHelper.ReloadOverrides();
+            FilterHelper.LoadClassifications(_settings.Current.FilterClassifications);
             var sb = new StringBuilder();
 
-            bool lightMode = SettingsManager.Instance.Current.ReportLightMode;
+            bool lightMode = _settings.Current.ReportLightMode;
+            // ChartGenerator reads colors off this static so SVG output themes correctly.
+            // Set before any chart-emitting code runs.
+            ChartGenerator.LightMode = lightMode;
 
             // Set SVG theme colors (SVG attributes can't use CSS variables)
             // Altitude chart keeps dark background in both modes for better line visibility
@@ -198,6 +230,16 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("details.livestack-section > summary::-webkit-details-marker { display: none; }");
             sb.AppendLine("details.livestack-section > summary::before { content: '\\25B6\\00A0'; }");
             sb.AppendLine("details.livestack-section[open] > summary::before { content: '\\25BC\\00A0'; }");
+            // Per-imaging-window expanders shown beneath the grand-total filter table on
+            // multi-window targets. First expander gets a larger top margin so it sits clearly
+            // below the totals table; consecutive expanders space themselves with margin-top.
+            sb.AppendLine("details.window-section { margin-top: 10px; }");
+            sb.AppendLine("details.window-section:first-of-type { margin-top: 18px; }");
+            sb.AppendLine("details.window-section > summary { cursor: pointer; color: var(--accent-light); font-size: 14px; font-weight: bold; list-style: none; }");
+            sb.AppendLine("details.window-section > summary strong { color: var(--accent-light); }");
+            sb.AppendLine("details.window-section > summary::-webkit-details-marker { display: none; }");
+            sb.AppendLine("details.window-section > summary::before { content: '\\25B6\\00A0'; }");
+            sb.AppendLine("details.window-section[open] > summary::before { content: '\\25BC\\00A0'; }");
             sb.AppendLine(".iq-table { width: 100%; margin-top: 8px; }");
             sb.AppendLine(".iq-row-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr; }");
             sb.AppendLine(".iq-header { background-color: var(--border); color: var(--accent); padding: 8px; text-align: left; font-weight: bold; }");
@@ -224,8 +266,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
             const string warningsPlaceholder = "<!--WARNINGS_PLACEHOLDER-->";
             sb.AppendLine(warningsPlaceholder);
 
-            int detailLevel = SettingsManager.Instance.Current.ReportDetailLevel;
-            string detailsOpen = SettingsManager.Instance.Current.ExpandSectionsDefault ? " open" : "";
+            int detailLevel = _settings.Current.ReportDetailLevel;
+            string detailsOpen = _settings.Current.ExpandSectionsDefault ? " open" : "";
 
             if (!data.Images.Any()) {
                 sb.AppendLine("<p><em>No images were recorded during this session.</em></p>");
@@ -237,11 +279,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             if (detailLevel >= 1) sb.Append(BuildEventTimelineSection(data));
             sb.Append(BuildOverviewStatsSection(data, detailLevel));
-            if (detailLevel >= 2 && SettingsManager.Instance.Current.ShowOverheadBreakdown) {
-                Logger.Info($"NightSummary: Overhead section — TimingEvents={data.TimingEvents?.Count ?? -1}, detailLevel={detailLevel}, ShowOverheadBreakdown={SettingsManager.Instance.Current.ShowOverheadBreakdown}");
+            if (detailLevel >= 2 && _settings.Current.ShowOverheadBreakdown) {
+                _log.Info($"NightSummary: Overhead section — TimingEvents={data.TimingEvents?.Count ?? -1}, detailLevel={detailLevel}, ShowOverheadBreakdown={_settings.Current.ShowOverheadBreakdown}");
                 sb.Append(BuildOverheadBreakdownSection(data, detailsOpen));
             } else {
-                Logger.Info($"NightSummary: Overhead section SKIPPED — TimingEvents={data.TimingEvents?.Count ?? -1}, detailLevel={detailLevel}, ShowOverheadBreakdown={SettingsManager.Instance.Current.ShowOverheadBreakdown}");
+                _log.Info($"NightSummary: Overhead section SKIPPED — TimingEvents={data.TimingEvents?.Count ?? -1}, detailLevel={detailLevel}, ShowOverheadBreakdown={_settings.Current.ShowOverheadBreakdown}");
             }
             sb.Append(await BuildTargetSection(data, detailLevel, detailsOpen));
             if (detailLevel >= 1) sb.Append(BuildImageQualitySection(data, detailLevel, detailsOpen));
@@ -266,6 +308,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             return html;
+            } finally {
+                CultureInfo.CurrentCulture = savedCulture;
+            }
         }
 
         private string BuildHeader(ReportData data) {
@@ -290,7 +335,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine($"<p><strong>Profile:</strong> {data.Session.ProfileName}</p>");
 
             // Equipment profile section (collapsed by default)
-            if (SettingsManager.Instance.Current.ShowEquipmentProfile && data.Equipment != null && data.Equipment.Count > 0) {
+            if (_settings.Current.ShowEquipmentProfile && data.Equipment != null && data.Equipment.Count > 0) {
                 sb.AppendLine("<details class='equipment-section' open>");
                 sb.AppendLine("<summary>Equipment</summary>");
                 sb.AppendLine("<div class='equipment-grid'>");
@@ -397,6 +442,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
             // that were interrupted by the unsafe trigger (weather-lost time, not overhead).
             var roofIntervals = RoofClosedHelper.GetIntervals(data.Events, windowStart, windowEnd);
             roofIntervals = RoofClosedHelper.ExtendForAbortedExposures(roofIntervals, timingEvents);
+            // Dedup overlapping roof intervals. NS can record multiple RoofClosed/RoofOpen
+            // pairs in tight succession (e.g. two safety monitors triggering, or a mediator
+            // double-subscribe), and ExtendForAbortedExposures pulls each interval's start
+            // back to the same aborted-exposure timestamp — so unmerged sums double-count
+            // the overlapping period. That inflates roofClosedSec and shrinks impliedOverhead,
+            // making merged > implied and pegging Overhead Accounted % at the 100% ceiling.
+            roofIntervals = MergeIntervalList(roofIntervals);
             var roofClosedSec = RoofClosedHelper.TotalSeconds(roofIntervals);
 
             // Exclude Target Scheduler wait intervals — the scheduler was idle waiting for
@@ -445,13 +497,38 @@ namespace NINA.Plugin.NightSummary.Reporting {
             // Exclude AbortedExposure: the window end is deliberately capped at the last
             // non-aborted event, so the aborted exposure's interval extends past windowEnd
             // and would inflate mergedOverheadSec above impliedOverheadSec (causing >100%).
-            var mergedOverheadSec = MergeOverheadIntervals(
-                effectiveOverheadEvents.Where(e => e.EventType != "AbortedExposure").ToList());
+            //
+            // Also subtract exposure overlap from the merged overhead. Some overhead events
+            // (image save, plate solve, derived camera-download tail) run concurrently with
+            // the next exposure. Their wall-clock seconds are inside `totalIntegrationSec`
+            // already, so the implied-overhead denominator excludes them — but without the
+            // subtraction below, mergedOverheadSec includes them and we hit >100% coverage,
+            // which the old code clamped with Math.Min(…,100). The clamp masked real
+            // accounting issues (notably the WaitForTimeSpan orphan phantom). Subtracting
+            // exposure overlap makes numerator and denominator commensurable.
+            var mergedOverheadIntervals = MergeIntervalList(effectiveOverheadEvents
+                .Where(e => e.EventType != "AbortedExposure"
+                            && e.EndTime > e.StartTime)
+                .Select(e => (e.StartTime, e.EndTime))
+                .ToList());
+            // Exposure intervals are built from the images list (Timestamp = exposure
+            // start, +ExposureDuration = exposure end) rather than from the parsed
+            // `Exposure` timing events. The timing-event intervals run from exposure
+            // start through the camera download tail (Finishing line), which would
+            // subtract the download from the numerator even though it isn't subtracted
+            // from impliedOverheadSec (which only subtracts integration seconds).
+            // Using image intervals keeps numerator and denominator semantically aligned.
+            var mergedExposureIntervals = MergeIntervalList((data.Images ?? new List<ImageRecord>())
+                .Where(i => i.ExposureDuration > 0)
+                .Select(i => (i.Timestamp, i.Timestamp.AddSeconds(i.ExposureDuration)))
+                .ToList());
+            var netOverheadIntervals = SubtractIntervals(mergedOverheadIntervals, mergedExposureIntervals);
+            var mergedOverheadSec = netOverheadIntervals.Sum(i => (i.end - i.start).TotalSeconds);
             var coveragePct = impliedOverheadSec > 0
                 ? Math.Min(mergedOverheadSec / impliedOverheadSec * 100.0, 100.0) : 0;
             var unaccountedSec = Math.Max(0, impliedOverheadSec - mergedOverheadSec);
 
-            Logger.Info($"NightSummary: Overhead — window={windowSec:F0}s, integration={totalIntegrationSec:F0}s, " +
+            _log.Info($"NightSummary: Overhead — window={windowSec:F0}s, integration={totalIntegrationSec:F0}s, " +
                 $"roofClosed={roofClosedSec:F0}s, schedulerWait={schedulerWaitSec:F0}s, effective={effectiveWindowSec:F0}s, " +
                 $"implied={impliedOverheadSec:F0}s, merged={mergedOverheadSec:F0}s, " +
                 $"coverage={coveragePct:F1}%, unaccounted={unaccountedSec:F0}s");
@@ -488,8 +565,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 if (topGaps.Any()) {
                     var gapStr = string.Join(", ",
                         topGaps.Select(g => $"{g.sec:F0}s@{g.start:HH:mm:ss}→{g.end:HH:mm:ss}"));
-                    Logger.Info($"NightSummary: Overhead — top uncovered gaps (≥5s): {gapStr}");
-                    Logger.Info($"NightSummary: Overhead — total uncovered gap count={gaps.Count}, sum={gaps.Sum(g => g.sec):F0}s");
+                    _log.Info($"NightSummary: Overhead — top uncovered gaps (≥5s): {gapStr}");
+                    _log.Info($"NightSummary: Overhead — total uncovered gap count={gaps.Count}, sum={gaps.Sum(g => g.sec):F0}s");
                 }
             }
 
@@ -613,10 +690,45 @@ namespace NINA.Plugin.NightSummary.Reporting {
         }
 
         /// <summary>
+        /// Subtracts one merged interval set from another and returns the difference
+        /// as a sorted, non-overlapping list. Used to remove exposure overlap from
+        /// overhead intervals so "Overhead Accounted %" doesn't double-count overhead
+        /// that runs concurrently with an exposure (image save, plate solve, derived
+        /// camera download tail).
+        /// </summary>
+        internal static List<(DateTime start, DateTime end)> SubtractIntervals(
+            List<(DateTime start, DateTime end)> from,
+            List<(DateTime start, DateTime end)> minus) {
+            var result = new List<(DateTime start, DateTime end)>();
+            if (minus == null || minus.Count == 0) {
+                result.AddRange(from);
+                return result;
+            }
+            foreach (var f in from) {
+                var pieces = new List<(DateTime start, DateTime end)> { f };
+                foreach (var m in minus) {
+                    var next = new List<(DateTime start, DateTime end)>();
+                    foreach (var p in pieces) {
+                        if (m.end <= p.start || m.start >= p.end) {
+                            next.Add(p);
+                        } else {
+                            if (m.start > p.start) next.Add((p.start, m.start));
+                            if (m.end   < p.end)   next.Add((m.end,   p.end));
+                        }
+                    }
+                    pieces = next;
+                    if (pieces.Count == 0) break;
+                }
+                result.AddRange(pieces);
+            }
+            return result;
+        }
+
+        /// <summary>
         /// Merges a list of (start, end) intervals into a sorted, non-overlapping list.
         /// Used by the overhead-gap diagnostic to compute uncovered stretches.
         /// </summary>
-        private static List<(DateTime start, DateTime end)> MergeIntervalList(List<(DateTime start, DateTime end)> intervals) {
+        internal static List<(DateTime start, DateTime end)> MergeIntervalList(List<(DateTime start, DateTime end)> intervals) {
             var result = new List<(DateTime start, DateTime end)>();
             var sorted = intervals.Where(i => i.end > i.start).OrderBy(i => i.start).ToList();
             if (sorted.Count == 0) return result;
@@ -667,7 +779,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var fovH     = data.CameraFovHeightDeg;
             var thumbFov = Math.Max(fovW, fovH) * 1.5;
             if (thumbFov <= 0) thumbFov = 1.0;
-            Logger.Info($"NightSummary: Thumbnail FOV — fovW={fovW:F4}° fovH={fovH:F4}° thumbFov={thumbFov:F4}°");
+            _log.Info($"NightSummary: Thumbnail FOV — fovW={fovW:F4}° fovH={fovH:F4}° thumbFov={thumbFov:F4}°");
             double boxW = (fovW / thumbFov) * thumbPx;
             double boxH = (fovH / thumbFov) * thumbPx;
             double cx   = thumbPx / 2.0;
@@ -675,7 +787,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             // ── Pre-fetch all sky thumbnails in parallel ──────────────────────
             var thumbResults = new Dictionary<string, (string imgSrc, bool usedFallback)>();
-            if (SettingsManager.Instance.Current.ShowSkyThumbnails) {
+            if (_settings.Current.ShowSkyThumbnails) {
                 var thumbTasks = new List<(string targetName, double raDeg, double decD, Task<(string imgSrc, bool usedFallback)> task)>();
 
                 foreach (var target in targets) {
@@ -693,7 +805,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 }
 
                 if (thumbTasks.Any()) {
-                    Logger.Info($"NightSummary: Fetching {thumbTasks.Count} sky thumbnail(s) in parallel...");
+                    _log.Info($"NightSummary: Fetching {thumbTasks.Count} sky thumbnail(s) in parallel...");
                     await Task.WhenAll(thumbTasks.Select(t => t.task));
                     bool anyFallback = false;
                     foreach (var t in thumbTasks) {
@@ -723,12 +835,35 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     if (coordImg != null) { raH = coordImg.RaHours; decD = coordImg.DecDegrees; }
                 }
 
-                // Imaging window for this target: first to last image timestamp
-                var targetImgStart = target.Min(i => i.Timestamp);
-                var targetImgEnd   = target.Max(i => i.Timestamp);
+                // Imaging windows for this target. Most sessions yield exactly one window per
+                // target, but a target imaged before and after a long idle gap (e.g. setting
+                // pre-meridian and rising again later, or a Target Scheduler swap-out/swap-in)
+                // produces multiple windows. The altitude chart and filter table render one
+                // section per window when there are 2+; the rest of the section (TS progress,
+                // session history, sky thumbnail, IQ stats) stays aggregated.
+                var imagingWindows = ImagingBlockHelper.DetectWindows(target).ToList();
+                DateTime targetImgStart, targetImgEnd;
+                if (imagingWindows.Count > 0) {
+                    targetImgStart = imagingWindows.First().Start;
+                    targetImgEnd   = imagingWindows.Last().End;
+                } else {
+                    // Defensive fallback — DetectWindows returned empty (no images).
+                    targetImgStart = target.Min(i => i.Timestamp);
+                    targetImgEnd   = target.Max(i => i.Timestamp);
+                }
+                bool multiWindow = imagingWindows.Count > 1;
 
-                // Build subtitle for the h3 heading: start/end times, coords, moon separation
-                var timePart   = $"Start: {targetImgStart:HH:mm} &nbsp;&#8594;&nbsp; End: {targetImgEnd:HH:mm}";
+                // Build subtitle for the h3 heading: start/end times, coords, moon separation.
+                // For multi-window targets, list each window inline so the heading is honest
+                // about the discontinuity rather than implying one continuous block.
+                string timePart;
+                if (multiWindow) {
+                    var winList = string.Join(", ",
+                        imagingWindows.Select(w => $"{w.Start:HH:mm}&#8211;{w.End:HH:mm}"));
+                    timePart = $"{imagingWindows.Count} windows: {winList}";
+                } else {
+                    timePart = $"Start: {targetImgStart:HH:mm} &nbsp;&#8594;&nbsp; End: {targetImgEnd:HH:mm}";
+                }
                 // Sky position angle: prefer TS data, fall back to plate solve PA from images
                 double rotation = (tsFirst != null && tsFirst.Rotation != 0) ? tsFirst.Rotation
                     : target.Where(i => i.PositionAngle.HasValue && i.PositionAngle.Value != 0)
@@ -750,8 +885,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine("<div class='target-section'>");
                 sb.AppendLine($"<h3>{target.Key}{h3Subtitle}</h3>");
 
-                bool showThumb         = (raH != 0 || decD != 0) && SettingsManager.Instance.Current.ShowSkyThumbnails;
-                bool showSideBySideChart = (raH != 0 || decD != 0) && detailLevel >= 1 && SettingsManager.Instance.Current.ShowAltitudeChart;
+                bool showThumb         = (raH != 0 || decD != 0) && _settings.Current.ShowSkyThumbnails;
+                bool showSideBySideChart = (raH != 0 || decD != 0) && detailLevel >= 1 && _settings.Current.ShowAltitudeChart;
 
                 // Build thumbnail HTML from pre-fetched results
                 string thumbHtml = "";
@@ -782,9 +917,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     sb.AppendLine("<div class='ts-target-header'>");
                     sb.Append(thumbHtml);
                     if (showSideBySideChart) {
-                        double minAlt = SettingsManager.Instance.Current.ShowMinAltitude ? (tsFirst?.MinimumAltitude ?? 0) : 0;
+                        double minAlt = _settings.Current.ShowMinAltitude ? (tsFirst?.MinimumAltitude ?? 0) : 0;
                         var altChart = BuildAltitudeChart(raH, decD, data.ObserverLatitude, data.ObserverLongitude,
-                                                          targetImgStart, targetImgEnd, width: 500,
+                                                          imagingWindows, width: 500,
                                                           minimumAltitude: minAlt);
                         if (!string.IsNullOrEmpty(altChart))
                             sb.Append($"<div style='flex:1; min-width:0; margin-top:-20px;'>{altChart}</div>");
@@ -793,12 +928,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 }
 
                 // Live Stack images
-                if (SettingsManager.Instance.Current.ShowLiveStackImages && data.LiveStackImages.Count > 0) {
+                if (_settings.Current.ShowLiveStackImages && data.LiveStackImages.Count > 0) {
                     var targetImages = data.LiveStackImages
                         .Where(i => i.Target.Equals(target.Key, StringComparison.OrdinalIgnoreCase))
                         .ToList();
                     if (targetImages.Count > 0) {
-                        Logger.Info($"NightSummary: Rendering {targetImages.Count} live stack image(s) for target '{target.Key}'");
+                        _log.Info($"NightSummary: Rendering {targetImages.Count} live stack image(s) for target '{target.Key}'");
                         // Build filter → total integration lookup from session image records
                         var filterIntegration = target
                             .GroupBy(i => i.Filter, StringComparer.OrdinalIgnoreCase)
@@ -809,62 +944,93 @@ namespace NINA.Plugin.NightSummary.Reporting {
                         sb.AppendLine("</details>");
                     }
                 } else if (data.LiveStackImages == null || data.LiveStackImages.Count == 0) {
-                    Logger.Info($"NightSummary: No live stack images for target '{target.Key}' — " +
-                        $"ShowLiveStackImages={SettingsManager.Instance.Current.ShowLiveStackImages}, " +
+                    _log.Info($"NightSummary: No live stack images for target '{target.Key}' — " +
+                        $"ShowLiveStackImages={_settings.Current.ShowLiveStackImages}, " +
                         $"totalImages={data.LiveStackImages?.Count ?? 0}");
                 } else {
-                    Logger.Info($"NightSummary: No live stack images matched target '{target.Key}' — " +
+                    _log.Info($"NightSummary: No live stack images matched target '{target.Key}' — " +
                         $"available targets: {string.Join(", ", data.LiveStackImages.Select(i => i.Target).Distinct())}");
                 }
 
-                // Session filter table
+                // Session filter table. Rejection columns are conditional on the whole target
+                // having any rejected frames — keep that consistent across sub-tables so the
+                // column count doesn't change between per-window tables.
                 bool hasRejections = target.Any(IsRejected);
-                sb.AppendLine("<table>");
-                sb.AppendLine(hasRejections
-                    ? "<tr><th>Filter</th><th>Images</th><th>Rejected</th><th>Exposure</th><th>Total Time</th></tr>"
-                    : "<tr><th>Filter</th><th>Images</th><th>Exposure</th><th>Total Time</th></tr>");
-                var filterGroups = target
-                    .GroupBy(i => (i.Filter, i.ExposureDuration))
-                    .OrderBy(g => FilterSortKey(g.Key.Filter)).ThenBy(g => g.Key.Filter).ThenBy(g => g.Key.ExposureDuration);
-                foreach (var filterGroup in filterGroups) {
-                    var totalTime     = TimeSpan.FromSeconds(filterGroup.Sum(i => i.ExposureDuration));
-                    var rejectedCount = filterGroup.Count(IsRejected);
-                    if (hasRejections) {
-                        string rejectedCell;
-                        if (rejectedCount > 0) {
-                            var reasons = filterGroup
-                                .Where(i => IsRejected(i) && !string.IsNullOrEmpty(i.RejectReason))
-                                .GroupBy(i => i.RejectReason)
-                                .OrderByDescending(g => g.Count())
-                                .Select(g => $"{System.Net.WebUtility.HtmlEncode(g.Key)}: {g.Count()}");
-                            var tooltip = string.Join("&#10;", reasons);
-                            var tdStyle = !string.IsNullOrEmpty(tooltip) ? $" title='{tooltip}' style='cursor:help;'" : "";
-                            rejectedCell = $"<td{tdStyle}>{rejectedCount}</td>";
-                        } else {
-                            rejectedCell = "<td>—</td>";
-                        }
-                        sb.AppendLine($"<tr><td>{filterGroup.Key.Filter}</td><td>{filterGroup.Count()}</td>{rejectedCell}<td>{filterGroup.Key.ExposureDuration:F0}s</td><td>{FormatDuration(totalTime.TotalSeconds)}</td></tr>");
-                    } else {
-                        sb.AppendLine($"<tr><td>{filterGroup.Key.Filter}</td><td>{filterGroup.Count()}</td><td>{filterGroup.Key.ExposureDuration:F0}s</td><td>{FormatDuration(totalTime.TotalSeconds)}</td></tr>");
-                    }
-                }
-                var targetTotal         = TimeSpan.FromSeconds(target.Sum(i => i.ExposureDuration));
-                var targetRejectedTotal = target.Count(IsRejected);
-                if (hasRejections) {
-                    var allReasons = target
-                        .Where(i => IsRejected(i) && !string.IsNullOrEmpty(i.RejectReason))
-                        .GroupBy(i => i.RejectReason)
-                        .OrderByDescending(g => g.Count())
-                        .Select(g => $"{System.Net.WebUtility.HtmlEncode(g.Key)}: {g.Count()}");
-                    var totalTooltip = string.Join("&#10;", allReasons);
-                    var totalTdStyle = !string.IsNullOrEmpty(totalTooltip) ? $" title='{totalTooltip}' style='cursor:help;'" : "";
-                    sb.AppendLine($"<tr><td><strong>Total</strong></td><td><strong>{target.Count()}</strong></td><td{totalTdStyle}><strong>{targetRejectedTotal}</strong></td><td></td><td><strong>{FormatDuration(targetTotal.TotalSeconds)}</strong></td></tr>");
-                } else {
-                    sb.AppendLine($"<tr><td><strong>Total</strong></td><td><strong>{target.Count()}</strong></td><td></td><td><strong>{FormatDuration(targetTotal.TotalSeconds)}</strong></td></tr>");
-                }
-                sb.AppendLine("</table>");
 
-                if (detailLevel >= 1 && SettingsManager.Instance.Current.ShowStarCountCV) {
+                // Local helper: emits one filter table for a given image set, with the
+                // supplied caption (HTML, may be empty) above and a total row at the bottom.
+                // The total-row label is parameterized so per-window tables can say "Window
+                // Total" while the single-window case keeps the legacy "Total" wording.
+                void EmitFilterTable(IList<ImageRecord> rows, string captionHtml, string totalLabel) {
+                    if (!string.IsNullOrEmpty(captionHtml))
+                        sb.AppendLine(captionHtml);
+                    sb.AppendLine("<table>");
+                    sb.AppendLine(hasRejections
+                        ? "<tr><th>Filter</th><th>Images</th><th>Rejected</th><th>Exposure</th><th>Total Time</th></tr>"
+                        : "<tr><th>Filter</th><th>Images</th><th>Exposure</th><th>Total Time</th></tr>");
+                    var groups = rows
+                        .GroupBy(i => (i.Filter, i.ExposureDuration))
+                        .OrderBy(g => FilterSortKey(g.Key.Filter)).ThenBy(g => g.Key.Filter).ThenBy(g => g.Key.ExposureDuration);
+                    foreach (var fg in groups) {
+                        var totalTime     = TimeSpan.FromSeconds(fg.Sum(i => i.ExposureDuration));
+                        var rejectedCount = fg.Count(IsRejected);
+                        if (hasRejections) {
+                            string rejectedCell;
+                            if (rejectedCount > 0) {
+                                var reasons = fg
+                                    .Where(i => IsRejected(i) && !string.IsNullOrEmpty(i.RejectReason))
+                                    .GroupBy(i => i.RejectReason)
+                                    .OrderByDescending(g => g.Count())
+                                    .Select(g => $"{System.Net.WebUtility.HtmlEncode(g.Key)}: {g.Count()}");
+                                var tooltip = string.Join("&#10;", reasons);
+                                var tdStyle = !string.IsNullOrEmpty(tooltip) ? $" title='{tooltip}' style='cursor:help;'" : "";
+                                rejectedCell = $"<td{tdStyle}>{rejectedCount}</td>";
+                            } else {
+                                rejectedCell = "<td>—</td>";
+                            }
+                            sb.AppendLine($"<tr><td>{fg.Key.Filter}</td><td>{fg.Count()}</td>{rejectedCell}<td>{fg.Key.ExposureDuration:F0}s</td><td>{FormatDuration(totalTime.TotalSeconds)}</td></tr>");
+                        } else {
+                            sb.AppendLine($"<tr><td>{fg.Key.Filter}</td><td>{fg.Count()}</td><td>{fg.Key.ExposureDuration:F0}s</td><td>{FormatDuration(totalTime.TotalSeconds)}</td></tr>");
+                        }
+                    }
+                    var tt   = TimeSpan.FromSeconds(rows.Sum(i => i.ExposureDuration));
+                    var rejT = rows.Count(IsRejected);
+                    if (hasRejections) {
+                        var allReasons = rows
+                            .Where(i => IsRejected(i) && !string.IsNullOrEmpty(i.RejectReason))
+                            .GroupBy(i => i.RejectReason)
+                            .OrderByDescending(g => g.Count())
+                            .Select(g => $"{System.Net.WebUtility.HtmlEncode(g.Key)}: {g.Count()}");
+                        var totalTooltip = string.Join("&#10;", allReasons);
+                        var totalTdStyle = !string.IsNullOrEmpty(totalTooltip) ? $" title='{totalTooltip}' style='cursor:help;'" : "";
+                        sb.AppendLine($"<tr><td><strong>{totalLabel}</strong></td><td><strong>{rows.Count}</strong></td><td{totalTdStyle}><strong>{rejT}</strong></td><td></td><td><strong>{FormatDuration(tt.TotalSeconds)}</strong></td></tr>");
+                    } else {
+                        sb.AppendLine($"<tr><td><strong>{totalLabel}</strong></td><td><strong>{rows.Count}</strong></td><td></td><td><strong>{FormatDuration(tt.TotalSeconds)}</strong></td></tr>");
+                    }
+                    sb.AppendLine("</table>");
+                }
+
+                if (multiWindow) {
+                    // Grand total table on top (the at-a-glance summary), followed by one
+                    // collapsible details block per imaging window. Per-window expanders are
+                    // closed by default — viewers who only want the totals get them
+                    // immediately, viewers who want the per-window split can expand any window.
+                    EmitFilterTable(target.ToList(), captionHtml: "", totalLabel: "Grand Total");
+                    for (int wi = 0; wi < imagingWindows.Count; wi++) {
+                        var w = imagingWindows[wi];
+                        var winImages = target.Where(i => i.Timestamp >= w.Start && i.Timestamp <= w.End).ToList();
+                        sb.AppendLine("<details class='window-section'>");
+                        sb.AppendLine($"<summary><strong>Window {wi + 1}</strong> " +
+                                      $"<span style='color:var(--muted); font-weight:normal;'>" +
+                                      $"({w.Start:HH:mm} &#8211; {w.End:HH:mm}, {winImages.Count} frames)</span></summary>");
+                        EmitFilterTable(winImages, captionHtml: "", totalLabel: "Window Total");
+                        sb.AppendLine("</details>");
+                    }
+                } else {
+                    EmitFilterTable(target.ToList(), captionHtml: "", totalLabel: "Total");
+                }
+
+                if (detailLevel >= 1 && _settings.Current.ShowStarCountCV) {
                     // Star count CV
                     var broadbandImages  = target.Where(i => IsBroadband(i.Filter)  && i.StarCount > 0).ToList();
                     var narrowbandImages = target.Where(i => IsNarrowband(i.Filter) && i.StarCount > 0).ToList();
@@ -894,8 +1060,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     }
                 }
 
-                // Per-target image quality (collapsible) — only for multi-target sessions
-                if (detailLevel >= 1 && multiTarget && SettingsManager.Instance.Current.ShowPerTargetIQ) {
+                // Per-target image quality (collapsible) — only for multi-target sessions.
+                // For multi-window targets the panel opens with the aggregate stats (across
+                // all windows) at the top, matching the filter-table layout above, then one
+                // collapsed expander per imaging window with the same metric table inside.
+                // Per-window sample sizes are usually small so the CV column will be noisy —
+                // viewer can compare windows at a glance but should weight by frame count.
+                if (detailLevel >= 1 && multiTarget && _settings.Current.ShowPerTargetIQ) {
                     var targetList = target.ToList();
                     bool hasData = targetList.Any(i => i.HFR > 0 || i.FWHM > 0 || i.Eccentricity > 0 || i.GuidingRMSTotal > 0);
                     if (hasData) {
@@ -905,12 +1076,31 @@ namespace NINA.Plugin.NightSummary.Reporting {
                         sb.AppendLine("<div class='iq-row-grid'><div class='iq-header'>Metric</div><div class='iq-header'>Min</div><div class='iq-header'>Max</div><div class='iq-header'>Mean</div><div class='iq-header'>CV</div></div>");
                         AppendIqRows(sb, targetList, detailsOpen);
                         sb.AppendLine("</div>");
+
+                        if (multiWindow) {
+                            for (int wi = 0; wi < imagingWindows.Count; wi++) {
+                                var w = imagingWindows[wi];
+                                var winImages = targetList.Where(i => i.Timestamp >= w.Start && i.Timestamp <= w.End).ToList();
+                                bool winHasData = winImages.Any(i => i.HFR > 0 || i.FWHM > 0 || i.Eccentricity > 0 || i.GuidingRMSTotal > 0);
+                                if (!winHasData) continue;
+                                sb.AppendLine("<details class='window-section'>");
+                                sb.AppendLine($"<summary><strong>Window {wi + 1}</strong> " +
+                                              $"<span style='color:var(--muted); font-weight:normal;'>" +
+                                              $"({w.Start:HH:mm} &#8211; {w.End:HH:mm}, {winImages.Count} frames)</span></summary>");
+                                sb.AppendLine("<div class='iq-table'>");
+                                sb.AppendLine("<div class='iq-row-grid'><div class='iq-header'>Metric</div><div class='iq-header'>Min</div><div class='iq-header'>Max</div><div class='iq-header'>Mean</div><div class='iq-header'>CV</div></div>");
+                                AppendIqRows(sb, winImages, detailsOpen);
+                                sb.AppendLine("</div>");
+                                sb.AppendLine("</details>");
+                            }
+                        }
+
                         sb.AppendLine("</details>");
                     }
                 }
 
                 // Session history (collapsible)
-                if (detailLevel >= 2 && SettingsManager.Instance.Current.ShowSessionHistory) {
+                if (detailLevel >= 2 && _settings.Current.ShowSessionHistory) {
                     List<TargetSessionHistory> history = null;
                     data.SessionHistory?.TryGetValue(target.Key, out history);
                     if (history != null && history.Any()) {
@@ -930,14 +1120,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     }
                 }
 
-                if (!tsTargets.Any() && detailLevel >= 1 && SettingsManager.Instance.Current.ShowTSProgressBars && TargetSchedulerDatabase.IsPluginInstalled) {
+                if (!tsTargets.Any() && detailLevel >= 1 && _settings.Current.ShowTSProgressBars && _tsDb.IsPluginInstalled) {
                     if (data.TsData != null && data.TsData.Count > 0) {
                         // TS is installed but this specific target wasn't found in it
                         Warnings.Add($"Target Scheduler progress bars unavailable for {target.Key} — target not found in Target Scheduler");
                     }
                     // If TS isn't installed at all, silently skip — the Options UI already shows it's unavailable
                 }
-                if (tsTargets.Any() && detailLevel >= 1 && SettingsManager.Instance.Current.ShowTSProgressBars && TargetSchedulerDatabase.IsPluginInstalled) {
+                if (tsTargets.Any() && detailLevel >= 1 && _settings.Current.ShowTSProgressBars && _tsDb.IsPluginInstalled) {
                     // TS progress bars — one section per (project, target) pair; label project when multiple exist
                     var multiProject = tsTargets.Count > 1;
                     sb.AppendLine("<p style='margin: 12px 0 4px; font-size: 13px; color: var(--accent-light);'><strong>Target Scheduler Progress</strong></p>");
@@ -1155,15 +1345,15 @@ namespace NINA.Plugin.NightSummary.Reporting {
             AppendIqRows(sb, data.Images, detailsOpen);
             sb.AppendLine("</div>"); // iq-table
 
-            if (detailLevel >= 2 && SettingsManager.Instance.Current.ShowHFRGraph) {
-                int primary   = SettingsManager.Instance.Current.ChartPrimaryMetric;
-                int secondary = SettingsManager.Instance.Current.ChartSecondaryMetric;
-                int xAxis     = SettingsManager.Instance.Current.ChartXAxisMetric;
+            if (detailLevel >= 2 && _settings.Current.ShowHFRGraph) {
+                int primary   = _settings.Current.ChartPrimaryMetric;
+                int secondary = _settings.Current.ChartSecondaryMetric;
+                int xAxis     = _settings.Current.ChartXAxisMetric;
 
                 // Build event marker list from enabled event types
                 var eventMarkers = new List<(DateTime timestamp, string eventType, string description)>();
                 if (data.Events != null) {
-                    var settings = SettingsManager.Instance.Current;
+                    var settings = _settings.Current;
                     if (settings.ShowChartAfMarkers)
                         eventMarkers.AddRange(data.Events.Where(e => e.EventType == "AutoFocus")
                             .Select(e => (e.Timestamp, e.EventType, e.Description)));
@@ -1179,7 +1369,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 sb.AppendLine($"<h2>{ChartGenerator.GetChartTitle(primary, secondary, xAxis)}</h2>");
                 EmitMetricChart(sb, data.Images, primary, secondary, xAxis, markers);
 
-                var additionalRaw = SettingsManager.Instance.Current.AdditionalChartConfigs;
+                var additionalRaw = _settings.Current.AdditionalChartConfigs;
                 if (!string.IsNullOrWhiteSpace(additionalRaw)) {
                     foreach (var part in additionalRaw.Split('|')) {
                         var tokens = part.Split(':');
@@ -1231,7 +1421,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var filters = model.Filters;
             var targets = model.Targets;
 
-            var settings    = SettingsManager.Instance.Current;
+            var settings    = _settings.Current;
             bool hasFilters = filters.Count >= 2 && settings.ShowChartFilterChips;
             bool hasTargets = targets.Count >= 2 && settings.ShowChartTargetChips;
 
@@ -1378,7 +1568,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("<h2>Session Timeline</h2>");
 
             // Which view is default?
-            bool altDefault = SettingsManager.Instance.Current.TimelineAltitudeDefault;
+            bool altDefault = _settings.Current.TimelineAltitudeDefault;
             string altChecked = altDefault ? " checked" : "";
             string simChecked = altDefault ? "" : " checked";
             string hiddenView = altDefault ? "simple" : "altitude";
@@ -1440,11 +1630,17 @@ namespace NINA.Plugin.NightSummary.Reporting {
         }
 
         private string BuildAltitudeChart(double raHours, double decDeg, double latDeg, double lonDeg,
-                                          DateTime sessionStart, DateTime sessionEnd, int width = 560,
+                                          IReadOnlyList<(DateTime Start, DateTime End)> windows,
+                                          int width = 560,
                                           double minimumAltitude = 0) {
             if (latDeg == 0 && lonDeg == 0) return string.Empty;
+            if (windows == null || windows.Count == 0) return string.Empty;
 
-            // Chart window: sunset to sunrise (zoomed in to the imaging night)
+            // Chart window: sunset to sunrise (zoomed in to the imaging night). Anchor on the
+            // first imaging window's start so the night-window math matches the legacy single
+            // window case exactly when there's only one window.
+            var sessionStart = windows[0].Start;
+            var sessionEnd   = windows[windows.Count - 1].End;
             var (dayStart, dayEnd) = AltitudeCalculator.FindNightWindow(latDeg, lonDeg, sessionStart);
 
             int svgW     = width;
@@ -1467,8 +1663,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             double X(DateTime t) => padL + ((t - dayStart).TotalMinutes / totalMin * plotW);
             double Y(double alt)  => padT + plotH - (alt / altRange * plotH);
 
-            double xSessStart = X(sessionStart);
-            double xSessEnd   = X(sessionEnd);
+            bool multiWindow = windows.Count > 1;
 
             // Collect above-horizon segments for segmented polylines
             var segments = new List<List<(DateTime t, double alt)>>();
@@ -1494,8 +1689,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine($"<rect x='{padL}' y='{padT}' width='{plotW}' height='{plotH}' fill='{svgChartBg}' rx='4'/>");
             sb.AppendLine($"<rect x='{padL}' y='{padT}' width='{plotW}' height='{plotH}' fill='none' stroke='{altGrid}' stroke-width='1' rx='4'/>");
 
-            // Session window subtle highlight
-            sb.AppendLine($"<rect x='{xSessStart:F1}' y='{padT}' width='{(xSessEnd - xSessStart):F1}' height='{plotH}' fill='{altAccent}' opacity='0.07'/>");
+            // Imaging window highlights — one subtle rect per window. For multi-window targets
+            // each block stands out individually so the visible gaps line up with the filter
+            // table sub-sections beneath the chart.
+            foreach (var w in windows) {
+                double wxStart = X(w.Start);
+                double wxEnd   = X(w.End);
+                sb.AppendLine($"<rect x='{wxStart:F1}' y='{padT}' width='{(wxEnd - wxStart):F1}' height='{plotH}' fill='{altAccent}' opacity='0.07'/>");
+            }
 
             // Grid lines at 30° and 60°
             foreach (var gridAlt in new[] { 30.0, 60.0 }) {
@@ -1523,7 +1724,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             // ── Moon altitude curve ──────────────────────────────────────────────
-            if (SettingsManager.Instance.Current.ShowMoonCurve) {
+            if (_settings.Current.ShowMoonCurve) {
                 var moonPoints = AltitudeCalculator.GetMoonAltitudeCurve(latDeg, lonDeg, dayStart, dayEnd, stepMinutes: 5);
                 var moonSegments = new List<List<(DateTime t, double alt)>>();
                 List<(DateTime t, double alt)> moonSeg = null;
@@ -1547,19 +1748,29 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 }
             }
 
-            // Session start line with tooltip
-            sb.AppendLine("<g>");
-            sb.AppendLine($"  <title>Start: {sessionStart:HH:mm}</title>");
-            sb.AppendLine($"  <line x1='{xSessStart:F1}' y1='{padT}' x2='{xSessStart:F1}' y2='{padT + plotH}' stroke='{altAccent}' stroke-width='1.5' stroke-dasharray='4,3' opacity='0.7'/>");
-            sb.AppendLine($"  <text x='{xSessStart:F1}' y='{padT - 5}' text-anchor='middle' font-size='9' fill='{altAccent}'>Start</text>");
-            sb.AppendLine("</g>");
+            // Per-window start/end markers. Single-window: keep the legacy "Start" / "End"
+            // text labels above the line. Multi-window: drop the text labels (they'd overlap
+            // each other) and rely on the SVG tooltip when the viewer hovers a line — this
+            // matches how the timeline event markers are surfaced.
+            for (int wi = 0; wi < windows.Count; wi++) {
+                var w = windows[wi];
+                double wxStart = X(w.Start);
+                double wxEnd   = X(w.End);
 
-            // Session end line with tooltip
-            sb.AppendLine("<g>");
-            sb.AppendLine($"  <title>End: {sessionEnd:HH:mm}</title>");
-            sb.AppendLine($"  <line x1='{xSessEnd:F1}' y1='{padT}' x2='{xSessEnd:F1}' y2='{padT + plotH}' stroke='{altAccent}' stroke-width='1.5' stroke-dasharray='4,3' opacity='0.7'/>");
-            sb.AppendLine($"  <text x='{xSessEnd:F1}' y='{padT - 5}' text-anchor='middle' font-size='9' fill='{altAccent}'>End</text>");
-            sb.AppendLine("</g>");
+                sb.AppendLine("<g>");
+                sb.AppendLine($"  <title>{(multiWindow ? $"Window {wi + 1} start" : "Start")}: {w.Start:HH:mm}</title>");
+                sb.AppendLine($"  <line x1='{wxStart:F1}' y1='{padT}' x2='{wxStart:F1}' y2='{padT + plotH}' stroke='{altAccent}' stroke-width='1.5' stroke-dasharray='4,3' opacity='0.7'/>");
+                if (!multiWindow)
+                    sb.AppendLine($"  <text x='{wxStart:F1}' y='{padT - 5}' text-anchor='middle' font-size='9' fill='{altAccent}'>Start</text>");
+                sb.AppendLine("</g>");
+
+                sb.AppendLine("<g>");
+                sb.AppendLine($"  <title>{(multiWindow ? $"Window {wi + 1} end" : "End")}: {w.End:HH:mm}</title>");
+                sb.AppendLine($"  <line x1='{wxEnd:F1}' y1='{padT}' x2='{wxEnd:F1}' y2='{padT + plotH}' stroke='{altAccent}' stroke-width='1.5' stroke-dasharray='4,3' opacity='0.7'/>");
+                if (!multiWindow)
+                    sb.AppendLine($"  <text x='{wxEnd:F1}' y='{padT - 5}' text-anchor='middle' font-size='9' fill='{altAccent}'>End</text>");
+                sb.AppendLine("</g>");
+            }
 
             // Sunset / sunrise edge markers
             sb.AppendLine($"<text x='{padL + 2}' y='{padT + plotH - 4}' font-size='10' fill='{svgSunrise}' opacity='0.8'>&#9660; Sunset {dayStart:HH:mm}</text>");
@@ -1591,179 +1802,322 @@ namespace NINA.Plugin.NightSummary.Reporting {
         }
 
         private async Task<string> BuildNextNightPreviewSection(ReportData data) {
-            if (!SettingsManager.Instance.Current.ShowNextNightPreview) return "";
+            if (!_settings.Current.ShowNextNightPreview) return "";
 
-            var tsDb = new TargetSchedulerDatabase();
-            if (!tsDb.IsAvailable)
-                return "";  // TS not installed — silently skip, Options UI already indicates it's unavailable
+            // ── Fetch step: produces (entries, observerLat, observerLon, optional cachedAtUtc) ──
+            //
+            // Companion mode reads the synced tonight-preview-cache.json. Live
+            // primary mode hits the TS API. Both yield the same TsPreviewEntry
+            // shape going forward; primary populates entry.Ra/Dec via TS DB
+            // lookup, companion gets them straight from the cached payload.
+            List<TsPreviewEntry> entries;
+            double observerLat;
+            double observerLon;
+            DateTime? cachedAtUtc = null;
+            bool isCompanionMode = string.Equals(_settings.Mode, "companion", StringComparison.OrdinalIgnoreCase);
 
-            var (apiEnabled, apiPort) = tsDb.GetApiSettings(data.ActiveProfileId);
-            if (!apiEnabled) {
-                // API not enabled is a normal default state — silently skip, no report warning
-                Logger.Info($"NightSummary: Tonight's Preview skipped — TS API not enabled for profile '{data.ActiveProfileId ?? "unknown"}'");
-                return "";
+            if (isCompanionMode) {
+                var loaded = LoadTonightPreviewFromCompanionCache(data);
+                if (loaded.Notice != null) return loaded.Notice;
+                entries     = loaded.Entries!;
+                observerLat = loaded.ObserverLat;
+                observerLon = loaded.ObserverLon;
+                cachedAtUtc = loaded.CachedAtUtc;
+            } else {
+                var tsDb = _tsDb;
+                if (!tsDb.IsAvailable)
+                    return "";  // TS not installed — silently skip, Options UI already indicates it's unavailable
+
+                var (apiEnabled, apiPort) = tsDb.GetApiSettings(data.ActiveProfileId);
+                if (!apiEnabled) {
+                    // API not enabled is a normal default state — silently skip, no report warning
+                    _log.Info($"NightSummary: Tonight's Preview skipped — TS API not enabled for profile '{data.ActiveProfileId ?? "unknown"}'");
+                    return "";
+                }
+
+                try {
+                    var baseUrl = $"http://localhost:{apiPort}/ts/v0";
+                    _log.Info($"NightSummary: Tonight's Preview — connecting to TS API at {baseUrl}");
+                    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+                    // Step 1: Get active profile ID
+                    var profilesJson = await TsApiClient.GetStringAsync($"{baseUrl}/profiles");
+                    var profiles = JsonSerializer.Deserialize<List<TsProfileInfo>>(profilesJson, options);
+                    var active = profiles?.FirstOrDefault(p => p.Active);
+                    if (active == null)
+                        return PreviewNotice("No active NINA profile found.");
+
+                    // Step 2: Compute tonight's sunset and use as the preview start time
+                    if (data.ObserverLatitude == 0 && data.ObserverLongitude == 0)
+                        return PreviewNotice("Observer location not configured in NINA profile.");
+                    var tomorrow = DateTime.Today.AddDays(1);
+                    var (sunset, sunrise) = AltitudeCalculator.FindNightWindow(
+                        data.ObserverLatitude, data.ObserverLongitude, tomorrow.AddHours(-6));
+                    var startTime = sunset;
+                    var encodedStart = Uri.EscapeDataString(startTime.ToString("o"));
+                    var previewUrl = $"{baseUrl}/profiles/{active.Id}/preview?startTime={encodedStart}";
+
+                    var previewJson = await TsApiClient.GetStringAsync(previewUrl);
+                    var fetched = JsonSerializer.Deserialize<List<TsPreviewEntry>>(previewJson, options);
+                    if (fetched == null) return PreviewNotice("Target Scheduler returned an empty preview — no targets scheduled for tonight.");
+
+                    // Fill in entry.Ra/Dec via TS DB lookup (live TS API doesn't include coords)
+                    try {
+                        var names = fetched.Where(e => !e.WaitPeriod && !string.IsNullOrEmpty(e.Name))
+                                           .Select(e => e.Name).Distinct().ToList();
+                        var tsProgress = tsDb.GetProgressForTargets(names, data.ActiveProfileId);
+                        var byName = new Dictionary<string, (double Ra, double Dec)>(StringComparer.OrdinalIgnoreCase);
+                        foreach (var tt in tsProgress)
+                            if (!byName.ContainsKey(tt.TargetName))
+                                byName[tt.TargetName] = (tt.RA, tt.Dec);
+                        foreach (var e in fetched) {
+                            if (!string.IsNullOrEmpty(e.Name) && byName.TryGetValue(e.Name, out var rd)) {
+                                e.Ra = rd.Ra; e.Dec = rd.Dec;
+                            }
+                        }
+                    } catch (Exception ex) {
+                        _log.Warn($"NightSummary: Could not look up coordinates for preview targets: {ex.Message}");
+                    }
+
+                    entries     = fetched;
+                    observerLat = data.ObserverLatitude;
+                    observerLon = data.ObserverLongitude;
+                } catch (Exception ex) {
+                    _log.Warn($"NightSummary: Next night preview unavailable. {ex.Message}");
+                    var reason = ex.InnerException is TaskCanceledException
+                        ? "Target Scheduler API did not respond in time — the server may not be running."
+                        : $"Could not connect to Target Scheduler API. Ensure NINA and Target Scheduler are running.";
+                    return PreviewNotice(reason);
+                }
             }
 
-            try {
-                var baseUrl = $"http://localhost:{apiPort}/ts/v0";
-                Logger.Info($"NightSummary: Tonight's Preview — connecting to TS API at {baseUrl}");
-                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            // ── Common render step ──
 
-                // Step 1: Get active profile ID
-                var profilesJson = await TsApiClient.GetStringAsync($"{baseUrl}/profiles");
-                var profiles = JsonSerializer.Deserialize<List<TsProfileInfo>>(profilesJson, options);
-                var active = profiles?.FirstOrDefault(p => p.Active);
-                if (active == null)
-                    return PreviewNotice("No active NINA profile found.");
+            if (entries == null || !entries.Any())
+                return PreviewNotice("Target Scheduler returned an empty preview — no targets scheduled for tonight.");
 
-                // Step 2: Compute tonight's sunset and use as the preview start time
-                if (data.ObserverLatitude == 0 && data.ObserverLongitude == 0)
-                    return PreviewNotice("Observer location not configured in NINA profile.");
-                var tomorrow = DateTime.Today.AddDays(1);
-                var (sunset, sunrise) = AltitudeCalculator.FindNightWindow(
-                    data.ObserverLatitude, data.ObserverLongitude, tomorrow.AddHours(-6));
-                var startTime = sunset;
-                var encodedStart = Uri.EscapeDataString(startTime.ToString("o"));
-                var previewUrl = $"{baseUrl}/profiles/{active.Id}/preview?startTime={encodedStart}";
+            // Filter to target blocks only (skip wait periods) for the summary
+            var targets = entries.Where(e => !e.WaitPeriod && e.Name != null).ToList();
+            if (!targets.Any())
+                return PreviewNotice("Target Scheduler returned an empty preview — no targets scheduled for tonight.");
 
-                var previewJson = await TsApiClient.GetStringAsync(previewUrl);
-                var entries = JsonSerializer.Deserialize<List<TsPreviewEntry>>(previewJson, options);
-                if (entries == null || !entries.Any())
-                    return PreviewNotice("Target Scheduler returned an empty preview — no targets scheduled for tonight.");
+            // Expiry check (mostly relevant on companion): preview is stale if
+            // its last entry already ended before the user is reading the report.
+            if (targets.Last().EndTime < DateTime.Now) {
+                var pvDay = targets.First().StartTime;
+                var when  = cachedAtUtc.HasValue
+                    ? $" (synced {cachedAtUtc.Value.ToLocalTime():MMM d, h:mm tt})"
+                    : "";
+                return PreviewNotice($"Tonight's Preview for {pvDay:MMMM d, yyyy} has expired{when}. Resync from the primary to refresh.");
+            }
 
-                // Filter to target blocks only (skip wait periods) for the summary
-                var targets = entries.Where(e => !e.WaitPeriod && e.Name != null).ToList();
-                if (!targets.Any())
-                    return PreviewNotice("Target Scheduler returned an empty preview — no targets scheduled for tonight.");
+            // Trim leading wait periods so the timeline starts at the first target block
+            var firstTargetStart = targets.First().StartTime;
+            entries = entries.Where(e => e.EndTime > firstTargetStart).ToList();
 
-                // Trim leading wait periods so the timeline starts at the first target block
-                var firstTargetStart = targets.First().StartTime;
-                entries = entries.Where(e => e.EndTime > firstTargetStart).ToList();
+            // Timeline spans from first target start to last entry end
+            var timelineStart = firstTargetStart;
+            var timelineEnd   = entries.Last().EndTime;
+            var totalSeconds  = (timelineEnd - timelineStart).TotalSeconds;
+            if (totalSeconds <= 0) return "";
 
-                // Timeline spans from first target start to last entry end
-                var timelineStart = firstTargetStart;
-                var timelineEnd   = entries.Last().EndTime;
-                var totalSeconds  = (timelineEnd - timelineStart).TotalSeconds;
-                if (totalSeconds <= 0) return "";
+            // Assign colors to unique target names
+            var uniqueTargets = targets.Select(t => t.Name).Distinct().ToList();
+            var colorMap = new Dictionary<string, string>();
+            for (int i = 0; i < uniqueTargets.Count; i++)
+                colorMap[uniqueTargets[i]] = PreviewColors[i % PreviewColors.Length];
 
-                // Assign colors to unique target names
-                var uniqueTargets = targets.Select(t => t.Name).Distinct().ToList();
-                var colorMap = new Dictionary<string, string>();
-                for (int i = 0; i < uniqueTargets.Count; i++)
-                    colorMap[uniqueTargets[i]] = PreviewColors[i % PreviewColors.Length];
+            var sb = new StringBuilder();
+            sb.AppendLine("<div class='target-section'>");
+            var previewDate = targets.First().StartTime;
+            sb.AppendLine($"<h2 style='display:inline;'>Tonight's Preview</h2>");
+            sb.AppendLine($"<span style='color:var(--dim);font-size:12px;font-style:italic;margin-left:12px;'>Generated by Target Scheduler — actual imaging may differ based on conditions</span>");
+            sb.AppendLine($"<p style='color:var(--muted);margin-top:8px;'>Planned schedule for {previewDate:MMMM d, yyyy} &mdash; {timelineStart:HH:mm} to {timelineEnd:HH:mm}{(cachedAtUtc.HasValue ? $" &middot; cached {cachedAtUtc.Value.ToLocalTime():MMM d h:mm tt}" : "")}</p>");
 
-                var sb = new StringBuilder();
-                sb.AppendLine("<div class='target-section'>");
-                var previewDate = targets.First().StartTime;
-                sb.AppendLine($"<h2 style='display:inline;'>Tonight's Preview</h2>");
-                sb.AppendLine($"<span style='color:var(--dim);font-size:12px;font-style:italic;margin-left:12px;'>Generated by Target Scheduler — actual imaging may differ based on conditions</span>");
-                sb.AppendLine($"<p style='color:var(--muted);margin-top:8px;'>Planned schedule for {previewDate:MMMM d, yyyy} &mdash; {timelineStart:HH:mm} to {timelineEnd:HH:mm}</p>");
-
-                // Look up RA/Dec for preview targets from the TS database
-                var coordLookup = new Dictionary<string, (double Ra, double Dec)>(StringComparer.OrdinalIgnoreCase);
-                try {
-                    var tsProgress = tsDb.GetProgressForTargets(uniqueTargets, data.ActiveProfileId);
-                    foreach (var tt in tsProgress)
-                        if (!coordLookup.ContainsKey(tt.TargetName))
-                            coordLookup[tt.TargetName] = (tt.RA, tt.Dec);
-                } catch (Exception ex) {
-                    Logger.Warning($"NightSummary: Could not look up coordinates for preview targets: {ex.Message}");
+            // RA/Dec for the altitude chart now travels on each entry, so the
+            // coord lookup is a straight projection from entry.Ra/Dec.
+            var coordLookup = new Dictionary<string, (double Ra, double Dec)>(StringComparer.OrdinalIgnoreCase);
+            foreach (var t in targets) {
+                if (!coordLookup.ContainsKey(t.Name) && (t.Ra != 0 || t.Dec != 0)) {
+                    coordLookup[t.Name] = (t.Ra, t.Dec);
                 }
+            }
 
-                // ── Timeline with toggle (Altitude / Simple) ──
-                var altChart = BuildPreviewAltitudeChart(targets, colorMap, coordLookup,
-                    data.ObserverLatitude, data.ObserverLongitude, timelineStart, timelineEnd);
-                var simpleChart = BuildPreviewSimpleTimeline(entries, targets, colorMap, timelineStart, timelineEnd);
+            // ── Timeline with toggle (Altitude / Simple) ──
+            var altChart = BuildPreviewAltitudeChart(targets, colorMap, coordLookup,
+                observerLat, observerLon, timelineStart, timelineEnd);
+            var simpleChart = BuildPreviewSimpleTimeline(entries, targets, colorMap, timelineStart, timelineEnd);
 
-                if (!string.IsNullOrEmpty(altChart) && !string.IsNullOrEmpty(simpleChart)) {
-                    int ci = _chartIndex++;
-                    string pfx = $"nsc{ci}";
-                    bool pvAltDefault = SettingsManager.Instance.Current.PreviewAltitudeDefault;
-                    string pvAltChecked = pvAltDefault ? " checked" : "";
-                    string pvSimChecked = pvAltDefault ? "" : " checked";
-                    string pvHidden = pvAltDefault ? "simple" : "altitude";
+            if (!string.IsNullOrEmpty(altChart) && !string.IsNullOrEmpty(simpleChart)) {
+                int ci = _chartIndex++;
+                string pfx = $"nsc{ci}";
+                bool pvAltDefault = _settings.Current.PreviewAltitudeDefault;
+                string pvAltChecked = pvAltDefault ? " checked" : "";
+                string pvSimChecked = pvAltDefault ? "" : " checked";
+                string pvHidden = pvAltDefault ? "simple" : "altitude";
 
-                    sb.AppendLine("<style>");
-                    sb.AppendLine($"#{pfx}-altitude:checked ~ .{pfx}-bar label[for=\"{pfx}-altitude\"],");
-                    sb.AppendLine($"#{pfx}-simple:checked ~ .{pfx}-bar label[for=\"{pfx}-simple\"]");
-                    sb.AppendLine("{ background: var(--accent); color: var(--bg); border-color: var(--accent); }");
-                    sb.AppendLine($"#{pfx}-svg-{pvHidden} {{ display: none; }}");
-                    sb.AppendLine($"#{pfx}-simple:checked ~ #{pfx}-svg-altitude {{ display: none; }}");
-                    sb.AppendLine($"#{pfx}-simple:checked ~ #{pfx}-svg-simple {{ display: block !important; }}");
-                    sb.AppendLine($"#{pfx}-altitude:checked ~ #{pfx}-svg-simple {{ display: none; }}");
-                    sb.AppendLine($"#{pfx}-altitude:checked ~ #{pfx}-svg-altitude {{ display: block !important; }}");
-                    sb.AppendLine("</style>");
+                sb.AppendLine("<style>");
+                sb.AppendLine($"#{pfx}-altitude:checked ~ .{pfx}-bar label[for=\"{pfx}-altitude\"],");
+                sb.AppendLine($"#{pfx}-simple:checked ~ .{pfx}-bar label[for=\"{pfx}-simple\"]");
+                sb.AppendLine("{ background: var(--accent); color: var(--bg); border-color: var(--accent); }");
+                sb.AppendLine($"#{pfx}-svg-{pvHidden} {{ display: none; }}");
+                sb.AppendLine($"#{pfx}-simple:checked ~ #{pfx}-svg-altitude {{ display: none; }}");
+                sb.AppendLine($"#{pfx}-simple:checked ~ #{pfx}-svg-simple {{ display: block !important; }}");
+                sb.AppendLine($"#{pfx}-altitude:checked ~ #{pfx}-svg-simple {{ display: none; }}");
+                sb.AppendLine($"#{pfx}-altitude:checked ~ #{pfx}-svg-altitude {{ display: block !important; }}");
+                sb.AppendLine("</style>");
 
-                    sb.AppendLine("<div class='timeline-container'>");
-                    sb.AppendLine($"<input type=\"radio\" name=\"{pfx}\" id=\"{pfx}-altitude\"{pvAltChecked} style=\"display:none\">");
-                    sb.AppendLine($"<input type=\"radio\" name=\"{pfx}\" id=\"{pfx}-simple\"{pvSimChecked} style=\"display:none\">");
-                    sb.Append($"<div class=\"ns-chart-filter-bar {pfx}-bar\">");
-                    sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-altitude\">Altitude</label>");
-                    sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-simple\">Simple</label>");
-                    sb.AppendLine("</div>");
-                    sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-altitude\"{(pvAltDefault ? "" : " style=\"display:none\"")}>{altChart}</div>");
-                    sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-simple\"{(pvAltDefault ? " style=\"display:none\"" : "")}>{simpleChart}</div>");
-                    sb.AppendLine("</div>");
-                } else {
-                    // Fallback — show whichever is available
-                    sb.AppendLine("<div class='timeline-container'>");
-                    sb.AppendLine(!string.IsNullOrEmpty(altChart) ? altChart : simpleChart);
-                    sb.AppendLine("</div>");
-                }
+                sb.AppendLine("<div class='timeline-container'>");
+                sb.AppendLine($"<input type=\"radio\" name=\"{pfx}\" id=\"{pfx}-altitude\"{pvAltChecked} style=\"display:none\">");
+                sb.AppendLine($"<input type=\"radio\" name=\"{pfx}\" id=\"{pfx}-simple\"{pvSimChecked} style=\"display:none\">");
+                sb.Append($"<div class=\"ns-chart-filter-bar {pfx}-bar\">");
+                sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-altitude\">Altitude</label>");
+                sb.Append($"<label class=\"ns-chart-filter-btn\" for=\"{pfx}-simple\">Simple</label>");
+                sb.AppendLine("</div>");
+                sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-altitude\"{(pvAltDefault ? "" : " style=\"display:none\"")}>{altChart}</div>");
+                sb.AppendLine($"<div class=\"ns-chart-svg\" id=\"{pfx}-svg-simple\"{(pvAltDefault ? " style=\"display:none\"" : "")}>{simpleChart}</div>");
+                sb.AppendLine("</div>");
+            } else {
+                // Fallback — show whichever is available
+                sb.AppendLine("<div class='timeline-container'>");
+                sb.AppendLine(!string.IsNullOrEmpty(altChart) ? altChart : simpleChart);
+                sb.AppendLine("</div>");
+            }
 
-                // ── Per-target summary list ──
-                sb.AppendLine("<table style='margin-top:12px;'>");
-                sb.AppendLine("<tr><th>Target</th><th>Window</th><th>Images</th><th>Total Time</th></tr>");
+            // ── Per-target summary list ──
+            sb.AppendLine("<table style='margin-top:12px;'>");
+            sb.AppendLine("<tr><th>Target</th><th>Window</th><th>Images</th><th>Total Time</th></tr>");
 
-                foreach (var target in targets) {
-                    int totalFrames = target.ExposurePlan.Sum(e => e.Count);
-                    double totalIntSec = target.ExposurePlan.Sum(e => e.Exposure * e.Count);
+            foreach (var target in targets) {
+                int totalFrames = target.ExposurePlan.Sum(e => e.Count);
+                double totalIntSec = target.ExposurePlan.Sum(e => e.Exposure * e.Count);
+                sb.AppendLine($"<tr>");
+                sb.AppendLine($"  <td>{target.Name}</td>");
+                sb.AppendLine($"  <td>{target.StartTime:HH:mm} - {target.EndTime:HH:mm}</td>");
+                sb.AppendLine($"  <td>{totalFrames}</td>");
+                sb.AppendLine($"  <td>{FormatDuration(totalIntSec)}</td>");
+                sb.AppendLine($"</tr>");
+            }
+            sb.AppendLine("</table>");
+
+            // ── Expandable per-target filter details ──
+            // Aggregate exposure plans across all timeline blocks for the same target,
+            // then group by (filter, exposure length) — matches main report grouping logic.
+            foreach (var targetGroup in targets.GroupBy(t => t.Name)) {
+                var allExposures = targetGroup.SelectMany(t => t.ExposurePlan).ToList();
+                if (!allExposures.Any()) continue;
+                var filterGroups = allExposures
+                    .GroupBy(e => (e.FilterName, e.Exposure))
+                    .OrderBy(g => FilterSortKey(g.Key.FilterName)).ThenBy(g => g.Key.FilterName).ThenBy(g => g.Key.Exposure);
+                string detailsOpen = _settings.Current.ExpandSectionsDefault ? " open" : "";
+                sb.AppendLine($"<details class='history-section'{detailsOpen}>");
+                sb.AppendLine($"<summary>{targetGroup.Key} - Filter Breakdown</summary>");
+                sb.AppendLine("<table style='margin-top:8px;width:auto;'>");
+                sb.AppendLine("<tr><th>Filter</th><th>Images</th><th>Exposure</th><th>Total Time</th></tr>");
+                foreach (var g in filterGroups) {
+                    int totalCount = g.Sum(e => e.Count);
+                    double intSec = g.Key.Exposure * totalCount;
                     sb.AppendLine($"<tr>");
-                    sb.AppendLine($"  <td>{target.Name}</td>");
-                    sb.AppendLine($"  <td>{target.StartTime:HH:mm} - {target.EndTime:HH:mm}</td>");
-                    sb.AppendLine($"  <td>{totalFrames}</td>");
-                    sb.AppendLine($"  <td>{FormatDuration(totalIntSec)}</td>");
+                    sb.AppendLine($"  <td>{g.Key.FilterName}</td>");
+                    sb.AppendLine($"  <td>{totalCount}</td>");
+                    sb.AppendLine($"  <td>{g.Key.Exposure:F0}s</td>");
+                    sb.AppendLine($"  <td>{FormatDuration(intSec)}</td>");
                     sb.AppendLine($"</tr>");
                 }
                 sb.AppendLine("</table>");
+                sb.AppendLine("</details>");
+            }
 
-                // ── Expandable per-target filter details ──
-                // Aggregate exposure plans across all timeline blocks for the same target,
-                // then group by (filter, exposure length) — matches main report grouping logic.
-                foreach (var targetGroup in targets.GroupBy(t => t.Name)) {
-                    var allExposures = targetGroup.SelectMany(t => t.ExposurePlan).ToList();
-                    if (!allExposures.Any()) continue;
-                    var filterGroups = allExposures
-                        .GroupBy(e => (e.FilterName, e.Exposure))
-                        .OrderBy(g => FilterSortKey(g.Key.FilterName)).ThenBy(g => g.Key.FilterName).ThenBy(g => g.Key.Exposure);
-                    string detailsOpen = SettingsManager.Instance.Current.ExpandSectionsDefault ? " open" : "";
-                    sb.AppendLine($"<details class='history-section'{detailsOpen}>");
-                    sb.AppendLine($"<summary>{targetGroup.Key} - Filter Breakdown</summary>");
-                    sb.AppendLine("<table style='margin-top:8px;width:auto;'>");
-                    sb.AppendLine("<tr><th>Filter</th><th>Images</th><th>Exposure</th><th>Total Time</th></tr>");
-                    foreach (var g in filterGroups) {
-                        int totalCount = g.Sum(e => e.Count);
-                        double intSec = g.Key.Exposure * totalCount;
-                        sb.AppendLine($"<tr>");
-                        sb.AppendLine($"  <td>{g.Key.FilterName}</td>");
-                        sb.AppendLine($"  <td>{totalCount}</td>");
-                        sb.AppendLine($"  <td>{g.Key.Exposure:F0}s</td>");
-                        sb.AppendLine($"  <td>{FormatDuration(intSec)}</td>");
-                        sb.AppendLine($"</tr>");
-                    }
-                    sb.AppendLine("</table>");
-                    sb.AppendLine("</details>");
+            sb.AppendLine("</div>");
+            return sb.ToString();
+        }
+
+        // Companion-mode loader for Tonight's Preview. Reads
+        // {DataDir}/tonight-preview-cache.json (produced by the primary's
+        // /api/tonight handler and synced via SyncEngine.TonightPreviewSync).
+        // Returns the entries + observer coords on success, or a pre-built
+        // preview-notice HTML fragment when the cache is missing.
+        //
+        // The "expired" check (last entry already ended) happens in the
+        // caller's common-render block, not here, so we still get a
+        // user-friendly date in the message instead of a generic
+        // "unavailable" notice.
+        private CompanionPreviewLoad LoadTonightPreviewFromCompanionCache(ReportData data) {
+            try {
+                if (_paths == null)
+                    return new CompanionPreviewLoad { Notice = PreviewNotice("Tonight's Preview is unavailable (host did not provide a data path).") };
+                var cachePath = Path.Combine(_paths.DataDir, "tonight-preview-cache.json");
+                if (!File.Exists(cachePath))
+                    return new CompanionPreviewLoad { Notice = PreviewNotice("Tonight's Preview hasn't synced yet from the primary.") };
+
+                using var cacheDoc = JsonDocument.Parse(File.ReadAllText(cachePath));
+                var root = cacheDoc.RootElement;
+
+                DateTime? cachedAt = null;
+                if (root.TryGetProperty("cachedAtUtc", out var elCachedAt)
+                    && elCachedAt.ValueKind == JsonValueKind.String
+                    && DateTime.TryParse(elCachedAt.GetString(), null,
+                        System.Globalization.DateTimeStyles.RoundtripKind, out var ca)) {
+                    cachedAt = ca;
                 }
 
-                sb.AppendLine("</div>");
-                return sb.ToString();
+                // payload is the body returned by /api/tonight — a JSON string
+                // re-encoded inside the cache wrapper. Parse it as a fresh doc.
+                if (!root.TryGetProperty("payload", out var elPayload)
+                    || elPayload.ValueKind != JsonValueKind.String) {
+                    return new CompanionPreviewLoad { Notice = PreviewNotice("Tonight's Preview cache is malformed; resync from the primary.") };
+                }
+
+                using var payloadDoc = JsonDocument.Parse(elPayload.GetString() ?? "{}");
+                var prl = payloadDoc.RootElement;
+
+                double lat = 0, lon = 0;
+                if (prl.TryGetProperty("observerLat", out var elLat) && elLat.ValueKind == JsonValueKind.Number) lat = elLat.GetDouble();
+                if (prl.TryGetProperty("observerLon", out var elLon) && elLon.ValueKind == JsonValueKind.Number) lon = elLon.GetDouble();
+
+                var entries = new List<TsPreviewEntry>();
+                if (prl.TryGetProperty("entries", out var elEntries) && elEntries.ValueKind == JsonValueKind.Array) {
+                    foreach (var e in elEntries.EnumerateArray()) {
+                        var entry = new TsPreviewEntry {
+                            Id         = e.TryGetProperty("id",         out var elId) ? elId.GetString() ?? "" : "",
+                            Name       = e.TryGetProperty("name",       out var elName) ? elName.GetString() ?? "" : "",
+                            WaitPeriod = e.TryGetProperty("waitPeriod", out var elWp) && elWp.GetBoolean(),
+                            StartTime  = e.TryGetProperty("startTime",  out var elSt) && elSt.ValueKind == JsonValueKind.String && DateTime.TryParse(elSt.GetString(), null, System.Globalization.DateTimeStyles.RoundtripKind, out var st) ? st : default,
+                            EndTime    = e.TryGetProperty("endTime",    out var elEt) && elEt.ValueKind == JsonValueKind.String && DateTime.TryParse(elEt.GetString(), null, System.Globalization.DateTimeStyles.RoundtripKind, out var et) ? et : default,
+                            Ra         = e.TryGetProperty("ra",  out var elRa)  && elRa.ValueKind  == JsonValueKind.Number ? elRa.GetDouble()  : 0,
+                            Dec        = e.TryGetProperty("dec", out var elDec) && elDec.ValueKind == JsonValueKind.Number ? elDec.GetDouble() : 0,
+                        };
+                        if (e.TryGetProperty("exposurePlan", out var elPlan) && elPlan.ValueKind == JsonValueKind.Array) {
+                            foreach (var p in elPlan.EnumerateArray()) {
+                                entry.ExposurePlan.Add(new TsPreviewExposure {
+                                    FilterName = p.TryGetProperty("filterName", out var elFn) ? elFn.GetString() ?? "" : "",
+                                    Exposure   = p.TryGetProperty("exposure",   out var elEx) && elEx.ValueKind == JsonValueKind.Number ? elEx.GetDouble() : 0,
+                                    Count      = p.TryGetProperty("count",      out var elCt) && elCt.ValueKind == JsonValueKind.Number ? elCt.GetInt32()  : 0,
+                                });
+                            }
+                        }
+                        entries.Add(entry);
+                    }
+                }
+
+                return new CompanionPreviewLoad {
+                    Entries     = entries,
+                    ObserverLat = lat,
+                    ObserverLon = lon,
+                    CachedAtUtc = cachedAt,
+                };
             } catch (Exception ex) {
-                Logger.Warning($"NightSummary: Next night preview unavailable. {ex.Message}");
-                var reason = ex.InnerException is TaskCanceledException
-                    ? "Target Scheduler API did not respond in time — the server may not be running."
-                    : $"Could not connect to Target Scheduler API (port {apiPort}). Ensure NINA and Target Scheduler are running.";
-                return PreviewNotice(reason);
+                _log.Warn($"NightSummary: Tonight's Preview cache read failed — {ex.Message}");
+                return new CompanionPreviewLoad { Notice = PreviewNotice("Tonight's Preview cache could not be read; resync from the primary.") };
             }
+        }
+
+        private sealed class CompanionPreviewLoad {
+            public string? Notice { get; set; }
+            public List<TsPreviewEntry>? Entries { get; set; }
+            public double ObserverLat { get; set; }
+            public double ObserverLon { get; set; }
+            public DateTime? CachedAtUtc { get; set; }
         }
 
         /// <summary>
@@ -1819,7 +2173,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             // Moon altitude curve
-            if (SettingsManager.Instance.Current.ShowMoonCurve) {
+            if (_settings.Current.ShowMoonCurve) {
                 var moonPts  = AltitudeCalculator.GetMoonAltitudeCurve(latDeg, lonDeg, nightStart, nightEnd, stepMinutes: 5);
                 var moonSegs = BuildAltSegments(moonPts, maxAlt);
                 foreach (var seg in moonSegs) {
@@ -1912,7 +2266,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             double totalSeconds = (timelineEnd - timelineStart).TotalSeconds;
             if (totalSeconds <= 0) return string.Empty;
 
-            bool light = SettingsManager.Instance.Current.ReportLightMode;
+            bool light = _settings.Current.ReportLightMode;
             string idleBg     = light ? "#d0d4da" : "#0f0f23";
             string idleStripe = light ? "#b04040" : "#7a1a1a";
             string tickColor  = light ? "#888" : "#555";
@@ -2035,7 +2389,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             double totalSeconds = (sessionEnd - sessionStart).TotalSeconds;
             if (totalSeconds <= 0) return string.Empty;
 
-            bool light = SettingsManager.Instance.Current.ReportLightMode;
+            bool light = _settings.Current.ReportLightMode;
 
             // Event marker colors (match ChartGenerator and EventTimelineGenerator)
             string colorAF   = light ? "#7c3aed" : "#a78bfa";
@@ -2056,26 +2410,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             var colorMap = targets.ToDictionary(t => t.Name, t => t.Color);
 
-            // Build imaging blocks (same gap-merge logic as EventTimelineGenerator)
-            static DateTime EstimatedStart(ImageRecord r) =>
-                r.Timestamp.AddSeconds(-(r.ExposureDuration > 0 ? r.ExposureDuration : 60));
-
+            // Build imaging blocks via the shared helper (same gap-merge logic as
+            // EventTimelineGenerator) — preserves per-target color + name decoration.
             var allBlocks = new List<(string Name, string Color, DateTime Start, DateTime End)>();
             foreach (var target in targets) {
-                var sorted = target.Images.OrderBy(i => i.Timestamp).ToList();
-                if (!sorted.Any()) continue;
-                var blockStart = EstimatedStart(sorted[0]);
-                var blockEnd   = sorted[0].Timestamp;
-                for (int i = 1; i <= sorted.Count; i++) {
-                    if (i < sorted.Count) {
-                        var gap = (EstimatedStart(sorted[i]) - blockEnd).TotalMinutes;
-                        if (gap <= 15) { blockEnd = sorted[i].Timestamp; continue; }
-                    }
-                    allBlocks.Add((target.Name, target.Color, blockStart, blockEnd));
-                    if (i < sorted.Count) {
-                        blockStart = EstimatedStart(sorted[i]);
-                        blockEnd   = sorted[i].Timestamp;
-                    }
+                foreach (var (winStart, winEnd) in ImagingBlockHelper.DetectWindows(target.Images)) {
+                    allBlocks.Add((target.Name, target.Color, winStart, winEnd));
                 }
             }
             allBlocks.Sort((a, b) => a.Start.CompareTo(b.Start));
@@ -2151,7 +2491,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
 
             // Moon altitude curve
-            if (SettingsManager.Instance.Current.ShowMoonCurve) {
+            if (_settings.Current.ShowMoonCurve) {
                 var moonPts  = AltitudeCalculator.GetMoonAltitudeCurve(data.ObserverLatitude, data.ObserverLongitude, sessionStart, sessionEnd, stepMinutes: 5);
                 var moonSegs = BuildAltSegments(moonPts, maxAlt);
                 foreach (var seg in moonSegs) {
@@ -2255,9 +2595,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
             return sb.ToString();
         }
 
-        private static List<SessionEvent> FilterEventsBySettings(List<SessionEvent> events) {
+        private List<SessionEvent> FilterEventsBySettings(List<SessionEvent> events) {
             if (events == null) return new List<SessionEvent>();
-            var s = SettingsManager.Instance.Current;
+            var s = _settings.Current;
             return events.Where(e => e.EventType switch {
                 "AutoFocus"                  => s.ShowChartAfMarkers,
                 "MeridianFlip"               => s.ShowChartFlipMarkers,
@@ -2270,7 +2610,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var sb = new StringBuilder();
             sb.AppendLine("<p class='footnote'>CV (Coefficient of Variation) measures consistency as a percentage of the mean. Lower values indicate more stable conditions. Star count CV is calculated per target and filter type.</p>");
             var pluginVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "?";
-            var ninaVersion = CoreUtil.Version ?? "?";
+            var ninaVersion = string.IsNullOrEmpty(_settings.NinaVersion) ? "?" : _settings.NinaVersion;
             sb.AppendLine($"<p class='footnote'>Generated by Night Summary v{pluginVersion} · N.I.N.A. {ninaVersion} · Created by Evan Pegors (@sleepypuppy15)</p>");
             return sb.ToString();
         }
@@ -2327,12 +2667,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var cdsUrl = $"https://alasky.cds.unistra.fr/hips-image-services/hips2fits?hips=CDS/P/DSS2/color&ra={raDeg:F6}&dec={decDeg:F6}&fov={fovDeg:F6}&width={px}&height={px}&format=jpg";
                 var bytes = await Http.GetByteArrayAsync(cdsUrl);
                 if (bytes.Length > 500) {
-                    Logger.Info($"NightSummary: CDS thumbnail OK for {targetName} ({bytes.Length:N0} bytes)");
+                    _log.Info($"NightSummary: CDS thumbnail OK for {targetName} ({bytes.Length:N0} bytes)");
                     return ($"data:image/jpeg;base64,{Convert.ToBase64String(bytes)}", false);
                 }
-                Logger.Warning($"NightSummary: CDS returned tiny response for {targetName} ({bytes.Length} bytes), trying fallback");
+                _log.Warn($"NightSummary: CDS returned tiny response for {targetName} ({bytes.Length} bytes), trying fallback");
             } catch (Exception ex) {
-                Logger.Warning($"NightSummary: CDS thumbnail failed for {targetName}: {ex.Message}");
+                _log.Warn($"NightSummary: CDS thumbnail failed for {targetName}: {ex.Message}");
             }
 
             // Fallback: NASA SkyView DSS2 Red (monochrome but reliable)
@@ -2340,17 +2680,17 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 var svUrl = $"https://skyview.gsfc.nasa.gov/current/cgi/runquery.pl?Position={raDeg:F6},{decDeg:F6}&Survey=DSS2+Red&Pixels={px}&Size={fovDeg:F6}&Return=GIF";
                 var bytes = await SkyViewHttp.GetByteArrayAsync(svUrl);
                 if (bytes.Length > 500) {
-                    Logger.Info($"NightSummary: SkyView fallback OK for {targetName} ({bytes.Length:N0} bytes)");
+                    _log.Info($"NightSummary: SkyView fallback OK for {targetName} ({bytes.Length:N0} bytes)");
                     return ($"data:image/gif;base64,{Convert.ToBase64String(bytes)}", true);
                 }
-                Logger.Warning($"NightSummary: SkyView returned tiny response for {targetName} ({bytes.Length} bytes)");
+                _log.Warn($"NightSummary: SkyView returned tiny response for {targetName} ({bytes.Length} bytes)");
             } catch (Exception ex) {
-                Logger.Warning($"NightSummary: SkyView fallback failed for {targetName}: {ex.Message}");
+                _log.Warn($"NightSummary: SkyView fallback failed for {targetName}: {ex.Message}");
             }
 
             // Both failed — return remote URL as last resort
             var remoteUrl = $"https://alasky.cds.unistra.fr/hips-image-services/hips2fits?hips=CDS/P/DSS2/color&ra={raDeg:F6}&dec={decDeg:F6}&fov={fovDeg:F6}&width={px}&height={px}&format=jpg";
-            Logger.Warning($"NightSummary: All thumbnail services failed for {targetName}, using remote URL");
+            _log.Warn($"NightSummary: All thumbnail services failed for {targetName}, using remote URL");
             return (remoteUrl, true);
         }
     }

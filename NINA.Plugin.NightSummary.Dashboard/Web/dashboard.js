@@ -421,15 +421,17 @@ function route() {
     if (path === '/sessions') {
       renderSessionList(params);
     } else if (isFrames) {
-      renderFramesGallery({ kind: 'session', id: decodeURIComponent(isFrames[1]) });
+      renderFramesGallery({ kind: 'session', id: decodeURIComponent(isFrames[1]), params: params });
     } else if (isTargetFrames) {
-      renderFramesGallery({ kind: 'target', id: decodeURIComponent(isTargetFrames[1]) });
+      renderFramesGallery({ kind: 'target', id: decodeURIComponent(isTargetFrames[1]), params: params });
     } else if (isProjectFrames) {
-      renderFramesGallery({ kind: 'project', id: decodeURIComponent(isProjectFrames[1]) });
+      renderFramesGallery({ kind: 'project', id: decodeURIComponent(isProjectFrames[1]), params: params });
     } else if (isReport) {
       renderSessionDetail(path.split('/')[2], params);
     } else if (path === '/stats') {
       renderStats(params);
+    } else if (path === '/settings') {
+      renderSettingsPage();
     } else {
       renderSessionList(params);
     }
@@ -3523,9 +3525,20 @@ function initWaveformScrubber(container) {
   var bars = [];
   try { bars = JSON.parse(svg.getAttribute('data-bars') || '[]'); } catch (e) {}
   if (!bars.length) return;
-  var info = slot.querySelector('.lw-scrubber-info');
+  // Locate the tooltip popup. First init finds it inside the slot (rendered
+  // by renderLifetimeStrip). Subsequent re-inits — triggered by the window
+  // resize handler when iOS Safari collapses its address bar on first scroll
+  // — find an EMPTY slot because the prior init already moved the popup to
+  // <body>. Fall back to the body-level lookup so the closure binds to the
+  // existing live popup instead of null (which would silently skip the
+  // tooltip render in showAt() while bar selection still appeared to work).
+  var info = slot.querySelector('.lw-scrubber-info')
+           || Array.prototype.find.call(document.body.children, function(n) {
+                return n.classList && n.classList.contains('lw-scrubber-info');
+              });
   // Move popup to body so iOS scroll-container touch capture can't block it.
-  if (info) document.body.appendChild(info);
+  // Idempotent — no-op when it already lives there from a prior init.
+  if (info && info.parentNode !== document.body) document.body.appendChild(info);
   var barRects = Array.prototype.slice.call(svg.querySelectorAll('.lw-bar'));
   var currentBar = null;
   var currentBarData = null;
@@ -3609,14 +3622,32 @@ function initWaveformScrubber(container) {
         navigate('#/sessions/' + b.sid);
       });
     }
-    // Close on outside tap. Deferred one tick so the touchend that triggered
-    // pin() doesn't fire its own synthetic click and immediately dismiss.
+    // Close on outside tap. Registered in CAPTURE phase + stopPropagation so
+    // the dismiss runs BEFORE the click bubbles up to .lifetime-strip's inline
+    // onclick (which would collapse the panel). Without this, a single tap
+    // outside the tooltip simultaneously dismissed the tooltip AND collapsed
+    // the waveform strip — user had to expand the strip again to see the bars.
+    // Now first tap = dismiss tooltip (strip stays expanded); next tap on the
+    // strip = collapse, as expected.
+    //
+    // Deferred one tick so the touchend that triggered pin() doesn't fire its
+    // own synthetic click and immediately dismiss.
     setTimeout(function() {
-      function outsideHandler() {
-        if (pinned) hide();
-        document.removeEventListener('click', outsideHandler);
+      function outsideHandler(e) {
+        if (!pinned) {
+          document.removeEventListener('click', outsideHandler, true);
+          return;
+        }
+        // Tooltip itself swallows its own clicks via the info.click stopPropagation
+        // below — if we got here, the click was outside the tooltip. Eat it so
+        // sibling onclick handlers (strip expand/collapse, link navigations)
+        // don't also fire on a tap that the user intended only as "dismiss".
+        e.stopPropagation();
+        e.preventDefault();
+        hide();
+        document.removeEventListener('click', outsideHandler, true);
       }
-      document.addEventListener('click', outsideHandler);
+      document.addEventListener('click', outsideHandler, true);
     }, 0);
     // Dismiss on scroll — iOS position:fixed breaks once chart scrolls off-screen
     window.addEventListener('scroll', hide, { passive: true, capture: true, once: true });
@@ -3680,9 +3711,19 @@ function initWaveformScrubber(container) {
       var dx = Math.abs(e.changedTouches[0].clientX - touchStartX);
       var dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
       if (dx < 10 && dy < 10) { showAt(touchStartX); pin(); }
+    } else {
+      // Dismissing a pinned tooltip via a tap on the SVG. touchstart already
+      // ran hide() so `pinned` is false now — that means the synthetic click
+      // that fires after touchend would pass through our outsideHandler
+      // (which gates on `pinned`) and bubble up to .lifetime-strip's onclick,
+      // collapsing the panel on the same tap that the user intended only as
+      // "dismiss tooltip". preventDefault here suppresses the synthetic click
+      // entirely so the strip stays expanded. Requires non-passive touchend
+      // (default — no {passive: true} option set above).
+      e.preventDefault();
     }
     dismissing = false;
-  });
+  }, {passive: false});
 
   svg.addEventListener('touchcancel', function() {
     cancelLongPress();
@@ -3798,9 +3839,19 @@ function initCalendarScrubber(container) {
         e.stopPropagation(); e.preventDefault(); hide(); navigate('#/sessions/' + c.sid);
       });
     }
+    // Capture-phase + stopPropagation so the dismiss runs BEFORE the click
+    // bubbles to .lifetime-strip's onclick (would collapse the panel on the
+    // same tap that dismisses the tooltip — see waveform scrubber for the
+    // longer comment).
     setTimeout(function() {
-      function outsideHandler() { if (pinned) hide(); document.removeEventListener('click', outsideHandler); }
-      document.addEventListener('click', outsideHandler);
+      function outsideHandler(e) {
+        if (!pinned) { document.removeEventListener('click', outsideHandler, true); return; }
+        e.stopPropagation();
+        e.preventDefault();
+        hide();
+        document.removeEventListener('click', outsideHandler, true);
+      }
+      document.addEventListener('click', outsideHandler, true);
     }, 0);
     // Dismiss on scroll — iOS position:fixed breaks once chart scrolls off-screen
     window.addEventListener('scroll', hide, { passive: true, capture: true, once: true });
@@ -3859,9 +3910,14 @@ function initCalendarScrubber(container) {
       var dx = Math.abs(e.changedTouches[0].clientX - touchStartX);
       var dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
       if (dx < 10 && dy < 10) { showAt(touchStartX, touchStartY); pin(); }
+    } else {
+      // Dismissing — suppress the synthetic click so it doesn't bubble to
+      // .lifetime-strip's onclick and collapse the panel. See waveform
+      // scrubber for the longer comment.
+      e.preventDefault();
     }
     dismissing = false;
-  });
+  }, {passive: false});
 
   svg.addEventListener('touchcancel', function() {
     cancelLongPress(); scrubbing = false; dismissing = false; hide();
@@ -6280,13 +6336,27 @@ function repositionViewToggle() {
   // Pick the freshest toggle (last in DOM, just rendered in filter bar)
   var keep = toggles[toggles.length - 1];
   var onSessionsPage = !location.hash || location.hash === '#/sessions' || location.hash.slice(1) === '/sessions';
+  // Companion mode unhides a Settings nav link in header-right. That extra pill
+  // turns the mobile header from "Sessions/Targets + view-toggle + theme" into
+  // "Sessions/Targets/Settings + view-toggle + theme" — five flex items in a
+  // no-wrap, overflow:hidden row, which clips and overlaps. Detect the Settings
+  // link being visible (companion mode) and skip moving the toggle into the
+  // header; let it stay in the filter-bar where the row can wrap naturally.
+  var settingsNav = document.querySelector('.nav-link[data-page="settings"]');
+  var inCompanionMode = settingsNav && !settingsNav.hasAttribute('hidden');
   if (window.innerWidth <= 700) {
-    if (headerRight && onSessionsPage) {
+    if (headerRight && onSessionsPage && !inCompanionMode) {
       headerRight.appendChild(keep);
       keep.style.display = '';
     } else if (headerRight) {
-      // On non-session pages, hide it from header
-      if (keep.parentNode === headerRight) keep.style.display = 'none';
+      // Non-session pages OR companion mode: keep the toggle in the filter-bar
+      // (where it was rendered). If a previous call already moved it into the
+      // header, evict it back so the header doesn't carry a stray pill.
+      if (keep.parentNode === headerRight) {
+        if (filterBar) filterBar.appendChild(keep);
+        else keep.style.display = 'none';
+      }
+      keep.style.display = '';
     }
   } else {
     if (filterBar && keep.parentNode !== filterBar) {
@@ -6688,13 +6758,37 @@ function renderSessionDetail(sessionId, params) {
     logInfo('Session detail loaded:', sessionId);
     logDebug('Settings received:', JSON.stringify(currentSettings, null, 2));
 
+    // Fire-and-forget: ask the server to re-query Target Scheduler for any
+    // late grading verdicts on Pending images. Server-side pre-check skips the
+    // TS read entirely when no Pending rows exist, so this is near-free on
+    // already-graded sessions. Updated counts surface on the next session-list
+    // visit; we deliberately don't re-render this view (the embedded report is
+    // a static artifact — regeneration is a separate user action).
+    fetch('/api/sessions/' + encodeURIComponent(sessionId) + '/resync-ts-grading', { method: 'POST' })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(j) {
+        if (j && j.updated > 0) logInfo('TS grading resync:', j.updated, 'row(s) updated for', sessionId);
+      })
+      .catch(function(err) { logDebug('TS grading resync skipped:', err && err.message); });
+
     var targets = detail.targets.map(function(t) { return t.target; }).join(', ') || 'Unknown';
     if (sub) sub.textContent = getSubtitleText();
+
+    // Forward TDP/PDP origin context to Frames so its in-page back link
+     // can return through the report (and ultimately to the TDP/PDP) rather
+     // than to the bare Sessions list.
+    var framesQs = '';
+    if (from === 'tdp' && fromTarget) {
+      framesQs = '?from=tdp&target=' + encodeURIComponent(fromTarget);
+    } else if (from === 'pdp' && fromPid) {
+      framesQs = '?from=pdp&pid=' + encodeURIComponent(fromPid) +
+        (fromPname ? '&pname=' + encodeURIComponent(fromPname) : '');
+    }
 
     var navHtml = '<div class="report-nav" id="header-report-nav">' +
       '<a class="back-btn" href="' + backHref + '">\u2190 ' + esc(backLabel) + '</a>' +
       '<div class="report-nav-actions">' +
-        '<a class="report-btn" href="#/sessions/' + encodeURIComponent(sessionId) + '/frames">\ud83d\uddbc Frames</a>' +
+        '<a class="report-btn" href="#/sessions/' + encodeURIComponent(sessionId) + '/frames' + framesQs + '">\ud83d\uddbc Frames</a>' +
         '<button class="report-btn" id="btn-settings">\u2699 Settings</button>';
 
     if (detail.hasReport) {
@@ -6817,16 +6911,34 @@ function bindDetailEvents(sessionId) {
       regenBtn.disabled = true;
       var regenStart = performance.now();
 
-      fetch('/api/sessions/' + sessionId + '/regenerate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings)
+      // In companion mode the regen response (data.proxied=true) comes back
+      // BEFORE the new HTML has synced over. Capture the pre-regen success
+      // timestamp so we can wait for it to advance before reloading the
+      // iframe — otherwise we'd just re-display the old cached version.
+      var preRegenLastSuccess = null;
+      var capturePre = COMPANION_MODE
+        ? fetch('/api/companion/status').then(function(r){ return r.json(); })
+            .then(function(s){ preRegenLastSuccess = s && s.lastSuccessUtc; })
+            .catch(function(){ /* fine, fall through */ })
+        : Promise.resolve();
+
+      capturePre.then(function() {
+        return fetch('/api/sessions/' + sessionId + '/regenerate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(settings)
+        });
       }).then(function(r) { return r.json(); }).then(function(data) {
-        if (data.status === 'ok') {
-          logInfo('Regenerate complete:', sessionId, '(' + Math.round(performance.now() - regenStart) + 'ms)');
-          status.textContent = 'Done';
-          status.className = 'regen-status regen-ok';
-          // Reload report — iframe on desktop, shadow DOM on mobile
+        if (data.status !== 'ok') {
+          logError('Regenerate failed:', sessionId, data.error);
+          status.textContent = data.error || 'Failed';
+          status.className = 'regen-status regen-err';
+          regenBtn.disabled = false;
+          return;
+        }
+        logInfo('Regenerate complete:', sessionId, '(' + Math.round(performance.now() - regenStart) + 'ms)');
+
+        function reloadReportView() {
           var iframe = document.getElementById('report-iframe');
           var shadowHost = document.getElementById('report-shadow-host');
           if (iframe) {
@@ -6834,20 +6946,53 @@ function bindDetailEvents(sessionId) {
           } else if (shadowHost) {
             loadReportIntoShadow(sessionId);
           } else {
-            // Report didn't exist before — re-render the whole page
             sessionsCache = []; initialLoadDone = false; // Clear cache to refresh hasReport
             renderSessionDetail(sessionId);
           }
+          regenBtn.disabled = false;
+        }
+
+        if (data.proxied) {
+          // Companion proxy path — primary regenerated, background sync is
+          // pulling the new HTML. Poll status until lastSuccessUtc advances
+          // past where it was when we started, then reload. ~30s timeout.
+          status.textContent = 'Syncing new report…';
+          status.className = 'regen-status';
+          var pollStart = Date.now();
+          var poll = setInterval(function() {
+            fetch('/api/companion/status', { cache: 'no-store' })
+              .then(function(r){ return r.json(); })
+              .then(function(s){
+                var advanced = s && s.lastSuccessUtc
+                            && s.lastSuccessUtc !== preRegenLastSuccess;
+                if (advanced) {
+                  clearInterval(poll);
+                  status.textContent = 'Done';
+                  status.className = 'regen-status regen-ok';
+                  reloadReportView();
+                } else if (Date.now() - pollStart > 30000) {
+                  clearInterval(poll);
+                  // Sync didn't complete in time — reload anyway and let
+                  // the user see whatever state we have. Their next sync
+                  // will eventually pick up the new HTML.
+                  status.textContent = 'Done (sync slow)';
+                  status.className = 'regen-status regen-ok';
+                  reloadReportView();
+                }
+              })
+              .catch(function(){ /* keep polling */ });
+          }, 500);
         } else {
-          logError('Regenerate failed:', sessionId, data.error);
-          status.textContent = data.error || 'Failed';
-          status.className = 'regen-status regen-err';
+          // Primary-mode (or no companion controller): regen wrote the HTML
+          // directly to disk before responding. Safe to reload immediately.
+          status.textContent = 'Done';
+          status.className = 'regen-status regen-ok';
+          reloadReportView();
         }
       }).catch(function(err) {
         logError('Regenerate error:', sessionId, err.message);
         status.textContent = err.message;
         status.className = 'regen-status regen-err';
-      }).finally(function() {
         regenBtn.disabled = false;
       });
     });
@@ -7095,6 +7240,7 @@ function renderTonightContent(container, data) {
     return;
   }
 
+
   // Trim leading wait periods so the timeline starts at the first target block
   var firstTargetStart = new Date(targets[0].startTime);
   entries = entries.filter(function(e) { return new Date(e.endTime) > firstTargetStart; });
@@ -7201,6 +7347,24 @@ function renderTonightContent(container, data) {
 
   html += '</div>';
   container.innerHTML = html;
+
+  // Cached-payload pill — surfaces when the server fell back to disk cache
+  // (companion w/ NINA off, or transient TS API hiccup). Mount after the main
+  // render so the inner innerHTML assignment above doesn't blow it away.
+  if (data.cached && data.cachedAtUtc) {
+    var when = new Date(data.cachedAtUtc);
+    var rel = (function(d){
+      var s = Math.floor((Date.now() - d.getTime())/1000);
+      if (s < 60)   return s + 's ago';
+      if (s < 3600) return Math.floor(s/60) + 'm ago';
+      if (s < 86400)return Math.floor(s/3600) + 'h ago';
+      return Math.floor(s/86400) + 'd ago';
+    })(when);
+    container.insertAdjacentHTML('afterbegin',
+      '<div class="tonight-cached-pill" title="Live Target Scheduler API not reachable — showing last successful preview from ' + esc(when.toLocaleString()) + '">' +
+        '<span class="tonight-cached-dot"></span>Cached ' + esc(rel) +
+      '</div>');
+  }
 
   // Wire crosshair on the altitude chart (must be after innerHTML is set)
   var altWrap = container.querySelector('.tonight-altitude-wrap');
@@ -8643,11 +8807,27 @@ function renderFramesGallery(view) {
   var el = document.getElementById('content');
   var cancelLoader = deferLoader(el, 'Loading frames...');
 
+  // Preserve TDP/PDP origin so the back-link returns through the
+   // report carrying the same from= context (avoids dead-ending on
+   // the bare Sessions list — bug from feature/frames-back-nav).
+  var p = view.params;
+  var vFrom    = p && p.get ? p.get('from')   : null;
+  var vTarget  = p && p.get ? p.get('target') : null;
+  var vPid     = p && p.get ? p.get('pid')    : null;
+  var vPname   = p && p.get ? p.get('pname')  : null;
+  var sessionBackQs = '';
+  if (vFrom === 'tdp' && vTarget) {
+    sessionBackQs = '?from=tdp&target=' + encodeURIComponent(vTarget);
+  } else if (vFrom === 'pdp' && vPid) {
+    sessionBackQs = '?from=pdp&pid=' + encodeURIComponent(vPid) +
+      (vPname ? '&pname=' + encodeURIComponent(vPname) : '');
+  }
+
   var url, title, backHref;
   if (view.kind === 'session') {
     url = '/api/sessions/' + encodeURIComponent(view.id) + '/images';
     title = 'Frames';
-    backHref = '#/sessions/' + encodeURIComponent(view.id);
+    backHref = '#/sessions/' + encodeURIComponent(view.id) + sessionBackQs;
   } else if (view.kind === 'target') {
     url = '/api/targets/' + encodeURIComponent(view.id) + '/frames';
     title = 'Frames — ' + view.id;
@@ -8730,7 +8910,10 @@ function renderFramesGallery(view) {
     function renderThumb(ff, viewKind) {
       var sid2 = ff.sessionId || view.id;
       var src = '/api/frames/' + ff.id + '/thumb?size=sm';
-      var rejected = (ff.gradingStatus === 2) || (ff.accepted === false);
+      // Pending (gradingStatus===0) is "TS hasn't graded yet" — never rejected,
+      // even if accepted===false sneaks through from a legacy DB row that hasn't
+      // been healed by the server-side CountsAsAccepted gate yet.
+      var rejected = (ff.gradingStatus === 2) || (ff.accepted === false && ff.gradingStatus !== 0);
       // Tile caption: filter is already shown in the subgroup header above,
       // and target is shown in the group header — only the project view
       // mixes multiple targets per subgroup, so only there is a per-tile
@@ -8936,17 +9119,21 @@ function bindFramesGallery(frames) {
     // -1/null with accepted=true = no grading data anywhere → "Not graded"
     // when TS is available, but suppressed entirely for non-TS users since
     // an ungraded label is meaningless without grading as a concept.
+    //
+    // Pending (gradingStatus===0) takes precedence over accepted===false so a
+    // legacy DB row that hasn't been healed by the server-side CountsAsAccepted
+    // gate still renders as "TS Pending" rather than "Manual Rejected".
     var status = '';
     if (m.gradingStatus === 2) {
       status = '<span class="m-status m-status-rejected">TS Rejected</span>';
       if (m.rejectReason) status += '<span class="m-reject">' + esc(m.rejectReason) + '</span>';
+    } else if (m.gradingStatus === 0) {
+      status = '<span class="m-status m-status-pending">TS Pending</span>';
     } else if (m.accepted === false) {
       status = '<span class="m-status m-status-rejected">Manual Rejected</span>';
       if (m.rejectReason) status += '<span class="m-reject">' + esc(m.rejectReason) + '</span>';
     } else if (m.gradingStatus === 1) {
       status = '<span class="m-status m-status-accepted">TS Accepted</span>';
-    } else if (m.gradingStatus === 0) {
-      status = '<span class="m-status m-status-pending">TS Pending</span>';
     } else if (m.tsAvailable !== false) {
       status = '<span class="m-status m-status-ungraded">Not graded</span>';
     }
@@ -9229,4 +9416,681 @@ window.addEventListener('scroll', function() {
 window.addEventListener('hashchange', route);
 window.addEventListener('resize', repositionViewToggle);
 route();
+initCompanionBanner();
 logInfo('Dashboard ready');
+
+// ── Companion sync banner ────────────────────────────────────────────────
+// Hidden in primary mode; in companion mode shows last-sync time + a Sync Now
+// button. Polls every 30 s so the banner reflects scheduler runs without a
+// page reload. Status reads come from /api/companion/status; the button POSTs
+// /api/companion/sync (server coalesces concurrent triggers).
+var COMPANION_MODE = false;
+
+function initCompanionBanner() {
+  fetch('/api/mode').then(function(r){ return r.json(); }).then(function(j){
+    if (!j || j.mode !== 'companion') return;
+    COMPANION_MODE = true;
+    var banner = document.getElementById('companion-banner');
+    if (banner) banner.hidden = false;
+    var settingsLink = document.querySelector('.nav-link.companion-only[data-page="settings"]');
+    if (settingsLink) settingsLink.hidden = false;
+    var btn = document.getElementById('companion-sync-btn');
+    // Use .onclick (not addEventListener) so renderCompanionStatus can swap
+    // the handler when the button morphs into "Open Settings" during setup.
+    if (btn) btn.onclick = companionSyncNow;
+    refreshCompanionStatus();
+    setInterval(refreshCompanionStatus, 10000);
+    // Post-restart reload race: if the URL hash is already #/settings (user
+    // hit Restart from the Settings tab), renderSettingsPage() ran before
+    // /api/mode resolved and painted the "primary mode" placeholder. Now
+    // that COMPANION_MODE is known true, re-render the real settings view.
+    if (location.hash === '#/settings') {
+      renderSettingsPage();
+    }
+    // If config is incomplete on first paint, redirect to setup so the user
+    // doesn't land on an empty Sessions tab and wonder what to do.
+    fetch('/api/companion/config').then(function(r){ return r.json(); }).then(function(c){
+      if (c && c.isComplete === false && location.hash !== '#/settings') {
+        navigate('#/settings');
+      }
+    }).catch(function(){});
+  }).catch(function(){ /* ignore — primary mode or transient failure */ });
+}
+
+function refreshCompanionStatus() {
+  fetch('/api/companion/status').then(function(r){
+    if (!r.ok) throw new Error('status ' + r.status);
+    return r.json();
+  }).then(renderCompanionStatus).catch(function(){
+    var el = document.getElementById('companion-banner-status');
+    if (el) el.textContent = 'Status unavailable';
+  });
+}
+
+function companionSyncNow() {
+  var btn = document.getElementById('companion-sync-btn');
+  var banner = document.getElementById('companion-banner');
+  var statusEl = document.getElementById('companion-banner-status');
+  if (btn) btn.disabled = true;
+  if (banner) banner.classList.add('is-syncing');
+  if (statusEl) statusEl.textContent = 'Syncing…';
+  fetch('/api/companion/sync', { method: 'POST' }).then(function(r){
+    if (!r.ok) throw new Error('sync ' + r.status);
+    return r.json();
+  }).then(function(s){
+    renderCompanionStatus(s);
+  }).catch(function(err){
+    if (statusEl) statusEl.textContent = 'Sync failed: ' + (err && err.message || 'unknown');
+    if (banner) banner.classList.add('is-error');
+  }).finally(function(){
+    if (btn) btn.disabled = false;
+    if (banner) banner.classList.remove('is-syncing');
+  });
+}
+
+// When a sync completes (lastSuccessUtc advances) re-render the current data
+// view so freshly-synced sessions/stats appear WITHOUT a manual refresh. Covers
+// the boot sync, the scheduled poll, push-triggered syncs, and the Sync Now
+// button — anything that funnels through renderCompanionStatus. Only acts on the
+// list/stats views where a silent rebuild is safe; skips the report iframe
+// (would reload mid-read), the settings form (would discard edits), frames
+// galleries, and any moment a modal / detail panel is open.
+function maybeAutoRefreshAfterSync(newUtc) {
+  var prev = window.__lastSyncSuccessUtc;
+  if (newUtc) window.__lastSyncSuccessUtc = newUtc;
+  if (!newUtc || prev === undefined || prev === null || newUtc === prev) return;
+  var path = (location.hash.slice(1) || '/sessions').split('?')[0];
+  if (path !== '/sessions' && path !== '/stats') return;
+  if (document.querySelector('[id$="-backdrop"]')) return; // a modal / detail panel is open
+  logInfo('Sync landed — auto-refreshing', path);
+  // Bust the session caches so the list re-fetches; renderStats always re-fetches.
+  sessionsCache = []; initialLoadDone = false;
+  detailCache = {}; thumbnailCache = {}; altitudeChartCache = {};
+  __lwCachedSessions = null; cachedFilters = null; tonightPreviewCache = null;
+  var scroller = document.querySelector('.shell') || document.scrollingElement || document.documentElement;
+  var y = scroller ? scroller.scrollTop : 0;
+  route();
+  reapplyScrollAfterRender(scroller, y);
+}
+
+// The data views fetch async, so the new DOM paints a beat after route(). Re-apply
+// the saved scroll position on each content mutation for a short window so the user
+// stays roughly where they were instead of being yanked to the top.
+function reapplyScrollAfterRender(scroller, y) {
+  if (!scroller || !y || !('MutationObserver' in window)) return;
+  var content = document.getElementById('content');
+  if (!content) return;
+  var obs = new MutationObserver(function() { scroller.scrollTop = y; });
+  obs.observe(content, { childList: true });
+  setTimeout(function() { obs.disconnect(); }, 2500);
+}
+
+function renderCompanionStatus(s) {
+  maybeAutoRefreshAfterSync(s && s.lastSuccessUtc);
+  var statusEl = document.getElementById('companion-banner-status');
+  var banner = document.getElementById('companion-banner');
+  var btn = document.getElementById('companion-sync-btn');
+  if (!statusEl || !banner) return;
+  banner.classList.remove('is-stale', 'is-error', 'is-setup');
+
+  // Setup-required path takes precedence — no point talking about syncs or
+  // reachability when there's no host to reach.
+  if (s.isComplete === false) {
+    banner.classList.add('is-setup');
+    statusEl.textContent = 'Setup required — ' + (s.incompleteReason || 'finish configuration to start syncing');
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Open Settings';
+      btn.onclick = function() { navigate('#/settings'); };
+    }
+    return;
+  }
+  // Restore Sync Now wiring if we previously hijacked the button for setup.
+  if (btn && btn.textContent !== 'Sync Now') {
+    btn.textContent = 'Sync Now';
+    btn.onclick = companionSyncNow;
+  }
+
+  // Reachability prefix — only when we have a definitive answer. Disable Sync Now
+  // when offline so the user gets immediate feedback rather than a slow timeout.
+  var reachPrefix = '';
+  if (s.primaryReachable === false) {
+    reachPrefix = 'Primary offline · ';
+    banner.classList.add('is-error');
+    if (btn) btn.disabled = true;
+  } else if (s.primaryReachable === true) {
+    reachPrefix = 'Primary online · ';
+    if (btn && !s.isRunning) btn.disabled = false;
+  } else {
+    if (btn && !s.isRunning) btn.disabled = false;
+  }
+
+  if (s.isRunning) {
+    statusEl.textContent = reachPrefix + 'Sync in progress…';
+    return;
+  }
+  if (s.lastError) {
+    banner.classList.add('is-error');
+    statusEl.textContent = reachPrefix + 'Last sync failed: ' + s.lastError;
+    return;
+  }
+  if (!s.lastSuccessUtc) {
+    statusEl.textContent = reachPrefix + 'No sync yet — click Sync Now to pull from the primary.';
+    return;
+  }
+  var when = new Date(s.lastSuccessUtc);
+  var ageMin = (Date.now() - when.getTime()) / 60000;
+  if (ageMin > 60 * 24) banner.classList.add('is-stale');
+  statusEl.textContent = reachPrefix + 'Last synced ' + relativeTime(ageMin) +
+    ' (primary v' + (s.primaryVersion || '?') + ')';
+}
+
+function relativeTime(ageMin) {
+  if (ageMin < 1)   return 'just now';
+  if (ageMin < 60)  return Math.round(ageMin) + ' min ago';
+  var ageH = ageMin / 60;
+  if (ageH < 24)    return ageH.toFixed(1) + ' h ago';
+  return (ageH / 24).toFixed(1) + ' d ago';
+}
+
+// ── Companion Settings tab ────────────────────────────────────────────────
+// Edits companion.json via /api/companion/config. The api key is masked when
+// loaded; the input shows a placeholder and only sends a value on save when
+// the user actually types one (else the server keeps the existing key).
+function renderSettingsPage() {
+  document.getElementById('page-subtitle').textContent = 'Companion settings';
+  var content = document.getElementById('content');
+  if (!COMPANION_MODE) {
+    content.innerHTML = '<div class="settings-shell"><div class="settings-card"><p>Settings are only available when running in companion mode.</p></div></div>';
+    return;
+  }
+  content.innerHTML = '<div class="settings-shell"><div class="settings-card"><p>Loading…</p></div></div>';
+  // Fetch config + status in parallel — push-status pill needs lastSuccessUtc
+  // from status, the rest of the form comes from config.
+  Promise.all([
+    fetch('/api/companion/config').then(function(r){ if (!r.ok) throw new Error('config ' + r.status); return r.json(); }),
+    fetch('/api/companion/status').then(function(r){ if (!r.ok) throw new Error('status ' + r.status); return r.json(); }),
+  ]).then(function(arr){
+    var c = arr[0], s = arr[1];
+    window.__lastSyncSuccessUtc = s && s.lastSuccessUtc;
+    content.innerHTML = settingsHtml(c);
+    bindSettingsForm(c);
+  }).catch(function(err){
+    content.innerHTML = '<div class="settings-shell"><div class="settings-card is-error"><p>Failed to load config: ' + esc(err.message || 'unknown') + '</p></div></div>';
+  });
+}
+
+// How the user brings the companion back after a Quit, phrased for the OS the
+// companion is actually running on (c.os from the config payload). Avoids the
+// macOS-only "Applications folder" language leaking onto Windows/Linux.
+function companionRelaunchPhrase(os) {
+  switch (os) {
+    case 'windows':
+      return 'double-click NightSummaryCompanion in the folder you unzipped';
+    case 'linux':
+      return 'run NightSummaryCompanion from where you installed it';
+    case 'macos':
+      return 'open NightSummaryCompanion from your Applications folder';
+    default:
+      return 'relaunch NightSummaryCompanion';
+  }
+}
+
+// Hover tooltip for the autostart toggle, describing what was installed, per OS
+// mechanism string returned by /api/companion/autostart.
+function autostartTooltip(mechanism) {
+  switch (mechanism) {
+    case 'Startup shortcut':
+      return 'Added a shortcut to your Windows Startup folder so the companion launches when you sign in.';
+    case 'LaunchAgent':
+      return 'Installed a macOS Login Item (LaunchAgent) so the companion launches when you sign in.';
+    case 'systemd --user':
+      return 'Enabled a systemd user service so the companion launches when you sign in.';
+    default:
+      return 'The companion will launch automatically when you sign in.';
+  }
+}
+
+function settingsHtml(c) {
+  var setupBanner = c.isComplete ? '' :
+    '<div class="settings-card is-setup"><strong>Setup required</strong><p>' +
+    esc(c.incompleteReason || 'Fill in the fields below to start syncing from your NINA machine.') +
+    '</p></div>';
+
+  // Authentication block. Either paired (show status + Re-pair link) or
+  // not configured (link to wizard). Legacy api-key auth was removed.
+  var authBlock;
+  if (c.pairingTokenSet) {
+    authBlock =
+      '<div class="settings-row">' +
+        '<span class="settings-label">Authentication <span class="settings-hint">Per-companion pairing token</span></span>' +
+        '<div class="settings-auth-status">' +
+          '<span class="settings-auth-pill is-paired">Paired</span>' +
+          '<a href="/setup?force=1" class="settings-btn settings-btn-link">Re-pair</a>' +
+        '</div>' +
+      '</div>';
+  } else {
+    authBlock =
+      '<div class="settings-row">' +
+        '<span class="settings-label">Authentication <span class="settings-hint">Not configured</span></span>' +
+        '<a href="/setup?force=1" class="settings-btn settings-btn-primary">Run setup wizard</a>' +
+      '</div>';
+  }
+
+  // Push status indicator. PushUrl gets captured server-side on every
+  // authenticated request, so any successful sync (incl. boot sync) means
+  // primary almost certainly has the URL. We don't have direct visibility
+  // into the primary's token store from the companion, so derive from
+  // status: lastSuccessUtc != null + AcceptPush on  = "Active".
+  var pushActive = !!(window.__lastSyncSuccessUtc) && c.acceptPush !== false;
+  var pushPill, pushDesc;
+  if (c.acceptPush === false) {
+    pushPill = '<span class="settings-auth-pill is-off">Disabled</span>';
+    pushDesc = 'Push notifications from NINA are turned off. The companion only updates on its scheduled poll.';
+  } else if (pushActive) {
+    pushPill = '<span class="settings-auth-pill is-paired">Active</span>';
+    pushDesc = 'NINA pushes new sessions to this companion the moment a sequence ends.';
+  } else {
+    pushPill = '<span class="settings-auth-pill is-pending">Pending</span>';
+    pushDesc = 'Push will activate after the first successful sync.';
+  }
+
+  return '' +
+    '<div class="settings-shell">' +
+      setupBanner +
+      '<form class="settings-card" id="settings-form" autocomplete="off">' +
+        '<h2>Primary NINA</h2>' +
+        '<label class="settings-row">' +
+          '<span class="settings-label">Host <span class="settings-hint">IP, hostname, or VPN-assigned address (e.g., Tailscale)</span></span>' +
+          '<input type="text" id="cfg-host" value="' + esc(c.host || '') + '" placeholder="rig.local or 192.168.x.x" required>' +
+        '</label>' +
+        '<label class="settings-row">' +
+          '<span class="settings-label">Port <span class="settings-hint">Night Summary dashboard port in NINA (default 8181)</span></span>' +
+          '<input type="number" id="cfg-port" value="' + (c.port || 8181) + '" min="1" max="65535" required>' +
+        '</label>' +
+        authBlock +
+
+        '<h2>Push from NINA</h2>' +
+        '<div class="settings-row">' +
+          '<span class="settings-label">Status</span>' +
+          '<div class="settings-auth-status">' + pushPill + '</div>' +
+        '</div>' +
+        '<p class="settings-hint">' + esc(pushDesc) + '</p>' +
+        '<label class="settings-row settings-row-inline">' +
+          '<input type="checkbox" id="cfg-acceptpush"' + (c.acceptPush !== false ? ' checked' : '') + '>' +
+          '<span>Accept push notifications from NINA</span>' +
+        '</label>' +
+        '<label class="settings-row settings-row-inline">' +
+          '<input type="checkbox" id="cfg-onboot"' + (c.onBoot ? ' checked' : '') + '>' +
+          '<span>Sync when the companion starts</span>' +
+        '</label>' +
+
+        '<h2>Scheduled poll</h2>' +
+        '<p class="settings-hint">Backup sync that runs on a fixed interval in case a push is missed (companion offline, network drop). Failure retries are automatic and faster.</p>' +
+        '<label class="settings-row">' +
+          '<span class="settings-label">Sync every <span class="settings-hint">Hours between scheduled syncs</span></span>' +
+          '<input type="number" id="cfg-hours" value="' + (c.pollingIntervalHoursOnSuccess || 4) + '" min="1" max="168">' +
+        '</label>' +
+
+        '<h2>This companion</h2>' +
+        '<div class="settings-row">' +
+          '<span class="settings-label">Data directory <span class="settings-hint">Read-only; edit companion.json directly to relocate (orphans existing data)</span></span>' +
+          '<input type="text" value="' + esc(c.dataDir || '') + '" readonly>' +
+        '</div>' +
+        '<label class="settings-row">' +
+          '<span class="settings-label">Dashboard port <span class="settings-hint">Local port for this companion. Takes effect after restart.</span></span>' +
+          '<input type="number" id="cfg-dashport" value="' + (c.dashboardPort || 8182) + '" min="1" max="65535">' +
+        '</label>' +
+
+        '<h2>Read-only mirror</h2>' +
+        '<p class="settings-hint">Optional second dashboard on a separate port that refuses every write. Point a reverse proxy (Caddy / nginx / Cloudflare Tunnel) or <code>tailscale funnel</code> at this port for safe public exposure — never expose the main dashboard port directly. Toggle requires a companion restart.</p>' +
+        '<label class="settings-row settings-row-inline">' +
+          '<input type="checkbox" id="cfg-romirror"' + (c.enableReadOnlyMirror ? ' checked' : '') + '>' +
+          '<span>Enable read-only mirror</span>' +
+        '</label>' +
+        '<label class="settings-row">' +
+          '<span class="settings-label">Mirror port <span class="settings-hint">Default 8282; must differ from the main port above</span></span>' +
+          '<input type="number" id="cfg-roport" value="' + (c.readOnlyMirrorPort || 8282) + '" min="1024" max="65535">' +
+        '</label>' +
+
+        '<div class="settings-actions">' +
+          '<div class="settings-status" id="cfg-status"></div>' +
+          '<button type="button" class="settings-btn" id="cfg-test">Test connection</button>' +
+          '<button type="submit" class="settings-btn settings-btn-primary" id="cfg-save">Save</button>' +
+        '</div>' +
+      '</form>' +
+      '<div class="settings-card">' +
+        '<h2>Start at login</h2>' +
+        '<p class="settings-hint">Launch the companion automatically when you sign in, so the dashboard is always up without opening the app by hand.</p>' +
+        '<div class="settings-actions">' +
+          '<label class="settings-check"><input type="checkbox" id="cfg-autostart"> <span>Start companion at login</span></label>' +
+          '<div class="settings-status" id="autostart-status"></div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="settings-card">' +
+        '<h2>Companion process</h2>' +
+        '<p class="settings-hint">Restart applies a port change or refreshes the in-memory state. Quit stops the companion entirely — to bring it back, ' + esc(companionRelaunchPhrase(c.os)) + '.</p>' +
+        '<div class="settings-actions">' +
+          '<div class="settings-status" id="proc-status"></div>' +
+          '<button type="button" class="settings-btn" id="cfg-restart">Restart companion</button>' +
+          '<button type="button" class="settings-btn settings-btn-danger" id="cfg-quit">Quit companion</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+}
+
+function bindSettingsForm(initial) {
+  var form     = document.getElementById('settings-form');
+  var hostEl   = document.getElementById('cfg-host');
+  var portEl   = document.getElementById('cfg-port');
+  var bootEl   = document.getElementById('cfg-onboot');
+  var hoursEl  = document.getElementById('cfg-hours');
+  var pushEl   = document.getElementById('cfg-acceptpush');
+  var dashEl   = document.getElementById('cfg-dashport');
+  var roMirrorEl = document.getElementById('cfg-romirror');
+  var roPortEl = document.getElementById('cfg-roport');
+  var status   = document.getElementById('cfg-status');
+  var testBtn  = document.getElementById('cfg-test');
+  var saveBtn  = document.getElementById('cfg-save');
+  var restartBtn = document.getElementById('cfg-restart');
+  var quitBtn  = document.getElementById('cfg-quit');
+  var procStatus = document.getElementById('proc-status');
+
+  function readEdit() {
+    return {
+      host: hostEl.value.trim(),
+      port: parseInt(portEl.value, 10) || 0,
+      onBoot: !!bootEl.checked,
+      pollingIntervalHoursOnSuccess:   parseInt(hoursEl.value, 10) || 0,
+      // Failure interval is no longer user-tunable — settle on a sane
+      // default. Companion's scheduler caps at >= 1 min via Math.Max.
+      pollingIntervalMinutesOnFailure: 30,
+      acceptPush: !!pushEl.checked,
+      // Dashboard port: takes effect after companion restart. Server saves
+      // the value; user gets a banner suggesting Restart.
+      dashboardPort: dashEl ? (parseInt(dashEl.value, 10) || 0) : 0,
+      // Read-only mirror: separate DashboardServer on its own port, refuses
+      // every non-GET request. Mirror state changes (toggle or port) require
+      // a companion restart since the listener is bound at startup.
+      enableReadOnlyMirror: !!(roMirrorEl && roMirrorEl.checked),
+      readOnlyMirrorPort: roPortEl ? (parseInt(roPortEl.value, 10) || 0) : 0,
+    };
+  }
+
+  function setStatus(text, cls) {
+    status.textContent = text || '';
+    status.className = 'settings-status' + (cls ? ' ' + cls : '');
+  }
+  function setProcStatus(text, cls) {
+    if (!procStatus) return;
+    procStatus.textContent = text || '';
+    procStatus.className = 'settings-status' + (cls ? ' ' + cls : '');
+  }
+
+  // Start-at-login toggle — immediate action, separate from the config form.
+  // Loads the current OS autostart state, greys out if unsupported on this
+  // packaging (dev build / no launcher), and POSTs enable/disable on change.
+  var autostartEl = document.getElementById('cfg-autostart');
+  var autostartStatus = document.getElementById('autostart-status');
+  function setAutostartStatus(text, cls, tip) {
+    if (!autostartStatus) return;
+    autostartStatus.textContent = text || '';
+    autostartStatus.className = 'settings-status' + (cls ? ' ' + cls : '');
+    autostartStatus.title = tip || '';
+    autostartStatus.style.cursor = tip ? 'help' : '';
+  }
+  if (autostartEl) {
+    fetch('/api/companion/autostart').then(function(r){ return r.json(); }).then(function(j){
+      if (!j.supported) {
+        autostartEl.checked = false; autostartEl.disabled = true;
+        setAutostartStatus(j.detail ? ('Unavailable: ' + j.detail) : 'Not available on this install', '');
+        return;
+      }
+      autostartEl.checked = !!j.enabled;
+      setAutostartStatus(j.enabled ? 'Enabled' : '', j.enabled ? 'is-ok' : '',
+        j.enabled ? autostartTooltip(j.mechanism) : '');
+    }).catch(function(){ /* leave default */ });
+
+    autostartEl.addEventListener('change', function() {
+      var want = autostartEl.checked;
+      autostartEl.disabled = true;
+      setAutostartStatus(want ? 'Enabling…' : 'Disabling…', '');
+      fetch('/api/companion/autostart', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: want }),
+      }).then(function(r){ return r.json(); }).then(function(j){
+        if (j.ok) {
+          autostartEl.checked = !!j.enabled;
+          setAutostartStatus(j.enabled ? 'Enabled' : 'Off', j.enabled ? 'is-ok' : '',
+            j.enabled ? autostartTooltip(j.mechanism) : '');
+        } else {
+          autostartEl.checked = !want;
+          setAutostartStatus('Failed: ' + (j.error || j.detail || 'unknown'), 'is-error');
+        }
+      }).catch(function(err){
+        autostartEl.checked = !want;
+        setAutostartStatus('Failed: ' + (err.message || 'network error'), 'is-error');
+      }).finally(function(){ autostartEl.disabled = false; });
+    });
+  }
+
+  testBtn.addEventListener('click', function() {
+    var edit = readEdit();
+    setStatus('Testing…', '');
+    testBtn.disabled = true;
+    fetch('/api/companion/test-connection', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // apiKey field kept on the wire for back-compat with older companions
+      // but the server now ignores it and authenticates via the configured
+      // pairing token.
+      body: JSON.stringify({ host: edit.host, port: edit.port, apiKey: '' }),
+    }).then(function(r){ return r.json(); }).then(function(j){
+      if (j.ok) {
+        var info = j.version ? ' · primary v' + j.version : '';
+        setStatus('Connected' + info, 'is-ok');
+      } else {
+        setStatus('Failed: ' + (j.error || 'unknown'), 'is-error');
+      }
+    }).catch(function(err){
+      setStatus('Failed: ' + (err.message || 'network error'), 'is-error');
+    }).finally(function(){ testBtn.disabled = false; });
+  });
+
+  form.addEventListener('submit', function(e) {
+    e.preventDefault();
+    var edit = readEdit();
+    var portChanged = edit.dashboardPort && initial && edit.dashboardPort !== initial.dashboardPort;
+    setStatus('Saving…', '');
+    saveBtn.disabled = true;
+    fetch('/api/companion/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(edit),
+    }).then(function(r){ return r.json().then(function(j){ return { status: r.status, body: j }; }); }).then(function(o){
+      if (o.body && o.body.ok) {
+        var msg = 'Saved.';
+        if (portChanged) {
+          msg += ' Dashboard port change takes effect after you restart the companion.';
+        } else if (o.body.config && o.body.config.isComplete) {
+          msg += ' Initial sync starting.';
+        } else {
+          msg += ' Setup still incomplete.';
+        }
+        setStatus(msg, 'is-ok');
+        // Re-render so the masked key reflects whatever was saved and to flip
+        // any "setup required" banner off.
+        renderSettingsPage();
+        // Refresh the top banner immediately too — config changes affect reachability.
+        if (typeof refreshCompanionStatus === 'function') refreshCompanionStatus();
+      } else {
+        setStatus('Save failed: ' + (o.body && o.body.error || ('http ' + o.status)), 'is-error');
+      }
+    }).catch(function(err){
+      setStatus('Save failed: ' + (err.message || 'network error'), 'is-error');
+    }).finally(function(){ saveBtn.disabled = false; });
+  });
+
+  // ── Quit / Restart ────────────────────────────────────────────────────
+  // The companion's executable is a watchdog shell script that re-runs the
+  // real binary on exit code 88 and stops on exit code 0. The two endpoints
+  // here just trigger the right exit code; the script does the rest.
+  //
+  // Port-aware: after a dashboardPort change, the new server comes up on a
+  // different port than the page's current origin. Both Restart and the
+  // Quit "Reconnect" affordance compare the saved port (from /api/companion/config
+  // captured BEFORE we exit the process) against window.location.port and
+  // probe the right one. CORS headers on /api/health make cross-port fetch
+  // work without extra config.
+
+  function probeCompanionUp(host, port, opts) {
+    // Polls http://host:port/api/health every 1s, up to opts.maxAttempts.
+    // Calls opts.onUp(host, port) on first 200. Calls opts.onTimeout if we
+    // give up. Returns a cancel function the caller can use to stop early.
+    var attempts = 0;
+    var max = opts.maxAttempts || 60;
+    var timer = setInterval(function() {
+      attempts++;
+      // Per-attempt timeout via AbortController so a hung TCP connect on a
+      // dead port doesn't stall the polling cadence.
+      var ac = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+      var to = ac ? setTimeout(function(){ ac.abort(); }, 800) : null;
+      fetch('http://' + host + ':' + port + '/api/health',
+            { cache: 'no-store', signal: ac ? ac.signal : undefined })
+        .then(function(r){
+          if (to) clearTimeout(to);
+          if (r.ok) {
+            clearInterval(timer);
+            opts.onUp && opts.onUp(host, port);
+          }
+        })
+        .catch(function(){ if (to) clearTimeout(to); /* still down */ });
+      if (attempts >= max) {
+        clearInterval(timer);
+        opts.onTimeout && opts.onTimeout();
+      }
+    }, 1000);
+    return function cancel() { clearInterval(timer); };
+  }
+
+  if (restartBtn) {
+    restartBtn.addEventListener('click', function() {
+      if (!confirm('Restart the companion now? The dashboard will disconnect briefly while the process respawns.')) return;
+      setProcStatus('Restarting…', '');
+      restartBtn.disabled = true;
+      quitBtn && (quitBtn.disabled = true);
+
+      // Capture the SAVED dashboard port before exit so we know where to
+      // poll. If the user just changed the port in the form but didn't
+      // save, the new companion will still come up on the OLD saved port.
+      fetch('/api/companion/config')
+        .then(function(r){ return r.json(); })
+        .then(function(cfg) {
+          var host = window.location.hostname;
+          var savedPort = cfg.dashboardPort || parseInt(window.location.port, 10) || 8182;
+          return fetch('/api/companion/restart', { method: 'POST' })
+            .then(function(){ return { host: host, port: savedPort }; });
+        })
+        .then(function(target) {
+          probeCompanionUp(target.host, target.port, {
+            maxAttempts: 60,
+            onUp: function(host, port) {
+              setProcStatus('Companion is back. Reloading…', 'is-ok');
+              var currentPort = parseInt(window.location.port, 10) || 80;
+              if (port !== currentPort) {
+                // Port change: navigate to the new origin instead of reload.
+                window.location.href = 'http://' + host + ':' + port + '/';
+              } else {
+                setTimeout(function(){ window.location.reload(); }, 400);
+              }
+            },
+            onTimeout: function() {
+              setProcStatus('Companion did not come back in 60s. Check the logs, or ' + companionRelaunchPhrase(initial && initial.os) + '.', 'is-error');
+              restartBtn.disabled = false;
+              quitBtn && (quitBtn.disabled = false);
+            },
+          });
+        })
+        .catch(function(err){
+          setProcStatus('Restart request failed: ' + (err.message || 'network error'), 'is-error');
+          restartBtn.disabled = false;
+          quitBtn && (quitBtn.disabled = false);
+        });
+    });
+  }
+
+  if (quitBtn) {
+    quitBtn.addEventListener('click', function() {
+      if (!confirm('Quit the companion? The dashboard will go offline. To bring it back, ' + companionRelaunchPhrase(initial && initial.os) + '.')) return;
+      setProcStatus('Stopping companion…', '');
+      restartBtn && (restartBtn.disabled = true);
+      quitBtn.disabled = true;
+
+      // Capture saved port BEFORE quit so the Reconnect button knows
+      // where to look after the user relaunches the .app.
+      var savedPort = parseInt(window.location.port, 10) || 8182;
+      fetch('/api/companion/config').then(function(r){ return r.json(); }).then(function(cfg) {
+        if (cfg && cfg.dashboardPort) savedPort = cfg.dashboardPort;
+      }).catch(function(){ /* fall back to window.location.port */ }).finally(function() {
+        fetch('/api/companion/quit', { method: 'POST' })
+          .then(function(){
+            setTimeout(function(){ swapToStoppedPage(savedPort, initial && initial.os); }, 500);
+          })
+          .catch(function(err){
+            setProcStatus('Quit request failed: ' + (err.message || 'network error'), 'is-error');
+            restartBtn && (restartBtn.disabled = false);
+            quitBtn.disabled = false;
+          });
+      });
+    });
+  }
+
+  function swapToStoppedPage(savedPort, os) {
+    // Replaces the whole document with a stopped-state page that includes
+    // a Reconnect button. Reconnect probes http://currentHost:savedPort
+    // until /api/health responds, then navigates there. Auto-polls in the
+    // background so a manual click isn't strictly needed for the common
+    // "user relaunches .app" path.
+    document.body.innerHTML =
+      '<div style="font-family:-apple-system,system-ui,sans-serif;max-width:480px;margin:80px auto;padding:24px;border:1px solid #ccc;border-radius:8px;text-align:center;">' +
+        '<h2>Companion stopped</h2>' +
+        '<p>The companion server is no longer running.</p>' +
+        '<p>To restart, ' + companionRelaunchPhrase(os) + '.</p>' +
+        '<p id="reconnect-status" style="color:#888;font-size:13px;margin-top:16px;">Watching for companion on port ' + savedPort + '…</p>' +
+        '<button id="reconnect-btn" style="margin-top:12px;padding:8px 16px;font-size:14px;cursor:pointer;">Reconnect now</button>' +
+      '</div>';
+
+    var host = window.location.hostname;
+    var statusEl = document.getElementById('reconnect-status');
+    var btn = document.getElementById('reconnect-btn');
+
+    function navigateToCompanion(h, p) {
+      statusEl.textContent = 'Companion detected. Loading…';
+      window.location.href = 'http://' + h + ':' + p + '/';
+    }
+
+    // Background poll: tries to reconnect automatically when companion
+    // comes back. ~5 minute window. Manual button bypasses the wait.
+    var cancel = probeCompanionUp(host, savedPort, {
+      maxAttempts: 300,
+      onUp: navigateToCompanion,
+      onTimeout: function() {
+        statusEl.textContent = 'No companion seen for 5 minutes. Click Reconnect to retry.';
+      },
+    });
+
+    btn.addEventListener('click', function() {
+      cancel();
+      btn.disabled = true;
+      statusEl.textContent = 'Probing…';
+      probeCompanionUp(host, savedPort, {
+        maxAttempts: 20,
+        onUp: navigateToCompanion,
+        onTimeout: function() {
+          statusEl.textContent = 'Still not responding on port ' + savedPort + '. Make sure the app is launched.';
+          btn.disabled = false;
+        },
+      });
+    });
+  }
+}

@@ -1,0 +1,359 @@
+using System;
+using System.Collections.Generic;
+using Microsoft.Data.Sqlite;
+using System.IO;
+using System.Linq;
+using NINA.Plugin.NightSummary.Data;
+using NINA.Plugin.NightSummary.Dashboard.Abstractions;
+
+namespace NINA.Plugin.NightSummary.Companion.Adapters;
+
+// Mirrors TargetSchedulerDatabase.{GetAllProjects, GetApiSettings,
+// GetProgressForTargets, GetImageAugment} from the plugin assembly. Lives
+// here because the plugin reader is net8.0-windows + NINA.Core; the
+// companion is plain net8.0. SQL kept identical so the two stay in sync.
+//
+// Also implements ITargetSchedulerDatabase so the cross-platform
+// ReportGenerator can render TS progress sections on the companion without
+// the primary's TargetSchedulerDatabase being reachable.
+internal sealed class CompanionTsReader : ITargetSchedulerDatabase {
+
+    private readonly string _dbPath;
+    private readonly IDashboardLogger _log;
+
+    public CompanionTsReader(string dbPath, IDashboardLogger log) {
+        _dbPath = dbPath;
+        _log    = log;
+    }
+
+    public bool IsAvailable => File.Exists(_dbPath);
+
+    // For companion: "installed" == DB file exists in the synced data tree.
+    // Plugin-side this is a separate disk check for the TS plugin DLL itself;
+    // on companion we don't have that distinction.
+    public bool IsPluginInstalled => IsAvailable;
+
+    public List<TsProjectInfo> GetAllProjects(string? profileId = null) {
+        if (!IsAvailable) return new List<TsProjectInfo>();
+        try {
+            var cs = $"Data Source={_dbPath};Mode=ReadOnly";
+            using var conn = new SqliteConnection(cs);
+            conn.Open();
+
+            var sql = @"
+                SELECT
+                    p.Id               AS PId,
+                    p.guid             AS PGuid,
+                    p.ProfileId        AS PProfile,
+                    p.name             AS PName,
+                    p.description      AS PDesc,
+                    p.state            AS PState,
+                    p.priority         AS PPriority,
+                    p.isMosaic         AS PMosaic,
+                    p.createDate       AS PCreate,
+                    p.activeDate       AS PActive,
+                    p.inactiveDate     AS PInactive,
+                    p.minimumAltitude  AS PMinAlt,
+                    p.maximumAltitude  AS PMaxAlt,
+                    t.Id               AS TId,
+                    t.guid             AS TGuid,
+                    t.name             AS TName,
+                    t.active           AS TActive,
+                    t.ra               AS TRa,
+                    t.dec              AS TDec,
+                    t.rotation         AS TRotation,
+                    ep.exposure        AS EpExposure,
+                    ep.desired         AS EpDesired,
+                    ep.acquired        AS EpAcquired,
+                    ep.accepted        AS EpAccepted,
+                    et.name            AS EtName,
+                    et.filtername      AS EtFilter,
+                    et.defaultexposure AS EtDefault
+                FROM project p
+                LEFT JOIN target t            ON t.ProjectId = p.Id
+                LEFT JOIN exposureplan ep     ON ep.targetid = t.Id
+                LEFT JOIN exposuretemplate et ON et.Id = ep.exposureTemplateId" +
+                (profileId != null ? " WHERE p.ProfileId = @ProfileId" : "") +
+                " ORDER BY p.Id, t.Id, et.filtername, et.name";
+
+            var projects = new Dictionary<int, TsProjectInfo>();
+            var targets  = new Dictionary<int, TsProjectTarget>();
+
+            using var cmd = new SqliteCommand(sql, conn);
+            if (profileId != null) cmd.Parameters.AddWithValue("@ProfileId", profileId);
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read()) {
+                int pid = Convert.ToInt32(reader["PId"]);
+                if (!projects.TryGetValue(pid, out var proj)) {
+                    int stateVal = reader["PState"]    == DBNull.Value ? 0 : Convert.ToInt32(reader["PState"]);
+                    int priVal   = reader["PPriority"] == DBNull.Value ? 1 : Convert.ToInt32(reader["PPriority"]);
+                    proj = new TsProjectInfo {
+                        Id              = pid,
+                        Guid            = reader["PGuid"]    == DBNull.Value ? null : reader["PGuid"].ToString(),
+                        ProfileId       = reader["PProfile"] == DBNull.Value ? null : reader["PProfile"].ToString(),
+                        Name            = reader["PName"]    == DBNull.Value ? null : reader["PName"].ToString(),
+                        Description     = reader["PDesc"]    == DBNull.Value ? null : reader["PDesc"].ToString(),
+                        StateValue      = stateVal,
+                        State           = ProjectStateName(stateVal),
+                        PriorityValue   = priVal,
+                        Priority        = ProjectPriorityName(priVal),
+                        IsMosaic        = reader["PMosaic"]  != DBNull.Value && Convert.ToInt32(reader["PMosaic"]) == 1,
+                        CreateDate      = UnixSecondsToNullableDate(reader["PCreate"]),
+                        ActiveDate      = UnixSecondsToNullableDate(reader["PActive"]),
+                        InactiveDate    = UnixSecondsToNullableDate(reader["PInactive"]),
+                        MinimumAltitude = reader["PMinAlt"]  == DBNull.Value ? 0 : Convert.ToDouble(reader["PMinAlt"]),
+                        MaximumAltitude = reader["PMaxAlt"]  == DBNull.Value ? 0 : Convert.ToDouble(reader["PMaxAlt"]),
+                    };
+                    projects[pid] = proj;
+                }
+
+                if (reader["TId"] == DBNull.Value) continue;
+                int tid = Convert.ToInt32(reader["TId"]);
+                if (!targets.TryGetValue(tid, out var tgt)) {
+                    tgt = new TsProjectTarget {
+                        Id        = tid,
+                        Guid      = reader["TGuid"] == DBNull.Value ? null : reader["TGuid"].ToString(),
+                        ProjectId = pid,
+                        Name      = reader["TName"] == DBNull.Value ? null : reader["TName"].ToString(),
+                        Active    = reader["TActive"] != DBNull.Value && Convert.ToInt32(reader["TActive"]) == 1,
+                        RA        = reader["TRa"]  == DBNull.Value ? 0 : Convert.ToDouble(reader["TRa"]),
+                        Dec       = reader["TDec"] == DBNull.Value ? 0 : Convert.ToDouble(reader["TDec"]),
+                        Rotation  = reader["TRotation"] == DBNull.Value ? 0 : Convert.ToDouble(reader["TRotation"]),
+                    };
+                    targets[tid] = tgt;
+                    proj.Targets.Add(tgt);
+                }
+
+                if (reader["EpDesired"] == DBNull.Value) continue;
+                var epExposure = reader["EpExposure"] == DBNull.Value ? 0 : Convert.ToDouble(reader["EpExposure"]);
+                var etDefault  = reader["EtDefault"]  == DBNull.Value ? 0 : Convert.ToDouble(reader["EtDefault"]);
+                tgt.ExposurePlans.Add(new TsProjectExposurePlan {
+                    Filter       = reader["EtFilter"] == DBNull.Value ? "" : reader["EtFilter"].ToString(),
+                    TemplateName = reader["EtName"]   == DBNull.Value ? "" : reader["EtName"].ToString(),
+                    ExposureSec  = epExposure > 0 ? epExposure : etDefault,
+                    Desired      = Convert.ToInt32(reader["EpDesired"]),
+                    Acquired     = reader["EpAcquired"] == DBNull.Value ? 0 : Convert.ToInt32(reader["EpAcquired"]),
+                    Accepted     = reader["EpAccepted"] == DBNull.Value ? 0 : Convert.ToInt32(reader["EpAccepted"]),
+                });
+            }
+
+            _log.Debug($"Companion TS: GetAllProjects → {projects.Count} project(s) / {targets.Count} target(s)");
+            return projects.Values.ToList();
+        } catch (Exception ex) {
+            _log.Error("Companion TS: GetAllProjects failed", ex);
+            return new List<TsProjectInfo>();
+        }
+    }
+
+    public (bool Enabled, int Port) GetApiSettings(string? profileId = null) {
+        if (!IsAvailable) return (false, 0);
+        try {
+            var cs = $"Data Source={_dbPath};Mode=ReadOnly";
+            using var conn = new SqliteConnection(cs);
+            conn.Open();
+            var sql = profileId != null
+                ? "SELECT enableAPI, apiPort FROM profilepreference WHERE ProfileId = @ProfileId"
+                : "SELECT enableAPI, apiPort FROM profilepreference LIMIT 1";
+            using var cmd = new SqliteCommand(sql, conn);
+            if (profileId != null) cmd.Parameters.AddWithValue("@ProfileId", profileId);
+            using var reader = cmd.ExecuteReader();
+            if (reader.Read()) {
+                bool enabled = Convert.ToInt32(reader["enableAPI"]) == 1;
+                int port     = Convert.ToInt32(reader["apiPort"]);
+                return (enabled, port);
+            }
+        } catch (Exception ex) {
+            _log.Error("Companion TS: GetApiSettings failed", ex);
+        }
+        return (false, 0);
+    }
+
+    // Mirror of TargetSchedulerDatabase.GetProgressForTargets + QueryProgress —
+    // returns per-target/per-filter exposure progress for the named targets.
+    // Joins exposureplan → target → project → exposuretemplate the same way
+    // the plugin's SQL does so output matches byte-for-byte.
+    public List<TsTargetData> GetProgressForTargets(IEnumerable<string> sessionTargetNames, string? profileId = null) {
+        if (!IsAvailable) return new List<TsTargetData>();
+
+        var nameSet = new HashSet<string>(
+            sessionTargetNames.Select(n => n.Trim()),
+            StringComparer.OrdinalIgnoreCase);
+
+        try {
+            var cs = $"Data Source={_dbPath};Mode=ReadOnly";
+            using var conn = new SqliteConnection(cs);
+            conn.Open();
+
+            var sql = @"
+                SELECT
+                    t.name        AS TargetName,
+                    p.name        AS ProjectName,
+                    t.ra          AS RA,
+                    t.dec         AS Dec,
+                    t.rotation    AS Rotation,
+                    p.MinimumAltitude AS MinimumAltitude,
+                    et.name       AS TemplateName,
+                    et.filtername AS Filter,
+                    CASE WHEN ep.exposure > 0 THEN ep.exposure ELSE et.defaultexposure END AS ExposureSec,
+                    ep.desired    AS Desired,
+                    ep.acquired   AS Acquired,
+                    ep.accepted   AS Accepted
+                FROM exposureplan ep
+                JOIN target t           ON t.Id  = ep.targetid
+                JOIN project p          ON p.Id  = t.ProjectId
+                JOIN exposuretemplate et ON et.Id = ep.exposureTemplateId
+                WHERE ep.desired > 0" +
+                (profileId != null ? " AND p.ProfileId = @ProfileId" : "") +
+                " ORDER BY p.name, t.name, et.filtername, et.name";
+
+            var rows = new List<(string Name, string ProjectName, double RA, double Dec, double Rotation, double MinimumAltitude, string TemplateName, string Filter, double ExposureSec, int Desired, int Acquired, int Accepted)>();
+
+            using (var cmd = new SqliteCommand(sql, conn)) {
+                if (profileId != null) cmd.Parameters.AddWithValue("@ProfileId", profileId);
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read()) {
+                    var name = reader["TargetName"].ToString() ?? "";
+                    if (!nameSet.Contains(name)) continue;
+
+                    rows.Add((
+                        Name:            name,
+                        ProjectName:     reader["ProjectName"].ToString() ?? "",
+                        RA:              Convert.ToDouble(reader["RA"]),
+                        Dec:             Convert.ToDouble(reader["Dec"]),
+                        Rotation:        reader["Rotation"]        == DBNull.Value ? 0 : Convert.ToDouble(reader["Rotation"]),
+                        MinimumAltitude: reader["MinimumAltitude"] == DBNull.Value ? 0 : Convert.ToDouble(reader["MinimumAltitude"]),
+                        TemplateName:    reader["TemplateName"].ToString() ?? "",
+                        Filter:          reader["Filter"].ToString() ?? "",
+                        ExposureSec:     reader["ExposureSec"] == DBNull.Value ? 0 : Convert.ToDouble(reader["ExposureSec"]),
+                        Desired:         Convert.ToInt32(reader["Desired"]),
+                        Acquired:        Convert.ToInt32(reader["Acquired"]),
+                        Accepted:        Convert.ToInt32(reader["Accepted"])
+                    ));
+                }
+            }
+
+            return rows
+                .GroupBy(r => (r.ProjectName, r.Name))
+                .Select(g => new TsTargetData {
+                    TargetName      = g.Key.Name,
+                    ProjectName     = g.Key.ProjectName,
+                    RA              = g.First().RA,
+                    Dec             = g.First().Dec,
+                    Rotation        = g.First().Rotation,
+                    MinimumAltitude = g.First().MinimumAltitude,
+                    Filters         = g.Select(r => new TsFilterProgress {
+                        TemplateName = r.TemplateName,
+                        Filter       = r.Filter,
+                        ExposureSec  = r.ExposureSec,
+                        Desired      = r.Desired,
+                        Acquired     = r.Acquired,
+                        Accepted     = r.Accepted
+                    }).ToList()
+                })
+                .ToList();
+        } catch (Exception ex) {
+            _log.Error("Companion TS: GetProgressForTargets failed", ex);
+            return new List<TsTargetData>();
+        }
+    }
+
+    // Mirror of TargetSchedulerDatabase.GetImageAugment — needed by the dashboard's
+    // /api/frames/{id}/metrics endpoint to overlay TS grading/project context on
+    // the lightbox. Tries direct match (new NS rows where Timestamp = ExposureStart)
+    // then legacy-shifted match (pre-fix NS rows where Timestamp = ImageSaved).
+    // Returns null on no match or TS DB unavailable.
+    public TsImageAugment? GetImageAugment(string targetName, string filterName, DateTime ts, int windowSeconds, double exposureDurationSeconds = 0) {
+        if (!IsAvailable) return null;
+        if (string.IsNullOrEmpty(targetName)) return null;
+        try {
+            var cs = $"Data Source={_dbPath};Mode=ReadOnly";
+            using var conn = new SqliteConnection(cs);
+            conn.Open();
+            long centerDirect = new DateTimeOffset(ts.ToUniversalTime()).ToUnixTimeSeconds();
+
+            var aug = QueryAugment(conn, targetName, filterName, centerDirect, windowSeconds);
+            if (aug != null) return aug;
+
+            if (exposureDurationSeconds > 0) {
+                long centerShifted = centerDirect - (long)exposureDurationSeconds;
+                return QueryAugment(conn, targetName, filterName, centerShifted, windowSeconds);
+            }
+            return null;
+        } catch (Exception ex) {
+            _log.Error("Companion TS: GetImageAugment failed", ex);
+            return null;
+        }
+    }
+
+    private static TsImageAugment? QueryAugment(SqliteConnection conn, string targetName, string filterName, long center, int windowSeconds) {
+        const string sql = @"
+            SELECT a.metadata, a.gradingStatus, a.rejectreason,
+                   p.name AS projectName, et.name AS templateName
+            FROM acquiredimage a
+            JOIN target           t  ON a.targetId   = t.id
+            LEFT JOIN project     p  ON a.projectId  = p.id
+            LEFT JOIN exposureplan ep ON a.exposureId = ep.id
+            LEFT JOIN exposuretemplate et ON et.id = ep.exposureTemplateId
+            WHERE a.acquireddate BETWEEN @Lo AND @Hi
+              AND t.name       = @Target COLLATE NOCASE
+              AND a.filtername = @Filter COLLATE NOCASE
+            ORDER BY ABS(a.acquireddate - @Center)
+            LIMIT 1";
+        using var cmd = new SqliteCommand(sql, conn);
+        cmd.Parameters.AddWithValue("@Lo",     center - windowSeconds);
+        cmd.Parameters.AddWithValue("@Hi",     center + windowSeconds);
+        cmd.Parameters.AddWithValue("@Center", center);
+        cmd.Parameters.AddWithValue("@Target", targetName);
+        cmd.Parameters.AddWithValue("@Filter", filterName ?? "");
+        using var reader = cmd.ExecuteReader();
+        if (!reader.Read()) return null;
+
+        var aug = new TsImageAugment {
+            ProjectName          = reader["projectName"] as string,
+            ExposureTemplateName = reader["templateName"] as string,
+            GradingStatus        = reader["gradingStatus"] == DBNull.Value ? (int?)null : Convert.ToInt32(reader["gradingStatus"]),
+            RejectReason         = reader["rejectreason"] as string,
+        };
+
+        var json = reader["metadata"] as string;
+        if (!string.IsNullOrEmpty(json)) {
+            try {
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                aug.HFRStDev            = TryDouble(root, "HFRStDev");
+                aug.GuidingRMSRA        = TryDouble(root, "GuidingRMSRA");
+                aug.GuidingRMSRAArcSec  = TryDouble(root, "GuidingRMSRAArcSec");
+                aug.GuidingRMSDEC       = TryDouble(root, "GuidingRMSDEC");
+                aug.GuidingRMSDECArcSec = TryDouble(root, "GuidingRMSDECArcSec");
+            } catch { /* malformed JSON — leave nulls */ }
+        }
+        return aug;
+    }
+
+    private static double? TryDouble(System.Text.Json.JsonElement root, string name) {
+        if (root.ValueKind != System.Text.Json.JsonValueKind.Object) return null;
+        if (!root.TryGetProperty(name, out var prop)) return null;
+        if (prop.ValueKind == System.Text.Json.JsonValueKind.Number && prop.TryGetDouble(out var d)) return d;
+        if (prop.ValueKind == System.Text.Json.JsonValueKind.String
+            && double.TryParse(prop.GetString(), System.Globalization.NumberStyles.Float,
+                               System.Globalization.CultureInfo.InvariantCulture, out var ds)) return ds;
+        return null;
+    }
+
+    private static string ProjectStateName(int v) => v switch {
+        0 => "Draft", 1 => "Active", 2 => "Inactive", 3 => "Closed", _ => "Unknown",
+    };
+
+    private static string ProjectPriorityName(int v) => v switch {
+        0 => "Low", 1 => "Normal", 2 => "High", _ => "Unknown",
+    };
+
+    private static DateTime? UnixSecondsToNullableDate(object raw) {
+        if (raw == null || raw == DBNull.Value) return null;
+        try {
+            long seconds = Convert.ToInt64(raw);
+            if (seconds <= 0) return null;
+            return DateTimeOffset.FromUnixTimeSeconds(seconds).LocalDateTime;
+        } catch { return null; }
+    }
+}

@@ -1,0 +1,110 @@
+name: Build Companion
+
+# Builds the standalone Night Summary Companion for macOS / Windows / Linux on
+# native runners, so the macOS .app is ad-hoc code-signed ON a Mac (codesign is
+# mac-only) — no Developer account, ad-hoc only. Signed mac bundle means the
+# user just right-click->Opens once on a download; no "Fix Permissions" step.
+#
+# Triggers:
+#   - workflow_dispatch: build artifacts on demand (downloadable from the run)
+#   - push of a v* tag:   build + attach the binaries to that GitHub release
+#
+# Each build-<platform> job just runs the existing scripts/build-companion-*.ps1
+# (all pwsh, all cross-checked locally) on its native runner.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write   # release job attaches assets
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest    # Apple Silicon runner -> native osx-arm64 + codesign
+            platform: mac
+            arch: arm64
+            script: build-companion-mac.ps1
+            artifact: build/companion-mac/*.dmg
+          - os: macos-latest    # same runner cross-builds osx-x64 for Intel Macs (codesign is arch-agnostic)
+            platform: mac
+            arch: x64
+            script: build-companion-mac.ps1
+            artifact: build/companion-mac/*.dmg
+          - os: windows-latest
+            platform: win
+            arch: x64
+            script: build-companion-win.ps1
+            artifact: build/companion-win/*.zip
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            script: build-companion-linux.ps1
+            # Three Linux deliverables, listed explicitly so the downloaded
+            # appimagetool and the staging/AppDir dirs are never picked up.
+            artifact: |
+              build/companion-linux/NightSummaryCompanion-linux-x64.tar.gz
+              build/companion-linux/NightSummaryCompanion-x86_64.AppImage
+              build/companion-linux/nightsummary-companion_*.deb
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build companion (${{ matrix.platform }}-${{ matrix.arch }})
+        shell: pwsh
+        run: ./scripts/${{ matrix.script }} -Arch ${{ matrix.arch }}
+
+      # Linux also gets a double-click AppImage (idiomatic single-file delivery).
+      # ubuntu-latest has `file`; --appimage-extract-and-run avoids needing FUSE.
+      - name: Pack Linux AppImage
+        if: matrix.platform == 'linux'
+        run: bash scripts/build-companion-appimage.sh
+
+      # And a .deb (double-click -> App Center -> Install; pulls libfontconfig1/
+      # libfreetype6 automatically). dpkg-deb is preinstalled on ubuntu runners.
+      - name: Pack Linux .deb
+        if: matrix.platform == 'linux'
+        run: bash scripts/build-companion-deb.sh
+
+      - name: Verify mac bundle is signed
+        if: matrix.platform == 'mac'
+        run: codesign --verify --deep --strict --verbose=2 build/companion-mac/staging-${{ matrix.arch }}/NightSummaryCompanion.app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: companion-${{ matrix.platform }}-${{ matrix.arch }}
+          path: ${{ matrix.artifact }}
+          if-no-files-found: error
+
+  # On a v* tag, attach the three binaries to the matching GitHub release.
+  # The release itself is created by the manual release process (gh release
+  # create); this only uploads the companion assets onto it.
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4   # for scripts/install-companion.sh (the curl one-liner target)
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Attach companion binaries + Linux installer to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Assets:"; ls -R artifacts
+          # install-companion.sh is the stable target of the
+          # releases/latest/download/install-companion.sh curl one-liner.
+          gh release upload "${{ github.ref_name }}" \
+            artifacts/* scripts/install-companion.sh \
+            --clobber --repo "${{ github.repository }}"

@@ -28,6 +28,10 @@ namespace NINA.Plugin.NightSummary.Reporting {
         public async Task<bool> SendReportAsync(ReportData reportData, string htmlReport, string fileName = null) {
             try {
                 Logger.Info("NightSummary: Sending Discord report");
+                // FilterHelper's classification cache is filled by ReportGenerator, but the
+                // Discord payload code path can run on its own (test send, retry without
+                // regenerating HTML) so prime the cache defensively from current settings.
+                FilterHelper.LoadClassifications(Data.SettingsManager.Instance.Current.FilterClassifications);
                 var payload  = BuildReportPayload(reportData);
                 var json     = JsonSerializer.Serialize(payload);
                 fileName   ??= $"NightSummary_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.html";

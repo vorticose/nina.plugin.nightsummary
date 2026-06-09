@@ -1,0 +1,329 @@
+/* Setup wizard — companion mode.
+   Inherits design tokens (--bg, --surface, --accent, text hierarchy, etc.)
+   from dashboard.css. This file is wizard-specific layout only. */
+
+* { box-sizing: border-box; }
+
+html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100vh;
+}
+
+body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+
+.wizard-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    /* Padding sized so even a long title doesn't visually crowd the card
+       border. Top + sides intentionally generous since the wizard is the
+       user's first impression of the product. */
+    padding: 40px 56px 32px !important;
+    max-width: 560px;
+    width: 100%;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45),
+                0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+}
+
+.wizard-header {
+    margin-bottom: 24px;
+}
+
+.wizard-card h1 {
+    margin: 0 0 20px;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+}
+
+.wizard-card h2 {
+    margin: 0 0 12px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+/* Subhead inside a step section — used for grouping related controls (e.g.
+   Push from NINA / Scheduled poll / This companion blocks in step 4). Less
+   visual weight than h2 since step h2 already opens the section. */
+.wizard-subhead {
+    margin: 16px 0 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+.wizard-subhead:first-child {
+    margin-top: 0;
+}
+
+.wizard-card p {
+    margin: 0 0 14px;
+    color: var(--text-secondary);
+}
+
+/* ── Step progress (5 dots) ─────────────────────────────────────────── */
+
+.steps {
+    display: flex;
+    gap: 6px;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    align-items: center;
+}
+
+.steps li {
+    flex: 1;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    color: transparent;
+    overflow: hidden;
+    transition: background-color var(--t-fast);
+}
+
+.steps li.active {
+    background: var(--accent);
+    box-shadow: 0 0 6px rgba(var(--accent-rgb), 0.5);
+}
+
+.steps li.done {
+    background: var(--green, #3fb950);
+}
+
+/* ── Step panels (hide/show) ─────────────────────────────────────────
+   Critical fix: `.step { display: flex }` would override the [hidden]
+   attribute, leaking every step into one long scroll. Scope display:
+   to :not([hidden]) so the attribute keeps doing its job. */
+
+.step:not([hidden]) {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+/* ── Form rows ──────────────────────────────────────────────────────── */
+
+label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 500;
+}
+
+label.inline {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    font-weight: 400;
+}
+
+input[type="text"], input[type="number"] {
+    background: var(--surface-well, var(--bg));
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 9px 11px;
+    color: var(--text-primary);
+    font-size: 14px;
+    font-family: "Consolas", "Courier New", ui-monospace, monospace;
+    transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+
+input[type="text"]:focus, input[type="number"]:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.18);
+}
+
+.hint {
+    color: var(--text-tertiary);
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.45;
+}
+
+fieldset {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin: 0;
+    background: var(--surface-well, var(--bg));
+}
+
+fieldset legend {
+    color: var(--text-tertiary);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 0 6px;
+}
+
+fieldset label {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    font-weight: 400;
+    margin: 5px 0;
+    color: var(--text-secondary);
+}
+
+.instructions {
+    margin: 0 0 6px;
+    padding-left: 22px;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+.instructions li {
+    margin: 5px 0;
+}
+
+.instructions strong {
+    color: var(--text-primary);
+}
+
+/* ── Actions row (buttons) ──────────────────────────────────────────── */
+
+.actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 12px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+}
+
+/* When all buttons in an actions row are [hidden] the row is visually empty
+   but the border-top still paints — looked like a stray rule on the First
+   Sync page (both Retry + Go to Dashboard start hidden). Drop the chrome
+   when there are no visible children to separate. Uses :has() which is
+   supported in every browser shipped since late 2023 (Safari 15.4+,
+   Firefox 121, Chromium 105). */
+.actions:not(:has(button:not([hidden]))) {
+    border-top: 0;
+    padding-top: 0;
+    margin-top: 0;
+}
+
+button {
+    background: var(--surface-well, var(--bg));
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 8px 16px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: inherit;
+    transition: border-color var(--t-fast), background-color var(--t-fast);
+}
+
+button:hover:not(:disabled) {
+    border-color: var(--accent);
+}
+
+button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--bg);
+}
+
+button.primary:hover:not(:disabled) {
+    background: var(--accent-light);
+    border-color: var(--accent-light);
+}
+
+button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* ── First-sync progress bar ────────────────────────────────────────── */
+
+.sync-bar {
+    height: 8px;
+    border-radius: 999px;
+    background: var(--surface-well, var(--border));
+    overflow: hidden;
+    margin: 4px 0 14px;
+}
+
+.sync-bar-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 999px;
+    background: var(--accent);
+    box-shadow: 0 0 6px rgba(var(--accent-rgb), 0.5);
+    transition: width 0.4s ease;
+}
+
+/* ── Status banner ──────────────────────────────────────────────────── */
+
+.status {
+    padding: 18px 22px;
+    border-radius: 6px;
+    font-size: 12px;
+    border: 1px solid var(--border);
+    background: var(--surface-well, var(--bg));
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+.status.error {
+    border-color: var(--red, #f85149);
+    color: var(--red, #f85149);
+    background: rgba(248, 81, 73, 0.08);
+}
+
+.status.success {
+    border-color: var(--green, #3fb950);
+    color: var(--green, #3fb950);
+    background: rgba(63, 185, 80, 0.08);
+}
+
+/* ── Footer ─────────────────────────────────────────────────────────── */
+
+.wizard-footer {
+    margin-top: 22px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+    text-align: center;
+    color: var(--text-tertiary);
+    font-size: 11px;
+}
+
+.wizard-footer a {
+    color: var(--text-tertiary);
+    text-decoration: none;
+    transition: color var(--t-fast);
+}
+
+.wizard-footer a:hover {
+    color: var(--accent);
+}
+
+/* ── Mobile tweaks ──────────────────────────────────────────────────── */
+
+@media (max-width: 540px) {
+    body { padding: 12px; }
+    .wizard-card { padding: 20px 18px 16px; }
+    .wizard-card h1 { font-size: 17px; }
+}

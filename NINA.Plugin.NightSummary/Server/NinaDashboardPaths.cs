@@ -23,7 +23,13 @@ internal sealed class NinaDashboardPaths : IDashboardPaths {
 
     public string ReportHtmlPath(string sessionId)        => Path.Combine(ReportsDir, $"{sessionId}.html");
     public string ReportSettingsPath(string sessionId)    => Path.Combine(ReportsDir, $"{sessionId}.settings.json");
-    public string LivestackDir(string sessionId)          => Path.Combine(ReportsDir, sessionId, "livestack");
+    // Matches NinaReportRegenerator.SaveLiveStackMasters' on-disk layout:
+    // reports/livestack/{sessionId}/. Prior code returned reports/{id}/livestack/
+    // which no writer used; the export zip carried files under the real layout
+    // but the IDashboardPaths method pointed elsewhere, so any reader using the
+    // interface (CompanionReportDataBuilder, dashboard livestack endpoints) would
+    // miss the files.
+    public string LivestackDir(string sessionId)          => Path.Combine(ReportsDir, "livestack", sessionId);
     public string LivestackManifestPath(string sessionId) => Path.Combine(LivestackDir(sessionId), "livestack.json");
     public string LivestackImagePath(string sessionId, string filename)
                                                           => Path.Combine(LivestackDir(sessionId), filename);

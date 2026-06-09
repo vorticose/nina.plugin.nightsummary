@@ -9,7 +9,28 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="System.Data.SQLite.Core" Version="1.0.119.0" />
+    <!-- Cross-platform SQLite stack. System.Data.SQLite ships natives only for
+         Windows + Linux; the companion needs to open the DB on macOS too.
+         Microsoft.Data.Sqlite pulls SQLitePCLRaw.bundle_e_sqlite3 which bundles
+         native binaries for win-x64/arm64, linux-*, osx-x64, osx-arm64. -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
+    <!-- Cross-platform JPEG decode/encode for companion's livestack-master
+         rescale (2000px master → 760px report embed). Ships RID-specific
+         natives for win-x64/arm64, linux-x64/arm64, osx-x64/arm64 — the
+         same shape as Microsoft.Data.Sqlite. Plugin side uses WPF's
+         JpegBitmapEncoder; it never loads this assembly. -->
+    <PackageReference Include="SkiaSharp" Version="2.88.8" />
+    <!-- Base SkiaSharp ships win + macOS natives but NOT Linux. Without this the
+         linux-x64/arm64 publish has no libSkiaSharp.so and the companion throws
+         DllNotFoundException when it rescales a livestack master. RID-scoped, so
+         it contributes nothing to win/mac builds. -->
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="2.88.8" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Test assembly needs to call internal helpers like ChartGenerator.GetXAxisLabel
+         and ReportGenerator.FormatRA. Matches the same grant in plugin AssemblyInfo. -->
+    <InternalsVisibleTo Include="NINA.Plugin.NightSummary.Tests" />
   </ItemGroup>
 
   <ItemGroup>
@@ -27,6 +48,15 @@
     </EmbeddedResource>
     <EmbeddedResource Include="Web\dashboard.js">
       <LogicalName>dashboard.js</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Web\setup.html">
+      <LogicalName>setup.html</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Web\setup.css">
+      <LogicalName>setup.css</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Web\setup.js">
+      <LogicalName>setup.js</LogicalName>
     </EmbeddedResource>
     <EmbeddedResource Include="..\assets\plugin-icon.png">
       <LogicalName>plugin-icon.png</LogicalName>

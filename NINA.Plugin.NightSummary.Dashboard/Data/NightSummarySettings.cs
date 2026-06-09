@@ -39,6 +39,15 @@ namespace NINA.Plugin.NightSummary.Data {
         public bool   LocalServerEnabled { get; set; } = false;
         public int    LocalServerPort    { get; set; } = 8181;
 
+        // ── Read-only mirror (public exposure) ───────────────────────────────
+        // Parallel DashboardServer instance bound to a separate port with all
+        // POST/PUT/DELETE routes refused via a single 403 short-circuit. Designed
+        // to sit behind a user-managed reverse proxy (Caddy / nginx / Cloudflare
+        // Tunnel) or Tailscale Funnel so the public-facing dashboard cannot
+        // mutate state. The main LocalServerPort stays LAN-only.
+        public bool   EnableReadOnlyMirror { get; set; } = false;
+        public int    ReadOnlyMirrorPort   { get; set; } = 8281;
+
         // ── Report display ────────────────────────────────────────────────────
         public int    ReportDetailLevel      { get; set; } = 2;
         public bool   ReportLightMode        { get; set; } = false;

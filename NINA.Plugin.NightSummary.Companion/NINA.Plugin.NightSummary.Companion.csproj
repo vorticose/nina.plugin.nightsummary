@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- WinExe = no console window on double-click (the companion is a background
+         web server, not a console tool). On macOS/Linux WinExe is treated exactly
+         like Exe - there is no Windows subsystem flag there - so this is safe for
+         every RID and the bash watchdog still launches the binary normally. -->
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>NightSummaryCompanion</AssemblyName>
+    <RootNamespace>NINA.Plugin.NightSummary.Companion</RootNamespace>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>false</SelfContained>
+    <!-- Bake the native deps (e_sqlite3, libSkiaSharp) INTO the single file so
+         the exe is a true drop-anywhere binary with no sibling .dll/.dylib/.so.
+         They self-extract to a per-user cache on first run. Also kills the flaky
+         "incremental single-file publish drops externalized natives" failure mode
+         that the build scripts used to clean-then-glob around. -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!-- Embedded Win32 icon, used by Explorer/taskbar for the launcher exe. Only
+         consumed by the Windows resource compiler; ignored for non-win RIDs. -->
+    <ApplicationIcon>..\assets\companion-icon\companion.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NINA.Plugin.NightSummary.Dashboard\NINA.Plugin.NightSummary.Dashboard.csproj" />
+  </ItemGroup>
+</Project>

@@ -26,7 +26,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
         public static string GenerateTimeline(
             SessionRecord session,
             List<ImageRecord> images,
-            List<SessionEvent> events) {
+            List<SessionEvent> events,
+            bool light = false) {
 
             if (!images.Any()) return string.Empty;
 
@@ -70,7 +71,6 @@ namespace NINA.Plugin.NightSummary.Reporting {
             var sb = new StringBuilder();
 
             // Floating tooltip div — positioned by JS on mousemove
-            bool light = SettingsManager.Instance.Current.ReportLightMode;
             string tooltipBg = light ? "#ffffff" : "#1e1e2e";
             string tooltipFg = light ? "#1a1a2e" : "#e0e0e0";
             string tooltipShadow = light ? "rgba(0,0,0,0.15)" : "rgba(0,0,0,0.6)";
@@ -93,30 +93,11 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
             // Build all imaging blocks across all targets before rendering,
             // so we can compute idle gaps and hatch only those regions.
-            static DateTime EstimatedStart(ImageRecord r) =>
-                r.Timestamp.AddSeconds(-(r.ExposureDuration > 0 ? r.ExposureDuration : 60));
-
+            // Uses the shared ImagingBlockHelper so the gap-merge logic stays in one place.
             var allBlocks = new List<(string Name, string Color, DateTime Start, DateTime End)>();
             foreach (var target in targets) {
-                var sorted = target.Images.OrderBy(i => i.Timestamp).ToList();
-                if (!sorted.Any()) continue;
-
-                var blockStart = EstimatedStart(sorted[0]);
-                var blockEnd   = sorted[0].Timestamp;
-
-                for (int i = 1; i <= sorted.Count; i++) {
-                    if (i < sorted.Count) {
-                        var gap = (EstimatedStart(sorted[i]) - blockEnd).TotalMinutes;
-                        if (gap <= 15) {
-                            blockEnd = sorted[i].Timestamp;
-                            continue;
-                        }
-                    }
-                    allBlocks.Add((target.Name, target.Color, blockStart, blockEnd));
-                    if (i < sorted.Count) {
-                        blockStart = EstimatedStart(sorted[i]);
-                        blockEnd   = sorted[i].Timestamp;
-                    }
+                foreach (var (winStart, winEnd) in ImagingBlockHelper.DetectWindows(target.Images)) {
+                    allBlocks.Add((target.Name, target.Color, winStart, winEnd));
                 }
             }
             allBlocks.Sort((a, b) => a.Start.CompareTo(b.Start));
@@ -167,9 +148,9 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 string tipLabel = evt.EventType switch {
                     "RoofOpen"   => "Safety monitor: safe",
                     "RoofClosed" => "Safety monitor: unsafe",
-                    _            => evt.Description?.Replace("'", "\u2019") ?? ""
+                    _            => evt.Description?.Replace("'", "’") ?? ""
                 };
-                string tipText = $"{evt.Timestamp:HH:mm} \u2014 {tipLabel}";
+                string tipText = $"{evt.Timestamp:HH:mm} — {tipLabel}";
                 markerData.Add((mx, tipText));
                 sb.AppendLine($"<polygon points='{mx:F1},{markerY - half} {mx - half:F1},{markerY + half} {mx + half:F1},{markerY + half}' fill='{markerColor}' opacity='0.95' data-tip='{tipText}' style='cursor:pointer;'/>");
             }
