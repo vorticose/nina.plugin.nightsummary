@@ -1,6 +1,7 @@
 # Builds the macOS companion app bundle and zips it for distribution.
 #
-# Produces: build/companion-mac/NightSummaryCompanion-mac-<arch>.zip
+# Produces: build/companion-mac/NightSummaryCompanion-mac-<arch>.dmg (on macOS via
+#           hdiutil) plus a .tar.gz fallback for cross-builds where hdiutil is absent.
 #
 # The .app bundle uses LSUIElement=true so it runs as a background agent (no
 # dock icon, no menu bar). Combined with the first-run auto-open-browser logic
@@ -13,10 +14,10 @@
 #   .\scripts\build-companion-mac.ps1 -Arch x64     # Intel Mac build
 #   .\scripts\build-companion-mac.ps1 -Arch both    # both arches
 #
-# Requires: pwsh 7+ (works on Windows + macOS + Linux). Cannot produce a .dmg
-# from a non-macOS dev box because hdiutil is mac-only -- the zipped .app
-# bundle gives the same drag-to-Applications experience for now. CI on
-# macos-latest runners will add the .dmg later.
+# Requires: pwsh 7+ (works on Windows + macOS + Linux). The .dmg is built only
+# where hdiutil exists (a Mac / the CI macos runner); a cross-build on Windows or
+# Linux falls back to the .tar.gz. The CI macos-latest runner is what produces the
+# signed .app + .dmg the release ships (it also cross-builds osx-x64 for Intel).
 
 [CmdletBinding()]
 param(
@@ -231,7 +232,41 @@ read -p "Press Enter to close..."
         Set-Content -Path $fixPath -Value $fixCmd -Encoding UTF8 -NoNewline
     }
 
-    # 5. Build a .tar.gz instead of .zip. Tar preserves Unix mode bits by spec
+    # 5. README.txt -- install + Gatekeeper (right-click Open / Sequoia fallback),
+    #    config location, autostart, stop/restart. Lands in the .tar.gz and .dmg.
+    $macReadme = @"
+Night Summary Companion (macOS $archLabel) - v$version
+
+A local web dashboard that mirrors your Night Summary imaging history from the
+primary (NINA) machine. Runs a small web server on http://localhost:8182/.
+
+INSTALL
+  1. Drag NightSummaryCompanion.app into the Applications folder.
+  2. First launch on a downloaded copy: right-click the app -> Open, then click
+     Open in the dialog. The app is ad-hoc signed (not notarized -- no paid Apple
+     account, by design), so macOS says 'unidentified developer', not 'damaged'.
+     macOS 15 (Sequoia): if right-click -> Open does not offer Open, go to
+     System Settings -> Privacy & Security -> scroll down -> Open Anyway.
+  3. A browser tab opens to the setup wizard. Pair it with your primary machine.
+
+  Config + synced data live in
+  ~/Library/Application Support/NightSummaryCompanion (NOT inside the .app), so
+  replacing the app on update never loses your settings or history.
+
+AUTOSTART AT LOGIN
+  Turn on 'Start at login' in the dashboard (Settings -> Start at login).
+
+STOP / RESTART
+  - Stop: the dashboard Quit button, or quit NightSummaryCompanion in Activity Monitor.
+  - The dashboard Restart button relaunches it automatically.
+  - It runs as a background agent (no Dock icon). Click the app again to reopen
+    the dashboard in your browser.
+"@
+    [System.IO.File]::WriteAllText((Join-Path $staging 'README.txt'),
+        ($macReadme -replace "`r`n", "`n"),
+        (New-Object System.Text.UTF8Encoding $false))
+
+    # 6. Build a .tar.gz instead of .zip. Tar preserves Unix mode bits by spec
     # (POSIX-1.2001 / pax) so macOS Archive Utility unpacks the binary with
     # 0755 intact. PowerShell's Compress-Archive emits Windows-style zips
     # that drop the exec bit -- tested, doesn't work on Mac without a follow-
@@ -295,6 +330,34 @@ read -p "Press Enter to close..."
 
     $tarMb = [math]::Round((Get-Item $tarPath).Length / 1MB, 1)
     Write-Host "  -> $tarPath ($tarMb MB, exec bits preserved)" -ForegroundColor Green
+
+    # 7. Build a .dmg (the primary macOS deliverable). hdiutil is mac-only, so a
+    #    cross-build on Windows/Linux skips this and ships the .tar.gz fallback;
+    #    the CI macos runner produces the .dmg the release advertises. The volume
+    #    holds the signed .app + an /Applications symlink (drag-to-install) + the
+    #    README. ditto copies the .app so the code signature is preserved (a plain
+    #    Copy-Item can invalidate it).
+    if (Get-Command hdiutil -ErrorAction SilentlyContinue) {
+        $dmgName  = "NightSummaryCompanion-mac-$archLabel.dmg"
+        $dmgPath  = Join-Path $buildDir $dmgName
+        if (Test-Path $dmgPath) { Remove-Item $dmgPath }
+        $dmgStage = Join-Path $buildDir "dmgstage-$archLabel"
+        if (Test-Path $dmgStage) { Remove-Item -Recurse -Force $dmgStage }
+        New-Item -ItemType Directory -Path $dmgStage -Force | Out-Null
+
+        & ditto "$appRoot" (Join-Path $dmgStage 'NightSummaryCompanion.app')
+        if ($LASTEXITCODE -ne 0) { throw "ditto failed staging the .app for the dmg (exit $LASTEXITCODE)" }
+        & ln -s /Applications (Join-Path $dmgStage 'Applications')
+        Copy-Item (Join-Path $staging 'README.txt') (Join-Path $dmgStage 'README.txt')
+
+        & hdiutil create -volname "Night Summary Companion" -srcfolder "$dmgStage" -ov -format UDZO "$dmgPath" | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "hdiutil create failed (exit $LASTEXITCODE)" }
+        Remove-Item -Recurse -Force $dmgStage
+        $dmgMb = [math]::Round((Get-Item $dmgPath).Length / 1MB, 1)
+        Write-Host "  -> $dmgPath ($dmgMb MB)" -ForegroundColor Green
+    } else {
+        Write-Host "  hdiutil unavailable (cross-build) -- skipping .dmg; .tar.gz is the fallback" -ForegroundColor DarkGray
+    }
 }
 
 switch ($Arch) {
@@ -309,24 +372,32 @@ switch ($Arch) {
 Write-Host ""
 Write-Host "Done. Artifacts in $buildDir" -ForegroundColor Cyan
 $macSigned = [bool](Get-Command codesign -ErrorAction SilentlyContinue)
+$macDmg    = [bool](Get-Command hdiutil  -ErrorAction SilentlyContinue)
 Write-Host ""
 Write-Host "To install on a fresh Mac:" -ForegroundColor Yellow
-Write-Host "  1. Transfer the .tar.gz to the Mac (AirDrop / scp / download)."
-Write-Host "  2. Double-click the .tar.gz in Finder. Archive Utility extracts a folder."
-Write-Host "  3. Drag NightSummaryCompanion.app into /Applications."
+if ($macDmg) {
+    Write-Host "  1. Transfer the .dmg to the Mac (AirDrop / scp / download)."
+    Write-Host "  2. Open the .dmg and drag NightSummaryCompanion.app onto Applications."
+} else {
+    Write-Host "  1. Transfer the .tar.gz to the Mac (this cross-build has no .dmg)."
+    Write-Host "  2. Double-click the .tar.gz; Archive Utility extracts a folder. Drag"
+    Write-Host "     NightSummaryCompanion.app into /Applications."
+}
 if ($macSigned) {
-    Write-Host "  4. Open it. A scp'd/AirDropped copy double-clicks straight away; a"
-    Write-Host "     browser-DOWNLOADED copy is quarantined -> right-click -> Open once"
+    Write-Host "  3. Open it. An AirDropped/scp'd copy opens straight away; a browser-"
+    Write-Host "     DOWNLOADED copy is quarantined -> right-click -> Open once"
     Write-Host "     ('unidentified developer', not 'damaged', because the bundle is signed)."
-    Write-Host "  5. Setup wizard opens in your default browser. Done."
+    Write-Host "     macOS 15 (Sequoia): if Open isn't offered, System Settings ->"
+    Write-Host "     Privacy & Security -> Open Anyway."
+    Write-Host "  4. Setup wizard opens in your default browser. Done."
     Write-Host ""
     Write-Host "Bundle is ad-hoc signed (no Apple account). Notarization would remove the" -ForegroundColor DarkGray
     Write-Host "right-click step but needs a paid dev account -- out of scope by policy."  -ForegroundColor DarkGray
 } else {
-    Write-Host "  4. Double-click 'Fix Permissions.command' (one-time ad-hoc codesign)."
-    Write-Host "  5. Right-click NightSummaryCompanion.app -> Open. Gatekeeper warns once; click Open."
-    Write-Host "  6. Setup wizard opens in your default browser. Done."
+    Write-Host "  3. Double-click 'Fix Permissions.command' (one-time ad-hoc codesign)."
+    Write-Host "  4. Right-click NightSummaryCompanion.app -> Open. Gatekeeper warns once; click Open."
+    Write-Host "  5. Setup wizard opens in your default browser. Done."
     Write-Host ""
     Write-Host "This is an UNSIGNED cross-build (codesign is mac-only). Build on a Mac /"  -ForegroundColor DarkGray
-    Write-Host "the CI macos runner to sign the bundle and drop steps 4-5 to one click."   -ForegroundColor DarkGray
+    Write-Host "the CI macos runner to sign the bundle + produce the .dmg."                -ForegroundColor DarkGray
 }

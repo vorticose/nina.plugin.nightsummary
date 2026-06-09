@@ -227,7 +227,19 @@ PREREQS (SkiaSharp): libfontconfig1 libfreetype6
   sudo apt-get update && sudo apt-get install -y libfontconfig1 libfreetype6
 
 The first run opens the setup wizard in your browser (xdg-open). Pair it with
-your primary (NINA) machine there. See install.sh for systemd autostart.
+your primary (NINA) machine there.
+
+CONFIG
+  Config + synced data live in ~/.local/share/NightSummaryCompanion (NOT next to
+  the binary), so replacing the binary on update never loses your settings/history.
+
+AUTOSTART AT LOGIN
+  Easiest: turn on 'Start at login' in the dashboard (Settings -> Start at login).
+  Headless / manual: install.sh prints the systemd --user steps.
+
+STOP / RESTART
+  Use the dashboard Quit / Restart buttons (Settings -> Companion process), or
+  manage the systemd --user service if you enabled it.
 "@
 [System.IO.File]::WriteAllText((Join-Path $appDir 'README.txt'),
     ($readme -replace "`r`n", "`n"),

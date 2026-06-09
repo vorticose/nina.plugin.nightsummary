@@ -30,7 +30,12 @@ jobs:
             platform: mac
             arch: arm64
             script: build-companion-mac.ps1
-            artifact: build/companion-mac/*.tar.gz
+            artifact: build/companion-mac/*.dmg
+          - os: macos-latest    # same runner cross-builds osx-x64 for Intel Macs (codesign is arch-agnostic)
+            platform: mac
+            arch: x64
+            script: build-companion-mac.ps1
+            artifact: build/companion-mac/*.dmg
           - os: windows-latest
             platform: win
             arch: x64
@@ -72,7 +77,7 @@ jobs:
 
       - name: Verify mac bundle is signed
         if: matrix.platform == 'mac'
-        run: codesign --verify --deep --strict --verbose=2 build/companion-mac/staging-arm64/NightSummaryCompanion.app
+        run: codesign --verify --deep --strict --verbose=2 build/companion-mac/staging-${{ matrix.arch }}/NightSummaryCompanion.app
 
       - uses: actions/upload-artifact@v4
         with:

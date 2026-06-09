@@ -16,13 +16,16 @@ NINA under *Options → Night Summary → Local Dashboard → Companion Pairing*
 
 1. Download **`NightSummaryCompanion-win-x64.zip`** and unzip it.
 2. Double-click **`NightSummaryCompanion.exe`** — it's a single file, no install, drop it anywhere.
+   - First launch may show Windows SmartScreen (*"Windows protected your PC"*). Click **More info → Run anyway** — expected for an unsigned open-source app.
 3. Your browser opens the setup wizard. Pair it and you're done.
 
 ## macOS
 
-1. Download **`NightSummaryCompanion-mac-arm64.tar.gz`** (Apple Silicon).
-2. Double-click to extract, then drag **`NightSummaryCompanion.app`** into **Applications**.
-3. Open it (first launch on a downloaded copy: right-click → Open). The setup wizard opens in your browser.
+1. Download the `.dmg` for your Mac: **`NightSummaryCompanion-mac-arm64.dmg`** (Apple Silicon — M1 and newer) or **`NightSummaryCompanion-mac-x64.dmg`** (Intel).
+2. Open the `.dmg` and drag **`NightSummaryCompanion.app`** onto the **Applications** folder.
+3. Launch it. First launch on a downloaded copy: **right-click → Open**, then **Open** in the dialog (it's ad-hoc signed, not notarized, so macOS says *"unidentified developer"*, not *"damaged"*).
+   - On **macOS 15 (Sequoia)**, if right-click → Open doesn't offer **Open**, go to **System Settings → Privacy & Security**, scroll down, and click **Open Anyway**.
+4. The setup wizard opens in your browser.
 
 ## Linux
 
@@ -39,7 +42,8 @@ Then launch **Night Summary Companion** from your applications menu.
 - **.deb** (Debian / Ubuntu / Mint / Pop) — download `nightsummary-companion_*.deb`, then
   `sudo apt install ./nightsummary-companion_*.deb`
 - **AppImage** (portable) — download `NightSummaryCompanion-x86_64.AppImage`, mark it
-  executable (`chmod +x`), and run it.
+  executable (`chmod +x`), and run it. If it errors about `libfuse.so.2`, either install
+  FUSE 2 (`sudo apt install libfuse2`) or run it with `--appimage-extract-and-run`.
 - **Tarball** (manual / headless) — download `NightSummaryCompanion-linux-x64.tar.gz`,
   extract, run `./install.sh` (or just `./NightSummaryCompanion serve`).
 
