@@ -59,6 +59,16 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      # macOS runners are disk-tight; the self-contained publish + hdiutil's dmg
+      # scratch can hit "No space left on device". Xcode (~15 GB) isn't needed --
+      # the build is dotnet + codesign/hdiutil/ditto (all in /usr/bin) -- so drop it.
+      - name: Free disk space (macOS runner)
+        if: matrix.platform == 'mac'
+        run: |
+          df -h /
+          sudo rm -rf /Applications/Xcode_*.app || true
+          df -h /
+
       - name: Build companion (${{ matrix.platform }}-${{ matrix.arch }})
         shell: pwsh
         run: ./scripts/${{ matrix.script }} -Arch ${{ matrix.arch }}
