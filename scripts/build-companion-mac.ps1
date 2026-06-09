@@ -141,6 +141,18 @@ done
     [System.IO.File]::WriteAllText((Join-Path $macOs 'NightSummaryCompanion-watchdog'),
         ($watchdog -replace "`r`n", "`n"), $utf8NoBom)
 
+    # WriteAllText creates these scripts 0644. The .tar.gz path sets exec bits in
+    # the tar entries, but the .dmg path uses ditto, which copies on-disk perms
+    # verbatim -- so the launcher (CFBundleExecutable) and watchdog MUST be made
+    # executable ON DISK here, or the installed .app fails to open ("can't be
+    # opened"). chmod exists wherever the .dmg is built (a Mac); on a Windows
+    # cross-build it's absent and the tar entries carry the modes instead.
+    if (Get-Command chmod -ErrorAction SilentlyContinue) {
+        & chmod +x (Join-Path $macOs 'NightSummaryCompanion') `
+                   (Join-Path $macOs 'NightSummaryCompanion-watchdog') `
+                   (Join-Path $macOs 'NightSummaryCompanion-bin')
+    }
+
     # 2b. App icon. Drop the committed .icns into Contents/Resources and point
     # CFBundleIconFile at it (below). LSUIElement=true means no Dock icon, but
     # the .icns is what Finder shows for the .app and what appears in System
