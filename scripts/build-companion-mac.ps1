@@ -99,7 +99,7 @@ function Build-Arch {
     #
     # Why split: macOS LaunchServices treats a Finder click on an already-
     # "running" .app as a "reopen" AppleEvent. A headless agent has no run loop
-    # to answer it, so the reopen times out (-1712) and the click does nothing —
+    # to answer it, so the reopen times out (-1712) and the click does nothing --
     # e.g. the user closes the dashboard tab, clicks the app to get it back, and
     # nothing happens. Because the launcher exits at once, LaunchServices never
     # sees this .app as "running", so EVERY click launches it fresh; the binary's
@@ -111,7 +111,7 @@ function Build-Arch {
 #!/bin/bash
 # NightSummaryCompanion launcher (the .app's CFBundleExecutable). Detaches the
 # real server as a background watchdog, then exits immediately so macOS never
-# considers this .app "running" — that way every Finder click launches us fresh
+# considers this .app "running" -- that way every Finder click launches us fresh
 # and reliably opens the dashboard instead of sending a dead-end reopen event.
 DIR="$(cd "$(dirname "$0")" && pwd)"
 nohup "$DIR/NightSummaryCompanion-watchdog" "$@" >/dev/null 2>&1 &
@@ -198,12 +198,12 @@ done
 "@
     Set-Content -Path (Join-Path $contents 'Info.plist') -Value $plist -Encoding UTF8 -NoNewline
 
-    # 4. Code-sign the bundle ad-hoc when codesign is available (macOS only — a
+    # 4. Code-sign the bundle ad-hoc when codesign is available (macOS only -- a
     # CI macos runner or the Mac mini). A signed bundle means the user just
     # right-click->Opens once on a downloaded copy; no Fix Permissions step.
     # Cross-building on Windows we cannot sign (codesign is mac-only), so we fall
     # back to shipping Fix Permissions.command for the user to ad-hoc sign there.
-    # Ad-hoc only — no Developer ID / notarization, so no Apple account needed.
+    # Ad-hoc only -- no Developer ID / notarization, so no Apple account needed.
     $signed = $false
     if (Get-Command codesign -ErrorAction SilentlyContinue) {
         Write-Host "  codesigning bundle (ad-hoc)..."
@@ -214,7 +214,7 @@ done
         }
         Write-Host ("  bundle signed: " + $signed)
     } else {
-        Write-Host "  codesign unavailable (cross-build) — shipping Fix Permissions.command"
+        Write-Host "  codesign unavailable (cross-build) -- shipping Fix Permissions.command"
     }
 
     # Fix Permissions.command is only needed for UNSIGNED (Windows-cross-built)
