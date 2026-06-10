@@ -244,7 +244,7 @@ read -p "Press Enter to close..."
         Set-Content -Path $fixPath -Value $fixCmd -Encoding UTF8 -NoNewline
     }
 
-    # 5. README.txt -- install + Gatekeeper (right-click Open / Sequoia fallback),
+    # 5. README.txt -- install (curl one-liner first, then DMG + xattr fallback),
     #    config location, autostart, stop/restart. Lands in the .tar.gz and .dmg.
     $macReadme = @"
 Night Summary Companion (macOS $archLabel) - v$version
@@ -252,13 +252,19 @@ Night Summary Companion (macOS $archLabel) - v$version
 A local web dashboard that mirrors your Night Summary imaging history from the
 primary (NINA) machine. Runs a small web server on a configurable localhost port.
 
-INSTALL
+INSTALL (easiest - no Gatekeeper prompt)
+  Open Terminal (Applications -> Utilities -> Terminal) and paste:
+    curl -fsSL https://github.com/vorticose/nina.plugin.nightsummary/releases/latest/download/install-companion-mac.sh | sh
+  It installs the app to Applications and launches it. A curl download is never
+  quarantined, so macOS does not block it - nothing else to click.
+
+INSTALL (from this disk image)
   1. Drag NightSummaryCompanion.app into the Applications folder.
-  2. First launch on a downloaded copy: right-click the app -> Open, then click
-     Open in the dialog. The app is ad-hoc signed (not notarized -- no paid Apple
-     account, by design), so macOS says 'unidentified developer', not 'damaged'.
-     macOS 15 (Sequoia): if right-click -> Open does not offer Open, go to
-     System Settings -> Privacy & Security -> scroll down -> Open Anyway.
+  2. The app is ad-hoc signed (not notarized -- no paid Apple account, by design).
+     A disk image downloaded in a browser is quarantined, and recent macOS blocks
+     it with no right-click -> Open bypass. Clear the flag once in Terminal:
+       xattr -dr com.apple.quarantine /Applications/NightSummaryCompanion.app
+     Then open the app normally from Applications.
   3. A browser tab opens to the setup wizard. Pair it with your primary machine.
 
   Config + synced data live in
@@ -381,15 +387,15 @@ if ($macDmg) {
     Write-Host "     NightSummaryCompanion.app into /Applications."
 }
 if ($macSigned) {
-    Write-Host "  3. Open it. An AirDropped/scp'd copy opens straight away; a browser-"
-    Write-Host "     DOWNLOADED copy is quarantined -> right-click -> Open once"
-    Write-Host "     ('unidentified developer', not 'damaged', because the bundle is signed)."
-    Write-Host "     macOS 15 (Sequoia): if Open isn't offered, System Settings ->"
-    Write-Host "     Privacy & Security -> Open Anyway."
+    Write-Host "  3. Install via the curl one-liner from the release page (recommended) -- a"
+    Write-Host "     curl download isn't quarantined, so no Gatekeeper prompt. Or drag the"
+    Write-Host "     .app to /Applications and clear quarantine once in Terminal:"
+    Write-Host "       xattr -dr com.apple.quarantine /Applications/NightSummaryCompanion.app"
     Write-Host "  4. Setup wizard opens in your default browser. Done."
     Write-Host ""
-    Write-Host "Bundle is ad-hoc signed (no Apple account). Notarization would remove the" -ForegroundColor DarkGray
-    Write-Host "right-click step but needs a paid dev account -- out of scope by policy."  -ForegroundColor DarkGray
+    Write-Host "Bundle is ad-hoc signed (no Apple account). Recent macOS removed the right-"  -ForegroundColor DarkGray
+    Write-Host "click->Open bypass, so the curl installer / xattr is the path. Notarization"   -ForegroundColor DarkGray
+    Write-Host "would remove even that but needs a paid dev account -- out of scope by policy." -ForegroundColor DarkGray
 } else {
     Write-Host "  3. Double-click 'Fix Permissions.command' (one-time ad-hoc codesign)."
     Write-Host "  4. Right-click NightSummaryCompanion.app -> Open. Gatekeeper warns once; click Open."
