@@ -34,9 +34,16 @@ Grab the latest build from the [**Releases page**](https://github.com/vorticose/
 
 ### macOS
 
-1. Download the `.dmg` for your Mac: `NightSummaryCompanion-mac-arm64.dmg` (Apple Silicon — M1 and newer) or `NightSummaryCompanion-mac-x64.dmg` (Intel).
-2. Open the `.dmg` and drag `NightSummaryCompanion.app` onto the **Applications** folder.
-3. Launch it. First launch on a downloaded copy: right-click → **Open**, then **Open** in the dialog (ad-hoc signed, not notarized). On **macOS 15 (Sequoia)**, if Open isn't offered, use **System Settings → Privacy & Security → Open Anyway**.
+One line, no Gatekeeper prompt — open **Terminal** (Applications → Utilities → Terminal) and paste:
+
+```sh
+curl -fsSL https://github.com/vorticose/nina.plugin.nightsummary/releases/latest/download/install-companion-mac.sh | sh
+```
+
+It auto-detects Apple Silicon vs Intel, installs the app to **Applications**, and launches it. Because the download comes through `curl` rather than a browser, macOS never quarantines it — so there's no "unidentified developer" wall and nothing else to click.
+
+{: .warning }
+> **Don't just download the `.dmg` and double-click it** — recent macOS quarantines browser downloads and blocks the ad-hoc-signed app, and it no longer offers the old right-click → **Open** bypass. Use the one-liner above. If you'd rather use the DMG: drag `NightSummaryCompanion.app` to **Applications**, then clear the download flag once in Terminal — `xattr -dr com.apple.quarantine /Applications/NightSummaryCompanion.app` — and open it normally. (It's ad-hoc signed because there's no paid Apple Developer account behind this open-source app.)
 
 ### Linux
 
