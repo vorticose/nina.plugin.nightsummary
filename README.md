@@ -65,6 +65,10 @@ The **Sessions tab** shows all your recorded sessions as cards with thumbnails, 
 
 Enable in **Options → Night Summary Settings → Local Dashboard**. Run **Generate All Reports** on first use to build reports for your existing session history. The settings panel displays all available URLs for reaching the dashboard so you can access it from any device on your network or over a VPN.
 
+### Companion app
+
+The **Night Summary Companion** is a standalone dashboard app for **Mac, Windows, and Linux** — for browsing your dashboard even when the NINA machine is asleep or off. It keeps its own synced copy of your sessions (one-way; it never writes back to the rig) and serves the full dashboard independently. Pair it once with NINA using a token from **Options → Local Dashboard → Companion Pairing**. See [Companion app](#companion-app-1) under Installation below.
+
 ### Delivery options
 - **Email** via SMTP — Gmail is the default and easiest to set up, but any SMTP provider is supported
 - **Discord** webhook — embed summary + HTML report as file attachment
@@ -103,6 +107,22 @@ Night Summary is available through NINA's built-in plugin manager:
 3. Restart NINA when prompted.
 
 To install manually, download `NINA.Plugin.NightSummary.zip` from the [Releases](../../releases/latest) page and extract it to `%LOCALAPPDATA%\NINA\Plugins\3.0.0\Night Summary\`.
+
+### Companion app
+
+The standalone [Companion](#companion-app) (Mac / Windows / Linux) installs separately from the plugin. Full per-OS steps are in **[COMPANION_INSTALL.md](COMPANION_INSTALL.md)**; the short version:
+
+- **macOS** — paste into Terminal:
+  ```sh
+  curl -fsSL https://github.com/vorticose/nina.plugin.nightsummary/releases/latest/download/install-companion-mac.sh | sh
+  ```
+  Use this rather than the `.dmg` — a DMG downloaded in a browser is quarantined and recent macOS blocks it with no easy bypass; the `curl` install isn't quarantined, so it just works.
+- **Linux** — paste into a terminal:
+  ```sh
+  curl -fsSL https://github.com/vorticose/nina.plugin.nightsummary/releases/latest/download/install-companion.sh | sh
+  ```
+  (or `.deb` / AppImage / tarball — see COMPANION_INSTALL.md)
+- **Windows** — download `NightSummaryCompanion-win-x64.zip` from [Releases](../../releases/latest), unzip, and run `NightSummaryCompanion.exe`.
 
 
 ## Initial Setup
