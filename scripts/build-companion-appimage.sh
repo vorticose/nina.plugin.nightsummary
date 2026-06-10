@@ -9,7 +9,7 @@
 # so run that first. Wraps it in an AppDir whose AppRun is the same exit-88/0
 # watchdog the tarball uses, then packs with appimagetool.
 #
-# Runs on Linux (a real box, WSL, or the CI ubuntu runner). No FUSE needed —
+# Runs on Linux (a real box, WSL, or the CI ubuntu runner). No FUSE needed --
 # appimagetool is invoked with --appimage-extract-and-run.
 #
 # Usage:  bash scripts/build-companion-appimage.sh
@@ -22,8 +22,8 @@ STAGE="$OUT/staging-x64/NightSummaryCompanion"
 BIN="$STAGE/NightSummaryCompanion-bin"
 ICON="$ROOT/assets/companion-icon/companion-256.png"
 
-[ -f "$BIN" ]  || { echo "ERROR: $BIN missing — run scripts/build-companion-linux.ps1 first."; exit 1; }
-[ -f "$ICON" ] || { echo "ERROR: $ICON missing — run scripts/gen-companion-icons.py first."; exit 1; }
+[ -f "$BIN" ]  || { echo "ERROR: $BIN missing -- run scripts/build-companion-linux.ps1 first."; exit 1; }
+[ -f "$ICON" ] || { echo "ERROR: $ICON missing -- run scripts/gen-companion-icons.py first."; exit 1; }
 # appimagetool shells out to `file` even when ARCH is set. Present on CI ubuntu
 # runners; a bare WSL/Debian needs it installed.
 command -v file >/dev/null 2>&1 || { echo "ERROR: 'file' command required by appimagetool. Install it (e.g. sudo apt-get install -y file)."; exit 1; }
