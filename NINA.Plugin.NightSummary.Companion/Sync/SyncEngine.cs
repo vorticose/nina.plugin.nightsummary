@@ -32,6 +32,11 @@ public sealed class SyncEngine {
     private HttpClient _http;
     private readonly bool _externalHttp;
 
+    // Server emits camelCase JSON; one shared reader instead of allocating fresh
+    // options at every manifest deserialize.
+    private static readonly JsonSerializerOptions ManifestJson =
+        new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+
     public SyncEngine(CompanionConfig config, CompanionPaths paths, IDashboardLogger log, HttpClient? http = null) {
         _config = config;
         _paths  = paths;
@@ -175,14 +180,8 @@ public sealed class SyncEngine {
 
             // 7 — Persist
             Report(5, "Finishing up");
-            var maxMtime = manifest.Files.Length > 0
-                ? manifest.Files.Max(f => f.Mtime).ToUniversalTime()
-                : (DateTime?)null;
-            if (maxMtime.HasValue) state.LastReportMtimeUtc = maxMtime;
-            var maxThumbMtime = thumbsManifest.Files.Length > 0
-                ? thumbsManifest.Files.Max(f => f.Mtime).ToUniversalTime()
-                : (DateTime?)null;
-            if (maxThumbMtime.HasValue) state.LastThumbMtimeUtc = maxThumbMtime;
+            if (MaxMtimeUtc(manifest) is { } maxMtime) state.LastReportMtimeUtc = maxMtime;
+            if (MaxMtimeUtc(thumbsManifest) is { } maxThumbMtime) state.LastThumbMtimeUtc = maxThumbMtime;
             state.LastSuccessUtc = DateTime.UtcNow;
             state.LastError      = null;
             state.Save(statePath);
@@ -220,27 +219,50 @@ public sealed class SyncEngine {
 
     // ── Step 2: manifest ────────────────────────────────────────────────────
 
-    private async Task<ManifestResponse> FetchManifestAsync(DateTime? since, CancellationToken ct) {
-        var url = "/api/export/manifest";
+    private Task<ManifestResponse> FetchManifestAsync(DateTime? since, CancellationToken ct) =>
+        FetchManifestFromAsync("/api/export/manifest", since, allow404: false, ct);
+
+    // Shared manifest fetch for both the reports and thumbs endpoints. allow404
+    // lets the thumbs caller treat a primary that predates the endpoint as "empty"
+    // instead of throwing.
+    private async Task<ManifestResponse> FetchManifestFromAsync(string endpoint, DateTime? since,
+                                                                bool allow404, CancellationToken ct) {
+        var url = endpoint;
         if (since.HasValue) url += "?since=" + Uri.EscapeDataString(since.Value.ToString("o"));
         using var resp = await _http.GetAsync(url, ct);
+        if (allow404 && resp.StatusCode == System.Net.HttpStatusCode.NotFound) {
+            _log.Info($"Sync: {endpoint} → 404 (primary predates this endpoint)");
+            return new ManifestResponse();
+        }
         resp.EnsureSuccessStatusCode();
         var json = await resp.Content.ReadAsStringAsync(ct);
-        return JsonSerializer.Deserialize<ManifestResponse>(json,
-            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })
-            ?? new ManifestResponse();
+        return JsonSerializer.Deserialize<ManifestResponse>(json, ManifestJson) ?? new ManifestResponse();
     }
 
     // ── Step 3: reports zip ─────────────────────────────────────────────────
 
-    private async Task<(int added, int updated)> PullReportsZipAsync(DateTime? since, CancellationToken ct,
-                                                                     int step, string phase) {
-        var url = "/api/export/reports";
+    private Task<(int added, int updated)> PullReportsZipAsync(DateTime? since, CancellationToken ct,
+                                                              int step, string phase) =>
+        PullZipAsync("/api/export/reports", _paths.ReportsDir, "ns-companion",
+                     since, skipOn404: false, ct, step, phase);
+
+    // Shared zip pull for the reports and thumbs trees: stream the (optionally
+    // incremental) zip to a temp file, then extract each entry into rootDir with
+    // path-traversal sanitisation, preserving the server's last-write time.
+    // skipOn404 lets the thumbs caller no-op against a primary that predates the
+    // endpoint; reports treat 404 as a hard error.
+    private async Task<(int added, int updated)> PullZipAsync(string endpoint, string root, string tempPrefix,
+                                                              DateTime? since, bool skipOn404,
+                                                              CancellationToken ct, int step, string phase) {
+        if (string.IsNullOrEmpty(root)) return (0, 0);
+
+        var url = endpoint;
         if (since.HasValue) url += "?since=" + Uri.EscapeDataString(since.Value.ToString("o"));
 
-        var tempZip = Path.Combine(Path.GetTempPath(), $"ns-companion-{Guid.NewGuid():N}.zip");
+        var tempZip = Path.Combine(Path.GetTempPath(), $"{tempPrefix}-{Guid.NewGuid():N}.zip");
         try {
             using (var resp = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct)) {
+                if (skipOn404 && resp.StatusCode == System.Net.HttpStatusCode.NotFound) return (0, 0);
                 resp.EnsureSuccessStatusCode();
                 using var src = await resp.Content.ReadAsStreamAsync(ct);
                 using var dst = new FileStream(tempZip, FileMode.Create, FileAccess.Write, FileShare.None,
@@ -248,6 +270,7 @@ public sealed class SyncEngine {
                 await CopyWithProgressAsync(src, dst, step, phase, ct);
             }
 
+            Directory.CreateDirectory(root);
             int added = 0, updated = 0;
             using var fs = new FileStream(tempZip, FileMode.Open, FileAccess.Read);
             using var archive = new ZipArchive(fs, ZipArchiveMode.Read);
@@ -258,7 +281,7 @@ public sealed class SyncEngine {
                     _log.Warn($"Sync: skipping suspicious zip entry '{entry.FullName}'");
                     continue;
                 }
-                var dest = Path.Combine(_paths.ReportsDir, safeRel);
+                var dest = Path.Combine(root, safeRel);
                 Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
                 bool existed = File.Exists(dest);
                 using (var es = entry.Open())
@@ -383,104 +406,13 @@ public sealed class SyncEngine {
 
     // ── Step 6: orphan reconcile ────────────────────────────────────────────
 
-    private int DeleteOrphans(ManifestResponse remote) {
-        var remotePaths = new HashSet<string>(
-            remote.Files.Select(f => Normalize(f.Path)),
-            StringComparer.OrdinalIgnoreCase);
-        if (!Directory.Exists(_paths.ReportsDir)) return 0;
+    private int DeleteOrphans(ManifestResponse remote) =>
+        DeleteOrphansIn(_paths.ReportsDir, remote, "orphan");
 
-        int deleted = 0;
-        foreach (var local in Directory.EnumerateFiles(_paths.ReportsDir, "*", SearchOption.AllDirectories)) {
-            var rel = Path.GetRelativePath(_paths.ReportsDir, local).Replace('\\', '/');
-            if (!remotePaths.Contains(rel)) {
-                try { File.Delete(local); deleted++; }
-                catch (Exception ex) { _log.Warn($"Sync: could not delete orphan '{rel}': {ex.Message}"); }
-            }
-        }
-        // Best-effort prune empty subdirs created by deletes
-        foreach (var dir in Directory.EnumerateDirectories(_paths.ReportsDir, "*", SearchOption.AllDirectories)
-                                     .OrderByDescending(d => d.Length)) {
-            try { if (!Directory.EnumerateFileSystemEntries(dir).Any()) Directory.Delete(dir); }
-            catch { /* ignore */ }
-        }
-        return deleted;
-    }
-
-    private static string Normalize(string p) => p.Replace('\\', '/').TrimStart('/');
-
-    // ── Step 6b: thumbnail tree (manifest + zip + orphan) ───────────────────
-
-    // Mirrors FetchManifestAsync against the separate thumbs endpoint so the
-    // reports orphan pass can never touch the thumbs tree and vice versa.
-    private async Task<ManifestResponse> FetchThumbsManifestAsync(DateTime? since, CancellationToken ct) {
-        var url = "/api/export/thumbs-manifest";
-        if (since.HasValue) url += "?since=" + Uri.EscapeDataString(since.Value.ToString("o"));
-        using var resp = await _http.GetAsync(url, ct);
-        // Primary that predates the thumbs endpoint returns 404. Treat as
-        // "nothing to sync" — server side will eventually be upgraded.
-        if (resp.StatusCode == System.Net.HttpStatusCode.NotFound) {
-            _log.Info("Sync: /api/export/thumbs-manifest → 404 (primary predates thumb sync)");
-            return new ManifestResponse();
-        }
-        resp.EnsureSuccessStatusCode();
-        var json = await resp.Content.ReadAsStringAsync(ct);
-        return JsonSerializer.Deserialize<ManifestResponse>(json,
-            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })
-            ?? new ManifestResponse();
-    }
-
-    // Same approach as PullReportsZipAsync but rooted at ThumbsRoot. Thumbnails
-    // are JPEGs — already compressed — so the server uses CompressionLevel.NoCompression.
-    private async Task<(int added, int updated)> PullThumbsZipAsync(DateTime? since, CancellationToken ct,
-                                                                    int step, string phase) {
-        var root = _paths.ThumbsRoot;
-        if (string.IsNullOrEmpty(root)) return (0, 0);
-
-        var url = "/api/export/thumbs";
-        if (since.HasValue) url += "?since=" + Uri.EscapeDataString(since.Value.ToString("o"));
-
-        var tempZip = Path.Combine(Path.GetTempPath(), $"ns-companion-thumbs-{Guid.NewGuid():N}.zip");
-        try {
-            using (var resp = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct)) {
-                // Primary without the endpoint → silent skip (paired with manifest 404).
-                if (resp.StatusCode == System.Net.HttpStatusCode.NotFound) return (0, 0);
-                resp.EnsureSuccessStatusCode();
-                using var src = await resp.Content.ReadAsStreamAsync(ct);
-                using var dst = new FileStream(tempZip, FileMode.Create, FileAccess.Write, FileShare.None,
-                                               81920, useAsync: true);
-                await CopyWithProgressAsync(src, dst, step, phase, ct);
-            }
-
-            Directory.CreateDirectory(root);
-            int added = 0, updated = 0;
-            using var fs = new FileStream(tempZip, FileMode.Open, FileAccess.Read);
-            using var archive = new ZipArchive(fs, ZipArchiveMode.Read);
-            foreach (var entry in archive.Entries) {
-                if (entry.FullName.EndsWith("/", StringComparison.Ordinal)) continue;
-                var safeRel = SanitizeRelativePath(entry.FullName);
-                if (safeRel == null) {
-                    _log.Warn($"Sync: skipping suspicious thumb zip entry '{entry.FullName}'");
-                    continue;
-                }
-                var dest = Path.Combine(root, safeRel);
-                Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
-                bool existed = File.Exists(dest);
-                using (var es = entry.Open())
-                using (var ds = new FileStream(dest, FileMode.Create, FileAccess.Write, FileShare.None)) {
-                    await es.CopyToAsync(ds, ct);
-                }
-                File.SetLastWriteTime(dest, entry.LastWriteTime.DateTime);
-                if (existed) updated++; else added++;
-            }
-            return (added, updated);
-        } finally {
-            try { if (File.Exists(tempZip)) File.Delete(tempZip); } catch { }
-        }
-    }
-
-    // Same orphan-delete pattern as DeleteOrphans, rooted at ThumbsRoot.
-    private int DeleteThumbOrphans(ManifestResponse remote) {
-        var root = _paths.ThumbsRoot;
+    // Deletes local files under root that the remote manifest no longer lists, then
+    // prunes the empty dirs left behind. Shared by the reports and thumbs trees;
+    // label only varies the warning text. No-op on a missing/empty root.
+    private int DeleteOrphansIn(string? root, ManifestResponse remote, string label) {
         if (string.IsNullOrEmpty(root) || !Directory.Exists(root)) return 0;
 
         var remotePaths = new HashSet<string>(
@@ -492,9 +424,10 @@ public sealed class SyncEngine {
             var rel = Path.GetRelativePath(root, local).Replace('\\', '/');
             if (!remotePaths.Contains(rel)) {
                 try { File.Delete(local); deleted++; }
-                catch (Exception ex) { _log.Warn($"Sync: could not delete orphan thumb '{rel}': {ex.Message}"); }
+                catch (Exception ex) { _log.Warn($"Sync: could not delete {label} '{rel}': {ex.Message}"); }
             }
         }
+        // Best-effort prune empty subdirs created by deletes
         foreach (var dir in Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories)
                                      .OrderByDescending(d => d.Length)) {
             try { if (!Directory.EnumerateFileSystemEntries(dir).Any()) Directory.Delete(dir); }
@@ -502,4 +435,29 @@ public sealed class SyncEngine {
         }
         return deleted;
     }
+
+    private static string Normalize(string p) => p.Replace('\\', '/').TrimStart('/');
+
+    // Newest file mtime in a manifest as UTC, or null when the manifest is empty —
+    // the high-water mark stored in sync state to drive the next incremental pull.
+    private static DateTime? MaxMtimeUtc(ManifestResponse manifest) =>
+        manifest.Files.Length > 0 ? manifest.Files.Max(f => f.Mtime).ToUniversalTime() : null;
+
+    // ── Step 6b: thumbnail tree (manifest + zip + orphan) ───────────────────
+    //
+    // Thumbnails ride the same manifest/zip/orphan helpers as reports, against
+    // the separate thumbs endpoints and rooted at ThumbsRoot so the two orphan
+    // passes can never touch each other's tree. Thumbs tolerate a 404 (primary
+    // predates the endpoint, or raw thumbnails disabled) — reports don't.
+
+    private Task<ManifestResponse> FetchThumbsManifestAsync(DateTime? since, CancellationToken ct) =>
+        FetchManifestFromAsync("/api/export/thumbs-manifest", since, allow404: true, ct);
+
+    private Task<(int added, int updated)> PullThumbsZipAsync(DateTime? since, CancellationToken ct,
+                                                             int step, string phase) =>
+        PullZipAsync("/api/export/thumbs", _paths.ThumbsRoot, "ns-companion-thumbs",
+                     since, skipOn404: true, ct, step, phase);
+
+    private int DeleteThumbOrphans(ManifestResponse remote) =>
+        DeleteOrphansIn(_paths.ThumbsRoot, remote, "orphan thumb");
 }
