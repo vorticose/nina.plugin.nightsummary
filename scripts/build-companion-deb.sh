@@ -21,9 +21,9 @@ BIN="$STAGE/NightSummaryCompanion-bin"
 WATCHDOG="$STAGE/NightSummaryCompanion"
 ICON="$ROOT/assets/companion-icon/companion-256.png"
 
-[ -f "$BIN" ]      || { echo "ERROR: $BIN missing — run scripts/build-companion-linux.ps1 first."; exit 1; }
-[ -f "$WATCHDOG" ] || { echo "ERROR: $WATCHDOG (watchdog) missing — run scripts/build-companion-linux.ps1 first."; exit 1; }
-[ -f "$ICON" ]     || { echo "ERROR: $ICON missing — run scripts/gen-companion-icons.py first."; exit 1; }
+[ -f "$BIN" ]      || { echo "ERROR: $BIN missing -- run scripts/build-companion-linux.ps1 first."; exit 1; }
+[ -f "$WATCHDOG" ] || { echo "ERROR: $WATCHDOG (watchdog) missing -- run scripts/build-companion-linux.ps1 first."; exit 1; }
+[ -f "$ICON" ]     || { echo "ERROR: $ICON missing -- run scripts/gen-companion-icons.py first."; exit 1; }
 command -v dpkg-deb >/dev/null 2>&1 || { echo "ERROR: dpkg-deb required (Debian/Ubuntu)."; exit 1; }
 
 VER="$(grep -oPm1 '(?<=<VersionPrefix>)[^<]+' "$ROOT/NINA.Plugin.NightSummary/NINA.Plugin.NightSummary.csproj" || echo 0.0.0)"
@@ -31,7 +31,7 @@ ARCH="amd64"
 PKG="nightsummary-companion"
 DEB="$OUT/${PKG}_${VER}_${ARCH}.deb"
 
-# Stage on the native Linux filesystem, NOT the output dir — when OUT is a
+# Stage on the native Linux filesystem, NOT the output dir -- when OUT is a
 # Windows drive mount (WSL /mnt/c, DrvFs), every file reports mode 777 and chmod
 # doesn't stick, which dpkg-deb rejects ("control directory has bad permissions").
 # Build in a tmpdir (ext4 honors modes), then copy only the finished .deb to OUT.

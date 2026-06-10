@@ -99,7 +99,7 @@ function Build-Arch {
     #
     # Why split: macOS LaunchServices treats a Finder click on an already-
     # "running" .app as a "reopen" AppleEvent. A headless agent has no run loop
-    # to answer it, so the reopen times out (-1712) and the click does nothing —
+    # to answer it, so the reopen times out (-1712) and the click does nothing --
     # e.g. the user closes the dashboard tab, clicks the app to get it back, and
     # nothing happens. Because the launcher exits at once, LaunchServices never
     # sees this .app as "running", so EVERY click launches it fresh; the binary's
@@ -111,7 +111,7 @@ function Build-Arch {
 #!/bin/bash
 # NightSummaryCompanion launcher (the .app's CFBundleExecutable). Detaches the
 # real server as a background watchdog, then exits immediately so macOS never
-# considers this .app "running" — that way every Finder click launches us fresh
+# considers this .app "running" -- that way every Finder click launches us fresh
 # and reliably opens the dashboard instead of sending a dead-end reopen event.
 DIR="$(cd "$(dirname "$0")" && pwd)"
 nohup "$DIR/NightSummaryCompanion-watchdog" "$@" >/dev/null 2>&1 &
@@ -198,12 +198,12 @@ done
 "@
     Set-Content -Path (Join-Path $contents 'Info.plist') -Value $plist -Encoding UTF8 -NoNewline
 
-    # 4. Code-sign the bundle ad-hoc when codesign is available (macOS only — a
+    # 4. Code-sign the bundle ad-hoc when codesign is available (macOS only -- a
     # CI macos runner or the Mac mini). A signed bundle means the user just
     # right-click->Opens once on a downloaded copy; no Fix Permissions step.
     # Cross-building on Windows we cannot sign (codesign is mac-only), so we fall
     # back to shipping Fix Permissions.command for the user to ad-hoc sign there.
-    # Ad-hoc only — no Developer ID / notarization, so no Apple account needed.
+    # Ad-hoc only -- no Developer ID / notarization, so no Apple account needed.
     $signed = $false
     if (Get-Command codesign -ErrorAction SilentlyContinue) {
         Write-Host "  codesigning bundle (ad-hoc)..."
@@ -214,7 +214,7 @@ done
         }
         Write-Host ("  bundle signed: " + $signed)
     } else {
-        Write-Host "  codesign unavailable (cross-build) — shipping Fix Permissions.command"
+        Write-Host "  codesign unavailable (cross-build) -- shipping Fix Permissions.command"
     }
 
     # Fix Permissions.command is only needed for UNSIGNED (Windows-cross-built)
@@ -244,7 +244,7 @@ read -p "Press Enter to close..."
         Set-Content -Path $fixPath -Value $fixCmd -Encoding UTF8 -NoNewline
     }
 
-    # 5. README.txt -- install + Gatekeeper (right-click Open / Sequoia fallback),
+    # 5. README.txt -- install (curl one-liner first, then DMG + xattr fallback),
     #    config location, autostart, stop/restart. Lands in the .tar.gz and .dmg.
     $macReadme = @"
 Night Summary Companion (macOS $archLabel) - v$version
@@ -252,13 +252,19 @@ Night Summary Companion (macOS $archLabel) - v$version
 A local web dashboard that mirrors your Night Summary imaging history from the
 primary (NINA) machine. Runs a small web server on a configurable localhost port.
 
-INSTALL
+INSTALL (easiest - no Gatekeeper prompt)
+  Open Terminal (Applications -> Utilities -> Terminal) and paste:
+    curl -fsSL https://github.com/vorticose/nina.plugin.nightsummary/releases/latest/download/install-companion-mac.sh | sh
+  It installs the app to Applications and launches it. A curl download is never
+  quarantined, so macOS does not block it - nothing else to click.
+
+INSTALL (from this disk image)
   1. Drag NightSummaryCompanion.app into the Applications folder.
-  2. First launch on a downloaded copy: right-click the app -> Open, then click
-     Open in the dialog. The app is ad-hoc signed (not notarized -- no paid Apple
-     account, by design), so macOS says 'unidentified developer', not 'damaged'.
-     macOS 15 (Sequoia): if right-click -> Open does not offer Open, go to
-     System Settings -> Privacy & Security -> scroll down -> Open Anyway.
+  2. The app is ad-hoc signed (not notarized -- no paid Apple account, by design).
+     A disk image downloaded in a browser is quarantined, and recent macOS blocks
+     it with no right-click -> Open bypass. Clear the flag once in Terminal:
+       xattr -dr com.apple.quarantine /Applications/NightSummaryCompanion.app
+     Then open the app normally from Applications.
   3. A browser tab opens to the setup wizard. Pair it with your primary machine.
 
   Config + synced data live in
@@ -381,15 +387,15 @@ if ($macDmg) {
     Write-Host "     NightSummaryCompanion.app into /Applications."
 }
 if ($macSigned) {
-    Write-Host "  3. Open it. An AirDropped/scp'd copy opens straight away; a browser-"
-    Write-Host "     DOWNLOADED copy is quarantined -> right-click -> Open once"
-    Write-Host "     ('unidentified developer', not 'damaged', because the bundle is signed)."
-    Write-Host "     macOS 15 (Sequoia): if Open isn't offered, System Settings ->"
-    Write-Host "     Privacy & Security -> Open Anyway."
+    Write-Host "  3. Install via the curl one-liner from the release page (recommended) -- a"
+    Write-Host "     curl download isn't quarantined, so no Gatekeeper prompt. Or drag the"
+    Write-Host "     .app to /Applications and clear quarantine once in Terminal:"
+    Write-Host "       xattr -dr com.apple.quarantine /Applications/NightSummaryCompanion.app"
     Write-Host "  4. Setup wizard opens in your default browser. Done."
     Write-Host ""
-    Write-Host "Bundle is ad-hoc signed (no Apple account). Notarization would remove the" -ForegroundColor DarkGray
-    Write-Host "right-click step but needs a paid dev account -- out of scope by policy."  -ForegroundColor DarkGray
+    Write-Host "Bundle is ad-hoc signed (no Apple account). Recent macOS removed the right-"  -ForegroundColor DarkGray
+    Write-Host "click->Open bypass, so the curl installer / xattr is the path. Notarization"   -ForegroundColor DarkGray
+    Write-Host "would remove even that but needs a paid dev account -- out of scope by policy." -ForegroundColor DarkGray
 } else {
     Write-Host "  3. Double-click 'Fix Permissions.command' (one-time ad-hoc codesign)."
     Write-Host "  4. Right-click NightSummaryCompanion.app -> Open. Gatekeeper warns once; click Open."

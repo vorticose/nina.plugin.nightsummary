@@ -108,13 +108,14 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
-      - name: Attach companion binaries + Linux installer to the release
+      - name: Attach companion binaries + installers to the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           echo "Assets:"; ls -R artifacts
-          # install-companion.sh is the stable target of the
-          # releases/latest/download/install-companion.sh curl one-liner.
+          # install-companion.sh / install-companion-mac.sh are the stable
+          # targets of the releases/latest/download/<script> curl one-liners
+          # (Linux and macOS respectively).
           gh release upload "${{ github.ref_name }}" \
-            artifacts/* scripts/install-companion.sh \
+            artifacts/* scripts/install-companion.sh scripts/install-companion-mac.sh \
             --clobber --repo "${{ github.repository }}"

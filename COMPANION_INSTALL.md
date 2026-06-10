@@ -21,11 +21,33 @@ NINA under *Options → Night Summary → Local Dashboard → Companion Pairing*
 
 ## macOS
 
-1. Download the `.dmg` for your Mac: **`NightSummaryCompanion-mac-arm64.dmg`** (Apple Silicon — M1 and newer) or **`NightSummaryCompanion-mac-x64.dmg`** (Intel).
-2. Open the `.dmg` and drag **`NightSummaryCompanion.app`** onto the **Applications** folder.
-3. Launch it. First launch on a downloaded copy: **right-click → Open**, then **Open** in the dialog (it's ad-hoc signed, not notarized, so macOS says *"unidentified developer"*, not *"damaged"*).
-   - On **macOS 15 (Sequoia)**, if right-click → Open doesn't offer **Open**, go to **System Settings → Privacy & Security**, scroll down, and click **Open Anyway**.
-4. The setup wizard opens in your browser.
+**Easiest — one line, no Gatekeeper prompt.** Paste into **Terminal**:
+
+```sh
+curl -fsSL https://github.com/vorticose/nina.plugin.nightsummary/releases/latest/download/install-companion-mac.sh | sh
+```
+
+It auto-detects Apple Silicon vs Intel, installs the app to **Applications**, and
+launches it. Because the download comes through `curl` rather than a browser, macOS
+never tags it as quarantined — so there's **no "unidentified developer" wall** and
+nothing else to click.
+
+> The app is ad-hoc signed (it's open-source, with no paid Apple Developer account
+> behind it). That only matters for a DMG downloaded in a **browser**, which macOS
+> quarantines and then blocks — recent macOS no longer offers the old right-click →
+> Open bypass. The `curl` installer above sidesteps that entirely.
+
+**Manual (.dmg)** — if you'd rather use the disk image:
+
+1. Download **`NightSummaryCompanion-mac-arm64.dmg`** (Apple Silicon — M1 and newer) or **`NightSummaryCompanion-mac-x64.dmg`** (Intel).
+2. Open it and drag **`NightSummaryCompanion.app`** onto the **Applications** folder.
+3. Clear the download flag once, in **Terminal**:
+   ```sh
+   xattr -dr com.apple.quarantine /Applications/NightSummaryCompanion.app
+   ```
+   Then open the app normally. (Or try **System Settings → Privacy & Security → Open
+   Anyway** — but on current macOS that's unreliable for unsigned apps, so the command
+   above is the sure path.)
 
 ## Linux
 
