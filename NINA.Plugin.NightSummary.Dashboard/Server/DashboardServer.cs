@@ -501,6 +501,25 @@ namespace NINA.Plugin.NightSummary.Server {
                 return;
             }
 
+            // Single chokepoint for session-scoped routes: the segment after
+            // /api/sessions/ is the session id, which several handlers interpolate
+            // straight into a filesystem path ($"{sessionId}.html", livestack/{id},
+            // {id}.settings.json — including a write). A GUID is the only legitimate
+            // shape, so reject anything carrying separators or "..". This blocks path
+            // traversal for every current and future /api/sessions/<id>/... route
+            // without relying on each handler to re-validate. ("/api/sessions" with no
+            // id is the list endpoint and is intentionally exempt.)
+            if (path.StartsWith("/api/sessions/", StringComparison.Ordinal)) {
+                var seg = path.Substring("/api/sessions/".Length);
+                var slash = seg.IndexOf('/');
+                var idSeg = Uri.UnescapeDataString(slash >= 0 ? seg.Substring(0, slash) : seg);
+                if (!IsSafeSessionId(idSeg)) {
+                    await WriteJson(res, 400, new { error = "Invalid session id" });
+                    done?.Invoke(400, "invalid session id");
+                    return;
+                }
+            }
+
             try {
                 if (req.HttpMethod == "GET") {
                     if (path == "/api/health") {
@@ -757,6 +776,20 @@ namespace NINA.Plugin.NightSummary.Server {
             var start = "/api/sessions/".Length;
             var end = path.Length - suffix.Length;
             return path.Substring(start, end - start);
+        }
+
+        // Session ids are GUIDs (SessionCollector: Guid.NewGuid().ToString()). Accept
+        // only that alphabet — letters, digits, hyphen — which has no path separators,
+        // "..", drive letters, or dots. Validated once at the dispatcher so no
+        // session-scoped file path can escape the reports directory.
+        internal static bool IsSafeSessionId(string id) {
+            if (string.IsNullOrEmpty(id) || id.Length > 64) return false;
+            foreach (var c in id) {
+                bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+                          || (c >= '0' && c <= '9') || c == '-';
+                if (!ok) return false;
+            }
+            return true;
         }
 
         // ── API Handlers ──────────────────────────────────────────────────────
@@ -1448,7 +1481,18 @@ namespace NINA.Plugin.NightSummary.Server {
                 return;
             }
 
-            var liveRoot = Path.GetFullPath(Path.Combine(reportsDir, "livestack", sessionId));
+            // sessionId is attacker-controlled too: it can carry "..\.." segments that
+            // make liveRoot escape reportsDir entirely (filePath would still pass a
+            // "under liveRoot" check). Pin the per-session root under the livestack base
+            // and verify *liveRoot itself* hasn't climbed out before resolving the file.
+            var liveBase = Path.GetFullPath(Path.Combine(reportsDir, "livestack"));
+            var liveRoot = Path.GetFullPath(Path.Combine(liveBase, sessionId));
+            if (!liveRoot.StartsWith(liveBase + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) &&
+                !liveRoot.Equals(liveBase, StringComparison.OrdinalIgnoreCase)) {
+                await WriteJson(res, 400, new { error = "Invalid session" });
+                done?.Invoke(400, "session path escape");
+                return;
+            }
             var filePath = Path.GetFullPath(Path.Combine(liveRoot, safeName));
             if (!filePath.StartsWith(liveRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) &&
                 !filePath.Equals(liveRoot, StringComparison.OrdinalIgnoreCase)) {

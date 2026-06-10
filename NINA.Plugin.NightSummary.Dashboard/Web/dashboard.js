@@ -6700,10 +6700,20 @@ function loadReportIntoShadow(sessionId) {
       var shadow = host.shadowRoot || host.attachShadow({ mode: 'open' });
       shadow.innerHTML = '';
 
-      // Inject the same SVG color overrides used by syncReportTheme for iframes
+      // Inject the same SVG color overrides used by syncReportTheme for iframes.
+      // Retarget the theme variables from :root to :host — inside a shadow tree
+      // there is no document-root element, so a `:root { --bar-acquired: … }`
+      // rule matches nothing and the report's own :root block is dead too. Only
+      // vars that the host page also defines (e.g. --accent) leak in by
+      // inheritance, which is why the light "accepted" bar rendered but the dark
+      // "tonight" bar (var(--bar-acquired), report-only) was invisible on mobile.
+      // :host matches the shadow host and its custom properties inherit into the
+      // whole subtree, so every report var resolves. (iframe path keeps :root —
+      // it's a real document there.)
       var themeStyle = document.createElement('style');
       themeStyle.id = 'ns-theme-override';
-      themeStyle.textContent = isLight ? REPORT_THEME_LIGHT : REPORT_THEME_DARK;
+      themeStyle.textContent = (isLight ? REPORT_THEME_LIGHT : REPORT_THEME_DARK)
+        .replace(':root {', ':host, :root {');
       shadow.appendChild(themeStyle);
 
       var wrapper = document.createElement('div');

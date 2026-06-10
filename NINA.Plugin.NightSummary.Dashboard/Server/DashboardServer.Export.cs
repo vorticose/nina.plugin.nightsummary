@@ -7,6 +7,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Reflection;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace NINA.Plugin.NightSummary.Server {
@@ -16,6 +17,13 @@ namespace NINA.Plugin.NightSummary.Server {
     // token (Authorization: Bearer <CompanionApiKey>); the dashboard itself stays
     // unauthenticated. See COMPANION_PLAN.md.
     public partial class DashboardServer {
+
+        // Single-flight guard for the Tonight-cache background refresh. The refresh
+        // is a ~25s TS-API call; without this, frequent companion polls (configurable
+        // down to 1h, plus manual syncs) each spawn a fresh Task.Run, stacking
+        // overlapping refreshes that race on the shared HttpClient and the cache
+        // file. 0 = idle, 1 = a refresh is running. Reset in the task's finally.
+        private int _tonightRefreshInFlight;
 
         // ── Auth ──────────────────────────────────────────────────────────────
 
@@ -378,16 +386,23 @@ namespace NINA.Plugin.NightSummary.Server {
             try {
                 var cache = TsApiCache.Load(cachePath);
                 if (cache == null || !cache.IsValidAt(DateTime.Now)) {
-                    _ = Task.Run(async () => {
-                        try {
-                            // Hit our own Tonight handler via the in-process path. The
-                            // handler writes the file on success — no need to capture
-                            // the response here.
-                            await RefreshTonightPreviewInBackground();
-                        } catch (Exception ex) {
-                            log?.Info($"Tonight cache background refresh failed: {ex.Message}");
-                        }
-                    });
+                    // Only one refresh at a time. CompareExchange returns the prior
+                    // value; if it was already 1 another refresh owns the slot and we
+                    // skip — the caller still gets last-good from disk below.
+                    if (Interlocked.CompareExchange(ref _tonightRefreshInFlight, 1, 0) == 0) {
+                        _ = Task.Run(async () => {
+                            try {
+                                // Hit our own Tonight handler via the in-process path. The
+                                // handler writes the file on success — no need to capture
+                                // the response here.
+                                await RefreshTonightPreviewInBackground();
+                            } catch (Exception ex) {
+                                log?.Info($"Tonight cache background refresh failed: {ex.Message}");
+                            } finally {
+                                Interlocked.Exchange(ref _tonightRefreshInFlight, 0);
+                            }
+                        });
+                    }
                 }
             } catch { /* best-effort — fall through to serve whatever's on disk */ }
 
