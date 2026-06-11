@@ -86,3 +86,77 @@ Each companion you set up gets its **own token**, which you can **Revoke** indep
 - Your pairing and settings survive app updates — you pair once per computer, not once per release.
 
 ![The Companion's Settings tab, showing the Start at login toggle](assets/companion-settings.png)
+
+---
+
+## Running multiple rigs
+
+Have more than one rig running Night Summary, but want a single Companion machine (your NAS box, processing PC, etc.)? You can run **one Companion instance per rig** on the same computer. Each instance just needs three things of its own: a **dashboard port**, a **data folder**, and the **rig it pairs with** — all set in a small config file you point it at with `--config`.
+
+You'll end up with one dashboard per rig, e.g. `http://localhost:8182` (rig 1) and `http://localhost:8183` (rig 2), each syncing independently.
+
+### 1. Pair each rig
+
+On **each** rig's NINA: **Options → Night Summary Settings → Local Dashboard → Companion Pairing → + Generate Token**. Copy one token per rig.
+
+### 2. Create a config file per rig
+
+Make a folder to hold them (e.g. `D:\NightSummary\`), and create one JSON per rig. The only things that must differ between rigs are **`port`**, **`dataDir`**, and the **`nina`** block.
+
+`rig1.json`:
+
+```json
+{
+  "port": 8182,
+  "dataDir": "D:/NightSummary/data-rig1",
+  "nina": { "host": "rig1.local", "port": 8181, "pairingToken": "PASTE-RIG1-TOKEN" }
+}
+```
+
+`rig2.json` — same shape, different port and data folder:
+
+```json
+{
+  "port": 8183,
+  "dataDir": "D:/NightSummary/data-rig2",
+  "nina": { "host": "rig2.local", "port": 8181, "pairingToken": "PASTE-RIG2-TOKEN" }
+}
+```
+
+- `host` is the rig's hostname or IP; `nina.port` (8181) is the rig's dashboard port — leave it unless you changed it on the rig.
+- `dataDir` is where that rig's synced database, reports, and thumbnails are stored. **Must be unique per rig** — pointing it at a NAS share is fine.
+- Using the Read-Only Mirror? Add `"enableReadOnlyMirror": true` and a unique `"readOnlyMirrorPort"` per instance too.
+
+### 3. Launch one instance per rig
+
+Run each in its own terminal window:
+
+**Windows** (from where you unzipped the Companion):
+
+```
+NightSummaryCompanion.exe serve --config D:\NightSummary\rig1.json
+NightSummaryCompanion.exe serve --config D:\NightSummary\rig2.json
+```
+
+**macOS**:
+
+```
+/Applications/NightSummaryCompanion.app/Contents/MacOS/NightSummaryCompanion-bin serve --config /path/to/rig1.json
+```
+
+**Linux**:
+
+```
+~/.local/bin/nightsummary-companion serve --config ~/NightSummary/rig1.json
+```
+
+### 4. (Optional) Start them automatically
+
+The in-app **Start at login** toggle manages a single instance, so for multiple rigs you add one startup entry per config:
+
+- **Windows** — a shortcut per rig (target = the `serve --config …` command) in the Startup folder (`Win+R` → `shell:startup`), or a Task Scheduler task per rig.
+- **macOS** — a `~/Library/LaunchAgents/` plist per rig (unique `Label`, `ProgramArguments` = the bin + `serve --config /path/rigN.json`), then `launchctl load` each.
+- **Linux** — a `systemd --user` unit per rig (`~/.config/systemd/user/companion-rigN.service`), then `systemctl --user enable --now companion-rigN`.
+
+{: .note }
+> There's no single combined "all my rigs" dashboard yet — it's one dashboard (one port) per rig. Keep each rig's **port** and **dataDir** distinct and the instances run fully independently. Share either and the second instance will refuse to start or overwrite the first.
