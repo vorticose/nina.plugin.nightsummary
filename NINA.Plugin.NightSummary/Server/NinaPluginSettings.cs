@@ -21,10 +21,21 @@ internal sealed class NinaPluginSettings : DashboardPluginSettings {
 
     public NightSummarySettings Current => SettingsManager.Instance.Current;
     public void Save() => SettingsManager.Instance.Save();
-    public string PluginVersion =>
-        typeof(NinaPluginSettings).Assembly
-            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
-            ?.InformationalVersion?.Split('+')[0] ?? "";
+    // Prefer the informational version (e.g. "3.2.0-dev" on dev builds), but the
+    // release process strips that attribute to drop the "-dev" suffix, leaving it
+    // absent on shipped builds. Fall back to the auto-generated AssemblyVersion
+    // (Major.Minor.Build, e.g. "3.2.0") so the dashboard/companion never reports a
+    // blank version ("primary v?"). Never returns empty for a real build.
+    public string PluginVersion {
+        get {
+            var info = typeof(NinaPluginSettings).Assembly
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+                ?.InformationalVersion?.Split('+')[0];
+            if (!string.IsNullOrWhiteSpace(info)) return info;
+            var v = typeof(NinaPluginSettings).Assembly.GetName().Version;
+            return v != null ? $"{v.Major}.{v.Minor}.{v.Build}" : "";
+        }
+    }
     public string Mode => "primary";
     // NINA exposes its assembly version via CoreUtil.Version (e.g. "3.2.0.9001").
     // Surfaced through /api/companion/info so the pairing wizard can show
