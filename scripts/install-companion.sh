@@ -65,12 +65,19 @@ Type=Application
 Name=Night Summary Companion
 Comment=Local dashboard mirroring your Night Summary imaging history
 Exec=$BINDIR/nightsummary-companion serve
-Icon=nightsummary-companion
+Icon=$ICONDIR/nightsummary-companion.png
 Categories=Utility;Network;
 Terminal=false
 EOF
+# Icon= is an absolute path (not a theme name) so the launcher icon shows without
+# depending on the hicolor icon cache being rebuilt -- a user-scoped install can't
+# assume the desktop will rescan. Still refresh the cache best-effort so anything
+# that resolves the icon by name (e.g. taskbar/WM_CLASS) finds it too.
 if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database -q "$DESKTOPDIR" 2>/dev/null || true
+fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    gtk-update-icon-cache -q -f -t "$PREFIX/share/icons/hicolor" 2>/dev/null || true
 fi
 
 # Runtime libs SkiaSharp needs for report thumbnails. Can't auto-install without

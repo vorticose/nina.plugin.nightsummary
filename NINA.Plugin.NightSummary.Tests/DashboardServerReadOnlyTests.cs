@@ -65,9 +65,11 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         private sealed class StubSettings : IPluginSettings {
             private readonly NightSummarySettings _s = new NightSummarySettings();
+            private readonly string _version;
+            public StubSettings(string version = "test") { _version = version; }
             public NightSummarySettings Current => _s;
             public void Save() { }
-            public string PluginVersion => "test";
+            public string PluginVersion => _version;
             public string Mode => "primary";
         }
 
@@ -128,10 +130,10 @@ namespace NINA.Plugin.NightSummary.Tests {
             return port;
         }
 
-        private static async Task<DashboardServer> StartServerAsync(int port, bool readOnly) {
+        private static async Task<DashboardServer> StartServerAsync(int port, bool readOnly, IPluginSettings settings = null) {
             var srv = new DashboardServer(
                 data:        new StubDataSource(),
-                settings:    new StubSettings(),
+                settings:    settings ?? new StubSettings(),
                 webAssets:   new StubWebAssets(),
                 externalLog: new StubLogger(),
                 paths:       new StubPaths(),
@@ -248,6 +250,24 @@ namespace NINA.Plugin.NightSummary.Tests {
                 using var client = NewClient(port);
                 var resp = await client.GetAsync("/api/health");
                 Assert.False(resp.Headers.Contains("X-Read-Only"));
+            } finally { await srv.StopAsync(); }
+        }
+
+        // Regression: a release build has the informational-version attribute
+        // stripped, so IPluginSettings.PluginVersion can be "" (not null). /api/health
+        // must still report a non-empty version (assembly fallback) or the companion's
+        // sync bar shows "primary v?". (Bug found smoke-testing v3.2.0.)
+        [Fact]
+        public async Task Health_VersionNonEmpty_WhenSettingsVersionBlank() {
+            int port = GetFreePort();
+            var srv = await StartServerAsync(port, readOnly: false, settings: new StubSettings(""));
+            try {
+                using var client = NewClient(port);
+                var json = await client.GetStringAsync("/api/health");
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                var version = doc.RootElement.GetProperty("version").GetString();
+                Assert.False(string.IsNullOrEmpty(version),
+                    $"/api/health version must fall back when settings version is blank, got '{version}'");
             } finally { await srv.StopAsync(); }
         }
 
