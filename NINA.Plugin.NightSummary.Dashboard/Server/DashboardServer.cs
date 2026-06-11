@@ -533,7 +533,13 @@ namespace NINA.Plugin.NightSummary.Server {
                         await WriteJson(res, 200, new {
                             status         = "ok",
                             ok             = true,
-                            version        = _settings.PluginVersion ?? GetServerAssemblyVersion(),
+                            // IsNullOrEmpty, not ?? — a settings impl can return "" (not
+                            // null), e.g. a release build with the informational-version
+                            // attribute stripped; that must still fall back to the
+                            // assembly version so the companion never shows "primary v?".
+                            version        = string.IsNullOrEmpty(_settings.PluginVersion)
+                                                 ? GetServerAssemblyVersion()
+                                                 : _settings.PluginVersion,
                             schemaVersion  = CompanionSchemaVersion,
                             mode           = _settings.Mode ?? "primary",
                         });
