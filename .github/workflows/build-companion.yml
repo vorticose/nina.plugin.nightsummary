@@ -60,13 +60,20 @@ jobs:
           dotnet-version: '8.0.x'
 
       # macOS runners are disk-tight; the self-contained publish + hdiutil's dmg
-      # scratch can hit "No space left on device". Xcode (~15 GB) isn't needed --
-      # the build is dotnet + codesign/hdiutil/ditto (all in /usr/bin) -- so drop it.
+      # scratch hits "No space left on device" (esp. the osx-x64 cross-build, which
+      # also produces a dmg). Dropping Xcode alone (~15 GB) proved unreliable -- it
+      # flaked repeatedly -- so also clear the iOS simulator runtimes/devices and the
+      # Android SDK. None are needed: the build is just dotnet + codesign/hdiutil/ditto
+      # (all in /usr/bin).
       - name: Free disk space (macOS runner)
         if: matrix.platform == 'mac'
         run: |
           df -h /
           sudo rm -rf /Applications/Xcode_*.app || true
+          sudo rm -rf ~/Library/Developer/CoreSimulator/* || true
+          sudo rm -rf /Library/Developer/CoreSimulator/Profiles/Runtimes/* || true
+          sudo rm -rf "${ANDROID_SDK_ROOT:-/opt/android-sdk}" "${ANDROID_HOME:-}" ~/Library/Android* || true
+          sudo rm -rf ~/.cocoapods || true
           df -h /
 
       - name: Build companion (${{ matrix.platform }}-${{ matrix.arch }})
