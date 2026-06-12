@@ -25,11 +25,19 @@ internal sealed class CompanionRigRegistry : IRigRegistry, IAsyncDisposable, IDi
     private readonly Dictionary<string, RigRunner> _runners = new(StringComparer.Ordinal);
     private readonly List<string> _order = new();   // preserves config order for the switcher
 
+    // Tracks whether StartAll() has run, so rigs added later (Add another rig,
+    // or the first-run placeholder) start their loops immediately instead of
+    // waiting for a process restart.
+    private bool _started;
+
     public CompanionRigRegistry(CompanionConfig config, string configPath, CompanionPluginSettings settings, IDashboardLogger log) {
         _config     = config;
         _configPath = configPath;
         _settings   = settings;
         _log        = log;
+        // Guarantee at least one rig (and runner) so StartAll covers the
+        // first-run case where the user pairs into the default rig via the wizard.
+        if (_config.Rigs.Count == 0) _config.EnsureFirstRig();
         foreach (var rig in _config.Rigs) AddRunnerLocked(rig);
     }
 
@@ -49,6 +57,7 @@ internal sealed class CompanionRigRegistry : IRigRegistry, IAsyncDisposable, IDi
                 var placeholder = _config.EnsureFirstRig();
                 if (string.IsNullOrWhiteSpace(placeholder.Id)) placeholder.Id = CompanionConfig.NewRigId();
                 AddRunnerLocked(placeholder);
+                if (_started && placeholder.Enabled) _runners[placeholder.Id].Start();
                 return _runners[placeholder.Id].Backend;
             }
         }
@@ -77,6 +86,9 @@ internal sealed class CompanionRigRegistry : IRigRegistry, IAsyncDisposable, IDi
             _config.Rigs.Add(rig);
             CompanionConfig.Save(_config, _configPath);
             AddRunnerLocked(rig);
+            // If the registry is already live, start the new rig's loops now so it
+            // begins syncing once paired — don't make the user restart.
+            if (_started && _runners.TryGetValue(rig.Id, out var r)) r.Start();
             _log.Info($"Companion: added rig '{rig.Name}' ({rig.Id}); pair it to start syncing.");
             return Task.FromResult(rig.Id);
         }
@@ -133,6 +145,7 @@ internal sealed class CompanionRigRegistry : IRigRegistry, IAsyncDisposable, IDi
     // the dashboard server is up.
     public void StartAll() {
         lock (_gate) {
+            _started = true;
             foreach (var id in _order) {
                 var runner = _runners[id];
                 if (runner.Rig.Enabled) runner.Start();
