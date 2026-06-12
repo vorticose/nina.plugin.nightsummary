@@ -25,7 +25,8 @@ namespace NINA.Plugin.NightSummary.Companion.Sync;
 //   7. write last_synced.json
 public sealed class SyncEngine {
 
-    private readonly CompanionConfig _config;
+    private readonly RigConfig _rig;
+    private readonly int _dashboardPort;
     private readonly CompanionPaths _paths;
     private readonly IDashboardLogger _log;
     private readonly object _httpGate = new();
@@ -37,24 +38,34 @@ public sealed class SyncEngine {
     private static readonly JsonSerializerOptions ManifestJson =
         new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
-    public SyncEngine(CompanionConfig config, CompanionPaths paths, IDashboardLogger log, HttpClient? http = null) {
-        _config = config;
-        _paths  = paths;
-        _log    = log;
-        _externalHttp = http != null;
-        _http   = http ?? BuildHttp(config);
+    // Canonical multi-rig ctor: one engine per paired rig. dashboardPort is the
+    // companion's own listener port, advertised so the primary learns the push
+    // URL — it's a companion-global value, not per-rig.
+    public SyncEngine(RigConfig rig, int dashboardPort, CompanionPaths paths, IDashboardLogger log, HttpClient? http = null) {
+        _rig           = rig;
+        _dashboardPort = dashboardPort;
+        _paths         = paths;
+        _log           = log;
+        _externalHttp  = http != null;
+        _http          = http ?? BuildHttp(rig, dashboardPort);
     }
 
-    private static HttpClient BuildHttp(CompanionConfig config) {
-        var c = new HttpClient { BaseAddress = new Uri(config.ResolvedNinaUrl()) };
+    // Single-rig convenience: drives the first rig. Used by the `sync` CLI path
+    // and the existing test suite. Multi-rig serve constructs one engine per rig
+    // via the ctor above.
+    public SyncEngine(CompanionConfig config, CompanionPaths paths, IDashboardLogger log, HttpClient? http = null)
+        : this(config.EnsureFirstRig(), config.Port, paths, log, http) { }
+
+    private static HttpClient BuildHttp(RigConfig rig, int dashboardPort) {
+        var c = new HttpClient { BaseAddress = new Uri(rig.ResolvedNinaUrl()) };
         c.DefaultRequestHeaders.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", config.Nina.PairingToken ?? "");
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", rig.Nina.PairingToken ?? "");
         // Advertise our own dashboard port on every request so the primary
         // can auto-detect the reachable push URL (no manual entry needed in
         // NS Options). Pairs with TcpHttpRequest.CompanionDashboardPort +
         // RequireCompanionAuth.UpdatePushUrlFromRequest on the primary.
         c.DefaultRequestHeaders.TryAddWithoutValidation(
-            "X-Companion-Dashboard-Port", config.Port.ToString());
+            "X-Companion-Dashboard-Port", dashboardPort.ToString());
         c.Timeout = TimeSpan.FromMinutes(30);
         return c;
     }
@@ -67,7 +78,7 @@ public sealed class SyncEngine {
     // an externally owned HttpClient — that owner controls its lifecycle.
     public void Reconfigure() {
         if (_externalHttp) return;
-        var fresh = BuildHttp(_config);
+        var fresh = BuildHttp(_rig, _dashboardPort);
         lock (_httpGate) { _http = fresh; }
     }
 
@@ -130,7 +141,7 @@ public sealed class SyncEngine {
             if (!reachable) {
                 state.LastError = "primary unreachable";
                 state.Save(statePath);
-                _log.Warn($"Sync: primary unreachable at {_config.ResolvedNinaUrl()}");
+                _log.Warn($"Sync: primary unreachable at {_rig.ResolvedNinaUrl()}");
                 return new SyncResult(false, false, "primary unreachable", 0, 0, 0, 0, 0, 0, 0, 0, null);
             }
 

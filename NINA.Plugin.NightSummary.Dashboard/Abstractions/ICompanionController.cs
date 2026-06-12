@@ -119,7 +119,13 @@ public sealed record CompanionConfigSnapshot(
     // Changes require companion restart since the second listener is bound
     // at startup.
     bool EnableReadOnlyMirror = false,
-    int ReadOnlyMirrorPort = 8282);
+    int ReadOnlyMirrorPort = 8282,
+    // Identity of the rig this snapshot describes (multi-rig). Empty/default
+    // for a not-yet-paired first rig. The dashboard uses these for the per-rig
+    // settings card + switcher labels.
+    string RigId = "",
+    string RigName = "",
+    bool RigEnabled = true);
 
 public sealed record CompanionConfigSaveResult(
     bool Ok,
