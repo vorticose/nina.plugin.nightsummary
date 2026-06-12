@@ -268,6 +268,44 @@ function makeTargetBadge(name, idx) {
 
 // ── API ────────────────────────────────────────────────────────────────────
 
+// ── Multi-rig state ─────────────────────────────────────────────────────────
+// In companion mode the dashboard can serve N primary rigs. RIGS comes from
+// /api/mode; ACTIVE_RIG (persisted) names the one currently shown. Single-rig
+// and primary installs leave RIGS at length<=1 so withRig() is a no-op and the
+// switcher stays hidden — zero UI/URL change for them.
+var RIGS = [];
+var DEFAULT_RIG = '';
+var ACTIVE_RIG = '';
+var RIG_STORAGE_KEY = 'ns.activeRig';
+
+// True only when there is a real choice of rig to scope a request to.
+function rigParamActive() {
+  return COMPANION_MODE && RIGS.length > 1 && !!ACTIVE_RIG;
+}
+
+// Append ?rig=ACTIVE to a same-origin API path when (and only when) multiple
+// rigs are configured. No-op otherwise, so primary-mode JS never sends the
+// param and existing bookmarks keep resolving to the default rig server-side.
+function withRig(path) {
+  if (!rigParamActive()) return path;
+  if (/[?&]rig=/.test(path)) return path;
+  return path + (path.indexOf('?') >= 0 ? '&' : '?') + 'rig=' + encodeURIComponent(ACTIVE_RIG);
+}
+
+// Single chokepoint: rewrite every same-origin /api/* fetch through withRig so
+// all 30+ call sites (api() GETs + raw POSTs) scope to the active rig without
+// per-site edits. Harmless for non-rig endpoints (the server ignores an unknown
+// ?rig). img/iframe src URLs bypass fetch(), so those few are wrapped inline.
+(function () {
+  var _fetch = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    try {
+      if (typeof input === 'string' && input.indexOf('/api/') === 0) input = withRig(input);
+    } catch (e) { /* fall through with original input */ }
+    return _fetch(input, init);
+  };
+})();
+
 function api(path) {
   var start = performance.now();
   logDebug('API', path);
@@ -916,7 +954,7 @@ function renderProjectContainer(info) {
     // Thumbnail fills all available horizontal space; stat boxes stretch to match height
     html += '<div class="targets-project-thumb-col">';
     html += '<div class="targets-project-thumb-wrap" data-guid="' + esc(info.guid) + '">' +
-            '<img class="targets-project-thumb" src="/api/stats/projects/' + encodeURIComponent(info.guid) + '/mosaic-thumb" ' +
+            '<img class="targets-project-thumb" src="' + withRig('/api/stats/projects/' + encodeURIComponent(info.guid) + '/mosaic-thumb') + '" ' +
             'alt="Mosaic survey thumbnail" loading="lazy">';
     if (lastImaged) {
       html += '<div class="targets-project-last-imaged">Last imaged ' + fmtRelativeTime(lastImaged) + '</div>';
@@ -6806,7 +6844,7 @@ function renderSessionDetail(sessionId, params) {
       // Settings, this one) fit on a single row at equal width.
       var newTabLabel = window.matchMedia('(max-width: 700px)').matches
         ? '\u2197 New Tab' : 'Open in New Tab \u2192';
-      navHtml += '<a href="/api/sessions/' + sessionId + '/report" target="_blank" class="report-btn">' + newTabLabel + '</a>';
+      navHtml += '<a href="' + withRig('/api/sessions/' + sessionId + '/report') + '" target="_blank" class="report-btn">' + newTabLabel + '</a>';
     }
 
     navHtml += '</div></div>';
@@ -6831,7 +6869,7 @@ function renderSessionDetail(sessionId, params) {
         html += '<div class="report-viewer"><div id="report-shadow-host" class="report-shadow-host"></div></div>';
       } else {
         html += '<div class="report-viewer">' +
-          '<iframe id="report-iframe" class="report-iframe" src="/api/sessions/' + sessionId + '/report?theme=' + (document.documentElement.classList.contains('light') ? 'light' : 'dark') + '" sandbox="allow-same-origin"></iframe>' +
+          '<iframe id="report-iframe" class="report-iframe" src="' + withRig('/api/sessions/' + sessionId + '/report?theme=' + (document.documentElement.classList.contains('light') ? 'light' : 'dark')) + '" sandbox="allow-same-origin"></iframe>' +
         '</div>';
       }
     } else {
@@ -6952,7 +6990,7 @@ function bindDetailEvents(sessionId) {
           var iframe = document.getElementById('report-iframe');
           var shadowHost = document.getElementById('report-shadow-host');
           if (iframe) {
-            iframe.src = '/api/sessions/' + sessionId + '/report?theme=' + (document.documentElement.classList.contains('light') ? 'light' : 'dark') + '&t=' + Date.now();
+            iframe.src = withRig('/api/sessions/' + sessionId + '/report?theme=' + (document.documentElement.classList.contains('light') ? 'light' : 'dark') + '&t=' + Date.now());
           } else if (shadowHost) {
             loadReportIntoShadow(sessionId);
           } else {
@@ -8919,7 +8957,7 @@ function renderFramesGallery(view) {
 
     function renderThumb(ff, viewKind) {
       var sid2 = ff.sessionId || view.id;
-      var src = '/api/frames/' + ff.id + '/thumb?size=sm';
+      var src = withRig('/api/frames/' + ff.id + '/thumb?size=sm');
       // Pending (gradingStatus===0) is "TS hasn't graded yet" — never rejected,
       // even if accepted===false sneaks through from a legacy DB row that hasn't
       // been healed by the server-side CountsAsAccepted gate yet.
@@ -9086,7 +9124,7 @@ function bindFramesGallery(frames) {
       var f = frames[k]; if (!f || f._preloaded) return;
       var img = new Image();
       // medium first; server falls back to small if md missing.
-      img.src = '/api/frames/' + f.id + '/thumb?size=md';
+      img.src = withRig('/api/frames/' + f.id + '/thumb?size=md');
       f._preloaded = true;
     });
   }
@@ -9279,7 +9317,7 @@ function bindFramesGallery(frames) {
       lbImg.addEventListener('load', done);
       lbImg.addEventListener('error', done);
       // Try medium first; server falls back to small if md missing.
-      lbImg.src = '/api/frames/' + f.id + '/thumb?size=md';
+      lbImg.src = withRig('/api/frames/' + f.id + '/thumb?size=md');
     });
 
     var metricsReady = api('/api/frames/' + f.id + '/metrics')
@@ -9440,6 +9478,16 @@ function initCompanionBanner() {
   fetch('/api/mode').then(function(r){ return r.json(); }).then(function(j){
     if (!j || j.mode !== 'companion') return;
     COMPANION_MODE = true;
+    // Multi-rig: capture the rig list + default, then settle on an active rig
+    // (validated against the live list; falls back to default if a stale
+    // localStorage value names a rig that no longer exists).
+    RIGS = Array.isArray(j.rigs) ? j.rigs : [];
+    DEFAULT_RIG = j.defaultRig || (RIGS[0] && RIGS[0].id) || '';
+    var stored = '';
+    try { stored = localStorage.getItem(RIG_STORAGE_KEY) || ''; } catch (e) {}
+    ACTIVE_RIG = (stored && RIGS.some(function(r){ return r.id === stored; })) ? stored : DEFAULT_RIG;
+    renderRigSwitcher();
+
     var banner = document.getElementById('companion-banner');
     if (banner) banner.hidden = false;
     var settingsLink = document.querySelector('.nav-link.companion-only[data-page="settings"]');
@@ -9467,6 +9515,45 @@ function initCompanionBanner() {
   }).catch(function(){ /* ignore — primary mode or transient failure */ });
 }
 
+// Render (or hide) the banner rig switcher. Only shown when >1 rig is
+// configured — single-rig users see zero UI change. A small status dot flags
+// when a NON-active rig needs attention (updated by updateRigAggregateDot).
+function renderRigSwitcher() {
+  var host = document.getElementById('companion-rig-switch');
+  if (!host) return;
+  if (RIGS.length <= 1) { host.hidden = true; host.innerHTML = ''; return; }
+  var opts = RIGS.map(function(r){
+    var sel = r.id === ACTIVE_RIG ? ' selected' : '';
+    var label = (r.name || r.id) + (r.enabled === false ? ' (off)' : '');
+    return '<option value="' + esc(r.id) + '"' + sel + '>' + esc(label) + '</option>';
+  }).join('');
+  host.innerHTML =
+    '<span class="rig-dot" id="companion-rig-dot" hidden title="Another rig needs attention"></span>' +
+    '<select id="companion-rig-select" class="companion-rig-select" aria-label="Active rig">' + opts + '</select>';
+  host.hidden = false;
+  var sel = document.getElementById('companion-rig-select');
+  if (sel) sel.onchange = function(){ switchRig(sel.value); };
+}
+
+// Switch the active rig: persist, clear every client cache (same set the
+// post-sync auto-refresh clears so no other rig's data leaks through), and
+// re-render the current page in place — no reload.
+function switchRig(id) {
+  if (!id || id === ACTIVE_RIG) return;
+  if (!RIGS.some(function(r){ return r.id === id; })) return;
+  ACTIVE_RIG = id;
+  try { localStorage.setItem(RIG_STORAGE_KEY, id); } catch (e) {}
+  sessionsCache = []; initialLoadDone = false;
+  detailCache = {}; thumbnailCache = {}; altitudeChartCache = {};
+  __lwCachedSessions = null; cachedFilters = null; tonightPreviewCache = null;
+  // Reset so the incoming rig's lastSuccessUtc doesn't look like a "new sync"
+  // and trigger a redundant auto-refresh on top of the route() below.
+  window.__lastSyncSuccessUtc = undefined;
+  logInfo('Switched rig ->', id);
+  refreshCompanionStatus();
+  route();
+}
+
 function refreshCompanionStatus() {
   fetch('/api/companion/status').then(function(r){
     if (!r.ok) throw new Error('status ' + r.status);
@@ -9475,6 +9562,23 @@ function refreshCompanionStatus() {
     var el = document.getElementById('companion-banner-status');
     if (el) el.textContent = 'Status unavailable';
   });
+  if (RIGS.length > 1) updateRigAggregateDot();
+}
+
+// Light up the switcher dot when a rig OTHER than the active one is erroring or
+// has never synced — a hint to check the Settings rig list. Best-effort.
+function updateRigAggregateDot() {
+  fetch('/api/companion/status/all').then(function(r){ return r.json(); }).then(function(j){
+    var dot = document.getElementById('companion-rig-dot');
+    if (!dot || !j || !Array.isArray(j.rigs)) return;
+    var needsAttention = j.rigs.some(function(entry){
+      if (entry.id === ACTIVE_RIG) return false;
+      if (entry.enabled === false) return false;
+      var s = entry.status || {};
+      return !!s.lastError || s.primaryReachable === false;
+    });
+    dot.hidden = !needsAttention;
+  }).catch(function(){});
 }
 
 function companionSyncNow() {
@@ -9543,11 +9647,19 @@ function renderCompanionStatus(s) {
   if (!statusEl || !banner) return;
   banner.classList.remove('is-stale', 'is-error', 'is-setup');
 
+  // Prefix the active rig's name when more than one rig is configured so the
+  // banner makes clear which rig the status refers to.
+  var rigPrefix = '';
+  if (RIGS.length > 1) {
+    var ar = RIGS.filter(function(r){ return r.id === ACTIVE_RIG; })[0];
+    if (ar) rigPrefix = (ar.name || ar.id) + ': ';
+  }
+
   // Setup-required path takes precedence — no point talking about syncs or
   // reachability when there's no host to reach.
   if (s.isComplete === false) {
     banner.classList.add('is-setup');
-    statusEl.textContent = 'Setup required — ' + (s.incompleteReason || 'finish configuration to start syncing');
+    statusEl.textContent = rigPrefix + 'Setup required — ' + (s.incompleteReason || 'finish configuration to start syncing');
     if (btn) {
       btn.disabled = false;
       btn.textContent = 'Open Settings';
@@ -9563,7 +9675,7 @@ function renderCompanionStatus(s) {
 
   // Reachability prefix — only when we have a definitive answer. Disable Sync Now
   // when offline so the user gets immediate feedback rather than a slow timeout.
-  var reachPrefix = '';
+  var reachPrefix = rigPrefix;
   if (s.primaryReachable === false) {
     reachPrefix = 'Primary offline · ';
     banner.classList.add('is-error');
@@ -9615,18 +9727,127 @@ function renderSettingsPage() {
     return;
   }
   content.innerHTML = '<div class="settings-shell"><div class="settings-card"><p>Loading…</p></div></div>';
-  // Fetch config + status in parallel — push-status pill needs lastSuccessUtc
-  // from status, the rest of the form comes from config.
+  // Fetch config + status + rig list in parallel. config/status scope to the
+  // active rig (fetch monkey-patch adds ?rig); the rig list drives the multi-rig
+  // management section. The list endpoint 404s on a primary, so tolerate failure.
   Promise.all([
     fetch('/api/companion/config').then(function(r){ if (!r.ok) throw new Error('config ' + r.status); return r.json(); }),
     fetch('/api/companion/status').then(function(r){ if (!r.ok) throw new Error('status ' + r.status); return r.json(); }),
+    fetch('/api/companion/rigs').then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; }),
   ]).then(function(arr){
-    var c = arr[0], s = arr[1];
+    var c = arr[0], s = arr[1], rigsResp = arr[2];
     window.__lastSyncSuccessUtc = s && s.lastSuccessUtc;
-    content.innerHTML = settingsHtml(c);
+    content.innerHTML = rigSectionHtml(rigsResp) + settingsHtml(c);
+    bindRigSection(rigsResp);
     bindSettingsForm(c);
   }).catch(function(err){
     content.innerHTML = '<div class="settings-shell"><div class="settings-card is-error"><p>Failed to load config: ' + esc(err.message || 'unknown') + '</p></div></div>';
+  });
+}
+
+// Multi-rig management card for the Settings page. Lists every configured rig
+// with its host + completeness and per-rig actions (Edit = make active, Enable
+// toggle, Remove), plus an "Add another rig" button. Hidden entirely on a
+// single-rig install except for the Add button, so a user can grow into N rigs.
+function rigSectionHtml(rigsResp) {
+  if (!rigsResp || !Array.isArray(rigsResp.rigs) || !rigsResp.supportsManagement) return '';
+  var rigs = rigsResp.rigs;
+  var rows = rigs.map(function(r){
+    var isActive = r.id === ACTIVE_RIG;
+    var statusTxt = !r.isComplete ? 'Not paired yet'
+      : (r.host ? r.host + ':' + r.port : 'configured');
+    var toggleLabel = r.enabled ? 'Disable' : 'Enable';
+    // Don't offer Remove when only one rig remains (server refuses it anyway).
+    var removeBtn = rigs.length > 1
+      ? '<button class="rig-row-btn rig-remove" data-rig="' + esc(r.id) + '" data-name="' + esc(r.name || r.id) + '">Remove</button>'
+      : '';
+    return '<div class="rig-row' + (isActive ? ' is-active' : '') + (r.enabled ? '' : ' is-disabled') + '">' +
+      '<div class="rig-row-main">' +
+        '<span class="rig-row-name">' + esc(r.name || r.id) + (isActive ? ' <span class="rig-row-editing">editing</span>' : '') + '</span>' +
+        '<span class="rig-row-host">' + esc(statusTxt) + '</span>' +
+      '</div>' +
+      '<div class="rig-row-actions">' +
+        (isActive ? '' : '<button class="rig-row-btn rig-edit" data-rig="' + esc(r.id) + '">Edit</button>') +
+        '<button class="rig-row-btn rig-toggle" data-rig="' + esc(r.id) + '" data-enabled="' + (r.enabled ? '1' : '0') + '">' + toggleLabel + '</button>' +
+        removeBtn +
+      '</div>' +
+    '</div>';
+  }).join('');
+  return '<div class="settings-shell"><div class="settings-card rig-manage-card">' +
+    '<h2>Rigs</h2>' +
+    '<p>The settings below apply to the rig marked <em>editing</em>. Switch rigs from the banner or here.</p>' +
+    '<div class="rig-list">' + rows + '</div>' +
+    '<button class="settings-btn rig-add-btn" type="button" id="rig-add-btn">+ Add another rig</button>' +
+  '</div></div>';
+}
+
+function bindRigSection(rigsResp) {
+  var addBtn = document.getElementById('rig-add-btn');
+  if (addBtn) addBtn.onclick = addRig;
+  // Edit = switch the active rig and re-render settings for it.
+  Array.prototype.forEach.call(document.querySelectorAll('.rig-edit'), function(b){
+    b.onclick = function(){ switchRig(b.getAttribute('data-rig')); renderSettingsPage(); };
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('.rig-toggle'), function(b){
+    b.onclick = function(){
+      var enabled = b.getAttribute('data-enabled') !== '1';
+      b.disabled = true;
+      fetch('/api/companion/rigs/' + encodeURIComponent(b.getAttribute('data-rig')) + '/enable', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: enabled }),
+      }).then(function(){ return refreshRigsThenRerender(); })
+        .catch(function(){ b.disabled = false; });
+    };
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('.rig-remove'), function(b){
+    b.onclick = function(){
+      var id = b.getAttribute('data-rig');
+      var name = b.getAttribute('data-name');
+      if (!confirm('Remove rig "' + name + '"? This stops syncing it.\n\nClick OK to keep its already-synced data on disk, or check below to delete it.')) return;
+      var deleteData = confirm('Also DELETE the synced data for "' + name + '" from disk?\n\nOK = delete data, Cancel = keep data.');
+      b.disabled = true;
+      fetch('/api/companion/rigs/' + encodeURIComponent(id) + '/remove', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deleteData: deleteData }),
+      }).then(function(){
+        // If we removed the active rig, fall back to the default before re-render.
+        if (id === ACTIVE_RIG) { ACTIVE_RIG = ''; try { localStorage.removeItem(RIG_STORAGE_KEY); } catch(e){} }
+        return refreshRigsThenRerender();
+      }).catch(function(){ b.disabled = false; });
+    };
+  });
+}
+
+// Re-pull /api/mode so RIGS + the switcher reflect an add/remove/toggle, then
+// re-render the settings page and banner.
+function refreshRigsThenRerender() {
+  return fetch('/api/mode').then(function(r){ return r.json(); }).then(function(j){
+    RIGS = (j && Array.isArray(j.rigs)) ? j.rigs : RIGS;
+    DEFAULT_RIG = (j && j.defaultRig) || DEFAULT_RIG;
+    if (!ACTIVE_RIG || !RIGS.some(function(r){ return r.id === ACTIVE_RIG; })) ACTIVE_RIG = DEFAULT_RIG;
+    renderRigSwitcher();
+    refreshCompanionStatus();
+    renderSettingsPage();
+  }).catch(function(){ renderSettingsPage(); });
+}
+
+// Add another rig: name it, create the empty rig server-side, mark it active,
+// then hand off to the pairing wizard scoped to the new rig (?rig=<id>). After
+// pairing the wizard redirects back to the dashboard with the new rig selected.
+function addRig() {
+  var name = prompt('Name for the new rig (e.g. "Backyard", "Remote site"):', '');
+  if (name === null) return;            // cancelled
+  fetch('/api/companion/rigs', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: (name || '').trim() }),
+  }).then(function(r){ return r.json(); }).then(function(j){
+    if (!j || !j.ok || !j.id) throw new Error((j && j.error) || 'add failed');
+    try { localStorage.setItem(RIG_STORAGE_KEY, j.id); } catch (e) {}
+    // Full-page hand-off to the wizard for the new rig. force=1 bypasses the
+    // "already paired" bounce (the default rig is paired); rig scopes the claim.
+    location.href = '/setup?force=1&rig=' + encodeURIComponent(j.id);
+  }).catch(function(err){
+    alert('Could not add rig: ' + (err && err.message || 'unknown'));
   });
 }
 
@@ -9676,14 +9897,14 @@ function settingsHtml(c) {
         '<span class="settings-label">Authentication <span class="settings-hint">Per-companion pairing token</span></span>' +
         '<div class="settings-auth-status">' +
           '<span class="settings-auth-pill is-paired">Paired</span>' +
-          '<a href="/setup?force=1" class="settings-btn settings-btn-link">Re-pair</a>' +
+          '<a href="' + withRig('/setup?force=1') + '" class="settings-btn settings-btn-link">Re-pair</a>' +
         '</div>' +
       '</div>';
   } else {
     authBlock =
       '<div class="settings-row">' +
         '<span class="settings-label">Authentication <span class="settings-hint">Not configured</span></span>' +
-        '<a href="/setup?force=1" class="settings-btn settings-btn-primary">Run setup wizard</a>' +
+        '<a href="' + withRig('/setup?force=1') + '" class="settings-btn settings-btn-primary">Run setup wizard</a>' +
       '</div>';
   }
 

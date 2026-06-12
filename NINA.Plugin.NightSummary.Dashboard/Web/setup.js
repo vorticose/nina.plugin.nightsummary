@@ -57,14 +57,24 @@
 
     // ── API calls ────────────────────────────────────────────────────────
 
+    // Multi-rig: when the wizard is opened for a specific rig (Add another rig
+    // passes ?rig=<id>), carry that id on every call so probe/claim/config/sync
+    // target the new rig's controller instead of the default. Empty for the
+    // first-run single-rig flow, where the param is omitted entirely.
+    const RIG_PARAM = new URLSearchParams(location.search).get('rig') || '';
+    function rigUrl(path) {
+        if (!RIG_PARAM) return path;
+        return path + (path.indexOf('?') >= 0 ? '&' : '?') + 'rig=' + encodeURIComponent(RIG_PARAM);
+    }
+
     async function probePrimary(host, port) {
-        const url = `/api/setup/probe?host=${encodeURIComponent(host)}&port=${encodeURIComponent(port)}`;
+        const url = rigUrl(`/api/setup/probe?host=${encodeURIComponent(host)}&port=${encodeURIComponent(port)}`);
         const resp = await fetch(url);
         return resp.json();
     }
 
     async function claimPair(host, port, token, companionName) {
-        const resp = await fetch('/api/setup/claim', {
+        const resp = await fetch(rigUrl('/api/setup/claim'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ host, port, token, companionName }),
@@ -73,7 +83,7 @@
     }
 
     async function saveConfig() {
-        const resp = await fetch('/api/companion/config', {
+        const resp = await fetch(rigUrl('/api/companion/config'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -96,12 +106,12 @@
     }
 
     async function triggerSync() {
-        const resp = await fetch('/api/companion/sync', { method: 'POST' });
+        const resp = await fetch(rigUrl('/api/companion/sync'), { method: 'POST' });
         return resp.json();
     }
 
     async function pollStatus() {
-        const resp = await fetch('/api/companion/status');
+        const resp = await fetch(rigUrl('/api/companion/status'));
         return resp.json();
     }
 
