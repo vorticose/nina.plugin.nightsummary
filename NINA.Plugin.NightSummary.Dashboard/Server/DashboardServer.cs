@@ -22,18 +22,35 @@ namespace NINA.Plugin.NightSummary.Server {
 
         private TcpListener _tcpListener;
         private CancellationTokenSource cts;
-        private readonly string dbPath;
+        // Root-level, rig-agnostic: shared logs dir + dashboard cache DB + hips
+        // cache all live under the companion's top-level data dir, never under a
+        // single rig (so the cache is shared and GUID-keyed across rigs).
         private readonly string cachePath;
-        private readonly string reportsDir;
         private readonly string dataDir;
-        private readonly IDashboardPaths _paths;     // kept so ThumbsRoot stays settings-aware
-        private readonly IDashboardDataSource _data;
+        // Multi-rig: the server resolves ?rig=<id> to a backend per request instead
+        // of holding one fixed data source / paths / controller. _currentRig is set
+        // at the top of HandleRequest and flows through the async call chain via
+        // AsyncLocal; outside a request (startup, prewarm, background loops) the
+        // properties below fall back to the registry default.
+        private readonly IRigRegistry _rigs;
+        private readonly System.Threading.AsyncLocal<RigBackend> _currentRig = new();
         private readonly IPluginSettings _settings;
         private readonly IWebAssets _webAssets;
         private readonly IDashboardLogger _external;
-        private readonly IReportRegenerator _regen;
-        private readonly ICompanionController _companion;  // null in primary mode
         private readonly ICompanionTokenStore _tokenStore; // null in companion mode (only primary serves /api/companion/info|pair|revoke)
+        private readonly HashSet<string> _loggedUnknownRigs = new(StringComparer.Ordinal);
+
+        // The rig serving the current request (or the default outside one). All
+        // the per-rig accessors below resolve through this so existing handler
+        // code — which references _data / _paths / dbPath / reportsDir / _regen /
+        // _companion — keeps working unchanged, now scoped to the active rig.
+        private RigBackend CurrentRig => _currentRig.Value ?? _rigs.Default;
+        private IDashboardDataSource _data => CurrentRig.Data;
+        private IDashboardPaths _paths => CurrentRig.Paths;       // kept so ThumbsRoot stays settings-aware
+        private IReportRegenerator _regen => CurrentRig.Regen;     // null when regeneration disabled
+        private ICompanionController _companion => CurrentRig.Companion;  // null in primary mode
+        private string dbPath => _paths.DatabasePath;
+        private string reportsDir => _paths.ReportsDir;
         // Read-only mode: when true, this DashboardServer instance refuses every non-GET
         // request with HTTP 403, suppresses destructive UI in the dashboard HTML via a
         // data-readonly attribute on the <html> element, and tags every response with an
@@ -156,6 +173,10 @@ namespace NINA.Plugin.NightSummary.Server {
         public string TailscaleUrl { get; private set; }
         public string ZeroTierUrl { get; private set; }
 
+        // Single-rig ctor — primary mode, read-only mirror, dev harness, tests.
+        // Wraps the one (data, paths, regen, companion) tuple into a trivial
+        // single-entry registry so the multi-rig request path below is exercised
+        // uniformly (Resolve always returns this one backend).
         public DashboardServer(
             IDashboardDataSource data,
             IPluginSettings settings,
@@ -165,24 +186,35 @@ namespace NINA.Plugin.NightSummary.Server {
             IReportRegenerator regen,
             ICompanionController companion = null,
             ICompanionTokenStore tokenStore = null,
+            bool readOnly = false)
+            : this(new SingleRigRegistry(new RigBackend("primary", "Primary", true,
+                       data  ?? throw new ArgumentNullException(nameof(data)),
+                       paths ?? throw new ArgumentNullException(nameof(paths)),
+                       regen, companion)),
+                   settings, webAssets, externalLog, tokenStore, readOnly) { }
+
+        // Multi-rig ctor — companion mode passes a registry with one backend per
+        // paired rig. The server resolves ?rig= to a backend per request.
+        public DashboardServer(
+            IRigRegistry rigs,
+            IPluginSettings settings,
+            IWebAssets webAssets,
+            IDashboardLogger externalLog,
+            ICompanionTokenStore tokenStore = null,
             bool readOnly = false) {
-            _data       = data       ?? throw new ArgumentNullException(nameof(data));
+            _rigs       = rigs       ?? throw new ArgumentNullException(nameof(rigs));
             _settings   = settings   ?? throw new ArgumentNullException(nameof(settings));
             _webAssets  = webAssets  ?? throw new ArgumentNullException(nameof(webAssets));
             _external   = externalLog ?? throw new ArgumentNullException(nameof(externalLog));
-            _regen      = regen;       // optional — null in dev when regeneration is disabled
-            _companion  = companion;   // optional — non-null only in companion mode
             _tokenStore = tokenStore;  // optional — non-null only in primary mode
             _readOnly   = readOnly;
 
-            // Path roots come from IDashboardPaths; the legacy fields stay so the rest
-            // of the file's File.Exists/Path.Combine calls keep working unchanged.
-            this._paths     = paths;
-            this.dataDir    = paths.DataDir;
+            // Shared root-level paths (logs, cache) hang off the registry root,
+            // not any single rig. Per-rig dbPath/reportsDir resolve lazily via the
+            // properties above.
+            this.dataDir    = rigs.RootDataDir;
             this.cachePath  = Path.Combine(dataDir, "nightsummary-dashboard-cache.sqlite");
-            this.reportsDir = paths.ReportsDir;
-            this.dbPath     = paths.DatabasePath;
-            Directory.CreateDirectory(reportsDir);
+            Directory.CreateDirectory(_rigs.Default.Paths.ReportsDir);
         }
 
         /// <summary>
@@ -474,6 +506,22 @@ namespace NINA.Plugin.NightSummary.Server {
         private async Task HandleRequest(TcpHttpRequest req, TcpHttpResponse res) {
             var path = req.Url.AbsolutePath.TrimEnd('/');
             if (string.IsNullOrEmpty(path)) path = "/";
+
+            // Scope this request to the rig named by ?rig=<id>. Missing/unknown id
+            // resolves to the default rig (back-compat for bookmarks, the read-only
+            // mirror, and primary-mode JS that never sends the param). Set before
+            // any handler runs so every _data / _paths / _companion access below
+            // reads the right rig; AsyncLocal carries it through the await chain.
+            var rigId = req.QueryString["rig"];
+            var backend = _rigs.Resolve(rigId);
+            _currentRig.Value = backend;
+            if (!string.IsNullOrEmpty(rigId) && !string.Equals(backend.Id, rigId, StringComparison.Ordinal)) {
+                lock (_loggedUnknownRigs) {
+                    if (_loggedUnknownRigs.Add(rigId))
+                        log?.Warn($"Unknown rig '{rigId}' — serving default rig '{backend.Id}' instead.");
+                }
+            }
+
             var done = log?.BeginRequest(req.HttpMethod, path);
             var ua = req.UserAgent;
             if (!string.IsNullOrEmpty(ua)) {
@@ -562,6 +610,10 @@ namespace NINA.Plugin.NightSummary.Server {
                         await HandleExportTonightCache(req, res, done);
                     } else if (path == "/api/companion/status") {
                         await HandleCompanionStatus(res, done);
+                    } else if (path == "/api/companion/status/all") {
+                        await HandleCompanionStatusAll(res, done);
+                    } else if (path == "/api/companion/rigs") {
+                        await HandleCompanionRigsList(res, done);
                     } else if (path == "/api/companion/config") {
                         await HandleCompanionConfigGet(res, done);
                     } else if (path == "/api/companion/autostart") {
@@ -747,6 +799,16 @@ namespace NINA.Plugin.NightSummary.Server {
                         await HandleSetAutostart(req, res, done);
                     } else if (path == "/api/companion/config") {
                         await HandleCompanionConfigSave(req, res, done);
+                    } else if (path == "/api/companion/rigs") {
+                        await HandleCompanionRigAdd(req, res, done);
+                    } else if (path.StartsWith("/api/companion/rigs/") && path.EndsWith("/remove")) {
+                        var remRigId = path.Substring("/api/companion/rigs/".Length,
+                            path.Length - "/api/companion/rigs/".Length - "/remove".Length);
+                        await HandleCompanionRigRemove(req, res, Uri.UnescapeDataString(remRigId), done);
+                    } else if (path.StartsWith("/api/companion/rigs/") && path.EndsWith("/enable")) {
+                        var enRigId = path.Substring("/api/companion/rigs/".Length,
+                            path.Length - "/api/companion/rigs/".Length - "/enable".Length);
+                        await HandleCompanionRigEnable(req, res, Uri.UnescapeDataString(enRigId), done);
                     } else if (path == "/api/companion/test-connection") {
                         await HandleCompanionTestConnection(req, res, done);
                     } else if (path == "/api/companion/pair") {

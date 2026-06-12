@@ -27,4 +27,10 @@
   <ItemGroup>
     <ProjectReference Include="..\NINA.Plugin.NightSummary.Dashboard\NINA.Plugin.NightSummary.Dashboard.csproj" />
   </ItemGroup>
+
+  <!-- Let the test assembly construct internal companion types (rig registry,
+       data source, etc.) directly. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="NINA.Plugin.NightSummary.Tests" />
+  </ItemGroup>
 </Project>

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -34,6 +35,131 @@ namespace NINA.Plugin.NightSummary.Server {
             done?.Invoke(200, null);
         }
 
+        // GET /api/companion/status/all — one status entry per configured rig, for
+        // the settings page rig list + the switcher's aggregate "another rig is
+        // erroring" dot. Each rig resolves to its own controller; a rig with no
+        // controller (shouldn't happen in companion mode) is skipped.
+        private async Task HandleCompanionStatusAll(TcpHttpResponse res, Action<int, string> done) {
+            if (_rigs.Default.Companion == null) {
+                await WriteJson(res, 404, new { error = "companion mode not active" });
+                done?.Invoke(404, null);
+                return;
+            }
+            var rigs = _rigs.All.Where(r => r.Companion != null).Select(r => {
+                var s = r.Companion!.GetStatus();
+                var c = r.Companion!.GetConfig();
+                return new {
+                    id      = r.Id,
+                    name    = r.Name,
+                    enabled = r.Enabled,
+                    status  = ToWire(s, c),
+                };
+            }).ToList();
+            await WriteJson(res, 200, new { defaultRig = _rigs.Default.Id, rigs });
+            done?.Invoke(200, $"status/all: {rigs.Count} rig(s)");
+        }
+
+        // GET /api/companion/rigs — light list for the settings rig section:
+        // id, name, enabled, host, completeness. Heavier per-rig sync status comes
+        // from /api/companion/status/all.
+        private async Task HandleCompanionRigsList(TcpHttpResponse res, Action<int, string> done) {
+            if (_rigs.Default.Companion == null) {
+                await WriteJson(res, 404, new { error = "companion mode not active" });
+                done?.Invoke(404, null);
+                return;
+            }
+            var rigs = _rigs.All.Where(r => r.Companion != null).Select(r => {
+                var c = r.Companion!.GetConfig();
+                return new {
+                    id              = r.Id,
+                    name            = r.Name,
+                    enabled         = r.Enabled,
+                    host            = c.Host,
+                    port            = c.Port,
+                    isComplete      = c.IsComplete,
+                    pairingTokenSet = c.PairingTokenSet,
+                };
+            }).ToList();
+            await WriteJson(res, 200, new {
+                supportsManagement = _rigs.SupportsManagement,
+                defaultRig         = _rigs.Default.Id,
+                rigs,
+            });
+            done?.Invoke(200, $"rigs: {rigs.Count}");
+        }
+
+        // POST /api/companion/rigs  body { name } — create a new unpaired rig and
+        // return its id. The wizard then pairs it via /api/setup/claim?rig=<id>.
+        private async Task HandleCompanionRigAdd(TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
+            if (!_rigs.SupportsManagement) {
+                await WriteJson(res, 400, new { error = "multi-rig management not available" });
+                done?.Invoke(400, "no management");
+                return;
+            }
+            try {
+                var body = await ReadBodyCappedAsync(req, res, done);
+                if (body == null) return;
+                using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                var name = GetStr(doc.RootElement, "name", "");
+                var id = await _rigs.AddRigAsync(name);
+                await WriteJson(res, 200, new { ok = true, id });
+                done?.Invoke(200, $"rig added: {id}");
+            } catch (Exception ex) {
+                log?.Error("Companion add-rig failed", ex);
+                await WriteJson(res, 500, new { ok = false, error = ex.Message });
+                done?.Invoke(500, ex.Message);
+            }
+        }
+
+        // POST /api/companion/rigs/{id}/remove  body { deleteData? } — tear down a
+        // rig; optionally delete its synced data dir.
+        private async Task HandleCompanionRigRemove(TcpHttpRequest req, TcpHttpResponse res, string rigId, Action<int, string> done) {
+            if (!_rigs.SupportsManagement) {
+                await WriteJson(res, 400, new { error = "multi-rig management not available" });
+                done?.Invoke(400, "no management");
+                return;
+            }
+            try {
+                var body = await ReadBodyCappedAsync(req, res, done);
+                if (body == null) return;
+                bool deleteData = false;
+                if (!string.IsNullOrWhiteSpace(body)) {
+                    using var doc = JsonDocument.Parse(body);
+                    deleteData = GetBool(doc.RootElement, "deleteData", false);
+                }
+                var ok = _rigs.RemoveRig(rigId, deleteData);
+                await WriteJson(res, ok ? 200 : 404, new { ok, error = ok ? null : "unknown rig or last rig" });
+                done?.Invoke(ok ? 200 : 404, ok ? $"rig removed: {rigId}" : "remove no-op");
+            } catch (Exception ex) {
+                log?.Error("Companion remove-rig failed", ex);
+                await WriteJson(res, 500, new { ok = false, error = ex.Message });
+                done?.Invoke(500, ex.Message);
+            }
+        }
+
+        // POST /api/companion/rigs/{id}/enable  body { enabled } — toggle a rig's
+        // sync loops on/off without removing it.
+        private async Task HandleCompanionRigEnable(TcpHttpRequest req, TcpHttpResponse res, string rigId, Action<int, string> done) {
+            if (!_rigs.SupportsManagement) {
+                await WriteJson(res, 400, new { error = "multi-rig management not available" });
+                done?.Invoke(400, "no management");
+                return;
+            }
+            try {
+                var body = await ReadBodyCappedAsync(req, res, done);
+                if (body == null) return;
+                using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                var enabled = GetBool(doc.RootElement, "enabled", true);
+                var ok = _rigs.SetRigEnabled(rigId, enabled);
+                await WriteJson(res, ok ? 200 : 404, new { ok, enabled, error = ok ? null : "unknown rig" });
+                done?.Invoke(ok ? 200 : 404, $"rig {rigId} enabled={enabled} ok={ok}");
+            } catch (Exception ex) {
+                log?.Error("Companion enable-rig failed", ex);
+                await WriteJson(res, 500, new { ok = false, error = ex.Message });
+                done?.Invoke(500, ex.Message);
+            }
+        }
+
         // POST /api/companion/sync — coalesces concurrent calls inside the controller.
         // X-Sync-Trigger: push  marks the request as a session-end push from the
         // primary. When the user has disabled AcceptPush, push-triggered calls
@@ -45,10 +171,38 @@ namespace NINA.Plugin.NightSummary.Server {
                 done?.Invoke(404, null);
                 return;
             }
-            var c = _companion.GetConfig();
             var isPush = req.Headers != null
                          && req.Headers.TryGetValue("X-Sync-Trigger", out var tr)
                          && string.Equals(tr, "push", StringComparison.OrdinalIgnoreCase);
+            var explicitRig = req.QueryString["rig"];
+
+            // A session-end push from the primary carries no ?rig=, so route it by
+            // matching the request's source address to a rig's configured host.
+            // No confident match → fan out to every enabled rig (pulls are
+            // incremental + coalesced, so a spurious extra sync is cheap and safe).
+            // A user-clicked Sync Now always carries ?rig=ACTIVE, so it stays on
+            // the single active controller below.
+            if (isPush && string.IsNullOrEmpty(explicitRig)) {
+                var targets = ResolvePushTargets(req);
+                var ran = new List<object>();
+                int skipped = 0;
+                foreach (var b in targets) {
+                    var cc = b.Companion!.GetConfig();
+                    if (!cc.AcceptPush) { skipped++; continue; }
+                    try {
+                        var st = await b.Companion!.TriggerSyncAsync();
+                        ran.Add(new { id = b.Id, ok = st.LastError == null, error = st.LastError });
+                    } catch (Exception ex) {
+                        log?.Error($"Companion push sync failed for rig {b.Id}", ex);
+                        ran.Add(new { id = b.Id, ok = false, error = ex.Message });
+                    }
+                }
+                await WriteJson(res, 200, new { ok = true, push = true, synced = ran, skippedDisabled = skipped });
+                done?.Invoke(200, $"push synced {ran.Count} rig(s){(skipped > 0 ? $", {skipped} skipped" : "")}");
+                return;
+            }
+
+            var c = _companion.GetConfig();
             if (isPush && !c.AcceptPush) {
                 await WriteJson(res, 200, new { ok = true, skipped = true, reason = "push notifications disabled" });
                 done?.Invoke(200, "push skipped (user-disabled)");
@@ -64,6 +218,27 @@ namespace NINA.Plugin.NightSummary.Server {
                 await WriteJson(res, 500, new { error = ex.Message });
                 done?.Invoke(500, ex.Message);
             }
+        }
+
+        // Pick the rig(s) a session-end push should sync. Prefer the rig whose
+        // configured host string-matches the request's source IP; if nothing
+        // matches (NAT, Tailscale MagicDNS, hostname host), fall back to all
+        // enabled rigs. Only ever returns rigs with a controller + AcceptPush is
+        // re-checked by the caller.
+        private List<RigBackend> ResolvePushTargets(TcpHttpRequest req) {
+            var enabled = _rigs.All.Where(r => r.Enabled && r.Companion != null).ToList();
+            var ip = req.RemoteIp?.ToString();
+            if (!string.IsNullOrEmpty(ip)) {
+                var matched = enabled
+                    .Where(r => string.Equals(r.Companion!.GetConfig().Host, ip, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                if (matched.Count > 0) {
+                    log?.Info($"Push routed by source IP {ip} → rig(s) {string.Join(",", matched.Select(m => m.Id))}");
+                    return matched;
+                }
+            }
+            log?.Info($"Push source {ip ?? "?"} matched no rig host — fanning out to {enabled.Count} enabled rig(s).");
+            return enabled;
         }
 
         // GET /api/companion/config — masked api key, drives the Settings tab.
