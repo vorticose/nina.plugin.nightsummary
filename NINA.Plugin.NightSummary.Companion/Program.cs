@@ -336,6 +336,14 @@ On first run a default companion.json is written and the program exits so you ca
         Directory.CreateDirectory(logsDir);
         var log = new CompanionLogger(logsDir);
 
+        // Persist a v1->v2 shape migration BEFORE touching data, so the rig id
+        // minted during Load is stable across restarts (otherwise the next boot
+        // would mint a new id and orphan the relocated rigs/<id>/ dir).
+        if (config.JustMigratedV1) {
+            log.Info("Companion: migrated config to v2 (rigs[]); saving so the rig id is stable.");
+            try { CompanionConfig.Save(config, configPath); } catch (Exception ex) { log.Warn($"Companion: could not persist v2 config: {ex.Message}"); }
+        }
+
         // One-time: move a legacy flat data dir under rigs/{defaultRigId}/. No-op
         // on fresh installs and on already-migrated trees (marker file).
         CompanionMigration.RelocateDataDirIfNeeded(rootDataDir, config.DefaultRig()?.Id, log);

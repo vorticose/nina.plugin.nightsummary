@@ -65,6 +65,14 @@ public sealed class CompanionConfig {
 
     public sealed class NinaConfig : RigConfig.NinaConfig { }   // kept for source compat (some tests reference the nested name)
 
+    // Set by MigrateFromV1 when it actually changed the in-memory shape (folded a
+    // v1 block into rigs[0], or minted a missing id). The caller persists the
+    // config when true so the generated rig id is STABLE across restarts —
+    // otherwise every boot would mint a fresh id and orphan the relocated
+    // rigs/<id>/ data dir. Not serialized.
+    [JsonIgnore]
+    public bool JustMigratedV1 { get; private set; }
+
     // ── Single-rig convenience proxies ──────────────────────────────────────
     // Getter-only so `new CompanionConfig { Nina = { Host = "x" } }` (nested
     // object-initializer) and `_config.Nina.Host = ...` both work: they mutate
@@ -167,12 +175,16 @@ public sealed class CompanionConfig {
                 Sync    = RawSync ?? new RigConfig.SyncConfig(),
             };
             Rigs.Add(rig);
+            JustMigratedV1 = true;
         }
         // Backfill ids/names on any rig that somehow lacks them (hand-edited file).
         foreach (var r in Rigs) {
-            if (string.IsNullOrWhiteSpace(r.Id))   r.Id   = NewRigId();
+            if (string.IsNullOrWhiteSpace(r.Id))   { r.Id   = NewRigId(); JustMigratedV1 = true; }
             if (string.IsNullOrWhiteSpace(r.Name)) r.Name = string.IsNullOrWhiteSpace(r.Nina.Host) ? r.Id : r.Nina.Host;
         }
+        // A file that lacked configVersion (true v1) should be rewritten as v2
+        // even if it carried no nina block, so the marker stamps once.
+        if (ConfigVersion != 2 && Rigs.Count > 0) JustMigratedV1 = true;
         // Migration consumed the legacy blocks — drop them so Save doesn't re-emit.
         RawNina = null;
         RawSync = null;

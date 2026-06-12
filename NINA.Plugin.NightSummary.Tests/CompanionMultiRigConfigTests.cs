@@ -56,6 +56,30 @@ public class CompanionMultiRigConfigTests {
     }
 
     [Fact]
+    public void Load_V1File_FlagsJustMigrated_SoCallerPersistsStableId() {
+        var path = TempPath();
+        try {
+            File.WriteAllText(path, V1Json("h", "t"));
+            var cfg = CompanionConfig.Load(path);
+            Assert.True(cfg.JustMigratedV1);   // caller must Save so the minted rig id is stable
+        } finally { Cleanup(path); }
+    }
+
+    [Fact]
+    public void Load_V2File_DoesNotFlagMigration() {
+        var path = TempPath();
+        try {
+            var v2 = new CompanionConfig {
+                Rigs = { new RigConfig { Id = "stableid0", Name = "Rig", Nina = { Host = "h", PairingToken = "t" } } },
+            };
+            CompanionConfig.Save(v2, path);     // writes configVersion:2 + rigs
+            var cfg = CompanionConfig.Load(path);
+            Assert.False(cfg.JustMigratedV1);   // already v2 — no rewrite needed
+            Assert.Equal("stableid0", cfg.Rigs[0].Id);
+        } finally { Cleanup(path); }
+    }
+
+    [Fact]
     public void Save_AlwaysWritesV2_DropsLegacyBlocks() {
         var path = TempPath();
         try {

@@ -60,6 +60,12 @@ internal static class Program {
         // path intact for fast mobile UI iteration.
         var companion = opts.CompanionMode ? new DevStubCompanionController(log) : null;
 
+        // --pair-token wires a seeded in-memory token store so this harness acts
+        // as a REAL primary: a companion paired with that token can pull
+        // /api/export/*. Dev/E2E only.
+        var tokenStore = string.IsNullOrEmpty(opts.PairToken) ? null : new DevTokenStore(opts.PairToken);
+        if (tokenStore != null) log.Info($"Primary pairing ENABLED — seeded token '{opts.PairToken}' (dev export auth).");
+
         var server = new DashboardServer(
             data:        data,
             settings:    settings,
@@ -67,7 +73,8 @@ internal static class Program {
             externalLog: log,
             paths:       paths,
             regen:       regen,
-            companion:   companion);
+            companion:   companion,
+            tokenStore:  tokenStore);
 
         log.Info($"DB:      {opts.DbPath} (exists: {File.Exists(opts.DbPath)})");
         if (opts.NoTs) {
@@ -111,6 +118,7 @@ internal static class Program {
         public bool   NoTs           { get; set; } = false;
         public bool   EmptyProjects  { get; set; } = false;
         public bool   CompanionMode  { get; set; } = false;
+        public string PairToken      { get; set; } = "";
         public string WebDir     { get; set; } = "";
         public string AssetsDir  { get; set; } = "";
         public string DataDir    { get; set; } = "";
@@ -138,6 +146,7 @@ internal static class Program {
                 case "--no-ts":          opts.NoTs          = true; break;
                 case "--empty-projects": opts.EmptyProjects  = true; break;
                 case "--companion-mode": opts.CompanionMode  = true; break;
+                case "--pair-token":     opts.PairToken      = next() ?? ""; break;
                 case "--web":     opts.WebDir     = next() ?? ""; break;
                 case "--assets":  opts.AssetsDir  = next() ?? ""; break;
                 case "--data":    opts.DataDir    = next() ?? ""; break;
