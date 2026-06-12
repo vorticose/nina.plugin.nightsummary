@@ -29,6 +29,10 @@ public sealed class SyncEngine {
     private readonly int _dashboardPort;
     private readonly CompanionPaths _paths;
     private readonly IDashboardLogger _log;
+
+    // Rig name prefix on every log line — the logs dir is shared across all rigs
+    // (per the multi-rig design), so the tag is how you tell whose sync is whose.
+    private string Tag => string.IsNullOrEmpty(_rig.Name) ? "" : "[" + _rig.Name + "] ";
     private readonly object _httpGate = new();
     private HttpClient _http;
     private readonly bool _externalHttp;
@@ -141,13 +145,13 @@ public sealed class SyncEngine {
             if (!reachable) {
                 state.LastError = "primary unreachable";
                 state.Save(statePath);
-                _log.Warn($"Sync: primary unreachable at {_rig.ResolvedNinaUrl()}");
+                _log.Warn($"{Tag}Sync: primary unreachable at {_rig.ResolvedNinaUrl()}");
                 return new SyncResult(false, false, "primary unreachable", 0, 0, 0, 0, 0, 0, 0, 0, null);
             }
 
             // 2 — Full remote manifest (used for orphan reconcile)
             var manifest = await FetchManifestAsync(since: null, ct);
-            _log.Info($"Sync: remote manifest reports {manifest.Files.Length} file(s)");
+            _log.Info($"{Tag}Sync: remote manifest reports {manifest.Files.Length} file(s)");
 
             // 3 — Incremental reports zip
             Report(2, "Downloading reports");
@@ -175,7 +179,7 @@ public sealed class SyncEngine {
             try {
                 await TryPullTonightCacheAsync(ct);
             } catch (Exception ex) {
-                _log.Warn($"Sync: tonight cache pull skipped — {ex.Message}");
+                _log.Warn($"{Tag}Sync: tonight cache pull skipped — {ex.Message}");
             }
 
             // 6b — Thumbs: separate manifest + zip + orphan pass. Primary may
@@ -183,7 +187,7 @@ public sealed class SyncEngine {
             // server returns an empty manifest/zip in that case and we no-op.
             Report(4, "Downloading thumbnails");
             var thumbsManifest = await FetchThumbsManifestAsync(since: null, ct);
-            _log.Info($"Sync: remote thumbs manifest reports {thumbsManifest.Files.Length} file(s)");
+            _log.Info($"{Tag}Sync: remote thumbs manifest reports {thumbsManifest.Files.Length} file(s)");
             var (tAdded, tUpdated) = await PullThumbsZipAsync(state.LastThumbMtimeUtc, ct, 4, "Downloading thumbnails");
             int tDeleted = thumbsManifest.Files.Length > 0
                 ? DeleteThumbOrphans(thumbsManifest)
@@ -197,7 +201,7 @@ public sealed class SyncEngine {
             state.LastError      = null;
             state.Save(statePath);
 
-            _log.Info($"Sync: ok — db={dbBytes}B ts={tsBytes}B reports added={added} updated={updated} deleted={deleted}" +
+            _log.Info($"{Tag}Sync: ok — db={dbBytes}B ts={tsBytes}B reports added={added} updated={updated} deleted={deleted}" +
                       $" thumbs added={tAdded} updated={tUpdated} deleted={tDeleted}");
             return new SyncResult(true, true, null, dbBytes, tsBytes, added, updated, deleted,
                                   tAdded, tUpdated, tDeleted, primaryVersion);
@@ -205,7 +209,7 @@ public sealed class SyncEngine {
         } catch (Exception ex) {
             state.LastError = ex.Message;
             state.Save(statePath);
-            _log.Error("Sync failed", ex);
+            _log.Error($"{Tag}Sync failed", ex);
             return new SyncResult(true, false, ex.Message, 0, 0, 0, 0, 0, 0, 0, 0, null);
         }
     }
@@ -242,7 +246,7 @@ public sealed class SyncEngine {
         if (since.HasValue) url += "?since=" + Uri.EscapeDataString(since.Value.ToString("o"));
         using var resp = await _http.GetAsync(url, ct);
         if (allow404 && resp.StatusCode == System.Net.HttpStatusCode.NotFound) {
-            _log.Info($"Sync: {endpoint} → 404 (primary predates this endpoint)");
+            _log.Info($"{Tag}Sync: {endpoint} → 404 (primary predates this endpoint)");
             return new ManifestResponse();
         }
         resp.EnsureSuccessStatusCode();
@@ -289,7 +293,7 @@ public sealed class SyncEngine {
                 if (entry.FullName.EndsWith("/", StringComparison.Ordinal)) continue;
                 var safeRel = SanitizeRelativePath(entry.FullName);
                 if (safeRel == null) {
-                    _log.Warn($"Sync: skipping suspicious zip entry '{entry.FullName}'");
+                    _log.Warn($"{Tag}Sync: skipping suspicious zip entry '{entry.FullName}'");
                     continue;
                 }
                 var dest = Path.Combine(root, safeRel);
@@ -350,7 +354,7 @@ public sealed class SyncEngine {
         try {
             using var resp = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
             if (resp.StatusCode == System.Net.HttpStatusCode.NotFound) {
-                _log.Info($"Sync: {url} → 404 (skipping; primary has no TS DB)");
+                _log.Info($"{Tag}Sync: {url} → 404 (skipping; primary has no TS DB)");
                 return 0;
             }
             resp.EnsureSuccessStatusCode();
@@ -371,7 +375,7 @@ public sealed class SyncEngine {
                 throw;
             }
         } catch (HttpRequestException ex) {
-            _log.Warn($"Sync: {url} failed ({ex.Message}); continuing without TS DB");
+            _log.Warn($"{Tag}Sync: {url} failed ({ex.Message}); continuing without TS DB");
             return 0;
         }
     }
@@ -388,7 +392,7 @@ public sealed class SyncEngine {
         try {
             using var resp = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
             if (resp.StatusCode == System.Net.HttpStatusCode.NotFound) {
-                _log.Info($"Sync: {url} → 404 (primary has no cache yet — will populate on next sync)");
+                _log.Info($"{Tag}Sync: {url} → 404 (primary has no cache yet — will populate on next sync)");
                 return 0;
             }
             resp.EnsureSuccessStatusCode();
@@ -403,14 +407,14 @@ public sealed class SyncEngine {
                 if (File.Exists(destPath)) File.Replace(temp, destPath, null, ignoreMetadataErrors: true);
                 else                       File.Move(temp, destPath);
                 var bytes = new FileInfo(destPath).Length;
-                _log.Info($"Sync: tonight cache pulled ({bytes} bytes)");
+                _log.Info($"{Tag}Sync: tonight cache pulled ({bytes} bytes)");
                 return bytes;
             } catch {
                 try { if (File.Exists(temp)) File.Delete(temp); } catch { }
                 throw;
             }
         } catch (HttpRequestException ex) {
-            _log.Warn($"Sync: {url} failed ({ex.Message}); continuing without tonight cache");
+            _log.Warn($"{Tag}Sync: {url} failed ({ex.Message}); continuing without tonight cache");
             return 0;
         }
     }
@@ -435,7 +439,7 @@ public sealed class SyncEngine {
             var rel = Path.GetRelativePath(root, local).Replace('\\', '/');
             if (!remotePaths.Contains(rel)) {
                 try { File.Delete(local); deleted++; }
-                catch (Exception ex) { _log.Warn($"Sync: could not delete {label} '{rel}': {ex.Message}"); }
+                catch (Exception ex) { _log.Warn($"{Tag}Sync: could not delete {label} '{rel}': {ex.Message}"); }
             }
         }
         // Best-effort prune empty subdirs created by deletes
