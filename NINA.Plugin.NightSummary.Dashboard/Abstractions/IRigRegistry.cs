@@ -71,6 +71,11 @@ public interface IRigRegistry {
     // Enable/disable a rig without removing it — starts/stops its sync loops and
     // persists the flag. Returns false if the id is unknown.
     bool SetRigEnabled(string rigId, bool enabled);
+
+    // Rename a rig (display label only — does not touch sync). Persists and the
+    // change shows live in the switcher/banner/settings. Returns false if the id
+    // is unknown or the name is blank.
+    bool SetRigName(string rigId, string name);
 }
 
 // Trivial single-entry registry. Used by primary mode, the read-only mirror, the
@@ -92,4 +97,6 @@ public sealed class SingleRigRegistry : IRigRegistry {
         throw new NotSupportedException("single-rig registry does not support removing rigs");
     public bool SetRigEnabled(string rigId, bool enabled) =>
         throw new NotSupportedException("single-rig registry does not support enabling/disabling rigs");
+    public bool SetRigName(string rigId, string name) =>
+        throw new NotSupportedException("single-rig registry does not support renaming rigs");
 }

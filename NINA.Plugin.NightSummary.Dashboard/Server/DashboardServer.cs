@@ -809,6 +809,10 @@ namespace NINA.Plugin.NightSummary.Server {
                         var enRigId = path.Substring("/api/companion/rigs/".Length,
                             path.Length - "/api/companion/rigs/".Length - "/enable".Length);
                         await HandleCompanionRigEnable(req, res, Uri.UnescapeDataString(enRigId), done);
+                    } else if (path.StartsWith("/api/companion/rigs/") && path.EndsWith("/rename")) {
+                        var rnRigId = path.Substring("/api/companion/rigs/".Length,
+                            path.Length - "/api/companion/rigs/".Length - "/rename".Length);
+                        await HandleCompanionRigRename(req, res, Uri.UnescapeDataString(rnRigId), done);
                     } else if (path == "/api/companion/test-connection") {
                         await HandleCompanionTestConnection(req, res, done);
                     } else if (path == "/api/companion/pair") {

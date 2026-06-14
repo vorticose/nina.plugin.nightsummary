@@ -160,6 +160,34 @@ namespace NINA.Plugin.NightSummary.Server {
             }
         }
 
+        // POST /api/companion/rigs/{id}/rename  body { name } — change a rig's
+        // display label. Works for a single-rig install too.
+        private async Task HandleCompanionRigRename(TcpHttpRequest req, TcpHttpResponse res, string rigId, Action<int, string> done) {
+            if (!_rigs.SupportsManagement) {
+                await WriteJson(res, 400, new { error = "multi-rig management not available" });
+                done?.Invoke(400, "no management");
+                return;
+            }
+            try {
+                var body = await ReadBodyCappedAsync(req, res, done);
+                if (body == null) return;
+                using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                var name = GetStr(doc.RootElement, "name", "");
+                if (string.IsNullOrWhiteSpace(name)) {
+                    await WriteJson(res, 400, new { ok = false, error = "name required" });
+                    done?.Invoke(400, "blank name");
+                    return;
+                }
+                var ok = _rigs.SetRigName(rigId, name);
+                await WriteJson(res, ok ? 200 : 404, new { ok, name = name.Trim(), error = ok ? null : "unknown rig" });
+                done?.Invoke(ok ? 200 : 404, $"rig {rigId} rename ok={ok}");
+            } catch (Exception ex) {
+                log?.Error("Companion rename-rig failed", ex);
+                await WriteJson(res, 500, new { ok = false, error = ex.Message });
+                done?.Invoke(500, ex.Message);
+            }
+        }
+
         // POST /api/companion/sync — coalesces concurrent calls inside the controller.
         // X-Sync-Trigger: push  marks the request as a session-end push from the
         // primary. When the user has disabled AcceptPush, push-triggered calls

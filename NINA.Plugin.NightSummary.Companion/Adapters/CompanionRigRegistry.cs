@@ -139,6 +139,20 @@ internal sealed class CompanionRigRegistry : IRigRegistry, IAsyncDisposable, IDi
         return true;
     }
 
+    public bool SetRigName(string rigId, string name) {
+        if (string.IsNullOrWhiteSpace(name)) return false;
+        lock (_gate) {
+            var rig = _config.Rigs.FirstOrDefault(r => r.Id == rigId);
+            if (rig == null) return false;
+            rig.Name = name.Trim();
+            CompanionConfig.Save(_config, _configPath);
+        }
+        // Backend.Name is computed live from rig.Name, so /api/mode + the switcher
+        // pick this up on the next poll without rebuilding anything.
+        _log.Info($"Companion: rig {rigId} renamed to '{name.Trim()}'.");
+        return true;
+    }
+
     // ── Lifecycle ───────────────────────────────────────────────────────────
 
     // Start the scheduler + ping loops for every enabled rig. Called once after

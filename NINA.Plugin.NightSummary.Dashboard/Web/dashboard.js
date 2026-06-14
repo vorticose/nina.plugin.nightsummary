@@ -9768,6 +9768,7 @@ function rigSectionHtml(rigsResp) {
       '</div>' +
       '<div class="rig-row-actions">' +
         (isActive ? '' : '<button class="rig-row-btn rig-edit" data-rig="' + esc(r.id) + '">Edit</button>') +
+        '<button class="rig-row-btn rig-rename" data-rig="' + esc(r.id) + '" data-name="' + esc(r.name || r.id) + '">Rename</button>' +
         '<button class="rig-row-btn rig-toggle" data-rig="' + esc(r.id) + '" data-enabled="' + (r.enabled ? '1' : '0') + '">' + toggleLabel + '</button>' +
         removeBtn +
       '</div>' +
@@ -9787,6 +9788,21 @@ function bindRigSection(rigsResp) {
   // Edit = switch the active rig and re-render settings for it.
   Array.prototype.forEach.call(document.querySelectorAll('.rig-edit'), function(b){
     b.onclick = function(){ switchRig(b.getAttribute('data-rig')); renderSettingsPage(); };
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('.rig-rename'), function(b){
+    b.onclick = function(){
+      var cur = b.getAttribute('data-name') || '';
+      var name = prompt('Rename this rig:', cur);
+      if (name === null) return;            // cancelled
+      name = name.trim();
+      if (!name || name === cur) return;
+      b.disabled = true;
+      fetch('/api/companion/rigs/' + encodeURIComponent(b.getAttribute('data-rig')) + '/rename', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name }),
+      }).then(function(){ return refreshRigsThenRerender(); })
+        .catch(function(){ b.disabled = false; });
+    };
   });
   Array.prototype.forEach.call(document.querySelectorAll('.rig-toggle'), function(b){
     b.onclick = function(){
