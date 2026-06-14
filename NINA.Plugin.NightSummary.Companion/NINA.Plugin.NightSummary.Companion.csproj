@@ -11,6 +11,12 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Lockstep the companion's reported version with the plugin's single source
+         of truth (NINA.Plugin.NightSummary.csproj VersionPrefix), so the version
+         command, /api/health, and the Info.plist all agree without a second place
+         to bump. Read at evaluation time so the SDK derives the
+         AssemblyInformationalVersion from it. -->
+    <VersionPrefix>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)..\NINA.Plugin.NightSummary\NINA.Plugin.NightSummary.csproj')), '&lt;VersionPrefix&gt;([^&lt;]+)&lt;').Groups[1].Value)</VersionPrefix>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>false</SelfContained>
     <!-- Bake the native deps (e_sqlite3, libSkiaSharp) INTO the single file so
