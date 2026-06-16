@@ -9498,6 +9498,7 @@ function initCompanionBanner() {
     if (btn) btn.onclick = companionSyncNow;
     refreshCompanionStatus();
     setInterval(refreshCompanionStatus, 10000);
+    initUpdateCheck();
     // Post-restart reload race: if the URL hash is already #/settings (user
     // hit Restart from the Settings tab), renderSettingsPage() ran before
     // /api/mode resolved and painted the "primary mode" placeholder. Now
@@ -9600,6 +9601,128 @@ function companionSyncNow() {
     if (btn) btn.disabled = false;
     if (banner) banner.classList.remove('is-syncing');
   });
+}
+
+// ── In-app update banner (companion-only) ────────────────────────────────
+// Polls /api/companion/update-check once after the banner inits. When a newer
+// release exists AND the user hasn't dismissed THAT version, shows a banner.
+// Self-updatable installs (Windows zip / mac .app / Linux tarball) get an
+// "Update now" button that POSTs /api/companion/update, then polls /api/health
+// until the new version answers and reloads. AppImage / .deb / non-writable
+// installs get a "Download" link to the release instead. Nothing ever applies
+// without a click — dismissal is per-version, so the next release re-prompts.
+var UPDATE_DISMISS_KEY = 'ns_companion_update_dismissed';
+
+function initUpdateCheck() {
+  fetch('/api/companion/update-check').then(function(r){ return r.json(); }).then(function(u){
+    if (!u || !u.updateAvailable) return;
+    var dismissed = '';
+    try { dismissed = localStorage.getItem(UPDATE_DISMISS_KEY) || ''; } catch (e) {}
+    if (dismissed === u.latest) return;   // user already dismissed THIS version
+    renderUpdateBanner(u);
+  }).catch(function(){ /* offline / rate-limited / primary mode — stay quiet */ });
+}
+
+function renderUpdateBanner(u) {
+  var banner = document.getElementById('companion-update-banner');
+  if (!banner) return;
+  banner.classList.remove('is-error');
+  var actions = u.canSelfUpdate
+    ? '<button id="ns-update-now" class="companion-banner-btn" type="button">Update now</button>'
+    : '<a id="ns-update-download" class="companion-banner-btn" href="' + esc(u.releaseUrl) + '" target="_blank" rel="noopener">Download</a>';
+  var notesLink = u.releaseUrl
+    ? '<a class="ns-update-link" href="' + esc(u.releaseUrl) + '" target="_blank" rel="noopener">Release notes</a>'
+    : '';
+  var hint = u.canSelfUpdate ? '' : '<span class="ns-update-hint">Re-run your installer to update.</span>';
+  banner.innerHTML =
+    '<div class="companion-banner-info">' +
+      '<span class="companion-banner-label">Update</span>' +
+      '<span>Version ' + esc(u.latest) + ' is available' +
+        (u.current ? ' (you have ' + esc(u.current) + ')' : '') + '.</span>' +
+      notesLink + hint +
+    '</div>' +
+    '<div class="ns-update-actions">' + actions +
+      '<button id="ns-update-dismiss" class="companion-banner-btn is-ghost" type="button">Dismiss</button>' +
+    '</div>';
+  banner.hidden = false;
+  var dis = document.getElementById('ns-update-dismiss');
+  if (dis) dis.onclick = function(){ dismissUpdate(u.latest); };
+  var now = document.getElementById('ns-update-now');
+  if (now) now.onclick = function(){ confirmUpdate(u); };
+}
+
+function dismissUpdate(version) {
+  try { localStorage.setItem(UPDATE_DISMISS_KEY, version || ''); } catch (e) {}
+  var banner = document.getElementById('companion-update-banner');
+  if (banner) { banner.hidden = true; banner.innerHTML = ''; }
+}
+
+// In-place confirm (mutate the action row, never reopen) -> POST -> progress.
+function confirmUpdate(u) {
+  var actions = document.querySelector('#companion-update-banner .ns-update-actions');
+  if (!actions) return;
+  actions.innerHTML =
+    '<span class="ns-update-confirm-q">Update now? The dashboard will restart.</span>' +
+    '<button id="ns-update-yes" class="companion-banner-btn" type="button">Confirm</button>' +
+    '<button id="ns-update-no" class="companion-banner-btn is-ghost" type="button">Cancel</button>';
+  var no = document.getElementById('ns-update-no');
+  if (no) no.onclick = function(){ renderUpdateBanner(u); };
+  var yes = document.getElementById('ns-update-yes');
+  if (yes) yes.onclick = function(){ startUpdate(u); };
+}
+
+function startUpdate(u) {
+  setUpdateBannerMessage('Downloading version ' + u.latest + '… this can take a minute. ' +
+    'The dashboard will reload automatically when it is ready.', false);
+  fetch('/api/companion/update', { method: 'POST' }).then(function(r){
+    if (r.status === 200) return r.json();
+    return r.json().then(function(j){ throw new Error((j && (j.error || j.detail)) || ('HTTP ' + r.status)); });
+  }).then(function(){
+    pollForNewVersion(u.latest, 0);
+  }).catch(function(err){
+    setUpdateBannerMessage('Update failed: ' + ((err && err.message) || 'unknown') +
+      (u.releaseUrl ? '. You can update manually from the release page.' : '.'), true);
+  });
+}
+
+function setUpdateBannerMessage(msg, isError) {
+  var banner = document.getElementById('companion-update-banner');
+  if (!banner) return;
+  banner.hidden = false;
+  banner.classList.toggle('is-error', !!isError);
+  banner.innerHTML =
+    '<div class="companion-banner-info">' +
+      '<span class="companion-banner-label">Update</span>' +
+      '<span id="ns-update-msg">' + esc(msg) + '</span>' +
+    '</div>';
+}
+
+// After the swap the process restarts; /api/health stops answering for a beat,
+// then comes back reporting the new version. Poll until it matches (or the
+// window expires) and reload. Generous window: a slow link + restart can take
+// a while.
+function pollForNewVersion(target, attempt) {
+  if (attempt > 120) {   // ~4 min at 2 s
+    setUpdateBannerMessage('Update is taking longer than expected. Reload the page in a moment.', true);
+    return;
+  }
+  setTimeout(function(){
+    fetch('/api/health', { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(h){
+      if (h && h.version && normalizeVer(h.version) === normalizeVer(target)) {
+        location.reload();
+      } else {
+        pollForNewVersion(target, attempt + 1);
+      }
+    }).catch(function(){
+      pollForNewVersion(target, attempt + 1);   // health unreachable = mid-restart; keep waiting
+    });
+  }, 2000);
+}
+
+function normalizeVer(v) {
+  v = (v || '').trim().replace(/^v/i, '');
+  var cut = v.search(/[-+ ]/);
+  return cut >= 0 ? v.slice(0, cut) : v;
 }
 
 // When a sync completes (lastSuccessUtc advances) re-render the current data

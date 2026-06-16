@@ -1,12 +1,16 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Formats.Tar;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
+using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using NINA.Plugin.NightSummary.Data;
 using NINA.Plugin.NightSummary.Dashboard.Abstractions;
@@ -467,6 +471,287 @@ namespace NINA.Plugin.NightSummary.Server {
             Process.Start(psi);
             log?.Info($"Companion: spawned replacement process: {exe}");
         }
+
+        // ── In-app update (companion-only) ───────────────────────────────────
+        //
+        // Two endpoints. The check is read-only + cached; the apply downloads the
+        // matching release asset, verifies its checksum, swaps the install in
+        // place, and brings the new version back via the SAME restart machinery
+        // (exit 88 watchdog respawn on Unix tarball, detached self-relaunch on
+        // Windows, detached re-install on macOS). Nothing auto-applies — the apply
+        // only runs when the user clicks "Update now", which POSTs here.
+
+        private UpdateChecker? _updateChecker;
+        private UpdateChecker UpdateCheckerInstance => _updateChecker ??= new UpdateChecker();
+
+        // GET /api/companion/update-check[?force=1] — compares this companion's
+        // version against GitHub releases/latest and reports whether (and how) it
+        // could self-update. Cached 24 h unless force=1. Never errors hard: a
+        // network failure comes back as { error } with updateAvailable=false.
+        private async Task HandleCompanionUpdateCheck(TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
+            if (_companion == null) {
+                await WriteJson(res, 404, new { error = "companion mode not active" });
+                done?.Invoke(404, null);
+                return;
+            }
+            var force = IsTruthy(req.QueryString["force"]);
+            var info = await UpdateCheckerInstance.CheckAsync(_settings.PluginVersion ?? "", force, CancellationToken.None);
+            await WriteJson(res, 200, new {
+                current         = info.Current,
+                latest          = info.Latest,
+                updateAvailable = info.UpdateAvailable,
+                canSelfUpdate   = info.CanSelfUpdate,
+                strategy        = info.Strategy,
+                releaseUrl      = info.ReleaseUrl,
+                notes           = info.Notes,
+                assetName       = info.AssetName,
+                error           = info.Error,
+            });
+            done?.Invoke(200, $"update-check current={info.Current} latest={info.Latest} avail={info.UpdateAvailable} self={info.CanSelfUpdate}");
+        }
+
+        private static bool IsTruthy(string? v) =>
+            v == "1" || string.Equals(v, "true", StringComparison.OrdinalIgnoreCase);
+
+        // POST /api/companion/update — apply the latest release to THIS install.
+        // Re-checks (force) before doing anything, then acks 200 and runs the
+        // download+swap detached so the response flushes before the process exits.
+        // 409 if already current; 422 if this packaging can't self-update (AppImage
+        // / .deb / non-writable) — the UI falls back to the release link.
+        private async Task HandleCompanionUpdate(TcpHttpResponse res, Action<int, string> done) {
+            if (_companion == null) {
+                await WriteJson(res, 404, new { error = "companion mode not active" });
+                done?.Invoke(404, null);
+                return;
+            }
+            var info = await UpdateCheckerInstance.CheckAsync(_settings.PluginVersion ?? "", force: true, CancellationToken.None);
+            if (info.Error != null) {
+                await WriteJson(res, 502, new { error = "update check failed", detail = info.Error });
+                done?.Invoke(502, "update check failed");
+                return;
+            }
+            if (!info.UpdateAvailable) {
+                await WriteJson(res, 409, new { error = "already up to date", current = info.Current });
+                done?.Invoke(409, "already up to date");
+                return;
+            }
+            if (!info.CanSelfUpdate || string.IsNullOrEmpty(info.AssetUrl)) {
+                await WriteJson(res, 422, new { error = "self-update unsupported for this install", strategy = info.Strategy, releaseUrl = info.ReleaseUrl });
+                done?.Invoke(422, $"self-update unsupported ({info.Strategy})");
+                return;
+            }
+            await WriteJson(res, 200, new { ok = true, action = "update", latest = info.Latest, strategy = info.Strategy });
+            done?.Invoke(200, $"update -> v{info.Latest} ({info.Strategy})");
+            _ = Task.Run(async () => {
+                try { await ApplyUpdateAsync(info); }
+                catch (Exception ex) { log?.Error($"Companion: in-app update failed: {ex.Message}"); }
+            });
+        }
+
+        // Download the asset, verify it, and hand off to the platform-specific
+        // swap. Each swap ends in a process exit (or relaunch) so this never
+        // returns on the happy path. Failures log and leave the running companion
+        // untouched (the download sits in a temp dir; nothing was replaced yet).
+        private async Task ApplyUpdateAsync(UpdateInfo info) {
+            log?.Info($"Companion: starting in-app update {info.Current} -> {info.Latest} ({info.Strategy})");
+            var tmp = Path.Combine(Path.GetTempPath(), "ns-companion-update-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tmp);
+            var assetPath = Path.Combine(tmp, info.AssetName);
+
+            using (var http = NewUpdateHttpClient()) {
+                log?.Info($"Companion: downloading {info.AssetName} from {info.AssetUrl}");
+                await DownloadAsync(http, info.AssetUrl, assetPath);
+                await VerifyChecksumAsync(http, assetPath, info.AssetName);
+            }
+
+            var strategy = Enum.TryParse<UpdateStrategy>(info.Strategy, out var s) ? s : UpdateStrategy.NotifyOnly;
+            switch (strategy) {
+                case UpdateStrategy.WindowsZipSwap:      ApplyWindowsUpdate(assetPath, tmp); break;
+                case UpdateStrategy.LinuxTarballInPlace: ApplyLinuxUpdate(assetPath, tmp); break;
+                case UpdateStrategy.MacAppReplace:       await ApplyMacUpdate(assetPath, tmp); break;
+                default:
+                    log?.Warn($"Companion: strategy {info.Strategy} can't self-apply; download left at {assetPath}.");
+                    break;
+            }
+        }
+
+        // Windows: a running .exe is write-locked, so we can't overwrite ourselves.
+        // Extract the new exe, spawn a detached PowerShell helper that waits for our
+        // PID to exit (unlocking the file), copies the new exe over the old one, and
+        // relaunches with our original args — then we exit 0.
+        private void ApplyWindowsUpdate(string zipPath, string tmp) {
+            var extract = Path.Combine(tmp, "extract");
+            ZipFile.ExtractToDirectory(zipPath, extract);
+            var newExe = Directory.GetFiles(extract, "NightSummaryCompanion.exe", SearchOption.AllDirectories).FirstOrDefault()
+                         ?? throw new FileNotFoundException("NightSummaryCompanion.exe not found in update zip");
+            var targetExe = Environment.ProcessPath ?? throw new InvalidOperationException("ProcessPath is null");
+            var launchArgs = string.Join(" ", Environment.GetCommandLineArgs().Skip(1).Select(QuoteArg));
+
+            var helper = Path.Combine(tmp, "ns-update.ps1");
+            File.WriteAllText(helper, WindowsUpdateHelperScript);
+
+            var psi = new ProcessStartInfo {
+                FileName         = "powershell.exe",
+                UseShellExecute  = false,
+                CreateNoWindow   = true,
+                WorkingDirectory = tmp,
+            };
+            foreach (var a in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", helper,
+                                      "-OldPid", Environment.ProcessId.ToString(),
+                                      "-NewExe", newExe, "-TargetExe", targetExe, "-LaunchArgs", launchArgs }) {
+                psi.ArgumentList.Add(a);
+            }
+            Process.Start(psi);
+            log?.Info("Companion: update helper launched; exiting 0 so the .exe can be replaced and relaunched.");
+            Environment.Exit(0);
+        }
+
+        private static string QuoteArg(string a) => a.Contains(' ') ? "\"" + a + "\"" : a;
+
+        // Linux (user-scoped tarball install only — AppImage/.deb are NotifyOnly):
+        // overwrite the -bin (and launcher) in the install dir, then exit 88 so the
+        // bash watchdog relaunches the NEW bytes. Overwriting a running executable
+        // is legal on Unix — the open inode stays valid until we exit.
+        private void ApplyLinuxUpdate(string tarPath, string tmp) {
+            var extract = Path.Combine(tmp, "extract");
+            Directory.CreateDirectory(extract);
+            using (var fs = File.OpenRead(tarPath))
+            using (var gz = new GZipStream(fs, CompressionMode.Decompress)) {
+                TarFile.ExtractToDirectory(gz, extract, overwriteFiles: true);
+            }
+            var srcDir      = Path.Combine(extract, "NightSummaryCompanion");
+            var newBin      = Path.Combine(srcDir, "NightSummaryCompanion-bin");
+            var newLauncher = Path.Combine(srcDir, "NightSummaryCompanion");
+            if (!File.Exists(newBin))
+                throw new FileNotFoundException("NightSummaryCompanion-bin not found in update tarball");
+
+            var installDir = Path.GetDirectoryName(Environment.ProcessPath)
+                             ?? throw new InvalidOperationException("ProcessPath is null");
+            var destBin      = Path.Combine(installDir, "NightSummaryCompanion-bin");
+            var destLauncher = Path.Combine(installDir, "NightSummaryCompanion");
+            File.Copy(newBin, destBin, overwrite: true);
+            if (File.Exists(newLauncher)) File.Copy(newLauncher, destLauncher, overwrite: true);
+            ChmodExec(destBin);
+            ChmodExec(destLauncher);
+            log?.Info("Companion: Linux binary replaced in place; exiting 88 for watchdog respawn of the new version.");
+            Environment.Exit(88);
+        }
+
+        private static void ChmodExec(string path) {
+            if (!File.Exists(path)) return;
+            try {
+                File.SetUnixFileMode(path,
+                    UnixFileMode.UserRead  | UnixFileMode.UserWrite  | UnixFileMode.UserExecute |
+                    UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                    UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+            } catch { /* best-effort */ }
+        }
+
+        // macOS: a running .app can't be replaced from inside itself without breaking
+        // the ad-hoc signature, so hand off to the same install-companion-mac.sh the
+        // release ships (quits us, replaces /Applications/.app, relaunches). We pass
+        // our already-downloaded .dmg via NSC_DMG so it skips its own curl, then exit
+        // 0 (watchdog stops) and let the detached installer take over.
+        private async Task ApplyMacUpdate(string dmgPath, string tmp) {
+            var scriptUrl  = $"https://github.com/{UpdateChecker.Repo}/releases/latest/download/install-companion-mac.sh";
+            var scriptPath = Path.Combine(tmp, "install-companion-mac.sh");
+            using (var http = NewUpdateHttpClient()) {
+                await DownloadAsync(http, scriptUrl, scriptPath);
+            }
+            var psi = new ProcessStartInfo {
+                FileName         = "/bin/sh",
+                UseShellExecute  = false,
+                CreateNoWindow   = true,
+                WorkingDirectory = tmp,
+            };
+            psi.ArgumentList.Add(scriptPath);
+            psi.Environment["NSC_DMG"] = dmgPath;   // reuse our verified download; installer skips its curl
+            Process.Start(psi);
+            log?.Info("Companion: launched detached mac installer (NSC_DMG set); exiting 0 so it can replace the .app.");
+            await Task.Delay(300);                   // let the detached sh start before we vanish
+            Environment.Exit(0);
+        }
+
+        private static HttpClient NewUpdateHttpClient() {
+            var h = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };   // assets are ~70 MB
+            h.DefaultRequestHeaders.UserAgent.ParseAdd("NightSummaryCompanion-Updater");
+            return h;
+        }
+
+        private static async Task DownloadAsync(HttpClient http, string url, string dest) {
+            using var resp = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+            resp.EnsureSuccessStatusCode();
+            await using var fs = File.Create(dest);
+            await resp.Content.CopyToAsync(fs);
+        }
+
+        // Verify the download against the release's checksums.txt. If the release
+        // doesn't publish one (older releases) or the asset isn't listed, log and
+        // skip — HTTPS-from-GitHub is the fallback trust anchor. A real mismatch
+        // throws, aborting the swap before anything is replaced.
+        private async Task VerifyChecksumAsync(HttpClient http, string filePath, string assetName) {
+            var url = $"https://github.com/{UpdateChecker.Repo}/releases/latest/download/checksums.txt";
+            string text;
+            try {
+                text = await http.GetStringAsync(url);
+            } catch {
+                log?.Warn("Companion: no checksums.txt on the release; skipping integrity check (HTTPS download trusted).");
+                return;
+            }
+            string? expected = null;
+            foreach (var line in text.Split('\n')) {
+                var parts = line.Trim().Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length >= 2 && string.Equals(parts[1], assetName, StringComparison.OrdinalIgnoreCase)) {
+                    expected = parts[0];
+                    break;
+                }
+            }
+            if (expected == null) {
+                log?.Warn($"Companion: {assetName} not in checksums.txt; skipping integrity check.");
+                return;
+            }
+            using var sha = SHA256.Create();
+            using var fs = File.OpenRead(filePath);
+            var hash = Convert.ToHexString(sha.ComputeHash(fs)).ToLowerInvariant();
+            if (!string.Equals(hash, expected, StringComparison.OrdinalIgnoreCase)) {
+                throw new InvalidOperationException($"checksum mismatch for {assetName}: expected {expected}, got {hash}");
+            }
+            log?.Info($"Companion: {assetName} checksum verified.");
+        }
+
+        // PowerShell helper that swaps the Windows .exe once we've exited. Pure
+        // ASCII (project rule). Waits up to 30 s for the old PID, retries the copy
+        // past a transient AV/lock, then relaunches with the original args.
+        private const string WindowsUpdateHelperScript = @"
+param(
+    [int]$OldPid,
+    [string]$NewExe,
+    [string]$TargetExe,
+    [string]$LaunchArgs = ''
+)
+$ErrorActionPreference = 'SilentlyContinue'
+for ($i = 0; $i -lt 60; $i++) {
+    if (-not (Get-Process -Id $OldPid -ErrorAction SilentlyContinue)) { break }
+    Start-Sleep -Milliseconds 500
+}
+Start-Sleep -Milliseconds 500
+$copied = $false
+for ($i = 0; $i -lt 20; $i++) {
+    try {
+        Copy-Item -LiteralPath $NewExe -Destination $TargetExe -Force -ErrorAction Stop
+        $copied = $true
+        break
+    } catch {
+        Start-Sleep -Milliseconds 500
+    }
+}
+if (-not $copied) { exit 1 }
+if ($LaunchArgs -and $LaunchArgs.Trim().Length -gt 0) {
+    Start-Process -FilePath $TargetExe -ArgumentList $LaunchArgs
+} else {
+    Start-Process -FilePath $TargetExe
+}
+";
 
         // GET /api/companion/autostart — companion-only. Reports whether
         // "start at login" is supported on this OS/packaging and currently on.
