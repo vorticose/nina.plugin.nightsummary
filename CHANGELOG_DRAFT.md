@@ -6,10 +6,13 @@
 ### New Features
 
 - **Multi-rig companion** — one companion process can now sync and serve **multiple** NINA rigs from a single dashboard. A rig switcher appears in the companion banner once a second rig is paired (single-rig users see no change). Each rig keeps its own complete data dir under `rigs/<id>/`, syncs on its own schedule, and is managed from a new **Rigs** section in companion Settings: add another rig (reuses the pairing wizard), enable/disable, or remove (optionally deleting its synced data). Session-end pushes from a primary are routed to the matching rig by source address. Existing single-rig companions migrate their flat data dir into `rigs/<id>/` automatically on first launch.
+- **Companion in-app updates** — the companion now checks GitHub for a newer release and shows an update banner in its dashboard when one is available. **Update now** downloads and applies the new version in place, then restarts and reloads the dashboard automatically — no manual reinstall. Works for the Windows `.exe`, macOS `.app` (curl-installer based, signature preserved), and the user-scoped Linux tarball install; AppImage and `.deb` installs show a download link instead (re-run your installer to update). Downloads are SHA-256 verified against the release before anything is replaced. Nothing updates without your click, and **Dismiss** silences a version until the next one ships. Your pairing and synced data are never touched.
 
 <!-- TODO docs: add a "Multiple rigs" section to docs/companion.md (on feature/docs-site)
      — add/switch/remove flow, the rigs/<id>/ data layout, and the v1->v2 migration note.
      Update COMPANION_INSTALL.md if it assumes a single primary. -->
+<!-- TODO docs: add an "Updating the companion" section to docs/companion.md — the in-app
+     update banner, Update now vs Dismiss, and the AppImage/.deb download-link fallback. -->
 
 
 ## v3.2.0

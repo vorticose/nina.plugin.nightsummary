@@ -115,6 +115,19 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
+      - name: Generate checksums.txt
+        # The companion's in-app updater fetches releases/latest/download/checksums.txt
+        # and verifies the asset it downloaded before swapping. Lines are
+        # "<sha256>  <bare-asset-name>" (sha256sum's default format), exactly what
+        # VerifyChecksumAsync parses. Cover every companion artifact; the install
+        # scripts are intentionally excluded.
+        run: |
+          cd artifacts
+          for f in NightSummaryCompanion-* nightsummary-companion_*.deb; do
+            [ -f "$f" ] && sha256sum "$f"
+          done > checksums.txt
+          echo "checksums.txt:"; cat checksums.txt
+
       - name: Attach companion binaries + installers to the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -122,7 +135,8 @@ jobs:
           echo "Assets:"; ls -R artifacts
           # install-companion.sh / install-companion-mac.sh are the stable
           # targets of the releases/latest/download/<script> curl one-liners
-          # (Linux and macOS respectively).
+          # (Linux and macOS respectively). checksums.txt is fetched by the
+          # in-app updater to verify a download before it swaps the install.
           gh release upload "${{ github.ref_name }}" \
             artifacts/* scripts/install-companion.sh scripts/install-companion-mac.sh \
             --clobber --repo "${{ github.repository }}"
