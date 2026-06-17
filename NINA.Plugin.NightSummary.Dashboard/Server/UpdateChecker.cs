@@ -48,8 +48,32 @@ namespace NINA.Plugin.NightSummary.Server {
 
         // Public repo slug — same one the install scripts target. Not a secret.
         public const string Repo = "vorticose/nina.plugin.nightsummary";
-        private static readonly string LatestReleaseApi =
-            $"https://api.github.com/repos/{Repo}/releases/latest";
+
+        // Test seam: when NS_UPDATE_BASE_URL is set, the check + checksums + mac-
+        // installer URLs are built from it instead of github.com, so a local fake-
+        // release server can drive a real end-to-end update without publishing.
+        // Unset in production → real GitHub. The asset download URL itself comes
+        // from the release JSON's browser_download_url, so the fake server controls
+        // that by what it serves; only these three fixed URLs need the override.
+        public static string? BaseOverride() => Environment.GetEnvironmentVariable("NS_UPDATE_BASE_URL");
+
+        // GET endpoint for the latest release metadata.
+        public static string ReleaseApiUrl() {
+            var ovr = BaseOverride();
+            return string.IsNullOrEmpty(ovr)
+                ? $"https://api.github.com/repos/{Repo}/releases/latest"
+                : $"{ovr.TrimEnd('/')}/releases/latest";
+        }
+
+        // Stable download URL for a named release asset (checksums.txt, the mac
+        // installer script). releases/latest/download/<name> always resolves to
+        // the current release's asset.
+        public static string DownloadUrl(string fileName) {
+            var ovr = BaseOverride();
+            return string.IsNullOrEmpty(ovr)
+                ? $"https://github.com/{Repo}/releases/latest/download/{fileName}"
+                : $"{ovr.TrimEnd('/')}/releases/latest/download/{fileName}";
+        }
 
         // GitHub requires a User-Agent on API requests or it 403s.
         private const string UserAgent = "NightSummaryCompanion-UpdateChecker";
@@ -86,7 +110,7 @@ namespace NINA.Plugin.NightSummary.Server {
             UpdateInfo result;
             try {
                 using var http = _httpFactory();
-                var json = await http.GetStringAsync(LatestReleaseApi, ct);
+                var json = await http.GetStringAsync(ReleaseApiUrl(), ct);
                 result = BuildFromReleaseJson(json, currentVersion,
                     RuntimeInformation.IsOSPlatform(OSPlatform.Windows),
                     RuntimeInformation.IsOSPlatform(OSPlatform.Linux),
@@ -185,18 +209,31 @@ namespace NINA.Plugin.NightSummary.Server {
         // Decide the update strategy for the running process from OS + packaging.
         // Reads the environment (process path, $APPIMAGE, dir writability); kept
         // separate from BuildFromReleaseJson so the JSON parsing stays pure.
-        public static UpdateStrategy DecideStrategy() {
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return UpdateStrategy.WindowsZipSwap;
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))     return UpdateStrategy.MacAppReplace;
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) {
+        public static UpdateStrategy DecideStrategy() =>
+            DecideStrategy(
+                RuntimeInformation.IsOSPlatform(OSPlatform.Windows),
+                RuntimeInformation.IsOSPlatform(OSPlatform.OSX),
+                RuntimeInformation.IsOSPlatform(OSPlatform.Linux),
+                Environment.GetEnvironmentVariable("APPIMAGE"),
+                System.IO.Path.GetDirectoryName(Environment.ProcessPath),
+                DirIsWritable);
+
+        // Pure overload — every input is passed in so all branches (incl. the
+        // Linux AppImage / non-writable cases) are unit-testable on any OS.
+        public static UpdateStrategy DecideStrategy(
+                bool isWindows, bool isMac, bool isLinux,
+                string? appImageEnv, string? processDir, Func<string, bool> dirWritable) {
+            if (isWindows) return UpdateStrategy.WindowsZipSwap;
+            if (isMac)     return UpdateStrategy.MacAppReplace;
+            if (isLinux) {
                 // AppImage runs from a read-only FUSE mount ($APPIMAGE points at the
                 // real .AppImage file, the binary lives under /tmp/.mount_*). Can't
                 // swap in place.
-                if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("APPIMAGE")))
+                if (!string.IsNullOrEmpty(appImageEnv)) return UpdateStrategy.NotifyOnly;
+                // .deb installs under /usr or /opt are root-owned — not writable by
+                // the user the companion runs as.
+                if (string.IsNullOrEmpty(processDir) || !dirWritable(processDir))
                     return UpdateStrategy.NotifyOnly;
-                var dir = System.IO.Path.GetDirectoryName(Environment.ProcessPath);
-                if (string.IsNullOrEmpty(dir) || !DirIsWritable(dir))
-                    return UpdateStrategy.NotifyOnly;     // .deb under /usr or /opt, etc.
                 return UpdateStrategy.LinuxTarballInPlace;
             }
             return UpdateStrategy.NotifyOnly;

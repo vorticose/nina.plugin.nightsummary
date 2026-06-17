@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.InteropServices;
 using NINA.Plugin.NightSummary.Server;
 using Xunit;
@@ -153,6 +154,79 @@ namespace NINA.Plugin.NightSummary.Tests {
             Assert.Equal("", info.AssetName);
             Assert.Equal("", info.AssetUrl);
             Assert.False(info.CanSelfUpdate);
+        }
+
+        // ── DecideStrategy (pure overload, all platforms) ────────────────────
+        [Fact]
+        public void DecideStrategy_windows_is_zip_swap() {
+            Assert.Equal(UpdateStrategy.WindowsZipSwap,
+                UpdateChecker.DecideStrategy(true, false, false, null, @"C:\App", _ => true));
+        }
+
+        [Fact]
+        public void DecideStrategy_mac_is_app_replace() {
+            Assert.Equal(UpdateStrategy.MacAppReplace,
+                UpdateChecker.DecideStrategy(false, true, false, null, "/Applications/x.app", _ => true));
+        }
+
+        [Fact]
+        public void DecideStrategy_linux_writable_tarball_is_in_place() {
+            Assert.Equal(UpdateStrategy.LinuxTarballInPlace,
+                UpdateChecker.DecideStrategy(false, false, true, null, "/home/u/.local/share/nightsummary-companion", _ => true));
+        }
+
+        [Fact]
+        public void DecideStrategy_linux_appimage_is_notify_only() {
+            // $APPIMAGE set → read-only mount, can't swap in place.
+            Assert.Equal(UpdateStrategy.NotifyOnly,
+                UpdateChecker.DecideStrategy(false, false, true, "/home/u/App.AppImage", "/tmp/.mount_abc", _ => true));
+        }
+
+        [Fact]
+        public void DecideStrategy_linux_nonwritable_is_notify_only() {
+            // .deb under /usr — root-owned, not writable by the companion's user.
+            Assert.Equal(UpdateStrategy.NotifyOnly,
+                UpdateChecker.DecideStrategy(false, false, true, null, "/usr/lib/nightsummary-companion", _ => false));
+        }
+
+        [Fact]
+        public void DecideStrategy_linux_null_dir_is_notify_only() {
+            Assert.Equal(UpdateStrategy.NotifyOnly,
+                UpdateChecker.DecideStrategy(false, false, true, null, null, _ => true));
+        }
+
+        [Fact]
+        public void DecideStrategy_unknown_os_is_notify_only() {
+            Assert.Equal(UpdateStrategy.NotifyOnly,
+                UpdateChecker.DecideStrategy(false, false, false, null, "/x", _ => true));
+        }
+
+        // ── URL building + NS_UPDATE_BASE_URL test seam ──────────────────────
+        [Fact]
+        public void Urls_default_to_github_when_no_override() {
+            var prior = Environment.GetEnvironmentVariable("NS_UPDATE_BASE_URL");
+            Environment.SetEnvironmentVariable("NS_UPDATE_BASE_URL", null);
+            try {
+                Assert.Equal("https://api.github.com/repos/vorticose/nina.plugin.nightsummary/releases/latest",
+                    UpdateChecker.ReleaseApiUrl());
+                Assert.Equal("https://github.com/vorticose/nina.plugin.nightsummary/releases/latest/download/checksums.txt",
+                    UpdateChecker.DownloadUrl("checksums.txt"));
+            } finally {
+                Environment.SetEnvironmentVariable("NS_UPDATE_BASE_URL", prior);
+            }
+        }
+
+        [Fact]
+        public void Urls_use_override_base_and_trim_trailing_slash() {
+            var prior = Environment.GetEnvironmentVariable("NS_UPDATE_BASE_URL");
+            Environment.SetEnvironmentVariable("NS_UPDATE_BASE_URL", "http://localhost:9999/");
+            try {
+                Assert.Equal("http://localhost:9999/releases/latest", UpdateChecker.ReleaseApiUrl());
+                Assert.Equal("http://localhost:9999/releases/latest/download/install-companion-mac.sh",
+                    UpdateChecker.DownloadUrl("install-companion-mac.sh"));
+            } finally {
+                Environment.SetEnvironmentVariable("NS_UPDATE_BASE_URL", prior);
+            }
         }
     }
 }

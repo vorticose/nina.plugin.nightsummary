@@ -581,9 +581,7 @@ namespace NINA.Plugin.NightSummary.Server {
         // relaunches with our original args — then we exit 0.
         private void ApplyWindowsUpdate(string zipPath, string tmp) {
             var extract = Path.Combine(tmp, "extract");
-            ZipFile.ExtractToDirectory(zipPath, extract);
-            var newExe = Directory.GetFiles(extract, "NightSummaryCompanion.exe", SearchOption.AllDirectories).FirstOrDefault()
-                         ?? throw new FileNotFoundException("NightSummaryCompanion.exe not found in update zip");
+            var newExe = UpdateInstaller.ExtractZipFindExe(zipPath, extract);
             var targetExe = Environment.ProcessPath ?? throw new InvalidOperationException("ProcessPath is null");
             var launchArgs = string.Join(" ", Environment.GetCommandLineArgs().Skip(1).Select(QuoteArg));
 
@@ -614,23 +612,14 @@ namespace NINA.Plugin.NightSummary.Server {
         // is legal on Unix — the open inode stays valid until we exit.
         private void ApplyLinuxUpdate(string tarPath, string tmp) {
             var extract = Path.Combine(tmp, "extract");
-            Directory.CreateDirectory(extract);
-            using (var fs = File.OpenRead(tarPath))
-            using (var gz = new GZipStream(fs, CompressionMode.Decompress)) {
-                TarFile.ExtractToDirectory(gz, extract, overwriteFiles: true);
-            }
-            var srcDir      = Path.Combine(extract, "NightSummaryCompanion");
-            var newBin      = Path.Combine(srcDir, "NightSummaryCompanion-bin");
-            var newLauncher = Path.Combine(srcDir, "NightSummaryCompanion");
-            if (!File.Exists(newBin))
-                throw new FileNotFoundException("NightSummaryCompanion-bin not found in update tarball");
+            var (newBin, newLauncher) = UpdateInstaller.ExtractTarGzFindBin(tarPath, extract);
 
             var installDir = Path.GetDirectoryName(Environment.ProcessPath)
                              ?? throw new InvalidOperationException("ProcessPath is null");
             var destBin      = Path.Combine(installDir, "NightSummaryCompanion-bin");
             var destLauncher = Path.Combine(installDir, "NightSummaryCompanion");
             File.Copy(newBin, destBin, overwrite: true);
-            if (File.Exists(newLauncher)) File.Copy(newLauncher, destLauncher, overwrite: true);
+            if (newLauncher != null && File.Exists(newLauncher)) File.Copy(newLauncher, destLauncher, overwrite: true);
             ChmodExec(destBin);
             ChmodExec(destLauncher);
             log?.Info("Companion: Linux binary replaced in place; exiting 88 for watchdog respawn of the new version.");
@@ -653,7 +642,7 @@ namespace NINA.Plugin.NightSummary.Server {
         // our already-downloaded .dmg via NSC_DMG so it skips its own curl, then exit
         // 0 (watchdog stops) and let the detached installer take over.
         private async Task ApplyMacUpdate(string dmgPath, string tmp) {
-            var scriptUrl  = $"https://github.com/{UpdateChecker.Repo}/releases/latest/download/install-companion-mac.sh";
+            var scriptUrl  = UpdateChecker.DownloadUrl("install-companion-mac.sh");
             var scriptPath = Path.Combine(tmp, "install-companion-mac.sh");
             using (var http = NewUpdateHttpClient()) {
                 await DownloadAsync(http, scriptUrl, scriptPath);
@@ -690,33 +679,18 @@ namespace NINA.Plugin.NightSummary.Server {
         // skip — HTTPS-from-GitHub is the fallback trust anchor. A real mismatch
         // throws, aborting the swap before anything is replaced.
         private async Task VerifyChecksumAsync(HttpClient http, string filePath, string assetName) {
-            var url = $"https://github.com/{UpdateChecker.Repo}/releases/latest/download/checksums.txt";
-            string text;
+            string? text = null;
             try {
-                text = await http.GetStringAsync(url);
+                text = await http.GetStringAsync(UpdateChecker.DownloadUrl("checksums.txt"));
             } catch {
-                log?.Warn("Companion: no checksums.txt on the release; skipping integrity check (HTTPS download trusted).");
-                return;
+                // No checksums.txt on the release (older builds) — fall through;
+                // VerifyChecksum treats null text as a graceful skip.
             }
-            string? expected = null;
-            foreach (var line in text.Split('\n')) {
-                var parts = line.Trim().Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
-                if (parts.Length >= 2 && string.Equals(parts[1], assetName, StringComparison.OrdinalIgnoreCase)) {
-                    expected = parts[0];
-                    break;
-                }
+            if (!UpdateInstaller.VerifyChecksum(filePath, text, assetName, out var skipped, out var detail)) {
+                throw new InvalidOperationException(detail);
             }
-            if (expected == null) {
-                log?.Warn($"Companion: {assetName} not in checksums.txt; skipping integrity check.");
-                return;
-            }
-            using var sha = SHA256.Create();
-            using var fs = File.OpenRead(filePath);
-            var hash = Convert.ToHexString(sha.ComputeHash(fs)).ToLowerInvariant();
-            if (!string.Equals(hash, expected, StringComparison.OrdinalIgnoreCase)) {
-                throw new InvalidOperationException($"checksum mismatch for {assetName}: expected {expected}, got {hash}");
-            }
-            log?.Info($"Companion: {assetName} checksum verified.");
+            if (skipped) log?.Warn($"Companion: integrity check skipped ({detail}); HTTPS download trusted.");
+            else log?.Info($"Companion: {assetName} checksum verified.");
         }
 
         // PowerShell helper that swaps the Windows .exe once we've exited. Pure
