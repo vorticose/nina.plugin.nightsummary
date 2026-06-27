@@ -364,6 +364,72 @@ public sealed class SqliteSessionReader {
         return result;
     }
 
+    // Roll-up across ALL prior sessions for a target (current session excluded),
+    // for the report's Session History totals band. Two reads on the same
+    // predicate as GetSessionHistoryForTarget:
+    //   1. scalar — total integration (accepted frames) + frame-level AVG of the
+    //      quality metrics (over all frames where the metric is present, matching
+    //      the per-session column semantics, NOT an average of the per-session
+    //      averages).
+    //   2. per-filter — integration per raw filter name (accepted frames), so the
+    //      chips sum to the total. Returns null if the target has no prior frames.
+    public TargetSessionHistoryAggregate GetSessionHistoryAggregateForTarget(string targetName, string excludeSessionId) {
+        using var conn = new SqliteConnection(connectionString);
+        conn.Open();
+
+        const string acc = "(i.Accepted = 1 OR i.GradingStatus = 0)";  // "not rejected" — see GetSessionHistoryForTarget
+        const string where = "WHERE i.TargetName = @TargetName AND i.SessionId != @ExcludeSessionId";
+
+        var agg = new TargetSessionHistoryAggregate();
+        var any = false;
+
+        var scalarSql = $@"
+            SELECT
+                SUM(CASE WHEN {acc} THEN i.ExposureDuration ELSE 0 END) AS TotalIntegrationSeconds,
+                AVG(CASE WHEN i.HFR > 0 THEN i.HFR END)                 AS AvgHFR,
+                AVG(CASE WHEN i.FWHM > 0 THEN i.FWHM END)               AS AvgFWHM,
+                AVG(CASE WHEN i.GuidingRMSTotal > 0 THEN i.GuidingRMSTotal END) AS AvgGuidingRMS,
+                COUNT(*)                                                AS FrameCount
+            FROM Images i
+            {where}";
+        using (var cmd = new SqliteCommand(scalarSql, conn)) {
+            cmd.Parameters.AddWithValue("@TargetName",       targetName       ?? "");
+            cmd.Parameters.AddWithValue("@ExcludeSessionId", excludeSessionId ?? "");
+            using var reader = new SchemaSafeReader(cmd.ExecuteReader());
+            if (reader.Read()) {
+                any = reader["FrameCount"] != DBNull.Value && Convert.ToInt64(reader["FrameCount"]) > 0;
+                agg.TotalIntegrationSeconds = reader["TotalIntegrationSeconds"] == DBNull.Value ? 0 : Convert.ToDouble(reader["TotalIntegrationSeconds"]);
+                agg.AvgHFR        = reader["AvgHFR"]        == DBNull.Value ? 0 : Convert.ToDouble(reader["AvgHFR"]);
+                agg.AvgFWHM       = reader["AvgFWHM"]       == DBNull.Value ? 0 : Convert.ToDouble(reader["AvgFWHM"]);
+                agg.AvgGuidingRMS = reader["AvgGuidingRMS"] == DBNull.Value ? 0 : Convert.ToDouble(reader["AvgGuidingRMS"]);
+            }
+        }
+        if (!any) return null;
+
+        var filterSql = $@"
+            SELECT i.Filter AS Filter,
+                   SUM(CASE WHEN {acc} THEN i.ExposureDuration ELSE 0 END) AS IntegrationSeconds
+            FROM Images i
+            {where}
+            GROUP BY i.Filter
+            HAVING IntegrationSeconds > 0
+            ORDER BY IntegrationSeconds DESC";
+        using (var cmd = new SqliteCommand(filterSql, conn)) {
+            cmd.Parameters.AddWithValue("@TargetName",       targetName       ?? "");
+            cmd.Parameters.AddWithValue("@ExcludeSessionId", excludeSessionId ?? "");
+            using var reader = new SchemaSafeReader(cmd.ExecuteReader());
+            while (reader.Read()) {
+                var name = reader["Filter"] == DBNull.Value ? "" : reader["Filter"].ToString();
+                if (string.IsNullOrWhiteSpace(name)) continue;   // unnamed filter — no useful chip
+                agg.Filters.Add(new FilterIntegration {
+                    Filter             = name,
+                    IntegrationSeconds = reader["IntegrationSeconds"] == DBNull.Value ? 0 : Convert.ToDouble(reader["IntegrationSeconds"]),
+                });
+            }
+        }
+        return agg;
+    }
+
     public List<TargetSessionDetail> GetSessionsForTarget(string targetName) {
         var sessions = new Dictionary<string, TargetSessionDetail>(StringComparer.OrdinalIgnoreCase);
         if (string.IsNullOrEmpty(targetName)) return new List<TargetSessionDetail>();

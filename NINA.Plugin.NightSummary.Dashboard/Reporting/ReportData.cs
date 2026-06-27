@@ -24,6 +24,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// </summary>
         public Dictionary<string, List<TargetSessionHistory>> SessionHistory { get; init; }
         /// <summary>
+        /// Per-target roll-up across all previous sessions (totals + per-filter breakdown)
+        /// for the Session History totals band, keyed by target name. Optional — null
+        /// (or a missing key) renders the section without the band.
+        /// </summary>
+        public Dictionary<string, TargetSessionHistoryAggregate> SessionHistoryAggregate { get; init; }
+        /// <summary>
         /// Imaging camera FOV width in degrees, computed from profile (pixel size + focal length + sensor width).
         /// </summary>
         public double CameraFovWidthDeg  { get; init; }

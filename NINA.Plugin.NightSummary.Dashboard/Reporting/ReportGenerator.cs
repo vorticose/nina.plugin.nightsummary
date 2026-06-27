@@ -212,6 +212,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine("details.history-section > summary::-webkit-details-marker { display: none; }");
             sb.AppendLine("details.history-section > summary::before { content: '\\25B6\\00A0'; }");
             sb.AppendLine("details.history-section[open] > summary::before { content: '\\25BC\\00A0'; }");
+            // Session History totals band: highlighted bar under the header; the
+            // per-filter chips live inside it under a hairline (breakdown of the total).
+            sb.AppendLine(".history-totals { margin: 10px 0 4px; background: var(--surface); border: 1px solid var(--bar-acquired); border-radius: 7px; padding: 9px 13px; }");
+            sb.AppendLine(".history-totals .ht-line { font-size: 13px; color: var(--accent-light); }");
+            sb.AppendLine(".history-totals .ht-total { font-weight: bold; font-size: 14px; color: var(--text); }");
+            sb.AppendLine(".history-totals .ht-sep { color: var(--dim); margin: 0 7px; }");
+            sb.AppendLine(".history-totals .ht-chips { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 6px; }");
+            sb.AppendLine(".history-totals .ht-chip { background: var(--bg); border: 1px solid var(--bar-acquired); color: var(--accent-light); font-size: 12px; padding: 3px 9px; border-radius: 11px; }");
             sb.AppendLine("details.equipment-section { margin-top: 4px; margin-bottom: 8px; }");
             sb.AppendLine("details.equipment-section > summary { cursor: pointer; color: var(--accent-light); font-size: 13px; font-weight: bold; list-style: none; }");
             sb.AppendLine("details.equipment-section > summary::-webkit-details-marker { display: none; }");
@@ -1107,6 +1115,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                         var label = $"Session History ({history.Count} previous session{(history.Count == 1 ? "" : "s")})";
                         sb.AppendLine($"<details class='history-section'{detailsOpen}>");
                         sb.AppendLine($"<summary>{label}</summary>");
+                        AppendSessionHistoryTotals(sb, data, target.Key);
                         sb.AppendLine("<table>");
                         sb.AppendLine("<tr><th>Date</th><th>Integration</th><th>Avg HFR</th><th>Avg FWHM</th><th>Avg Guiding RMS</th></tr>");
                         foreach (var h in history) {
@@ -2633,6 +2642,37 @@ namespace NINA.Plugin.NightSummary.Reporting {
         internal static string FormatIntegration(double seconds) {
             var ts = TimeSpan.FromSeconds(seconds);
             return ts.TotalHours >= 1 ? $"{ts.TotalHours:F1}h" : $"{ts.TotalMinutes:F0}m";
+        }
+
+        // Session History "totals band": a highlighted bar under the section header
+        // with total integration + Avg-prefixed weighted-quality averages, and the
+        // per-filter integration breakdown (raw filter names) inside the same band
+        // under a hairline — so the chips read as the breakdown OF the total, not a
+        // separate metric. No-op when no aggregate is present for the target.
+        internal static void AppendSessionHistoryTotals(StringBuilder sb, ReportData data, string targetKey) {
+            TargetSessionHistoryAggregate agg = null;
+            data.SessionHistoryAggregate?.TryGetValue(targetKey, out agg);
+            if (agg == null || agg.TotalIntegrationSeconds <= 0) return;
+
+            sb.AppendLine("<div class='history-totals'>");
+            var line = new StringBuilder();
+            line.Append($"<span class='ht-total'>{FormatIntegration(agg.TotalIntegrationSeconds)} total</span>");
+            if (agg.AvgHFR        > 0) line.Append($"<span class='ht-sep'>&middot;</span>Avg HFR {agg.AvgHFR:F2}px");
+            if (agg.AvgFWHM       > 0) line.Append($"<span class='ht-sep'>&middot;</span>Avg FWHM {agg.AvgFWHM:F2}&quot;");
+            if (agg.AvgGuidingRMS > 0) line.Append($"<span class='ht-sep'>&middot;</span>Avg RMS {agg.AvgGuidingRMS:F2}&quot;");
+            sb.AppendLine($"<div class='ht-line'>{line}</div>");
+
+            var chips = agg.Filters?.Where(f => f.IntegrationSeconds > 0 && !string.IsNullOrWhiteSpace(f.Filter))
+                                    .OrderByDescending(f => f.IntegrationSeconds)
+                                    .ToList();
+            if (chips != null && chips.Count > 0) {
+                sb.AppendLine("<div class='ht-chips'>");
+                foreach (var f in chips) {
+                    sb.AppendLine($"<span class='ht-chip'>{System.Net.WebUtility.HtmlEncode(f.Filter)} {FormatIntegration(f.IntegrationSeconds)}</span>");
+                }
+                sb.AppendLine("</div>");
+            }
+            sb.AppendLine("</div>");
         }
 
         /// <summary>

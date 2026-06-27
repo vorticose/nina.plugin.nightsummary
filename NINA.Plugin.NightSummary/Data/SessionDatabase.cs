@@ -1038,6 +1038,15 @@ namespace NINA.Plugin.NightSummary.Data {
             => Reader().GetSessionHistoryForTarget(targetName, excludeSessionId);
 
         /// <summary>
+        /// Roll-up across all prior sessions for a target (current excluded): total
+        /// integration + frame-level weighted-quality averages + per-filter
+        /// integration breakdown, for the report Session History totals band.
+        /// Null when the target has no prior frames.
+        /// </summary>
+        public TargetSessionHistoryAggregate GetSessionHistoryAggregateForTarget(string targetName, string excludeSessionId)
+            => Reader().GetSessionHistoryAggregateForTarget(targetName, excludeSessionId);
+
+        /// <summary>
         /// Returns the full per-session history for a target, including per-filter breakdown
         /// per session. Used by the Stats tab target detail panel (Phase 2).
         /// Ordered most-recent first. Case-insensitive target name match.

@@ -68,6 +68,66 @@ namespace NINA.Plugin.NightSummary.Tests {
                 Assert.Contains(f, report);
         }
 
+        // ── Session History totals band ────────────────────────────────────────
+
+        [Fact]
+        public async Task SessionHistory_TotalsBand_RendersTotalAvgsAndFilterChips() {
+            SettingsManager.Instance.Current.ShowSessionHistory = true;
+            var sessionId = Guid.NewGuid().ToString();
+            var session   = TestDataFactory.MakeSession(sessionId);
+            var images    = new List<ImageRecord> { TestDataFactory.MakeImage(sessionId, target: "M31", filter: "Ha") };
+            var data = new ReportData {
+                Session = session, Images = images, Events = new List<SessionEvent>(),
+                TsData  = new List<TsTargetData>(),
+                CumulativeIntegrationSeconds = new Dictionary<string, double>(),
+                SessionHistory = new Dictionary<string, List<TargetSessionHistory>> {
+                    ["M31"] = new List<TargetSessionHistory> {
+                        new TargetSessionHistory { SessionStart = new DateTime(2025, 1, 1), IntegrationSeconds = 3600, AvgHFR = 2.0 }
+                    }
+                },
+                SessionHistoryAggregate = new Dictionary<string, TargetSessionHistoryAggregate> {
+                    ["M31"] = new TargetSessionHistoryAggregate {
+                        TotalIntegrationSeconds = 34200,            // 9.5h
+                        AvgHFR = 2.12, AvgFWHM = 2.40, AvgGuidingRMS = 0.49,
+                        Filters = new List<FilterIntegration> {
+                            new FilterIntegration { Filter = "Ha",   IntegrationSeconds = 16200 },  // 4.5h
+                            new FilterIntegration { Filter = "OIII", IntegrationSeconds = 10080 },
+                        }
+                    }
+                }
+            };
+            var report = await _generator.GenerateHtmlReport(data);
+            Assert.Contains("class='history-totals'", report);   // the rendered band, not just the CSS rule
+            Assert.Contains("9.5h total", report);
+            Assert.Contains("Avg HFR 2.12px", report);     // explicitly an average, not a total
+            Assert.Contains("Avg FWHM 2.40", report);
+            Assert.Contains("ht-chip", report);
+            Assert.Contains("Ha 4.5h", report);            // per-filter breakdown chip, raw filter name
+        }
+
+        [Fact]
+        public async Task SessionHistory_NoAggregate_RendersTableWithoutBand() {
+            SettingsManager.Instance.Current.ShowSessionHistory = true;
+            var sessionId = Guid.NewGuid().ToString();
+            var session   = TestDataFactory.MakeSession(sessionId);
+            var images    = new List<ImageRecord> { TestDataFactory.MakeImage(sessionId, target: "M31", filter: "Ha") };
+            var data = new ReportData {
+                Session = session, Images = images, Events = new List<SessionEvent>(),
+                TsData  = new List<TsTargetData>(),
+                CumulativeIntegrationSeconds = new Dictionary<string, double>(),
+                SessionHistory = new Dictionary<string, List<TargetSessionHistory>> {
+                    ["M31"] = new List<TargetSessionHistory> {
+                        new TargetSessionHistory { SessionStart = new DateTime(2025, 1, 1), IntegrationSeconds = 3600, AvgHFR = 2.0 }
+                    }
+                },
+                // SessionHistoryAggregate intentionally null — older/primary paths that
+                // don't populate it must still render the section, just without the band.
+            };
+            var report = await _generator.GenerateHtmlReport(data);
+            Assert.Contains("history-section", report);
+            Assert.DoesNotContain("class='history-totals'", report);   // CSS rule may exist; the band must not
+        }
+
         [Fact]
         public async Task FilterBreakdown_ImageCount_AppearsInBreakdownRow() {
             var data   = TestDataFactory.MakeReportData(imageCount: 10, targets: new[] { "M31" });

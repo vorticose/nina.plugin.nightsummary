@@ -11,6 +11,12 @@
      — add/switch/remove flow, the rigs/<id>/ data layout, and the v1->v2 migration note.
      Update COMPANION_INSTALL.md if it assumes a single primary. -->
 
+### Improvements
+
+- **Session History totals** — the per-target Session History section now opens with a totals band: the **total integration** across all previous sessions, the integration-weighted **average** HFR / FWHM / guiding RMS, and a per-filter integration breakdown (your raw filter names) shown as chips that add up to the total. No more adding the rows up by hand. Rides under the existing Session History toggle.
+
+<!-- TODO docs: note the Session History totals band on the report/metrics docs page. -->
+
 
 ## v3.2.0
 

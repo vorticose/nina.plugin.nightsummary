@@ -231,7 +231,8 @@ namespace NINA.Plugin.NightSummary.Session {
             var profileId    = profileService?.ActiveProfile?.Id.ToString();
             var tsData       = FetchTsData(images, profileId);
             var cumulative   = database.GetCumulativeIntegrationByTarget(sessionId);
-            var history      = BuildSessionHistory(database, images, sessionId);
+            var history          = BuildSessionHistory(database, images, sessionId);
+            var historyAggregate = BuildSessionHistoryAggregate(database, images, sessionId);
             var (fovW, fovH) = ComputeCameraFov(session);
             var (lat, lon)   = GetObserverCoords();
             var reportData   = new ReportData {
@@ -241,6 +242,7 @@ namespace NINA.Plugin.NightSummary.Session {
                 TsData                       = tsData,
                 CumulativeIntegrationSeconds = cumulative,
                 SessionHistory               = history,
+                SessionHistoryAggregate      = historyAggregate,
                 CameraFovWidthDeg            = fovW,
                 CameraFovHeightDeg           = fovH,
                 ObserverLatitude             = lat,
@@ -423,7 +425,8 @@ namespace NINA.Plugin.NightSummary.Session {
                 var profileId    = profileService?.ActiveProfile?.Id.ToString();
                 var tsData       = FetchTsData(images, profileId);
                 var cumulative   = testDb.GetCumulativeIntegrationByTarget(session.SessionId);
-                var history      = BuildSessionHistory(testDb, images, session.SessionId);
+                var history          = BuildSessionHistory(testDb, images, session.SessionId);
+                var historyAggregate = BuildSessionHistoryAggregate(testDb, images, session.SessionId);
                 var (fovW, fovH) = ComputeCameraFov(session);
                 var (lat, lon)   = GetObserverCoords();
                 // Fallback for test reports when no profile location is configured
@@ -454,6 +457,7 @@ namespace NINA.Plugin.NightSummary.Session {
                     TsData                       = tsData,
                     CumulativeIntegrationSeconds = cumulative,
                     SessionHistory               = history,
+                    SessionHistoryAggregate      = historyAggregate,
                     CameraFovWidthDeg            = fovW,
                     CameraFovHeightDeg           = fovH,
                     ObserverLatitude             = lat,
@@ -905,7 +909,8 @@ namespace NINA.Plugin.NightSummary.Session {
                     var profileId  = profileService?.ActiveProfile?.Id.ToString();
                     var tsData     = FetchTsData(images, profileId);
                     var cumulative = db.GetCumulativeIntegrationByTarget(session.SessionId);
-                    var history    = BuildSessionHistory(db, images, session.SessionId);
+                    var history          = BuildSessionHistory(db, images, session.SessionId);
+                    var historyAggregate = BuildSessionHistoryAggregate(db, images, session.SessionId);
                     var (fovW, fovH) = ComputeCameraFov(session);
                     var (lat, lon)   = GetObserverCoords();
                     var reportData = new ReportData {
@@ -915,6 +920,7 @@ namespace NINA.Plugin.NightSummary.Session {
                         TsData                       = tsData,
                         CumulativeIntegrationSeconds = cumulative,
                         SessionHistory               = history,
+                        SessionHistoryAggregate      = historyAggregate,
                         CameraFovWidthDeg            = fovW,
                         CameraFovHeightDeg           = fovH,
                         ObserverLatitude             = lat,
@@ -1056,6 +1062,18 @@ namespace NINA.Plugin.NightSummary.Session {
             var result = new Dictionary<string, List<TargetSessionHistory>>(StringComparer.OrdinalIgnoreCase);
             foreach (var targetName in images.Select(i => i.TargetName).Distinct()) {
                 result[targetName] = database.GetSessionHistoryForTarget(targetName, sessionId);
+            }
+            return result;
+        }
+
+        // Parallel to BuildSessionHistory: the all-prior-sessions roll-up (totals +
+        // per-filter breakdown) per target, for the report's Session History totals
+        // band. Skips targets with no prior frames (reader returns null).
+        private Dictionary<string, TargetSessionHistoryAggregate> BuildSessionHistoryAggregate(SessionDatabase database, List<ImageRecord> images, string sessionId) {
+            var result = new Dictionary<string, TargetSessionHistoryAggregate>(StringComparer.OrdinalIgnoreCase);
+            foreach (var targetName in images.Select(i => i.TargetName).Distinct()) {
+                var agg = database.GetSessionHistoryAggregateForTarget(targetName, sessionId);
+                if (agg != null) result[targetName] = agg;
             }
             return result;
         }
@@ -1237,7 +1255,8 @@ namespace NINA.Plugin.NightSummary.Session {
             var profileId  = profileService?.ActiveProfile?.Id.ToString();
             var tsData     = FetchTsData(images, profileId);
             var cumulative = db.GetCumulativeIntegrationByTarget(session.SessionId);
-            var history    = BuildSessionHistory(db, images, session.SessionId);
+            var history          = BuildSessionHistory(db, images, session.SessionId);
+            var historyAggregate = BuildSessionHistoryAggregate(db, images, session.SessionId);
             var (fovW, fovH) = ComputeCameraFov(session);
             var (lat, lon)   = GetObserverCoords();
 
@@ -1265,6 +1284,7 @@ namespace NINA.Plugin.NightSummary.Session {
                 TsData                       = tsData,
                 CumulativeIntegrationSeconds = cumulative,
                 SessionHistory               = history,
+                SessionHistoryAggregate      = historyAggregate,
                 CameraFovWidthDeg            = fovW,
                 CameraFovHeightDeg           = fovH,
                 ObserverLatitude             = lat,
