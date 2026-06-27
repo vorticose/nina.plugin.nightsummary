@@ -5913,6 +5913,16 @@ html.light .companion-banner-label { background: rgba(37, 99, 184, 0.08); }
     justify-content: center;
     padding: 8px 14px;  /* slightly taller for tap target */
   }
+  /* Update banner: its buttons live inside .ns-update-actions, which (unlike the
+     sync banner's direct-child button) isn't a banner flex item by default. Make
+     it a full-width wrapping row so the confirm prompt + the now-full-width
+     Confirm/Cancel stack cleanly instead of overflowing the viewport. */
+  .ns-update-actions {
+    flex: 1 1 100%;
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+  .ns-update-confirm-q { flex-basis: 100%; }
 }
 
 /* ── Raw Image Frames Gallery (RAW_THUMBNAILS_DESIGN.md) ─────────────────── */
