@@ -620,6 +620,8 @@ namespace NINA.Plugin.NightSummary.Server {
                         await HandleGetAutostart(res, done);
                     } else if (path == "/api/companion/info") {
                         await HandleCompanionInfo(res, done);
+                    } else if (path == "/api/companion/update-check") {
+                        await HandleCompanionUpdateCheck(req, res, done);
                     } else if (path == "/api/sessions") {
                         await HandleGetSessions(res, done);
                     } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/images")) {
@@ -795,6 +797,8 @@ namespace NINA.Plugin.NightSummary.Server {
                         await HandleCompanionQuit(res, done);
                     } else if (path == "/api/companion/restart") {
                         await HandleCompanionRestart(res, done);
+                    } else if (path == "/api/companion/update") {
+                        await HandleCompanionUpdate(res, done);
                     } else if (path == "/api/companion/autostart") {
                         await HandleSetAutostart(req, res, done);
                     } else if (path == "/api/companion/config") {

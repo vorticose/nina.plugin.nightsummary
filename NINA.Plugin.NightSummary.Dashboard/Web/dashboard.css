@@ -6536,6 +6536,54 @@ html.light .companion-banner-label { background: rgba(37, 99, 184, 0.08); }
     0 1px 2px rgba(0, 0, 0, 0.22);
 }
 
+/* ── In-app update banner ──────────────────────────────────────────────────
+   Reuses .companion-banner chrome; the accent border makes it read as a call
+   to action distinct from the (neutral) sync banner above it. */
+.ns-update-banner {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px rgba(var(--accent-rgb, 78, 121, 167), 0.16);
+}
+.ns-update-banner.is-error {
+  border-color: rgba(194, 85, 62, 0.6);
+  box-shadow: 0 0 12px rgba(194, 85, 62, 0.14);
+}
+.ns-update-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.ns-update-link {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.ns-update-link:hover { text-decoration: underline; }
+.ns-update-hint,
+.ns-update-confirm-q {
+  font-size: 12px;
+  color: var(--dim);
+}
+.ns-update-confirm-q { color: var(--text); }
+
+/* Secondary (ghost) variant for Dismiss / Cancel — quiet next to the primary. */
+.companion-banner-btn.is-ghost {
+  color: var(--accent);
+  background: transparent;
+  border-color: var(--border);
+  box-shadow: none;
+}
+.companion-banner-btn.is-ghost:hover:not(:disabled) {
+  background: rgba(126, 184, 247, 0.08);
+  border-color: var(--accent);
+  box-shadow: none;
+}
+html.light .companion-banner-btn.is-ghost:hover:not(:disabled) {
+  background: rgba(37, 99, 184, 0.08);
+}
+
 /* ── Companion settings tab ───────────────────────────────────────────────
    Aligned with the rest of the dashboard chrome: card uses the same surface
    + border treatment as session detail panels; section headings match the
