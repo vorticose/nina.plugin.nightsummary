@@ -1267,5 +1267,93 @@ namespace NINA.Plugin.NightSummary.Reporting {
             .Replace("&", "&amp;")
             .Replace("<", "&lt;")
             .Replace(">", "&gt;");
+
+        // Filter line colors for the sky-background chart. Mid-tones chosen to read on
+        // both the light and dark chart backgrounds.
+        private static readonly string[] SkyFilterPalette =
+            { "#2bb3a3", "#e05a5a", "#4a90d9", "#e0a020", "#9b7ede", "#5aae5a", "#d46fb0", "#8a8f98" };
+
+        /// <summary>
+        /// Renders the experimental "sky background" trend: each filter's measured sky, expressed as
+        /// a multiple of that imager's own darkest sky ("x darkest"), across the session. Only frames
+        /// whose cohort has a trusted floor are plotted. Returns a placeholder when nothing is
+        /// gradeable yet. EXPERIMENTAL — not wired into the report on this branch.
+        /// </summary>
+        public static string BuildSkyBackgroundChart(SkyBackgroundCalculator.SkyBackgroundResult result) {
+            var plottable = result.Points.Where(p => p.TimesDarkest.HasValue).ToList();
+            if (plottable.Count == 0)
+                return GeneratePlaceholderSvg(new List<string> { "Sky background baseline still building" });
+
+            // Group by filter in first-seen order so colors are stable across renders.
+            var order = new List<string>();
+            var byFilter = new Dictionary<string, List<SkyBackgroundCalculator.SkyFramePoint>>();
+            foreach (var p in plottable.OrderBy(p => p.TimestampUtc)) {
+                var f = p.Filter ?? "";
+                if (!byFilter.TryGetValue(f, out var lst)) { lst = new List<SkyBackgroundCalculator.SkyFramePoint>(); byFilter[f] = lst; order.Add(f); }
+                lst.Add(p);
+            }
+
+            int plotW = Width - PadLeft - PadRight;
+            int plotH = Height - PadTop - PadBottom;
+
+            DateTime minTime = plottable.Min(p => p.TimestampUtc);
+            DateTime maxTime = plottable.Max(p => p.TimestampUtc);
+            double xRange = Math.Max((maxTime - minTime).TotalMinutes, 1.0);
+            double ToXPx(DateTime t) => PadLeft + ((t - minTime).TotalMinutes / xRange) * plotW;
+
+            // Y scale over the ratios, always including the 1.0 "darkest" floor line.
+            var (minY, maxY, stepY) = ComputeNiceScale(plottable.Select(p => p.TimesDarkest.Value).Concat(new[] { 1.0 }), 1.0);
+            double rangeY = Math.Max(maxY - minY, 0.001);
+            double ToYPx(double v) => PadTop + plotH - ((v - minY) / rangeY) * plotH;
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {Width} {Height}\" style=\"width:100%;max-width:{Width}px;display:block;margin:0 auto 16px;font-family:sans-serif\">");
+            sb.AppendLine("<style>circle { cursor: pointer; }</style>");
+            sb.AppendLine($"<rect width=\"{Width}\" height=\"{Height}\" fill=\"{ColorBackground}\" rx=\"6\"/>");
+
+            for (double v = minY; v <= maxY + stepY * 0.001; v += stepY) {
+                double y = ToYPx(v);
+                sb.AppendLine($"<line x1=\"{PadLeft}\" y1=\"{y:F1}\" x2=\"{Width - PadRight}\" y2=\"{y:F1}\" stroke=\"{ColorGrid}\" stroke-width=\"1\"/>");
+                sb.AppendLine($"<text x=\"{PadLeft - 6}\" y=\"{y + 4:F1}\" fill=\"{ColorLabel}\" font-size=\"11\" text-anchor=\"end\">{v.ToString("0.#")}×</text>");
+            }
+
+            // "Your darkest" floor line at 1.0x.
+            if (1.0 >= minY && 1.0 <= maxY) {
+                double yFloor = ToYPx(1.0);
+                sb.AppendLine($"<line x1=\"{PadLeft}\" y1=\"{yFloor:F1}\" x2=\"{Width - PadRight}\" y2=\"{yFloor:F1}\" stroke=\"{ColorLabel}\" stroke-width=\"1.5\" stroke-dasharray=\"5,4\"/>");
+                sb.AppendLine($"<text x=\"{Width - PadRight - 4}\" y=\"{yFloor - 4:F1}\" fill=\"{ColorLabel}\" font-size=\"10\" text-anchor=\"end\">your darkest</text>");
+            }
+
+            foreach (var t in new[] { minTime, minTime.AddMinutes(xRange / 2), maxTime }) {
+                sb.AppendLine($"<text x=\"{ToXPx(t):F1}\" y=\"{Height - 10}\" fill=\"{ColorLabel}\" font-size=\"11\" text-anchor=\"middle\">{t.ToLocalTime().ToString("HH:mm")}</text>");
+            }
+            sb.AppendLine($"<text x=\"14\" y=\"{Height / 2}\" fill=\"{ColorLabel}\" font-size=\"11\" text-anchor=\"middle\" transform=\"rotate(-90,14,{Height / 2})\">Sky vs darkest</text>");
+
+            for (int i = 0; i < order.Count; i++) {
+                string filter = order[i];
+                var pts = byFilter[filter];
+                string color = SkyFilterPalette[i % SkyFilterPalette.Length];
+                if (pts.Count >= 2) {
+                    var poly = string.Join(" ", pts.Select(p => $"{ToXPx(p.TimestampUtc):F1},{ToYPx(p.TimesDarkest.Value):F1}"));
+                    sb.AppendLine($"<polyline points=\"{poly}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"2\" stroke-linejoin=\"round\"/>");
+                }
+                foreach (var p in pts) {
+                    string tip = $"{EscapeXml(filter)} · {p.TimestampUtc.ToLocalTime().ToString("HH:mm")} · {p.TimesDarkest.Value.ToString("0.0")}× darkest";
+                    sb.AppendLine($"<circle cx=\"{ToXPx(p.TimestampUtc):F1}\" cy=\"{ToYPx(p.TimesDarkest.Value):F1}\" r=\"3\" fill=\"{color}\"><title>{tip}</title></circle>");
+                }
+            }
+
+            // Legend, top-left inside the plot.
+            double ly = PadTop + 12;
+            for (int i = 0; i < order.Count; i++) {
+                string color = SkyFilterPalette[i % SkyFilterPalette.Length];
+                sb.AppendLine($"<rect x=\"{PadLeft + 8}\" y=\"{ly - 8:F1}\" width=\"14\" height=\"3\" rx=\"1\" fill=\"{color}\"/>");
+                sb.AppendLine($"<text x=\"{PadLeft + 28}\" y=\"{ly - 3:F1}\" fill=\"{ColorLabel}\" font-size=\"11\">{EscapeXml(order[i])}</text>");
+                ly += 15;
+            }
+
+            sb.AppendLine("</svg>");
+            return sb.ToString();
+        }
     }
 }
