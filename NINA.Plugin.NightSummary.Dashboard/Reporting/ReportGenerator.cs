@@ -287,6 +287,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             }
             sb.Append(await BuildTargetSection(data, detailLevel, detailsOpen));
             if (detailLevel >= 1) sb.Append(BuildImageQualitySection(data, detailLevel, detailsOpen));
+            if (detailLevel >= 1 && _settings.Current.ShowSkyBackground) sb.Append(BuildSkyBackgroundSection(data));
             if (detailLevel >= 2) sb.Append(await BuildNextNightPreviewSection(data));
             sb.Append(BuildFooter());
 
@@ -1328,6 +1329,53 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 string evenCls = rowIdx % 2 == 1 ? " iq-row-even" : "";
                 sb.AppendLine($"<div class='iq-row-grid{evenCls}'><div class='iq-cell'>Guiding RMS</div><div class='iq-cell'>{rmsValues.Min():F2}\"</div><div class='iq-cell'>{rmsValues.Max():F2}\"</div><div class='iq-cell'>{rmsValues.Average():F2}\"</div><div class='iq-cell'>{CV(rmsValues):F0}%</div></div>");
             }
+        }
+
+        /// <summary>
+        /// EXPERIMENTAL sky-background section: measured sky per filter graded against the imager's
+        /// own darkest sky ("x darkest"), plus a trend chart. Self-suppresses (returns "") when the
+        /// session has no gradeable frames — pre-StatMedian sessions stay clean. Never throws into
+        /// the report.
+        /// </summary>
+        private string BuildSkyBackgroundSection(ReportData data) {
+            if (_paths == null || string.IsNullOrEmpty(data.Session?.SessionId)) return string.Empty;
+
+            SkyBackgroundCalculator.SkyBackgroundResult sky;
+            try {
+                sky = SkyBackgroundCalculator.ComputeFromDatabase(
+                    _paths.DatabasePath, data.Session.SessionId,
+                    data.ObserverLatitude, data.ObserverLongitude);
+            } catch (Exception ex) {
+                _log.Warn($"NightSummary: sky-background section skipped — {ex.Message}");
+                return string.Empty;
+            }
+
+            var readyFilters = sky.Filters.Where(f => f.TimesDarkest.HasValue).ToList();
+            bool hasChart = sky.Points.Any(p => p.TimesDarkest.HasValue);
+            if (!hasChart && readyFilters.Count == 0) return string.Empty;   // nothing gradeable yet
+
+            var sb = new StringBuilder();
+            sb.AppendLine("<div class='target-section'>");
+            sb.AppendLine("<h2>Sky Background</h2>");
+            sb.AppendLine("<p style='color:var(--muted); font-size:13px; margin:0 0 10px;'>Measured sky brightness per filter, graded against your own darkest skies for the same capture setup.</p>");
+
+            if (readyFilters.Count > 0) {
+                sb.AppendLine("<div style='display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;'>");
+                foreach (var f in readyFilters.OrderByDescending(f => f.TimesDarkest ?? 0)) {
+                    string val   = f.TimesDarkest.Value.ToString("0.0");
+                    string tip   = f.FloorIsMoonless
+                        ? $"floor from {f.CohortSamples} frames (moonless baseline)"
+                        : $"approx floor from {f.CohortSamples} frames — few moonless frames yet";
+                    sb.AppendLine($"<span title='{tip}' style='background:var(--surface); border:1px solid var(--border); border-radius:20px; padding:4px 12px; font-size:13px; color:var(--text);'><strong>{WebUtility.HtmlEncode(f.Filter)}</strong> — {val}× darkest</span>");
+                }
+                sb.AppendLine("</div>");
+            }
+
+            ChartGenerator.LightMode = _settings.Current.ReportLightMode;
+            sb.AppendLine(ChartGenerator.BuildSkyBackgroundChart(sky));
+
+            sb.AppendLine("</div>");
+            return sb.ToString();
         }
 
         private string BuildImageQualitySection(ReportData data, int detailLevel, string detailsOpen = "") {

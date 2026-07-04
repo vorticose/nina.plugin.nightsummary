@@ -53,6 +53,9 @@ namespace NINA.Plugin.NightSummary.Data {
         public bool   ReportLightMode        { get; set; } = false;
         public bool   ExpandSectionsDefault  { get; set; } = false;
         public bool   ShowMoonCurve          { get; set; } = true;
+        // EXPERIMENTAL (experiment/sky-background): defaults on for the prototype rig.
+        // No WPF/dashboard toggle wired yet — flip via settings JSON if needed.
+        public bool   ShowSkyBackground      { get; set; } = true;
         public bool   ShowOverheadBreakdown  { get; set; } = true;
         public bool   ShowSkyThumbnails      { get; set; } = true;
         public bool   ShowLiveStackImages   { get; set; } = true;
