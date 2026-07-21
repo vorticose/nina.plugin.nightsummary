@@ -223,6 +223,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine(".history-totals { margin: 10px 0 4px; background: var(--surface); border: 1px solid var(--bar-acquired); border-radius: 7px; padding: 9px 13px; }");
             sb.AppendLine(".history-totals .ht-line { font-size: 13px; color: var(--accent-light); }");
             sb.AppendLine(".history-totals .ht-total { font-weight: bold; font-size: 14px; color: var(--text); }");
+            sb.AppendLine(".history-totals .ht-session { color: var(--bar-acquired); font-size: 13px; }");
             sb.AppendLine(".history-totals .ht-sep { color: var(--dim); margin: 0 7px; }");
             sb.AppendLine(".history-totals .ht-chips { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 6px; }");
             sb.AppendLine(".history-totals .ht-chip { background: var(--bg); border: 1px solid var(--bar-acquired); color: var(--accent-light); font-size: 12px; padding: 3px 9px; border-radius: 11px; }");
@@ -2676,9 +2677,22 @@ namespace NINA.Plugin.NightSummary.Reporting {
             data.SessionHistoryAggregate?.TryGetValue(targetKey, out agg);
             if (agg == null || agg.TotalIntegrationSeconds <= 0) return;
 
+            // The aggregate is lifetime scope (current session included), so
+            // "total" matches Target Scheduler's accepted totals. Show this
+            // session's share alongside so the headline visibly reconciles with
+            // the previous-sessions table below it. Same not-rejected predicate
+            // as the aggregate SQL.
+            var thisSessionSec = data.Images
+                .Where(i => string.Equals(i.TargetName, targetKey, StringComparison.OrdinalIgnoreCase)
+                            && i.CountsAsAccepted)
+                .Sum(i => i.ExposureDuration);
+
             sb.AppendLine("<div class='history-totals'>");
             var line = new StringBuilder();
             line.Append($"<span class='ht-total'>{FormatIntegration(agg.TotalIntegrationSeconds)} total</span>");
+            if (thisSessionSec > 0) {
+                line.Append($"<span class='ht-session'> ({FormatIntegration(thisSessionSec)} this session)</span>");
+            }
             if (agg.AvgHFR        > 0) line.Append($"<span class='ht-sep'>&middot;</span>Avg HFR {agg.AvgHFR:F2}px");
             if (agg.AvgFWHM       > 0) line.Append($"<span class='ht-sep'>&middot;</span>Avg FWHM {agg.AvgFWHM:F2}&quot;");
             if (agg.AvgGuidingRMS > 0) line.Append($"<span class='ht-sep'>&middot;</span>Avg RMS {agg.AvgGuidingRMS:F2}&quot;");

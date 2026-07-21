@@ -1072,7 +1072,12 @@ namespace NINA.Plugin.NightSummary.Session {
         private Dictionary<string, TargetSessionHistoryAggregate> BuildSessionHistoryAggregate(SessionDatabase database, List<ImageRecord> images, string sessionId) {
             var result = new Dictionary<string, TargetSessionHistoryAggregate>(StringComparer.OrdinalIgnoreCase);
             foreach (var targetName in images.Select(i => i.TargetName).Distinct()) {
-                var agg = database.GetSessionHistoryAggregateForTarget(targetName, sessionId);
+                // Lifetime scope (no session exclusion): the totals band headline
+                // must mean "everything, including this session" so it lines up
+                // with Target Scheduler's accepted totals. The generator derives
+                // the current session's share from data.Images for the
+                // "(Xh this session)" suffix.
+                var agg = database.GetSessionHistoryAggregateForTarget(targetName, "");
                 if (agg != null) result[targetName] = agg;
             }
             return result;

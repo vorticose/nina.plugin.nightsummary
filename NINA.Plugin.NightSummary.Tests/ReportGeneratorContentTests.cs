@@ -99,10 +99,38 @@ namespace NINA.Plugin.NightSummary.Tests {
             var report = await _generator.GenerateHtmlReport(data);
             Assert.Contains("class='history-totals'", report);   // the rendered band, not just the CSS rule
             Assert.Contains("9.5h total", report);
+            // Lifetime headline reconciles with the previous-sessions table via
+            // the current session's share (one accepted 300s M31 frame = 5m).
+            Assert.Contains("(5m this session)", report);
             Assert.Contains("Avg HFR 2.12px", report);     // explicitly an average, not a total
             Assert.Contains("Avg FWHM 2.40", report);
             Assert.Contains("ht-chip", report);
             Assert.Contains("Ha 4.5h", report);            // per-filter breakdown chip, raw filter name
+        }
+
+        [Fact]
+        public async Task SessionHistory_TotalsBand_NoSessionSuffix_WhenCurrentFramesRejected() {
+            SettingsManager.Instance.Current.ShowSessionHistory = true;
+            var sessionId = Guid.NewGuid().ToString();
+            var session   = TestDataFactory.MakeSession(sessionId);
+            var img       = TestDataFactory.MakeImage(sessionId, target: "M31", filter: "Ha", accepted: false);
+            img.GradingStatus = 2;   // TS-rejected — CountsAsAccepted must be false
+            var data = new ReportData {
+                Session = session, Images = new List<ImageRecord> { img }, Events = new List<SessionEvent>(),
+                TsData  = new List<TsTargetData>(),
+                CumulativeIntegrationSeconds = new Dictionary<string, double>(),
+                SessionHistory = new Dictionary<string, List<TargetSessionHistory>> {
+                    ["M31"] = new List<TargetSessionHistory> {
+                        new TargetSessionHistory { SessionStart = new DateTime(2025, 1, 1), IntegrationSeconds = 3600, AvgHFR = 2.0 }
+                    }
+                },
+                SessionHistoryAggregate = new Dictionary<string, TargetSessionHistoryAggregate> {
+                    ["M31"] = new TargetSessionHistoryAggregate { TotalIntegrationSeconds = 3600 }
+                }
+            };
+            var report = await _generator.GenerateHtmlReport(data);
+            Assert.Contains("class='history-totals'", report);
+            Assert.DoesNotContain("this session)", report);
         }
 
         [Fact]

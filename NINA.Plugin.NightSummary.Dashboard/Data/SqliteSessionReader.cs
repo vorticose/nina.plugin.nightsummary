@@ -364,9 +364,11 @@ public sealed class SqliteSessionReader {
         return result;
     }
 
-    // Roll-up across ALL prior sessions for a target (current session excluded),
-    // for the report's Session History totals band. Two reads on the same
-    // predicate as GetSessionHistoryForTarget:
+    // Roll-up across a target's sessions for the report's Session History totals
+    // band. Callers pass excludeSessionId = "" for lifetime totals (the band's
+    // headline includes the current session so it matches Target Scheduler's
+    // accepted totals); a non-empty id excludes that session. Two reads on the
+    // same predicate as GetSessionHistoryForTarget:
     //   1. scalar — total integration (accepted frames) + frame-level AVG of the
     //      quality metrics (over all frames where the metric is present, matching
     //      the per-session column semantics, NOT an average of the per-session
