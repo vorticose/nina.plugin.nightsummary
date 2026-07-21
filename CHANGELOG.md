@@ -5,12 +5,12 @@
 
 ### Improvements
 
-- **Session History totals** — the per-target Session History section now opens with a totals band: the target's **lifetime total integration** (including the current session, so it lines up with Target Scheduler's accepted totals) with the current session's share called out alongside, the integration-weighted **average** HFR / FWHM / guiding RMS, and a per-filter integration breakdown shown as chips that add up to the total. No more adding the rows up by hand. Rides under the existing Session History toggle.
-- **Overhead section explains itself when the log has no timing data** — if images were captured but no timing events could be parsed from the NINA log (usually because NINA's log level is set below Info), the Yield and Imaging Overhead Analysis section now shows a notice telling you to set NINA to Options > General > Log Level > Info, instead of silently disappearing. (#27)
+- **Session History totals** — each target's Session History now opens with a totals band: lifetime integration (with this session's share), weighted average HFR / FWHM / guiding RMS, and per-filter chips that sum to the total.
+- **Overhead notice** — when no timing events can be parsed from the NINA log (log level below Info), the Overhead Analysis section now shows a notice explaining how to fix it instead of silently disappearing. (#27)
 
 ### Bug Fixes
 
-- Target Scheduler: a target whose TS name had a stray leading or trailing space no longer shows a false "target not found in Target Scheduler" warning (and its progress bars now render). Name matching is now whitespace-tolerant on both the database filter and the report match.
+- Target Scheduler name matching is now whitespace-tolerant: targets with a stray space in their TS name showed a false "target not found" warning and were missing their progress bars.
 
 
 ## v3.2.0
