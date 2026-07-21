@@ -14,6 +14,14 @@
 <!-- TODO docs: add an "Updating the companion" section to docs/companion.md — the in-app
      update banner, Update now vs Dismiss, and the AppImage/.deb download-link fallback. -->
 
+### New Features (integration groundwork)
+
+- **Touch 'N' Stars integration API** — the local dashboard server now exposes a small `/api/nightsummary/*` namespace (status, session list, the actual report HTML, resend, delete) designed for the Touch 'N' Stars app to show Night Summary reports as a delivery channel: pick a session in TNS, view the real report. The plugin also announces its dashboard port over NINA's inter-plugin message broker (`NightSummary.Port`, same pattern as Advanced API) so TNS can discover it with zero configuration. Invisible until a TNS build consumes it; see TNS_INTEGRATION.md.
+- **Session delete now removes everything** — deleting a session (Options button or the new API) now also removes its report file, livestack masters, and thumbnails, which delete previously left orphaned on disk.
+
+<!-- TODO docs: once the TNS side ships, add a short "Touch 'N' Stars" page or section
+     (enable Local Server, the TNS plugin toggle, what the tab shows). -->
+
 ### Improvements
 
 - **Session History totals** — the per-target Session History section now opens with a totals band: the **total integration** across all previous sessions, the integration-weighted **average** HFR / FWHM / guiding RMS, and a per-filter integration breakdown (your raw filter names) shown as chips that add up to the total. No more adding the rows up by hand. Rides under the existing Session History toggle.

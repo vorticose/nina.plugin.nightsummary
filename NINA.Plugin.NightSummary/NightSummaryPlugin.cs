@@ -28,6 +28,7 @@ namespace NINA.Plugin.NightSummary {
 
         private readonly SessionService sessionService;
         private readonly IProfileService profileService;
+        private PortBroadcaster portBroadcaster; // null if broker unavailable
         private readonly string liveDbPath;
         private DashboardServer dashboardServer;
         // Optional second instance bound to ReadOnlyMirrorPort when EnableReadOnlyMirror
@@ -119,10 +120,23 @@ namespace NINA.Plugin.NightSummary {
             IProfileService profileService,
             IOptionsVM options,
             IImageSaveMediator imageSaveMediator,
-            SessionService sessionService) {
+            SessionService sessionService,
+            IMessageBroker messageBroker) {
 
             this.sessionService = sessionService;
             this.profileService = profileService;
+
+            // Port discovery for other plugins (Touch 'N' Stars): announce the
+            // dashboard port over the message broker, answer RequestPort probes.
+            // See PortBroadcaster / TNS_INTEGRATION.md.
+            try {
+                if (messageBroker != null) {
+                    portBroadcaster = new PortBroadcaster(messageBroker,
+                        Guid.Parse("682531D1-5A23-4627-B961-0794282ECB4E"));
+                }
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Port broadcaster init failed: {ex.Message}");
+            }
 
             // Populate the pairing token lists once at startup so the Options
             // panel renders the current state without waiting for a user action.
@@ -320,7 +334,11 @@ namespace NINA.Plugin.NightSummary {
 
                 var sessionIdToDelete = SelectedSession.SessionId;
                 try {
-                    await Task.Run(() => new SessionDatabase(liveDbPath).DeleteSession(sessionIdToDelete));
+                    // Same path as the TNS/dashboard delete endpoint: DB rows plus
+                    // on-disk artifacts (report HTML, livestack masters, thumbnails),
+                    // which the old direct SessionDatabase call left orphaned.
+                    var maintenance = new NinaSessionMaintenance(sessionService, liveDbPath, new NinaDashboardPaths());
+                    await Task.Run(() => maintenance.DeleteAsync(sessionIdToDelete));
                     LoadSessions();
                     ResendStatus.Text = "✓ Deleted";
                 } catch (Exception ex) {
@@ -485,6 +503,7 @@ namespace NINA.Plugin.NightSummary {
                 Logger.Warning($"NightSummary: Error waiting for in-flight reports: {ex.Message}");
             }
             await StopLocalServerAsync();
+            portBroadcaster?.Dispose();
             SettingsManager.Instance.Save();
             Logger.Info("NightSummary: Plugin torn down");
             await base.Teardown();
@@ -500,10 +519,17 @@ namespace NINA.Plugin.NightSummary {
                 externalLog: new NinaDashboardLogger(),
                 paths:       paths,
                 regen:       new NinaReportRegenerator(this.sessionService, paths.DatabasePath, paths.ReportsDir),
-                tokenStore:  CompanionTokenStore.Instance);
+                tokenStore:  CompanionTokenStore.Instance,
+                maintenance: new NinaSessionMaintenance(this.sessionService, paths.DatabasePath, paths));
             await dashboardServer.StartAsync(S.LocalServerPort);
             var notifyUrl = dashboardServer.TailscaleUrl ?? dashboardServer.ZeroTierUrl ?? dashboardServer.Url;
             Notification.ShowInformation($"Night Summary dashboard live: {notifyUrl}");
+
+            // Tell listening plugins (Touch 'N' Stars) where the dashboard lives.
+            if (portBroadcaster != null) {
+                try { await portBroadcaster.AnnounceAsync(S.LocalServerPort); }
+                catch (Exception ex) { Logger.Warning($"NightSummary: Port announce failed: {ex.Message}"); }
+            }
 
             // If a read-only mirror port is configured, spin a second DashboardServer
             // bound to that port with readOnly: true. Reads the same DB and same web
@@ -588,6 +614,11 @@ namespace NINA.Plugin.NightSummary {
             if (dashboardServer != null) {
                 await dashboardServer.StopAsync();
                 dashboardServer = null;
+                // Port 0 = installed but server not running, so a TNS probe can
+                // distinguish "enable the local server" from "NS not installed".
+                if (portBroadcaster != null) {
+                    try { await portBroadcaster.AnnounceAsync(0); } catch { }
+                }
             }
         }
 
