@@ -91,7 +91,18 @@ namespace NINA.Plugin.NightSummary.Server {
         // ── /api/mode ─────────────────────────────────────────────────────────
 
         private async Task HandleGetMode(TcpHttpResponse res, Action<int, string> done) {
-            await WriteJson(res, 200, new { mode = _settings.Mode ?? "primary" });
+            // Multi-rig: advertise the configured rigs + which one is default so the
+            // dashboard can render the switcher (only when rigs.length > 1) and
+            // validate a stored ACTIVE_RIG against the live list. Single-rig and
+            // primary installs report one rig — the JS hides the switcher.
+            var rigs = _rigs.All
+                .Select(r => new { id = r.Id, name = r.Name, enabled = r.Enabled })
+                .ToList();
+            await WriteJson(res, 200, new {
+                mode       = _settings.Mode ?? "primary",
+                rigs,
+                defaultRig = _rigs.Default.Id,
+            });
             done?.Invoke(200, null);
         }
 

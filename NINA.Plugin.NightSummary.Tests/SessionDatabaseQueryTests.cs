@@ -209,6 +209,59 @@ namespace NINA.Plugin.NightSummary.Tests {
             Assert.Equal(2.5, result[0].AvgHFR, precision: 2);
         }
 
+        // ── GetSessionHistoryAggregateForTarget ───────────────────────────────
+
+        [Fact]
+        public void GetSessionHistoryAggregate_NoPriorSessions_ReturnsNull() {
+            var session = CreateSession(new DateTime(2025, 3, 1, 21, 0, 0));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(session.SessionId, target: "M31"));
+            Assert.Null(_db.GetSessionHistoryAggregateForTarget("M31", session.SessionId));
+        }
+
+        [Fact]
+        public void GetSessionHistoryAggregate_DifferentTarget_ReturnsNull() {
+            var old     = CreateSession(new DateTime(2025, 1, 1, 21, 0, 0));
+            var current = CreateSession(new DateTime(2025, 3, 1, 21, 0, 0));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(old.SessionId,     target: "M31"));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(current.SessionId, target: "M31"));
+            Assert.Null(_db.GetSessionHistoryAggregateForTarget("M42", current.SessionId));
+        }
+
+        [Fact]
+        public void GetSessionHistoryAggregate_SumsIntegrationAndBreaksDownByFilter() {
+            var old     = CreateSession(new DateTime(2025, 1, 1, 21, 0, 0));
+            var current = CreateSession(new DateTime(2025, 3, 1, 21, 0, 0));
+            // Prior session: 2x Ha + 1x OIII (each 300s, accepted). Current excluded.
+            _db.SaveImageRecord(TestDataFactory.MakeImage(old.SessionId,     target: "M31", filter: "Ha"));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(old.SessionId,     target: "M31", filter: "Ha"));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(old.SessionId,     target: "M31", filter: "OIII"));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(current.SessionId, target: "M31", filter: "Ha"));
+
+            var agg = _db.GetSessionHistoryAggregateForTarget("M31", current.SessionId);
+            Assert.NotNull(agg);
+            Assert.Equal(900, agg.TotalIntegrationSeconds, precision: 1);          // 3 x 300
+            Assert.Equal(2, agg.Filters.Count);
+            Assert.Equal("Ha",   agg.Filters[0].Filter);                            // sorted desc by integration
+            Assert.Equal(600,    agg.Filters[0].IntegrationSeconds, precision: 1);
+            Assert.Equal("OIII", agg.Filters[1].Filter);
+            Assert.Equal(300,    agg.Filters[1].IntegrationSeconds, precision: 1);
+            // The chips must sum to the headline total — they're the breakdown of it.
+            Assert.Equal(agg.TotalIntegrationSeconds, agg.Filters.Sum(f => f.IntegrationSeconds), precision: 1);
+        }
+
+        [Fact]
+        public void GetSessionHistoryAggregate_AvgHFR_IsFrameMeanAcrossPriorSessions() {
+            var old1    = CreateSession(new DateTime(2025, 1, 1, 21, 0, 0));
+            var old2    = CreateSession(new DateTime(2025, 2, 1, 21, 0, 0));
+            var current = CreateSession(new DateTime(2025, 3, 1, 21, 0, 0));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(old1.SessionId,    target: "M31", hfr: 2.0));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(old2.SessionId,    target: "M31", hfr: 3.0));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(current.SessionId, target: "M31", hfr: 9.0)); // excluded
+            var agg = _db.GetSessionHistoryAggregateForTarget("M31", current.SessionId);
+            Assert.NotNull(agg);
+            Assert.Equal(2.5, agg.AvgHFR, precision: 2);   // mean of 2.0 + 3.0, NOT polluted by current 9.0
+        }
+
         // ── UpdateImageGradingFromTs ──────────────────────────────────────────
 
         [Fact]

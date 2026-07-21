@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<!--
+  Approved design mockup for the report Session History "totals band" (AIP Discord
+  request, 2026-06-14; finalized 2026-06-26). Shipped in ReportGenerator
+  (AppendSessionHistoryTotals + the .history-totals CSS). Kept for reference.
+
+  Decisions captured here:
+   - Totals band at the TOP of the section, table unchanged below.
+   - Bold TOTAL integration first, then integration-weighted averages, each
+     prefixed "Avg " to match the table column headers (total vs average is
+     unmistakable).
+   - Per-filter chips INSIDE the band, under a hairline = the breakdown OF the
+     total (they sum to it), not a separate metric. Raw user filter names.
+-->
+<html><head><meta charset="utf-8"><title>Session History totals band - mockup</title></head>
+<body style="background:#0d1117; font-family:Arial,sans-serif; padding:24px;">
+  <p style="color:#888; font-size:12px; text-transform:uppercase; letter-spacing:.05em;">After (shipped)</p>
+  <div style="max-width:560px; background:#1a1a2e; color:#e0e0e0; border-radius:8px; padding:14px 16px;">
+    <div style="color:#a0c4ff; font-size:14px; font-weight:bold;">&#9660;&nbsp;Session History (10 previous sessions)</div>
+
+    <div style="margin:10px 0 4px; background:#16213e; border:1px solid #3a5a7a; border-radius:7px; padding:9px 13px;">
+      <div style="font-size:13px; color:#a0c4ff;">
+        <span style="font-weight:bold; font-size:14px; color:#e0e0e0;">20.7h total</span>
+        <span style="color:#555; margin:0 7px;">&middot;</span>Avg HFR 1.64px
+        <span style="color:#555; margin:0 7px;">&middot;</span>Avg FWHM 4.97"
+        <span style="color:#555; margin:0 7px;">&middot;</span>Avg RMS 0.71"
+      </div>
+      <div style="margin-top:8px; padding-top:8px; border-top:1px solid #2d2d5e; display:flex; flex-wrap:wrap; gap:6px;">
+        <span style="background:#1a1a2e; border:1px solid #3a5a7a; color:#a0c4ff; font-size:12px; padding:3px 9px; border-radius:11px;">S 9.5h</span>
+        <span style="background:#1a1a2e; border:1px solid #3a5a7a; color:#a0c4ff; font-size:12px; padding:3px 9px; border-radius:11px;">H 9.5h</span>
+        <span style="background:#1a1a2e; border:1px solid #3a5a7a; color:#a0c4ff; font-size:12px; padding:3px 9px; border-radius:11px;">O 1.7h</span>
+      </div>
+    </div>
+
+    <table style="width:100%; border-collapse:collapse; margin-top:10px; font-size:13px;">
+      <tr style="background:#2d2d5e; color:#7eb8f7; text-align:left;">
+        <th style="padding:8px;">Date</th><th style="padding:8px;">Integration</th><th style="padding:8px;">Avg HFR</th><th style="padding:8px;">Avg FWHM</th><th style="padding:8px;">Avg Guiding RMS</th></tr>
+      <tr><td style="padding:8px;">Apr 2, 2026</td><td style="padding:8px;">20m</td><td style="padding:8px;">1.62px</td><td style="padding:8px;">4.95"</td><td style="padding:8px;">0.65"</td></tr>
+      <tr><td style="padding:8px;">Mar 30, 2026</td><td style="padding:8px;">1.7h</td><td style="padding:8px;">1.62px</td><td style="padding:8px;">4.87"</td><td style="padding:8px;">0.64"</td></tr>
+    </table>
+  </div>
+</body></html>

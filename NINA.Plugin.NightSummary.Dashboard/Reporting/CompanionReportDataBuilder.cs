@@ -50,6 +50,7 @@ public sealed class CompanionReportDataBuilder {
         var timingEvents  = _reader.GetTimingEventsForSession(session.SessionId);
         var cumulative    = _reader.GetCumulativeIntegrationByTarget(session.SessionId);
         var history       = BuildHistory(images, session.SessionId);
+        var historyAgg    = BuildHistoryAggregate(images, session.SessionId);
         var (fovW, fovH)  = ComputeCameraFov(session);
         var liveStack     = LoadLiveStackMastersForSession(session);
         var (lat, lon)    = ReadObserverCoordsFromSidecar(session.SessionId);
@@ -73,6 +74,7 @@ public sealed class CompanionReportDataBuilder {
             TsData                       = tsData,
             CumulativeIntegrationSeconds = cumulative,
             SessionHistory               = history,
+            SessionHistoryAggregate      = historyAgg,
             CameraFovWidthDeg            = fovW,
             CameraFovHeightDeg           = fovH,
             ObserverLatitude             = lat,
@@ -111,6 +113,18 @@ public sealed class CompanionReportDataBuilder {
         var result = new Dictionary<string, List<TargetSessionHistory>>(StringComparer.OrdinalIgnoreCase);
         foreach (var targetName in images.Select(i => i.TargetName).Where(n => !string.IsNullOrEmpty(n)).Distinct()) {
             result[targetName] = _reader.GetSessionHistoryForTarget(targetName, sessionId);
+        }
+        return result;
+    }
+
+    private Dictionary<string, TargetSessionHistoryAggregate> BuildHistoryAggregate(List<ImageRecord> images, string sessionId) {
+        var result = new Dictionary<string, TargetSessionHistoryAggregate>(StringComparer.OrdinalIgnoreCase);
+        foreach (var targetName in images.Select(i => i.TargetName).Where(n => !string.IsNullOrEmpty(n)).Distinct()) {
+            // Lifetime scope (no session exclusion) — must mirror the plugin's
+            // BuildSessionHistoryAggregate so companion-regenerated reports show
+            // the same totals band as the primary's.
+            var agg = _reader.GetSessionHistoryAggregateForTarget(targetName, "");
+            if (agg != null) result[targetName] = agg;
         }
         return result;
     }

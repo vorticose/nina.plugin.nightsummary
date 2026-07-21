@@ -13,13 +13,19 @@ namespace NINA.Plugin.NightSummary.Companion.Adapters;
 public sealed class CompanionController : ICompanionController {
 
     private readonly SyncEngine _engine;
-    private readonly CompanionConfig _config;
+    private readonly CompanionConfig _config;   // shared, companion-global (port, readonly mirror)
+    private readonly RigConfig _rig;            // this controller's rig (a reference inside _config.Rigs)
     private readonly CompanionPaths _paths;
     private readonly string _configPath;
     private readonly IDashboardLogger _log;
     private readonly string _statePath;
-    private readonly object _gate = new();
+    private readonly object _gate = new();      // guards reachability + in-flight (per-instance)
     private Task<SyncEngine.SyncResult>? _inFlight;
+
+    // Serializes writes to the single shared companion.json across the N per-rig
+    // controllers. All controllers built from the same CompanionConfig lock on
+    // that shared instance, so two rigs can't interleave a save.
+    private object SaveGate => _config;
 
     // Reachability is kept in-memory (not persisted) — it's "right now" state.
     // volatile because the ping loop writes from a background task and the
@@ -32,9 +38,13 @@ public sealed class CompanionController : ICompanionController {
     // request thread's GetStatus() sees the background sync's updates promptly.
     private volatile CompanionSyncProgress? _progress;
 
-    public CompanionController(SyncEngine engine, CompanionConfig config, CompanionPaths paths, string configPath, IDashboardLogger log) {
+    // Canonical multi-rig ctor: one controller per rig, all sharing the same
+    // CompanionConfig instance + config path (so global-field edits and the save
+    // lock are coordinated).
+    public CompanionController(SyncEngine engine, CompanionConfig config, RigConfig rig, CompanionPaths paths, string configPath, IDashboardLogger log) {
         _engine     = engine;
         _config     = config;
+        _rig        = rig;
         _paths      = paths;
         _configPath = configPath;
         _log        = log;
@@ -43,6 +53,11 @@ public sealed class CompanionController : ICompanionController {
         // the setup wizard + dashboard can show a moving indicator.
         _engine.OnProgress = p => _progress = p;
     }
+
+    // Single-rig convenience ctor: binds to the first rig. Keeps the `sync` CLI
+    // path and existing tests working; multi-rig serve uses the ctor above.
+    public CompanionController(SyncEngine engine, CompanionConfig config, CompanionPaths paths, string configPath, IDashboardLogger log)
+        : this(engine, config, config.EnsureFirstRig(), paths, configPath, log) { }
 
     public bool IsSyncing {
         get { lock (_gate) return _inFlight != null && !_inFlight.IsCompleted; }
@@ -134,31 +149,36 @@ public sealed class CompanionController : ICompanionController {
     // ── Config surface ───────────────────────────────────────────────────
 
     public CompanionConfigSnapshot GetConfig() {
-        lock (_gate) return BuildSnapshot();
+        lock (SaveGate) return BuildSnapshot();
     }
 
     private CompanionConfigSnapshot BuildSnapshot() {
-        var complete = _config.IsComplete(out var reason);
+        // Per-rig completeness drives the per-rig settings card; the companion as
+        // a whole is "complete" if any enabled rig is.
+        var complete = _rig.IsComplete(out var reason);
         return new CompanionConfigSnapshot(
-            Host:                            _config.Nina.Host ?? "",
-            Port:                            _config.Nina.Port,
-            DataDir:                         _config.ResolvedDataDir(),
-            OnBoot:                          _config.Sync.OnBoot,
-            PollingIntervalHoursOnSuccess:   _config.Sync.PollingIntervalHoursOnSuccess,
-            PollingIntervalMinutesOnFailure: _config.Sync.PollingIntervalMinutesOnFailure,
+            Host:                            _rig.Nina.Host ?? "",
+            Port:                            _rig.Nina.Port,
+            DataDir:                         _paths.DataDir,
+            OnBoot:                          _rig.Sync.OnBoot,
+            PollingIntervalHoursOnSuccess:   _rig.Sync.PollingIntervalHoursOnSuccess,
+            PollingIntervalMinutesOnFailure: _rig.Sync.PollingIntervalMinutesOnFailure,
             DashboardPort:                   _config.Port,
             IsComplete:                      complete,
             IncompleteReason:                reason,
-            PairingTokenSet:                 !string.IsNullOrEmpty(_config.Nina.PairingToken),
-            AcceptPush:                      _config.Sync.AcceptPush,
+            PairingTokenSet:                 !string.IsNullOrEmpty(_rig.Nina.PairingToken),
+            AcceptPush:                      _rig.Sync.AcceptPush,
             EnableReadOnlyMirror:            _config.EnableReadOnlyMirror,
-            ReadOnlyMirrorPort:              _config.ReadOnlyMirrorPort);
+            ReadOnlyMirrorPort:              _config.ReadOnlyMirrorPort,
+            RigId:                           _rig.Id,
+            RigName:                         _rig.Name,
+            RigEnabled:                      _rig.Enabled);
     }
 
     public async Task<CompanionConfigSaveResult> SaveConfigAsync(CompanionConfigEdit edit, CancellationToken ct = default) {
         bool wasComplete;
-        lock (_gate) {
-            wasComplete = _config.IsComplete();
+        lock (SaveGate) {
+            wasComplete = _rig.IsComplete();
             // Validate before mutating so a bad edit doesn't half-update the file
             if (string.IsNullOrWhiteSpace(edit.Host))
                 return Fail("host is required");
@@ -184,14 +204,16 @@ public sealed class CompanionController : ICompanionController {
             if (roWantedOn && effectiveDashPort == effectiveRoPort)
                 return Fail($"read-only mirror port must differ from dashboard port (both {effectiveDashPort})");
 
-            _config.Nina.Host = edit.Host.Trim();
-            _config.Nina.Port = edit.Port;
-            _config.Sync.OnBoot = edit.OnBoot;
-            _config.Sync.PollingIntervalHoursOnSuccess   = edit.PollingIntervalHoursOnSuccess;
-            _config.Sync.PollingIntervalMinutesOnFailure = edit.PollingIntervalMinutesOnFailure;
+            // Per-rig fields land on THIS controller's rig; global fields
+            // (dashboard port, read-only mirror) stay on the shared config.
+            _rig.Nina.Host = edit.Host.Trim();
+            _rig.Nina.Port = edit.Port;
+            _rig.Sync.OnBoot = edit.OnBoot;
+            _rig.Sync.PollingIntervalHoursOnSuccess   = edit.PollingIntervalHoursOnSuccess;
+            _rig.Sync.PollingIntervalMinutesOnFailure = edit.PollingIntervalMinutesOnFailure;
             // null = leave unchanged (e.g. for clients that haven't been
             // updated to send the field). Explicit toggle persists.
-            if (edit.AcceptPush.HasValue) _config.Sync.AcceptPush = edit.AcceptPush.Value;
+            if (edit.AcceptPush.HasValue) _rig.Sync.AcceptPush = edit.AcceptPush.Value;
             // Dashboard port is the companion's own TCP listener port. Saving
             // here updates companion.json but does NOT rebind the live server
             // (would need to tear down + restart Kestrel, ugly mid-request).
@@ -222,9 +244,9 @@ public sealed class CompanionController : ICompanionController {
                 return Fail($"could not write config: {ex.Message}");
             }
             _engine.Reconfigure();
-            _log.Info($"Companion: config saved (host={_config.Nina.Host}, port={_config.Nina.Port}, " +
-                      $"success={_config.Sync.PollingIntervalHoursOnSuccess}h, " +
-                      $"failure={_config.Sync.PollingIntervalMinutesOnFailure}m" +
+            _log.Info($"Companion: rig '{_rig.Name}' config saved (host={_rig.Nina.Host}, port={_rig.Nina.Port}, " +
+                      $"success={_rig.Sync.PollingIntervalHoursOnSuccess}h, " +
+                      $"failure={_rig.Sync.PollingIntervalMinutesOnFailure}m" +
                       (dashboardPortChanged ? $", dashboardPort={_config.Port} (restart required)" : "") +
                       (roMirrorChanged ? $", readOnlyMirror={_config.EnableReadOnlyMirror}@{_config.ReadOnlyMirrorPort} (restart required)" : "") + ")");
         }
@@ -233,7 +255,7 @@ public sealed class CompanionController : ICompanionController {
         // the dashboard immediately has data without waiting for the scheduler.
         // Probe reachability synchronously first so the banner reflects truth
         // before the sync UI shows.
-        if (!wasComplete && _config.IsComplete()) {
+        if (!wasComplete && _rig.IsComplete()) {
             try { await PingPrimaryAsync(ct); } catch { }
             _ = Task.Run(async () => {
                 try {
@@ -260,7 +282,7 @@ public sealed class CompanionController : ICompanionController {
         // ignore the form value and always authenticate via the configured
         // pairing token. (Settings tab UI no longer presents an api key field
         // for token-paired companions either.)
-        var r = await ConnectionTester.TestAsync(host, port, _config.Nina.PairingToken ?? "", ct);
+        var r = await ConnectionTester.TestAsync(host, port, _rig.Nina.PairingToken ?? "", ct);
         return new CompanionConfigTestResult(r.Ok, r.Version, r.Schema, r.Error);
     }
 
@@ -330,10 +352,15 @@ public sealed class CompanionController : ICompanionController {
                 // Persist the token + host/port so subsequent /api/export/*
                 // calls authenticate as the new pairing. The api key (if any)
                 // is left untouched — the dual-auth shim accepts either.
-                lock (_gate) {
-                    _config.Nina.Host         = host.Trim();
-                    _config.Nina.Port         = port;
-                    _config.Nina.PairingToken = token.Trim();
+                lock (SaveGate) {
+                    _rig.Nina.Host         = host.Trim();
+                    _rig.Nina.Port         = port;
+                    _rig.Nina.PairingToken = token.Trim();
+                    // Name a freshly-paired rig after the companion name the user
+                    // chose (default = host) so the switcher shows something
+                    // meaningful instead of a blank/host-only label.
+                    if (string.IsNullOrWhiteSpace(_rig.Name))
+                        _rig.Name = string.IsNullOrWhiteSpace(companionName) ? host.Trim() : companionName.Trim();
                     try {
                         CompanionConfig.Save(_config, _configPath);
                     } catch (Exception ex) {

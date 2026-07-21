@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Reflection;
 using System.Threading;
@@ -74,7 +75,7 @@ On first run a default companion.json is written and the program exits so you ca
         var cmd = args.Length > 0 ? args[0] : "serve";
         try {
             return cmd switch {
-                "sync"  => await RunSyncAsync(configPath),
+                "sync"  => await RunSyncAsync(configPath, ResolveArg(args, "--rig")),
                 "serve" => await RunServeAsync(configPath,
                                                noSync:      HasFlag(args, "--no-sync"),
                                                noBrowser:   HasFlag(args, "--no-browser"),
@@ -96,20 +97,40 @@ On first run a default companion.json is written and the program exits so you ca
 
     // ── Commands ─────────────────────────────────────────────────────────
 
-    private static async Task<int> RunSyncAsync(string configPath) {
-        var (config, paths, log) = Bootstrap(configPath);
+    // One-shot CLI sync. With no --rig, syncs every enabled+complete rig
+    // sequentially; --rig <id> targets a single rig. Exit 0 iff all attempted
+    // syncs succeeded.
+    private static async Task<int> RunSyncAsync(string configPath, string? rigFilter) {
+        var (config, _, log) = Bootstrap(configPath);
         if (!config.IsComplete(out var reason)) {
             Console.Error.WriteLine($"Config incomplete: {reason}");
             Console.Error.WriteLine($"Run '{typeof(Program).Assembly.GetName().Name} serve' and finish setup in the dashboard, or edit {configPath} directly.");
             return 4;
         }
-        var engine = new SyncEngine(config, paths, log);
-        var result = await engine.SyncAsync(CancellationToken.None);
-        return result.Success ? 0 : 3;
+        var rigs = config.Rigs
+            .Where(r => r.Enabled && r.IsComplete())
+            .Where(r => string.IsNullOrEmpty(rigFilter) || string.Equals(r.Id, rigFilter, StringComparison.Ordinal))
+            .ToList();
+        if (rigs.Count == 0) {
+            Console.Error.WriteLine(string.IsNullOrEmpty(rigFilter)
+                ? "No enabled, fully-configured rig to sync."
+                : $"No enabled, fully-configured rig with id '{rigFilter}'.");
+            return 4;
+        }
+        bool allOk = true;
+        foreach (var rig in rigs) {
+            var paths = new CompanionPaths(config.RigDataDir(rig.Id));
+            paths.EnsureExists();
+            var engine = new SyncEngine(rig, config.Port, paths, log);
+            log.Info($"CLI sync: rig '{rig.Name}' ({rig.Id})");
+            var result = await engine.SyncAsync(CancellationToken.None);
+            allOk &= result.Success;
+        }
+        return allOk ? 0 : 3;
     }
 
     private static async Task<int> RunServeAsync(string configPath, bool noSync, bool noBrowser, string? webDir, string? roPortOverride) {
-        var (config, paths, log) = Bootstrap(configPath);
+        var (config, rootDataDir, log) = Bootstrap(configPath);
         // Don't Validate() here — serve must come up even when config is fresh
         // so the user can complete setup from the dashboard. Loops below skip
         // their work while !IsComplete and pick up automatically once saved.
@@ -127,21 +148,17 @@ On first run a default companion.json is written and the program exits so you ca
             return 0;
         }
 
-        // Single SyncEngine + controller so the scheduler and the UI button
-        // share coalescing — concurrent runs collapse to one in-flight sync.
-        var engine     = new SyncEngine(config, paths, log);
-        var controller = new CompanionController(engine, config, paths, configPath, log);
-
         var complete = config.IsComplete(out var setupReason);
         if (!complete) {
             log.Warn($"Companion config incomplete ({setupReason}). Open the dashboard to finish setup.");
         }
-        // Boot sync is deferred to AFTER the server is up + the tab is open (see
-        // below) so the dashboard appears instantly instead of waiting out the
-        // network sync. Decide here whether it should run at all.
-        var bootSync = complete && !noSync && config.Sync.OnBoot;
 
         var settings = new CompanionPluginSettings();
+
+        // One backend (data source + paths + regen + controller) per configured
+        // rig, plus a scheduler + ping loop each. The dashboard resolves ?rig= to
+        // a backend per request; add/remove/enable mutate this live.
+        var registry = new CompanionRigRegistry(config, configPath, settings, log);
 
         // --web <dir> hot-reloads HTML/CSS/JS straight from disk so UI iteration
         // doesn't need a rebuild + re-publish + scp cycle. Each request hits the
@@ -162,13 +179,10 @@ On first run a default companion.json is written and the program exits so you ca
         }
 
         var server = new DashboardServer(
-            data:        new CompanionDataSource(paths.DatabasePath, paths.TsDatabasePath, log),
+            rigs:        registry,
             settings:    settings,
             webAssets:   webAssets,
-            externalLog: log,
-            paths:       paths,
-            regen:       new CompanionReportRegenerator(paths.DatabasePath, paths.TsDatabasePath, settings, log, paths),
-            companion:   controller);
+            externalLog: log);
 
         // Wrap StartAsync so a bind failure (port in use, permission denied) lands
         // in companion-YYYY-MM-DD.log instead of an unhandled throw → stderr →
@@ -197,7 +211,7 @@ On first run a default companion.json is written and the program exits so you ca
             log.Error($"  2. Or stop the process holding the port (try: lsof -iTCP:{config.Port} -nP)");
             log.Error("Companion is exiting cleanly so the watchdog stops; relaunch after fixing.");
             Console.Error.WriteLine($"error: cannot bind dashboard on port {config.Port}: {ex.Message}");
-            Console.Error.WriteLine($"See {Path.Combine(paths.LogsDir, "companion-" + DateTime.Now.ToString("yyyy-MM-dd") + ".log")} for recovery steps.");
+            Console.Error.WriteLine($"See {Path.Combine(rootDataDir, "logs", "companion-" + DateTime.Now.ToString("yyyy-MM-dd") + ".log")} for recovery steps.");
             return 0;  // clean exit so the bash watchdog stops instead of looping/dying noisily
         }
 
@@ -208,7 +222,7 @@ On first run a default companion.json is written and the program exits so you ca
         bool roEnabled = config.EnableReadOnlyMirror || !string.IsNullOrWhiteSpace(roPortOverride);
         int roPort     = ParseRoPort(roPortOverride) ?? config.ReadOnlyMirrorPort;
         if (roEnabled) {
-            roServer = await StartReadOnlyMirrorAsync(roPort, config.Port, paths, settings, webAssets, log);
+            roServer = await StartReadOnlyMirrorAsync(roPort, config.Port, registry, settings, webAssets, log);
         }
 
         log.Info("Press Ctrl+C to stop.");
@@ -235,36 +249,21 @@ On first run a default companion.json is written and the program exits so you ca
         Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.TrySetResult(); };
         AppDomain.CurrentDomain.ProcessExit += (_, _) => stop.TrySetResult();
 
-        // Background scheduler. Sleep is success-vs-failure dependent so we
-        // back off when offline and don't hammer the primary on the happy path.
+        // Per-rig scheduler + ping loops (back off when offline, coast on the
+        // happy path) — one pair per enabled rig, owned by the registry.
         var schedulerCts = new CancellationTokenSource();
-        var scheduler = Task.Run(() => RunSchedulerLoop(controller, config, log, schedulerCts.Token));
-        var pinger    = Task.Run(() => RunPingLoop(controller, config, log, schedulerCts.Token));
+        registry.StartAll();
 
         // Boot sync, in the background now that the server is up and the tab is
         // open. The dashboard renders the last-synced data on disk immediately and
-        // live-refreshes when this lands (the web UI watches lastSuccessUtc and
-        // re-renders the current view). Fire-and-forget; coalesces with the
-        // scheduler via the shared controller, cancels cleanly on shutdown.
-        if (bootSync) {
-            _ = Task.Run(async () => {
-                log.Info("Boot sync starting (background)…");
-                try {
-                    var result = await controller.TriggerSyncAsync(schedulerCts.Token);
-                    if (!string.IsNullOrEmpty(result.LastError))
-                        log.Warn($"Boot sync did not complete cleanly: {result.LastError}");
-                } catch (OperationCanceledException) {
-                    // shutting down — ignore
-                } catch (Exception ex) {
-                    log.Warn($"Boot sync failed: {ex.Message}");
-                }
-            });
-        }
+        // live-refreshes when this lands. Each enabled+complete rig with OnBoot
+        // syncs; coalesces inside its controller, cancels cleanly on shutdown.
+        if (!noSync) registry.KickBootSyncs(schedulerCts.Token);
 
         await stop.Task;
         log.Info("Stopping server…");
         schedulerCts.Cancel();
-        try { await Task.WhenAll(scheduler, pinger); } catch (OperationCanceledException) { }
+        await registry.DisposeAsync();
         if (roServer != null) {
             try { await roServer.StopAsync(); } catch (Exception ex) { log.Warn($"Read-only mirror stop: {ex.Message}"); }
         }
@@ -281,7 +280,7 @@ On first run a default companion.json is written and the program exits so you ca
     private static async Task<DashboardServer?> StartReadOnlyMirrorAsync(
             int port,
             int mainPort,
-            CompanionPaths paths,
+            CompanionRigRegistry registry,
             CompanionPluginSettings settings,
             IWebAssets webAssets,
             CompanionLogger log) {
@@ -294,18 +293,15 @@ On first run a default companion.json is written and the program exits so you ca
             return null;
         }
         try {
-            // Mirror reads the same DB + same web assets — only difference is the
-            // readOnly flag. Pass companion=null/regen=null on purpose: the public
-            // surface should never reach pairing-management or regenerate endpoints,
-            // and the 403 chokepoint catches the rest.
+            // Mirror reads the same rigs via the same registry — only difference is
+            // the readOnly flag. tokenStore=null on purpose: the public surface
+            // should never reach pairing-management endpoints, and the 403
+            // chokepoint catches the rest. ?rig= still works through the registry.
             var mirror = new DashboardServer(
-                data:        new CompanionDataSource(paths.DatabasePath, paths.TsDatabasePath, log),
+                rigs:        registry,
                 settings:    settings,
                 webAssets:   webAssets,
                 externalLog: log,
-                paths:       paths,
-                regen:       null,
-                companion:   null,
                 tokenStore:  null,
                 readOnly:    true);
             await mirror.StartAsync(port);
@@ -322,96 +318,42 @@ On first run a default companion.json is written and the program exits so you ca
         return int.TryParse(s, out var n) ? n : null;
     }
 
-    // Cheap reachability poll. Hits /api/health on a fast cadence so the banner
-    // flips to "online" within ~minute of the primary coming back, independent
-    // of the slow sync schedule. No data transferred — pure status update.
-    private const int PingIntervalSeconds = 10;
-    private static async Task RunPingLoop(CompanionController controller, CompanionConfig config, CompanionLogger log, CancellationToken ct) {
-        bool? lastReported = null;
-        // Prime immediately so the dashboard has a value within seconds of boot.
-        // Skip when config is incomplete — the http client has no usable host yet.
-        if (config.IsComplete()) {
-            try {
-                await controller.PingPrimaryAsync(ct);
-                var s0 = controller.GetStatus();
-                log.Info($"Reachability initial probe → primary {(s0.PrimaryReachable == true ? "online" : "offline")}");
-                lastReported = s0.PrimaryReachable;
-            } catch { }
-        }
-        while (!ct.IsCancellationRequested) {
-            try {
-                await Task.Delay(TimeSpan.FromSeconds(PingIntervalSeconds), ct);
-                if (!config.IsComplete()) { lastReported = null; continue; }
-                await controller.PingPrimaryAsync(ct);
-                // Only log on transitions so the file doesn't fill up with no-op pings.
-                var now = controller.GetStatus().PrimaryReachable;
-                if (now != lastReported) {
-                    log.Info($"Reachability change → primary {(now == true ? "online" : "offline")}");
-                    // Primary just came back — kick a sync so the dashboard clears its
-                    // stale "Last sync failed" message and pulls anything new without
-                    // waiting for the next scheduled cycle. Coalesces inside the
-                    // controller, so a manual click in the same window is a no-op.
-                    if (now == true && lastReported == false) {
-                        log.Info("Primary recovered — auto-triggering sync.");
-                        _ = Task.Run(async () => {
-                            try { await controller.TriggerSyncAsync(ct); }
-                            catch (Exception ex) { log.Warn($"Recovery sync failed: {ex.Message}"); }
-                        }, ct);
-                    }
-                    lastReported = now;
-                }
-            } catch (OperationCanceledException) { return; }
-              catch (Exception ex) { log.Debug($"Ping loop: {ex.Message}"); }
-        }
-    }
-
-    // Periodic auto-sync loop. Picks the next interval based on whether the
-    // last attempt succeeded — failure mode polls more aggressively (default
-    // 30 min) so the dashboard recovers quickly when the primary comes back;
-    // success mode coasts at hours so we don't beat up an idle rig.
-    private static async Task RunSchedulerLoop(CompanionController controller, CompanionConfig config, CompanionLogger log, CancellationToken ct) {
-        while (!ct.IsCancellationRequested) {
-            var status = controller.GetStatus();
-            var lastOk = status.LastError == null && status.LastSuccessUtc != null;
-            var delay  = lastOk
-                ? TimeSpan.FromHours(Math.Max(1, config.Sync.PollingIntervalHoursOnSuccess))
-                : TimeSpan.FromMinutes(Math.Max(1, config.Sync.PollingIntervalMinutesOnFailure));
-
-            try {
-                await Task.Delay(delay, ct);
-            } catch (OperationCanceledException) { return; }
-
-            // Re-check after the delay — config may have been wiped via the
-            // dashboard while we slept; don't try to sync without creds.
-            if (!config.IsComplete()) continue;
-
-            try {
-                log.Info($"Scheduled sync starting (last={(lastOk ? "ok" : "failed")}, next interval was {delay.TotalMinutes:F0}m)…");
-                var result = await controller.TriggerSyncAsync(ct);
-                if (!string.IsNullOrEmpty(result.LastError)) log.Warn($"Scheduled sync error: {result.LastError}");
-            } catch (OperationCanceledException) { return; }
-              catch (Exception ex) { log.Error("Scheduled sync threw", ex); }
-        }
-    }
-
     // ── Bootstrap helpers ────────────────────────────────────────────────
 
-    private static (CompanionConfig config, CompanionPaths paths, CompanionLogger log) Bootstrap(string configPath) {
+    // Loads config (v1→v2 shape migration happens inside Load), relocates a flat
+    // v1 data dir into rigs/{id}/ once, and stands up a root-level logger. The
+    // root data dir is shared (logs/, dashboard cache); each rig nests under
+    // rigs/{id}/.
+    private static (CompanionConfig config, string rootDataDir, CompanionLogger log) Bootstrap(string configPath) {
         var freshConfig = !File.Exists(configPath);
         var config = CompanionConfig.Load(configPath);
         if (freshConfig) {
             Console.WriteLine($"Wrote default config to: {Path.GetFullPath(configPath)}");
             Console.WriteLine("Open the dashboard once it starts and use the Settings tab to finish setup.");
         }
-        var paths = new CompanionPaths(config.ResolvedDataDir());
-        paths.EnsureExists();
-        var log = new CompanionLogger(paths.LogsDir);
+        var rootDataDir = config.ResolvedDataDir();
+        var logsDir = Path.Combine(rootDataDir, "logs");
+        Directory.CreateDirectory(logsDir);
+        var log = new CompanionLogger(logsDir);
+
+        // Persist a v1->v2 shape migration BEFORE touching data, so the rig id
+        // minted during Load is stable across restarts (otherwise the next boot
+        // would mint a new id and orphan the relocated rigs/<id>/ dir).
+        if (config.JustMigratedV1) {
+            log.Info("Companion: migrated config to v2 (rigs[]); saving so the rig id is stable.");
+            try { CompanionConfig.Save(config, configPath); } catch (Exception ex) { log.Warn($"Companion: could not persist v2 config: {ex.Message}"); }
+        }
+
+        // One-time: move a legacy flat data dir under rigs/{defaultRigId}/. No-op
+        // on fresh installs and on already-migrated trees (marker file).
+        CompanionMigration.RelocateDataDirIfNeeded(rootDataDir, config.DefaultRig()?.Id, log);
+
         log.Info($"Companion config: {configPath}");
-        log.Info($"Data dir: {paths.DataDir}");
+        log.Info($"Root data dir: {rootDataDir} ({config.Rigs.Count} rig(s))");
         log.Info(config.IsComplete()
-            ? $"Primary: {config.ResolvedNinaUrl()}"
+            ? $"Default rig primary: {config.DefaultRig()?.ResolvedNinaUrl()}"
             : "Primary: <not configured> — finish setup in the dashboard.");
-        return (config, paths, log);
+        return (config, rootDataDir, log);
     }
 
     // Quick check: is a companion already serving on this port? Hits the

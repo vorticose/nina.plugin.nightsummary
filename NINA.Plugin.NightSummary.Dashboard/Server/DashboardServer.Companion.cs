@@ -1,11 +1,16 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Formats.Tar;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
+using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using NINA.Plugin.NightSummary.Data;
 using NINA.Plugin.NightSummary.Dashboard.Abstractions;
@@ -34,6 +39,159 @@ namespace NINA.Plugin.NightSummary.Server {
             done?.Invoke(200, null);
         }
 
+        // GET /api/companion/status/all — one status entry per configured rig, for
+        // the settings page rig list + the switcher's aggregate "another rig is
+        // erroring" dot. Each rig resolves to its own controller; a rig with no
+        // controller (shouldn't happen in companion mode) is skipped.
+        private async Task HandleCompanionStatusAll(TcpHttpResponse res, Action<int, string> done) {
+            if (_rigs.Default.Companion == null) {
+                await WriteJson(res, 404, new { error = "companion mode not active" });
+                done?.Invoke(404, null);
+                return;
+            }
+            var rigs = _rigs.All.Where(r => r.Companion != null).Select(r => {
+                var s = r.Companion!.GetStatus();
+                var c = r.Companion!.GetConfig();
+                return new {
+                    id      = r.Id,
+                    name    = r.Name,
+                    enabled = r.Enabled,
+                    status  = ToWire(s, c),
+                };
+            }).ToList();
+            await WriteJson(res, 200, new { defaultRig = _rigs.Default.Id, rigs });
+            done?.Invoke(200, $"status/all: {rigs.Count} rig(s)");
+        }
+
+        // GET /api/companion/rigs — light list for the settings rig section:
+        // id, name, enabled, host, completeness. Heavier per-rig sync status comes
+        // from /api/companion/status/all.
+        private async Task HandleCompanionRigsList(TcpHttpResponse res, Action<int, string> done) {
+            if (_rigs.Default.Companion == null) {
+                await WriteJson(res, 404, new { error = "companion mode not active" });
+                done?.Invoke(404, null);
+                return;
+            }
+            var rigs = _rigs.All.Where(r => r.Companion != null).Select(r => {
+                var c = r.Companion!.GetConfig();
+                return new {
+                    id              = r.Id,
+                    name            = r.Name,
+                    enabled         = r.Enabled,
+                    host            = c.Host,
+                    port            = c.Port,
+                    isComplete      = c.IsComplete,
+                    pairingTokenSet = c.PairingTokenSet,
+                };
+            }).ToList();
+            await WriteJson(res, 200, new {
+                supportsManagement = _rigs.SupportsManagement,
+                defaultRig         = _rigs.Default.Id,
+                rigs,
+            });
+            done?.Invoke(200, $"rigs: {rigs.Count}");
+        }
+
+        // POST /api/companion/rigs  body { name } — create a new unpaired rig and
+        // return its id. The wizard then pairs it via /api/setup/claim?rig=<id>.
+        private async Task HandleCompanionRigAdd(TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
+            if (!_rigs.SupportsManagement) {
+                await WriteJson(res, 400, new { error = "multi-rig management not available" });
+                done?.Invoke(400, "no management");
+                return;
+            }
+            try {
+                var body = await ReadBodyCappedAsync(req, res, done);
+                if (body == null) return;
+                using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                var name = GetStr(doc.RootElement, "name", "");
+                var id = await _rigs.AddRigAsync(name);
+                await WriteJson(res, 200, new { ok = true, id });
+                done?.Invoke(200, $"rig added: {id}");
+            } catch (Exception ex) {
+                log?.Error("Companion add-rig failed", ex);
+                await WriteJson(res, 500, new { ok = false, error = ex.Message });
+                done?.Invoke(500, ex.Message);
+            }
+        }
+
+        // POST /api/companion/rigs/{id}/remove  body { deleteData? } — tear down a
+        // rig; optionally delete its synced data dir.
+        private async Task HandleCompanionRigRemove(TcpHttpRequest req, TcpHttpResponse res, string rigId, Action<int, string> done) {
+            if (!_rigs.SupportsManagement) {
+                await WriteJson(res, 400, new { error = "multi-rig management not available" });
+                done?.Invoke(400, "no management");
+                return;
+            }
+            try {
+                var body = await ReadBodyCappedAsync(req, res, done);
+                if (body == null) return;
+                bool deleteData = false;
+                if (!string.IsNullOrWhiteSpace(body)) {
+                    using var doc = JsonDocument.Parse(body);
+                    deleteData = GetBool(doc.RootElement, "deleteData", false);
+                }
+                var ok = _rigs.RemoveRig(rigId, deleteData);
+                await WriteJson(res, ok ? 200 : 404, new { ok, error = ok ? null : "unknown rig or last rig" });
+                done?.Invoke(ok ? 200 : 404, ok ? $"rig removed: {rigId}" : "remove no-op");
+            } catch (Exception ex) {
+                log?.Error("Companion remove-rig failed", ex);
+                await WriteJson(res, 500, new { ok = false, error = ex.Message });
+                done?.Invoke(500, ex.Message);
+            }
+        }
+
+        // POST /api/companion/rigs/{id}/enable  body { enabled } — toggle a rig's
+        // sync loops on/off without removing it.
+        private async Task HandleCompanionRigEnable(TcpHttpRequest req, TcpHttpResponse res, string rigId, Action<int, string> done) {
+            if (!_rigs.SupportsManagement) {
+                await WriteJson(res, 400, new { error = "multi-rig management not available" });
+                done?.Invoke(400, "no management");
+                return;
+            }
+            try {
+                var body = await ReadBodyCappedAsync(req, res, done);
+                if (body == null) return;
+                using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                var enabled = GetBool(doc.RootElement, "enabled", true);
+                var ok = _rigs.SetRigEnabled(rigId, enabled);
+                await WriteJson(res, ok ? 200 : 404, new { ok, enabled, error = ok ? null : "unknown rig" });
+                done?.Invoke(ok ? 200 : 404, $"rig {rigId} enabled={enabled} ok={ok}");
+            } catch (Exception ex) {
+                log?.Error("Companion enable-rig failed", ex);
+                await WriteJson(res, 500, new { ok = false, error = ex.Message });
+                done?.Invoke(500, ex.Message);
+            }
+        }
+
+        // POST /api/companion/rigs/{id}/rename  body { name } — change a rig's
+        // display label. Works for a single-rig install too.
+        private async Task HandleCompanionRigRename(TcpHttpRequest req, TcpHttpResponse res, string rigId, Action<int, string> done) {
+            if (!_rigs.SupportsManagement) {
+                await WriteJson(res, 400, new { error = "multi-rig management not available" });
+                done?.Invoke(400, "no management");
+                return;
+            }
+            try {
+                var body = await ReadBodyCappedAsync(req, res, done);
+                if (body == null) return;
+                using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                var name = GetStr(doc.RootElement, "name", "");
+                if (string.IsNullOrWhiteSpace(name)) {
+                    await WriteJson(res, 400, new { ok = false, error = "name required" });
+                    done?.Invoke(400, "blank name");
+                    return;
+                }
+                var ok = _rigs.SetRigName(rigId, name);
+                await WriteJson(res, ok ? 200 : 404, new { ok, name = name.Trim(), error = ok ? null : "unknown rig" });
+                done?.Invoke(ok ? 200 : 404, $"rig {rigId} rename ok={ok}");
+            } catch (Exception ex) {
+                log?.Error("Companion rename-rig failed", ex);
+                await WriteJson(res, 500, new { ok = false, error = ex.Message });
+                done?.Invoke(500, ex.Message);
+            }
+        }
+
         // POST /api/companion/sync — coalesces concurrent calls inside the controller.
         // X-Sync-Trigger: push  marks the request as a session-end push from the
         // primary. When the user has disabled AcceptPush, push-triggered calls
@@ -45,10 +203,38 @@ namespace NINA.Plugin.NightSummary.Server {
                 done?.Invoke(404, null);
                 return;
             }
-            var c = _companion.GetConfig();
             var isPush = req.Headers != null
                          && req.Headers.TryGetValue("X-Sync-Trigger", out var tr)
                          && string.Equals(tr, "push", StringComparison.OrdinalIgnoreCase);
+            var explicitRig = req.QueryString["rig"];
+
+            // A session-end push from the primary carries no ?rig=, so route it by
+            // matching the request's source address to a rig's configured host.
+            // No confident match → fan out to every enabled rig (pulls are
+            // incremental + coalesced, so a spurious extra sync is cheap and safe).
+            // A user-clicked Sync Now always carries ?rig=ACTIVE, so it stays on
+            // the single active controller below.
+            if (isPush && string.IsNullOrEmpty(explicitRig)) {
+                var targets = ResolvePushTargets(req);
+                var ran = new List<object>();
+                int skipped = 0;
+                foreach (var b in targets) {
+                    var cc = b.Companion!.GetConfig();
+                    if (!cc.AcceptPush) { skipped++; continue; }
+                    try {
+                        var st = await b.Companion!.TriggerSyncAsync();
+                        ran.Add(new { id = b.Id, ok = st.LastError == null, error = st.LastError });
+                    } catch (Exception ex) {
+                        log?.Error($"Companion push sync failed for rig {b.Id}", ex);
+                        ran.Add(new { id = b.Id, ok = false, error = ex.Message });
+                    }
+                }
+                await WriteJson(res, 200, new { ok = true, push = true, synced = ran, skippedDisabled = skipped });
+                done?.Invoke(200, $"push synced {ran.Count} rig(s){(skipped > 0 ? $", {skipped} skipped" : "")}");
+                return;
+            }
+
+            var c = _companion.GetConfig();
             if (isPush && !c.AcceptPush) {
                 await WriteJson(res, 200, new { ok = true, skipped = true, reason = "push notifications disabled" });
                 done?.Invoke(200, "push skipped (user-disabled)");
@@ -64,6 +250,27 @@ namespace NINA.Plugin.NightSummary.Server {
                 await WriteJson(res, 500, new { error = ex.Message });
                 done?.Invoke(500, ex.Message);
             }
+        }
+
+        // Pick the rig(s) a session-end push should sync. Prefer the rig whose
+        // configured host string-matches the request's source IP; if nothing
+        // matches (NAT, Tailscale MagicDNS, hostname host), fall back to all
+        // enabled rigs. Only ever returns rigs with a controller + AcceptPush is
+        // re-checked by the caller.
+        private List<RigBackend> ResolvePushTargets(TcpHttpRequest req) {
+            var enabled = _rigs.All.Where(r => r.Enabled && r.Companion != null).ToList();
+            var ip = req.RemoteIp?.ToString();
+            if (!string.IsNullOrEmpty(ip)) {
+                var matched = enabled
+                    .Where(r => string.Equals(r.Companion!.GetConfig().Host, ip, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                if (matched.Count > 0) {
+                    log?.Info($"Push routed by source IP {ip} → rig(s) {string.Join(",", matched.Select(m => m.Id))}");
+                    return matched;
+                }
+            }
+            log?.Info($"Push source {ip ?? "?"} matched no rig host — fanning out to {enabled.Count} enabled rig(s).");
+            return enabled;
         }
 
         // GET /api/companion/config — masked api key, drives the Settings tab.
@@ -264,6 +471,261 @@ namespace NINA.Plugin.NightSummary.Server {
             Process.Start(psi);
             log?.Info($"Companion: spawned replacement process: {exe}");
         }
+
+        // ── In-app update (companion-only) ───────────────────────────────────
+        //
+        // Two endpoints. The check is read-only + cached; the apply downloads the
+        // matching release asset, verifies its checksum, swaps the install in
+        // place, and brings the new version back via the SAME restart machinery
+        // (exit 88 watchdog respawn on Unix tarball, detached self-relaunch on
+        // Windows, detached re-install on macOS). Nothing auto-applies — the apply
+        // only runs when the user clicks "Update now", which POSTs here.
+
+        private UpdateChecker? _updateChecker;
+        private UpdateChecker UpdateCheckerInstance => _updateChecker ??= new UpdateChecker();
+
+        // GET /api/companion/update-check[?force=1] — compares this companion's
+        // version against GitHub releases/latest and reports whether (and how) it
+        // could self-update. Cached 24 h unless force=1. Never errors hard: a
+        // network failure comes back as { error } with updateAvailable=false.
+        private async Task HandleCompanionUpdateCheck(TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
+            if (_companion == null) {
+                await WriteJson(res, 404, new { error = "companion mode not active" });
+                done?.Invoke(404, null);
+                return;
+            }
+            var force = IsTruthy(req.QueryString["force"]);
+            var info = await UpdateCheckerInstance.CheckAsync(_settings.PluginVersion ?? "", force, CancellationToken.None);
+            await WriteJson(res, 200, new {
+                current         = info.Current,
+                latest          = info.Latest,
+                updateAvailable = info.UpdateAvailable,
+                canSelfUpdate   = info.CanSelfUpdate,
+                strategy        = info.Strategy,
+                releaseUrl      = info.ReleaseUrl,
+                notes           = info.Notes,
+                assetName       = info.AssetName,
+                error           = info.Error,
+            });
+            done?.Invoke(200, $"update-check current={info.Current} latest={info.Latest} avail={info.UpdateAvailable} self={info.CanSelfUpdate}");
+        }
+
+        private static bool IsTruthy(string? v) =>
+            v == "1" || string.Equals(v, "true", StringComparison.OrdinalIgnoreCase);
+
+        // POST /api/companion/update — apply the latest release to THIS install.
+        // Re-checks (force) before doing anything, then acks 200 and runs the
+        // download+swap detached so the response flushes before the process exits.
+        // 409 if already current; 422 if this packaging can't self-update (AppImage
+        // / .deb / non-writable) — the UI falls back to the release link.
+        private async Task HandleCompanionUpdate(TcpHttpResponse res, Action<int, string> done) {
+            if (_companion == null) {
+                await WriteJson(res, 404, new { error = "companion mode not active" });
+                done?.Invoke(404, null);
+                return;
+            }
+            var info = await UpdateCheckerInstance.CheckAsync(_settings.PluginVersion ?? "", force: true, CancellationToken.None);
+            if (info.Error != null) {
+                await WriteJson(res, 502, new { error = "update check failed", detail = info.Error });
+                done?.Invoke(502, "update check failed");
+                return;
+            }
+            if (!info.UpdateAvailable) {
+                await WriteJson(res, 409, new { error = "already up to date", current = info.Current });
+                done?.Invoke(409, "already up to date");
+                return;
+            }
+            if (!info.CanSelfUpdate || string.IsNullOrEmpty(info.AssetUrl)) {
+                await WriteJson(res, 422, new { error = "self-update unsupported for this install", strategy = info.Strategy, releaseUrl = info.ReleaseUrl });
+                done?.Invoke(422, $"self-update unsupported ({info.Strategy})");
+                return;
+            }
+            await WriteJson(res, 200, new { ok = true, action = "update", latest = info.Latest, strategy = info.Strategy });
+            done?.Invoke(200, $"update -> v{info.Latest} ({info.Strategy})");
+            _ = Task.Run(async () => {
+                try { await ApplyUpdateAsync(info); }
+                catch (Exception ex) { log?.Error($"Companion: in-app update failed: {ex.Message}"); }
+            });
+        }
+
+        // Download the asset, verify it, and hand off to the platform-specific
+        // swap. Each swap ends in a process exit (or relaunch) so this never
+        // returns on the happy path. Failures log and leave the running companion
+        // untouched (the download sits in a temp dir; nothing was replaced yet).
+        private async Task ApplyUpdateAsync(UpdateInfo info) {
+            log?.Info($"Companion: starting in-app update {info.Current} -> {info.Latest} ({info.Strategy})");
+            var tmp = Path.Combine(Path.GetTempPath(), "ns-companion-update-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tmp);
+            var assetPath = Path.Combine(tmp, info.AssetName);
+
+            using (var http = NewUpdateHttpClient()) {
+                log?.Info($"Companion: downloading {info.AssetName} from {info.AssetUrl}");
+                await DownloadAsync(http, info.AssetUrl, assetPath);
+                await VerifyChecksumAsync(http, assetPath, info.AssetName);
+            }
+
+            var strategy = Enum.TryParse<UpdateStrategy>(info.Strategy, out var s) ? s : UpdateStrategy.NotifyOnly;
+            switch (strategy) {
+                case UpdateStrategy.WindowsZipSwap:      ApplyWindowsUpdate(assetPath, tmp); break;
+                case UpdateStrategy.LinuxTarballInPlace: ApplyLinuxUpdate(assetPath, tmp); break;
+                case UpdateStrategy.MacAppReplace:       await ApplyMacUpdate(assetPath, tmp); break;
+                default:
+                    log?.Warn($"Companion: strategy {info.Strategy} can't self-apply; download left at {assetPath}.");
+                    break;
+            }
+        }
+
+        // Windows: a running .exe is write-locked, so we can't overwrite ourselves.
+        // Extract the new exe, spawn a detached PowerShell helper that waits for our
+        // PID to exit (unlocking the file), copies the new exe over the old one, and
+        // relaunches with our original args — then we exit 0.
+        private void ApplyWindowsUpdate(string zipPath, string tmp) {
+            var extract = Path.Combine(tmp, "extract");
+            var newExe = UpdateInstaller.ExtractZipFindExe(zipPath, extract);
+            var targetExe = Environment.ProcessPath ?? throw new InvalidOperationException("ProcessPath is null");
+            var launchArgs = string.Join(" ", Environment.GetCommandLineArgs().Skip(1).Select(QuoteArg));
+
+            var helper = Path.Combine(tmp, "ns-update.ps1");
+            File.WriteAllText(helper, WindowsUpdateHelperScript);
+
+            var psi = new ProcessStartInfo {
+                FileName         = "powershell.exe",
+                UseShellExecute  = false,
+                CreateNoWindow   = true,
+                WorkingDirectory = tmp,
+            };
+            foreach (var a in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", helper,
+                                      "-OldPid", Environment.ProcessId.ToString(),
+                                      "-NewExe", newExe, "-TargetExe", targetExe, "-LaunchArgs", launchArgs }) {
+                psi.ArgumentList.Add(a);
+            }
+            Process.Start(psi);
+            log?.Info("Companion: update helper launched; exiting 0 so the .exe can be replaced and relaunched.");
+            Environment.Exit(0);
+        }
+
+        private static string QuoteArg(string a) => a.Contains(' ') ? "\"" + a + "\"" : a;
+
+        // Linux (user-scoped tarball install only — AppImage/.deb are NotifyOnly):
+        // overwrite the -bin (and launcher) in the install dir, then exit 88 so the
+        // bash watchdog relaunches the NEW bytes. Overwriting a running executable
+        // is legal on Unix — the open inode stays valid until we exit.
+        private void ApplyLinuxUpdate(string tarPath, string tmp) {
+            var extract = Path.Combine(tmp, "extract");
+            var (newBin, newLauncher) = UpdateInstaller.ExtractTarGzFindBin(tarPath, extract);
+
+            var installDir = Path.GetDirectoryName(Environment.ProcessPath)
+                             ?? throw new InvalidOperationException("ProcessPath is null");
+            var destBin      = Path.Combine(installDir, "NightSummaryCompanion-bin");
+            var destLauncher = Path.Combine(installDir, "NightSummaryCompanion");
+            File.Copy(newBin, destBin, overwrite: true);
+            if (newLauncher != null && File.Exists(newLauncher)) File.Copy(newLauncher, destLauncher, overwrite: true);
+            ChmodExec(destBin);
+            ChmodExec(destLauncher);
+            log?.Info("Companion: Linux binary replaced in place; exiting 88 for watchdog respawn of the new version.");
+            Environment.Exit(88);
+        }
+
+        private static void ChmodExec(string path) {
+            if (!File.Exists(path)) return;
+            try {
+                File.SetUnixFileMode(path,
+                    UnixFileMode.UserRead  | UnixFileMode.UserWrite  | UnixFileMode.UserExecute |
+                    UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                    UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+            } catch { /* best-effort */ }
+        }
+
+        // macOS: a running .app can't be replaced from inside itself without breaking
+        // the ad-hoc signature, so hand off to the same install-companion-mac.sh the
+        // release ships (quits us, replaces /Applications/.app, relaunches). We pass
+        // our already-downloaded .dmg via NSC_DMG so it skips its own curl, then exit
+        // 0 (watchdog stops) and let the detached installer take over.
+        private async Task ApplyMacUpdate(string dmgPath, string tmp) {
+            var scriptUrl  = UpdateChecker.DownloadUrl("install-companion-mac.sh");
+            var scriptPath = Path.Combine(tmp, "install-companion-mac.sh");
+            using (var http = NewUpdateHttpClient()) {
+                await DownloadAsync(http, scriptUrl, scriptPath);
+            }
+            var psi = new ProcessStartInfo {
+                FileName         = "/bin/sh",
+                UseShellExecute  = false,
+                CreateNoWindow   = true,
+                WorkingDirectory = tmp,
+            };
+            psi.ArgumentList.Add(scriptPath);
+            psi.Environment["NSC_DMG"] = dmgPath;   // reuse our verified download; installer skips its curl
+            Process.Start(psi);
+            log?.Info("Companion: launched detached mac installer (NSC_DMG set); exiting 0 so it can replace the .app.");
+            await Task.Delay(300);                   // let the detached sh start before we vanish
+            Environment.Exit(0);
+        }
+
+        private static HttpClient NewUpdateHttpClient() {
+            var h = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };   // assets are ~70 MB
+            h.DefaultRequestHeaders.UserAgent.ParseAdd("NightSummaryCompanion-Updater");
+            return h;
+        }
+
+        private static async Task DownloadAsync(HttpClient http, string url, string dest) {
+            using var resp = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+            resp.EnsureSuccessStatusCode();
+            await using var fs = File.Create(dest);
+            await resp.Content.CopyToAsync(fs);
+        }
+
+        // Verify the download against the release's checksums.txt. If the release
+        // doesn't publish one (older releases) or the asset isn't listed, log and
+        // skip — HTTPS-from-GitHub is the fallback trust anchor. A real mismatch
+        // throws, aborting the swap before anything is replaced.
+        private async Task VerifyChecksumAsync(HttpClient http, string filePath, string assetName) {
+            string? text = null;
+            try {
+                text = await http.GetStringAsync(UpdateChecker.DownloadUrl("checksums.txt"));
+            } catch {
+                // No checksums.txt on the release (older builds) — fall through;
+                // VerifyChecksum treats null text as a graceful skip.
+            }
+            if (!UpdateInstaller.VerifyChecksum(filePath, text, assetName, out var skipped, out var detail)) {
+                throw new InvalidOperationException(detail);
+            }
+            if (skipped) log?.Warn($"Companion: integrity check skipped ({detail}); HTTPS download trusted.");
+            else log?.Info($"Companion: {assetName} checksum verified.");
+        }
+
+        // PowerShell helper that swaps the Windows .exe once we've exited. Pure
+        // ASCII (project rule). Waits up to 30 s for the old PID, retries the copy
+        // past a transient AV/lock, then relaunches with the original args.
+        private const string WindowsUpdateHelperScript = @"
+param(
+    [int]$OldPid,
+    [string]$NewExe,
+    [string]$TargetExe,
+    [string]$LaunchArgs = ''
+)
+$ErrorActionPreference = 'SilentlyContinue'
+for ($i = 0; $i -lt 60; $i++) {
+    if (-not (Get-Process -Id $OldPid -ErrorAction SilentlyContinue)) { break }
+    Start-Sleep -Milliseconds 500
+}
+Start-Sleep -Milliseconds 500
+$copied = $false
+for ($i = 0; $i -lt 20; $i++) {
+    try {
+        Copy-Item -LiteralPath $NewExe -Destination $TargetExe -Force -ErrorAction Stop
+        $copied = $true
+        break
+    } catch {
+        Start-Sleep -Milliseconds 500
+    }
+}
+if (-not $copied) { exit 1 }
+if ($LaunchArgs -and $LaunchArgs.Trim().Length -gt 0) {
+    Start-Process -FilePath $TargetExe -ArgumentList $LaunchArgs
+} else {
+    Start-Process -FilePath $TargetExe
+}
+";
 
         // GET /api/companion/autostart — companion-only. Reports whether
         // "start at login" is supported on this OS/packaging and currently on.

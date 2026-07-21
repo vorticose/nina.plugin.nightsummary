@@ -5749,6 +5749,100 @@ html.light .tonight-cached-pill {
 }
 html.light .companion-banner-label { background: rgba(37, 99, 184, 0.08); }
 
+/* Rig switcher — only present (and unhidden) in companion mode with >1 rig.
+   A compact native <select> so it stays accessible + good on mobile, themed to
+   match the banner. The dot flags a non-active rig needing attention. */
+.companion-rig-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.companion-rig-switch[hidden] { display: none !important; }
+.companion-rig-select {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--card, rgba(255,255,255,0.04));
+  border: 1px solid var(--border, rgba(255,255,255,0.18));
+  border-radius: 8px;
+  padding: 3px 26px 3px 9px;
+  max-width: 180px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%237eb8f7' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+}
+.companion-rig-select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.rig-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e0683f;
+  box-shadow: 0 0 6px rgba(224, 104, 63, 0.8);
+  flex-shrink: 0;
+}
+.rig-dot[hidden] { display: none !important; }
+
+/* ── Settings: multi-rig management card ─────────────────────────────────── */
+.rig-manage-card .rig-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+}
+.rig-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border, rgba(255,255,255,0.12));
+  border-radius: 10px;
+  background: var(--card, rgba(255,255,255,0.03));
+}
+.rig-row.is-active { border-color: var(--accent); }
+.rig-row.is-disabled { opacity: 0.6; }
+.rig-row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rig-row-name { font-weight: 600; font-size: 13px; color: var(--text); }
+.rig-row-editing {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 1px 6px;
+  margin-left: 4px;
+}
+.rig-row-host { font-size: 11px; color: var(--text-secondary); }
+.rig-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.rig-row-btn {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border, rgba(255,255,255,0.18));
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.rig-row-btn:hover { border-color: var(--accent); color: var(--accent); }
+.rig-row-btn.rig-remove:hover { border-color: #e0683f; color: #e0683f; }
+.rig-row-btn:disabled { opacity: 0.5; cursor: default; }
+.rig-add-btn { margin-top: 4px; }
+
+/* Stack the row vertically on narrow phones so action buttons don't crush the
+   name. Per feedback_mobile_priorities: prioritize layout over element size. */
+@media (max-width: 520px) {
+  .rig-row { flex-direction: column; align-items: stretch; gap: 8px; }
+  .rig-row-actions { justify-content: flex-end; }
+}
+
 /* Status dot — same pulse as the Tonight cached pill so the visual idiom of
    "data freshness" is unified across the dashboard. */
 .companion-banner-label::before {
@@ -5819,6 +5913,16 @@ html.light .companion-banner-label { background: rgba(37, 99, 184, 0.08); }
     justify-content: center;
     padding: 8px 14px;  /* slightly taller for tap target */
   }
+  /* Update banner: its buttons live inside .ns-update-actions, which (unlike the
+     sync banner's direct-child button) isn't a banner flex item by default. Make
+     it a full-width wrapping row so the confirm prompt + the now-full-width
+     Confirm/Cancel stack cleanly instead of overflowing the viewport. */
+  .ns-update-actions {
+    flex: 1 1 100%;
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+  .ns-update-confirm-q { flex-basis: 100%; }
 }
 
 /* ── Raw Image Frames Gallery (RAW_THUMBNAILS_DESIGN.md) ─────────────────── */
@@ -6440,6 +6544,54 @@ html.light .companion-banner-label { background: rgba(37, 99, 184, 0.08); }
     inset 0 1px 0 rgba(255, 255, 255, 0.12),
     inset 0 -1px 0 rgba(0, 0, 0, 0.12),
     0 1px 2px rgba(0, 0, 0, 0.22);
+}
+
+/* ── In-app update banner ──────────────────────────────────────────────────
+   Reuses .companion-banner chrome; the accent border makes it read as a call
+   to action distinct from the (neutral) sync banner above it. */
+.ns-update-banner {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px rgba(var(--accent-rgb, 78, 121, 167), 0.16);
+}
+.ns-update-banner.is-error {
+  border-color: rgba(194, 85, 62, 0.6);
+  box-shadow: 0 0 12px rgba(194, 85, 62, 0.14);
+}
+.ns-update-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.ns-update-link {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.ns-update-link:hover { text-decoration: underline; }
+.ns-update-hint,
+.ns-update-confirm-q {
+  font-size: 12px;
+  color: var(--dim);
+}
+.ns-update-confirm-q { color: var(--text); }
+
+/* Secondary (ghost) variant for Dismiss / Cancel — quiet next to the primary. */
+.companion-banner-btn.is-ghost {
+  color: var(--accent);
+  background: transparent;
+  border-color: var(--border);
+  box-shadow: none;
+}
+.companion-banner-btn.is-ghost:hover:not(:disabled) {
+  background: rgba(126, 184, 247, 0.08);
+  border-color: var(--accent);
+  box-shadow: none;
+}
+html.light .companion-banner-btn.is-ghost:hover:not(:disabled) {
+  background: rgba(37, 99, 184, 0.08);
 }
 
 /* ── Companion settings tab ───────────────────────────────────────────────
