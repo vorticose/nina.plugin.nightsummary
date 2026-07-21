@@ -393,6 +393,60 @@ namespace NINA.Plugin.NightSummary.Tests {
         }
 
         [Fact]
+        public async Task Overhead_NoTimingEventsWithImages_ShowsLogLevelNotice() {
+            // Issue #27: NINA log level below Info suppresses the exposure lines the
+            // parser reads, so the log parse yields 0 timing events even though NS
+            // recorded images. The section must explain the omission, not vanish.
+            SettingsManager.Instance.Current.ShowOverheadBreakdown = true;
+
+            var data = MakeOverheadReportData(new List<TimingEvent>());
+            var report = await _generator.GenerateHtmlReport(data);
+
+            Assert.Contains("Yield and Imaging Overhead Analysis", report);
+            Assert.Contains("Overhead analysis unavailable", report);
+            Assert.Contains("Log Level &gt; Info", report);
+        }
+
+        [Fact]
+        public async Task Overhead_TimingEventsPresent_NoLogLevelNotice() {
+            SettingsManager.Instance.Current.ShowOverheadBreakdown = true;
+
+            var t0 = new DateTime(2026, 4, 22, 21, 58, 43);
+            var timingEvents = new List<TimingEvent> {
+                new() { EventType = "TempCompFocus", StartTime = t0,                 EndTime = t0.AddSeconds(7),   DurationSeconds = 7 },
+                new() { EventType = "Exposure",      StartTime = t0.AddSeconds(10),  EndTime = t0.AddSeconds(615), DurationSeconds = 605 },
+                new() { EventType = "Dither",        StartTime = t0.AddSeconds(870), EndTime = t0.AddSeconds(898), DurationSeconds = 28 },
+            };
+            var data = MakeOverheadReportData(timingEvents);
+            var report = await _generator.GenerateHtmlReport(data);
+
+            Assert.Contains("Yield and Imaging Overhead Analysis", report);
+            Assert.DoesNotContain("Overhead analysis unavailable", report);
+        }
+
+        [Fact]
+        public async Task Overhead_NoTimingEventsNoImages_NoSectionNoNotice() {
+            // A genuinely empty session (no images at all) keeps the old behavior:
+            // no section, no notice. The log-level hint would be noise there.
+            SettingsManager.Instance.Current.ShowOverheadBreakdown = true;
+
+            var baseData = TestDataFactory.MakeReportData(imageCount: 0);
+            var data = new ReportData {
+                Session = baseData.Session,
+                Images = new List<ImageRecord>(),
+                Events = baseData.Events,
+                TsData = baseData.TsData,
+                CumulativeIntegrationSeconds = baseData.CumulativeIntegrationSeconds,
+                SessionHistory = baseData.SessionHistory,
+                TimingEvents = new List<TimingEvent>()
+            };
+            var report = await _generator.GenerateHtmlReport(data);
+
+            Assert.DoesNotContain("Overhead analysis unavailable", report);
+            Assert.DoesNotContain("Yield and Imaging Overhead Analysis", report);
+        }
+
+        [Fact]
         public async Task OverheadCoverage_AbortedExposurePastWindowEnd_IsShownInBreakdownTable() {
             // AbortedExposure (Skipped Exposure) must still appear in the overhead
             // breakdown table even though it is excluded from the coverage calculation.
