@@ -21,6 +21,10 @@
 
 <!-- TODO docs: note the Session History totals band on the report/metrics docs page. -->
 
+### Bug Fixes
+
+- Target Scheduler: a target whose TS name had a stray leading or trailing space no longer shows a false "target not found in Target Scheduler" warning (and its progress bars now render). Name matching is now whitespace-tolerant on both the database filter and the report match.
+
 
 ## v3.2.0
 

@@ -213,7 +213,10 @@ internal sealed class CompanionTsReader : ITargetSchedulerDatabase {
                 using var reader = cmd.ExecuteReader();
                 while (reader.Read()) {
                     var name = reader["TargetName"].ToString() ?? "";
-                    if (!nameSet.Contains(name)) continue;
+                    // Trim before matching: nameSet is built from trimmed session names, so
+                    // a stray leading/trailing space on the TS DB target name must not cause
+                    // a false "not found" (mirror of TargetSchedulerDatabase.QueryProgress).
+                    if (!nameSet.Contains(name.Trim())) continue;
 
                     rows.Add((
                         Name:            name,

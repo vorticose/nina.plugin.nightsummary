@@ -434,7 +434,11 @@ namespace NINA.Plugin.NightSummary.Data {
                 using (var reader = cmd.ExecuteReader()) {
                     while (reader.Read()) {
                         var name = reader["TargetName"].ToString();
-                        if (!nameSet.Contains(name)) continue;
+                        // Trim the DB name before matching: nameSet is built from trimmed
+                        // session names, so a stray leading/trailing space on the TS DB
+                        // target name must not produce a false "not found" (matches the
+                        // session-side .Trim() above).
+                        if (!nameSet.Contains((name ?? string.Empty).Trim())) continue;
 
                         rows.Add((
                             Name:            name,

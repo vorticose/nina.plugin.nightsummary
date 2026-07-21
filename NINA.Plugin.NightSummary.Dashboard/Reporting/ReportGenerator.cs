@@ -84,6 +84,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
         // a rejection, even if Accepted=false on legacy rows.
         private static bool IsRejected(ImageRecord i) => !i.CountsAsAccepted;
 
+        // Whitespace-tolerant target-name match. TS writes the DB target name verbatim into
+        // image metadata, so the two normally agree — but a stray leading/trailing space on
+        // the TS DB name must not produce a false "target not found in Target Scheduler".
+        internal static bool TargetNameMatches(string? a, string? b)
+            => string.Equals((a ?? string.Empty).Trim(), (b ?? string.Empty).Trim(), StringComparison.OrdinalIgnoreCase);
+
         public async Task<string> GenerateHtmlReport(ReportData data) {
             // Locale guard: the report is machine-readable markup. SVG coordinates,
             // HiPS2FITS URL query params, and data-* attributes are locale-neutral by spec
@@ -816,7 +822,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
                 foreach (var target in targets) {
                     var tsT = data.TsData?.FirstOrDefault(t =>
-                        string.Equals(t.TargetName, target.Key, StringComparison.OrdinalIgnoreCase)
+                        TargetNameMatches(t.TargetName, target.Key)
                         && (t.RA != 0 || t.Dec != 0));
                     double ra = 0, dec = 0;
                     if (tsT != null) { ra = tsT.RA; dec = tsT.Dec; }
@@ -846,7 +852,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             foreach (var target in targets) {
                 // All TS entries for this target — may span multiple projects
                 var tsTargets = data.TsData?.Where(t =>
-                    string.Equals(t.TargetName, target.Key, StringComparison.OrdinalIgnoreCase)).ToList()
+                    TargetNameMatches(t.TargetName, target.Key)).ToList()
                     ?? new System.Collections.Generic.List<TsTargetData>();
                 var tsFirst = tsTargets.FirstOrDefault(t => t.RA != 0 || t.Dec != 0) ?? tsTargets.FirstOrDefault();
 
