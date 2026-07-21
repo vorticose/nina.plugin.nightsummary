@@ -430,7 +430,23 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
         private string BuildOverheadBreakdownSection(ReportData data, string detailsOpen = "") {
             var timingEvents = data.TimingEvents;
-            if (timingEvents == null || !timingEvents.Any()) return "";
+            if (timingEvents == null || !timingEvents.Any()) {
+                // Images were captured but the log parse produced no timing events —
+                // almost always NINA's log level set below Info, which suppresses the
+                // exposure lines the parser reads (issue #27). Explain the omission
+                // instead of silently dropping the section. A genuinely empty session
+                // (no images either) still renders nothing.
+                if (data.Images != null && data.Images.Any()) {
+                    return "<details class='iq-section' open>" +
+                           "<summary>Yield and Imaging Overhead Analysis</summary>" +
+                           "<div style='background-color:var(--warn-bg); border:1px solid var(--warn-border); border-radius:8px; padding:12px 16px; margin:16px 0; color:var(--warn-text);'>" +
+                           "<strong>&#9888; Overhead analysis unavailable:</strong> no timing events were found in the NINA log. " +
+                           "This usually means NINA's log level is below Info. " +
+                           "Set NINA to Options &gt; General &gt; Log Level &gt; Info to enable this section." +
+                           "</div></details>";
+                }
+                return "";
+            }
 
             // Exclude Exposure events (useful imaging time), SchedulerWait (external idle), and zero-duration events.
             var overheadEvents = timingEvents.Where(e => e.EventType != "Exposure" && e.EventType != "SchedulerWait" && e.DurationSeconds > 0).ToList();
