@@ -398,6 +398,7 @@ namespace NINA.Plugin.NightSummary.Tests {
             // parser reads, so the log parse yields 0 timing events even though NS
             // recorded images. The section must explain the omission, not vanish.
             SettingsManager.Instance.Current.ShowOverheadBreakdown = true;
+            SettingsManager.Instance.Current.ExpandSectionsDefault = false;
 
             var data = MakeOverheadReportData(new List<TimingEvent>());
             var report = await _generator.GenerateHtmlReport(data);
@@ -405,6 +406,9 @@ namespace NINA.Plugin.NightSummary.Tests {
             Assert.Contains("Yield and Imaging Overhead Analysis", report);
             Assert.Contains("Overhead analysis unavailable", report);
             Assert.Contains("Log Level &gt; Info", report);
+            // The notice section must honor ExpandSectionsDefault like every other
+            // section (regression: hardcoded ` open` broke ExpandSectionsDefault_False).
+            Assert.DoesNotContain("' open>", report);
         }
 
         [Fact]

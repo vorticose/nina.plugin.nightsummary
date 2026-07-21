@@ -443,7 +443,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 // instead of silently dropping the section. A genuinely empty session
                 // (no images either) still renders nothing.
                 if (data.Images != null && data.Images.Any()) {
-                    return "<details class='iq-section' open>" +
+                    return $"<details class='iq-section'{detailsOpen}>" +
                            "<summary>Yield and Imaging Overhead Analysis</summary>" +
                            "<div style='background-color:var(--warn-bg); border:1px solid var(--warn-border); border-radius:8px; padding:12px 16px; margin:16px 0; color:var(--warn-text);'>" +
                            "<strong>&#9888; Overhead analysis unavailable:</strong> no timing events were found in the NINA log. " +
