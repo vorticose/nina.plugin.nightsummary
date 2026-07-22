@@ -14,6 +14,10 @@
 <!-- TODO docs: add an "Updating the companion" section to docs/companion.md — the in-app
      update banner, Update now vs Dismiss, and the AppImage/.deb download-link fallback. -->
 
+### Security
+
+- **Email password and other secrets are now encrypted at rest.** The SMTP password, Discord webhook URL, and Pushover tokens in `settings.json` are encrypted with Windows DPAPI (tied to your Windows account) instead of being stored in plain text. Existing settings are upgraded automatically on first launch. A new note in the email settings also flags that app passwords grant full mailbox access, and recommends a dedicated or throwaway sending account.
+
 ### Improvements
 
 - **Session History totals** — the per-target Session History section now opens with a totals band: the **lifetime total integration** for the target (including the current session, so it lines up with Target Scheduler's accepted totals) with the current session's share called out alongside, the integration-weighted **average** HFR / FWHM / guiding RMS, and a per-filter integration breakdown (your raw filter names) shown as chips that add up to the total. No more adding the rows up by hand. Rides under the existing Session History toggle.

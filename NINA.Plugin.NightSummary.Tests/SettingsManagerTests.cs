@@ -111,6 +111,71 @@ namespace NINA.Plugin.NightSummary.Tests {
             Assert.NotNull(obj);
         }
 
+        // ── Secret encryption (DPAPI, Windows CI) ───────────────────────────────
+
+        [Fact]
+        public void Save_EncryptsSecrets_PlaintextNotOnDisk() {
+            var mgr = Make();
+            mgr.Load();
+            mgr.Current.SmtpPassword      = "test-app-pw-1234";
+            mgr.Current.DiscordWebhookUrl = "https://discord.com/api/webhooks/123/secrettoken";
+            mgr.Current.PushoverAppToken  = "app-token-abc";
+            mgr.Save();
+
+            var raw = File.ReadAllText(_path);
+            Assert.DoesNotContain("test-app-pw-1234", raw);
+            Assert.DoesNotContain("secrettoken", raw);
+            Assert.DoesNotContain("app-token-abc", raw);
+            Assert.Contains("dpapi:v1:", raw);
+        }
+
+        [Fact]
+        public void SaveThenLoad_RoundTrips_Secrets() {
+            var mgr = Make();
+            mgr.Load();
+            mgr.Current.SmtpPassword      = "test-app-pw-1234";
+            mgr.Current.DiscordWebhookUrl = "https://discord.com/api/webhooks/123/secrettoken";
+            mgr.Current.PushoverUserKey   = "user-key-xyz";
+            mgr.Save();
+
+            var settings = Make().Load();
+            Assert.Equal("test-app-pw-1234", settings.SmtpPassword);
+            Assert.Equal("https://discord.com/api/webhooks/123/secrettoken", settings.DiscordWebhookUrl);
+            Assert.Equal("user-key-xyz", settings.PushoverUserKey);
+        }
+
+        [Fact]
+        public void Load_MigratesLegacyPlaintextSecret_AndReEncryptsOnDisk() {
+            // A pre-encryption settings.json: SmtpPassword stored as bare plaintext.
+            File.WriteAllText(_path, "{\"SmtpPassword\":\"test-app-pw-1234\",\"EmailEnabled\":true}");
+
+            var settings = Make().Load(); // load triggers a re-save in encrypted form
+            Assert.Equal("test-app-pw-1234", settings.SmtpPassword); // usable in memory
+
+            var raw = File.ReadAllText(_path);
+            Assert.DoesNotContain("test-app-pw-1234", raw); // no longer plaintext on disk
+            Assert.Contains("dpapi:v1:", raw);
+        }
+
+        [Fact]
+        public void Load_UndecryptableSecret_TreatedAsUnset_ButBlobPreservedOnSave() {
+            // A marked blob that can't be decrypted here (simulates settings.json
+            // copied from another account/PC). It must not be usable, and must not be
+            // destroyed by a subsequent save of unrelated settings.
+            const string foreignBlob = "dpapi:v1:not-decryptable-here";
+            File.WriteAllText(_path, "{\"SmtpPassword\":\"" + foreignBlob + "\"}");
+
+            var mgr      = Make();
+            var settings = mgr.Load();
+            Assert.Equal("", settings.SmtpPassword); // treated as unset, no crash
+
+            mgr.Current.ReportLightMode = true; // change something unrelated
+            mgr.Save();
+
+            var raw = File.ReadAllText(_path);
+            Assert.Contains(foreignBlob, raw); // original credential blob preserved, not clobbered
+        }
+
         // ── Round-trip ────────────────────────────────────────────────────────
 
         [Fact]
