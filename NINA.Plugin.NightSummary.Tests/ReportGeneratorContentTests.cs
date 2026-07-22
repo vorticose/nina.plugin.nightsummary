@@ -99,10 +99,38 @@ namespace NINA.Plugin.NightSummary.Tests {
             var report = await _generator.GenerateHtmlReport(data);
             Assert.Contains("class='history-totals'", report);   // the rendered band, not just the CSS rule
             Assert.Contains("9.5h total", report);
+            // Lifetime headline reconciles with the previous-sessions table via
+            // the current session's share (one accepted 300s M31 frame = 5m).
+            Assert.Contains("(5m this session)", report);
             Assert.Contains("Avg HFR 2.12px", report);     // explicitly an average, not a total
             Assert.Contains("Avg FWHM 2.40", report);
             Assert.Contains("ht-chip", report);
             Assert.Contains("Ha 4.5h", report);            // per-filter breakdown chip, raw filter name
+        }
+
+        [Fact]
+        public async Task SessionHistory_TotalsBand_NoSessionSuffix_WhenCurrentFramesRejected() {
+            SettingsManager.Instance.Current.ShowSessionHistory = true;
+            var sessionId = Guid.NewGuid().ToString();
+            var session   = TestDataFactory.MakeSession(sessionId);
+            var img       = TestDataFactory.MakeImage(sessionId, target: "M31", filter: "Ha", accepted: false);
+            img.GradingStatus = 2;   // TS-rejected — CountsAsAccepted must be false
+            var data = new ReportData {
+                Session = session, Images = new List<ImageRecord> { img }, Events = new List<SessionEvent>(),
+                TsData  = new List<TsTargetData>(),
+                CumulativeIntegrationSeconds = new Dictionary<string, double>(),
+                SessionHistory = new Dictionary<string, List<TargetSessionHistory>> {
+                    ["M31"] = new List<TargetSessionHistory> {
+                        new TargetSessionHistory { SessionStart = new DateTime(2025, 1, 1), IntegrationSeconds = 3600, AvgHFR = 2.0 }
+                    }
+                },
+                SessionHistoryAggregate = new Dictionary<string, TargetSessionHistoryAggregate> {
+                    ["M31"] = new TargetSessionHistoryAggregate { TotalIntegrationSeconds = 3600 }
+                }
+            };
+            var report = await _generator.GenerateHtmlReport(data);
+            Assert.Contains("class='history-totals'", report);
+            Assert.DoesNotContain("this session)", report);
         }
 
         [Fact]
@@ -390,6 +418,64 @@ namespace NINA.Plugin.NightSummary.Tests {
             // Pre-fix: coverage would peg at 100.0% because roofClosedSec was inflated
             // by the double-counted overlapping interval.
             Assert.DoesNotContain(">100.0%<", report);
+        }
+
+        [Fact]
+        public async Task Overhead_NoTimingEventsWithImages_ShowsLogLevelNotice() {
+            // Issue #27: NINA log level below Info suppresses the exposure lines the
+            // parser reads, so the log parse yields 0 timing events even though NS
+            // recorded images. The section must explain the omission, not vanish.
+            SettingsManager.Instance.Current.ShowOverheadBreakdown = true;
+            SettingsManager.Instance.Current.ExpandSectionsDefault = false;
+
+            var data = MakeOverheadReportData(new List<TimingEvent>());
+            var report = await _generator.GenerateHtmlReport(data);
+
+            Assert.Contains("Yield and Imaging Overhead Analysis", report);
+            Assert.Contains("Overhead analysis unavailable", report);
+            Assert.Contains("Log Level &gt; Info", report);
+            // The notice section must honor ExpandSectionsDefault like every other
+            // section (regression: hardcoded ` open` broke ExpandSectionsDefault_False).
+            Assert.DoesNotContain("' open>", report);
+        }
+
+        [Fact]
+        public async Task Overhead_TimingEventsPresent_NoLogLevelNotice() {
+            SettingsManager.Instance.Current.ShowOverheadBreakdown = true;
+
+            var t0 = new DateTime(2026, 4, 22, 21, 58, 43);
+            var timingEvents = new List<TimingEvent> {
+                new() { EventType = "TempCompFocus", StartTime = t0,                 EndTime = t0.AddSeconds(7),   DurationSeconds = 7 },
+                new() { EventType = "Exposure",      StartTime = t0.AddSeconds(10),  EndTime = t0.AddSeconds(615), DurationSeconds = 605 },
+                new() { EventType = "Dither",        StartTime = t0.AddSeconds(870), EndTime = t0.AddSeconds(898), DurationSeconds = 28 },
+            };
+            var data = MakeOverheadReportData(timingEvents);
+            var report = await _generator.GenerateHtmlReport(data);
+
+            Assert.Contains("Yield and Imaging Overhead Analysis", report);
+            Assert.DoesNotContain("Overhead analysis unavailable", report);
+        }
+
+        [Fact]
+        public async Task Overhead_NoTimingEventsNoImages_NoSectionNoNotice() {
+            // A genuinely empty session (no images at all) keeps the old behavior:
+            // no section, no notice. The log-level hint would be noise there.
+            SettingsManager.Instance.Current.ShowOverheadBreakdown = true;
+
+            var baseData = TestDataFactory.MakeReportData(imageCount: 0);
+            var data = new ReportData {
+                Session = baseData.Session,
+                Images = new List<ImageRecord>(),
+                Events = baseData.Events,
+                TsData = baseData.TsData,
+                CumulativeIntegrationSeconds = baseData.CumulativeIntegrationSeconds,
+                SessionHistory = baseData.SessionHistory,
+                TimingEvents = new List<TimingEvent>()
+            };
+            var report = await _generator.GenerateHtmlReport(data);
+
+            Assert.DoesNotContain("Overhead analysis unavailable", report);
+            Assert.DoesNotContain("Yield and Imaging Overhead Analysis", report);
         }
 
         [Fact]

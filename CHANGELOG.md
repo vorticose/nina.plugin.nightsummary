@@ -1,6 +1,18 @@
 # Night Summary — Changelog
 
 
+## v3.2.1
+
+### Improvements
+
+- **Session History totals** — each target's Session History now opens with a totals band: lifetime integration (with this session's share), weighted average HFR / FWHM / guiding RMS, and per-filter chips that sum to the total.
+- **Overhead notice** — when no timing events can be parsed from the NINA log (log level below Info), the Overhead Analysis section now shows a notice explaining how to fix it instead of silently disappearing. (#27)
+
+### Bug Fixes
+
+- Target Scheduler name matching is now whitespace-tolerant: targets with a stray space in their TS name showed a false "target not found" warning and were missing their progress bars.
+
+
 ## v3.2.0
 
 ### New Features

@@ -84,6 +84,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
         // a rejection, even if Accepted=false on legacy rows.
         private static bool IsRejected(ImageRecord i) => !i.CountsAsAccepted;
 
+        // Whitespace-tolerant target-name match. TS writes the DB target name verbatim into
+        // image metadata, so the two normally agree — but a stray leading/trailing space on
+        // the TS DB name must not produce a false "target not found in Target Scheduler".
+        internal static bool TargetNameMatches(string? a, string? b)
+            => string.Equals((a ?? string.Empty).Trim(), (b ?? string.Empty).Trim(), StringComparison.OrdinalIgnoreCase);
+
         public async Task<string> GenerateHtmlReport(ReportData data) {
             // Locale guard: the report is machine-readable markup. SVG coordinates,
             // HiPS2FITS URL query params, and data-* attributes are locale-neutral by spec
@@ -217,6 +223,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine(".history-totals { margin: 10px 0 4px; background: var(--surface); border: 1px solid var(--bar-acquired); border-radius: 7px; padding: 9px 13px; }");
             sb.AppendLine(".history-totals .ht-line { font-size: 13px; color: var(--accent-light); }");
             sb.AppendLine(".history-totals .ht-total { font-weight: bold; font-size: 14px; color: var(--text); }");
+            sb.AppendLine(".history-totals .ht-session { color: var(--bar-acquired); font-size: 13px; }");
             sb.AppendLine(".history-totals .ht-sep { color: var(--dim); margin: 0 7px; }");
             sb.AppendLine(".history-totals .ht-chips { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 6px; }");
             sb.AppendLine(".history-totals .ht-chip { background: var(--bg); border: 1px solid var(--bar-acquired); color: var(--accent-light); font-size: 12px; padding: 3px 9px; border-radius: 11px; }");
@@ -430,7 +437,23 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
         private string BuildOverheadBreakdownSection(ReportData data, string detailsOpen = "") {
             var timingEvents = data.TimingEvents;
-            if (timingEvents == null || !timingEvents.Any()) return "";
+            if (timingEvents == null || !timingEvents.Any()) {
+                // Images were captured but the log parse produced no timing events —
+                // almost always NINA's log level set below Info, which suppresses the
+                // exposure lines the parser reads (issue #27). Explain the omission
+                // instead of silently dropping the section. A genuinely empty session
+                // (no images either) still renders nothing.
+                if (data.Images != null && data.Images.Any()) {
+                    return $"<details class='iq-section'{detailsOpen}>" +
+                           "<summary>Yield and Imaging Overhead Analysis</summary>" +
+                           "<div style='background-color:var(--warn-bg); border:1px solid var(--warn-border); border-radius:8px; padding:12px 16px; margin:16px 0; color:var(--warn-text);'>" +
+                           "<strong>&#9888; Overhead analysis unavailable:</strong> no timing events were found in the NINA log. " +
+                           "This usually means NINA's log level is below Info. " +
+                           "Set NINA to Options &gt; General &gt; Log Level &gt; Info to enable this section." +
+                           "</div></details>";
+                }
+                return "";
+            }
 
             // Exclude Exposure events (useful imaging time), SchedulerWait (external idle), and zero-duration events.
             var overheadEvents = timingEvents.Where(e => e.EventType != "Exposure" && e.EventType != "SchedulerWait" && e.DurationSeconds > 0).ToList();
@@ -800,7 +823,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
 
                 foreach (var target in targets) {
                     var tsT = data.TsData?.FirstOrDefault(t =>
-                        string.Equals(t.TargetName, target.Key, StringComparison.OrdinalIgnoreCase)
+                        TargetNameMatches(t.TargetName, target.Key)
                         && (t.RA != 0 || t.Dec != 0));
                     double ra = 0, dec = 0;
                     if (tsT != null) { ra = tsT.RA; dec = tsT.Dec; }
@@ -830,7 +853,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             foreach (var target in targets) {
                 // All TS entries for this target — may span multiple projects
                 var tsTargets = data.TsData?.Where(t =>
-                    string.Equals(t.TargetName, target.Key, StringComparison.OrdinalIgnoreCase)).ToList()
+                    TargetNameMatches(t.TargetName, target.Key)).ToList()
                     ?? new System.Collections.Generic.List<TsTargetData>();
                 var tsFirst = tsTargets.FirstOrDefault(t => t.RA != 0 || t.Dec != 0) ?? tsTargets.FirstOrDefault();
 
@@ -2654,9 +2677,22 @@ namespace NINA.Plugin.NightSummary.Reporting {
             data.SessionHistoryAggregate?.TryGetValue(targetKey, out agg);
             if (agg == null || agg.TotalIntegrationSeconds <= 0) return;
 
+            // The aggregate is lifetime scope (current session included), so
+            // "total" matches Target Scheduler's accepted totals. Show this
+            // session's share alongside so the headline visibly reconciles with
+            // the previous-sessions table below it. Same not-rejected predicate
+            // as the aggregate SQL.
+            var thisSessionSec = data.Images
+                .Where(i => string.Equals(i.TargetName, targetKey, StringComparison.OrdinalIgnoreCase)
+                            && i.CountsAsAccepted)
+                .Sum(i => i.ExposureDuration);
+
             sb.AppendLine("<div class='history-totals'>");
             var line = new StringBuilder();
             line.Append($"<span class='ht-total'>{FormatIntegration(agg.TotalIntegrationSeconds)} total</span>");
+            if (thisSessionSec > 0) {
+                line.Append($"<span class='ht-session'> ({FormatIntegration(thisSessionSec)} this session)</span>");
+            }
             if (agg.AvgHFR        > 0) line.Append($"<span class='ht-sep'>&middot;</span>Avg HFR {agg.AvgHFR:F2}px");
             if (agg.AvgFWHM       > 0) line.Append($"<span class='ht-sep'>&middot;</span>Avg FWHM {agg.AvgFWHM:F2}&quot;");
             if (agg.AvgGuidingRMS > 0) line.Append($"<span class='ht-sep'>&middot;</span>Avg RMS {agg.AvgGuidingRMS:F2}&quot;");
