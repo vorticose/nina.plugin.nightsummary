@@ -1342,11 +1342,19 @@
                                             <TextBox MinWidth="300" Text="{Binding RecipientAddress, UpdateSourceTrigger=PropertyChanged}" />
                                         </StackPanel>
 
-                                        <StackPanel Orientation="Horizontal" Margin="0,6,0,10">
+                                        <StackPanel Orientation="Horizontal" Margin="0,6,0,4">
                                             <TextBlock Width="200" />
                                             <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" MaxWidth="420">
-                                                Requires a Gmail App Password — not your regular password.
+                                                Requires a Gmail App Password, not your regular password.
                                                 Generate one at myaccount.google.com/apppasswords
+                                            </TextBlock>
+                                        </StackPanel>
+
+                                        <StackPanel Orientation="Horizontal" Margin="0,2,0,10">
+                                            <TextBlock Width="200" />
+                                            <TextBlock TextWrapping="Wrap" Foreground="{StaticResource NotificationWarningBrush}" FontSize="11" MaxWidth="420">
+                                                <Run FontWeight="Bold">Security tip:</Run>
+                                                <Run>a Gmail App Password grants full access to that account's inbox, not just sending. It is stored on this PC and used to send your reports. Strongly consider using a dedicated or throwaway Google account here rather than your primary email, so a leaked password can't expose your personal mail.</Run>
                                             </TextBlock>
                                         </StackPanel>
                                     </StackPanel>
@@ -1404,6 +1412,14 @@
                                                 <Run>• Yahoo — smtp.mail.yahoo.com : 587, TLS on. App password: myaccount.yahoo.com → Security → Generate app password</Run>
                                                 <LineBreak />
                                                 <Run>• iCloud — smtp.mail.me.com : 587, TLS on. App password: appleid.apple.com → Sign-In &amp; Security → App-Specific Passwords</Run>
+                                            </TextBlock>
+                                        </StackPanel>
+
+                                        <StackPanel Orientation="Horizontal" Margin="0,2,0,10">
+                                            <TextBlock Width="200" />
+                                            <TextBlock TextWrapping="Wrap" Foreground="{StaticResource NotificationWarningBrush}" FontSize="11" MaxWidth="420">
+                                                <Run FontWeight="Bold">Security tip:</Run>
+                                                <Run>most app passwords grant full access to that account's inbox, not just sending, and the password is stored on this PC. Strongly consider a dedicated or throwaway account here rather than your primary email, so a leaked password can't expose your personal mail. A send-only provider (SendGrid, Mailgun, SMTP2GO, etc.) with a scoped API key is the safest option.</Run>
                                             </TextBlock>
                                         </StackPanel>
                                     </StackPanel>

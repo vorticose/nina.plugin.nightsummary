@@ -14,9 +14,13 @@
 <!-- TODO docs: add an "Updating the companion" section to docs/companion.md — the in-app
      update banner, Update now vs Dismiss, and the AppImage/.deb download-link fallback. -->
 
+### Security
+
+- **Email password and other secrets are now encrypted at rest.** The SMTP password, Discord webhook URL, and Pushover tokens in `settings.json` are encrypted with Windows DPAPI (tied to your Windows account) instead of being stored in plain text. Existing settings are upgraded automatically on first launch. A new note in the email settings also flags that app passwords grant full mailbox access, and recommends a dedicated or throwaway sending account.
+
 ### New Features (integration groundwork)
 
-- **Touch 'N' Stars integration API** — the local dashboard server now exposes a small `/api/nightsummary/*` namespace (status, session list, the actual report HTML, resend, delete) designed for the Touch 'N' Stars app to show Night Summary reports as a delivery channel: pick a session in TNS, view the real report. The plugin also announces its dashboard port over NINA's inter-plugin message broker (`NightSummary.Port`, same pattern as Advanced API) so TNS can discover it with zero configuration. Invisible until a TNS build consumes it; see TNS_INTEGRATION.md.
+- **Touch 'N' Stars integration API** — the local dashboard server now exposes a small `/api/nightsummary/*` namespace (status, session list, the actual report HTML, resend, delete) designed for the Touch 'N' Stars app to show Night Summary reports as a delivery channel: pick a session in TNS, view the real report. The plugin also announces its dashboard port over NINA's inter-plugin message broker (`NightSummary.Port`, same pattern as Advanced API) so TNS can discover it with zero configuration. A stable `NightSummaryApi` integration class is also provided for in-process plugins (Touch 'N' Stars) to bind to instead of reflecting into internals. Invisible until a TNS build consumes it; see TNS_INTEGRATION.md.
 - **Session delete now removes everything** — deleting a session (Options button or the new API) now also removes its report file, livestack masters, and thumbnails, which delete previously left orphaned on disk.
 
 <!-- TODO docs: once the TNS side ships, add a short "Touch 'N' Stars" page or section
