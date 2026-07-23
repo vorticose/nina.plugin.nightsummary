@@ -9,6 +9,49 @@ delete it. The design goal is zero UI drift: TNS renders the report HTML that
 NS already generates (a single self-contained file with thumbnails and charts
 embedded), rather than re-implementing report content natively.
 
+There are two ways to reach the same data, pick whichever fits:
+- **In-process facade** (`NightSummaryApi`, below) for another NINA plugin
+  running in the same process (this is how TNS works today). No HTTP, no port,
+  no server toggle.
+- **HTTP endpoints** (`/api/nightsummary/*`, below) served by the local
+  dashboard server, for out-of-process or networked consumers.
+
+## In-process facade: `NightSummaryApi`
+
+For a plugin running inside NINA, bind to the public class
+`NINA.Plugin.NightSummary.Integration.NightSummaryApi` instead of reflecting
+into internal types (`SessionDatabase`, `SettingsManager`), whose names change
+between releases. The facade's type name and method signatures are a frozen
+contract; internals are not.
+
+- All methods are `public static` and return a **JSON string** using the same
+  `{ Success, Response, Error }` envelope as the HTTP side (parse the string,
+  no type coupling).
+- `string ApiVersion()` -> `"1.0"` (bump signals added methods).
+- `string Status()` -> Installed, Version, ApiVersion, SessionCount.
+- `string Sessions(int limit)` -> recent sessions (SessionRecord shape).
+- `string Session(string sessionId)` -> `{ Session, Images, Events,
+  TimingEvents, SessionHistory }` (compute display stats from Images as you do
+  now).
+- `string ReportHtml(string sessionId)` / `string ReportPath(string sessionId)`
+  -> the self-contained report HTML / its path (from the always-written reports
+  dir, not the user-configurable save path).
+- `string Resend(string sessionId)` -> re-fire configured delivery channels.
+- `string DeleteSession(string sessionId)` -> **cleanup-aware**: removes the DB
+  rows AND the report HTML, settings sidecar, livestack masters, and thumbnails
+  (raw `SessionDatabase.DeleteSession` orphans those).
+- `string GetSettings()` -> settings with the 5 secret fields masked (each
+  removed, a `<field>Set` bool added) plus `_filterNames`; never returns
+  credential values. Secret set: `SmtpPassword`, `DiscordWebhookUrl`,
+  `PushoverAppToken`, `PushoverUserKey`, `DashboardApiKey`.
+- `string UpdateSettings(string patchJson)` -> applies a patch with write-only
+  secret semantics (blank/absent secret keeps current, non-blank replaces), then
+  saves through `SettingsManager` (so the value is encrypted at rest).
+
+Before the plugin finishes initializing (or after teardown), methods return a
+`{ Success:false, Error:"Night Summary plugin not loaded" }` envelope rather
+than throwing.
+
 ## Transport and discovery
 
 - Endpoints are served by the Night Summary local dashboard server

@@ -485,6 +485,14 @@ namespace NINA.Plugin.NightSummary {
                 Logger.Warning($"NightSummary: ThumbnailRetention startup pass failed: {ex.Message}");
             }
 
+            // Expose the stable integration surface for other in-process plugins
+            // (Touch 'N' Stars) to bind to instead of reflecting into internals.
+            try {
+                Integration.NightSummaryApi.Wire(sessionService, new NinaDashboardPaths(), GetProfileFilterNames);
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: NightSummaryApi wire-up failed: {ex.Message}");
+            }
+
             Logger.Info("NightSummary: Plugin initialized successfully");
         }
 
@@ -504,6 +512,7 @@ namespace NINA.Plugin.NightSummary {
             }
             await StopLocalServerAsync();
             portBroadcaster?.Dispose();
+            Integration.NightSummaryApi.Unwire();
             SettingsManager.Instance.Save();
             Logger.Info("NightSummary: Plugin torn down");
             await base.Teardown();
@@ -1297,6 +1306,17 @@ namespace NINA.Plugin.NightSummary {
         public ICommand RefreshFiltersCommand { get; private set; }
 
         private bool _loadingFilters;
+
+        // Active-profile filter wheel names, for NightSummaryApi.GetSettings' _filterNames.
+        private List<string> GetProfileFilterNames() {
+            try {
+                var filters = profileService?.ActiveProfile?.FilterWheelSettings?.FilterWheelFilters;
+                if (filters == null) return new List<string>();
+                return filters.Select(f => f?.Name).Where(n => !string.IsNullOrEmpty(n)).ToList();
+            } catch {
+                return new List<string>();
+            }
+        }
 
         private void LoadFilterClassifications() {
             try {
