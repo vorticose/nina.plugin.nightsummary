@@ -46,18 +46,77 @@ reset the install to the OLD exe, repeat. The update must **abort**: version sta
 `3.2.1`, exe untouched, log shows `in-app update failed: checksum mismatch ...`.
 (Only `checksums.txt` differs from the passing run, so this isolates the gate.)
 
-## Linux (TODO — WSL2 Debian / Ubuntu VM)
+## Linux — verified PASS 2026-08-04
 
-Install OLD via `install-companion.sh` (tarball -> `~/.local/share/...` with the
-bash watchdog). Build NEW with `-r linux-x64 -p:VersionPrefix=9.9.9`, pack the
-`.tar.gz` (layout `NightSummaryCompanion/{NightSummaryCompanion-bin, launcher}`),
-serve it, run the installed launcher under `NS_UPDATE_BASE_URL`, POST update.
-The watchdog respawns on exit 88. AppImage/`.deb` are NotifyOnly — just confirm
-the Download banner; there's no swap to test.
+Ran on `fios-exit-node` (an always-on Linux box that, unexpectedly, already runs
+a real production companion instance via `.deb` at `/opt/nightsummary-companion`,
+port 8182 — discovered mid-test when OLD's default port collided with it. The
+real service was never touched: it just failed to bind and stayed put. The test
+install instead used `~/.local/share/nightsummary-companion` (the same path
+`install-companion.sh` uses) with `companion.json`'s `port`/`readOnlyMirrorPort`
+repointed to 18282/18283, fully isolated from the real instance's ports/paths.
 
-## macOS (TODO — Mac mini, with care)
+```bash
+# 1. OLD and NEW both built from THIS checkout (only VersionPrefix differs) --
+#    unlike macOS, the Linux swap logic lives in the C# binary itself, not a
+#    separately-fetched script, so OLD must already contain the fix being tested.
+dotnet publish NINA.Plugin.NightSummary.Companion/*.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true
+# -> pack as OLD tarball (layout NightSummaryCompanion/{NightSummaryCompanion-bin, NightSummaryCompanion (watchdog)})
+dotnet publish NINA.Plugin.NightSummary.Companion/*.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:VersionPrefix=9.9.9
+# -> pack as NEW tarball the same way; sha256 -> release/download/checksums.txt
 
-The installer targets `/Applications/NightSummaryCompanion.app`, so point the fake
-server at a build of **our** newer code (moves the install *forward*, not a
-downgrade to the public release) and confirm before touching the production app —
-or test against a temp-renamed `.app`.
+# 2. Install OLD via the real installer (creates ~/.local/share/nightsummary-companion)
+NSC_TARBALL=./NightSummaryCompanion-linux-x64-OLD.tar.gz sh install-companion.sh
+
+# 3. Repoint the isolated install's companion.json to unused ports, serve + drive
+python3 tools/fake-release-server.py ./release 18299 &
+NS_UPDATE_BASE_URL=http://127.0.0.1:18299 ~/.local/share/nightsummary-companion/NightSummaryCompanion serve --no-browser &
+curl  http://127.0.0.1:18282/api/companion/update-check   # strategy:LinuxTarballInPlace, canSelfUpdate:true
+curl -X POST http://127.0.0.1:18282/api/companion/update
+# poll /api/health until version == 9.9.9
+```
+
+Assert: `/api/health` version flips `3.2.1 -> 9.9.9` on the **first** poll (no
+retry loop needed — the fix means the swap just works). Log confirms the exact
+sequence: `starting in-app update -> checksum verified -> Linux binary replaced
+in place; exiting 88 for watchdog respawn`. Pre-fix, this last step failed
+silently (Linux rejects overwriting a running executable in place with
+`ETXTBSY`) — see the code review that found it. No negative/checksum-mismatch
+test run for Linux (time-boxed to the positive path; Windows already covers
+that gate's logic, which is platform-independent).
+
+Cleanup: quit via `/api/companion/quit`, remove the isolated install dir +
+XDG data dir + `~/.local/bin` symlink + `.desktop` entry, kill the fake server.
+Verified the real production instance's PIDs and `/api/health` were unchanged
+throughout.
+
+## macOS — verified PASS 2026-08-04
+
+Ran against the **real production install** on the Mac mini (per the "confirm
+before touching the production app" note above) — backed up first, restored
+after. NEW (9.9.9) built + signed + packaged as a `.dmg` matching
+`build-companion-mac.ps1`'s steps exactly (publish -> assemble `.app` -> ad-hoc
+codesign -> `hdiutil create`).
+
+```bash
+dotnet publish NINA.Plugin.NightSummary.Companion/*.csproj -c Release -r osx-arm64 --self-contained true -p:PublishSingleFile=true -p:VersionPrefix=9.9.9
+# -> assemble .app bundle, codesign --force --deep --sign -, hdiutil create ... -format UDZO
+curl -X POST http://127.0.0.1:8182/api/companion/quit          # stop the real running install
+cp -R /Applications/NightSummaryCompanion.app /Applications/NightSummaryCompanion.app.e2e-backup-<ts>
+python3 tools/fake-release-server.py ./release 18199 &
+NS_UPDATE_BASE_URL=http://127.0.0.1:18199 /Applications/NightSummaryCompanion.app/Contents/MacOS/NightSummaryCompanion serve --no-browser &
+curl  http://127.0.0.1:8182/api/companion/update-check          # strategy:MacAppReplace
+curl -X POST http://127.0.0.1:8182/api/companion/update
+# poll /api/health until version == 9.9.9, then restore the backup + relaunch normally
+```
+
+Assert: version flips `3.2.1 -> 9.9.9` on the first poll; `/Applications`
+shows no leftover `.new`/`.old` staging dirs after the swap (the fixed
+`install-companion-mac.sh` cleans up both on success). Log confirms
+`checksum verified -> launched detached mac installer -> exiting 0`. Since the
+mac swap logic lives in the **shell script** (freshly fetched from the fake
+server each time), the real running 3.2.1 binary was a valid OLD install here
+— its C# update-trigger code is unchanged by the fix, only the script content
+differs. Restored the real install from the pre-test backup afterward and
+confirmed `/api/health` + rig config were unaffected. No negative/checksum test
+run here either, same reasoning as Linux above.
