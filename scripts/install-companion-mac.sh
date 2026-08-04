@@ -67,14 +67,27 @@ pkill -x NightSummaryCompanion-bin >/dev/null 2>&1 || true
 sleep 1
 
 echo "Installing to $DEST ..."
-rm -rf "$DEST"
-cp -R "$SRC" "$DEST"
+# Stage the new app next to $DEST (same volume, so the swap below is a real
+# rename, not a copy) before touching anything at $DEST. If the copy is
+# interrupted here (disk full, killed), $DEST is untouched. This used to be
+# `rm -rf "$DEST"; cp -R ...`, which had a real window -- interrupted between
+# the two, the app was gone entirely until the user reinstalled by hand.
+STAGING="/Applications/.${APP}.new.$$"
+OLDBAK="/Applications/.${APP}.old.$$"
+rm -rf "$STAGING" "$OLDBAK" >/dev/null 2>&1 || true
+cp -R "$SRC" "$STAGING"
 
 # Defensive: a curl'd DMG isn't quarantined, but strip it anyway in case the
 # user pre-downloaded the DMG via a browser and pointed NSC_DMG at it. Also make
 # sure the bundle's launcher scripts kept their exec bit through the copy.
-xattr -dr com.apple.quarantine "$DEST" >/dev/null 2>&1 || true
-chmod +x "$DEST/Contents/MacOS/"* >/dev/null 2>&1 || true
+xattr -dr com.apple.quarantine "$STAGING" >/dev/null 2>&1 || true
+chmod +x "$STAGING/Contents/MacOS/"* >/dev/null 2>&1 || true
+
+if [ -d "$DEST" ]; then
+    mv "$DEST" "$OLDBAK"
+fi
+mv "$STAGING" "$DEST"
+rm -rf "$OLDBAK" >/dev/null 2>&1 || true
 
 echo ""
 echo "Installed Night Summary Companion to /Applications."

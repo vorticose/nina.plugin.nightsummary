@@ -607,9 +607,8 @@ namespace NINA.Plugin.NightSummary.Server {
         private static string QuoteArg(string a) => a.Contains(' ') ? "\"" + a + "\"" : a;
 
         // Linux (user-scoped tarball install only — AppImage/.deb are NotifyOnly):
-        // overwrite the -bin (and launcher) in the install dir, then exit 88 so the
-        // bash watchdog relaunches the NEW bytes. Overwriting a running executable
-        // is legal on Unix — the open inode stays valid until we exit.
+        // swap the -bin (and launcher) in the install dir, then exit 88 so the bash
+        // watchdog relaunches the NEW bytes.
         private void ApplyLinuxUpdate(string tarPath, string tmp) {
             var extract = Path.Combine(tmp, "extract");
             var (newBin, newLauncher) = UpdateInstaller.ExtractTarGzFindBin(tarPath, extract);
@@ -618,12 +617,28 @@ namespace NINA.Plugin.NightSummary.Server {
                              ?? throw new InvalidOperationException("ProcessPath is null");
             var destBin      = Path.Combine(installDir, "NightSummaryCompanion-bin");
             var destLauncher = Path.Combine(installDir, "NightSummaryCompanion");
-            File.Copy(newBin, destBin, overwrite: true);
-            if (newLauncher != null && File.Exists(newLauncher)) File.Copy(newLauncher, destLauncher, overwrite: true);
-            ChmodExec(destBin);
-            ChmodExec(destLauncher);
+            SwapExecutableInPlace(newBin, destBin, installDir);
+            if (newLauncher != null && File.Exists(newLauncher)) SwapExecutableInPlace(newLauncher, destLauncher, installDir);
+
             log?.Info("Companion: Linux binary replaced in place; exiting 88 for watchdog respawn of the new version.");
             Environment.Exit(88);
+        }
+
+        // Stages `source` next to `dest` (same directory => same filesystem, so the
+        // final move is a real rename(), not a cross-device copy+delete) and swaps it
+        // in with File.Move. This is safe to run on `dest` while it's the currently
+        // executing binary: Linux allows unlinking/renaming over an open/mapped file —
+        // our own already-running process keeps its old inode mapped until it exits,
+        // it's only the *directory entry* that flips. File.Copy(overwrite: true) is
+        // NOT safe here — it opens the destination for writing (truncate), which the
+        // kernel rejects with ETXTBSY while we're still executing out of it, so the
+        // swap would silently fail every time (caught upstream, logged, old version
+        // keeps running — no corruption, but the update never actually applies).
+        private static void SwapExecutableInPlace(string source, string dest, string sameDirAs) {
+            var staged = Path.Combine(sameDirAs, Path.GetFileName(dest) + ".new-" + Guid.NewGuid().ToString("N"));
+            File.Copy(source, staged, overwrite: true);
+            ChmodExec(staged);
+            File.Move(staged, dest, overwrite: true);
         }
 
         private static void ChmodExec(string path) {
