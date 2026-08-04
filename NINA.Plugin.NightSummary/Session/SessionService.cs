@@ -216,9 +216,10 @@ namespace NINA.Plugin.NightSummary.Session {
 
             // Parse NINA logs for per-event overhead timing data
             List<TimingEvent> timingEvents;
+            LogParseOutcome timingEventsOutcome;
             try {
                 Logger.Info($"NightSummary: EndSession — parsing logs for session {sessionId} (start={session.SessionStart:o}, end={session.SessionEnd:o}, images={images.Count})");
-                timingEvents = NinaLogParser.Parse(session.SessionStart, session.SessionEnd, images.Count);
+                timingEvents = NinaLogParser.Parse(session.SessionStart, session.SessionEnd, images.Count, out timingEventsOutcome);
                 Logger.Info($"NightSummary: EndSession — parser returned {timingEvents.Count} events");
                 if (timingEvents.Any())
                     database.SaveTimingEvents(sessionId, timingEvents);
@@ -226,6 +227,7 @@ namespace NINA.Plugin.NightSummary.Session {
                 Logger.Warning($"NightSummary: Log parsing failed — overhead breakdown will be unavailable. {ex.Message}");
                 Logger.Warning($"NightSummary: Log parsing stack trace: {ex.StackTrace}");
                 timingEvents = new List<TimingEvent>();
+                timingEventsOutcome = LogParseOutcome.NoLogFileFound;
             }
 
             var profileId    = profileService?.ActiveProfile?.Id.ToString();
@@ -250,6 +252,7 @@ namespace NINA.Plugin.NightSummary.Session {
                 ActiveProfileId              = profileId,
                 SkippedExposures             = collector.SkippedExposures,
                 TimingEvents                 = timingEvents,
+                TimingEventsUnavailableReason = timingEvents.Any() ? (LogParseOutcome?)null : timingEventsOutcome,
                 Equipment                    = BuildEquipmentDictionary(session),
                 LiveStackImages              = liveStackImages
             };
@@ -435,8 +438,9 @@ namespace NINA.Plugin.NightSummary.Session {
                 // Always re-parse timing events from logs to pick up parser improvements.
                 // Falls back to cached DB data only if the log file is no longer available.
                 List<TimingEvent> timingEvents;
+                LogParseOutcome timingEventsOutcome;
                 try {
-                    timingEvents = NinaLogParser.Parse(session.SessionStart, session.SessionEnd, images.Count);
+                    timingEvents = NinaLogParser.Parse(session.SessionStart, session.SessionEnd, images.Count, out timingEventsOutcome);
                     if (timingEvents.Any()) {
                         testDb.ClearTimingEvents(session.SessionId);
                         testDb.SaveTimingEvents(session.SessionId, timingEvents);
@@ -444,6 +448,7 @@ namespace NINA.Plugin.NightSummary.Session {
                 } catch (Exception ex) {
                     Logger.Warning($"NightSummary: Log re-parse failed, using cached data — {ex.Message}");
                     timingEvents = null;  // fall through to DB lookup below
+                    timingEventsOutcome = LogParseOutcome.NoLogFileFound;
                 }
                 // If log parsing returned nothing (no log file, or empty), use cached DB data
                 if (timingEvents == null || !timingEvents.Any()) {
@@ -465,7 +470,8 @@ namespace NINA.Plugin.NightSummary.Session {
                     ActiveProfileId              = profileId,
                     SkippedExposures             = session.SkippedExposures,
                     Equipment                    = BuildEquipmentDictionary(session),
-                    TimingEvents                 = timingEvents
+                    TimingEvents                 = timingEvents,
+                    TimingEventsUnavailableReason = timingEvents.Any() ? (LogParseOutcome?)null : timingEventsOutcome
                 };
 
                 // Try to load persisted live stack masters for this session
@@ -1268,8 +1274,9 @@ namespace NINA.Plugin.NightSummary.Session {
             // Always re-parse timing events from logs (fast, < 1s) to pick up parser improvements.
             // Falls back to cached DB data only if the log file is no longer available.
             List<TimingEvent> timingEvents;
+            LogParseOutcome timingEventsOutcome;
             try {
-                timingEvents = NinaLogParser.Parse(session.SessionStart, session.SessionEnd, images.Count);
+                timingEvents = NinaLogParser.Parse(session.SessionStart, session.SessionEnd, images.Count, out timingEventsOutcome);
                 if (timingEvents.Any()) {
                     db.ClearTimingEvents(session.SessionId);
                     db.SaveTimingEvents(session.SessionId, timingEvents);
@@ -1277,6 +1284,7 @@ namespace NINA.Plugin.NightSummary.Session {
             } catch (Exception ex) {
                 Logger.Warning($"NightSummary: Log re-parse failed, using cached data — {ex.Message}");
                 timingEvents = null;
+                timingEventsOutcome = LogParseOutcome.NoLogFileFound;
             }
             if (timingEvents == null || !timingEvents.Any()) {
                 timingEvents = db.GetTimingEventsForSession(session.SessionId);
@@ -1297,7 +1305,8 @@ namespace NINA.Plugin.NightSummary.Session {
                 ActiveProfileId              = profileId,
                 SkippedExposures             = session.SkippedExposures,
                 Equipment                    = BuildEquipmentDictionary(session),
-                TimingEvents                 = timingEvents
+                TimingEvents                 = timingEvents,
+                TimingEventsUnavailableReason = timingEvents.Any() ? (LogParseOutcome?)null : timingEventsOutcome
             };
 
             // Try to load persisted live stack masters for this session

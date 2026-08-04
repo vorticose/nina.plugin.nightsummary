@@ -19,5 +19,6 @@
   <ItemGroup>
     <Compile Include="..\..\NINA.Plugin.NightSummary\Data\NinaLogParser.cs" Link="NinaLogParser.cs" />
     <Compile Include="..\..\NINA.Plugin.NightSummary.Dashboard\Data\TimingEvent.cs" Link="TimingEvent.cs" />
+    <Compile Include="..\..\NINA.Plugin.NightSummary.Dashboard\Data\LogParseOutcome.cs" Link="LogParseOutcome.cs" />
   </ItemGroup>
 </Project>

@@ -100,13 +100,26 @@ namespace NINA.Plugin.NightSummary.Data {
         /// <param name="expectedImageCount">Expected number of images from Night Summary's own count, for cross-check. Pass -1 to skip.</param>
         /// <returns>Parsed timing events, or empty list if log not found or unparseable.</returns>
         public static List<TimingEvent> Parse(DateTime sessionStart, DateTime sessionEnd, int expectedImageCount = -1) {
+            return Parse(sessionStart, sessionEnd, expectedImageCount, out _);
+        }
+
+        /// <summary>
+        /// Same as Parse, but also reports why the result was empty (if it was), so
+        /// callers can distinguish "no log file could be found" from "a log file was
+        /// found but had nothing matching" instead of showing the same generic message
+        /// for both.
+        /// </summary>
+        public static List<TimingEvent> Parse(DateTime sessionStart, DateTime sessionEnd, int expectedImageCount, out LogParseOutcome outcome) {
             var logPath = FindLogFile(sessionStart);
             if (logPath == null) {
                 Logger.Warning("NightSummary: LogParser — no matching NINA log file found for session");
+                outcome = LogParseOutcome.NoLogFileFound;
                 return new List<TimingEvent>();
             }
 
-            return ParseFile(logPath, sessionStart, sessionEnd, expectedImageCount);
+            var events = ParseFile(logPath, sessionStart, sessionEnd, expectedImageCount);
+            outcome = events.Count > 0 ? LogParseOutcome.Success : LogParseOutcome.NoEventsInWindow;
+            return events;
         }
 
         /// <summary>
@@ -531,8 +544,25 @@ namespace NINA.Plugin.NightSummary.Data {
         }
 
         /// <summary>
-        /// Finds the NINA log file whose filename timestamp is closest to (but before) the session start.
+        /// Finds the NINA log file that was active at the session start.
         /// </summary>
+        /// <remarks>
+        /// NINA's filename embeds the process-start timestamp once and keeps it fixed
+        /// across Serilog's monthly/size-based rollovers — a rollover only appends a new
+        /// period suffix (e.g. "-202607.log" -&gt; "-202608.log") to that same leading
+        /// timestamp. A long-running process (e.g. an infinite-loop Advanced Sequence that
+        /// never restarts NINA) can therefore have multiple log files whose filename
+        /// timestamp is identical, even though they cover different, non-overlapping time
+        /// ranges. Selecting by filename timestamp alone can't distinguish them and may
+        /// pick a stale pre-rollover file, silently returning zero timing events for a
+        /// session that's actually in the newer file.
+        ///
+        /// Filesystem creation time doesn't have this ambiguity — each physical file was
+        /// actually created when Serilog rolled over to it — so it's used as the primary
+        /// signal, with the old filename-timestamp matching kept as a fallback for the
+        /// rare case creation-time metadata is missing or invalid (e.g. logs copied
+        /// between machines by a hand-off tool that doesn't preserve it).
+        /// </remarks>
         internal static string FindLogFile(DateTime sessionStart) {
             var logsDir = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -542,6 +572,11 @@ namespace NINA.Plugin.NightSummary.Data {
 
             // Pattern: {yyyyMMdd}-{HHmmss}-{version}.{pid}-{yyyyMM}.log
             var logFiles = Directory.GetFiles(logsDir, "*.log");
+            if (logFiles.Length == 0) return null;
+
+            var byCreation = FindLogFileByCreationTime(logFiles, sessionStart);
+            if (byCreation != null) return byCreation;
+
             string bestMatch = null;
             TimeSpan bestDelta = TimeSpan.MaxValue;
 
@@ -553,6 +588,39 @@ namespace NINA.Plugin.NightSummary.Data {
                 var delta = sessionStart - fileTimestamp.Value;
                 if (delta >= TimeSpan.Zero && delta < bestDelta) {
                     bestDelta = delta;
+                    bestMatch = file;
+                }
+            }
+
+            return bestMatch;
+        }
+
+        /// <summary>
+        /// Picks the log file with the latest creation time at or before sessionStart —
+        /// i.e. the file that was actively being written to when the session began.
+        /// Exposed for testing. Returns null if no file has usable creation-time metadata.
+        /// </summary>
+        internal static string FindLogFileByCreationTime(string[] logFiles, DateTime sessionStart) {
+            string bestMatch = null;
+            DateTime bestCreationLocal = DateTime.MinValue;
+
+            foreach (var file in logFiles) {
+                DateTime creationUtc;
+                try {
+                    creationUtc = File.GetCreationTimeUtc(file);
+                } catch (IOException) {
+                    continue;
+                } catch (UnauthorizedAccessException) {
+                    continue;
+                }
+
+                // Guard against missing/invalid creation-time metadata (some filesystems
+                // or copy tools report an epoch/zero value when creation time isn't tracked).
+                if (creationUtc <= new DateTime(1980, 1, 1)) continue;
+
+                var creationLocal = creationUtc.ToLocalTime();
+                if (creationLocal <= sessionStart && creationLocal > bestCreationLocal) {
+                    bestCreationLocal = creationLocal;
                     bestMatch = file;
                 }
             }

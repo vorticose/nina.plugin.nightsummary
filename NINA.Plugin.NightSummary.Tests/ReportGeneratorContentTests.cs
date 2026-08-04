@@ -303,7 +303,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         // ── Overhead breakdown ────────────────────────────────────────────────
 
-        private static ReportData MakeOverheadReportData(List<TimingEvent> timingEvents) {
+        private static ReportData MakeOverheadReportData(List<TimingEvent> timingEvents, LogParseOutcome? unavailableReason = null) {
             var baseData = TestDataFactory.MakeReportData(imageCount: 8);
             // Replace session images with 8×600s exposures starting at a known time
             var sessionId = baseData.Session.SessionId;
@@ -322,7 +322,8 @@ namespace NINA.Plugin.NightSummary.Tests {
                 TsData = baseData.TsData,
                 CumulativeIntegrationSeconds = baseData.CumulativeIntegrationSeconds,
                 SessionHistory = baseData.SessionHistory,
-                TimingEvents = timingEvents
+                TimingEvents = timingEvents,
+                TimingEventsUnavailableReason = unavailableReason
             };
         }
 
@@ -437,6 +438,43 @@ namespace NINA.Plugin.NightSummary.Tests {
             // The notice section must honor ExpandSectionsDefault like every other
             // section (regression: hardcoded ` open` broke ExpandSectionsDefault_False).
             Assert.DoesNotContain("' open>", report);
+        }
+
+        [Fact]
+        public async Task Overhead_NoLogFileFound_RecentSession_ShowsLogsFolderNotice() {
+            // 2026-08-03 report: an infinite-loop Advanced Sequence rotated NINA's log
+            // file mid-run; FindLogFile picked the stale pre-rotation file and the
+            // parser found zero events even though the real log data existed. That
+            // failure mode is NoLogFileFound, not a log-level issue — the message must
+            // say so, not point users at a setting that was never the problem.
+            SettingsManager.Instance.Current.ShowOverheadBreakdown = true;
+
+            var data = MakeOverheadReportData(new List<TimingEvent>(), LogParseOutcome.NoLogFileFound);
+            data.Session.SessionStart = DateTime.Now.AddDays(-5); // well within 90-day retention
+
+            var report = await _generator.GenerateHtmlReport(data);
+
+            Assert.Contains("Overhead analysis unavailable", report);
+            Assert.Contains("Logs folder hasn't been moved or cleared", report);
+            Assert.DoesNotContain("Log Level &gt; Info", report);
+            Assert.DoesNotContain("90-day log retention", report);
+        }
+
+        [Fact]
+        public async Task Overhead_NoLogFileFound_OldSession_MentionsRetention() {
+            // Same NoLogFileFound outcome, but the session predates NINA's 90-day log
+            // retention — the log has plausibly been deleted, so the message should
+            // say so instead of implying a misconfiguration the user can fix.
+            SettingsManager.Instance.Current.ShowOverheadBreakdown = true;
+
+            var data = MakeOverheadReportData(new List<TimingEvent>(), LogParseOutcome.NoLogFileFound);
+            data.Session.SessionStart = DateTime.Now.AddDays(-120);
+
+            var report = await _generator.GenerateHtmlReport(data);
+
+            Assert.Contains("Overhead analysis unavailable", report);
+            Assert.Contains("90-day log retention", report);
+            Assert.DoesNotContain("Log Level &gt; Info", report);
         }
 
         [Fact]

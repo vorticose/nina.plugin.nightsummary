@@ -58,6 +58,12 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// Empty if log parsing was unavailable or produced no results.
         /// </summary>
         public List<TimingEvent> TimingEvents { get; init; }
+        /// <summary>
+        /// Why TimingEvents is empty, if it is — null when TimingEvents is non-empty.
+        /// Lets the overhead breakdown section show an accurate reason instead of
+        /// assuming log level is always the cause.
+        /// </summary>
+        public LogParseOutcome? TimingEventsUnavailableReason { get; init; }
 
         /// <summary>
         /// Equipment names for the session, keyed by role (Camera, Telescope, Mount, etc.).

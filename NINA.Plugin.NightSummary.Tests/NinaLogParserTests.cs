@@ -861,5 +861,81 @@ namespace NINA.Plugin.NightSummary.Tests {
                 File.Delete(path);
             }
         }
+
+        // Reproduces the infinite-loop-sequence bug (2026-08-03 report): NINA's log
+        // filename embeds the process-start timestamp once, and a monthly/size rollover
+        // only appends a new period suffix to that same fixed timestamp — so two rotated
+        // files from one long-running process can share an identical filename timestamp
+        // even though they cover different time ranges. Selection must use actual
+        // filesystem creation time to tell them apart, not the filename alone.
+        [Fact]
+        public void FindLogFileByCreationTime_DisambiguatesRolledOverFilesWithSameFilenameTimestamp() {
+            var dir = Path.Combine(Path.GetTempPath(), $"ninalog_rollover_{Guid.NewGuid():N}");
+            Directory.CreateDirectory(dir);
+            try {
+                // Same leading 15-char timestamp on both — only the rollover period suffix differs.
+                var julyFile = Path.Combine(dir, "20260730-232737-3.2.0.9001.25568-202607.log");
+                var augFile = Path.Combine(dir, "20260730-232737-3.2.0.9001.25568-202608.log");
+                File.WriteAllText(julyFile, "july content");
+                File.WriteAllText(augFile, "august content");
+
+                File.SetCreationTimeUtc(julyFile, new DateTime(2026, 7, 30, 23, 27, 37, DateTimeKind.Utc));
+                File.SetCreationTimeUtc(augFile, new DateTime(2026, 8, 1, 0, 0, 49, DateTimeKind.Utc));
+
+                Assert.Equal(
+                    NinaLogParser.ExtractLogFileTimestamp(Path.GetFileNameWithoutExtension(julyFile)),
+                    NinaLogParser.ExtractLogFileTimestamp(Path.GetFileNameWithoutExtension(augFile)));
+
+                var sessionStart = new DateTime(2026, 8, 2, 0, 0, 0);
+                var chosen = NinaLogParser.FindLogFileByCreationTime(new[] { julyFile, augFile }, sessionStart);
+
+                Assert.Equal(augFile, chosen);
+            } finally {
+                Directory.Delete(dir, true);
+            }
+        }
+
+        [Fact]
+        public void FindLogFileByCreationTime_PicksLatestCreationAtOrBeforeSessionStart() {
+            var dir = Path.Combine(Path.GetTempPath(), $"ninalog_multi_{Guid.NewGuid():N}");
+            Directory.CreateDirectory(dir);
+            try {
+                var file1 = Path.Combine(dir, "a.log");
+                var file2 = Path.Combine(dir, "b.log");
+                var file3 = Path.Combine(dir, "c.log");
+                File.WriteAllText(file1, "1");
+                File.WriteAllText(file2, "2");
+                File.WriteAllText(file3, "3");
+
+                File.SetCreationTimeUtc(file1, new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc));
+                File.SetCreationTimeUtc(file2, new DateTime(2026, 8, 2, 0, 0, 0, DateTimeKind.Utc));
+                File.SetCreationTimeUtc(file3, new DateTime(2026, 8, 3, 0, 0, 0, DateTimeKind.Utc)); // after sessionStart
+
+                var sessionStart = new DateTime(2026, 8, 2, 12, 0, 0);
+                var chosen = NinaLogParser.FindLogFileByCreationTime(new[] { file1, file2, file3 }, sessionStart);
+
+                Assert.Equal(file2, chosen);
+            } finally {
+                Directory.Delete(dir, true);
+            }
+        }
+
+        [Fact]
+        public void FindLogFileByCreationTime_NoFileBeforeSessionStart_ReturnsNull() {
+            var dir = Path.Combine(Path.GetTempPath(), $"ninalog_none_{Guid.NewGuid():N}");
+            Directory.CreateDirectory(dir);
+            try {
+                var file1 = Path.Combine(dir, "a.log");
+                File.WriteAllText(file1, "1");
+                File.SetCreationTimeUtc(file1, new DateTime(2026, 8, 5, 0, 0, 0, DateTimeKind.Utc));
+
+                var sessionStart = new DateTime(2026, 8, 2, 0, 0, 0);
+                var chosen = NinaLogParser.FindLogFileByCreationTime(new[] { file1 }, sessionStart);
+
+                Assert.Null(chosen);
+            } finally {
+                Directory.Delete(dir, true);
+            }
+        }
     }
 }
