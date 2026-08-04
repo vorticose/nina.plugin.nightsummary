@@ -24,15 +24,31 @@ generates HTML reports summarizing each night's work.
 any work, create a git worktree and work exclusively inside it. Never use the main
 checkout directly — another agent may be using it.
 
+**`-b <branch-name>` alone bases the new branch on whatever HEAD the invoking
+checkout happens to be on — not necessarily `dev`.** If the main checkout was left
+on `main` (e.g. right after a release), a worktree created this way silently forks
+from `main` instead, and its branch looks fine in isolation but drags release-only
+commits along when later merged into `dev` (bit us 2026-08-03: a bug-fix branch was
+cut from `main`'s post-release tip, and merging it into `dev` would have pulled in
+unrelated docs/manifest state — caught only because the merge diffstat looked wrong
+before pushing). Always name the base branch explicitly instead of relying on
+ambient HEAD:
+
 ```bash
-# At the start of every session:
-git worktree add .claude/worktrees/<name> -b <branch-name>
+# At the start of every session — name the base branch explicitly, don't rely on
+# whatever the main checkout happens to be on:
+git fetch origin
+git worktree add .claude/worktrees/<name> -b <branch-name> origin/dev   # or origin/v3-dev for v3 work
 cd .claude/worktrees/<name>
 ```
 
 - Each agent gets its own worktree with its own branch
 - Two worktrees cannot share the same branch — create a feature branch if needed
 - Commit frequently so work is never lost to branch switches
+- Before merging a branch back, verify its actual base with
+  `git merge-base <branch> dev` and confirm that commit is genuinely on `dev`'s
+  history (`git merge-base --is-ancestor <that-commit> dev`) — don't assume the
+  branch was cut from where it was supposed to be.
 - When done, merge your branch back and clean up: `git worktree remove <path>`
 
 ## Security: keep infrastructure and secrets out of this repo
