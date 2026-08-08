@@ -311,6 +311,14 @@ namespace NINA.Plugin.NightSummary {
                     return;
                 }
                 await this.sessionService.SendFromDatabaseAsync(liveDbPath, SelectedSession.SessionId);
+                // Resend writes a fresh report.html; the dashboard's in-memory
+                // per-session caches (thumbnails, altitude chart, live stack) don't
+                // know that happened unless told, so a stale — sometimes permanently
+                // empty, if it was first queried before the report existed — cached
+                // answer would otherwise survive the resend. Both the primary
+                // dashboard and the read-only mirror keep independent caches.
+                dashboardServer?.InvalidateSessionCaches(SelectedSession.SessionId);
+                readOnlyMirrorServer?.InvalidateSessionCaches(SelectedSession.SessionId);
                 ResendStatus.Text = "✓ Sent";
             });
 

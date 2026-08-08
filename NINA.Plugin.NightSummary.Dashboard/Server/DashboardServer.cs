@@ -1205,10 +1205,13 @@ namespace NINA.Plugin.NightSummary.Server {
 
             var reportPath = Path.Combine(reportsDir, $"{sessionId}.html");
             if (!File.Exists(reportPath)) {
+                // Report generation can still be in flight (a session just ended and
+                // the Projects view got queried in that window) — don't cache this as
+                // a permanent answer, or the report finishing moments later would
+                // never be reflected and the placeholder would stick forever.
                 var empty = new List<ThumbnailEntry>();
-                thumbnailCache[sessionId] = empty;
                 await WriteJson(res, 200, empty);
-                done?.Invoke(200, $"{sessionId} — no report");
+                done?.Invoke(200, $"{sessionId} — no report yet");
                 return;
             }
 
@@ -3794,6 +3797,20 @@ namespace NINA.Plugin.NightSummary.Server {
             }
         }
 
+        // Clears every in-memory cache keyed by sessionId. Report content on disk can
+        // change out from under these caches via more than one path — Regenerate,
+        // Resend, and the TNS resend endpoint all produce a fresh report.html — so
+        // this is called from all of them rather than duplicating the four lines
+        // (previously only Regenerate/RegenerateAll called this, which left Resend
+        // able to leave a stale — sometimes permanently empty — thumbnail cache
+        // behind even after the report itself was fine).
+        public void InvalidateSessionCaches(string sessionId) {
+            thumbnailCache.TryRemove(sessionId, out _);
+            altitudeChartCache.TryRemove(sessionId, out _);
+            DeleteCachedChartJson(sessionId);
+            livestackCache.TryRemove(sessionId, out _);
+        }
+
         private async Task HandleRegenerateReport(TcpHttpRequest req, TcpHttpResponse res, string sessionId, Action<int, string> done) {
             // Both primary and companion now have a local IReportRegenerator;
             // the older companion→primary proxy path was retired when the
@@ -3859,10 +3876,7 @@ namespace NINA.Plugin.NightSummary.Server {
                     }
                     await SaveSessionSettings(sessionId, s);
 
-                    thumbnailCache.TryRemove(sessionId, out _);
-                    altitudeChartCache.TryRemove(sessionId, out _);
-                    DeleteCachedChartJson(sessionId);
-                    livestackCache.TryRemove(sessionId, out _);
+                    InvalidateSessionCaches(sessionId);
                     log?.Info($"Regenerated report for {sessionId}");
                     _external.Info($"NightSummary: Dashboard regenerated report for {sessionId}");
                     await WriteJson(res, 200, new { status = "ok", sessionId });
@@ -3968,10 +3982,7 @@ namespace NINA.Plugin.NightSummary.Server {
                                 }
 
                                 await SaveSessionSettings(sessions[i].SessionId, s);
-                                thumbnailCache.TryRemove(sessions[i].SessionId, out _);
-                                altitudeChartCache.TryRemove(sessions[i].SessionId, out _);
-                                DeleteCachedChartJson(sessions[i].SessionId);
-                                livestackCache.TryRemove(sessions[i].SessionId, out _);
+                                InvalidateSessionCaches(sessions[i].SessionId);
                                 regenAllGenerated++;
                                 log?.Debug($"Bulk regen {regenAllCurrent}/{sessions.Count}: {sessions[i].SessionId} OK");
 
