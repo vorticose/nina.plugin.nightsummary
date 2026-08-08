@@ -21,6 +21,8 @@
 ### Bug Fixes
 
 - Fixed Overhead Analysis going blank on infinite-loop sequences after NINA's log file rotates.
+- Fixed a project sometimes showing no thumbnail in the Projects view even though its session report had one — happened when a sky-survey image had to fall back to a live remote link instead of an embedded image.
+- Settings are now saved atomically with a backup copy, so a crash or force-kill mid-save can no longer wipe your toggles and Discord webhook back to defaults; a corrupted settings file is automatically recovered from the backup on next load.
 
 
 ## v3.2.0

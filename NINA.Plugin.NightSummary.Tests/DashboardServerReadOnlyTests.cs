@@ -282,6 +282,47 @@ namespace NINA.Plugin.NightSummary.Tests {
             } finally { await srv.StopAsync(); }
         }
 
+        // Regression: FetchThumbnailAsync falls back to a plain https:// <img src>
+        // when both sky-survey APIs are unreachable at report-generation time (the
+        // report still renders fine via a live browser fetch), but the Projects view
+        // pulled its thumbnail from this endpoint's extraction regex, which used to
+        // only match `src='data:image/...'` — so brand-new sessions hit during an
+        // API outage showed a thumbnail in the report but a placeholder in Projects
+        // view. (Reported on Discord 2026-08-06/07.)
+        [Fact]
+        public async Task GetSessionThumbnails_MatchesHttpsFallbackSrc_NotOnlyDataUri() {
+            int port = GetFreePort();
+            var paths = new StubPaths();
+            Directory.CreateDirectory(paths.ReportsDir);
+            var reportHtml = "<div class='target-section'>" +
+                              "<h3>NGC 7000</h3>" +
+                              "<div class='ts-thumb-wrap'>" +
+                              "  <img src='https://alasky.cds.unistra.fr/hips-image-services/hips2fits?foo=bar&format=jpg' alt='NGC 7000' />" +
+                              "</div>" +
+                              "</div>";
+            File.WriteAllText(Path.Combine(paths.ReportsDir, "sess-1.html"), reportHtml);
+
+            var srv = new DashboardServer(
+                data:        new StubDataSource(),
+                settings:    new StubSettings(),
+                webAssets:   new StubWebAssets(),
+                externalLog: new StubLogger(),
+                paths:       paths,
+                regen:       null,
+                readOnly:    false);
+            await srv.StartAsync(port, "localhost");
+            try {
+                using var client = NewClient(port);
+                var json = await client.GetStringAsync("/api/sessions/sess-1/thumbnails");
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                var arr = doc.RootElement;
+                Assert.Equal(1, arr.GetArrayLength());
+                var entry = arr[0];
+                Assert.Equal("NGC 7000", entry.GetProperty("target").GetString());
+                Assert.StartsWith("https://", entry.GetProperty("dataUri").GetString());
+            } finally { await srv.StopAsync(); }
+        }
+
         [Fact]
         public async Task Normal_PostRegenerateAll_NotForbidden() {
             // In normal mode the route still exists; we just verify the short-circuit

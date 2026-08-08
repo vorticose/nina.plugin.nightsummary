@@ -24,6 +24,8 @@ namespace NINA.Plugin.NightSummary.Data {
         /// <summary>Production singleton — uses the stable NightSummary data folder.</summary>
         public static SettingsManager Instance => _instance.Value;
 
+        private const string BackupSuffix = ".bak";
+
         private readonly string _path;
         private readonly bool _attemptMigration;
         private NightSummarySettings _settings;
@@ -47,20 +49,25 @@ namespace NINA.Plugin.NightSummary.Data {
 
         public NightSummarySettings Load() {
             if (File.Exists(_path)) {
-                try {
-                    var json   = File.ReadAllText(_path);
-                    var loaded = JsonSerializer.Deserialize<NightSummarySettings>(json);
-                    if (loaded != null) {
-                        // Apply defaults for new settings not present in the saved JSON.
-                        // System.Text.Json leaves missing bool properties as false, not the
-                        // class default. Check for fields added after initial release.
-                        ApplyNewFieldDefaults(loaded, json);
-                        _settings = loaded;
-                        return _settings;
-                    }
-                } catch (Exception ex) {
-                    Logger.Warning($"NightSummary: Could not read settings.json ({ex.Message}) — using defaults");
+                var fromPrimary = TryReadSettings(_path);
+                if (fromPrimary != null) {
+                    _settings = fromPrimary;
+                    return _settings;
                 }
+
+                // Primary is corrupt or unreadable (e.g. a torn write from a crash or
+                // force-kill). Recover from the last-good backup instead of silently
+                // wiping the user's toggles/webhook back to defaults.
+                var backupPath  = _path + BackupSuffix;
+                var fromBackup  = TryReadSettings(backupPath);
+                if (fromBackup != null) {
+                    Logger.Warning("NightSummary: settings.json was corrupt — recovered from settings.json.bak");
+                    try { File.Copy(backupPath, _path, overwrite: true); } catch { /* best-effort restore */ }
+                    _settings = fromBackup;
+                    return _settings;
+                }
+
+                Logger.Warning("NightSummary: settings.json and settings.json.bak were both unreadable — using defaults");
             } else if (_attemptMigration) {
                 var migrated = TryMigrateFromLegacy();
                 if (migrated != null) {
@@ -72,6 +79,26 @@ namespace NINA.Plugin.NightSummary.Data {
 
             _settings = new NightSummarySettings();
             return _settings;
+        }
+
+        // Reads + parses a settings file, returning null if it's absent, empty,
+        // or unparseable so the caller can fall through to a backup / defaults.
+        private static NightSummarySettings TryReadSettings(string path) {
+            if (!File.Exists(path)) return null;
+            try {
+                var json   = File.ReadAllText(path);
+                var loaded = JsonSerializer.Deserialize<NightSummarySettings>(json);
+                if (loaded == null) return null;
+
+                // Apply defaults for new settings not present in the saved JSON.
+                // System.Text.Json leaves missing bool properties as false, not the
+                // class default. Check for fields added after initial release.
+                ApplyNewFieldDefaults(loaded, json);
+                return loaded;
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Could not read {Path.GetFileName(path)} ({ex.Message})");
+                return null;
+            }
         }
 
         /// <summary>
@@ -107,7 +134,24 @@ namespace NINA.Plugin.NightSummary.Data {
                 Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
                 var options = new JsonSerializerOptions { WriteIndented = true };
                 var json    = JsonSerializer.Serialize(_settings, options);
-                File.WriteAllText(_path, json);
+                var tmp     = _path + ".tmp";
+                File.WriteAllText(tmp, json);
+
+                // Atomic swap that preserves the previous good copy as settings.json.bak.
+                // File.Replace is atomic on NTFS/APFS/ext4 (a reader sees the old or the
+                // new file, never a torn one) and rotates the existing file into the .bak
+                // slot in the same operation — so a crash mid-save can't cost the user
+                // their toggles/webhook.
+                if (File.Exists(_path)) {
+                    try {
+                        File.Replace(tmp, _path, _path + BackupSuffix);
+                        return;
+                    } catch (IOException)                { /* rename blocked — fall through */ }
+                      catch (UnauthorizedAccessException) { /* fall through */ }
+                      catch (PlatformNotSupportedException) { /* fall through */ }
+                }
+                // First write, or File.Replace unavailable on this FS — plain overwrite.
+                File.Move(tmp, _path, overwrite: true);
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to save settings. {ex.Message}");
             }

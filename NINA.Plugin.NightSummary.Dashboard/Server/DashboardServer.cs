@@ -1201,7 +1201,12 @@ namespace NINA.Plugin.NightSummary.Server {
             // Split HTML on target-section boundaries and extract h3 + thumbnail + FOV overlay from each
             var sections = html.Split(new[] { "<div class='target-section'>" }, StringSplitOptions.None);
             var h3Pattern = new Regex(@"<h3>([^<]+)");
-            var imgPattern = new Regex(@"<div\s+class='ts-thumb-wrap'>\s*<img\s+src='(data:image/[^']+)'");
+            // Normally a base64 data URI, but FetchThumbnailAsync falls back to a plain
+            // https:// URL when both sky-survey APIs are unreachable at report-generation
+            // time (ReportGenerator still renders it fine via a live browser fetch) — match
+            // both so the Projects view doesn't show a placeholder for what the report
+            // already displays.
+            var imgPattern = new Regex(@"<div\s+class='ts-thumb-wrap'>\s*<img\s+src='(data:image/[^']+|https?://[^']+)'");
             var svgPattern = new Regex(@"<div\s+class='ts-thumb-wrap'>[^<]*<img[^>]*/>\s*(<svg[^>]*>.*?</svg>)", RegexOptions.Singleline);
 
             for (int i = 1; i < sections.Length; i++) { // skip first (before any target-section)

@@ -233,6 +233,87 @@ namespace NINA.Plugin.NightSummary.Tests {
             Assert.True(settings.ShowMoonCurve);
         }
 
+        // ── Corruption recovery (torn write / crash mid-save) ───────────────────
+
+        [Fact]
+        public void Save_WritesAtomically_ViaTempFileAndReplace() {
+            var mgr = Make();
+            mgr.Load();
+            mgr.Save();
+
+            // No leftover .tmp file after a successful save.
+            Assert.False(File.Exists(_path + ".tmp"));
+        }
+
+        [Fact]
+        public void Save_CreatesBackup_OnSecondSave() {
+            var mgr = Make();
+            mgr.Load();
+            mgr.Current.DiscordWebhookUrl = "https://discord.com/api/webhooks/1/one";
+            mgr.Save();
+
+            mgr.Current.DiscordWebhookUrl = "https://discord.com/api/webhooks/2/two";
+            mgr.Save();
+
+            var backupPath = _path + ".bak";
+            try {
+                Assert.True(File.Exists(backupPath));
+                var backupSettings = JsonSerializer.Deserialize<NightSummarySettings>(File.ReadAllText(backupPath));
+                Assert.Equal("https://discord.com/api/webhooks/1/one", backupSettings.DiscordWebhookUrl);
+
+                var current = Make().Load();
+                Assert.Equal("https://discord.com/api/webhooks/2/two", current.DiscordWebhookUrl);
+            } finally {
+                if (File.Exists(backupPath)) File.Delete(backupPath);
+            }
+        }
+
+        [Fact]
+        public void Load_RecoversFromBackup_WhenPrimaryIsCorrupt() {
+            var mgr = Make();
+            mgr.Load();
+            mgr.Current.DiscordEnabled    = true;
+            mgr.Current.DiscordWebhookUrl = "https://discord.com/api/webhooks/9/good";
+            mgr.Save(); // no .bak yet (first write)
+
+            mgr.Current.DiscordWebhookUrl = "https://discord.com/api/webhooks/9/updated";
+            mgr.Save(); // now .bak holds the "good" version above
+
+            var backupPath = _path + ".bak";
+            try {
+                // Simulate a torn write: primary truncated mid-write, backup intact.
+                File.WriteAllText(_path, "{ \"Discor"); // truncated JSON
+
+                var recovered = Make().Load();
+
+                Assert.True(recovered.DiscordEnabled);
+                Assert.Equal("https://discord.com/api/webhooks/9/good", recovered.DiscordWebhookUrl);
+
+                // Recovery also repairs the primary file in place.
+                var repaired = JsonSerializer.Deserialize<NightSummarySettings>(File.ReadAllText(_path));
+                Assert.Equal("https://discord.com/api/webhooks/9/good", repaired.DiscordWebhookUrl);
+            } finally {
+                if (File.Exists(backupPath)) File.Delete(backupPath);
+            }
+        }
+
+        [Fact]
+        public void Load_ReturnsDefaults_WhenPrimaryAndBackupAreBothCorrupt() {
+            var backupPath = _path + ".bak";
+            File.WriteAllText(_path, "{ not valid");
+            File.WriteAllText(backupPath, "{ also not valid");
+
+            try {
+                var settings = Make().Load();
+
+                Assert.NotNull(settings);
+                Assert.False(settings.DiscordEnabled);
+                Assert.Equal("", settings.DiscordWebhookUrl);
+            } finally {
+                if (File.Exists(backupPath)) File.Delete(backupPath);
+            }
+        }
+
         // ── Current property ──────────────────────────────────────────────────
 
         [Fact]
