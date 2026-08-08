@@ -17,17 +17,20 @@ public sealed class RigBackend {
     public IDashboardPaths      Paths   { get; }
     public IReportRegenerator?  Regen   { get; }   // null when regeneration disabled
     public ICompanionController? Companion { get; } // null in primary mode
+    public ISessionMaintenance? Maintenance { get; } // null in companion mode (TNS resend/delete unavailable)
 
     public RigBackend(string id, string name, bool enabled,
                       IDashboardDataSource data, IDashboardPaths paths,
-                      IReportRegenerator? regen, ICompanionController? companion) {
-        Id        = id;
-        Name      = name;
-        Enabled   = enabled;
-        Data      = data  ?? throw new ArgumentNullException(nameof(data));
-        Paths     = paths ?? throw new ArgumentNullException(nameof(paths));
-        Regen     = regen;
-        Companion = companion;
+                      IReportRegenerator? regen, ICompanionController? companion,
+                      ISessionMaintenance? maintenance = null) {
+        Id          = id;
+        Name        = name;
+        Enabled     = enabled;
+        Data        = data  ?? throw new ArgumentNullException(nameof(data));
+        Paths       = paths ?? throw new ArgumentNullException(nameof(paths));
+        Regen       = regen;
+        Companion   = companion;
+        Maintenance = maintenance;
     }
 }
 

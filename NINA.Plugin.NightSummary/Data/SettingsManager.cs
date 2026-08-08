@@ -1,8 +1,10 @@
 using NINA.Core.Utility;
 using NINA.Plugin.NightSummary.MyPluginProperties;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace NINA.Plugin.NightSummary.Data {
 
@@ -30,6 +32,23 @@ namespace NINA.Plugin.NightSummary.Data {
         private readonly bool _attemptMigration;
         private NightSummarySettings _settings;
 
+        // Secret string fields encrypted at rest via DPAPI. The in-memory settings
+        // object always holds plaintext (senders use it directly); only the JSON on
+        // disk is protected. To add a secret, add its name + accessors here.
+        private static readonly (string Name, Func<NightSummarySettings, string> Get, Action<NightSummarySettings, string> Set)[] SecretFields = {
+            ("SmtpPassword",      s => s.SmtpPassword,      (s, v) => s.SmtpPassword = v),
+            ("PushoverAppToken",  s => s.PushoverAppToken,  (s, v) => s.PushoverAppToken = v),
+            ("PushoverUserKey",   s => s.PushoverUserKey,   (s, v) => s.PushoverUserKey = v),
+            ("DiscordWebhookUrl", s => s.DiscordWebhookUrl, (s, v) => s.DiscordWebhookUrl = v),
+            ("DashboardApiKey",   s => s.DashboardApiKey,   (s, v) => s.DashboardApiKey = v),
+        };
+
+        // Protected blobs that failed to decrypt on load (settings.json moved to a
+        // different Windows account/PC). We blank the in-memory value so it's treated
+        // as unset, but keep the original blob here so Save() writes it back untouched
+        // instead of destroying a credential that is still valid on its home machine.
+        private readonly Dictionary<string, string> _undecryptable = new();
+
         /// <param name="path">Path to the settings JSON file.</param>
         /// <param name="attemptMigration">
         /// When true and no JSON file exists, tries to copy values from the legacy
@@ -51,7 +70,11 @@ namespace NINA.Plugin.NightSummary.Data {
             if (File.Exists(_path)) {
                 var fromPrimary = TryReadSettings(_path);
                 if (fromPrimary != null) {
+                    var hadLegacyPlaintext = DecryptSecrets(fromPrimary);
                     _settings = fromPrimary;
+                    // Legacy plaintext secrets (pre-encryption settings.json) are now
+                    // in memory as plaintext; persist them back in encrypted form.
+                    if (hadLegacyPlaintext) Save();
                     return _settings;
                 }
 
@@ -63,7 +86,9 @@ namespace NINA.Plugin.NightSummary.Data {
                 if (fromBackup != null) {
                     Logger.Warning("NightSummary: settings.json was corrupt — recovered from settings.json.bak");
                     try { File.Copy(backupPath, _path, overwrite: true); } catch { /* best-effort restore */ }
+                    var hadLegacyPlaintext = DecryptSecrets(fromBackup);
                     _settings = fromBackup;
+                    if (hadLegacyPlaintext) Save();
                     return _settings;
                 }
 
@@ -133,8 +158,28 @@ namespace NINA.Plugin.NightSummary.Data {
             try {
                 Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
                 var options = new JsonSerializerOptions { WriteIndented = true };
-                var json    = JsonSerializer.Serialize(_settings, options);
-                var tmp     = _path + ".tmp";
+
+                // Serialize to a mutable node, then replace secret fields with their
+                // encrypted form — this keeps the in-memory _settings plaintext (so
+                // senders keep working) while the file gets only ciphertext.
+                var node = JsonSerializer.SerializeToNode(_settings, options) as JsonObject;
+                if (node != null) {
+                    foreach (var f in SecretFields) {
+                        var plain = f.Get(_settings) ?? "";
+                        string toWrite;
+                        if (plain.Length > 0) {
+                            toWrite = SecretProtector.Protect(plain);
+                            _undecryptable.Remove(f.Name); // new/decrypted value supersedes any preserved blob
+                        } else if (_undecryptable.TryGetValue(f.Name, out var preserved)) {
+                            toWrite = preserved;           // couldn't decrypt on load — don't clobber it
+                        } else {
+                            toWrite = "";
+                        }
+                        node[f.Name] = toWrite;
+                    }
+                }
+                var json = node?.ToJsonString(options) ?? JsonSerializer.Serialize(_settings, options);
+                var tmp  = _path + ".tmp";
                 File.WriteAllText(tmp, json);
 
                 // Atomic swap that preserves the previous good copy as settings.json.bak.
@@ -155,6 +200,32 @@ namespace NINA.Plugin.NightSummary.Data {
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to save settings. {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Decrypts secret fields in place after load. Returns true if any secret was
+        /// found as legacy plaintext (no encryption marker), signalling the caller to
+        /// re-save so those values get encrypted on disk.
+        /// </summary>
+        private bool DecryptSecrets(NightSummarySettings settings) {
+            _undecryptable.Clear();
+            var hadLegacyPlaintext = false;
+            foreach (var f in SecretFields) {
+                var stored = f.Get(settings) ?? "";
+                if (stored.Length == 0) continue;
+                if (SecretProtector.IsProtected(stored)) {
+                    var plain = SecretProtector.Unprotect(stored);
+                    if (plain == null) {
+                        _undecryptable[f.Name] = stored; // preserve blob, treat as unset
+                        f.Set(settings, "");
+                    } else {
+                        f.Set(settings, plain);
+                    }
+                } else {
+                    hadLegacyPlaintext = true; // plaintext already in the property; encrypt on next Save
+                }
+            }
+            return hadLegacyPlaintext;
         }
 
         private NightSummarySettings TryMigrateFromLegacy() {
