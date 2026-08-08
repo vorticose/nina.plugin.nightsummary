@@ -49,6 +49,7 @@ namespace NINA.Plugin.NightSummary.Server {
         private IDashboardPaths _paths => CurrentRig.Paths;       // kept so ThumbsRoot stays settings-aware
         private IReportRegenerator _regen => CurrentRig.Regen;     // null when regeneration disabled
         private ICompanionController _companion => CurrentRig.Companion;  // null in primary mode
+        private ISessionMaintenance _maintenance => CurrentRig.Maintenance; // null in companion mode
         private string dbPath => _paths.DatabasePath;
         private string reportsDir => _paths.ReportsDir;
         // Read-only mode: when true, this DashboardServer instance refuses every non-GET
@@ -186,11 +187,12 @@ namespace NINA.Plugin.NightSummary.Server {
             IReportRegenerator regen,
             ICompanionController companion = null,
             ICompanionTokenStore tokenStore = null,
-            bool readOnly = false)
+            bool readOnly = false,
+            ISessionMaintenance maintenance = null)
             : this(new SingleRigRegistry(new RigBackend("primary", "Primary", true,
                        data  ?? throw new ArgumentNullException(nameof(data)),
                        paths ?? throw new ArgumentNullException(nameof(paths)),
-                       regen, companion)),
+                       regen, companion, maintenance)),
                    settings, webAssets, externalLog, tokenStore, readOnly) { }
 
         // Multi-rig ctor — companion mode passes a registry with one backend per
@@ -557,8 +559,13 @@ namespace NINA.Plugin.NightSummary.Server {
             // traversal for every current and future /api/sessions/<id>/... route
             // without relying on each handler to re-validate. ("/api/sessions" with no
             // id is the list endpoint and is intentionally exempt.)
-            if (path.StartsWith("/api/sessions/", StringComparison.Ordinal)) {
-                var seg = path.Substring("/api/sessions/".Length);
+            var sessionScopedPrefix =
+                path.StartsWith("/api/sessions/", StringComparison.Ordinal) ? "/api/sessions/"
+                : path.StartsWith("/api/nightsummary/sessions/", StringComparison.Ordinal) ? "/api/nightsummary/sessions/"
+                : path.StartsWith("/api/nightsummary/report/", StringComparison.Ordinal) ? "/api/nightsummary/report/"
+                : null;
+            if (sessionScopedPrefix != null) {
+                var seg = path.Substring(sessionScopedPrefix.Length);
                 var slash = seg.IndexOf('/');
                 var idSeg = Uri.UnescapeDataString(slash >= 0 ? seg.Substring(0, slash) : seg);
                 if (!IsSafeSessionId(idSeg)) {
@@ -766,6 +773,8 @@ namespace NINA.Plugin.NightSummary.Server {
                             await WriteHtml(res, 200, GetDashboardHtml());
                             done?.Invoke(200, "dashboard html");
                         }
+                    } else if (path.StartsWith("/api/nightsummary/", StringComparison.Ordinal)) {
+                        await HandleTnsGet(req, res, path, done);
                     } else {
                         await WriteJson(res, 404, new { error = "Not found" });
                         done?.Invoke(404, null);
@@ -831,10 +840,18 @@ namespace NINA.Plugin.NightSummary.Server {
                         var pguid = Uri.UnescapeDataString(path.Substring("/api/stats/projects/".Length,
                             path.Length - "/api/stats/projects/".Length - "/reset".Length));
                         await HandleProjectReset(req, res, pguid, done);
+                    } else if (path.StartsWith("/api/nightsummary/", StringComparison.Ordinal)) {
+                        await HandleTnsPost(req, res, path, done);
                     } else {
                         await WriteJson(res, 404, new { error = "Not found" });
                         done?.Invoke(404, null);
                     }
+                } else if (req.HttpMethod == "DELETE"
+                           && path.StartsWith("/api/nightsummary/", StringComparison.Ordinal)) {
+                    // DELETE exists only for the TNS namespace; every other verb/path
+                    // combination keeps the historical 405. (Read-only mirrors never
+                    // get here — the non-GET chokepoint above already returned 403.)
+                    await HandleTnsDelete(res, path, done);
                 } else {
                     res.StatusCode = 405;
                     res.Close();
@@ -1201,7 +1218,12 @@ namespace NINA.Plugin.NightSummary.Server {
             // Split HTML on target-section boundaries and extract h3 + thumbnail + FOV overlay from each
             var sections = html.Split(new[] { "<div class='target-section'>" }, StringSplitOptions.None);
             var h3Pattern = new Regex(@"<h3>([^<]+)");
-            var imgPattern = new Regex(@"<div\s+class='ts-thumb-wrap'>\s*<img\s+src='(data:image/[^']+)'");
+            // Normally a base64 data URI, but FetchThumbnailAsync falls back to a plain
+            // https:// URL when both sky-survey APIs are unreachable at report-generation
+            // time (ReportGenerator still renders it fine via a live browser fetch) — match
+            // both so the Projects view doesn't show a placeholder for what the report
+            // already displays.
+            var imgPattern = new Regex(@"<div\s+class='ts-thumb-wrap'>\s*<img\s+src='(data:image/[^']+|https?://[^']+)'");
             var svgPattern = new Regex(@"<div\s+class='ts-thumb-wrap'>[^<]*<img[^>]*/>\s*(<svg[^>]*>.*?</svg>)", RegexOptions.Singleline);
 
             for (int i = 1; i < sections.Length; i++) { // skip first (before any target-section)

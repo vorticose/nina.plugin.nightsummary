@@ -19,6 +19,7 @@
   <ItemGroup>
     <ProjectReference Include="..\NINA.Plugin.NightSummary\NINA.Plugin.NightSummary.csproj" />
     <ProjectReference Include="..\NINA.Plugin.NightSummary.Companion\NINA.Plugin.NightSummary.Companion.csproj" />
+    <ProjectReference Include="..\NINA.Plugin.SessionCapture\NINA.Plugin.SessionCapture.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="TestData\**\*.json" CopyToOutputDirectory="PreserveNewest" />

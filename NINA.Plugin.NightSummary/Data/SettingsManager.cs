@@ -1,8 +1,10 @@
 using NINA.Core.Utility;
 using NINA.Plugin.NightSummary.MyPluginProperties;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace NINA.Plugin.NightSummary.Data {
 
@@ -24,9 +26,28 @@ namespace NINA.Plugin.NightSummary.Data {
         /// <summary>Production singleton — uses the stable NightSummary data folder.</summary>
         public static SettingsManager Instance => _instance.Value;
 
+        private const string BackupSuffix = ".bak";
+
         private readonly string _path;
         private readonly bool _attemptMigration;
         private NightSummarySettings _settings;
+
+        // Secret string fields encrypted at rest via DPAPI. The in-memory settings
+        // object always holds plaintext (senders use it directly); only the JSON on
+        // disk is protected. To add a secret, add its name + accessors here.
+        private static readonly (string Name, Func<NightSummarySettings, string> Get, Action<NightSummarySettings, string> Set)[] SecretFields = {
+            ("SmtpPassword",      s => s.SmtpPassword,      (s, v) => s.SmtpPassword = v),
+            ("PushoverAppToken",  s => s.PushoverAppToken,  (s, v) => s.PushoverAppToken = v),
+            ("PushoverUserKey",   s => s.PushoverUserKey,   (s, v) => s.PushoverUserKey = v),
+            ("DiscordWebhookUrl", s => s.DiscordWebhookUrl, (s, v) => s.DiscordWebhookUrl = v),
+            ("DashboardApiKey",   s => s.DashboardApiKey,   (s, v) => s.DashboardApiKey = v),
+        };
+
+        // Protected blobs that failed to decrypt on load (settings.json moved to a
+        // different Windows account/PC). We blank the in-memory value so it's treated
+        // as unset, but keep the original blob here so Save() writes it back untouched
+        // instead of destroying a credential that is still valid on its home machine.
+        private readonly Dictionary<string, string> _undecryptable = new();
 
         /// <param name="path">Path to the settings JSON file.</param>
         /// <param name="attemptMigration">
@@ -47,20 +68,31 @@ namespace NINA.Plugin.NightSummary.Data {
 
         public NightSummarySettings Load() {
             if (File.Exists(_path)) {
-                try {
-                    var json   = File.ReadAllText(_path);
-                    var loaded = JsonSerializer.Deserialize<NightSummarySettings>(json);
-                    if (loaded != null) {
-                        // Apply defaults for new settings not present in the saved JSON.
-                        // System.Text.Json leaves missing bool properties as false, not the
-                        // class default. Check for fields added after initial release.
-                        ApplyNewFieldDefaults(loaded, json);
-                        _settings = loaded;
-                        return _settings;
-                    }
-                } catch (Exception ex) {
-                    Logger.Warning($"NightSummary: Could not read settings.json ({ex.Message}) — using defaults");
+                var fromPrimary = TryReadSettings(_path);
+                if (fromPrimary != null) {
+                    var hadLegacyPlaintext = DecryptSecrets(fromPrimary);
+                    _settings = fromPrimary;
+                    // Legacy plaintext secrets (pre-encryption settings.json) are now
+                    // in memory as plaintext; persist them back in encrypted form.
+                    if (hadLegacyPlaintext) Save();
+                    return _settings;
                 }
+
+                // Primary is corrupt or unreadable (e.g. a torn write from a crash or
+                // force-kill). Recover from the last-good backup instead of silently
+                // wiping the user's toggles/webhook back to defaults.
+                var backupPath  = _path + BackupSuffix;
+                var fromBackup  = TryReadSettings(backupPath);
+                if (fromBackup != null) {
+                    Logger.Warning("NightSummary: settings.json was corrupt — recovered from settings.json.bak");
+                    try { File.Copy(backupPath, _path, overwrite: true); } catch { /* best-effort restore */ }
+                    var hadLegacyPlaintext = DecryptSecrets(fromBackup);
+                    _settings = fromBackup;
+                    if (hadLegacyPlaintext) Save();
+                    return _settings;
+                }
+
+                Logger.Warning("NightSummary: settings.json and settings.json.bak were both unreadable — using defaults");
             } else if (_attemptMigration) {
                 var migrated = TryMigrateFromLegacy();
                 if (migrated != null) {
@@ -72,6 +104,26 @@ namespace NINA.Plugin.NightSummary.Data {
 
             _settings = new NightSummarySettings();
             return _settings;
+        }
+
+        // Reads + parses a settings file, returning null if it's absent, empty,
+        // or unparseable so the caller can fall through to a backup / defaults.
+        private static NightSummarySettings TryReadSettings(string path) {
+            if (!File.Exists(path)) return null;
+            try {
+                var json   = File.ReadAllText(path);
+                var loaded = JsonSerializer.Deserialize<NightSummarySettings>(json);
+                if (loaded == null) return null;
+
+                // Apply defaults for new settings not present in the saved JSON.
+                // System.Text.Json leaves missing bool properties as false, not the
+                // class default. Check for fields added after initial release.
+                ApplyNewFieldDefaults(loaded, json);
+                return loaded;
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Could not read {Path.GetFileName(path)} ({ex.Message})");
+                return null;
+            }
         }
 
         /// <summary>
@@ -106,11 +158,74 @@ namespace NINA.Plugin.NightSummary.Data {
             try {
                 Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
                 var options = new JsonSerializerOptions { WriteIndented = true };
-                var json    = JsonSerializer.Serialize(_settings, options);
-                File.WriteAllText(_path, json);
+
+                // Serialize to a mutable node, then replace secret fields with their
+                // encrypted form — this keeps the in-memory _settings plaintext (so
+                // senders keep working) while the file gets only ciphertext.
+                var node = JsonSerializer.SerializeToNode(_settings, options) as JsonObject;
+                if (node != null) {
+                    foreach (var f in SecretFields) {
+                        var plain = f.Get(_settings) ?? "";
+                        string toWrite;
+                        if (plain.Length > 0) {
+                            toWrite = SecretProtector.Protect(plain);
+                            _undecryptable.Remove(f.Name); // new/decrypted value supersedes any preserved blob
+                        } else if (_undecryptable.TryGetValue(f.Name, out var preserved)) {
+                            toWrite = preserved;           // couldn't decrypt on load — don't clobber it
+                        } else {
+                            toWrite = "";
+                        }
+                        node[f.Name] = toWrite;
+                    }
+                }
+                var json = node?.ToJsonString(options) ?? JsonSerializer.Serialize(_settings, options);
+                var tmp  = _path + ".tmp";
+                File.WriteAllText(tmp, json);
+
+                // Atomic swap that preserves the previous good copy as settings.json.bak.
+                // File.Replace is atomic on NTFS/APFS/ext4 (a reader sees the old or the
+                // new file, never a torn one) and rotates the existing file into the .bak
+                // slot in the same operation — so a crash mid-save can't cost the user
+                // their toggles/webhook.
+                if (File.Exists(_path)) {
+                    try {
+                        File.Replace(tmp, _path, _path + BackupSuffix);
+                        return;
+                    } catch (IOException)                { /* rename blocked — fall through */ }
+                      catch (UnauthorizedAccessException) { /* fall through */ }
+                      catch (PlatformNotSupportedException) { /* fall through */ }
+                }
+                // First write, or File.Replace unavailable on this FS — plain overwrite.
+                File.Move(tmp, _path, overwrite: true);
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to save settings. {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Decrypts secret fields in place after load. Returns true if any secret was
+        /// found as legacy plaintext (no encryption marker), signalling the caller to
+        /// re-save so those values get encrypted on disk.
+        /// </summary>
+        private bool DecryptSecrets(NightSummarySettings settings) {
+            _undecryptable.Clear();
+            var hadLegacyPlaintext = false;
+            foreach (var f in SecretFields) {
+                var stored = f.Get(settings) ?? "";
+                if (stored.Length == 0) continue;
+                if (SecretProtector.IsProtected(stored)) {
+                    var plain = SecretProtector.Unprotect(stored);
+                    if (plain == null) {
+                        _undecryptable[f.Name] = stored; // preserve blob, treat as unset
+                        f.Set(settings, "");
+                    } else {
+                        f.Set(settings, plain);
+                    }
+                } else {
+                    hadLegacyPlaintext = true; // plaintext already in the property; encrypt on next Save
+                }
+            }
+            return hadLegacyPlaintext;
         }
 
         private NightSummarySettings TryMigrateFromLegacy() {

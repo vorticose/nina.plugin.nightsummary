@@ -438,18 +438,34 @@ namespace NINA.Plugin.NightSummary.Reporting {
         private string BuildOverheadBreakdownSection(ReportData data, string detailsOpen = "") {
             var timingEvents = data.TimingEvents;
             if (timingEvents == null || !timingEvents.Any()) {
-                // Images were captured but the log parse produced no timing events —
-                // almost always NINA's log level set below Info, which suppresses the
-                // exposure lines the parser reads (issue #27). Explain the omission
-                // instead of silently dropping the section. A genuinely empty session
+                // Images were captured but no timing events are available. Explain why
+                // instead of silently dropping the section — a genuinely empty session
                 // (no images either) still renders nothing.
                 if (data.Images != null && data.Images.Any()) {
+                    string message;
+                    if (data.TimingEventsUnavailableReason == LogParseOutcome.NoLogFileFound) {
+                        // No NINA log file could be located for this session, and nothing was
+                        // ever saved to the DB (a session that parsed successfully at least once
+                        // stays available from cached data even after the log itself is gone —
+                        // see SessionService's DB-fallback path).
+                        var sessionAgeDays = (DateTime.Now - data.Session.SessionStart).TotalDays;
+                        message = sessionAgeDays > 90
+                            ? "log file not found, and none was saved when this report first ran. " +
+                              "This session predates NINA's 90-day log retention — the original log is likely gone, and this data can't be recovered."
+                            : "log file not found, and none was saved when this report first ran. " +
+                              "Check that NINA's Logs folder hasn't been moved or cleared.";
+                    } else {
+                        // A log file was found but had nothing matching — almost always NINA's
+                        // log level set below Info, which suppresses the lines the parser reads
+                        // (issue #27).
+                        message = "no timing events were found in the NINA log. " +
+                                  "This usually means NINA's log level is below Info. " +
+                                  "Set NINA to Options &gt; General &gt; Log Level &gt; Info to enable this section.";
+                    }
                     return $"<details class='iq-section'{detailsOpen}>" +
                            "<summary>Yield and Imaging Overhead Analysis</summary>" +
                            "<div style='background-color:var(--warn-bg); border:1px solid var(--warn-border); border-radius:8px; padding:12px 16px; margin:16px 0; color:var(--warn-text);'>" +
-                           "<strong>&#9888; Overhead analysis unavailable:</strong> no timing events were found in the NINA log. " +
-                           "This usually means NINA's log level is below Info. " +
-                           "Set NINA to Options &gt; General &gt; Log Level &gt; Info to enable this section." +
+                           $"<strong>&#9888; Overhead analysis unavailable:</strong> {message}" +
                            "</div></details>";
                 }
                 return "";

@@ -2,8 +2,8 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 
 [assembly: Guid("B7A3F1D2-8E4C-4A9B-BC12-D3E5F6A78901")]
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyVersion("1.0.1.0")]
+[assembly: AssemblyFileVersion("1.0.1.0")]
 [assembly: AssemblyTitle("Session Capture")]
 [assembly: AssemblyDescription("Records NINA mediator events during imaging sessions for replay testing. Captures image saves, autofocus runs, safety monitor changes, and meridian flips to a JSON file.")]
 [assembly: AssemblyCompany("Evan Pegors")]

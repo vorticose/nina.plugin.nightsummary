@@ -5,25 +5,33 @@
 
 ### New Features
 
-- **Multi-rig companion** — one companion process can now sync and serve **multiple** NINA rigs from a single dashboard. A rig switcher appears in the companion banner once a second rig is paired (single-rig users see no change). Each rig keeps its own complete data dir under `rigs/<id>/`, syncs on its own schedule, and is managed from a new **Rigs** section in companion Settings: add another rig (reuses the pairing wizard), enable/disable, or remove (optionally deleting its synced data). Session-end pushes from a primary are routed to the matching rig by source address. Existing single-rig companions migrate their flat data dir into `rigs/<id>/` automatically on first launch.
-- **Companion in-app updates** — the companion now checks GitHub for a newer release and shows an update banner in its dashboard when one is available. **Update now** downloads and applies the new version in place, then restarts and reloads the dashboard automatically — no manual reinstall. Works for the Windows `.exe`, macOS `.app` (curl-installer based, signature preserved), and the user-scoped Linux tarball install; AppImage and `.deb` installs show a download link instead (re-run your installer to update). Downloads are SHA-256 verified against the release before anything is replaced. Nothing updates without your click, and **Dismiss** silences a version until the next one ships. Your pairing and synced data are never touched.
+- **Multi-rig companion** — one companion can now sync and serve multiple NINA rigs from a single dashboard, with a rig switcher once a second rig is paired. Existing single-rig setups migrate automatically.
+- **Companion in-app updates** — the companion checks for new releases and updates itself in place with one click, checksum-verified. Never touches your pairing or synced data.
+- **Touch 'N' Stars integration** — added backend support (a stable API and local endpoints) for the Touch 'N' Stars app to show real Night Summary reports as a delivery channel. Integration will go live with a future Touch 'N' Stars release.
 
 <!-- TODO docs: add a "Multiple rigs" section to docs/companion.md (on feature/docs-site)
      — add/switch/remove flow, the rigs/<id>/ data layout, and the v1->v2 migration note.
      Update COMPANION_INSTALL.md if it assumes a single primary. -->
 <!-- TODO docs: add an "Updating the companion" section to docs/companion.md — the in-app
      update banner, Update now vs Dismiss, and the AppImage/.deb download-link fallback. -->
+<!-- TODO docs: once the TNS side ships, add a short "Touch 'N' Stars" page or section
+     (enable Local Server, the TNS plugin toggle, what the tab shows). -->
+
+### Security
+
+- Secrets in `settings.json` (SMTP password, Discord webhook, Pushover tokens) are now encrypted at rest via Windows DPAPI. Upgrades automatically on first launch.
 
 ### Improvements
 
-- **Session History totals** — the per-target Session History section now opens with a totals band: the **lifetime total integration** for the target (including the current session, so it lines up with Target Scheduler's accepted totals) with the current session's share called out alongside, the integration-weighted **average** HFR / FWHM / guiding RMS, and a per-filter integration breakdown (your raw filter names) shown as chips that add up to the total. No more adding the rows up by hand. Rides under the existing Session History toggle.
-- **Overhead section explains itself when the log has no timing data** (#27): if images were captured but no timing events could be parsed from the NINA log (usually because NINA's log level is set below Info), the Yield and Imaging Overhead Analysis section now shows a notice telling you to set NINA to Options > General > Log Level > Info, instead of silently disappearing.
-
-<!-- TODO docs: note the Session History totals band on the report/metrics docs page. -->
+- Overhead notice (#27) now also covers a missing NINA log file, not just a log level set below Info.
+- Deleting a session now also removes its report, livestack masters, and thumbnails instead of leaving them orphaned.
 
 ### Bug Fixes
 
-- Target Scheduler: a target whose TS name had a stray leading or trailing space no longer shows a false "target not found in Target Scheduler" warning (and its progress bars now render). Name matching is now whitespace-tolerant on both the database filter and the report match.
+- Fixed Overhead Analysis going blank on infinite-loop sequences after NINA's log file rotates.
+- Fixed missing thumbnails in the Projects view for sessions whose report used a fallback image source.
+- Fixed a rare crash-timing bug that could reset all settings, including your Discord webhook, back to defaults.
+- Companion config problems are now logged instead of failing silently.
 
 
 ## v3.2.0

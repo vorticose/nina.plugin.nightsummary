@@ -11,7 +11,7 @@
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
     <!-- Major.Minor.Patch set here; build number auto-computed from git commit count -->
-    <VersionPrefix>3.2.1</VersionPrefix>
+    <VersionPrefix>3.3.0</VersionPrefix>
   </PropertyGroup>
 
   <!-- Auto-compute build number from git commit count and generate version file -->

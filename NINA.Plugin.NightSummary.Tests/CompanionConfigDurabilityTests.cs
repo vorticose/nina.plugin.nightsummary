@@ -90,6 +90,28 @@ public class CompanionConfigDurabilityTests {
         } finally { Cleanup(path); }
     }
 
+    // Regression: corruption/recovery used to be entirely silent (TryReadConfig
+    // swallowed every exception with no logging), so a wiped pairing/rig config
+    // left no trace to diagnose from. LogWarn can't use the real CompanionLogger
+    // (its directory comes from the config that may have just failed to load), so
+    // it falls back to the same default data dir a companion without a DataDir
+    // override actually uses.
+    [Fact]
+    public void Load_LogsWarning_WhenPrimaryAndBackupBothCorrupt() {
+        var path = TempPath();
+        try {
+            File.WriteAllText(path, "{ not valid");
+            File.WriteAllText(path + ".bak", "{ also not valid");
+
+            CompanionConfig.Load(path);
+
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var logFile = Path.Combine(appData, "NightSummaryCompanion", "logs", $"companion-{DateTime.Now:yyyy-MM-dd}.log");
+            Assert.True(File.Exists(logFile), $"expected a diagnostic log at {logFile}");
+            Assert.Contains("both unreadable", File.ReadAllText(logFile));
+        } finally { Cleanup(path); }
+    }
+
     [Fact]
     public void Load_MaterializesDefault_WhenNothingPresent() {
         var path = TempPath();
