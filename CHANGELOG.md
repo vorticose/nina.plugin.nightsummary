@@ -1,6 +1,31 @@
 # Night Summary — Changelog
 
 
+## v3.3.0
+
+### New Features
+
+- **Multi-rig companion** — one companion can now sync and serve multiple NINA rigs from a single dashboard, with a rig switcher once a second rig is paired. Existing single-rig setups migrate automatically.
+- **Companion in-app updates** — the companion checks for new releases and updates itself in place with one click, checksum-verified. Never touches your pairing or synced data.
+- **Touch 'N' Stars integration** — added backend support (a stable API and local endpoints) for the Touch 'N' Stars app to show real Night Summary reports as a delivery channel. Integration will go live with a future Touch 'N' Stars release.
+
+### Security
+
+- Secrets in `settings.json` (SMTP password, Discord webhook, Pushover tokens) are now encrypted at rest via Windows DPAPI. Upgrades automatically on first launch.
+
+### Improvements
+
+- Overhead notice (#27) now also covers a missing NINA log file, not just a log level set below Info.
+- Deleting a session now also removes its report, livestack masters, and thumbnails instead of leaving them orphaned.
+
+### Bug Fixes
+
+- Fixed Overhead Analysis going blank on infinite-loop sequences after NINA's log file rotates.
+- Fixed missing thumbnails in the Projects view for sessions whose report used a fallback image source.
+- Fixed a rare crash-timing bug that could reset all settings, including your Discord webhook, back to defaults.
+- Companion config problems are now logged instead of failing silently.
+
+
 ## v3.2.1
 
 ### Improvements
