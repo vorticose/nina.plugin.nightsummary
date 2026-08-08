@@ -17,6 +17,7 @@
 ### Improvements
 
 - **Overhead notice now also covers a missing log file** (#27): the existing "log level below Info" notice in the Yield and Imaging Overhead Analysis section now also fires when no matching NINA log file could be found at all, instead of misreporting it as a log-level issue — with a note about NINA's 90-day log retention when the session is old enough for that to plausibly be the cause.
+- Companion config load/recovery problems (a corrupt or unreadable `companion.json`) are now logged instead of failing silently, matching the primary plugin's settings diagnostics.
 
 ### Bug Fixes
 

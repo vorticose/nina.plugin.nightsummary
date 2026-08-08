@@ -137,6 +137,11 @@ public sealed class CompanionConfig {
     };
 
     public static CompanionConfig Load(string path) {
+        // Tracked separately from TryReadConfig's null result so we only log a
+        // warning when something was actually wrong, not on an ordinary first run
+        // where neither file exists yet.
+        bool primaryExisted = File.Exists(path);
+
         // 1. Primary file, if present and usable.
         var primary = TryReadConfig(path);
         if (primary != null) { primary.MigrateFromV1(); return primary; }
@@ -148,9 +153,16 @@ public sealed class CompanionConfig {
         var bak = path + ".bak";
         var backup = TryReadConfig(bak);
         if (backup != null) {
-            try { File.Copy(bak, path, overwrite: true); } catch { /* best-effort restore */ }
+            if (primaryExisted) {
+                LogWarn("Recovered from companion.json.bak after the primary config was unreadable.");
+                try { File.Copy(bak, path, overwrite: true); } catch { /* best-effort restore */ }
+            }
             backup.MigrateFromV1();
             return backup;
+        }
+
+        if (primaryExisted) {
+            LogWarn("companion.json and companion.json.bak were both unreadable — starting from fresh defaults (pairing/rig config lost).");
         }
 
         // 3. Nothing usable → materialize a fresh default so the user has
@@ -158,6 +170,24 @@ public sealed class CompanionConfig {
         var def = new CompanionConfig { ConfigVersion = 2 };
         Save(def, path);
         return def;
+    }
+
+    // Best-effort diagnostic log for config load/recovery problems, written
+    // before the real CompanionLogger exists (its directory comes from
+    // ResolvedDataDir(), which needs this config to have already loaded). Falls
+    // back to the same default data dir a companion without a DataDir override
+    // actually uses, so in the common case this lands in the exact log file
+    // CompanionLogger goes on to write the rest of the session into.
+    private static void LogWarn(string message) {
+        var line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] WARN  NightSummary.Companion: {message}";
+        try { Console.WriteLine(line); } catch { /* no console attached */ }
+        try {
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (string.IsNullOrEmpty(appData)) appData = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            var logsDir = Path.Combine(appData, "NightSummaryCompanion", "logs");
+            Directory.CreateDirectory(logsDir);
+            File.AppendAllText(Path.Combine(logsDir, $"companion-{DateTime.Now:yyyy-MM-dd}.log"), line + Environment.NewLine);
+        } catch { /* best-effort only */ }
     }
 
     // Fold a v1 file (top-level nina/sync, no rigs) into rigs[0]. Idempotent:
@@ -210,9 +240,13 @@ public sealed class CompanionConfig {
         if (!File.Exists(path)) return null;
         try {
             var json = File.ReadAllText(path);
-            if (string.IsNullOrWhiteSpace(json)) return null;
+            if (string.IsNullOrWhiteSpace(json)) {
+                LogWarn($"{Path.GetFileName(path)} is empty.");
+                return null;
+            }
             return JsonSerializer.Deserialize<CompanionConfig>(json, JsonOpts);
-        } catch {
+        } catch (Exception ex) {
+            LogWarn($"Could not read {Path.GetFileName(path)}: {ex.Message}");
             return null;
         }
     }
