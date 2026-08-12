@@ -7,6 +7,7 @@
 ### Bug Fixes
 
 - Fixed Projects-view thumbnails getting permanently stuck on a placeholder if checked in the window right after a session ends, before its report finished generating. Resend now also refreshes the dashboard's cached thumbnail/altitude/live-stack data for that session, same as Regenerate already did.
+- Fixed sessions that crashed before the End Session instruction ran staying permanently hidden from the dashboard's session list, even after a report was generated for them via Generate All Reports / Regenerate. Those sessions are now finalized with an end time derived from their last recorded image or event, so they show up like any other completed session instead of rendering as perpetually "in progress." They're marked "Auto-recovered" on their dashboard card, and their report notes that the end time and duration are estimated since the End instruction never ran.
 
 
 ## v3.2.0

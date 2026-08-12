@@ -27,6 +27,12 @@ namespace NINA.Plugin.NightSummary.Data {
         // Whether the end of session report was successfully sent
         public bool ReportSent { get; set; }
 
+        // True when SessionEnd was recovered from last recorded activity because
+        // NINA closed/crashed before the End Session instruction ran, rather than
+        // set by a real End instruction run. Drives the "estimated end time" report
+        // notice and the dashboard's recovered-session badge.
+        public bool AutoFinalized { get; set; }
+
         // Camera hardware info captured from the first image of the session.
         // Used to compute FOV for the sky survey thumbnail.
         public int    CamXSize         { get; set; }

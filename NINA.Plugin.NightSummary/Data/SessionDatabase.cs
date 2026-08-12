@@ -482,7 +482,8 @@ namespace NINA.Plugin.NightSummary.Data {
                         SessionEnd TEXT,
                         ProfileName TEXT,
                         Notes TEXT,
-                        ReportSent INTEGER DEFAULT 0
+                        ReportSent INTEGER DEFAULT 0,
+                        AutoFinalized INTEGER DEFAULT 0
                     )";
 
                 string createImages = @"
@@ -627,6 +628,9 @@ namespace NINA.Plugin.NightSummary.Data {
                 // re-stretch on demand (currently in-memory only via _pathToTimestamp).
                 MigrateAddColumn(conn, "Images",        "ThumbnailVersion", "INTEGER");
                 MigrateAddColumn(conn, "Images",        "FilePath",         "TEXT");
+                // Set when a session's SessionEnd was recovered from last-activity data
+                // because End Session never ran (crash), rather than a real End instruction.
+                MigrateAddColumn(conn, "Sessions",      "AutoFinalized",    "INTEGER DEFAULT 0");
 
                 // Index to keep session-list enrichment queries fast even on DBs with
                 // hundreds of sessions and 100k+ images (subqueries per-session).
@@ -770,20 +774,24 @@ namespace NINA.Plugin.NightSummary.Data {
 
         /// <summary>
         /// Updates the session end time and report sent status.
-        /// Call this when the sequence ends.
+        /// Call this when the sequence ends. autoFinalized marks a recovery finalize —
+        /// SessionEnd derived from last recorded activity because End Session never ran
+        /// (e.g. NINA crashed) — rather than a real End instruction run; leave false for
+        /// the normal End Session path.
         /// </summary>
-        public void FinalizeSession(string sessionId, DateTime endTime, bool reportSent, int skippedExposures = 0) {
+        public void FinalizeSession(string sessionId, DateTime endTime, bool reportSent, int skippedExposures = 0, bool autoFinalized = false) {
             using (var conn = new SQLiteConnection(connectionString)) {
                 conn.Open();
                 string sql = @"
                     UPDATE Sessions
-                    SET SessionEnd = @SessionEnd, ReportSent = @ReportSent, SkippedExposures = @SkippedExposures
+                    SET SessionEnd = @SessionEnd, ReportSent = @ReportSent, SkippedExposures = @SkippedExposures, AutoFinalized = @AutoFinalized
                     WHERE SessionId = @SessionId";
 
                 using (var cmd = new SQLiteCommand(sql, conn)) {
                     cmd.Parameters.AddWithValue("@SessionEnd", endTime.ToString("o"));
                     cmd.Parameters.AddWithValue("@ReportSent", reportSent ? 1 : 0);
                     cmd.Parameters.AddWithValue("@SkippedExposures", skippedExposures);
+                    cmd.Parameters.AddWithValue("@AutoFinalized", autoFinalized ? 1 : 0);
                     cmd.Parameters.AddWithValue("@SessionId", sessionId);
                     cmd.ExecuteNonQuery();
                 }

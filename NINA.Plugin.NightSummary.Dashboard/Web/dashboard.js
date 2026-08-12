@@ -3969,6 +3969,7 @@ function renderHeroSection(session) {
     ? s.targets.map(function(t, i) { return makeTargetBadge(t, i); }).join('')
     : '<span style="color:var(--text-quaternary);font-size:12px">No targets</span>';
   var badge = s.hasReport ? '' : '<span class="badge badge-red">No report</span>';
+  badge += s.autoFinalized ? '<span class="badge badge-amber" title="NINA closed before the End Session instruction ran — end time is estimated from the last recorded activity">Auto-recovered</span>' : '';
   var statsLine = '<span class="stat-val">' + s.imageCount + '</span> imgs' +
     ' &middot; <span class="stat-val">' + fmt(s.totalIntegrationSeconds) + '</span>' +
     ' &middot; HFR <span class="stat-val">' + fmtNum(s.avgHfr) + '</span>px' +
@@ -4273,6 +4274,7 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy, keepPage) {
       : '<span style="color:var(--text-quaternary);font-size:12px">No targets</span>';
 
     var badge = s.hasReport ? '' : '<span class="badge badge-red">No report</span>';
+    badge += s.autoFinalized ? '<span class="badge badge-amber" title="NINA closed before the End Session instruction ran \u2014 end time is estimated from the last recorded activity">Auto-recovered</span>' : '';
 
     var sessionTimes = fmtTime(s.sessionStart) + ' \u2013 ' + fmtTime(s.sessionEnd);
 

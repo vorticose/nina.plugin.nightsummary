@@ -423,6 +423,7 @@ namespace NINA.Plugin.NightSummary.Session {
 
                 var images = testDb.GetImagesForSession(session.SessionId);
                 var events = testDb.GetEventsForSession(session.SessionId);
+                FinalizeOrphanedSession(testDb, session, images, events);
                 Logger.Info($"NightSummary: Sending test report for session {session.SessionId} ({images.Count} images, {events.Count} events)");
 
                 var profileId    = profileService?.ActiveProfile?.Id.ToString();
@@ -969,7 +970,14 @@ namespace NINA.Plugin.NightSummary.Session {
                 onProgress?.Invoke(i + 1, sessions.Count);
 
                 var reportPath = Path.Combine(reportsDir, $"{session.SessionId}.html");
-                if (File.Exists(reportPath)) {
+                // Orphaned sessions (End Session instruction never ran — e.g. NINA crashed
+                // mid-sequence) never get skipped even if a report already exists: their
+                // SessionEnd is still unset, which hides them from the dashboard session
+                // list forever. Rebuilding finalizes SessionEnd (see FinalizeOrphanedSession)
+                // so they become visible instead of silently staying orphaned.
+                bool isOrphaned = session.SessionEnd <= session.SessionStart
+                    && session.SessionId != collector.GetCurrentSessionId();
+                if (File.Exists(reportPath) && !isOrphaned) {
                     skipped++;
                     continue;
                 }
@@ -1252,6 +1260,28 @@ namespace NINA.Plugin.NightSummary.Session {
         }
 
         /// <summary>
+        /// Persists a real SessionEnd for an orphaned session (End Session instruction never
+        /// ran — see OnSequenceFinished) whenever we build a report for it and it isn't the
+        /// session currently running. Without this, the session's SessionEnd stays unset
+        /// forever: reports keep rendering it as "in progress" against DateTime.Now, and the
+        /// dashboard session list (SessionEnd &gt; SessionStart) hides it even after a report
+        /// exists on disk. Marks the session AutoFinalized so callers know this end time is
+        /// an estimate, not a real End instruction run — this suppresses any automatic
+        /// delivery for it and keeps the report's "estimated" notice showing on every future
+        /// regenerate. Mutates session.SessionEnd/AutoFinalized in place so the rest of this
+        /// report build (log parsing, yield calc, header) uses the corrected state too.
+        /// </summary>
+        private void FinalizeOrphanedSession(SessionDatabase db, SessionRecord session, List<ImageRecord> images, List<SessionEvent> events) {
+            var endTime = OrphanedSessionFinalizer.ResolveEndTime(session, images, events, collector.GetCurrentSessionId());
+            if (endTime == null) return;
+
+            db.FinalizeSession(session.SessionId, endTime.Value, session.ReportSent, session.SkippedExposures, autoFinalized: true);
+            session.SessionEnd = endTime.Value;
+            session.AutoFinalized = true;
+            Logger.Info($"NightSummary: Finalized orphaned session {session.SessionId} (End Session instruction never ran) — end time set to {endTime.Value:o} from last recorded activity");
+        }
+
+        /// <summary>
         /// Builds ReportData from a database without sending. Used by the preview window.
         /// </summary>
         public async Task<ReportData> BuildReportDataAsync(string dbPath, string sessionId = null, CancellationToken ct = default) {
@@ -1263,6 +1293,7 @@ namespace NINA.Plugin.NightSummary.Session {
             ct.ThrowIfCancellationRequested();
             var images     = db.GetImagesForSession(session.SessionId);
             var events     = db.GetEventsForSession(session.SessionId);
+            FinalizeOrphanedSession(db, session, images, events);
             var profileId  = profileService?.ActiveProfile?.Id.ToString();
             var tsData     = FetchTsData(images, profileId);
             var cumulative = db.GetCumulativeIntegrationByTarget(session.SessionId);

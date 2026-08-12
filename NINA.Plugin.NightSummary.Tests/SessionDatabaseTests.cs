@@ -95,6 +95,41 @@ namespace NINA.Plugin.NightSummary.Tests {
             Assert.Equal(0, session!.SkippedExposures);
         }
 
+        // ── AutoFinalized persistence ───────────────────────────────────────────
+
+        [Fact]
+        public void FinalizeSession_DefaultsAutoFinalizedFalse() {
+            var sessionId = Guid.NewGuid().ToString();
+            CreateTestSession(sessionId);
+            _db.FinalizeSession(sessionId, DateTime.Now.AddHours(1), reportSent: true);
+
+            var session = _db.GetSession(sessionId);
+
+            Assert.False(session!.AutoFinalized);
+        }
+
+        [Fact]
+        public void FinalizeSession_AutoFinalizedTrue_IsPersistedAndRetrieved() {
+            var sessionId = Guid.NewGuid().ToString();
+            CreateTestSession(sessionId);
+            _db.FinalizeSession(sessionId, DateTime.Now.AddHours(1), reportSent: false, autoFinalized: true);
+
+            var session = _db.GetSession(sessionId);
+
+            Assert.True(session!.AutoFinalized);
+        }
+
+        [Fact]
+        public void FinalizeSession_AutoFinalizedTrue_SurvivesInAllSessionsQuery() {
+            var sessionId = Guid.NewGuid().ToString();
+            CreateTestSession(sessionId);
+            _db.FinalizeSession(sessionId, DateTime.Now.AddHours(1), reportSent: false, autoFinalized: true);
+
+            var sessions = _db.GetAllSessions();
+
+            Assert.Contains(sessions, s => s.SessionId == sessionId && s.AutoFinalized);
+        }
+
         // ── Image round-trip ─────────────────────────────────────────────────
 
         [Fact]
