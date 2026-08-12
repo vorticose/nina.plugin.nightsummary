@@ -1282,6 +1282,34 @@ namespace NINA.Plugin.NightSummary.Session {
         }
 
         /// <summary>
+        /// Scans every session for orphans left over from a previous NINA run — most
+        /// commonly a crash before End Session could run — and finalizes each one via
+        /// FinalizeOrphanedSession above. Never sends anything; only fixes the stored
+        /// end time so the session stops rendering as "in progress" and stops being
+        /// hidden from the dashboard session list. Intended for a one-time pass at
+        /// plugin startup, before any new session could exist, so nothing currently
+        /// live is ever touched (FinalizeOrphanedSession already skips the live
+        /// session on its own, but there also can't be one yet at this point).
+        /// Returns how many sessions were recovered.
+        /// </summary>
+        public int FinalizeOrphanedSessions(string dbPath) {
+            if (!File.Exists(dbPath)) return 0;
+
+            var db = new SessionDatabase(dbPath);
+            int recovered = 0;
+            foreach (var session in db.GetAllSessions()) {
+                if (session.SessionEnd > session.SessionStart) continue;
+
+                var images = db.GetImagesForSession(session.SessionId);
+                var events = db.GetEventsForSession(session.SessionId);
+                var before = session.SessionEnd;
+                FinalizeOrphanedSession(db, session, images, events);
+                if (session.SessionEnd != before) recovered++;
+            }
+            return recovered;
+        }
+
+        /// <summary>
         /// Builds ReportData from a database without sending. Used by the preview window.
         /// </summary>
         public async Task<ReportData> BuildReportDataAsync(string dbPath, string sessionId = null, CancellationToken ct = default) {
