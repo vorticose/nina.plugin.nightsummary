@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -24,6 +25,9 @@ internal static class Program {
         "                    UI (sync banner, pairing wizard, settings tab variants). Hot-reload of JS/CSS\n" +
         "                    still works via --web. Useful for iterating on mobile UI bugs without\n" +
         "                    rebuilding + redeploying the actual companion binary.\n" +
+        "  --fake-rigs N     Serve N rigs (\"Rig A\", \"Rig B\", ...) that all read the SAME --db/--data/\n" +
+        "                    --reports snapshot. Implies --companion-mode so the real rig switcher +\n" +
+        "                    multi-rig UI render. Dev-only stand-in for a second physical rig.\n" +
         "  --web          Source dir for HTML/CSS/JS (default <repo>/NINA.Plugin.NightSummary.Dashboard/Web)\n" +
         "  --data         Cache + logs root (default ./data under exe)\n" +
         "  --reports      Reports dir (default %LOCALAPPDATA%/NINA/NightSummary/reports)";
@@ -38,27 +42,29 @@ internal static class Program {
         Directory.CreateDirectory(opts.DataDir);
         Directory.CreateDirectory(opts.ReportsDir);
 
+        bool companionMode = opts.CompanionMode || opts.FakeRigs >= 2;
+
         var log      = new DevDashboardLogger();
         var paths    = new DevDashboardPaths(opts.DataDir, opts.ReportsDir, opts.DbPath);
         var data     = new DevDashboardDataSource(opts.DbPath, log, opts.TsDbPath, opts.TsApiHost, opts.NoTs, opts.EmptyProjects);
         var settings = new DevPluginSettings();
-        if (opts.CompanionMode) settings.Mode = "companion";
+        if (companionMode) settings.Mode = "companion";
         var assets   = new DiskWebAssets(opts.WebDir, opts.AssetsDir);
         // In companion mode the regenerator wires the same building blocks the
         // real companion uses (CompanionReportDataBuilder + ReportGenerator)
         // against the snapshot DB so devs can exercise the regen path without
         // a real companion build. Primary mode has no SessionService here, so
         // regen reports "not available" and the UI hides the button.
-        IReportRegenerator regen = opts.CompanionMode
+        IReportRegenerator regen = companionMode
             ? new DevCompanionRegenerator(opts.DbPath, settings, log, paths)
             : new DevReportRegenerator();
 
-        // --companion-mode flips DashboardServer to its companion-mode wiring by
-        // passing a non-null ICompanionController. Stub returns plausible static
-        // values so the UI renders banners + sync status + pairing wizard pages
-        // without a real primary or sync engine. Keeps the hot-reload --web
+        // --companion-mode / --fake-rigs flip DashboardServer to its companion-mode
+        // wiring by passing a non-null ICompanionController. Stub returns plausible
+        // static values so the UI renders banners + sync status + pairing wizard
+        // pages without a real primary or sync engine. Keeps the hot-reload --web
         // path intact for fast mobile UI iteration.
-        var companion = opts.CompanionMode ? new DevStubCompanionController(log) : null;
+        var companion = companionMode ? new DevStubCompanionController(log) : null;
 
         // --pair-token wires a seeded in-memory token store so this harness acts
         // as a REAL primary: a companion paired with that token can pull
@@ -66,15 +72,34 @@ internal static class Program {
         var tokenStore = string.IsNullOrEmpty(opts.PairToken) ? null : new DevTokenStore(opts.PairToken);
         if (tokenStore != null) log.Info($"Primary pairing ENABLED — seeded token '{opts.PairToken}' (dev export auth).");
 
-        var server = new DashboardServer(
-            data:        data,
-            settings:    settings,
-            webAssets:   assets,
-            externalLog: log,
-            paths:       paths,
-            regen:       regen,
-            companion:   companion,
-            tokenStore:  tokenStore);
+        DashboardServer server;
+        if (opts.FakeRigs >= 2) {
+            // Every fake rig shares the SAME data/paths/regen/companion instances —
+            // "duplicate the one real rig and show it twice" needs no second DB.
+            var backends = new List<RigBackend>();
+            for (int i = 0; i < opts.FakeRigs; i++) {
+                string letter = ((char)('A' + i)).ToString();
+                backends.Add(new RigBackend("rig-" + letter.ToLowerInvariant(), "Rig " + letter, true,
+                    data, paths, regen, companion));
+            }
+            log.Info($"Fake multi-rig ENABLED — {opts.FakeRigs} rigs, all reading {opts.DbPath}");
+            server = new DashboardServer(
+                rigs:        new DevFakeMultiRigRegistry(backends),
+                settings:    settings,
+                webAssets:   assets,
+                externalLog: log,
+                tokenStore:  tokenStore);
+        } else {
+            server = new DashboardServer(
+                data:        data,
+                settings:    settings,
+                webAssets:   assets,
+                externalLog: log,
+                paths:       paths,
+                regen:       regen,
+                companion:   companion,
+                tokenStore:  tokenStore);
+        }
 
         log.Info($"DB:      {opts.DbPath} (exists: {File.Exists(opts.DbPath)})");
         if (opts.NoTs) {
@@ -118,6 +143,7 @@ internal static class Program {
         public bool   NoTs           { get; set; } = false;
         public bool   EmptyProjects  { get; set; } = false;
         public bool   CompanionMode  { get; set; } = false;
+        public int    FakeRigs       { get; set; } = 0;
         public string PairToken      { get; set; } = "";
         public string WebDir     { get; set; } = "";
         public string AssetsDir  { get; set; } = "";
@@ -146,6 +172,10 @@ internal static class Program {
                 case "--no-ts":          opts.NoTs          = true; break;
                 case "--empty-projects": opts.EmptyProjects  = true; break;
                 case "--companion-mode": opts.CompanionMode  = true; break;
+                case "--fake-rigs":
+                    if (!int.TryParse(next(), out var fr) || fr < 0) return null;
+                    opts.FakeRigs = fr;
+                    break;
                 case "--pair-token":     opts.PairToken      = next() ?? ""; break;
                 case "--web":     opts.WebDir     = next() ?? ""; break;
                 case "--assets":  opts.AssetsDir  = next() ?? ""; break;

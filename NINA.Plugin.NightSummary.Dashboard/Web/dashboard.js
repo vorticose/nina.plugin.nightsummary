@@ -279,8 +279,12 @@ var ACTIVE_RIG = '';
 var RIG_STORAGE_KEY = 'ns.activeRig';
 
 // True only when there is a real choice of rig to scope a request to.
+// 'all' is a client-only pseudo-rig (the merged Sessions view) — it isn't a
+// backend id, so requests fall through unscoped (server resolves to its
+// Default rig) unless the caller explicitly builds a ?rig=<realId> URL, as
+// renderSessionsAllRigs does per-rig.
 function rigParamActive() {
-  return COMPANION_MODE && RIGS.length > 1 && !!ACTIVE_RIG;
+  return COMPANION_MODE && RIGS.length > 1 && !!ACTIVE_RIG && ACTIVE_RIG !== 'all';
 }
 
 // Append ?rig=ACTIVE to a same-origin API path when (and only when) multiple
@@ -4114,6 +4118,8 @@ function renderSessionList(params) {
   var el = document.getElementById('content');
   var sub = document.getElementById('page-subtitle');
 
+  if (ACTIVE_RIG === 'all') { renderSessionsAllRigs(el, sub); return; }
+
   var fromVal = params ? (params.get('from') || '') : '';
   var toVal = params ? (params.get('to') || '') : '';
   var sortVal = params ? (params.get('sort') || 'date-desc') : 'date-desc';
@@ -4143,13 +4149,201 @@ function renderSessionList(params) {
   var cancelLoader = deferLoader(el, 'Loading sessions...');
   api('/api/sessions').then(function(data) {
     cancelLoader();
+    // /api/mode can resolve to 'all' while this unscoped fetch (kicked off
+    // before companion mode was known) is still in flight. Applying it now
+    // would clobber the merged view with stale single-rig data — the merged
+    // render (already running, or about to) owns #content instead.
+    if (ACTIVE_RIG === 'all') return;
     sessionsCache = data;
     logInfo('Sessions loaded:', data.length);
     finish();
   }).catch(function(err) {
     cancelLoader();
+    if (ACTIVE_RIG === 'all') return;
     logError('Failed to load sessions:', err.message);
     el.innerHTML = '<div class="error">Failed to load sessions: ' + esc(err.message) + '</div>';
+  });
+}
+
+// ── "All rigs" merged Sessions view ──────────────────────────────────────────
+// Selected via the "All rigs" entry at the top of the rig switcher. Fetches
+// every configured rig's sessions explicitly by id (ACTIVE_RIG='all' is a
+// client-only pseudo-rig — see rigParamActive) and groups them by calendar
+// date: a solo night renders one standard card with a small rig chip; a
+// night where >1 rig has a session groups under one shared date label with
+// each rig's full card (thumbs + altitude chart, real data) stacked
+// underneath. Clicking a card switches ACTIVE_RIG to that card's owning rig
+// first, so the session detail page it navigates to reads from the right
+// backend. The lifetime strip at the top sums across the merged session
+// list, same reducer as the single-rig view — Sessions/Images/Integration
+// become real cross-rig totals; Targets dedupes by name for free since it's
+// keyed by name, not by (rig, name).
+var RIG_COLORS = ['#9d8cf0', '#4fbfa0', '#e0a458', '#e07ba0', '#7eb8f7'];
+function rigColor(rigId) {
+  var rigs = RIGS;
+  var idx = rigs.findIndex(function(r) { return r.id === rigId; });
+  return RIG_COLORS[(idx < 0 ? 0 : idx) % RIG_COLORS.length];
+}
+
+function allRigsDrill(rigId, sessionId) {
+  switchRig(rigId);
+  // switchRig() only syncs ACTIVE_RIG — the <select> stays in sync for free
+  // when it drives switchRig itself (native onchange fires after the browser
+  // updates the control), but this call comes from a card click instead, so
+  // the pill needs an explicit nudge or it'd show the rig you left, not the
+  // one whose report you're about to see.
+  var sel = document.getElementById('companion-rig-select');
+  if (sel) sel.value = rigId;
+  navigate('#/sessions/' + sessionId);
+}
+
+function buildRigSessionCard(rig, s, showRigAsHeader, isLatestForRig) {
+  var domId = rig.id + '__' + s.sessionId;
+  var targetsText = s.targets.length > 0
+    ? s.targets.map(function(t, i) { return makeTargetBadge(t, i); }).join('')
+    : '<span style="color:var(--text-quaternary);font-size:12px">No targets</span>';
+  var badge = s.hasReport ? '' : '<span class="badge badge-red">No report</span>';
+  var sessionTimes = fmtTime(s.sessionStart) + ' – ' + fmtTime(s.sessionEnd);
+  var color = rigColor(rig.id);
+  // Latest-per-rig cards always show their own date (that's the whole point
+  // — two rigs at different sites can each be "latest" on a different
+  // night), never the rig-as-header treatment used for same-night grouping.
+  var whenLabel = (showRigAsHeader && !isLatestForRig)
+    ? '<span class="session-date" style="color:' + color + '">' + esc(rig.name || rig.id) + '</span>'
+    : '<span class="session-date">' + fmtDate(s.sessionStart) + '</span>';
+  var chip = (showRigAsHeader && !isLatestForRig) ? '' :
+    '<span class="allrigs-chip" style="background:' + color + '1a;color:' + color + '">' + esc(rig.name || rig.id) + '</span>';
+
+  var statBoxes = '<div class="card-stats">' +
+    '<div class="card-stat"><div class="card-stat-value">' + s.imageCount + '</div><div class="card-stat-label">' + plural(s.imageCount, 'Image') + '</div></div>' +
+    '<div class="card-stat"><div class="card-stat-value">' + fmt(s.totalIntegrationSeconds) + '</div><div class="card-stat-label">Integration</div></div>' +
+    '<div class="card-stat"><div class="card-stat-value">' + fmtNum(s.avgHfr) + 'px</div><div class="card-stat-label">HFR</div></div>' +
+    '<div class="card-stat"><div class="card-stat-value">' + fmtNum(s.avgFwhm) + '&Prime;</div><div class="card-stat-label">FWHM</div></div>' +
+    '<div class="card-stat"><div class="card-stat-value">' + fmtNum(s.avgGuiding) + '&Prime;</div><div class="card-stat-label">Guiding</div></div>' +
+    '<div class="card-stat">' + (s.moonPhase ? '<div class="card-stat-value">' + esc(s.moonPhase) + '</div><div class="card-stat-label">Moon</div>' : '') + '</div>' +
+  '</div>';
+
+  var latestLabel = isLatestForRig ? '<div class="latest-label">Latest Session</div>' : '';
+
+  return '<div class="session-card' + (isLatestForRig ? ' session-card--latest' : '') + '" data-rig="' + esc(rig.id) + '" data-session="' + esc(s.sessionId) + '" onclick="allRigsDrill(\'' + esc(rig.id) + '\',\'' + esc(s.sessionId) + '\')">' +
+    latestLabel +
+    '<div class="card-header">' +
+      whenLabel +
+      '<span class="session-times">' + sessionTimes + '</span>' +
+      '<span class="card-targets-line">' + targetsText + '</span>' +
+      chip + badge +
+    '</div>' +
+    '<div class="card-body">' +
+      '<div class="card-content">' +
+        '<div class="card-thumbs" id="thumbs-' + domId + '"></div>' +
+        statBoxes +
+      '</div>' +
+      '<div class="card-altitude" id="altitude-' + domId + '"></div>' +
+    '</div>' +
+  '</div>';
+}
+
+function hydrateRigSessionCard(rig, s) {
+  if (!s.hasReport) return;
+  var domId = rig.id + '__' + s.sessionId;
+  var thumbsEl = document.getElementById('thumbs-' + domId);
+  if (thumbsEl) {
+    api('/api/sessions/' + s.sessionId + '/thumbnails?rig=' + encodeURIComponent(rig.id)).then(function(thumbs) {
+      if (!thumbs || !thumbs.length) return;
+      thumbsEl.innerHTML = thumbs.map(function(t) {
+        var img = '<img class="card-thumb" src="' + t.dataUri + '" alt="' + esc(t.target) + '" loading="lazy" onerror="this.style.display=\'none\'">';
+        var labelName = t.target.length > 30 ? t.target.substring(0, 29) + '…' : t.target;
+        return '<div class="card-thumb-wrap" data-target="' + esc(t.target) + '">' +
+          '<div class="thumb-label">' + esc(labelName) + '</div>' + img + '</div>';
+      }).join('');
+      setupThumbsScrollMode(thumbsEl);
+    }).catch(function(err) { logDebug('all-rigs thumb load failed', domId, err.message); });
+  }
+  var altEl = document.getElementById('altitude-' + domId);
+  if (altEl) {
+    api('/api/sessions/' + s.sessionId + '/altitude-chart?rig=' + encodeURIComponent(rig.id)).then(function(data) {
+      if (!data || !data.svg) return;
+      altEl.innerHTML = '<div class="chart-svg-wrap">' + data.svg + '</div>';
+      fixChartTextDistortion(altEl);
+      applyChartPullUp(altEl);
+      var body = altEl.parentElement;
+      if (body) body.classList.add('has-chart');
+    }).catch(function(err) { logDebug('all-rigs altitude load failed', domId, err.message); });
+  }
+}
+
+function renderSessionsAllRigs(el, sub) {
+  if (sub) sub.textContent = 'All rigs';
+  exitReportView();
+
+  var rigs = RIGS.filter(function(r) { return r.enabled !== false; });
+  if (!rigs.length) { el.innerHTML = '<div class="empty">No rigs configured.</div>'; return; }
+
+  var cancelLoader = deferLoader(el, 'Loading sessions for ' + rigs.length + ' rigs...');
+  Promise.all(rigs.map(function(r) {
+    return api('/api/sessions?rig=' + encodeURIComponent(r.id)).then(function(sessions) {
+      return { rig: r, sessions: sessions || [] };
+    });
+  })).then(function(results) {
+    cancelLoader();
+    var pairs = [];
+    results.forEach(function(res) {
+      res.sessions.forEach(function(s) { pairs.push({ rig: res.rig, session: s }); });
+    });
+    if (!pairs.length) { el.innerHTML = '<div class="empty">No sessions recorded yet.</div>'; return; }
+
+    // Each rig's own most recent session gets the gold "latest" treatment,
+    // independent of what night it fell on — two rigs sharing an
+    // observatory usually share weather and land on the same night, but
+    // rigs at different sites (or one backyard + one remote) can have very
+    // different most-recent dates. Pull those out into their own snapshot
+    // row up top; the chronological list below shows everything else.
+    var latestByRig = {};
+    pairs.forEach(function(p) {
+      var cur = latestByRig[p.rig.id];
+      if (!cur || p.session.sessionStart > cur.session.sessionStart) latestByRig[p.rig.id] = p;
+    });
+    var latestIds = {};
+    Object.keys(latestByRig).forEach(function(rigId) { latestIds[rigId + '::' + latestByRig[rigId].session.sessionId] = true; });
+    var remaining = pairs.filter(function(p) { return !latestIds[p.rig.id + '::' + p.session.sessionId]; });
+
+    var order = [], byDate = {};
+    remaining.forEach(function(p) {
+      var d = p.session.sessionStart.substring(0, 10);
+      if (!byDate[d]) { byDate[d] = []; order.push(d); }
+      byDate[d].push(p);
+    });
+    order.sort(function(a, b) { return b.localeCompare(a); });
+
+    // Same reducer the single-rig view uses — pass it the merged session
+    // list and the Sessions/Images/Integration/Targets band comes out as
+    // real cross-rig totals with zero changes to renderLifetimeStrip itself.
+    var html = renderLifetimeStrip(pairs.map(function(p) { return p.session; }));
+
+    html += '<div class="cards-container">';
+    rigs.forEach(function(r) {
+      var latest = latestByRig[r.id];
+      if (latest) html += buildRigSessionCard(latest.rig, latest.session, false, true);
+    });
+    if (order.length) html += '<div class="allrigs-section-label">All sessions</div>';
+    order.forEach(function(date) {
+      var group = byDate[date];
+      if (group.length === 1) {
+        html += buildRigSessionCard(group[0].rig, group[0].session, false, false);
+      } else {
+        html += '<div class="allrigs-day-group"><div class="allrigs-day-label">' + fmtDate(group[0].session.sessionStart) + '</div><div class="allrigs-day-stack">' +
+          group.map(function(p) { return buildRigSessionCard(p.rig, p.session, true, false); }).join('') +
+        '</div></div>';
+      }
+    });
+    html += '</div>';
+    el.innerHTML = html;
+    el.querySelectorAll('.session-card').forEach(fitStatLabels);
+    pairs.forEach(function(p) { hydrateRigSessionCard(p.rig, p.session); });
+  }).catch(function(err) {
+    cancelLoader();
+    logError('all-rigs sessions load failed:', err.message);
+    el.innerHTML = '<div class="error">Failed to load: ' + esc(err.message) + '</div>';
   });
 }
 
@@ -9485,8 +9679,14 @@ function initCompanionBanner() {
     DEFAULT_RIG = j.defaultRig || (RIGS[0] && RIGS[0].id) || '';
     var stored = '';
     try { stored = localStorage.getItem(RIG_STORAGE_KEY) || ''; } catch (e) {}
-    ACTIVE_RIG = (stored && RIGS.some(function(r){ return r.id === stored; })) ? stored : DEFAULT_RIG;
+    ACTIVE_RIG = (stored && (stored === 'all' || RIGS.some(function(r){ return r.id === stored; }))) ? stored : DEFAULT_RIG;
     renderRigSwitcher();
+    // The very first paint (route() at script init) ran before this fetch
+    // resolved, so it rendered unscoped — which the server treats as
+    // "Default rig". If the settled ACTIVE_RIG is anything else (a stored
+    // non-default rig, or 'all'), that first paint is now showing the wrong
+    // scope and needs a re-render.
+    if (ACTIVE_RIG !== DEFAULT_RIG) route();
 
     var banner = document.getElementById('companion-banner');
     if (banner) banner.hidden = false;
@@ -9523,7 +9723,8 @@ function renderRigSwitcher() {
   var host = document.getElementById('companion-rig-switch');
   if (!host) return;
   if (RIGS.length <= 1) { host.hidden = true; host.innerHTML = ''; return; }
-  var opts = RIGS.map(function(r){
+  var allSel = ACTIVE_RIG === 'all' ? ' selected' : '';
+  var opts = '<option value="all"' + allSel + '>All rigs</option>' + RIGS.map(function(r){
     var sel = r.id === ACTIVE_RIG ? ' selected' : '';
     var label = (r.name || r.id) + (r.enabled === false ? ' (off)' : '');
     return '<option value="' + esc(r.id) + '"' + sel + '>' + esc(label) + '</option>';
@@ -9541,7 +9742,7 @@ function renderRigSwitcher() {
 // re-render the current page in place — no reload.
 function switchRig(id) {
   if (!id || id === ACTIVE_RIG) return;
-  if (!RIGS.some(function(r){ return r.id === id; })) return;
+  if (id !== 'all' && !RIGS.some(function(r){ return r.id === id; })) return;
   ACTIVE_RIG = id;
   try { localStorage.setItem(RIG_STORAGE_KEY, id); } catch (e) {}
   sessionsCache = []; initialLoadDone = false;

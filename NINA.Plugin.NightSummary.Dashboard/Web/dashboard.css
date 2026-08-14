@@ -947,6 +947,45 @@ html.light .flatpickr-day.nextMonthDay { color: rgba(30,40,80,0.3); }
     0 1px 2px rgba(0,0,0,0.3);
 }
 
+/* "All rigs" merged Sessions view (selected via the rig switcher). Each
+   rig's own most recent session is pinned above in the gold "latest"
+   treatment (reuses .session-card--latest / .latest-label from the
+   single-rig hero card) regardless of what night it fell on. Below that, a
+   solo night is a standard .session-card with a small rig chip appended; an
+   overlap night wraps N full cards under one shared date label instead of
+   repeating the date per card. */
+.allrigs-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.allrigs-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary, #6e7380);
+  padding: 4px 2px 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.allrigs-day-group { margin-bottom: 8px; }
+.allrigs-day-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary, #b0b4bc);
+  padding: 0 2px 6px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.allrigs-day-stack { display: flex; flex-direction: column; gap: 8px; }
+.allrigs-day-stack .session-card { margin-bottom: 0; }
+
 .chart-legend-item {
   display: flex;
   align-items: center;
