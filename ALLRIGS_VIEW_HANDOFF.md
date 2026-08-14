@@ -1,8 +1,9 @@
 # "All rigs" merged Sessions view — handoff doc
 
 Status as of 2026-08-12. Written for another agent picking this up mid-stream.
-Everything described here is **uncommitted** in this worktree — see "Branch
-and commit status" at the bottom before doing anything else.
+The work is committed (`d8e0894`) on `claude/new-session-57a9c4`, rebased
+onto `origin/dev` — see "Branch and commit status" at the bottom. Not
+pushed.
 
 ## TL;DR
 
@@ -325,23 +326,25 @@ are fully real.
 
 - Worktree: `.claude/worktrees/companion-app-issues-616b84`
 - Branch: `claude/new-session-57a9c4`
-- **This branch was cut from `main` at the v3.3.0 release tip
-  (`2c3302e`), not from `dev`.** Per this repo's branching rules that's
-  almost certainly wrong for feature work — verify with
-  `git merge-base <branch> dev` and `git merge-base --is-ancestor <that-commit> dev`
-  before merging anywhere, and probably rebase onto `dev` first.
-- **Nothing described in this document is committed.** `git status --short`
-  shows 3 modified files + 1 untracked new file (this doc will be a second
-  untracked file). If you're picking this up in a *different* worktree or
-  session, these changes will not exist there — either work in this same
-  worktree, or `git diff`/copy the changes across, or ask to have this
-  committed first (not done automatically per this project's git rules —
-  commits only happen when explicitly requested).
+- **Originally cut from `main` at the v3.3.0 release tip (`2c3302e`), not
+  from `dev`** — same worktree-base mistake CLAUDE.md's Multi-Agent Rule
+  warns about. **Fixed 2026-08-12**: rebased with
+  `git rebase --onto origin/dev 2c3302e claude/new-session-57a9c4` (clean,
+  no conflicts). The branch now sits directly on `origin/dev`'s tip and
+  carries only its own commit — none of the release-only commits it had
+  picked up from `main`. Verified: `git diff --stat origin/dev
+  claude/new-session-57a9c4` shows exactly the 5 files this doc describes,
+  681 insertions / 20 deletions, nothing extra.
+- **Committed** as `d8e0894` ("feat(dashboard): prototype "All rigs" merged
+  Sessions view"). **Not pushed** — still local-only to this worktree/machine.
+  If picking this up in a genuinely different worktree or machine, fetch/pull
+  this branch across first (or ask for it to be pushed) — it won't exist
+  anywhere else yet.
 
 ## Suggested next steps, roughly in order
 
-1. Get an explicit decision from the user on branch handling (rebase onto
-   `dev`? commit as-is for now?) before building further on top.
+1. Decide whether/when to push `claude/new-session-57a9c4` and open a PR
+   into `dev`, or keep iterating locally first.
 2. Decide the merged-mode scope for filter/sort/pagination — even a
    stripped-down version (e.g. just a date-range filter) may be worth more
    than nothing once real multi-rig usage starts.
