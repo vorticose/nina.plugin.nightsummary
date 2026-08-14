@@ -28,6 +28,9 @@ internal static class Program {
         "  --fake-rigs N     Serve N rigs (\"Rig A\", \"Rig B\", ...) that all read the SAME --db/--data/\n" +
         "                    --reports snapshot. Implies --companion-mode so the real rig switcher +\n" +
         "                    multi-rig UI render. Dev-only stand-in for a second physical rig.\n" +
+        "  --fake-rigs-stagger N  With --fake-rigs, drop the newest N distinct session dates from\n" +
+        "                    each later rig (rig i drops i*N nights). Default 3. Pass 0 to clone\n" +
+        "                    the snapshot identically (the original --fake-rigs behaviour).\n" +
         "  --web          Source dir for HTML/CSS/JS (default <repo>/NINA.Plugin.NightSummary.Dashboard/Web)\n" +
         "  --data         Cache + logs root (default ./data under exe)\n" +
         "  --reports      Reports dir (default %LOCALAPPDATA%/NINA/NightSummary/reports)";
@@ -79,10 +82,14 @@ internal static class Program {
             var backends = new List<RigBackend>();
             for (int i = 0; i < opts.FakeRigs; i++) {
                 string letter = ((char)('A' + i)).ToString();
+                int drop = i * opts.FakeRigsStagger;
+                IDashboardDataSource rigData = drop > 0
+                    ? new DevStaggeredSessionSource(data, drop)
+                    : data;
                 backends.Add(new RigBackend("rig-" + letter.ToLowerInvariant(), "Rig " + letter, true,
-                    data, paths, regen, companion));
+                    rigData, paths, regen, companion));
             }
-            log.Info($"Fake multi-rig ENABLED — {opts.FakeRigs} rigs, all reading {opts.DbPath}");
+            log.Info($"Fake multi-rig ENABLED — {opts.FakeRigs} rigs, stagger={opts.FakeRigsStagger} night(s)/rig, reading {opts.DbPath}");
             server = new DashboardServer(
                 rigs:        new DevFakeMultiRigRegistry(backends),
                 settings:    settings,
@@ -143,7 +150,8 @@ internal static class Program {
         public bool   NoTs           { get; set; } = false;
         public bool   EmptyProjects  { get; set; } = false;
         public bool   CompanionMode  { get; set; } = false;
-        public int    FakeRigs       { get; set; } = 0;
+        public int    FakeRigs        { get; set; } = 0;
+        public int    FakeRigsStagger { get; set; } = 3;
         public string PairToken      { get; set; } = "";
         public string WebDir     { get; set; } = "";
         public string AssetsDir  { get; set; } = "";
@@ -175,6 +183,10 @@ internal static class Program {
                 case "--fake-rigs":
                     if (!int.TryParse(next(), out var fr) || fr < 0) return null;
                     opts.FakeRigs = fr;
+                    break;
+                case "--fake-rigs-stagger":
+                    if (!int.TryParse(next(), out var fs) || fs < 0) return null;
+                    opts.FakeRigsStagger = fs;
                     break;
                 case "--pair-token":     opts.PairToken      = next() ?? ""; break;
                 case "--web":     opts.WebDir     = next() ?? ""; break;

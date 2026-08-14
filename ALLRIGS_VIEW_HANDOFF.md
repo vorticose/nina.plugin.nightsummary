@@ -1,24 +1,29 @@
 # "All rigs" merged Sessions view — handoff doc
 
-Status as of 2026-08-12. Written for another agent picking this up mid-stream.
-The work is committed (`d8e0894`) on `claude/new-session-57a9c4`, rebased
-onto `origin/dev` — see "Branch and commit status" at the bottom. Not
-pushed.
+Status as of 2026-08-14. Worktree
+`.claude/worktrees/companion-app-issues-616b84`, branch
+`claude/new-session-57a9c4`, on `origin/dev`. **Not pushed.**
 
 ## TL;DR
 
-A user with the multi-rig companion asked for an "All" option in the rig
-selector to see every rig's sessions in one merged view, drilling into a
-specific rig when wanted. We designed it interactively (static mockup ->
-real dev-server prototype using the user's actual data) and landed a working
-version in the real dashboard: the rig switcher now has an "All rigs" option
-that shows a merged, date-grouped session list with cross-rig cumulative
-stats and a per-rig "latest session" snapshot row. Single-rig behavior is
-byte-for-byte unchanged.
+Companion multi-rig Sessions view: the banner picker can show one rig, a
+checkbox subset, or all of them. Merged list is date-grouped full cards,
+combined lifetime totals, per-rig gold "latest" cards (dates may differ),
+and a per-day activity bar whose tooltip lists each selected rig's hours.
+Hide + Live Stack work on merged cards. Single-rig path is unchanged.
 
-**What's missing before this is a real, shippable feature**: filtering/sort/
-pagination in merged mode, hide-session, live-stack badges, FOV overlay, and
-real (non-duplicated) multi-rig data to validate against. See "Not done yet".
+**2026-08-14 added (this wrap-up):** checkbox picker (one / subset / all,
+persisted as `ns.visibleRigs`); `--fake-rigs-stagger N` so later fake rigs
+drop the newest N nights (default 3); hide keyed `rigId::sessionId`; Live
+Stack via `?rig=` + namespaced DOM ids; combined-per-day waveform + per-rig
+tooltip (click jumps to that date); phantom scrollbar / clipped date labels
+fixed; update banner moved above the companion/rig row. Changelog draft
+has a v3.3.1 feature bullet.
+
+**Still not done:** no filter/sort/pagination/FOV in merged mode;
+Targets/Tonight/Settings/Stats-page still fall back to the Default rig
+when All/subset is selected; never visually verified against two *real*
+divergent rig DBs (staggered fake-rigs is the stand-in). Not pushed.
 
 ## Why (user's own words, paraphrased across the conversation)
 
@@ -335,25 +340,20 @@ are fully real.
   picked up from `main`. Verified: `git diff --stat origin/dev
   claude/new-session-57a9c4` shows exactly the 5 files this doc describes,
   681 insertions / 20 deletions, nothing extra.
-- **Committed** as `d8e0894` ("feat(dashboard): prototype "All rigs" merged
-  Sessions view"). **Not pushed** — still local-only to this worktree/machine.
-  If picking this up in a genuinely different worktree or machine, fetch/pull
-  this branch across first (or ask for it to be pushed) — it won't exist
-  anywhere else yet.
+- **Committed locally** as `d8e0894` (initial prototype) plus the 2026-08-14
+  follow-up (picker / stagger / hide / livestack / waveform tooltip).
+  **Not pushed** — still local-only to this worktree/machine. If picking this
+  up elsewhere, push or copy the branch first.
 
 ## Suggested next steps, roughly in order
 
 1. Decide whether/when to push `claude/new-session-57a9c4` and open a PR
-   into `dev`, or keep iterating locally first.
-2. Decide the merged-mode scope for filter/sort/pagination — even a
-   stripped-down version (e.g. just a date-range filter) may be worth more
-   than nothing once real multi-rig usage starts.
-3. Wire hide-session and Live Stack badges into `buildRigSessionCard`/
-   `hydrateRigSessionCard` if they're wanted — both are small, mechanical
-   additions following the existing single-rig code as a template.
-4. Decide what (if anything) Targets/Tonight/Settings/Stats-page should do
-   in "All rigs" mode, or explicitly document that they intentionally stay
-   Default-rig-scoped for now.
-5. If/when a genuine second rig (or asymmetric fake data) is available,
-   re-verify the cross-date "latest per rig" behavior visually — it's only
-   been verified by reasoning + identical-data structural checks so far.
+   into `dev`. Still local-only.
+2. Decide the merged-mode scope for filter/sort/pagination, if any.
+3. Decide what Targets/Tonight/Settings/Stats-page should do in All/subset
+   mode, or leave them Default-rig-scoped and say so in the companion docs.
+4. FOV overlay on merged thumbs, if wanted (same shape as the Live Stack
+   wiring).
+5. Re-verify against a real second rig DB when one is available. Staggered
+   `--fake-rigs 3 --fake-rigs-stagger 3` already exercises solo nights and
+   different latest dates.

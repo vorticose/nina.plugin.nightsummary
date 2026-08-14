@@ -4,6 +4,10 @@
 
 ## v3.3.1 (unreleased)
 
+### New Features
+
+- **All rigs view (companion)** — when more than one rig is paired, the rig picker can show one rig, a subset, or all of them. The Sessions tab merges the selected rigs into one list: nights you only ran one rig look as they always have, nights more than one ran stack the full cards under that date, and each rig's most recent night is pinned at the top even if those dates differ. Combined session/image/integration totals update with the selection. Hover a bar on the activity chart to see each rig's contribution that night.
+
 ### Bug Fixes
 
 - Fixed Projects-view thumbnails getting permanently stuck on a placeholder if checked in the window right after a session ends, before its report finished generating. Resend now also refreshes the dashboard's cached thumbnail/altitude/live-stack data for that session, same as Regenerate already did.
