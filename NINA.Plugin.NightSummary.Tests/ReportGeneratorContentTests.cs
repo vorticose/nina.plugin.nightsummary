@@ -68,6 +68,31 @@ namespace NINA.Plugin.NightSummary.Tests {
                 Assert.Contains(f, report);
         }
 
+        // ── Auto-finalized (crash-recovered) session notice ────────────────────
+
+        [Fact]
+        public async Task NormalSession_DoesNotShowAutoFinalizedNotice() {
+            var data   = TestDataFactory.MakeReportData(imageCount: 5);
+            var report = await _generator.GenerateHtmlReport(data);
+            Assert.DoesNotContain("estimated from the last recorded activity", report);
+        }
+
+        [Fact]
+        public async Task AutoFinalizedSession_ShowsEstimatedEndTimeNotice() {
+            var sessionId = Guid.NewGuid().ToString();
+            var session   = TestDataFactory.MakeSession(sessionId);
+            session.AutoFinalized = true;
+            var images = new List<ImageRecord> { TestDataFactory.MakeImage(sessionId) };
+            var data = new ReportData {
+                Session = session, Images = images, Events = new List<SessionEvent>(),
+                TsData  = new List<TsTargetData>(),
+                CumulativeIntegrationSeconds = new Dictionary<string, double>(),
+                SessionHistory = new Dictionary<string, List<TargetSessionHistory>>()
+            };
+            var report = await _generator.GenerateHtmlReport(data);
+            Assert.Contains("estimated from the last recorded activity", report);
+        }
+
         // ── Session History totals band ────────────────────────────────────────
 
         [Fact]

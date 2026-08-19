@@ -342,8 +342,14 @@ namespace NINA.Plugin.NightSummary.Reporting {
             sb.AppendLine($"<p><strong>Session Date:</strong> {data.Session.SessionStart:yyyy-MM-dd}</p>");
             var sessionEnd = data.Session.SessionEnd > data.Session.SessionStart ? data.Session.SessionEnd : DateTime.Now;
             var isActive = data.Session.SessionEnd <= data.Session.SessionStart;
-            if (isActive && data.Session.SessionEnd == DateTime.MinValue) {
-                sb.AppendLine("<div style='background-color:var(--warn-bg); border:1px solid var(--warn-border); border-radius:8px; padding:12px 16px; margin:16px 0; color:var(--warn-text);'><strong>&#9888; Note:</strong> This session ended without running the Night Summary End instruction. Session end time and duration are approximate; overhead analysis is unavailable.</div>");
+            if (isActive) {
+                sb.AppendLine("<div style='background-color:var(--warn-bg); border:1px solid var(--warn-border); border-radius:8px; padding:12px 16px; margin:16px 0; color:var(--warn-text);'><strong>&#9888; Note:</strong> This session hasn't run the Night Summary End instruction yet. Session end time and duration are approximate; overhead analysis is unavailable.</div>");
+            } else if (data.Session.AutoFinalized) {
+                // Same underlying cause as the isActive case above (End instruction never ran —
+                // NINA likely closed unexpectedly) but SessionEnd has since been backfilled from
+                // the session's last recorded activity, so this keeps showing on every future
+                // regenerate instead of only the one where finalization happened.
+                sb.AppendLine("<div style='background-color:var(--warn-bg); border:1px solid var(--warn-border); border-radius:8px; padding:12px 16px; margin:16px 0; color:var(--warn-text);'><strong>&#9888; Note:</strong> NINA closed before the Night Summary End instruction ran for this session. The end time and duration below are estimated from the last recorded activity; overhead analysis is unavailable.</div>");
             }
             sb.AppendLine($"<p><strong>Session Start:</strong> {data.Session.SessionStart:HH:mm:ss} &nbsp;&nbsp; <strong>Session End:</strong> {(isActive ? "In Progress" : sessionEnd.ToString("HH:mm:ss"))}</p>");
             sb.AppendLine($"<p><strong>Duration:</strong> {(sessionEnd - data.Session.SessionStart).TotalHours:F1} hours{(isActive ? " (so far)" : "")}</p>");

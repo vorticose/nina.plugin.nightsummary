@@ -928,7 +928,8 @@ namespace NINA.Plugin.NightSummary.Server {
                     avgFwhm = lightImages.Where(i => i.FWHM > 0).Select(i => i.FWHM).DefaultIfEmpty(0).Average(),
                     avgGuiding = lightImages.Where(i => i.GuidingRMSTotal > 0).Select(i => i.GuidingRMSTotal).DefaultIfEmpty(0).Average(),
                     hasReport,
-                    moonPhase
+                    moonPhase,
+                    autoFinalized = s.AutoFinalized
                 };
             }).ToList();
 
@@ -983,6 +984,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 profileName = session.ProfileName,
                 notes = session.Notes,
                 skippedExposures = session.SkippedExposures,
+                autoFinalized = session.AutoFinalized,
                 equipment = new {
                     camera = session.CameraName,
                     telescope = session.TelescopeName,
