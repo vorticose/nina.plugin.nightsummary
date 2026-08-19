@@ -4402,9 +4402,16 @@ function hydrateRigSessionCard(rig, s) {
       if (!thumbs || !thumbs.length) return;
       thumbsEl.innerHTML = thumbs.map(function(t) {
         var img = '<img class="card-thumb" src="' + t.dataUri + '" alt="' + esc(t.target) + '" loading="lazy" onerror="this.style.display=\'none\'">';
-        var labelName = t.target.length > 30 ? t.target.substring(0, 29) + '…' : t.target;
-        return '<div class="card-thumb-wrap" data-target="' + esc(t.target) + '">' +
-          '<div class="thumb-label">' + esc(labelName) + '</div>' + img + '</div>';
+        var svg = '';
+        if (t.fovSvg) {
+          svg = t.fovSvg
+            .replace(/width='\d+'/, "width='100%'")
+            .replace(/height='\d+'/, "height='100%'")
+            .replace("<svg ", "<svg viewBox='0 0 200 200' " + (showFovOverlay ? '' : "style='display:none' "));
+        }
+        var labelName = t.target.length > 30 ? t.target.substring(0, 29) + '\u2026' : t.target;
+        return '<div class="card-thumb-wrap" data-target="' + esc(t.target) + '" data-session="' + esc(s.sessionId) + '">' +
+          '<div class="thumb-label">' + esc(labelName) + '</div>' + img + svg + '</div>';
       }).join('');
       setupThumbsScrollMode(thumbsEl);
       tryWireLiveStack();
