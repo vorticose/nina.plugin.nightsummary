@@ -947,6 +947,46 @@ html.light .flatpickr-day.nextMonthDay { color: rgba(30,40,80,0.3); }
     0 1px 2px rgba(0,0,0,0.3);
 }
 
+/* "All rigs" merged Sessions view (selected via the rig switcher). Each
+   rig's own most recent session is pinned above in the gold "latest"
+   treatment (reuses .session-card--latest / .latest-label from the
+   single-rig hero card) regardless of what night it fell on. Below that, a
+   solo night is a standard .session-card with a small rig chip appended; an
+   overlap night wraps N full cards under one shared date label instead of
+   repeating the date per card. */
+.allrigs-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.allrigs-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary, #6e7380);
+  padding: 4px 2px 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.allrigs-day-group { margin-bottom: 8px; }
+.allrigs-day-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary, #b0b4bc);
+  padding: 0 2px 6px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.allrigs-day-stack { display: flex; flex-direction: column; gap: 8px; }
+.allrigs-day-stack .session-card { margin-bottom: 0; }
+.allrigs-unhide { margin: 4px 0 10px; }
+
 .chart-legend-item {
   display: flex;
   align-items: center;
@@ -2297,7 +2337,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   display: flex;
   justify-content: flex-start;
   align-items: center;
-  overflow-x: auto;
+  overflow: visible;
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
@@ -2318,12 +2358,16 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 }
 .lw-bar { cursor: pointer; }
 .lw-scroll-wrap {
+  width: 100%;
+  overflow: visible;
+  -webkit-overflow-scrolling: touch;
+}
+.lw-scroll-wrap.is-scrollable {
   overflow-x: auto;
   overflow-y: hidden;
-  padding-bottom: 6px;
+  padding-bottom: 8px;
   scrollbar-width: thin;
   scrollbar-color: rgba(255,255,255,0.18) transparent;
-  -webkit-overflow-scrolling: touch;
 }
 .lw-scroll-wrap::-webkit-scrollbar { height: 8px; }
 .lw-scroll-wrap::-webkit-scrollbar-track { background: transparent; }
@@ -4010,6 +4054,18 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   font-size: 10px;
   letter-spacing: 0.3px;
 }
+.lw-tip-rigs { margin-top: 6px; display: flex; flex-direction: column; gap: 2px; }
+.lw-tip-rig,
+.lw-scrubber-info .lw-tip-rig {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.lw-tip-rig-name { font-weight: 600; color: var(--text); }
+.lw-tip-rig-stats { color: var(--text-tertiary); white-space: nowrap; }
+.lw-scrubber-info .lw-tip-rigs { margin-top: 4px; }
 .lw-bar-tip--latest {
   border-color: rgba(212,160,106,0.45);
   box-shadow: 0 4px 12px rgba(0,0,0,0.4), 0 0 14px rgba(212,160,106,0.22);
@@ -5750,17 +5806,19 @@ html.light .tonight-cached-pill {
 }
 html.light .companion-banner-label { background: rgba(37, 99, 184, 0.08); }
 
-/* Rig switcher — only present (and unhidden) in companion mode with >1 rig.
-   A compact native <select> so it stays accessible + good on mobile, themed to
-   match the banner. The dot flags a non-active rig needing attention. */
+/* Rig picker — only present (and unhidden) in companion mode with >1 rig.
+   Custom checkbox menu (one / subset / all). The dot flags a non-active
+   rig needing attention. */
 .companion-rig-switch {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+  position: relative;
 }
 .companion-rig-switch[hidden] { display: none !important; }
-.companion-rig-select {
+.companion-rig-picker { position: relative; }
+.companion-rig-toggle {
   font: inherit;
   font-size: 12px;
   font-weight: 600;
@@ -5771,13 +5829,61 @@ html.light .companion-banner-label { background: rgba(37, 99, 184, 0.08); }
   padding: 3px 26px 3px 9px;
   max-width: 180px;
   cursor: pointer;
-  appearance: none;
-  -webkit-appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%237eb8f7' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 9px center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
 }
-.companion-rig-select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.companion-rig-toggle:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.companion-rig-toggle-label { display: block; overflow: hidden; text-overflow: ellipsis; }
+.companion-rig-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 200px;
+  max-width: min(280px, 80vw);
+  max-height: min(360px, 70vh);
+  overflow-y: auto;
+  z-index: 160;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+  padding: 6px;
+}
+.companion-rig-menu[hidden] { display: none !important; }
+.companion-rig-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  user-select: none;
+}
+.companion-rig-option:hover { background: rgba(255,255,255,0.06); }
+html.light .companion-rig-option:hover { background: rgba(0,0,0,0.05); }
+.companion-rig-option.is-disabled { opacity: 0.45; cursor: default; }
+.companion-rig-option--all {
+  font-weight: 700;
+  border-bottom: 1px solid var(--border);
+  border-radius: 6px 6px 0 0;
+  margin-bottom: 4px;
+  padding-bottom: 9px;
+}
+.companion-rig-option input { margin: 0; accent-color: var(--accent); flex-shrink: 0; }
+.companion-rig-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
 .rig-dot {
   width: 8px;
   height: 8px;
