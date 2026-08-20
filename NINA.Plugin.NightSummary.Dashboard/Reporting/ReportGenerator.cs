@@ -1092,10 +1092,13 @@ namespace NINA.Plugin.NightSummary.Reporting {
                     sb.AppendLine("</table>");
                     sb.AppendLine("</div>");
 
-                    // Warn about unrecognized filter names that were excluded from CV
+                    // Warn about unrecognized filter names that were excluded from CV.
+                    // Filters the user deliberately set to Exclude are left out of this list —
+                    // they are already classified, so telling the viewer to go classify them
+                    // in Options would be nagging them to redo a choice they already made.
                     var unrecognizedFilters = target
                         .Select(i => i.Filter)
-                        .Where(f => !string.IsNullOrEmpty(f) && !IsBroadband(f) && !IsNarrowband(f))
+                        .Where(f => !string.IsNullOrEmpty(f) && !IsBroadband(f) && !IsNarrowband(f) && !IsExcluded(f))
                         .Distinct(StringComparer.OrdinalIgnoreCase)
                         .OrderBy(f => f)
                         .ToList();

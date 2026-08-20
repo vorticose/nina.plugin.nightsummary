@@ -282,6 +282,41 @@ namespace NINA.Plugin.NightSummary.Tests {
                 "Expected an unrecognized filter warning");
         }
 
+        [Fact]
+        public async Task ExcludedFilter_DoesNotGenerateUnrecognizedWarning() {
+            // A filter the user deliberately set to Exclude is already classified.
+            // Flagging it as "not recognized" would nag them to redo that choice.
+            SettingsManager.Instance.Current.FilterClassifications = "quadband=X";
+            try {
+                var data = TestDataFactory.MakeReportData(imageCount: 5);
+                foreach (var img in data.Images) img.Filter = "quadband";
+                var html = await _gen.GenerateHtmlReport(data);
+                Assert.DoesNotContain("not recognized and excluded from CV calculation", html);
+                Assert.DoesNotContain(_gen.Warnings, w => w.Contains("quadband"));
+            } finally {
+                SettingsManager.Instance.Current.FilterClassifications = "";
+                FilterHelper.LoadClassifications("");   // clear FilterHelper's static override state
+            }
+        }
+
+        [Fact]
+        public async Task ExcludedFilter_StillWarnsAboutOtherUnrecognizedFilters() {
+            // Suppressing the explicitly-excluded filter must not suppress the whole
+            // warning — a genuinely unknown filter alongside it still needs flagging.
+            SettingsManager.Instance.Current.FilterClassifications = "quadband=X";
+            try {
+                var data = TestDataFactory.MakeReportData(imageCount: 4);
+                for (int i = 0; i < data.Images.Count; i++)
+                    data.Images[i].Filter = i % 2 == 0 ? "quadband" : "XYZ_Unknown_Filter";
+                await _gen.GenerateHtmlReport(data);
+                Assert.Contains(_gen.Warnings, w => w.Contains("XYZ_Unknown_Filter"));
+                Assert.DoesNotContain(_gen.Warnings, w => w.Contains("quadband"));
+            } finally {
+                SettingsManager.Instance.Current.FilterClassifications = "";
+                FilterHelper.LoadClassifications("");   // clear FilterHelper's static override state
+            }
+        }
+
         // ── Helpers ──────────────────────────────────────────────────────────
 
         private static int CountOccurrences(string text, string pattern) {

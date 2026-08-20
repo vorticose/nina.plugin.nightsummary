@@ -6,6 +6,7 @@
 
 ### Bug Fixes
 
+- Filters you deliberately set to Exclude in Filter Classifications no longer show up in the report's "filter not recognized" warning telling you to go classify them.
 - Fixed Projects-view thumbnails getting permanently stuck on a placeholder if checked in the window right after a session ends, before its report finished generating. Resend now also refreshes the dashboard's cached thumbnail/altitude/live-stack data for that session, same as Regenerate already did.
 
 
