@@ -58,8 +58,17 @@
     <EmbeddedResource Include="Web\setup.js">
       <LogicalName>setup.js</LogicalName>
     </EmbeddedResource>
+    <!-- Full-size brand art (776x776, ~600 KB): served over HTTP by the dashboard
+         favicon/header endpoint, where the bytes cost one cached request. -->
     <EmbeddedResource Include="..\assets\plugin-icon.png">
       <LogicalName>plugin-icon.png</LogicalName>
+    </EmbeddedResource>
+    <!-- 144x144 palette copy (~9 KB) for the HTML report header, which inlines the
+         icon as a base64 data URI. Inlining the full-size art made the icon ~90% of
+         every report and bloated the base64 MIME body of every emailed report.
+         Regenerate with scripts/gen-report-icon.py if the brand art changes. -->
+    <EmbeddedResource Include="..\assets\report-icon.png">
+      <LogicalName>report-icon.png</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
 </Project>

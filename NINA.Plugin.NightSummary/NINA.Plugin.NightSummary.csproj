@@ -48,9 +48,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- plugin-icon.png stays embedded in the plugin assembly because ReportGenerator embeds it
-         into HTML reports. The dashboard classlib also embeds its own copy for the favicon
-         endpoint (separate assembly, separate resource lookup). -->
+    <!-- NOTE: this embed looks unused. ReportGenerator moved to the dashboard classlib and
+         resolves its icon via GetExecutingAssembly(), i.e. out of Dashboard.dll, not here;
+         this assembly contains no GetManifestResourceStream call at all, and NINA's plugin
+         loader does not look for an embedded icon either. Left in place because dropping
+         ~600 KB from the shipped plugin DLL deserves a deliberate, tested change rather than
+         a drive-by one. Verify against a real NINA plugin-manager listing before removing. -->
     <EmbeddedResource Include="..\assets\plugin-icon.png">
       <LogicalName>plugin-icon.png</LogicalName>
     </EmbeddedResource>
