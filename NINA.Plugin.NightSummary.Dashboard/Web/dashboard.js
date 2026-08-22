@@ -276,11 +276,17 @@ function makeTargetBadge(name, idx) {
 var RIGS = [];
 var DEFAULT_RIG = '';
 var ACTIVE_RIG = '';
+var VISIBLE_RIGS = []; // ids included in the current view (1 = single-rig, 2+ = merged)
 var RIG_STORAGE_KEY = 'ns.activeRig';
+var VISIBLE_RIGS_KEY = 'ns.visibleRigs';
 
 // True only when there is a real choice of rig to scope a request to.
+// 'all' is a client-only pseudo-rig (the merged Sessions view) — it isn't a
+// backend id, so requests fall through unscoped (server resolves to its
+// Default rig) unless the caller explicitly builds a ?rig=<realId> URL, as
+// renderSessionsAllRigs does per-rig.
 function rigParamActive() {
-  return COMPANION_MODE && RIGS.length > 1 && !!ACTIVE_RIG;
+  return COMPANION_MODE && RIGS.length > 1 && !!ACTIVE_RIG && ACTIVE_RIG !== 'all';
 }
 
 // Append ?rig=ACTIVE to a same-origin API path when (and only when) multiple
@@ -3138,8 +3144,30 @@ var showEmptySessions = false; // hide 0-image sessions by default
 var showFovOverlay = localStorage.getItem('ns-show-fov') !== 'false'; // on by default
 var showAltitude = localStorage.getItem('ns-show-altitude') !== 'false'; // on by default
 var cardViewMode = localStorage.getItem('ns-card-view') || 'expanded'; // 'expanded' or 'compact'
-var hiddenSessions = JSON.parse(localStorage.getItem('ns-hidden-sessions') || '{}'); // sessionId -> true
+var hiddenSessions = JSON.parse(localStorage.getItem('ns-hidden-sessions') || '{}'); // sessionId or rigId::sessionId -> true
 var showHidden = false;
+
+// All-rigs hide is keyed rigId::sessionId so two fake (or colliding) copies
+// of the same sessionId hide independently. Single-rig hide stays a bare
+// sessionId. A hide made in All-rigs for rig X also applies when viewing X
+// alone; a single-rig hide does NOT fan out to every All-rigs card that
+// happens to share that sessionId.
+function allRigsHiddenKey(rigId, sessionId) { return rigId + '::' + sessionId; }
+function isHiddenInAllRigs(rigId, sessionId) {
+  return !!hiddenSessions[allRigsHiddenKey(rigId, sessionId)];
+}
+function isHiddenInSingleRig(sessionId) {
+  if (hiddenSessions[sessionId]) return true;
+  if (ACTIVE_RIG && ACTIVE_RIG !== 'all' && hiddenSessions[allRigsHiddenKey(ACTIVE_RIG, sessionId)]) return true;
+  return false;
+}
+function countAllRigsHidden() {
+  var n = 0;
+  Object.keys(hiddenSessions).forEach(function(k) {
+    if (hiddenSessions[k] && k.indexOf('::') !== -1) n++;
+  });
+  return n;
+}
 var dropdownOpen = false; // persists across re-renders so pill clicks don't close the menu
 var targetSearch = '';   // persists across re-renders so search text survives pill clicks
 var sortDropdownOpen = false;
@@ -3167,7 +3195,7 @@ function getAllTargets() {
 }
 
 function getSubtitleText() {
-  var visible = sessionsCache.filter(function(s) { return !hiddenSessions[s.sessionId]; });
+  var visible = sessionsCache.filter(function(s) { return !isHiddenInSingleRig(s.sessionId); });
   var targets = {};
   visible.forEach(function(s) { s.targets.forEach(function(t) { targets[t] = true; }); });
   var tc = Object.keys(targets).length;
@@ -3182,6 +3210,79 @@ function updateSubtitle() {
 
 // ── Sessions V2: trophy case + hero card + historical expander ──────────────
 
+function sessionsSpanMultipleRigs(sessions) {
+  var seen = {}, n = 0;
+  for (var i = 0; i < sessions.length; i++) {
+    var id = sessions[i].rigId;
+    if (!id || seen[id]) continue;
+    seen[id] = true;
+    if (++n > 1) return true;
+  }
+  return false;
+}
+
+function latestStartByRig(sessions) {
+  var latest = {};
+  sessions.forEach(function(s) {
+    if (!s.rigId || !s.imageCount) return;
+    if (!latest[s.rigId] || s.sessionStart > latest[s.rigId]) latest[s.rigId] = s.sessionStart;
+  });
+  return latest;
+}
+
+// Group sessions into calendar-day buckets, optionally split by rig so a
+// merged All-rigs waveform can draw one bar per night and still name each
+// rig's contribution in the tooltip.
+function groupSessionsByDay(sessions) {
+  var byDay = {};
+  var order = [];
+  sessions.forEach(function(s) {
+    if (!s.imageCount || !s.sessionStart) return;
+    var d = s.sessionStart.substring(0, 10);
+    if (!byDay[d]) {
+      byDay[d] = { date: d, integ: 0, images: 0, targets: {}, rigs: {} };
+      order.push(d);
+    }
+    var g = byDay[d];
+    g.integ += s.totalIntegrationSeconds || 0;
+    g.images += s.imageCount || 0;
+    (s.targets || []).forEach(function(t) { g.targets[t] = true; });
+    var rid = s.rigId || '_';
+    if (!g.rigs[rid]) {
+      g.rigs[rid] = { id: rid, name: s.rigName || rid, integ: 0, images: 0 };
+    }
+    g.rigs[rid].integ += s.totalIntegrationSeconds || 0;
+    g.rigs[rid].images += s.imageCount || 0;
+  });
+  return order.map(function(d) { return byDay[d]; });
+}
+
+function dayRigRows(day) {
+  return Object.keys(day.rigs).map(function(id) { return day.rigs[id]; })
+    .sort(function(a, b) { return (a.name || '').localeCompare(b.name || ''); });
+}
+
+function encodeLwRigs(rows) {
+  return rows.map(function(r) {
+    return String(r.name || r.id || '').replace(/\|/g, '/') + '\t' + fmt(r.integ) + '\t' + r.images;
+  }).join('|');
+}
+
+function lwRigsHtml(attr) {
+  if (!attr) return '';
+  return attr.split('|').map(function(line) {
+    var p = line.split('\t');
+    return '<div class="lw-tip-rig"><span class="lw-tip-rig-name">' + esc(p[0] || '') + '</span>' +
+      '<span class="lw-tip-rig-stats">' + esc(p[1] || '') + ' \u00b7 ' + esc(p[2] || '0') + ' images</span></div>';
+  }).join('');
+}
+
+function scrollToAllRigsDay(day) {
+  if (!day) return;
+  var el = document.querySelector('[data-allrigs-day="' + day + '"]');
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
 function buildActivityWaveform(sessions) {
   if (!sessions || sessions.length < 2) return '';
   var dates = sessions.map(function(s) { return new Date(s.sessionStart).getTime(); });
@@ -3190,7 +3291,11 @@ function buildActivityWaveform(sessions) {
   var minD = new Date(minDObj.getFullYear(), minDObj.getMonth(), minDObj.getDate()).getTime();
   var maxD = new Date(maxDObj.getFullYear(), maxDObj.getMonth(), maxDObj.getDate()).getTime();
   var dateSpan = maxD - minD || 86400000;
-  var maxInteg = Math.max.apply(null, sessions.map(function(s) { return s.totalIntegrationSeconds || 0; }));
+  var multiRig = sessionsSpanMultipleRigs(sessions);
+  var dayGroups = multiRig ? groupSessionsByDay(sessions) : null;
+  var maxInteg = multiRig
+    ? Math.max.apply(null, dayGroups.map(function(g) { return g.integ || 0; }))
+    : Math.max.apply(null, sessions.map(function(s) { return s.totalIntegrationSeconds || 0; }));
   if (!maxInteg) return '';
 
   // Calendar-day granularity: same-night sessions collapse to one slot for bar-width calculation
@@ -3211,11 +3316,14 @@ function buildActivityWaveform(sessions) {
   var spanDays = Math.ceil(dateSpan / DAY_MS);
 
   var isMobile = window.innerWidth < 720;
-  // Desktop: stretch waveform to fill the strip (shell max-width 1800, ~100px chrome for shell+strip padding)
-  var availW = isMobile ? 680 : Math.max(680, Math.min(window.innerWidth, 1800) - 100);
+  // Prefer the live wrap width so the SVG is not a few px wider than its
+  // slot (that sliver of overflow painted a useless scrollbar that clipped
+  // the date labels). Fall back to a conservative window guess on first
+  // paint before the wrap exists; fitLifetimeWaveform() rebuilds after.
+  var availW = waveformAvailWidth();
   var W = Math.max(availW, spanDays * 8);
   var BAR_W = 6;
-  var CHART_H = isMobile ? 90 : 64, LABEL_H = isMobile ? 33 : 28, H = CHART_H + LABEL_H;
+  var CHART_H = isMobile ? 90 : 64, LABEL_H = isMobile ? 36 : 32, H = CHART_H + LABEL_H;
 
   // Brightness ramp: near-black navy → bright sky blue (wide contrast)
   function barHeatColor(t) {
@@ -3274,43 +3382,70 @@ function buildActivityWaveform(sessions) {
     axD.setDate(axD.getDate() + 1);
   }
 
-  // Bars — midnight-snapped position so ticks and bars align
-  sessions.forEach(function(s) {
-    if (!s.imageCount) return;
-    var sd = new Date(s.sessionStart);
-    var dayMs = new Date(sd.getFullYear(), sd.getMonth(), sd.getDate()).getTime();
-    var t = (dayMs - minD) / dateSpan;
-    var x = t * (W - BAR_W);
-    var hours = (s.totalIntegrationSeconds || 0) / 3600;
+  // Bars — midnight-snapped position so ticks and bars align.
+  // Merged multi-rig view: one bar per calendar day (combined hours) so
+  // two rigs on the same night don't paint on top of each other. Tooltip
+  // lists each rig's contribution. Single-rig stays one bar per session.
+  var latestByRig = multiRig ? latestStartByRig(sessions) : null;
+  function drawBar(x, integ, images, tgtStr, isLatest, day, extra) {
+    extra = extra || {};
+    var hours = (integ || 0) / 3600;
     var normInteg = maxInteg > 0 ? hours / (maxInteg / 3600) : 0;
     var barH = Math.max(2, normInteg * (CHART_H - 4));
     var y = CHART_H - barH;
-    var tgtStr = (s.targets && s.targets.length) ? s.targets.join(', ') : '';
-    var isLatest = new Date(s.sessionStart).getTime() === latestStart;
     var hColor = isLatest ? 'rgb(212,160,106)' : barHeatColor(normInteg);
     var glowOpacity = (0.05 + normInteg * 0.25).toFixed(2);
-    barData.push({x: (x + BAR_W / 2).toFixed(1), rx: x.toFixed(1), d: (s.sessionStart || '').substring(0, 10), i: s.totalIntegrationSeconds || 0, n: s.imageCount || 0, t: (s.targets || []).join(', '), sid: s.sessionId || '', hr: !!s.hasReport});
+    barData.push({
+      x: (x + BAR_W / 2).toFixed(1), rx: x.toFixed(1), d: day,
+      i: integ || 0, n: images || 0, t: tgtStr || '',
+      sid: extra.sid || '', hr: !!extra.hr, rigs: extra.rigs || '', dayJump: !!extra.dayJump
+    });
     if (isLatest) {
-      // Layered gold glow matching .session-card--latest
       svg += '<rect x="' + (x - 6).toFixed(1) + '" y="' + (y - 4).toFixed(1) + '" width="' + (BAR_W + 12) + '" height="' + (barH + 8).toFixed(1) + '" fill="rgb(212,160,106)" opacity="0.12" rx="3"/>';
       svg += '<rect x="' + (x - 3).toFixed(1) + '" y="' + (y - 2).toFixed(1) + '" width="' + (BAR_W + 6) + '" height="' + (barH + 4).toFixed(1) + '" fill="rgb(212,160,106)" opacity="0.28" rx="2.5"/>';
     } else {
       svg += '<rect x="' + (x - 2).toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + (BAR_W + 4) + '" height="' + barH.toFixed(1) + '" fill="' + hColor + '" opacity="' + glowOpacity + '" rx="2"/>';
     }
     var barClass = isLatest ? 'lw-bar lw-bar-latest' : 'lw-bar';
-    var tipMeta = fmtDate(s.sessionStart) + ' \u00b7 ' + fmt(s.totalIntegrationSeconds || 0) + ' \u00b7 ' + (s.imageCount || 0) + ' images' + (isLatest ? ' \u00b7 latest' : '');
-    var bar = '<rect class="' + barClass + '" x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + BAR_W + '" height="' + barH.toFixed(1) + '" fill="' + hColor + '" rx="2" data-lw-tgt="' + esc(tgtStr) + '" data-lw-meta="' + esc(tipMeta) + '" data-lw-latest="' + (isLatest ? '1' : '0') + '"/>';
-    if (!IS_TOUCH && s.sessionId && s.hasReport) {
-      // In-app session view (settings panel + inline report), matching the
-      // session-card click behavior. Previously opened the static report in
-      // a new tab, which felt jarringly different from clicking a card.
-      // Gated on !IS_TOUCH only (was also gated on !isMobile, which broke
-      // click-through for non-touch desktop windows narrower than 720px).
-      svg += '<a href="#/sessions/' + encodeURIComponent(s.sessionId) + '">' + bar + '</a>';
+    var tipMeta = fmtDate(day) + ' \u00b7 ' + fmt(integ || 0) + ' \u00b7 ' + (images || 0) + ' images' + (isLatest ? ' \u00b7 latest' : '');
+    var bar = '<rect class="' + barClass + '" x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + BAR_W + '" height="' + barH.toFixed(1) + '" fill="' + hColor + '" rx="2" data-lw-tgt="' + esc(tgtStr) + '" data-lw-meta="' + esc(tipMeta) + '" data-lw-latest="' + (isLatest ? '1' : '0') + '"'
+      + (extra.rigs ? ' data-lw-rigs="' + esc(extra.rigs) + '"' : '')
+      + (extra.dayJump ? ' data-lw-day="' + esc(day) + '"' : '')
+      + '/>';
+    if (!IS_TOUCH && extra.sid && extra.hr && !extra.dayJump) {
+      svg += '<a href="#/sessions/' + encodeURIComponent(extra.sid) + '">' + bar + '</a>';
     } else {
       svg += bar;
     }
-  });
+  }
+
+  if (multiRig) {
+    dayGroups.forEach(function(g) {
+      var sd = new Date(g.date + 'T12:00:00');
+      var dayMs = new Date(sd.getFullYear(), sd.getMonth(), sd.getDate()).getTime();
+      var x = ((dayMs - minD) / dateSpan) * (W - BAR_W);
+      var tgtStr = Object.keys(g.targets).join(', ');
+      var rows = dayRigRows(g);
+      var isLatest = rows.some(function(r) {
+        return latestByRig[r.id] && latestByRig[r.id].substring(0, 10) === g.date;
+      });
+      drawBar(x, g.integ, g.images, tgtStr, isLatest, g.date, {
+        rigs: encodeLwRigs(rows), dayJump: true
+      });
+    });
+  } else {
+    sessions.forEach(function(s) {
+      if (!s.imageCount) return;
+      var sd = new Date(s.sessionStart);
+      var dayMs = new Date(sd.getFullYear(), sd.getMonth(), sd.getDate()).getTime();
+      var x = ((dayMs - minD) / dateSpan) * (W - BAR_W);
+      var tgtStr = (s.targets && s.targets.length) ? s.targets.join(', ') : '';
+      var isLatest = new Date(s.sessionStart).getTime() === latestStart;
+      drawBar(x, s.totalIntegrationSeconds || 0, s.imageCount || 0, tgtStr, isLatest, (s.sessionStart || '').substring(0, 10), {
+        sid: s.sessionId || '', hr: !!s.hasReport
+      });
+    });
+  }
 
   svg += '</svg>';
   var barsJson = JSON.stringify(barData).replace(/"/g, '&quot;');
@@ -3363,7 +3498,10 @@ function buildCalendarHeatmap(sessions) {
   var dayMap = {};
   var dayImgMap = {};
   var daySessionStart = {};
+  var dayRigsMap = {};
   var sessionMap = {};
+  var calMultiRig = sessionsSpanMultipleRigs(sessions);
+  var calLatestByRig = calMultiRig ? latestStartByRig(sessions) : null;
   var latestStart = 0, latestDayKey = null;
   sessions.forEach(function(s) {
     if (!s.sessionStart) return;
@@ -3375,6 +3513,14 @@ function buildCalendarHeatmap(sessions) {
     var startMs = new Date(s.sessionStart).getTime();
     if (!daySessionStart[dk] || startMs < daySessionStart[dk]) daySessionStart[dk] = startMs;
     if (startMs > latestStart) { latestStart = startMs; latestDayKey = dk; }
+    if (s.rigId) {
+      if (!dayRigsMap[dk]) dayRigsMap[dk] = {};
+      if (!dayRigsMap[dk][s.rigId]) {
+        dayRigsMap[dk][s.rigId] = { id: s.rigId, name: s.rigName || s.rigId, integ: 0, images: 0 };
+      }
+      dayRigsMap[dk][s.rigId].integ += s.totalIntegrationSeconds || 0;
+      dayRigsMap[dk][s.rigId].images += s.imageCount || 0;
+    }
     var secs = s.totalIntegrationSeconds || 0, imgs = s.imageCount || 0;
     var cur = sessionMap[dk];
     if (s.sessionId && s.hasReport && (!cur || secs > cur.bestSecs || (secs === cur.bestSecs && imgs > cur.bestImgs))) {
@@ -3417,19 +3563,26 @@ function buildCalendarHeatmap(sessions) {
       var secs = dayMap[dk] || 0;
       var sessInfo = sessionMap[dk];
       var tgtStr = (sessInfo && sessInfo.targets && sessInfo.targets.length) ? sessInfo.targets.join(', ') : '';
-      var isLatest = secs > 0 && dk === latestDayKey;
+      var dayRigs = dayRigsMap[dk] ? dayRigRows({ rigs: dayRigsMap[dk] }) : [];
+      var rigsAttr = (calMultiRig && dayRigs.length) ? encodeLwRigs(dayRigs) : '';
+      var isLatest = secs > 0 && (calMultiRig
+        ? dayRigs.some(function(r) { return calLatestByRig[r.id] && calLatestByRig[r.id].substring(0, 10) === dk; })
+        : dk === latestDayKey);
       var imgs = dayImgMap[dk] || 0;
       var tipMeta = secs
         ? fmtDate(dk) + ' \u00b7 ' + fmt(secs) + ' \u00b7 ' + imgs + ' image' + (imgs === 1 ? '' : 's') + (isLatest ? ' \u00b7 latest' : '')
         : fmtDate(dk) + ' \u00b7 no session';
-      var clickable = sessInfo && sessInfo.id;
+      var clickable = calMultiRig ? secs > 0 : (sessInfo && sessInfo.id);
       var fillColor = isLatest ? 'rgb(212,160,106)' : cellColor(secs);
       if (isLatest) {
         svgBody += '<rect x="' + (cx - 4) + '" y="' + (cy - 4) + '" width="' + (CELL + 8) + '" height="' + (CELL + 8) + '" fill="rgb(212,160,106)" opacity="0.12" rx="3"/>';
         svgBody += '<rect x="' + (cx - 2) + '" y="' + (cy - 2) + '" width="' + (CELL + 4) + '" height="' + (CELL + 4) + '" fill="rgb(212,160,106)" opacity="0.28" rx="2.5"/>';
       }
-      var rect = '<rect class="lifetime-heatmap-cell lw-bar' + (clickable ? ' is-clickable' : '') + (isLatest ? ' lw-bar-latest' : '') + '" x="' + cx + '" y="' + cy + '" width="' + CELL + '" height="' + CELL + '" rx="2" fill="' + fillColor + '" data-lw-tgt="' + esc(tgtStr) + '" data-lw-meta="' + esc(tipMeta) + '" data-lw-latest="' + (isLatest ? '1' : '0') + '"/>';
-      if (clickable && !IS_TOUCH) {
+      var rect = '<rect class="lifetime-heatmap-cell lw-bar' + (clickable ? ' is-clickable' : '') + (isLatest ? ' lw-bar-latest' : '') + '" x="' + cx + '" y="' + cy + '" width="' + CELL + '" height="' + CELL + '" rx="2" fill="' + fillColor + '" data-lw-tgt="' + esc(tgtStr) + '" data-lw-meta="' + esc(tipMeta) + '" data-lw-latest="' + (isLatest ? '1' : '0') + '"'
+        + (rigsAttr ? ' data-lw-rigs="' + esc(rigsAttr) + '"' : '')
+        + (calMultiRig && secs > 0 ? ' data-lw-day="' + esc(dk) + '"' : '')
+        + '/>';
+      if (clickable && !IS_TOUCH && !calMultiRig) {
         // In-app session view matches session-card click behavior — was
         // opening the static /report in a new tab, now goes through the SPA.
         svgBody += '<a href="#/sessions/' + encodeURIComponent(sessInfo.id) + '">' + rect + '</a>';
@@ -3438,7 +3591,8 @@ function buildCalendarHeatmap(sessions) {
       }
       if (secs > 0) {
         cellData.push({x: cx, y: cy, w: CELL, h: CELL, d: dk, i: secs, n: imgs, t: tgtStr,
-          sid: (sessInfo && sessInfo.id) || '', hr: !!(sessInfo && sessInfo.id)});
+          sid: (calMultiRig ? '' : ((sessInfo && sessInfo.id) || '')), hr: !!(sessInfo && sessInfo.id),
+          rigs: rigsAttr, dayJump: !!calMultiRig});
       }
       if (dow === 0 && mo !== prevMonth) {
         var mlabel = MNAMES[mo] + (mo === 0 ? ' ' + yr : '');
@@ -3465,23 +3619,33 @@ function toggleLifetimeView(btn, view) {
 }
 
 // Cached sessions used to rebuild the activity waveform on window resize.
-// The waveform SVG is rendered with an explicit numeric width derived from
-// window.innerWidth at build time, so it doesn't reflow on its own.
+// The waveform SVG is rendered with an explicit numeric width, so it
+// doesn't reflow on its own — fitLifetimeWaveform measures the wrap and
+// rebuilds to that width (and only enables the horizontal scrollbar when
+// the chart is actually wider than the slot).
 var __lwCachedSessions = null;
 var __lwResizeTimer = null;
+function waveformAvailWidth() {
+  var wrap = document.querySelector('.lifetime-waveform-slot .lw-scroll-wrap');
+  if (wrap && wrap.clientWidth >= 200) return wrap.clientWidth;
+  var isMobile = window.innerWidth < 720;
+  return isMobile
+    ? Math.max(280, window.innerWidth - 32)
+    : Math.max(680, Math.min(window.innerWidth, 1800) - 140);
+}
+function fitLifetimeWaveform() {
+  var wrap = document.querySelector('.lifetime-waveform-slot .lw-scroll-wrap');
+  if (!wrap || !__lwCachedSessions) return;
+  wrap.innerHTML = buildActivityWaveform(__lwCachedSessions);
+  var overflowing = wrap.scrollWidth > wrap.clientWidth + 2;
+  wrap.classList.toggle('is-scrollable', overflowing);
+  if (overflowing) wrap.scrollLeft = wrap.scrollWidth;
+  var strip = wrap.closest('.lifetime-strip');
+  if (strip && typeof initWaveformScrubber === 'function') initWaveformScrubber(strip);
+}
 window.addEventListener('resize', function() {
   if (__lwResizeTimer) clearTimeout(__lwResizeTimer);
-  __lwResizeTimer = setTimeout(function() {
-    if (!__lwCachedSessions) return;
-    var wrap = document.querySelector('.lifetime-waveform-slot .lw-scroll-wrap');
-    if (!wrap) return;
-    wrap.innerHTML = buildActivityWaveform(__lwCachedSessions);
-    // Reinit the touch scrubber against the freshly rendered SVG (no-op on
-    // non-touch). The lw-bar-tip hover handler is delegated on document so
-    // it doesn't need rewiring.
-    var strip = wrap.closest('.lifetime-strip');
-    if (strip && typeof initWaveformScrubber === 'function') initWaveformScrubber(strip);
-  }, 200);
+  __lwResizeTimer = setTimeout(fitLifetimeWaveform, 200);
 });
 
 function renderLifetimeStrip(sessions) {
@@ -3611,6 +3775,7 @@ function initWaveformScrubber(container) {
       info.innerHTML =
         '<span class="lw-si-date">' + esc(dateStr) + '</span>' +
         '<span class="lw-si-stats">' + fmt(b.i) + ' \u00b7 ' + b.n + ' images</span>' +
+        (b.rigs ? lwRigsHtml(b.rigs) : '') +
         (b.t ? '<span class="lw-si-tgts">' + esc(b.t) + '</span>' : '');
       info.classList.add('lw-scrubber-active');
       var anchorX = currentBar ? currentBar.getBoundingClientRect().left + currentBar.getBoundingClientRect().width / 2 : clientX;
@@ -3627,11 +3792,14 @@ function initWaveformScrubber(container) {
     info.innerHTML =
       '<span class="lw-si-date">' + esc(dateStr) + '</span>' +
       '<span class="lw-si-stats">' + fmt(b.i) + ' \u00b7 ' + b.n + ' images</span>' +
+      (b.rigs ? lwRigsHtml(b.rigs) : '') +
       (b.t ? '<span class="lw-si-tgts">' + esc(b.t) + '</span>' : '') +
       '<div class="lw-si-actions">' +
-      (b.hr
-        ? '<button class="lw-si-report-btn">Open Report \u2192</button>'
-        : '<span class="lw-si-no-report">No report</span>') +
+      (b.dayJump
+        ? '<button class="lw-si-report-btn">Show sessions \u2192</button>'
+        : (b.hr
+          ? '<button class="lw-si-report-btn">Open Report \u2192</button>'
+          : '<span class="lw-si-no-report">No report</span>')) +
       '<button class="lw-si-dismiss">\u00d7</button>' +
       '</div>';
     info.classList.add('lw-scrubber-pinned');
@@ -3647,17 +3815,20 @@ function initWaveformScrubber(container) {
     }
     var reportBtn = info.querySelector('.lw-si-report-btn');
     if (reportBtn) {
+      var go = function() {
+        hide();
+        if (b.dayJump) scrollToAllRigsDay(b.d);
+        else navigate('#/sessions/' + b.sid);
+      };
       reportBtn.addEventListener('touchend', function(e) {
         e.stopPropagation();
         e.preventDefault();
-        hide();
-        navigate('#/sessions/' + b.sid);
+        go();
       }, {passive: false});
       reportBtn.addEventListener('click', function(e) {
         e.stopPropagation();
         e.preventDefault();
-        hide();
-        navigate('#/sessions/' + b.sid);
+        go();
       });
     }
     // Close on outside tap. Registered in CAPTURE phase + stopPropagation so
@@ -3969,6 +4140,7 @@ function renderHeroSection(session) {
     ? s.targets.map(function(t, i) { return makeTargetBadge(t, i); }).join('')
     : '<span style="color:var(--text-quaternary);font-size:12px">No targets</span>';
   var badge = s.hasReport ? '' : '<span class="badge badge-red">No report</span>';
+  badge += s.autoFinalized ? '<span class="badge badge-amber" title="NINA closed before the End Session instruction ran \u2014 end time is estimated from the last recorded activity">Auto-recovered</span>' : '';
   var statsLine = '<span class="stat-val">' + s.imageCount + '</span> imgs' +
     ' &middot; <span class="stat-val">' + fmt(s.totalIntegrationSeconds) + '</span>' +
     ' &middot; HFR <span class="stat-val">' + fmtNum(s.avgHfr) + '</span>px' +
@@ -4055,25 +4227,7 @@ function renderSessionsV2(el, sub, params) {
   // viewports where CSS clamp() is just a hair too generous.
   el.querySelectorAll('.session-card').forEach(fitStatLabels);
 
-  var scrollWrap = el.querySelector('.lw-scroll-wrap');
-  if (scrollWrap) {
-    var snapEnd = function() {
-      scrollWrap.scrollLeft = scrollWrap.scrollWidth;
-    };
-    requestAnimationFrame(function() { requestAnimationFrame(snapEnd); });
-    [50, 150, 400, 900].forEach(function(ms) { setTimeout(snapEnd, ms); });
-    if (typeof ResizeObserver === 'function') {
-      var ro = new ResizeObserver(function() {
-        snapEnd();
-        if (scrollWrap.scrollWidth > scrollWrap.clientWidth + 4) {
-          ro.disconnect();
-        }
-      });
-      try { ro.observe(scrollWrap.firstElementChild || scrollWrap); } catch (e) {}
-      setTimeout(function() { try { ro.disconnect(); } catch (e) {} }, 2000);
-    }
-  }
-
+  requestAnimationFrame(function() { requestAnimationFrame(fitLifetimeWaveform); });
   initWaveformScrubber(el);
   initCalendarScrubber(el);
 
@@ -4114,6 +4268,8 @@ function renderSessionList(params) {
   var el = document.getElementById('content');
   var sub = document.getElementById('page-subtitle');
 
+  if (ACTIVE_RIG === 'all') { renderSessionsAllRigs(el, sub); return; }
+
   var fromVal = params ? (params.get('from') || '') : '';
   var toVal = params ? (params.get('to') || '') : '';
   var sortVal = params ? (params.get('sort') || 'date-desc') : 'date-desc';
@@ -4143,13 +4299,240 @@ function renderSessionList(params) {
   var cancelLoader = deferLoader(el, 'Loading sessions...');
   api('/api/sessions').then(function(data) {
     cancelLoader();
+    // /api/mode can resolve to 'all' while this unscoped fetch (kicked off
+    // before companion mode was known) is still in flight. Applying it now
+    // would clobber the merged view with stale single-rig data — the merged
+    // render (already running, or about to) owns #content instead.
+    if (ACTIVE_RIG === 'all') return;
     sessionsCache = data;
     logInfo('Sessions loaded:', data.length);
     finish();
   }).catch(function(err) {
     cancelLoader();
+    if (ACTIVE_RIG === 'all') return;
     logError('Failed to load sessions:', err.message);
     el.innerHTML = '<div class="error">Failed to load sessions: ' + esc(err.message) + '</div>';
+  });
+}
+
+// ── "All rigs" merged Sessions view ──────────────────────────────────────────
+// Selected via the "All rigs" entry at the top of the rig switcher. Fetches
+// every configured rig's sessions explicitly by id (ACTIVE_RIG='all' is a
+// client-only pseudo-rig — see rigParamActive) and groups them by calendar
+// date: a solo night renders one standard card with a small rig chip; a
+// night where >1 rig has a session groups under one shared date label with
+// each rig's full card (thumbs + altitude chart, real data) stacked
+// underneath. Clicking a card switches ACTIVE_RIG to that card's owning rig
+// first, so the session detail page it navigates to reads from the right
+// backend. The lifetime strip at the top sums across the merged session
+// list, same reducer as the single-rig view — Sessions/Images/Integration
+// become real cross-rig totals; Targets dedupes by name for free since it's
+// keyed by name, not by (rig, name).
+var RIG_COLORS = ['#9d8cf0', '#4fbfa0', '#e0a458', '#e07ba0', '#7eb8f7'];
+function rigColor(rigId) {
+  var rigs = RIGS;
+  var idx = rigs.findIndex(function(r) { return r.id === rigId; });
+  return RIG_COLORS[(idx < 0 ? 0 : idx) % RIG_COLORS.length];
+}
+
+function allRigsDrill(rigId, sessionId) {
+  switchRig(rigId);
+  navigate('#/sessions/' + sessionId);
+}
+
+function buildRigSessionCard(rig, s, showRigAsHeader, isLatestForRig) {
+  var domId = rig.id + '__' + s.sessionId;
+  var targetsText = s.targets.length > 0
+    ? s.targets.map(function(t, i) { return makeTargetBadge(t, i); }).join('')
+    : '<span style="color:var(--text-quaternary);font-size:12px">No targets</span>';
+  var badge = s.hasReport ? '' : '<span class="badge badge-red">No report</span>';
+  badge += s.autoFinalized ? '<span class="badge badge-amber" title="NINA closed before the End Session instruction ran \u2014 end time is estimated from the last recorded activity">Auto-recovered</span>' : '';
+  var sessionTimes = fmtTime(s.sessionStart) + ' – ' + fmtTime(s.sessionEnd);
+  var color = rigColor(rig.id);
+  // Latest-per-rig cards always show their own date (that's the whole point
+  // — two rigs at different sites can each be "latest" on a different
+  // night), never the rig-as-header treatment used for same-night grouping.
+  var whenLabel = (showRigAsHeader && !isLatestForRig)
+    ? '<span class="session-date" style="color:' + color + '">' + esc(rig.name || rig.id) + '</span>'
+    : '<span class="session-date">' + fmtDate(s.sessionStart) + '</span>';
+  var chip = (showRigAsHeader && !isLatestForRig) ? '' :
+    '<span class="allrigs-chip" style="background:' + color + '1a;color:' + color + '">' + esc(rig.name || rig.id) + '</span>';
+
+  var statBoxes = '<div class="card-stats">' +
+    '<div class="card-stat"><div class="card-stat-value">' + s.imageCount + '</div><div class="card-stat-label">' + plural(s.imageCount, 'Image') + '</div></div>' +
+    '<div class="card-stat"><div class="card-stat-value">' + fmt(s.totalIntegrationSeconds) + '</div><div class="card-stat-label">Integration</div></div>' +
+    '<div class="card-stat"><div class="card-stat-value">' + fmtNum(s.avgHfr) + 'px</div><div class="card-stat-label">HFR</div></div>' +
+    '<div class="card-stat"><div class="card-stat-value">' + fmtNum(s.avgFwhm) + '&Prime;</div><div class="card-stat-label">FWHM</div></div>' +
+    '<div class="card-stat"><div class="card-stat-value">' + fmtNum(s.avgGuiding) + '&Prime;</div><div class="card-stat-label">Guiding</div></div>' +
+    '<div class="card-stat">' + (s.moonPhase ? '<div class="card-stat-value">' + esc(s.moonPhase) + '</div><div class="card-stat-label">Moon</div>' : '') + '</div>' +
+  '</div>';
+
+  var latestLabel = isLatestForRig ? '<div class="latest-label">Latest Session</div>' : '';
+
+  return '<div class="session-card' + (isLatestForRig ? ' session-card--latest' : '') + '" data-rig="' + esc(rig.id) + '" data-session="' + esc(s.sessionId) + '" data-allrigs-day="' + esc((s.sessionStart || '').substring(0, 10)) + '" onclick="allRigsDrill(\'' + esc(rig.id) + '\',\'' + esc(s.sessionId) + '\')">' +
+    '<button class="hide-btn" data-rig="' + esc(rig.id) + '" data-session="' + esc(s.sessionId) + '" onclick="event.stopPropagation();hideSession(this.dataset.session, this.dataset.rig)" title="Hide this session">\u2715</button>' +
+    latestLabel +
+    '<div class="card-header">' +
+      whenLabel +
+      '<span class="session-times">' + sessionTimes + '</span>' +
+      '<span class="card-targets-line">' + targetsText + '</span>' +
+      chip + badge +
+    '</div>' +
+    '<div class="card-body">' +
+      '<div class="card-content">' +
+        '<div class="card-thumbs" id="thumbs-' + domId + '"></div>' +
+        statBoxes +
+      '</div>' +
+      '<div class="card-altitude" id="altitude-' + domId + '"></div>' +
+    '</div>' +
+  '</div>';
+}
+
+function hydrateRigSessionCard(rig, s) {
+  if (!s.hasReport) return;
+  var domId = rig.id + '__' + s.sessionId;
+  var mapKey = allRigsHiddenKey(rig.id, s.sessionId);
+  var thumbsDomId = 'thumbs-' + domId;
+  function tryWireLiveStack() {
+    if (livestackMap[mapKey]) wireLiveStackBadges(s, livestackMap[mapKey], thumbsDomId, mapKey);
+  }
+  var thumbsEl = document.getElementById(thumbsDomId);
+  if (thumbsEl) {
+    api('/api/sessions/' + s.sessionId + '/thumbnails?rig=' + encodeURIComponent(rig.id)).then(function(thumbs) {
+      if (!thumbs || !thumbs.length) return;
+      thumbsEl.innerHTML = thumbs.map(function(t) {
+        var img = '<img class="card-thumb" src="' + t.dataUri + '" alt="' + esc(t.target) + '" loading="lazy" onerror="this.style.display=\'none\'">';
+        var svg = '';
+        if (t.fovSvg) {
+          svg = t.fovSvg
+            .replace(/width='\d+'/, "width='100%'")
+            .replace(/height='\d+'/, "height='100%'")
+            .replace("<svg ", "<svg viewBox='0 0 200 200' " + (showFovOverlay ? '' : "style='display:none' "));
+        }
+        var labelName = t.target.length > 30 ? t.target.substring(0, 29) + '\u2026' : t.target;
+        return '<div class="card-thumb-wrap" data-target="' + esc(t.target) + '" data-session="' + esc(s.sessionId) + '">' +
+          '<div class="thumb-label">' + esc(labelName) + '</div>' + img + svg + '</div>';
+      }).join('');
+      setupThumbsScrollMode(thumbsEl);
+      tryWireLiveStack();
+    }).catch(function(err) { logDebug('all-rigs thumb load failed', domId, err.message); });
+  }
+  if (livestackMap[mapKey]) {
+    tryWireLiveStack();
+  } else {
+    api('/api/sessions/' + s.sessionId + '/livestack?rig=' + encodeURIComponent(rig.id)).then(function(data) {
+      if (!data || Object.keys(data).length === 0) return;
+      livestackMap[mapKey] = data;
+      tryWireLiveStack();
+    }).catch(function(err) { logDebug('all-rigs livestack load failed', domId, err.message); });
+  }
+  var altEl = document.getElementById('altitude-' + domId);
+  if (altEl) {
+    api('/api/sessions/' + s.sessionId + '/altitude-chart?rig=' + encodeURIComponent(rig.id)).then(function(data) {
+      if (!data || !data.svg) return;
+      altEl.innerHTML = '<div class="chart-svg-wrap">' + data.svg + '</div>';
+      fixChartTextDistortion(altEl);
+      applyChartPullUp(altEl);
+      var body = altEl.parentElement;
+      if (body) body.classList.add('has-chart');
+    }).catch(function(err) { logDebug('all-rigs altitude load failed', domId, err.message); });
+  }
+}
+
+function renderSessionsAllRigs(el, sub) {
+  if (sub) sub.textContent = rigSwitcherLabel();
+  exitReportView();
+
+  var wanted = {};
+  visibleRigIds().forEach(function(id) { wanted[id] = true; });
+  var rigs = enabledRigs().filter(function(r) { return wanted[r.id]; });
+  if (!rigs.length) { el.innerHTML = '<div class="empty">No rigs selected.</div>'; return; }
+
+  var cancelLoader = deferLoader(el, 'Loading sessions for ' + rigs.length + ' rigs...');
+  Promise.all(rigs.map(function(r) {
+    return api('/api/sessions?rig=' + encodeURIComponent(r.id)).then(function(sessions) {
+      return { rig: r, sessions: sessions || [] };
+    });
+  })).then(function(results) {
+    cancelLoader();
+    var pairs = [];
+    results.forEach(function(res) {
+      res.sessions.forEach(function(s) {
+        if (!isHiddenInAllRigs(res.rig.id, s.sessionId)) pairs.push({ rig: res.rig, session: s });
+      });
+    });
+    var hiddenCount = countAllRigsHidden();
+    var unhideHtml = hiddenCount
+      ? '<div class="allrigs-unhide"><button type="button" class="filter-link" id="allrigs-unhide">Unhide ' + hiddenCount + '</button></div>'
+      : '';
+    if (!pairs.length) {
+      el.innerHTML = '<div class="empty">No sessions recorded yet.</div>' + unhideHtml;
+      bindAllRigsUnhide();
+      return;
+    }
+
+    // Each rig's own most recent session gets the gold "latest" treatment,
+    // independent of what night it fell on — two rigs sharing an
+    // observatory usually share weather and land on the same night, but
+    // rigs at different sites (or one backyard + one remote) can have very
+    // different most-recent dates. Pull those out into their own snapshot
+    // row up top; the chronological list below shows everything else.
+    var latestByRig = {};
+    pairs.forEach(function(p) {
+      var cur = latestByRig[p.rig.id];
+      if (!cur || p.session.sessionStart > cur.session.sessionStart) latestByRig[p.rig.id] = p;
+    });
+    var latestIds = {};
+    Object.keys(latestByRig).forEach(function(rigId) { latestIds[rigId + '::' + latestByRig[rigId].session.sessionId] = true; });
+    var remaining = pairs.filter(function(p) { return !latestIds[p.rig.id + '::' + p.session.sessionId]; });
+
+    var order = [], byDate = {};
+    remaining.forEach(function(p) {
+      var d = p.session.sessionStart.substring(0, 10);
+      if (!byDate[d]) { byDate[d] = []; order.push(d); }
+      byDate[d].push(p);
+    });
+    order.sort(function(a, b) { return b.localeCompare(a); });
+
+    // Same reducer the single-rig view uses — pass it the merged session
+    // list and the Sessions/Images/Integration/Targets band comes out as
+    // real cross-rig totals with zero changes to renderLifetimeStrip itself.
+    var html = renderLifetimeStrip(pairs.map(function(p) {
+      var s = Object.assign({}, p.session);
+      s.rigId = p.rig.id;
+      s.rigName = p.rig.name || p.rig.id;
+      return s;
+    }));
+    html += unhideHtml;
+
+    html += '<div class="cards-container">';
+    rigs.forEach(function(r) {
+      var latest = latestByRig[r.id];
+      if (latest) html += buildRigSessionCard(latest.rig, latest.session, false, true);
+    });
+    if (order.length) html += '<div class="allrigs-section-label">All sessions</div>';
+    order.forEach(function(date) {
+      var group = byDate[date];
+      if (group.length === 1) {
+        html += buildRigSessionCard(group[0].rig, group[0].session, false, false);
+      } else {
+        html += '<div class="allrigs-day-group" data-allrigs-day="' + esc(date) + '"><div class="allrigs-day-label">' + fmtDate(group[0].session.sessionStart) + '</div><div class="allrigs-day-stack">' +
+          group.map(function(p) { return buildRigSessionCard(p.rig, p.session, true, false); }).join('') +
+        '</div></div>';
+      }
+    });
+    html += '</div>';
+    el.innerHTML = html;
+    bindAllRigsUnhide();
+    el.querySelectorAll('.session-card').forEach(fitStatLabels);
+    pairs.forEach(function(p) { hydrateRigSessionCard(p.rig, p.session); });
+    requestAnimationFrame(function() { requestAnimationFrame(fitLifetimeWaveform); });
+    initWaveformScrubber(el);
+    initCalendarScrubber(el);
+  }).catch(function(err) {
+    cancelLoader();
+    logError('all-rigs sessions load failed:', err.message);
+    el.innerHTML = '<div class="error">Failed to load: ' + esc(err.message) + '</div>';
   });
 }
 
@@ -4212,7 +4595,7 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy, keepPage) {
     '<label class="target-check' + (cardViewMode === 'compact' ? ' disabled' : '') + '" title="Show altitude chart on each card"><input type="checkbox" id="filter-altitude"' + (showAltitude ? ' checked' : '') + (cardViewMode === 'compact' ? ' disabled' : '') + '><span>Altitude</span></label>';
 
   // Add unhide-all button if any sessions are hidden
-  var tempHiddenCount = sessionsCache.filter(function(s) { return hiddenSessions[s.sessionId]; }).length;
+  var tempHiddenCount = sessionsCache.filter(function(s) { return isHiddenInSingleRig(s.sessionId); }).length;
   if (tempHiddenCount > 0) {
     filterHtml +=
       '<button id="unhide-all" class="filter-link">Unhide all (' + tempHiddenCount + ')</button>';
@@ -4227,11 +4610,11 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy, keepPage) {
   });
   var allSelected = Object.keys(activeTargets).length === allTargets.length;
 
-  var hiddenCount = sessionsCache.filter(function(s) { return hiddenSessions[s.sessionId]; }).length;
+  var hiddenCount = sessionsCache.filter(function(s) { return isHiddenInSingleRig(s.sessionId); }).length;
 
   var filtered = sessionsCache.filter(function(s) {
     if (sessionsV2Mode && heroSessionId && s.sessionId === heroSessionId) return false;
-    if (!showHidden && hiddenSessions[s.sessionId]) return false;
+    if (!showHidden && isHiddenInSingleRig(s.sessionId)) return false;
     if (!showEmptySessions && s.imageCount === 0) return false;
     if (!allSelected) {
       var match = s.targets.some(function(t) { return activeTargets[t]; });
@@ -4273,6 +4656,7 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy, keepPage) {
       : '<span style="color:var(--text-quaternary);font-size:12px">No targets</span>';
 
     var badge = s.hasReport ? '' : '<span class="badge badge-red">No report</span>';
+    badge += s.autoFinalized ? '<span class="badge badge-amber" title="NINA closed before the End Session instruction ran \u2014 end time is estimated from the last recorded activity">Auto-recovered</span>' : '';
 
     var sessionTimes = fmtTime(s.sessionStart) + ' \u2013 ' + fmtTime(s.sessionEnd);
 
@@ -4587,9 +4971,9 @@ function loadThumbnails(sessions) {
 // whole feature on viewport size — at <=1100 the CSS hides the badge and
 // shelf and the JS skips wiring entirely; at >1100 the desktop hover
 // model takes over and tap-zoom (setupMobileThumbnailZoom) is suppressed.
-function wireLiveStackBadges(s, data) {
+function wireLiveStackBadges(s, data, thumbsDomId, mapKey) {
   if (window.innerWidth < CARD_DESKTOP_MIN_WIDTH) return;
-  var thumbsEl = document.getElementById('thumbs-' + s.sessionId);
+  var thumbsEl = document.getElementById(thumbsDomId || ('thumbs-' + s.sessionId));
   if (!thumbsEl) return;
   var wraps = thumbsEl.querySelectorAll('.card-thumb-wrap');
   for (var i = 0; i < wraps.length; i++) {
@@ -4603,7 +4987,7 @@ function wireLiveStackBadges(s, data) {
       badge.textContent = count;
       badge.title = count + ' live stack image' + (count !== 1 ? 's' : '');
       wraps[i].appendChild(badge);
-      setupLiveStackHover(wraps[i], s.sessionId, target);
+      setupLiveStackHover(wraps[i], mapKey || s.sessionId, target);
     }
   }
 }
@@ -4909,12 +5293,43 @@ function setupLiveStackHover(thumbWrap, sessionId, targetName) {
   }
 }
 
-function hideSession(sessionId) {
-  hiddenSessions[sessionId] = true;
+function bindAllRigsUnhide() {
+  var btn = document.getElementById('allrigs-unhide');
+  if (!btn) return;
+  btn.addEventListener('click', function(e) {
+    e.preventDefault();
+    Object.keys(hiddenSessions).forEach(function(k) {
+      if (k.indexOf('::') !== -1) delete hiddenSessions[k];
+    });
+    safeSetItem('ns-hidden-sessions', JSON.stringify(hiddenSessions));
+    renderSessionsAllRigs(document.getElementById('content'), document.getElementById('page-subtitle'));
+  });
+}
+
+function hideSession(sessionId, rigId) {
+  var key = rigId ? allRigsHiddenKey(rigId, sessionId) : sessionId;
+  hiddenSessions[key] = true;
   safeSetItem('ns-hidden-sessions', JSON.stringify(hiddenSessions));
 
-  var btn = document.querySelector('.hide-btn[data-session="' + sessionId + '"]');
+  var btn = rigId
+    ? document.querySelector('.hide-btn[data-rig="' + rigId + '"][data-session="' + sessionId + '"]')
+    : document.querySelector('.hide-btn[data-session="' + sessionId + '"]');
   var card = btn ? btn.closest('.session-card') : null;
+
+  if (ACTIVE_RIG === 'all') {
+    function rerenderAll() {
+      renderSessionsAllRigs(document.getElementById('content'), document.getElementById('page-subtitle'));
+    }
+    if (card) {
+      card.style.transition = 'opacity 0.2s, transform 0.2s';
+      card.style.opacity = '0';
+      card.style.transform = 'scale(0.97)';
+      setTimeout(rerenderAll, 200);
+    } else {
+      rerenderAll();
+    }
+    return;
+  }
 
   function afterRemove() {
     // Update subtitle
@@ -4924,7 +5339,7 @@ function hideSession(sessionId) {
     }
 
     // Update or create unhide-all button in the filter bar
-    var hiddenCount = sessionsCache.filter(function(s) { return hiddenSessions[s.sessionId]; }).length;
+    var hiddenCount = sessionsCache.filter(function(s) { return isHiddenInSingleRig(s.sessionId); }).length;
     var unhideBtn = document.getElementById('unhide-all');
     if (unhideBtn) {
       unhideBtn.textContent = 'Unhide all (' + hiddenCount + ')';
@@ -5208,6 +5623,8 @@ var isTouchDevice = 'ontouchstart' in window;
     var html = '';
     if (tgt) html += '<div class="lw-tip-tgt">' + tgt + '</div>';
     html += '<div class="lw-tip-meta">' + meta + '</div>';
+    var rigs = bar.getAttribute('data-lw-rigs');
+    if (rigs) html += '<div class="lw-tip-rigs">' + lwRigsHtml(rigs) + '</div>';
     tip.innerHTML = html;
     tip.classList.toggle('lw-bar-tip--latest', latest);
     tip.style.top = '-9999px';
@@ -5240,6 +5657,14 @@ var isTouchDevice = 'ontouchstart' in window;
   // stays pinned at its last position on the new page.
   document.addEventListener('click', function(e) {
     if (e.target.closest('.lw-bar')) hide();
+    var dayBar = e.target.closest('.lw-bar[data-lw-day]');
+    if (!dayBar) return;
+    var day = dayBar.getAttribute('data-lw-day');
+    if (day) {
+      e.preventDefault();
+      e.stopPropagation();
+      scrollToAllRigsDay(day);
+    }
   });
   // Also hide on any hash change — defensive for any other navigation path
   // (keyboard nav, programmatic route change, back/forward, etc.).
@@ -9484,9 +9909,26 @@ function initCompanionBanner() {
     RIGS = Array.isArray(j.rigs) ? j.rigs : [];
     DEFAULT_RIG = j.defaultRig || (RIGS[0] && RIGS[0].id) || '';
     var stored = '';
+    var storedVisible = null;
     try { stored = localStorage.getItem(RIG_STORAGE_KEY) || ''; } catch (e) {}
-    ACTIVE_RIG = (stored && RIGS.some(function(r){ return r.id === stored; })) ? stored : DEFAULT_RIG;
+    try { storedVisible = JSON.parse(localStorage.getItem(VISIBLE_RIGS_KEY) || 'null'); } catch (e) { storedVisible = null; }
+    if (Array.isArray(storedVisible) && storedVisible.length) {
+      VISIBLE_RIGS = normalizeVisibleRigs(storedVisible);
+    } else if (stored === 'all') {
+      VISIBLE_RIGS = enabledRigs().map(function(r) { return r.id; });
+    } else if (stored && RIGS.some(function(r) { return r.id === stored; })) {
+      VISIBLE_RIGS = normalizeVisibleRigs([stored]);
+    } else {
+      VISIBLE_RIGS = normalizeVisibleRigs([DEFAULT_RIG]);
+    }
+    ACTIVE_RIG = VISIBLE_RIGS.length === 1 ? VISIBLE_RIGS[0] : 'all';
     renderRigSwitcher();
+    // The very first paint (route() at script init) ran before this fetch
+    // resolved, so it rendered unscoped — which the server treats as
+    // "Default rig". If the settled ACTIVE_RIG is anything else (a stored
+    // non-default rig, or 'all'), that first paint is now showing the wrong
+    // scope and needs a re-render.
+    if (ACTIVE_RIG !== DEFAULT_RIG) route();
 
     var banner = document.getElementById('companion-banner');
     if (banner) banner.hidden = false;
@@ -9516,43 +9958,193 @@ function initCompanionBanner() {
   }).catch(function(){ /* ignore — primary mode or transient failure */ });
 }
 
-// Render (or hide) the banner rig switcher. Only shown when >1 rig is
-// configured — single-rig users see zero UI change. A small status dot flags
-// when a NON-active rig needs attention (updated by updateRigAggregateDot).
-function renderRigSwitcher() {
-  var host = document.getElementById('companion-rig-switch');
-  if (!host) return;
-  if (RIGS.length <= 1) { host.hidden = true; host.innerHTML = ''; return; }
-  var opts = RIGS.map(function(r){
-    var sel = r.id === ACTIVE_RIG ? ' selected' : '';
-    var label = (r.name || r.id) + (r.enabled === false ? ' (off)' : '');
-    return '<option value="' + esc(r.id) + '"' + sel + '>' + esc(label) + '</option>';
-  }).join('');
-  host.innerHTML =
-    '<span class="rig-dot" id="companion-rig-dot" hidden title="Another rig needs attention"></span>' +
-    '<select id="companion-rig-select" class="companion-rig-select" aria-label="Active rig">' + opts + '</select>';
-  host.hidden = false;
-  var sel = document.getElementById('companion-rig-select');
-  if (sel) sel.onchange = function(){ switchRig(sel.value); };
+function enabledRigs() {
+  return RIGS.filter(function(r) { return r.enabled !== false; });
 }
 
-// Switch the active rig: persist, clear every client cache (same set the
-// post-sync auto-refresh clears so no other rig's data leaks through), and
-// re-render the current page in place — no reload.
-function switchRig(id) {
-  if (!id || id === ACTIVE_RIG) return;
-  if (!RIGS.some(function(r){ return r.id === id; })) return;
-  ACTIVE_RIG = id;
-  try { localStorage.setItem(RIG_STORAGE_KEY, id); } catch (e) {}
+function visibleRigIds() {
+  return VISIBLE_RIGS.slice();
+}
+
+function normalizeVisibleRigs(ids) {
+  var allowed = {};
+  enabledRigs().forEach(function(r) { allowed[r.id] = true; });
+  var out = [];
+  (ids || []).forEach(function(id) {
+    if (allowed[id] && out.indexOf(id) === -1) out.push(id);
+  });
+  if (!out.length) {
+    var fallback = (DEFAULT_RIG && allowed[DEFAULT_RIG]) ? DEFAULT_RIG : (enabledRigs()[0] && enabledRigs()[0].id);
+    if (fallback) out = [fallback];
+  }
+  return out;
+}
+
+function isAllRigsSelected() {
+  var en = enabledRigs();
+  if (en.length < 2) return false;
+  if (VISIBLE_RIGS.length !== en.length) return false;
+  return en.every(function(r) { return VISIBLE_RIGS.indexOf(r.id) !== -1; });
+}
+
+function rigSwitcherLabel() {
+  if (isAllRigsSelected()) return 'All rigs';
+  if (VISIBLE_RIGS.length === 1) {
+    var one = RIGS.filter(function(r) { return r.id === VISIBLE_RIGS[0]; })[0];
+    return (one && (one.name || one.id)) || 'Rig';
+  }
+  var total = enabledRigs().length;
+  return VISIBLE_RIGS.length + ' of ' + total;
+}
+
+function persistRigSelection() {
+  try {
+    localStorage.setItem(RIG_STORAGE_KEY, ACTIVE_RIG);
+    localStorage.setItem(VISIBLE_RIGS_KEY, JSON.stringify(VISIBLE_RIGS));
+  } catch (e) {}
+}
+
+function clearRigScopedCaches() {
   sessionsCache = []; initialLoadDone = false;
   detailCache = {}; thumbnailCache = {}; altitudeChartCache = {};
   __lwCachedSessions = null; cachedFilters = null; tonightPreviewCache = null;
   // Reset so the incoming rig's lastSuccessUtc doesn't look like a "new sync"
   // and trigger a redundant auto-refresh on top of the route() below.
   window.__lastSyncSuccessUtc = undefined;
-  logInfo('Switched rig ->', id);
+}
+
+// Apply a 1 / subset / all selection. One id → single-rig view (byte-for-byte
+// the pre-All-rigs path). Two or more → merged Sessions view scoped to those
+// ids. Refuses an empty set. keepMenu leaves the checkbox panel open so the
+// user can tick a subset without the menu slamming shut after each click.
+function applyRigSelection(ids, opts) {
+  var next = normalizeVisibleRigs(ids);
+  var nextActive = next.length === 1 ? next[0] : 'all';
+  var same = nextActive === ACTIVE_RIG
+    && next.length === VISIBLE_RIGS.length
+    && next.every(function(id, i) { return id === VISIBLE_RIGS[i]; });
+  VISIBLE_RIGS = next;
+  ACTIVE_RIG = nextActive;
+  persistRigSelection();
+  if (opts && opts.keepMenu) syncRigSwitcherUi();
+  else renderRigSwitcher();
+  if (same && !(opts && opts.force)) return;
+  clearRigScopedCaches();
+  logInfo('Switched rig ->', ACTIVE_RIG, VISIBLE_RIGS.join(','));
   refreshCompanionStatus();
   route();
+}
+
+function closeRigMenu() {
+  var menu = document.getElementById('companion-rig-menu');
+  var toggle = document.getElementById('companion-rig-toggle');
+  if (menu) menu.hidden = true;
+  if (toggle) toggle.setAttribute('aria-expanded', 'false');
+}
+
+function syncRigSwitcherUi() {
+  var toggle = document.getElementById('companion-rig-toggle');
+  if (toggle) {
+    var text = toggle.querySelector('.companion-rig-toggle-label');
+    if (text) text.textContent = rigSwitcherLabel();
+  }
+  var allBox = document.querySelector('#companion-rig-menu [data-all]');
+  if (allBox) {
+    var allOn = isAllRigsSelected();
+    allBox.checked = allOn;
+    allBox.indeterminate = VISIBLE_RIGS.length > 1 && !allOn;
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('#companion-rig-menu [data-rig]'), function(cb) {
+    cb.checked = VISIBLE_RIGS.indexOf(cb.getAttribute('data-rig')) !== -1;
+  });
+}
+
+// Render (or hide) the banner rig picker. Only shown when >1 rig is
+// configured — single-rig users see zero UI change. A small status dot flags
+// when a NON-active rig needs attention (updated by updateRigAggregateDot).
+// Custom checkbox menu (not a native <select>) so the user can pick one
+// rig, a subset, or all.
+function renderRigSwitcher() {
+  var host = document.getElementById('companion-rig-switch');
+  if (!host) return;
+  if (RIGS.length <= 1) { host.hidden = true; host.innerHTML = ''; return; }
+  var en = enabledRigs();
+  var allOn = isAllRigsSelected();
+  var rows = '<label class="companion-rig-option companion-rig-option--all">' +
+    '<input type="checkbox" data-all' + (allOn ? ' checked' : '') + '>' +
+    '<span>All rigs</span></label>';
+  RIGS.forEach(function(r) {
+    var off = r.enabled === false;
+    var checked = !off && VISIBLE_RIGS.indexOf(r.id) !== -1;
+    var color = rigColor(r.id);
+    rows += '<label class="companion-rig-option' + (off ? ' is-disabled' : '') + '">' +
+      '<input type="checkbox" data-rig="' + esc(r.id) + '"' + (checked ? ' checked' : '') + (off ? ' disabled' : '') + '>' +
+      '<span class="companion-rig-swatch" style="background:' + color + '"></span>' +
+      '<span>' + esc(r.name || r.id) + (off ? ' (off)' : '') + '</span></label>';
+  });
+  host.innerHTML =
+    '<span class="rig-dot" id="companion-rig-dot" hidden title="Another rig needs attention"></span>' +
+    '<div class="companion-rig-picker">' +
+      '<button type="button" id="companion-rig-toggle" class="companion-rig-toggle" aria-haspopup="true" aria-expanded="false" aria-controls="companion-rig-menu">' +
+        '<span class="companion-rig-toggle-label">' + esc(rigSwitcherLabel()) + '</span>' +
+      '</button>' +
+      '<div id="companion-rig-menu" class="companion-rig-menu" hidden role="group" aria-label="Rigs to show">' +
+        rows +
+      '</div>' +
+    '</div>';
+  host.hidden = false;
+
+  var toggle = document.getElementById('companion-rig-toggle');
+  var menu = document.getElementById('companion-rig-menu');
+  if (toggle && menu) {
+    toggle.onclick = function(e) {
+      e.stopPropagation();
+      var open = menu.hidden;
+      menu.hidden = !open;
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    menu.onclick = function(e) { e.stopPropagation(); };
+  }
+  var allBox = host.querySelector('[data-all]');
+  if (allBox) {
+    if (VISIBLE_RIGS.length > 1 && !allOn) allBox.indeterminate = true;
+    allBox.onchange = function() {
+      if (allBox.checked || allBox.indeterminate) {
+        applyRigSelection(en.map(function(r) { return r.id; }), { keepMenu: true });
+      } else {
+        // Refuse "none" — unchecking All while everything was selected
+        // would empty the view. Keep All on; uncheck individuals instead.
+        allBox.checked = true;
+        allBox.indeterminate = false;
+      }
+    };
+  }
+  Array.prototype.forEach.call(host.querySelectorAll('[data-rig]'), function(cb) {
+    cb.onchange = function() {
+      var ids = [];
+      Array.prototype.forEach.call(host.querySelectorAll('[data-rig]:checked'), function(el) {
+        ids.push(el.getAttribute('data-rig'));
+      });
+      if (!ids.length) { cb.checked = true; return; }
+      applyRigSelection(ids, { keepMenu: true });
+    };
+  });
+
+  if (!window.__rigMenuDocBound) {
+    window.__rigMenuDocBound = true;
+    document.addEventListener('click', function() { closeRigMenu(); });
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') closeRigMenu();
+    });
+  }
+}
+
+// Switch to one rig, or to the full merged set. Settings "open this rig"
+// and card drill-down both come through here.
+function switchRig(id) {
+  if (!id) return;
+  if (id === 'all') applyRigSelection(enabledRigs().map(function(r) { return r.id; }));
+  else applyRigSelection([id]);
 }
 
 function refreshCompanionStatus() {
@@ -9774,8 +10366,12 @@ function renderCompanionStatus(s) {
   // banner makes clear which rig the status refers to.
   var rigPrefix = '';
   if (RIGS.length > 1) {
-    var ar = RIGS.filter(function(r){ return r.id === ACTIVE_RIG; })[0];
-    if (ar) rigPrefix = (ar.name || ar.id) + ': ';
+    if (ACTIVE_RIG === 'all') {
+      rigPrefix = rigSwitcherLabel() + ': ';
+    } else {
+      var ar = RIGS.filter(function(r){ return r.id === ACTIVE_RIG; })[0];
+      if (ar) rigPrefix = (ar.name || ar.id) + ': ';
+    }
   }
 
   // Setup-required path takes precedence — no point talking about syncs or
@@ -9963,7 +10559,9 @@ function refreshRigsThenRerender() {
   return fetch('/api/mode').then(function(r){ return r.json(); }).then(function(j){
     RIGS = (j && Array.isArray(j.rigs)) ? j.rigs : RIGS;
     DEFAULT_RIG = (j && j.defaultRig) || DEFAULT_RIG;
-    if (!ACTIVE_RIG || !RIGS.some(function(r){ return r.id === ACTIVE_RIG; })) ACTIVE_RIG = DEFAULT_RIG;
+    VISIBLE_RIGS = normalizeVisibleRigs(VISIBLE_RIGS);
+    ACTIVE_RIG = VISIBLE_RIGS.length === 1 ? VISIBLE_RIGS[0] : (VISIBLE_RIGS.length ? 'all' : DEFAULT_RIG);
+    persistRigSelection();
     renderRigSwitcher();
     refreshCompanionStatus();
     renderSettingsPage();

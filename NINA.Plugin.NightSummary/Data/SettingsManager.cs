@@ -23,8 +23,43 @@ namespace NINA.Plugin.NightSummary.Data {
         private static readonly Lazy<SettingsManager> _instance =
             new Lazy<SettingsManager>(() => new SettingsManager(ProductionPath, attemptMigration: true));
 
-        /// <summary>Production singleton — uses the stable NightSummary data folder.</summary>
-        public static SettingsManager Instance => _instance.Value;
+        // Test override slot — see UseInstanceForTesting. volatile so updates are
+        // visible across threads even though tests must run sequentially.
+        private static volatile SettingsManager _testOverride;
+
+        /// <summary>Production singleton — uses the stable NightSummary data folder.
+        /// In tests, may be redirected via <see cref="UseInstanceForTesting"/> so that
+        /// callers reading <c>SettingsManager.Instance.Current</c> see isolated test
+        /// settings rather than the real production settings.json on the host.</summary>
+        public static SettingsManager Instance => _testOverride ?? _instance.Value;
+
+        /// <summary>
+        /// Test-only: redirects <see cref="Instance"/> to <paramref name="testManager"/>
+        /// until the returned scope is disposed. Used by replay/integration tests so they
+        /// read from an isolated settings file (with all delivery channels disabled)
+        /// rather than the real production settings on the test host — which would
+        /// otherwise cause email/Discord/Pushover sends to fire with real credentials
+        /// whenever SessionService.EndSession is exercised by a test.
+        ///
+        /// Supports nested overrides (LIFO restoration). Not thread-safe; tests using
+        /// this must run sequentially per xUnit collection.
+        /// </summary>
+        internal static IDisposable UseInstanceForTesting(SettingsManager testManager) {
+            if (testManager == null) throw new ArgumentNullException(nameof(testManager));
+            var previous = _testOverride;
+            _testOverride = testManager;
+            return new TestOverrideScope(() => _testOverride = previous);
+        }
+
+        private sealed class TestOverrideScope : IDisposable {
+            private Action _onDispose;
+            internal TestOverrideScope(Action onDispose) { _onDispose = onDispose; }
+            public void Dispose() {
+                var d = _onDispose;
+                _onDispose = null;
+                d?.Invoke();
+            }
+        }
 
         private const string BackupSuffix = ".bak";
 

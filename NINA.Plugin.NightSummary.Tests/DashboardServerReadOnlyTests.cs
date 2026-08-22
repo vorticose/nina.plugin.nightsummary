@@ -323,6 +323,54 @@ namespace NINA.Plugin.NightSummary.Tests {
             } finally { await srv.StopAsync(); }
         }
 
+        // Regression: report generation (CDS/SkyView calls, TS queries) can take
+        // several seconds to tens of seconds after a session ends. Querying the
+        // Projects view in that window used to cache an empty thumbnail list
+        // PERMANENTLY for that session — the report would finish moments later
+        // with a perfectly good thumbnail, but the cached-empty answer never
+        // updated, so the placeholder stuck forever. (Discord 2026-08-06/07 —
+        // confirmed from Michal's NINA log: report generation for one session ran
+        // 4 times over ~53 min, always eventually succeeding, so the report itself
+        // was never actually broken.)
+        [Fact]
+        public async Task GetSessionThumbnails_DoesNotPermanentlyCacheEmpty_WhenReportNotYetWritten() {
+            int port = GetFreePort();
+            var paths = new StubPaths();
+            Directory.CreateDirectory(paths.ReportsDir);
+            // No report file yet — session end just happened, generation still in flight.
+
+            var srv = new DashboardServer(
+                data:        new StubDataSource(),
+                settings:    new StubSettings(),
+                webAssets:   new StubWebAssets(),
+                externalLog: new StubLogger(),
+                paths:       paths,
+                regen:       null,
+                readOnly:    false);
+            await srv.StartAsync(port, "localhost");
+            try {
+                using var client = NewClient(port);
+
+                var firstJson = await client.GetStringAsync("/api/sessions/sess-race/thumbnails");
+                using (var firstDoc = System.Text.Json.JsonDocument.Parse(firstJson))
+                    Assert.Equal(0, firstDoc.RootElement.GetArrayLength());
+
+                // Report generation finishes a moment later.
+                var reportHtml = "<div class='target-section'>" +
+                                  "<h3>NGC 7000</h3>" +
+                                  "<div class='ts-thumb-wrap'>" +
+                                  "  <img src='data:image/jpeg;base64,ZmFrZQ==' alt='NGC 7000' />" +
+                                  "</div>" +
+                                  "</div>";
+                File.WriteAllText(Path.Combine(paths.ReportsDir, "sess-race.html"), reportHtml);
+
+                var secondJson = await client.GetStringAsync("/api/sessions/sess-race/thumbnails");
+                using var secondDoc = System.Text.Json.JsonDocument.Parse(secondJson);
+                Assert.Equal(1, secondDoc.RootElement.GetArrayLength());
+                Assert.Equal("NGC 7000", secondDoc.RootElement[0].GetProperty("target").GetString());
+            } finally { await srv.StopAsync(); }
+        }
+
         [Fact]
         public async Task Normal_PostRegenerateAll_NotForbidden() {
             // In normal mode the route still exists; we just verify the short-circuit

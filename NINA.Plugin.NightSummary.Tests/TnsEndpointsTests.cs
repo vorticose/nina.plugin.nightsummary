@@ -379,6 +379,49 @@ namespace NINA.Plugin.NightSummary.Tests {
             } finally { await srv.StopAsync(); }
         }
 
+        // Regression: Resend produces a fresh report.html on disk (StubMaintenance
+        // stands in for the real ResendAsync, which would rewrite the file), but
+        // used to leave the dashboard's thumbnail cache untouched — only Regenerate
+        // cleared it. A session whose thumbnails were queried (and cached, possibly
+        // empty) before a resend would keep serving that stale answer forever even
+        // though the resent report was fine. Verified by priming the cache with a
+        // no-thumbnail report, swapping in a report that DOES have one, resending,
+        // and confirming the next query reflects the new content instead of the
+        // stale cached one.
+        [Fact]
+        public async Task Resend_InvalidatesStaleThumbnailCache() {
+            int port = GetFreePort();
+            var maintenance = new StubMaintenance();
+            var paths = new StubPaths();
+            var reportPath = Path.Combine(paths.ReportsDir, SessionA + ".html");
+            File.WriteAllText(reportPath, "<div class='target-section'><h3>M31</h3></div>"); // no thumbnail yet
+
+            var srv = await StartServerAsync(port, NewStubData(), paths, maintenance: maintenance);
+            try {
+                using var client = NewClient(port);
+
+                // Prime the cache with the no-thumbnail state.
+                var beforeJson = await client.GetStringAsync($"/api/sessions/{SessionA}/thumbnails");
+                using (var beforeDoc = System.Text.Json.JsonDocument.Parse(beforeJson))
+                    Assert.Equal(0, beforeDoc.RootElement.GetArrayLength());
+
+                // "Resend" rewrites the report with a thumbnail this time (StubMaintenance
+                // doesn't touch the file itself, so simulate what the real resend does).
+                File.WriteAllText(reportPath,
+                    "<div class='target-section'><h3>M31</h3>" +
+                    "<div class='ts-thumb-wrap'><img src='data:image/jpeg;base64,ZmFrZQ==' alt='M31' /></div>" +
+                    "</div>");
+
+                var resendResp = await client.PostAsync($"/api/nightsummary/sessions/{SessionA}/resend", new StringContent(""));
+                Assert.Equal(HttpStatusCode.OK, resendResp.StatusCode);
+
+                var afterJson = await client.GetStringAsync($"/api/sessions/{SessionA}/thumbnails");
+                using var afterDoc = System.Text.Json.JsonDocument.Parse(afterJson);
+                Assert.Equal(1, afterDoc.RootElement.GetArrayLength());
+                Assert.Equal("M31", afterDoc.RootElement[0].GetProperty("target").GetString());
+            } finally { await srv.StopAsync(); }
+        }
+
         [Fact]
         public async Task Resend_500_WhenMaintenanceThrows() {
             int port = GetFreePort();

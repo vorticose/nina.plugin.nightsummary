@@ -311,6 +311,14 @@ namespace NINA.Plugin.NightSummary {
                     return;
                 }
                 await this.sessionService.SendFromDatabaseAsync(liveDbPath, SelectedSession.SessionId);
+                // Resend writes a fresh report.html; the dashboard's in-memory
+                // per-session caches (thumbnails, altitude chart, live stack) don't
+                // know that happened unless told, so a stale — sometimes permanently
+                // empty, if it was first queried before the report existed — cached
+                // answer would otherwise survive the resend. Both the primary
+                // dashboard and the read-only mirror keep independent caches.
+                dashboardServer?.InvalidateSessionCaches(SelectedSession.SessionId);
+                readOnlyMirrorServer?.InvalidateSessionCaches(SelectedSession.SessionId);
                 ResendStatus.Text = "✓ Sent";
             });
 
@@ -454,6 +462,21 @@ namespace NINA.Plugin.NightSummary {
                     });
                 GenerateDashboardReportsStatus.Text = $"✓ Done — {generated} generated, {skipped} already existed, {failed} failed";
             });
+
+            // Finalize any sessions orphaned by a previous crash (End Session never ran)
+            // so they stop rendering as "in progress" and stop being hidden from the
+            // dashboard session list. Never sends a report -- just fixes the stored end
+            // time. Runs here, before LoadSessions() and the dashboard auto-start below,
+            // so both immediately reflect the corrected state instead of needing a manual
+            // regenerate later. Best-effort; never fail plugin init on a recovery error.
+            try {
+                if (File.Exists(liveDbPath)) {
+                    var recovered = sessionService.FinalizeOrphanedSessions(liveDbPath);
+                    if (recovered > 0) Logger.Info($"NightSummary: Recovered {recovered} session(s) orphaned by a previous crash");
+                }
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Startup orphaned-session recovery failed: {ex.Message}");
+            }
 
             LoadSessions();
             LoadFilterClassifications();

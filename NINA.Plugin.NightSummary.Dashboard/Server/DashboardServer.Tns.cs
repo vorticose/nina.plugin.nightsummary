@@ -178,6 +178,12 @@ namespace NINA.Plugin.NightSummary.Server {
             }
             try {
                 await _maintenance.ResendAsync(sessionId);
+                // Resend writes a fresh report.html just like Regenerate does, so it
+                // needs the same cache invalidation — otherwise a session whose
+                // thumbnail/altitude/livestack cache was already populated (e.g.
+                // empty, from a query that landed before the report first existed)
+                // would keep serving that stale answer even after a successful resend.
+                InvalidateSessionCaches(sessionId);
                 await WriteTnsOk(res, new { Ok = true, Message = "Report sent" });
                 done?.Invoke(200, $"tns resend {sessionId}");
             } catch (Exception ex) {

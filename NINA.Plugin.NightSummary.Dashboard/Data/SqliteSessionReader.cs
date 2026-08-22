@@ -604,6 +604,7 @@ public sealed class SqliteSessionReader {
             ProfileName       = reader["ProfileName"]       == DBNull.Value ? "" : reader["ProfileName"].ToString(),
             Notes             = reader["Notes"]             == DBNull.Value ? "" : reader["Notes"].ToString(),
             ReportSent        = reader["ReportSent"]        == DBNull.Value ? false : Convert.ToInt32(reader["ReportSent"]) == 1,
+            AutoFinalized     = reader["AutoFinalized"]     == DBNull.Value ? false : Convert.ToInt32(reader["AutoFinalized"]) == 1,
             CamXSize          = reader["CamXSize"]          == DBNull.Value ? 0 : Convert.ToInt32(reader["CamXSize"]),
             CamYSize          = reader["CamYSize"]          == DBNull.Value ? 0 : Convert.ToInt32(reader["CamYSize"]),
             PixelSizeMicrons  = reader["PixelSizeMicrons"]  == DBNull.Value ? 0 : Convert.ToDouble(reader["PixelSizeMicrons"]),

@@ -1,6 +1,19 @@
 # Night Summary — Changelog
 
 
+## v3.3.1
+
+### New Features
+
+- **All rigs view (companion)** — when more than one rig is paired, the picker can show one rig, a subset, or all of them. The Sessions tab merges the selection: solo nights look as they always have, overlapping nights stack full cards under that date, and each rig's latest night is pinned at the top even if those dates differ. Combined totals and the activity chart follow the selection.
+
+### Bug Fixes
+
+- Fixed Projects-view thumbnails getting stuck on a placeholder if opened right after a session ends, before its report finished generating. Resend now also refreshes cached thumbnail, altitude, and live-stack data, same as Regenerate.
+- Fixed sessions that crashed before the End instruction staying hidden from the dashboard. Next NINA start recovers them with an estimated end time (marked Auto-recovered, no report auto-sent).
+- Fixed report footer always showing Night Summary v1.0.0 instead of the real plugin version.
+
+
 ## v3.3.0
 
 ### New Features

@@ -23,6 +23,10 @@ namespace NINA.Plugin.NightSummary.Tests {
         private readonly MockCameraMediator _cameraMediator = new();
         private readonly string _dbPath;
         private readonly string _settingsPath;
+        // See SessionReplayRunner — SessionService reads from SettingsManager.Instance,
+        // not from this test's isolated SettingsManager. Redirect the singleton so the
+        // disabled delivery flags below are actually observed.
+        private readonly IDisposable _settingsOverride;
         private readonly SessionService _service;
 
         public SessionServiceRestartTests() {
@@ -36,6 +40,7 @@ namespace NINA.Plugin.NightSummary.Tests {
             settingsMgr.Current.DiscordEnabled    = false;
             settingsMgr.Current.PushoverEnabled   = false;
             settingsMgr.Save();
+            _settingsOverride = SettingsManager.UseInstanceForTesting(settingsMgr);
 
             _service = new SessionService(
                 _imageSaveMediator,
@@ -50,6 +55,15 @@ namespace NINA.Plugin.NightSummary.Tests {
         }
 
         public void Dispose() {
+            // Drain pending report tasks before releasing the settings override — see
+            // SessionReplayRunner.Dispose for the race this prevents. These tests don't
+            // end sessions with content so this is normally a no-op, but it's a cheap
+            // guarantee against future tests in this class growing into the same hazard.
+            try {
+                _service?.WaitForPendingReportsAsync(TimeSpan.FromSeconds(10))
+                         .GetAwaiter().GetResult();
+            } catch { }
+            _settingsOverride?.Dispose();
             if (File.Exists(_dbPath))       File.Delete(_dbPath);
             if (File.Exists(_settingsPath)) File.Delete(_settingsPath);
         }
