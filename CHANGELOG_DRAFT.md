@@ -6,12 +6,12 @@
 
 ### New Features
 
-- **All rigs view (companion)** — when more than one rig is paired, the rig picker can show one rig, a subset, or all of them. The Sessions tab merges the selected rigs into one list: nights you only ran one rig look as they always have, nights more than one ran stack the full cards under that date, and each rig's most recent night is pinned at the top even if those dates differ. Combined session/image/integration totals update with the selection. Hover a bar on the activity chart to see each rig's contribution that night.
+- **All rigs view (companion)** — when more than one rig is paired, the picker can show one rig, a subset, or all of them. The Sessions tab merges the selection: solo nights look as they always have, overlapping nights stack full cards under that date, and each rig's latest night is pinned at the top even if those dates differ. Combined totals and the activity chart follow the selection.
 
 ### Bug Fixes
 
-- Fixed Projects-view thumbnails getting permanently stuck on a placeholder if checked in the window right after a session ends, before its report finished generating. Resend now also refreshes the dashboard's cached thumbnail/altitude/live-stack data for that session, same as Regenerate already did.
-- Fixed sessions that crashed before the End Session instruction ran staying permanently hidden from the dashboard's session list, even after a report was generated for them via Generate All Reports / Regenerate. Those sessions are now finalized with an end time derived from their last recorded image or event, so they show up like any other completed session instead of rendering as perpetually "in progress." They're marked "Auto-recovered" on their dashboard card, and their report notes that the end time and duration are estimated since the End instruction never ran. This recovery also now runs automatically the next time NINA starts, so a crashed session no longer needs a manual Generate All Reports / Regenerate to become visible -- no report is auto-sent for it, only the stored end time is fixed.
+- Fixed Projects-view thumbnails getting stuck on a placeholder if opened right after a session ends, before its report finished generating. Resend now also refreshes cached thumbnail, altitude, and live-stack data, same as Regenerate.
+- Fixed sessions that crashed before the End instruction staying hidden from the dashboard. Next NINA start recovers them with an estimated end time (marked Auto-recovered, no report auto-sent).
 
 
 ## v3.2.0
