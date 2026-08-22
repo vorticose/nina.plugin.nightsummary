@@ -209,6 +209,59 @@ namespace NINA.Plugin.NightSummary.Tests {
             Assert.Equal(2.5, result[0].AvgHFR, precision: 2);
         }
 
+        // ── GetSessionHistoryAggregateForTarget ───────────────────────────────
+
+        [Fact]
+        public void GetSessionHistoryAggregate_NoPriorSessions_ReturnsNull() {
+            var session = CreateSession(new DateTime(2025, 3, 1, 21, 0, 0));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(session.SessionId, target: "M31"));
+            Assert.Null(_db.GetSessionHistoryAggregateForTarget("M31", session.SessionId));
+        }
+
+        [Fact]
+        public void GetSessionHistoryAggregate_DifferentTarget_ReturnsNull() {
+            var old     = CreateSession(new DateTime(2025, 1, 1, 21, 0, 0));
+            var current = CreateSession(new DateTime(2025, 3, 1, 21, 0, 0));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(old.SessionId,     target: "M31"));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(current.SessionId, target: "M31"));
+            Assert.Null(_db.GetSessionHistoryAggregateForTarget("M42", current.SessionId));
+        }
+
+        [Fact]
+        public void GetSessionHistoryAggregate_SumsIntegrationAndBreaksDownByFilter() {
+            var old     = CreateSession(new DateTime(2025, 1, 1, 21, 0, 0));
+            var current = CreateSession(new DateTime(2025, 3, 1, 21, 0, 0));
+            // Prior session: 2x Ha + 1x OIII (each 300s, accepted). Current excluded.
+            _db.SaveImageRecord(TestDataFactory.MakeImage(old.SessionId,     target: "M31", filter: "Ha"));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(old.SessionId,     target: "M31", filter: "Ha"));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(old.SessionId,     target: "M31", filter: "OIII"));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(current.SessionId, target: "M31", filter: "Ha"));
+
+            var agg = _db.GetSessionHistoryAggregateForTarget("M31", current.SessionId);
+            Assert.NotNull(agg);
+            Assert.Equal(900, agg.TotalIntegrationSeconds, precision: 1);          // 3 x 300
+            Assert.Equal(2, agg.Filters.Count);
+            Assert.Equal("Ha",   agg.Filters[0].Filter);                            // sorted desc by integration
+            Assert.Equal(600,    agg.Filters[0].IntegrationSeconds, precision: 1);
+            Assert.Equal("OIII", agg.Filters[1].Filter);
+            Assert.Equal(300,    agg.Filters[1].IntegrationSeconds, precision: 1);
+            // The chips must sum to the headline total — they're the breakdown of it.
+            Assert.Equal(agg.TotalIntegrationSeconds, agg.Filters.Sum(f => f.IntegrationSeconds), precision: 1);
+        }
+
+        [Fact]
+        public void GetSessionHistoryAggregate_AvgHFR_IsFrameMeanAcrossPriorSessions() {
+            var old1    = CreateSession(new DateTime(2025, 1, 1, 21, 0, 0));
+            var old2    = CreateSession(new DateTime(2025, 2, 1, 21, 0, 0));
+            var current = CreateSession(new DateTime(2025, 3, 1, 21, 0, 0));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(old1.SessionId,    target: "M31", hfr: 2.0));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(old2.SessionId,    target: "M31", hfr: 3.0));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(current.SessionId, target: "M31", hfr: 9.0)); // excluded
+            var agg = _db.GetSessionHistoryAggregateForTarget("M31", current.SessionId);
+            Assert.NotNull(agg);
+            Assert.Equal(2.5, agg.AvgHFR, precision: 2);   // mean of 2.0 + 3.0, NOT polluted by current 9.0
+        }
+
         // ── UpdateImageGradingFromTs ──────────────────────────────────────────
 
         [Fact]
@@ -238,6 +291,105 @@ namespace NINA.Plugin.NightSummary.Tests {
             var updated = _db.GetImagesForSession(session.SessionId).First();
             Assert.False(updated.Accepted);
             Assert.Equal("star_trail", updated.RejectReason);
+        }
+
+        [Fact]
+        public void UpdateImageGradingFromTs_Pending_KeepsAcceptedTrue() {
+            // GradingStatus 0 = TS Pending — image hasn't been graded yet, must NOT
+            // flip Accepted to false. Regression test for the bug where Pending images
+            // rendered as "Manual Rejected" in the dashboard and were excluded from
+            // integration totals.
+            var session = CreateSession(new DateTime(2025, 3, 1, 21, 0, 0));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(session.SessionId, accepted: true));
+            var saved = _db.GetImagesForSession(session.SessionId).First();
+
+            _db.UpdateImageGradingFromTs(session.SessionId,
+                new List<(int, int, string)> { (saved.Id, 0, null) });
+
+            var updated = _db.GetImagesForSession(session.SessionId).First();
+            Assert.True(updated.Accepted);
+            Assert.Equal(0, updated.GradingStatus);
+            Assert.True(updated.CountsAsAccepted);
+        }
+
+        [Fact]
+        public void UpdateImageGradingFromTs_Accepted_FlipsAcceptedTrue() {
+            var session = CreateSession(new DateTime(2025, 3, 1, 21, 0, 0));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(session.SessionId, accepted: true));
+            var saved = _db.GetImagesForSession(session.SessionId).First();
+
+            _db.UpdateImageGradingFromTs(session.SessionId,
+                new List<(int, int, string)> { (saved.Id, 1, null) });
+
+            var updated = _db.GetImagesForSession(session.SessionId).First();
+            Assert.True(updated.Accepted);
+            Assert.Equal(1, updated.GradingStatus);
+        }
+
+        [Fact]
+        public void GetRecentSessions_PendingImagesCountTowardIntegration() {
+            // Regression test for the bug where TS-Pending images (GradingStatus=0,
+            // Accepted=false written by legacy UpdateImageGradingFromTs) were excluded
+            // from session-card integration totals, showing a blank "Integration" stat.
+            var session = CreateSession(new DateTime(2025, 3, 1, 21, 0, 0));
+            // Three 300s images: one accepted, one TS-pending (legacy: Accepted=false),
+            // one TS-rejected. Total accepted-or-pending integration = 600s.
+            var accImg = TestDataFactory.MakeImage(session.SessionId, accepted: true);
+            accImg.GradingStatus = 1;
+            _db.SaveImageRecord(accImg);
+
+            var pendImg = TestDataFactory.MakeImage(session.SessionId, accepted: false);
+            pendImg.GradingStatus = 0;
+            _db.SaveImageRecord(pendImg);
+
+            var rejImg = TestDataFactory.MakeImage(session.SessionId, accepted: false);
+            rejImg.GradingStatus = 2;
+            _db.SaveImageRecord(rejImg);
+
+            var s = _db.GetRecentSessions(1).Single();
+            Assert.Equal(600.0, s.IntegrationSeconds, precision: 1);
+            Assert.Equal(2, s.ImageCount);
+        }
+
+        [Fact]
+        public void GetSessionsForTarget_PendingFramesIncludedInAcceptedCount() {
+            var session = CreateSession(new DateTime(2025, 3, 1, 21, 0, 0));
+            var acc = TestDataFactory.MakeImage(session.SessionId, target: "NGC1", accepted: true);
+            acc.GradingStatus = 1;
+            _db.SaveImageRecord(acc);
+            var pend = TestDataFactory.MakeImage(session.SessionId, target: "NGC1", accepted: false);
+            pend.GradingStatus = 0;
+            _db.SaveImageRecord(pend);
+            var rej = TestDataFactory.MakeImage(session.SessionId, target: "NGC1", accepted: false);
+            rej.GradingStatus = 2;
+            _db.SaveImageRecord(rej);
+
+            var rows = _db.GetSessionsForTarget("NGC1");
+            var row = rows.Single();
+            // Accepted + Pending = 2 frames, 600s integration. Rejected (2) excluded.
+            Assert.Equal(2, row.AcceptedFrames);
+            Assert.Equal(600.0, row.IntegrationSeconds, precision: 1);
+            Assert.Equal(3, row.FrameCount);
+        }
+
+        // ── ImageRecord.CountsAsAccepted ─────────────────────────────────────
+
+        [Theory]
+        // CountsAsAccepted = Accepted || GradingStatus == 0
+        // Mirrors ReportGenerator.IsRejected (which inverts this).
+        [InlineData(true,  -1, true)]   // NINA-accepted, never TS-graded
+        [InlineData(true,   0, true)]   // accepted + pending (transient)
+        [InlineData(true,   1, true)]   // accepted by TS
+        [InlineData(false,  0, true)]   // TS pending, legacy Accepted=false → still counts (the bug)
+        [InlineData(false,  1, false)]  // unreachable in practice (TS-accepted sets Accepted=1) but formula stays strict
+        [InlineData(false,  2, false)]  // TS rejected
+        [InlineData(false, -1, false)]  // NINA-manually rejected (no TS)
+        public void ImageRecord_CountsAsAccepted_MatchesGradingMatrix(bool accepted, int gradingStatus, bool expected) {
+            var img = new NINA.Plugin.NightSummary.Data.ImageRecord {
+                Accepted = accepted,
+                GradingStatus = gradingStatus
+            };
+            Assert.Equal(expected, img.CountsAsAccepted);
         }
 
         // ── UpdateSessionCameraInfo ───────────────────────────────────────────

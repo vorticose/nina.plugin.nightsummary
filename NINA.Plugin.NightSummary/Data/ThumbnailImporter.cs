@@ -1,6 +1,7 @@
 using NINA.Core.Utility;
 using System;
 using System.Data.SQLite;
+using System.Globalization;
 using System.IO;
 
 namespace NINA.Plugin.NightSummary.Data {
@@ -129,7 +130,7 @@ namespace NINA.Plugin.NightSummary.Data {
                 result.Candidates++;
                 long imageId    = Convert.ToInt64(reader["Id"]);
                 string sessionId = reader["SessionId"].ToString();
-                DateTime ts0     = DateTime.Parse(reader["Timestamp"].ToString());
+                DateTime ts0     = DateTime.Parse(reader["Timestamp"].ToString(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
                 string target    = reader["TargetName"]?.ToString() ?? "";
                 string filter    = reader["Filter"]?.ToString() ?? "";
                 double dur       = reader["ExposureDuration"] == DBNull.Value

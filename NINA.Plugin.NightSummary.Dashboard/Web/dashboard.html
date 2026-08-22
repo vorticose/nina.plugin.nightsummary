@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en"{{READONLY_ATTR}}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -19,7 +19,12 @@
       <nav id="nav">
         <a href="#/sessions" class="nav-link active" data-page="sessions">Sessions</a>
         <a href="#/stats" class="nav-link" data-page="stats">Targets</a>
+        <a href="#/settings" class="nav-link companion-only" data-page="settings" hidden>Settings</a>
       </nav>
+      <!-- Visible only when the dashboard is served from a read-only mirror instance.
+           Surfaces the mode to public viewers so they know writes are intentionally
+           blocked rather than broken. -->
+      <span class="readonly-pill" title="This dashboard is in read-only mode. Write actions are disabled.">Read-Only</span>
       <button class="theme-toggle" id="theme-toggle" title="Toggle light/dark mode"></button>
     </div>
   </div>
@@ -33,6 +38,19 @@
   </div>
 </header>
 <div class="shell">
+  <!-- In-app update banner: populated + unhidden by JS only when a newer release
+       exists and the user hasn't dismissed that version. Sits above the
+       companion/rig-picker row so an available update isn't buried. -->
+  <div id="companion-update-banner" class="companion-banner ns-update-banner" hidden></div>
+  <div id="companion-banner" class="companion-banner" hidden>
+    <div class="companion-banner-info">
+      <span class="companion-banner-label">Companion</span>
+      <!-- Rig switcher: populated + unhidden by JS only when >1 rig is configured. -->
+      <span id="companion-rig-switch" class="companion-rig-switch" hidden></span>
+      <span id="companion-banner-status">Checking sync status…</span>
+    </div>
+    <button id="companion-sync-btn" class="companion-banner-btn" type="button">Sync Now</button>
+  </div>
   <div id="content">
     <div class="loading">Loading...</div>
   </div>

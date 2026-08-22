@@ -1,6 +1,78 @@
 # Night Summary — Changelog
 
 
+## v3.3.1
+
+### New Features
+
+- **All rigs view (companion)** — when more than one rig is paired, the picker can show one rig, a subset, or all of them. The Sessions tab merges the selection: solo nights look as they always have, overlapping nights stack full cards under that date, and each rig's latest night is pinned at the top even if those dates differ. Combined totals and the activity chart follow the selection.
+
+### Bug Fixes
+
+- Fixed Projects-view thumbnails getting stuck on a placeholder if opened right after a session ends, before its report finished generating. Resend now also refreshes cached thumbnail, altitude, and live-stack data, same as Regenerate.
+- Fixed sessions that crashed before the End instruction staying hidden from the dashboard. Next NINA start recovers them with an estimated end time (marked Auto-recovered, no report auto-sent).
+- Fixed report footer always showing Night Summary v1.0.0 instead of the real plugin version.
+
+
+## v3.3.0
+
+### New Features
+
+- **Multi-rig companion** — one companion can now sync and serve multiple NINA rigs from a single dashboard, with a rig switcher once a second rig is paired. Existing single-rig setups migrate automatically.
+- **Companion in-app updates** — the companion checks for new releases and updates itself in place with one click, checksum-verified. Never touches your pairing or synced data.
+- **Touch 'N' Stars integration** — added backend support (a stable API and local endpoints) for the Touch 'N' Stars app to show real Night Summary reports as a delivery channel. Integration will go live with a future Touch 'N' Stars release.
+
+### Security
+
+- Secrets in `settings.json` (SMTP password, Discord webhook, Pushover tokens) are now encrypted at rest via Windows DPAPI. Upgrades automatically on first launch.
+
+### Improvements
+
+- Overhead notice (#27) now also covers a missing NINA log file, not just a log level set below Info.
+- Deleting a session now also removes its report, livestack masters, and thumbnails instead of leaving them orphaned.
+
+### Bug Fixes
+
+- Fixed Overhead Analysis going blank on infinite-loop sequences after NINA's log file rotates.
+- Fixed missing thumbnails in the Projects view for sessions whose report used a fallback image source.
+- Fixed a rare crash-timing bug that could reset all settings, including your Discord webhook, back to defaults.
+- Companion config problems are now logged instead of failing silently.
+
+
+## v3.2.1
+
+### Improvements
+
+- **Session History totals** — each target's Session History now opens with a totals band: lifetime integration (with this session's share), weighted average HFR / FWHM / guiding RMS, and per-filter chips that sum to the total.
+- **Overhead notice** — when no timing events can be parsed from the NINA log (log level below Info), the Overhead Analysis section now shows a notice explaining how to fix it instead of silently disappearing. (#27)
+
+### Bug Fixes
+
+- Target Scheduler name matching is now whitespace-tolerant: targets with a stray space in their TS name showed a false "target not found" warning and were missing their progress bars.
+
+
+## v3.2.0
+
+### New Features
+
+- **Night Summary Companion** — a standalone dashboard app for Mac, Windows, and Linux that syncs a copy of your sessions from the NINA machine and serves the full dashboard on its own. One-way sync; it never writes back to the rig. Enables access to the dashboard features without needing your NINA machine to be running.
+  - **Per-companion pairing** — generate a token in NINA (Options → Local Dashboard → Companion Pairing) and paste it into the companion's setup wizard. Each companion gets its own revocable token.
+  - **One-click install per OS** — Windows `.exe`, macOS `.app`, Linux `curl | sh` / `.deb` / AppImage / tarball; optional Start at login.
+  - **Instant, self-updating dashboard** — opens immediately on synced data and refreshes itself as new sessions arrive.
+- **Read-Only Mirror** — Enable to create a second dashboard on a separate port that blocks all writes, for safe public exposure behind a reverse proxy or Tailscale Funnel. Options → Local Dashboard → Read-Only Mirror.
+
+### Bug Fixes
+
+- Fixed an issue where raw thumbnails could include NINA's star/HFR annotation overlay.
+- Target Scheduler: Pending frames no longer show as "Manual Rejected" or drop from integration totals.
+- Target Scheduler: verdicts reached after a session ends now appear next time you open the session.
+- Targets imaged in multiple windows per session render each window separately.
+- Report view iframe renders properly on browsers without `dvh` (Firefox < 101, older Safari/WebViews).
+- Frames-gallery Back button fixed; long lightbox values truncate on mobile instead of overflowing.
+- Overhead Analysis: fixed a phantom multi-hour "Wait" and the "Overhead Accounted %" pegging at 100%.
+- Locale/time zones: comma-decimal regions render correctly; timestamps keep their time zone (fixes charts/date grouping east of GMT).
+
+
 ## v3.1.0
 
 **New features**

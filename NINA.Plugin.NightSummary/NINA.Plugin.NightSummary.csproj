@@ -11,7 +11,7 @@
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
     <!-- Major.Minor.Patch set here; build number auto-computed from git commit count -->
-    <VersionPrefix>3.1.0</VersionPrefix>
+    <VersionPrefix>3.3.1</VersionPrefix>
   </PropertyGroup>
 
   <!-- Auto-compute build number from git commit count and generate version file -->
@@ -80,5 +80,35 @@
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
     </None>
   </ItemGroup>
+
+  <!--
+    NINA's plugin SDK assumes everything transitive is already loaded by the
+    host (System.*, NINA.Core, ASCOM, Accord, etc.) and therefore does NOT copy
+    package DLLs into bin/ — keeping the plugin folder small and avoiding
+    duplicate-assembly conflicts. The Dashboard project picked up
+    Microsoft.Data.Sqlite (SQLite reads on Windows + macOS) which NINA does
+    NOT bundle, so the assembly fails to resolve at runtime and every dashboard
+    SQLite query throws FileNotFoundException.
+
+    Surgically copy just the M.D.Sqlite assemblies + the win-x64 native SQLite
+    binary into bin/ alongside the plugin DLL. The native shim must live under
+    runtimes/win-x64/native/ relative to the loaded assembly so the SQLitePCLRaw
+    loader finds it (matches its NuGet layout convention).
+  -->
+  <Target Name="CopyMicrosoftDataSqlite" AfterTargets="Build">
+    <ItemGroup>
+      <_SqliteRuntime Include="$(NuGetPackageRoot)microsoft.data.sqlite.core\**\lib\net8.0\Microsoft.Data.Sqlite.dll" />
+      <_SqliteRuntime Include="$(NuGetPackageRoot)sqlitepclraw.core\**\lib\netstandard2.0\SQLitePCLRaw.core.dll" />
+      <_SqliteRuntime Include="$(NuGetPackageRoot)sqlitepclraw.provider.e_sqlite3\**\lib\netstandard2.0\SQLitePCLRaw.provider.e_sqlite3.dll" />
+      <_SqliteRuntime Include="$(NuGetPackageRoot)sqlitepclraw.bundle_e_sqlite3\**\lib\netstandard2.0\SQLitePCLRaw.batteries_v2.dll" />
+      <_SqliteNative  Include="$(NuGetPackageRoot)sqlitepclraw.lib.e_sqlite3\**\runtimes\win-x64\native\e_sqlite3.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_SqliteRuntime)"
+          DestinationFolder="$(OutDir)"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_SqliteNative)"
+          DestinationFolder="$(OutDir)runtimes\win-x64\native"
+          SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

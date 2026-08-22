@@ -1,0 +1,465 @@
+using NINA.Plugin.NightSummary.Data;
+using System;
+using System.Collections.Generic;
+using Microsoft.Data.Sqlite;
+using System.IO;
+using System.IO.Compression;
+using System.Linq;
+using System.Reflection;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace NINA.Plugin.NightSummary.Server {
+
+    // Companion R&D — export endpoints used by the standalone companion app to
+    // pull a copy of the live data over HTTP. All routes here require a bearer
+    // token (Authorization: Bearer <CompanionApiKey>); the dashboard itself stays
+    // unauthenticated. See COMPANION_PLAN.md.
+    public partial class DashboardServer {
+
+        // Single-flight guard for the Tonight-cache background refresh. The refresh
+        // is a ~25s TS-API call; without this, frequent companion polls (configurable
+        // down to 1h, plus manual syncs) each spawn a fresh Task.Run, stacking
+        // overlapping refreshes that race on the shared HttpClient and the cache
+        // file. 0 = idle, 1 = a refresh is running. Reset in the task's finally.
+        private int _tonightRefreshInFlight;
+
+        // ── Auth ──────────────────────────────────────────────────────────────
+
+        // Pairing-token only. Bearer must match a non-revoked entry in
+        // companion_tokens.json. The legacy CompanionApiKey shim was removed
+        // — all companions must pair through the wizard.
+        //
+        // Side effect: when the request carries an X-Companion-Dashboard-Port
+        // header alongside a valid bearer, the auth path refreshes the entry's
+        // PushUrl so session-end push triggers always reach the companion at
+        // its current IP+port. Self-healing across DHCP / port edits.
+        //
+        // Returns true on success; on failure writes 401 and returns false.
+        private async Task<bool> RequireCompanionAuth(TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
+            var authHeader = req.Authorization;
+            if (string.IsNullOrEmpty(authHeader) ||
+                !authHeader.StartsWith("Bearer ", StringComparison.Ordinal) ||
+                _tokenStore == null) {
+                await WriteJson(res, 401, new { error = "unauthorized" });
+                done?.Invoke(401, null);
+                return false;
+            }
+            var bearer = authHeader.Substring("Bearer ".Length);
+            var entry = _tokenStore.FindByToken(bearer);
+            if (entry == null || entry.IsRevoked) {
+                await WriteJson(res, 401, new { error = "unauthorized" });
+                done?.Invoke(401, null);
+                return false;
+            }
+            _tokenStore.TouchLastUsed(entry.Id);
+            UpdatePushUrlFromRequest(req, entry.Id);
+            return true;
+        }
+
+        // Best-effort attempt to call this from unauthenticated endpoints
+        // (currently /api/health) too — when companions send their bearer + port
+        // header on routes that don't strictly require auth, we still want to
+        // capture the fresh push URL. Silent no-op when any piece is missing.
+        private void TrySideUpdatePushUrlIfAuthorized(TcpHttpRequest req) {
+            if (_tokenStore == null) return;
+            var authHeader = req.Authorization;
+            if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer ", StringComparison.Ordinal)) return;
+            var entry = _tokenStore.FindByToken(authHeader.Substring("Bearer ".Length));
+            if (entry == null || entry.IsRevoked) return;
+            UpdatePushUrlFromRequest(req, entry.Id);
+        }
+
+        // Builds "http://<remoteIp>:<advertisedPort>" from the request's TCP
+        // peer + the X-Companion-Dashboard-Port header and writes it through
+        // the store (no-op when unchanged). Skips loopback IPs because the
+        // primary would push to itself, not the companion.
+        private void UpdatePushUrlFromRequest(TcpHttpRequest req, string entryId) {
+            if (_tokenStore == null) return;
+            if (req.RemoteIp == null) return;
+            if (System.Net.IPAddress.IsLoopback(req.RemoteIp)) return;
+            if (!req.CompanionDashboardPort.HasValue) return;
+            // IPv6 addresses need bracketing in URLs per RFC 3986.
+            var host = req.RemoteIp.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6
+                ? "[" + req.RemoteIp + "]"
+                : req.RemoteIp.ToString();
+            var url = $"http://{host}:{req.CompanionDashboardPort.Value}";
+            try { _tokenStore.UpdatePushUrl(entryId, url); } catch { /* best-effort */ }
+        }
+
+        // ── /api/mode ─────────────────────────────────────────────────────────
+
+        private async Task HandleGetMode(TcpHttpResponse res, Action<int, string> done) {
+            // Multi-rig: advertise the configured rigs + which one is default so the
+            // dashboard can render the switcher (only when rigs.length > 1) and
+            // validate a stored ACTIVE_RIG against the live list. Single-rig and
+            // primary installs report one rig — the JS hides the switcher.
+            var rigs = _rigs.All
+                .Select(r => new { id = r.Id, name = r.Name, enabled = r.Enabled })
+                .ToList();
+            await WriteJson(res, 200, new {
+                mode       = _settings.Mode ?? "primary",
+                rigs,
+                defaultRig = _rigs.Default.Id,
+            });
+            done?.Invoke(200, null);
+        }
+
+        // ── /api/export/manifest ──────────────────────────────────────────────
+
+        // Emits a JSON list of report files (path relative to reports/, mtime,
+        // size). The companion uses this to compute the diff for incremental sync
+        // and to detect orphans for deletion.
+        private async Task HandleExportManifest(TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
+            if (!await RequireCompanionAuth(req, res, done)) return;
+
+            DateTimeOffset? since = ParseIsoQuery(req.QueryString["since"]);
+            var files = new List<object>();
+            if (Directory.Exists(reportsDir)) {
+                foreach (var path in Directory.EnumerateFiles(reportsDir, "*", SearchOption.AllDirectories)) {
+                    var info = new FileInfo(path);
+                    if (since.HasValue && info.LastWriteTimeUtc <= since.Value.UtcDateTime) continue;
+                    var relative = Path.GetRelativePath(reportsDir, path).Replace('\\', '/');
+                    files.Add(new {
+                        path  = relative,
+                        size  = info.Length,
+                        mtime = new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero).ToString("o"),
+                    });
+                }
+            }
+            await WriteJson(res, 200, new { files });
+            done?.Invoke(200, $"manifest: {files.Count} file(s)");
+        }
+
+        // ── /api/export/database ──────────────────────────────────────────────
+
+        private async Task HandleExportDatabase(TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
+            if (!await RequireCompanionAuth(req, res, done)) return;
+            await StreamSqliteSnapshot(dbPath, res, done, "nightsummary.sqlite");
+        }
+
+        // ── /api/export/ts-database ───────────────────────────────────────────
+
+        private async Task HandleExportTsDatabase(TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
+            if (!await RequireCompanionAuth(req, res, done)) return;
+
+            var tsPath = TargetSchedulerDbPath();
+            if (!File.Exists(tsPath)) {
+                await WriteJson(res, 404, new { error = "ts-database not found" });
+                done?.Invoke(404, "ts-db absent");
+                return;
+            }
+            // imagedata holds JPEG thumbnails (~95% of TS DB volume) and the
+            // companion never reads it. Slim the snapshot before streaming so
+            // sync time stays in seconds, not minutes.
+            await StreamSqliteSnapshot(tsPath, res, done, "schedulerdb.sqlite",
+                postSnapshotSql: "DELETE FROM imagedata; VACUUM;");
+        }
+
+        // Default TS DB location matches TargetSchedulerDatabase.DefaultDbPath
+        // (kept private there). Inlined to avoid widening that public surface.
+        private static string TargetSchedulerDbPath() => Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "NINA", "SchedulerPlugin", "schedulerdb.sqlite");
+
+        // VACUUM INTO produces a consistent snapshot of a live SQLite DB without
+        // racing the writer. The destination temp file is streamed to the client
+        // and deleted afterward. Falls back to a 500 if VACUUM INTO fails.
+        // postSnapshotSql, when non-null, runs against the temp snapshot before
+        // streaming — used by ts-database to drop the imagedata thumbnail blobs.
+        private async Task StreamSqliteSnapshot(string sourceDb, TcpHttpResponse res, Action<int, string> done, string filename, string postSnapshotSql = null) {
+            if (!File.Exists(sourceDb)) {
+                await WriteJson(res, 404, new { error = "database not found" });
+                done?.Invoke(404, $"db absent: {filename}");
+                return;
+            }
+
+            // Temp file in a process-private dir so concurrent exports don't collide.
+            var tempDir = Path.Combine(Path.GetTempPath(), "nightsummary-export");
+            Directory.CreateDirectory(tempDir);
+            var tempPath = Path.Combine(tempDir, $"{Guid.NewGuid():N}.sqlite");
+
+            try {
+                // VACUUM INTO does not accept parameter binding for the path — must inline as a SQL string literal.
+                // Doubling embedded single-quotes neutralizes any quoting in the temp path.
+                //
+                // Open RW (no Mode=ReadOnly): Microsoft.Data.Sqlite's ReadOnly
+                // gate refuses VACUUM INTO even though the source DB itself is
+                // never mutated. Source-side rows aren't touched; only the
+                // destination file is written. SQLite's own file-level locking
+                // serializes against any writer holding the WAL.
+                //
+                // Pooling=False: M.D.Sqlite pools native handles by default.
+                // Without this, the dest temp file stays locked after Dispose
+                // and the subsequent open-rw or File.Delete step fails.
+                var cs = $"Data Source={sourceDb};Pooling=False";
+                using (var conn = new SqliteConnection(cs)) {
+                    conn.Open();
+                    using var cmd = conn.CreateCommand();
+                    cmd.CommandText = $"VACUUM INTO '{tempPath.Replace("'", "''")}'";
+                    cmd.ExecuteNonQuery();
+                }
+
+                if (!string.IsNullOrEmpty(postSnapshotSql)) {
+                    var rwCs = $"Data Source={tempPath};Pooling=False";
+                    using var conn = new SqliteConnection(rwCs);
+                    conn.Open();
+                    using var cmd = conn.CreateCommand();
+                    cmd.CommandText = postSnapshotSql;
+                    cmd.ExecuteNonQuery();
+                }
+
+                var info = new FileInfo(tempPath);
+                using var src = new FileStream(tempPath, FileMode.Open, FileAccess.Read, FileShare.Read,
+                                               bufferSize: 81920, useAsync: true);
+                res.StatusCode = 200;
+                var headers = new Dictionary<string, string> {
+                    { "Content-Disposition", $"attachment; filename=\"{filename}\"" },
+                    { "Access-Control-Allow-Origin", "*" },
+                };
+                await res.StreamAsync("application/octet-stream", src, info.Length, headers);
+                done?.Invoke(200, $"db export: {info.Length} bytes ({filename})");
+            } catch (Exception ex) {
+                log?.Error($"DB export failed for {filename}", ex);
+                try { await WriteJson(res, 500, new { error = "export failed" }); } catch { }
+                done?.Invoke(500, ex.Message);
+            } finally {
+                try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { /* best-effort */ }
+            }
+        }
+
+        // ── /api/export/reports ───────────────────────────────────────────────
+
+        // Streams the reports/ tree as a zip. With ?since=ISO8601 only files whose
+        // mtime is strictly newer are included (matches manifest semantics so the
+        // companion's diff and the zip stay in sync).
+        private async Task HandleExportReports(TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
+            if (!await RequireCompanionAuth(req, res, done)) return;
+
+            DateTimeOffset? since = ParseIsoQuery(req.QueryString["since"]);
+
+            // Build the zip in a temp file (not memory) — multi-GB libraries will OOM otherwise.
+            var tempDir = Path.Combine(Path.GetTempPath(), "nightsummary-export");
+            Directory.CreateDirectory(tempDir);
+            var tempZip = Path.Combine(tempDir, $"{Guid.NewGuid():N}.zip");
+            int included = 0;
+
+            try {
+                using (var fs = new FileStream(tempZip, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                                               bufferSize: 81920, useAsync: true))
+                using (var archive = new ZipArchive(fs, ZipArchiveMode.Create, leaveOpen: false)) {
+                    if (Directory.Exists(reportsDir)) {
+                        foreach (var path in Directory.EnumerateFiles(reportsDir, "*", SearchOption.AllDirectories)) {
+                            var info = new FileInfo(path);
+                            if (since.HasValue && info.LastWriteTimeUtc <= since.Value.UtcDateTime) continue;
+                            var entryName = Path.GetRelativePath(reportsDir, path).Replace('\\', '/');
+                            var entry = archive.CreateEntry(entryName, CompressionLevel.Fastest);
+                            // Zip DOS-time format has no TZ; storing local wall-clock so
+                            // SetLastWriteTime on the companion side reproduces the same
+                            // visible mtime when both machines share a TZ.
+                            entry.LastWriteTime = info.LastWriteTime;
+                            using var entryStream = entry.Open();
+                            using var fileStream  = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+                            await fileStream.CopyToAsync(entryStream);
+                            included++;
+                        }
+                    }
+                }
+
+                var zipInfo = new FileInfo(tempZip);
+                using var zipStream = new FileStream(tempZip, FileMode.Open, FileAccess.Read, FileShare.Read,
+                                                    bufferSize: 81920, useAsync: true);
+                res.StatusCode = 200;
+                var headers = new Dictionary<string, string> {
+                    { "Content-Disposition", "attachment; filename=\"reports.zip\"" },
+                    { "Access-Control-Allow-Origin", "*" },
+                    { "X-Reports-File-Count", included.ToString() },
+                };
+                await res.StreamAsync("application/zip", zipStream, zipInfo.Length, headers);
+                done?.Invoke(200, $"reports zip: {included} file(s), {zipInfo.Length} bytes");
+            } catch (Exception ex) {
+                log?.Error("Reports export failed", ex);
+                try { await WriteJson(res, 500, new { error = "export failed" }); } catch { }
+                done?.Invoke(500, ex.Message);
+            } finally {
+                try { if (File.Exists(tempZip)) File.Delete(tempZip); } catch { /* best-effort */ }
+            }
+        }
+
+        // ── /api/export/thumbs-manifest ───────────────────────────────────────
+
+        // Separate from the reports manifest so orphan-reconcile in each tree
+        // operates independently (deleting a stale report should never nuke
+        // thumbnails; deleting an old session's thumbs should never touch the
+        // reports tree). Paths are relative to ThumbsRoot, mtime-filterable.
+        private async Task HandleExportThumbsManifest(TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
+            if (!await RequireCompanionAuth(req, res, done)) return;
+
+            DateTimeOffset? since = ParseIsoQuery(req.QueryString["since"]);
+            var root = _paths.ThumbsRoot;
+            var files = new List<object>();
+            if (!string.IsNullOrEmpty(root) && Directory.Exists(root)) {
+                foreach (var path in Directory.EnumerateFiles(root, "*.jpg", SearchOption.AllDirectories)) {
+                    var info = new FileInfo(path);
+                    if (since.HasValue && info.LastWriteTimeUtc <= since.Value.UtcDateTime) continue;
+                    var relative = Path.GetRelativePath(root, path).Replace('\\', '/');
+                    files.Add(new {
+                        path  = relative,
+                        size  = info.Length,
+                        mtime = new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero).ToString("o"),
+                    });
+                }
+            }
+            await WriteJson(res, 200, new { files });
+            done?.Invoke(200, $"thumbs manifest: {files.Count} file(s)");
+        }
+
+        // ── /api/export/thumbs ────────────────────────────────────────────────
+
+        // Streams the thumbs/ tree as a zip. Per-file mtime filter matches the
+        // manifest. Returns an empty zip (not 404) when the dir is missing so
+        // the companion's sync path doesn't need a special case for "thumbnails
+        // never captured on this primary."
+        private async Task HandleExportThumbs(TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
+            if (!await RequireCompanionAuth(req, res, done)) return;
+
+            DateTimeOffset? since = ParseIsoQuery(req.QueryString["since"]);
+            var root = _paths.ThumbsRoot;
+
+            var tempDir = Path.Combine(Path.GetTempPath(), "nightsummary-export");
+            Directory.CreateDirectory(tempDir);
+            var tempZip = Path.Combine(tempDir, $"{Guid.NewGuid():N}.zip");
+            int included = 0;
+
+            try {
+                using (var fs = new FileStream(tempZip, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                                               bufferSize: 81920, useAsync: true))
+                using (var archive = new ZipArchive(fs, ZipArchiveMode.Create, leaveOpen: false)) {
+                    if (!string.IsNullOrEmpty(root) && Directory.Exists(root)) {
+                        foreach (var path in Directory.EnumerateFiles(root, "*.jpg", SearchOption.AllDirectories)) {
+                            var info = new FileInfo(path);
+                            if (since.HasValue && info.LastWriteTimeUtc <= since.Value.UtcDateTime) continue;
+                            var entryName = Path.GetRelativePath(root, path).Replace('\\', '/');
+                            // JPEGs do not compress meaningfully — NoCompression cuts
+                            // CPU + temp-file size with no real size penalty.
+                            var entry = archive.CreateEntry(entryName, CompressionLevel.NoCompression);
+                            entry.LastWriteTime = info.LastWriteTime;
+                            using var entryStream = entry.Open();
+                            using var fileStream  = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+                            await fileStream.CopyToAsync(entryStream);
+                            included++;
+                        }
+                    }
+                }
+
+                var zipInfo = new FileInfo(tempZip);
+                using var zipStream = new FileStream(tempZip, FileMode.Open, FileAccess.Read, FileShare.Read,
+                                                    bufferSize: 81920, useAsync: true);
+                res.StatusCode = 200;
+                var headers = new Dictionary<string, string> {
+                    { "Content-Disposition", "attachment; filename=\"thumbs.zip\"" },
+                    { "Access-Control-Allow-Origin", "*" },
+                    { "X-Thumbs-File-Count", included.ToString() },
+                };
+                await res.StreamAsync("application/zip", zipStream, zipInfo.Length, headers);
+                done?.Invoke(200, $"thumbs zip: {included} file(s), {zipInfo.Length} bytes");
+            } catch (Exception ex) {
+                log?.Error("Thumbs export failed", ex);
+                try { await WriteJson(res, 500, new { error = "export failed" }); } catch { }
+                done?.Invoke(500, ex.Message);
+            } finally {
+                try { if (File.Exists(tempZip)) File.Delete(tempZip); } catch { /* best-effort */ }
+            }
+        }
+
+        // ── /api/export/tonight-cache ─────────────────────────────────────────
+
+        // Streams the primary's tonight-preview-cache.json so the companion can
+        // serve Tonight's Preview without reaching the primary's TS API (the
+        // companion can't — the TS API only listens on the primary's loopback
+        // and runs in NINA's process). Returns 404 if the file doesn't exist
+        // yet (no human has loaded Tonight on primary AND no proactive refresh
+        // has run); the companion logs + shows "no data" gracefully.
+        //
+        // Side effect: if the cache is missing or stale-past-noon, kick off a
+        // background refresh of Tonight's Preview before responding so the
+        // NEXT sync pulls fresh data. Doesn't block this response (TS API call
+        // takes ~25s); we serve whatever's currently on disk.
+        private async Task HandleExportTonightCache(TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
+            if (!await RequireCompanionAuth(req, res, done)) return;
+
+            var cachePath = Path.Combine(_paths.DataDir, "tonight-preview-cache.json");
+
+            // Trigger a background refresh if stale. We don't await it — caller
+            // gets last-good immediately; next companion sync (4h cadence) gets
+            // the refreshed payload.
+            try {
+                var cache = TsApiCache.Load(cachePath);
+                if (cache == null || !cache.IsValidAt(DateTime.Now)) {
+                    // Only one refresh at a time. CompareExchange returns the prior
+                    // value; if it was already 1 another refresh owns the slot and we
+                    // skip — the caller still gets last-good from disk below.
+                    if (Interlocked.CompareExchange(ref _tonightRefreshInFlight, 1, 0) == 0) {
+                        _ = Task.Run(async () => {
+                            try {
+                                // Hit our own Tonight handler via the in-process path. The
+                                // handler writes the file on success — no need to capture
+                                // the response here.
+                                await RefreshTonightPreviewInBackground();
+                            } catch (Exception ex) {
+                                log?.Info($"Tonight cache background refresh failed: {ex.Message}");
+                            } finally {
+                                Interlocked.Exchange(ref _tonightRefreshInFlight, 0);
+                            }
+                        });
+                    }
+                }
+            } catch { /* best-effort — fall through to serve whatever's on disk */ }
+
+            if (!File.Exists(cachePath)) {
+                await WriteJson(res, 404, new { error = "no tonight cache yet" });
+                done?.Invoke(404, "tonight cache absent");
+                return;
+            }
+            try {
+                var bytes = await File.ReadAllBytesAsync(cachePath);
+                var info = new FileInfo(cachePath);
+                res.StatusCode = 200;
+                var headers = new Dictionary<string, string> {
+                    { "Content-Disposition", "attachment; filename=\"tonight-preview-cache.json\"" },
+                    { "Access-Control-Allow-Origin", "*" },
+                    { "Last-Modified", info.LastWriteTimeUtc.ToString("R") },
+                };
+                using var ms = new MemoryStream(bytes);
+                await res.StreamAsync("application/json", ms, bytes.Length, headers);
+                done?.Invoke(200, $"tonight cache: {bytes.Length} bytes");
+            } catch (Exception ex) {
+                log?.Error("Tonight cache export failed", ex);
+                try { await WriteJson(res, 500, new { error = "export failed" }); } catch { }
+                done?.Invoke(500, ex.Message);
+            }
+        }
+
+        // ── Shared helpers ────────────────────────────────────────────────────
+
+        private static DateTimeOffset? ParseIsoQuery(string raw) {
+            if (string.IsNullOrEmpty(raw)) return null;
+            return DateTimeOffset.TryParse(raw, null,
+                System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
+                out var dt) ? dt : (DateTimeOffset?)null;
+        }
+
+        // Plugin assembly version — surfaced via /api/health so the companion can
+        // refuse to sync against an incompatible primary.
+        internal static string GetServerAssemblyVersion() =>
+            typeof(DashboardServer).Assembly
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+                ?.InformationalVersion?.Split('+')[0] ?? "";
+
+        // Schema version of the data the companion will receive. Bump when the
+        // SQLite layout, sidecar JSON, or livestack manifest format changes in a
+        // breaking way.
+        internal const int CompanionSchemaVersion = 1;
+    }
+}

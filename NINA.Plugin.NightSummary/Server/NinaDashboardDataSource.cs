@@ -76,6 +76,24 @@ internal sealed class NinaDashboardDataSource : IDashboardDataSource {
         return Task.FromResult<TsImageAugment?>(tsDb.GetImageAugment(targetName, filterName, timestamp, windowSeconds, exposureDurationSeconds));
     }
 
+    public Task<int> ResyncTsGradingAsync(string sessionId, CancellationToken ct = default) {
+        if (!HasDb() || !TargetSchedulerDatabase.IsPluginInstalled || string.IsNullOrEmpty(sessionId))
+            return Task.FromResult(0);
+        var tsDb = new TargetSchedulerDatabase();
+        if (!tsDb.IsAvailable) return Task.FromResult(0);
+
+        var reader = Reader();
+        var session = reader.GetSession(sessionId);
+        if (session == null) return Task.FromResult(0);
+        var images = reader.GetImagesForSession(sessionId).ToList();
+        // Cheap pre-check — skip the TS query entirely when nothing is Pending.
+        if (!images.Any(i => i.GradingStatus == 0)) return Task.FromResult(0);
+
+        var nsDb = new SessionDatabase(dbPath);
+        int changed = TsGradingResync.Sync(nsDb, tsDb, sessionId, session.SessionStart, session.SessionEnd, images);
+        return Task.FromResult(changed);
+    }
+
     public Task<string?> LoadReportHtmlAsync(string sessionId, CancellationToken ct = default) {
         // The server reads disk-backed report HTML directly via reportsDir; this
         // method exists on the interface for future cloud backends. Plugin returns

@@ -36,18 +36,7 @@ namespace NINA.Plugin.SessionCapture {
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "NINA", "SessionCapture");
 
-        private static readonly JsonSerializerOptions JsonOptions = new() {
-            WriteIndented = true,
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-            Converters = {
-                new JsonStringEnumConverter(),
-                new CoordinatesConverter(),
-                new RmsConverter(),
-                new StarDetectionAnalysisConverter(),
-                new ImageStatisticsConverter(),
-                new BitmapSourceSkipConverter()
-            }
-        };
+        private static readonly JsonSerializerOptions JsonOptions = CaptureJson.Options;
 
         [ImportingConstructor]
         public CaptureService(

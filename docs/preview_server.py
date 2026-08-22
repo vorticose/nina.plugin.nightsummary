@@ -16,7 +16,8 @@ import markdown
 from pathlib import Path
 
 DOCS_DIR  = Path(__file__).parent
-PORT      = 4000
+PORT      = int(os.environ.get('DOCS_PREVIEW_PORT', '4000'))
+HOST      = os.environ.get('DOCS_PREVIEW_HOST', 'localhost')  # set 0.0.0.0 to reach over LAN / Tailscale
 MD_EXT    = ['tables', 'fenced_code', 'attr_list', 'sane_lists', 'md_in_html']
 
 MIME = {
@@ -31,6 +32,7 @@ PAGES = [
     ('getting-started',            'Getting Started',              'updated'),
     ('report-sections',            'Report Sections',              'unchanged'),
     ('dashboard',                  'Live Dashboard',               'new'),
+    ('companion',                  'Companion App',                'new'),
     ('delivery-channels',          'Delivery Channels',            'unchanged'),
     ('settings-reference',         'Settings Reference',           'updated'),
     ('equipment-profile',          'Equipment Profile',            'unchanged'),
@@ -48,6 +50,7 @@ PAGE_NOTES = {
     'settings-reference': 'Added new <em>Local Dashboard</em> section.',
     'faq':              'Added new <em>Live Dashboard</em> troubleshooting section.',
     'dashboard':        'Entirely new page — documents the built-in local web dashboard.',
+    'companion':        'New page — the standalone Companion dashboard app (download, install, pairing).',
 }
 
 # ── SSE broadcast ─────────────────────────────────────────────────────────────
@@ -445,9 +448,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 if __name__ == '__main__':
-    server = http.server.ThreadingHTTPServer(('localhost', PORT), Handler)
+    server = http.server.ThreadingHTTPServer((HOST, PORT), Handler)
     print(f'Night Summary docs preview')
-    print(f'  http://localhost:{PORT}')
+    print(f'  http://{"localhost" if HOST in ("localhost", "0.0.0.0") else HOST}:{PORT}  (bound to {HOST})')
     print(f'  Watching: {DOCS_DIR}/*.md')
     print(f'  Ctrl-C to stop\n')
     try:

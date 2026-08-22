@@ -947,6 +947,46 @@ html.light .flatpickr-day.nextMonthDay { color: rgba(30,40,80,0.3); }
     0 1px 2px rgba(0,0,0,0.3);
 }
 
+/* "All rigs" merged Sessions view (selected via the rig switcher). Each
+   rig's own most recent session is pinned above in the gold "latest"
+   treatment (reuses .session-card--latest / .latest-label from the
+   single-rig hero card) regardless of what night it fell on. Below that, a
+   solo night is a standard .session-card with a small rig chip appended; an
+   overlap night wraps N full cards under one shared date label instead of
+   repeating the date per card. */
+.allrigs-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.allrigs-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary, #6e7380);
+  padding: 4px 2px 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.allrigs-day-group { margin-bottom: 8px; }
+.allrigs-day-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary, #b0b4bc);
+  padding: 0 2px 6px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.allrigs-day-stack { display: flex; flex-direction: column; gap: 8px; }
+.allrigs-day-stack .session-card { margin-bottom: 0; }
+.allrigs-unhide { margin: 4px 0 10px; }
+
 .chart-legend-item {
   display: flex;
   align-items: center;
@@ -1415,6 +1455,7 @@ html.light .flatpickr-day.nextMonthDay { color: rgba(30,40,80,0.3); }
 
 .badge-green { background: rgba(63,185,80,0.15); color: var(--green); }
 .badge-red { background: rgba(248,81,73,0.15); color: var(--red); }
+.badge-amber { background: rgba(210,153,34,0.15); color: var(--yellow); }
 /* Most-recent session card — gold glow matching hover colour */
 .session-card--latest {
   background: linear-gradient(135deg, rgba(212,160,106,0.22) 0%, rgba(212,160,106,0.06) 50%, transparent 75%), var(--surface);
@@ -1830,7 +1871,18 @@ html.light .flatpickr-day.nextMonthDay { color: rgba(30,40,80,0.3); }
 /* When viewing a report, hide the footer and kill outer scroll */
 body.report-view { overflow: hidden; }
 body.report-view .footnote { display: none; }
-body.report-view .shell { padding-bottom: 0; display: flex; flex-direction: column; overflow-y: auto; height: calc(100dvh - var(--header-h, 60px)); box-sizing: border-box; }
+/* Base height uses 100vh so browsers without `dvh` (Firefox < 101, older Safari,
+   older WebViews) get a valid height. The dvh refinement is gated behind
+   @supports — NOT a second `height` declaration — because the value contains
+   var(): a no-dvh browser accepts `calc(100dvh - var(...))` at PARSE time (var()
+   defers validation), keeps it as the cascade winner, then fails at computed
+   time on the unknown `dvh` unit and falls back to `auto` (invalid-at-computed-
+   value-time), ignoring the earlier 100vh line — collapsing the report iframe to
+   its intrinsic 150px. @supports keeps the dvh line out of unsupported browsers. */
+body.report-view .shell { padding-bottom: 0; display: flex; flex-direction: column; overflow-y: auto; height: calc(100vh - var(--header-h, 60px)); box-sizing: border-box; }
+@supports (height: 100dvh) {
+  body.report-view .shell { height: calc(100dvh - var(--header-h, 60px)); }
+}
 body.report-view #content { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 
 .report-nav {
@@ -2285,7 +2337,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   display: flex;
   justify-content: flex-start;
   align-items: center;
-  overflow-x: auto;
+  overflow: visible;
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
@@ -2306,12 +2358,16 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 }
 .lw-bar { cursor: pointer; }
 .lw-scroll-wrap {
+  width: 100%;
+  overflow: visible;
+  -webkit-overflow-scrolling: touch;
+}
+.lw-scroll-wrap.is-scrollable {
   overflow-x: auto;
   overflow-y: hidden;
-  padding-bottom: 6px;
+  padding-bottom: 8px;
   scrollbar-width: thin;
   scrollbar-color: rgba(255,255,255,0.18) transparent;
-  -webkit-overflow-scrolling: touch;
 }
 .lw-scroll-wrap::-webkit-scrollbar { height: 8px; }
 .lw-scroll-wrap::-webkit-scrollbar-track { background: transparent; }
@@ -2345,6 +2401,16 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 .lw-si-report-btn { font-size: 13px; font-weight: 600; color: var(--accent, #5b9bd5); background: none; border: none; padding: 4px 0; cursor: pointer; }
 .lw-si-no-report { font-size: 12px; color: var(--text-quaternary, #666); }
 .lw-si-dismiss { background: none; border: none; color: var(--text-secondary, #aaa); font-size: 18px; line-height: 1; padding: 2px 6px; cursor: pointer; margin-left: auto; }
+/* Light-mode override: --surface-raised is never actually defined as a CSS var,
+   so .lw-scrubber-info above falls back to the dark literal rgba(22,24,48,0.96)
+   in BOTH themes. Override the background + border for light mode so the
+   tooltip uses light-on-dark-text instead of dark-on-light. Date/stats/tgts
+   colors already track --text vars so they flip automatically. */
+:root.light .lw-scrubber-info {
+  background: rgba(255, 255, 255, 0.98);
+  border-color: rgba(0, 0, 0, 0.12);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+}
 .lifetime-waveform a:hover .lw-bar,
 .lifetime-calendar a:hover .lifetime-heatmap-cell {
   stroke: var(--accent-lighter, #c0d8ff);
@@ -2455,6 +2521,12 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   }
   .lifetime-strip-expandable:hover .lifetime-strip-handle,
   .lifetime-strip--expanded .lifetime-strip-handle { background: rgba(255,255,255,0.3); }
+  /* Light-mode: the white-tinted handle is near-invisible on the light surface.
+     Flip to a dark tint so it reads as an affordance hint. Goes inside the
+     mobile @media block since the handle only renders on mobile. */
+  :root.light .lifetime-strip-handle { background: rgba(0,0,0,0.20); }
+  :root.light .lifetime-strip-expandable:hover .lifetime-strip-handle,
+  :root.light .lifetime-strip--expanded .lifetime-strip-handle { background: rgba(0,0,0,0.40); }
 }
 
 /* ── Sessions V2: hero card ─────────────────────────────────────────────── */
@@ -3982,6 +4054,18 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   font-size: 10px;
   letter-spacing: 0.3px;
 }
+.lw-tip-rigs { margin-top: 6px; display: flex; flex-direction: column; gap: 2px; }
+.lw-tip-rig,
+.lw-scrubber-info .lw-tip-rig {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.lw-tip-rig-name { font-weight: 600; color: var(--text); }
+.lw-tip-rig-stats { color: var(--text-tertiary); white-space: nowrap; }
+.lw-scrubber-info .lw-tip-rigs { margin-top: 4px; }
 .lw-bar-tip--latest {
   border-color: rgba(212,160,106,0.45);
   box-shadow: 0 4px 12px rgba(0,0,0,0.4), 0 0 14px rgba(212,160,106,0.22);
@@ -5045,7 +5129,12 @@ html.light .tdp-project-action-btn:hover {
     justify-content: center;
     align-items: center;
     gap: 6px;
-    overflow: hidden;
+    /* Clip only horizontally so the no-wrap row can't spill sideways, while the
+       nav-link / view-toggle drop shadows (0 2px 6px) still bleed vertically.
+       Plain `overflow: hidden` clipped the 3D shadow top & bottom on mobile.
+       `clip` on one axis with the default y `visible` is a valid pairing that
+       does not force the other axis to auto. */
+    overflow-x: clip;
   }
   .header-right .theme-toggle { margin-left: 0; flex-shrink: 0; }
   .header-right #nav { flex-shrink: 1; min-width: 0; }
@@ -5119,8 +5208,14 @@ html.light .tdp-project-action-btn:hover {
     min-height: 44px;
     font-size: 18px;
     display: flex;
-    align-items: center;
-    justify-content: center;
+    /* Anchor the 44px tap target to the very corner and pin the glyph to its
+       top-right, so the visible ✕ sits in the corner with a little padding
+       instead of floating ~20px inward (centered inside the tap box). */
+    align-items: flex-start;
+    justify-content: flex-end;
+    top: 0;
+    right: 0;
+    padding: 7px 9px;
     background: none;
   }
   @media (hover: hover) {
@@ -5128,6 +5223,16 @@ html.light .tdp-project-action-btn:hover {
   }
   .card-body { flex-direction: column; min-height: 0; }
   .card-content { min-width: 0; max-width: 100%; }
+
+  /* Target pills always drop to their own row below the date/time. The card
+     header is a wrapping flex row; without this, short pill sets sit inline
+     with the date and only long ones wrap below — inconsistent. Full-width
+     basis forces a consistent break onto the next row regardless of length. */
+  .card-targets-line { flex-basis: 100%; }
+  /* Equal vertical spacing around the pills row: row-gap (date -> pills) and
+     margin-bottom (pills -> thumbs) match. column-gap stays 10px for the
+     horizontal date <-> time spacing. */
+  .card-header { column-gap: 10px; row-gap: 8px; margin-bottom: 8px; }
 
   /* ── Thumbnails: smaller, horizontal scroll ── */
   .card-thumbs {
@@ -5237,15 +5342,31 @@ html.light .tdp-project-action-btn:hover {
   .filter-bar > label.target-check { order: 11; padding: 0 7px; font-size: 11px; }
   .filter-bar > #unhide-all { order: 12; }
   .filter-bar .filter-link { padding: 0 8px; font-size: 11px; }
-  /* View toggle lives in header on mobile (moved by JS) */
+  /* View toggle: in primary mode it gets reparented into .header-right by JS.
+     In companion mode it stays in the filter-bar (the extra Settings nav pill
+     makes the header too crowded). Base style has order:99 + margin-left:auto,
+     which would push it to its own line right-aligned — looks orphaned. Reset
+     to flow inline with the other Row 2 buttons. */
   .header-right .view-toggle {
     margin-left: 0;
     margin-top: 0;
   }
+  .filter-bar > .view-toggle {
+    order: 13;
+    margin-left: 0;
+    margin-top: 0;
+    flex: 0 0 auto;
+  }
+
+  /* Companion sync banner mobile fix lives in a separate @media block
+     AFTER the base .companion-banner rules (around line 5664+). Same selector
+     specificity, so later-in-source wins — keeping the override here got
+     clobbered by the base. See the dedicated @media block below the banner
+     base styles. */
   .report-nav { flex-direction: column; align-items: flex-start; gap: 8px; }
 
   /* ── Report view: compact header and controls ── */
-  body.report-view { overflow: hidden; height: 100dvh; }
+  body.report-view { overflow: hidden; height: 100vh; height: 100dvh; }
   body.report-view .shell { max-width: 100%; padding: 8px 12px; }
   body.report-view #content { overflow: visible; }
   body.report-view header { padding: 0 12px 6px; margin-bottom: 0; gap: 4px; }
@@ -5277,6 +5398,11 @@ html.light .tdp-project-action-btn:hover {
   /* ── Touch-friendly tap targets (44px minimum) ── */
   .report-btn, .back-btn { min-height: 44px; display: inline-flex; align-items: center; }
   .nav-link { min-height: 44px; display: inline-flex; align-items: center; }
+  /* `display: inline-flex` above overrides the UA `[hidden] { display: none }`
+     declaration, so the Settings nav-link (HTML attribute `hidden` until
+     companion mode unhides it) was leaking into the primary dashboard's nav
+     row on mobile. Same fix shape as .companion-banner[hidden] above. */
+  .nav-link[hidden] { display: none !important; }
   .theme-toggle { width: 44px; height: 44px; flex-shrink: 0; }
   .target-dropdown-btn { min-height: 36px; }
   .sort-dropdown-btn { min-height: 36px; }
@@ -5497,6 +5623,40 @@ html.light .tdp-project-action-btn:hover {
   font-size: 13px;
 }
 
+/* Cached-payload pill — primary or companion fell back to disk cache because
+   the live TS API was unreachable. Sits above the date header so users notice
+   the data is stale, without dominating the layout. */
+.tonight-cached-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 12px 0;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  background: rgba(126, 184, 247, 0.08);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+  cursor: help;
+}
+.tonight-cached-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+  animation: tonight-cached-pulse 2s ease-in-out infinite;
+}
+@keyframes tonight-cached-pulse {
+  0%, 100% { opacity: 0.6; }
+  50%      { opacity: 1; }
+}
+html.light .tonight-cached-pill {
+  background: rgba(37, 99, 184, 0.08);
+}
+
 .tonight-spinner {
   width: 18px;
   height: 18px;
@@ -5577,6 +5737,299 @@ html.light .tdp-project-action-btn:hover {
   padding: 1px 4px;
   border-radius: 3px;
   font-style: normal;
+}
+
+/* ── Companion sync banner ──────────────────────────────────────────────── */
+/* ── Companion sync banner ────────────────────────────────────────────────
+   Visual language matches the rest of the dashboard chrome: same border /
+   radius / typography as session cards, accent-color status dot consistent
+   with the Cached pill on Tonight's Preview, and the action button styled
+   like header-meta-donate (accent fill, 3D dome, soft glow on hover) so it
+   reads as a first-class NS element rather than a tacked-on banner. State
+   classes shift only the dot color + a soft surrounding glow — the border
+   stays unchanged so the banner doesn't strobe between renders. */
+.companion-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 16px;
+  margin: 0 0 16px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 8px);
+  background: var(--surface);
+  font-size: 13px;
+  transition: box-shadow var(--t-fast, 150ms ease), border-color var(--t-fast, 150ms ease);
+}
+/* Author `display: flex` above wins over UA `[hidden] { display: none }`, so
+   primary mode (HTML attribute hidden, no JS unhide) was leaking the banner.
+   Explicit override restores hidden semantics. */
+.companion-banner[hidden] { display: none !important; }
+.companion-banner.is-syncing { opacity: 0.92; }
+.companion-banner.is-stale {
+  border-color: rgba(199, 154, 58, 0.55);
+  box-shadow: 0 0 12px rgba(199, 154, 58, 0.12);
+}
+.companion-banner.is-error {
+  border-color: rgba(194, 85, 62, 0.6);
+  box-shadow: 0 0 12px rgba(194, 85, 62, 0.14);
+}
+.companion-banner.is-setup {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px rgba(var(--accent-rgb, 78, 121, 167), 0.16);
+}
+
+.companion-banner-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+/* Label pill — mirrors the .frames-count style used throughout the dashboard
+   so the banner identifier doesn't invent its own treatment. */
+.companion-banner-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  font-size: 11px;
+  color: var(--accent);
+  background: rgba(126, 184, 247, 0.08);
+  padding: 3px 10px 3px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  flex-shrink: 0;
+  text-transform: none;
+}
+html.light .companion-banner-label { background: rgba(37, 99, 184, 0.08); }
+
+/* Rig picker — only present (and unhidden) in companion mode with >1 rig.
+   Custom checkbox menu (one / subset / all). The dot flags a non-active
+   rig needing attention. */
+.companion-rig-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  position: relative;
+}
+.companion-rig-switch[hidden] { display: none !important; }
+.companion-rig-picker { position: relative; }
+.companion-rig-toggle {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--card, rgba(255,255,255,0.04));
+  border: 1px solid var(--border, rgba(255,255,255,0.18));
+  border-radius: 8px;
+  padding: 3px 26px 3px 9px;
+  max-width: 180px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%237eb8f7' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+.companion-rig-toggle:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.companion-rig-toggle-label { display: block; overflow: hidden; text-overflow: ellipsis; }
+.companion-rig-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 200px;
+  max-width: min(280px, 80vw);
+  max-height: min(360px, 70vh);
+  overflow-y: auto;
+  z-index: 160;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+  padding: 6px;
+}
+.companion-rig-menu[hidden] { display: none !important; }
+.companion-rig-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  user-select: none;
+}
+.companion-rig-option:hover { background: rgba(255,255,255,0.06); }
+html.light .companion-rig-option:hover { background: rgba(0,0,0,0.05); }
+.companion-rig-option.is-disabled { opacity: 0.45; cursor: default; }
+.companion-rig-option--all {
+  font-weight: 700;
+  border-bottom: 1px solid var(--border);
+  border-radius: 6px 6px 0 0;
+  margin-bottom: 4px;
+  padding-bottom: 9px;
+}
+.companion-rig-option input { margin: 0; accent-color: var(--accent); flex-shrink: 0; }
+.companion-rig-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.rig-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e0683f;
+  box-shadow: 0 0 6px rgba(224, 104, 63, 0.8);
+  flex-shrink: 0;
+}
+.rig-dot[hidden] { display: none !important; }
+
+/* ── Settings: multi-rig management card ─────────────────────────────────── */
+.rig-manage-card .rig-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+}
+.rig-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border, rgba(255,255,255,0.12));
+  border-radius: 10px;
+  background: var(--card, rgba(255,255,255,0.03));
+}
+.rig-row.is-active { border-color: var(--accent); }
+.rig-row.is-disabled { opacity: 0.6; }
+.rig-row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rig-row-name { font-weight: 600; font-size: 13px; color: var(--text); }
+.rig-row-editing {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 1px 6px;
+  margin-left: 4px;
+}
+.rig-row-host { font-size: 11px; color: var(--text-secondary); }
+.rig-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.rig-row-btn {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border, rgba(255,255,255,0.18));
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.rig-row-btn:hover { border-color: var(--accent); color: var(--accent); }
+.rig-row-btn.rig-remove:hover { border-color: #e0683f; color: #e0683f; }
+.rig-row-btn:disabled { opacity: 0.5; cursor: default; }
+.rig-add-btn { margin-top: 4px; }
+
+/* Stack the row vertically on narrow phones so action buttons don't crush the
+   name. Per feedback_mobile_priorities: prioritize layout over element size. */
+@media (max-width: 520px) {
+  .rig-row { flex-direction: column; align-items: stretch; gap: 8px; }
+  .rig-row-actions { justify-content: flex-end; }
+}
+
+/* Status dot — same pulse as the Tonight cached pill so the visual idiom of
+   "data freshness" is unified across the dashboard. */
+.companion-banner-label::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+  animation: tonight-cached-pulse 2s ease-in-out infinite;
+}
+.companion-banner.is-stale  .companion-banner-label { color: #c79a3a; border-color: rgba(199, 154, 58, 0.55); background: rgba(199, 154, 58, 0.08); }
+.companion-banner.is-stale  .companion-banner-label::before { background: #c79a3a; box-shadow: 0 0 6px #c79a3a; }
+.companion-banner.is-error  .companion-banner-label { color: #c2553e; border-color: rgba(194, 85, 62, 0.6);   background: rgba(194, 85, 62, 0.08); }
+.companion-banner.is-error  .companion-banner-label::before { background: #c2553e; box-shadow: 0 0 6px #c2553e; }
+
+#companion-banner-status {
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Companion sync banner: stack on mobile ──────────────────────────────
+   Default layout is a single flex row (label + status + Sync button) with
+   #companion-banner-status set to white-space:nowrap + ellipsis. On phone
+   widths the status text ("Primary online · Last sync 5 min ago · …") gets
+   squeezed between the fixed-width label pill and Sync button — usually
+   down to just "Primary…" before the ellipsis kicks in.
+
+   Fix: let the banner wrap. .companion-banner-info (label + status) takes
+   a full row, status wraps naturally onto multiple lines if needed. Sync
+   button drops to its own row, right-aligned. No truncation.
+
+   This block lives AFTER the base .companion-banner rules so its same-
+   specificity selectors win on source order at mobile widths. The earlier
+   attempt to nest these inside the existing @media block at line ~5022
+   was clobbered by the base rules defined after it. */
+@media (max-width: 700px) {
+  /* Two-row layout — balanced:
+       Row 1: [Companion pill]  Status text (wraps freely)
+       Row 2: [─── Sync Now (full width) ───]
+     Label stays inline with status on row 1 (HTML nests them inside
+     .companion-banner-info so we can't reparent via order). Button drops
+     below as a full-width CTA — reads as intentional instead of a lonely
+     pill right-aligned on its own row. */
+  .companion-banner {
+    flex-wrap: wrap;
+    gap: 10px 12px;
+    padding: 10px 12px;
+    align-items: flex-start;
+  }
+  .companion-banner-info {
+    flex: 1 1 100%;
+    min-width: 0;
+    align-items: flex-start;  /* label hugs top of multi-line status */
+  }
+  #companion-banner-status {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    line-height: 1.4;
+  }
+  .companion-banner-btn {
+    flex: 1 1 100%;
+    justify-content: center;
+    padding: 8px 14px;  /* slightly taller for tap target */
+  }
+  /* Update banner: its buttons live inside .ns-update-actions, which (unlike the
+     sync banner's direct-child button) isn't a banner flex item by default. Make
+     it a full-width wrapping row so the confirm prompt + the now-full-width
+     Confirm/Cancel stack cleanly instead of overflowing the viewport. */
+  .ns-update-actions {
+    flex: 1 1 100%;
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+  .ns-update-confirm-q { flex-basis: 100%; }
 }
 
 /* ── Raw Image Frames Gallery (RAW_THUMBNAILS_DESIGN.md) ─────────────────── */
@@ -6050,7 +6503,12 @@ html.light .tdp-project-action-btn:hover {
      the same X. The 1fr spacer keeps the value column anchored to the
      right side of the m-group regardless of label width. */
   display: grid;
-  grid-template-columns: auto 1fr max-content;
+  /* col 3 = minmax(0, max-content) so a long value (project name,
+     exposure-profile name) can't force the track wider than the
+     m-group on narrow viewports. .m-v already has
+     overflow:hidden + text-overflow:ellipsis to truncate cleanly
+     once the track shrinks under pressure. */
+  grid-template-columns: auto 1fr minmax(0, max-content);
   column-gap: 8px;
   row-gap: 2px;
   align-content: start;
@@ -6148,6 +6606,339 @@ html.light .tdp-project-action-btn:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Action button — same 3D dome + accent glow as header-meta-donate so the
+   one piece of companion chrome that's actionable matches the language of
+   other CTAs in the dashboard. */
+.companion-banner-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: linear-gradient(180deg, var(--accent-light), var(--accent));
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18),
+    0 1px 3px rgba(0, 0, 0, 0.30),
+    0 0 10px rgba(var(--accent-rgb, 78, 121, 167), 0.40);
+  transition:
+    box-shadow var(--t-fast, 150ms ease),
+    background var(--t-fast, 150ms ease),
+    border-color var(--t-fast, 150ms ease),
+    opacity var(--t-fast, 150ms ease);
+}
+.companion-banner-btn:hover:not(:disabled) {
+  background: linear-gradient(180deg, var(--accent-lighter), var(--accent-light));
+  border-color: var(--accent-light);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.14),
+    0 2px 6px rgba(0, 0, 0, 0.36),
+    0 0 16px rgba(var(--accent-rgb, 78, 121, 167), 0.60);
+}
+.companion-banner-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  /* Mute the glow when disabled — keeps the button readable as "off". */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.12),
+    0 1px 2px rgba(0, 0, 0, 0.22);
+}
+
+/* ── In-app update banner ──────────────────────────────────────────────────
+   Reuses .companion-banner chrome; the accent border makes it read as a call
+   to action distinct from the (neutral) sync banner above it. */
+.ns-update-banner {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px rgba(var(--accent-rgb, 78, 121, 167), 0.16);
+}
+.ns-update-banner.is-error {
+  border-color: rgba(194, 85, 62, 0.6);
+  box-shadow: 0 0 12px rgba(194, 85, 62, 0.14);
+}
+.ns-update-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.ns-update-link {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.ns-update-link:hover { text-decoration: underline; }
+.ns-update-hint,
+.ns-update-confirm-q {
+  font-size: 12px;
+  color: var(--dim);
+}
+.ns-update-confirm-q { color: var(--text); }
+
+/* Secondary (ghost) variant for Dismiss / Cancel — quiet next to the primary. */
+.companion-banner-btn.is-ghost {
+  color: var(--accent);
+  background: transparent;
+  border-color: var(--border);
+  box-shadow: none;
+}
+.companion-banner-btn.is-ghost:hover:not(:disabled) {
+  background: rgba(126, 184, 247, 0.08);
+  border-color: var(--accent);
+  box-shadow: none;
+}
+html.light .companion-banner-btn.is-ghost:hover:not(:disabled) {
+  background: rgba(37, 99, 184, 0.08);
+}
+
+/* ── Companion settings tab ───────────────────────────────────────────────
+   Aligned with the rest of the dashboard chrome: card uses the same surface
+   + border treatment as session detail panels; section headings match the
+   .tdp-section-title typographic scale (uppercase, tertiary, no border-bottom);
+   state cards use a soft glow on the same border, not a solid tinted fill,
+   so the page reads consistently with the companion banner. */
+.settings-shell {
+  max-width: 720px;
+  margin: 16px auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.settings-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 8px);
+  padding: 18px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: box-shadow var(--t-fast, 150ms ease), border-color var(--t-fast, 150ms ease);
+}
+.settings-card.is-setup {
+  border-color: var(--accent);
+  box-shadow: 0 0 14px rgba(var(--accent-rgb, 78, 121, 167), 0.14);
+}
+.settings-card.is-error {
+  border-color: rgba(194, 85, 62, 0.6);
+  box-shadow: 0 0 14px rgba(194, 85, 62, 0.14);
+}
+/* Settings type scale (standardized):
+   heading h2 .. 14px / 600  (section title)
+   label ....... 13px / 500
+   body / desc . 12px / 400  (.settings-hint, .settings-card p)
+   controls .... 13px        (input, button)
+   status ...... 12px */
+.settings-card h2 {
+  /* 16px above (section separation, on top of the 12px card gap) + a tight
+     -4px below so the heading hugs the fields it labels. First heading in a
+     card resets the top so it sits flush with the card padding. */
+  margin: 16px 0 -4px 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.1px;
+  color: var(--text-primary);
+}
+.settings-card > h2:first-child { margin-top: 0; }
+.settings-card p { margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
+.settings-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.settings-row-inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+/* Scoped to .settings-shell so the legacy .settings-panel rule (which forces
+   uppercase + letter-spacing) doesn't bleed into the companion settings labels
+   and their inline hints. Companion labels are sentence-case. */
+.settings-shell .settings-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--text-primary);
+}
+.settings-hint {
+  font-weight: 400;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-tertiary);
+}
+.settings-card input[type="text"],
+.settings-card input[type="password"],
+.settings-card input[type="number"] {
+  background: var(--bg);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 13px;
+}
+.settings-card input[readonly] {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+.settings-key-row {
+  display: flex;
+  gap: 6px;
+}
+.settings-key-row input { flex: 1; }
+.settings-key-toggle {
+  background: var(--bg);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.settings-key-toggle:hover { color: var(--text-primary); }
+.settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+.settings-status {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.settings-status.is-ok    { color: #5fa052; }
+.settings-status.is-error { color: #c2553e; }
+
+/* Secondary button — same treatment as other dashboard chrome buttons. */
+.settings-btn {
+  background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(0,0,0,0.07)), var(--bg);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.10),
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    0 1px 3px rgba(0,0,0,0.28);
+  transition: border-color var(--t-fast, 150ms ease), color var(--t-fast, 150ms ease), box-shadow var(--t-fast, 150ms ease);
+}
+.settings-btn:hover:not(:disabled) {
+  border-color: rgba(230, 232, 240, 0.4);
+  color: var(--text-secondary);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.14),
+    inset 0 -1px 0 rgba(0,0,0,0.16),
+    0 2px 5px rgba(0,0,0,0.32);
+}
+.settings-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Primary action — same 3D dome + accent glow as the donate pill and the
+   companion-banner Sync button so every CTA across NS shares one visual
+   vocabulary. */
+.settings-btn-primary {
+  background: linear-gradient(180deg, var(--accent-light), var(--accent));
+  color: #fff;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 6px 16px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18),
+    0 1px 3px rgba(0, 0, 0, 0.30),
+    0 0 10px rgba(var(--accent-rgb, 78, 121, 167), 0.40);
+}
+.settings-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, var(--accent-lighter), var(--accent-light));
+  border-color: var(--accent-light);
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.14),
+    0 2px 6px rgba(0, 0, 0, 0.36),
+    0 0 16px rgba(var(--accent-rgb, 78, 121, 167), 0.60);
+}
+.settings-btn-primary:disabled {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.12),
+    0 1px 2px rgba(0, 0, 0, 0.22);
+}
+
+/* Auth pill in the Settings tab. Indicates whether the companion is paired
+   via a per-companion token (new) or still using the legacy shared apiKey. */
+.settings-auth-status {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.settings-auth-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid transparent;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.14),
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    0 1px 2px rgba(0,0,0,0.22);
+}
+.settings-auth-pill.is-paired {
+  background: rgba(95, 160, 82, 0.15);
+  color: #5fa052;
+  border-color: rgba(95, 160, 82, 0.4);
+}
+.settings-auth-pill.is-pending {
+  background: rgba(210, 153, 34, 0.15);
+  color: #d29922;
+  border-color: rgba(210, 153, 34, 0.4);
+}
+.settings-auth-pill.is-off {
+  background: rgba(110, 115, 128, 0.15);
+  color: var(--text-tertiary);
+  border-color: rgba(110, 115, 128, 0.4);
+}
+
+/* Danger button for Quit. Same shape as .settings-btn but warns visually. */
+.settings-btn-danger {
+  border-color: rgba(194, 85, 62, 0.55);
+  color: #c2553e;
+}
+.settings-btn-danger:hover:not(:disabled) {
+  background: rgba(194, 85, 62, 0.12);
+  border-color: #c2553e;
+}
+
+/* Plain-link variant for "Re-pair" in the auth row. */
+.settings-btn-link {
+  text-decoration: none;
+}
+
 .m-mono {
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 11px;
@@ -6187,4 +6978,54 @@ html.light .tdp-project-action-btn:hover {
   .m-grid  { margin-top: 4px; gap: 6px; }
   .m-row   { font-size: 11px; line-height: 1.25; }
   .m-k, .m-v { font-size: 11px; }
+}
+
+/* ── Read-only mirror mode ────────────────────────────────────────────────
+   Activated by `data-readonly="true"` on the <html> element, injected by
+   DashboardServer when constructed with `readOnly: true`. The selectors
+   below hide every destructive UI surface so a publicly-exposed instance
+   shows the same read paths but no edit affordances. Pure CSS — no JS
+   coupling, no race conditions on initial paint.
+
+   Adding a new destructive button later? Easiest path is to tag it with
+   `class="ns-readonly-hide"` and it will be auto-hidden under this mode. */
+html[data-readonly] .settings-actions,
+html[data-readonly] .tdp-ts-actions,
+html[data-readonly] .tdp-project-actions,
+html[data-readonly] .targets-manage-projects-btn,
+html[data-readonly] .ts-override-reset,
+html[data-readonly] .tdp-project-action-btn,
+html[data-readonly] #btn-settings,
+html[data-readonly] #settings-panel,
+html[data-readonly] .settings-panel,
+html[data-readonly] .ns-readonly-hide,
+/* Companion-only UI surfaces hidden by default via [hidden] but un-hidden by
+   JS once /api/mode resolves to "companion". In readonly mode the viewer is
+   anonymous public — they don't care that this happens to be a companion
+   mirror vs primary, and the Settings tab / Sync Now button would 403 anyway.
+   Keep them hidden no matter what the mode probe says. */
+html[data-readonly] .nav-link[data-page="settings"],
+html[data-readonly] #companion-banner {
+  display: none !important;
+}
+
+/* Read-only mode pill in the header. Hidden in normal mode, shown when the
+   data-readonly attribute is set. Styled to match the donate/nav chrome. */
+.readonly-pill {
+  display: none;
+}
+html[data-readonly] .readonly-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  margin-left: 8px;
+  border-radius: 999px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.08));
+  color: var(--accent-light, #7eb8f7);
+  border: 1px solid var(--accent-light, #7eb8f7);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  cursor: help;
 }

@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Data.SQLite;
+using Microsoft.Data.Sqlite;
 using System.IO;
 using System.Linq;
 using NINA.Plugin.NightSummary.Data;
@@ -23,8 +23,8 @@ internal sealed class DevTsReader {
         if (!IsAvailable) return new List<TsProjectInfo>();
 
         try {
-            var connectionString = $"Data Source={dbPath};Version=3;Read Only=True;";
-            using var conn = new SQLiteConnection(connectionString);
+            var connectionString = $"Data Source={dbPath};Mode=ReadOnly";
+            using var conn = new SqliteConnection(connectionString);
             conn.Open();
 
             var sql = @"
@@ -65,7 +65,7 @@ internal sealed class DevTsReader {
             var projects = new Dictionary<int, TsProjectInfo>();
             var targets  = new Dictionary<int, TsProjectTarget>();
 
-            using var cmd = new SQLiteCommand(sql, conn);
+            using var cmd = new SqliteCommand(sql, conn);
             using var reader = cmd.ExecuteReader();
             while (reader.Read()) {
                 int pid = Convert.ToInt32(reader["PId"]);
@@ -137,8 +137,8 @@ internal sealed class DevTsReader {
         if (string.IsNullOrEmpty(targetName)) return null;
 
         try {
-            var connectionString = $"Data Source={dbPath};Version=3;Read Only=True;";
-            using var conn = new SQLiteConnection(connectionString);
+            var connectionString = $"Data Source={dbPath};Mode=ReadOnly";
+            using var conn = new SqliteConnection(connectionString);
             conn.Open();
             long centerDirect = new DateTimeOffset(ts.ToUniversalTime()).ToUnixTimeSeconds();
 
@@ -156,7 +156,7 @@ internal sealed class DevTsReader {
         }
     }
 
-    private static TsImageAugment? QueryAugment(SQLiteConnection conn, string targetName, string filterName, long center, int windowSeconds) {
+    private static TsImageAugment? QueryAugment(SqliteConnection conn, string targetName, string filterName, long center, int windowSeconds) {
         const string sql = @"
             SELECT a.metadata, a.gradingStatus, a.rejectreason,
                    p.name AS projectName, et.name AS templateName
@@ -171,7 +171,7 @@ internal sealed class DevTsReader {
             ORDER BY ABS(a.acquireddate - @Center)
             LIMIT 1";
 
-        using var cmd = new SQLiteCommand(sql, conn);
+        using var cmd = new SqliteCommand(sql, conn);
         cmd.Parameters.AddWithValue("@Lo",     center - windowSeconds);
         cmd.Parameters.AddWithValue("@Hi",     center + windowSeconds);
         cmd.Parameters.AddWithValue("@Center", center);
@@ -217,10 +217,10 @@ internal sealed class DevTsReader {
     public (bool Enabled, int Port) GetApiSettings() {
         if (!IsAvailable) return (false, 0);
         try {
-            var connectionString = $"Data Source={dbPath};Version=3;Read Only=True;";
-            using var conn = new SQLiteConnection(connectionString);
+            var connectionString = $"Data Source={dbPath};Mode=ReadOnly";
+            using var conn = new SqliteConnection(connectionString);
             conn.Open();
-            using var cmd = new SQLiteCommand(
+            using var cmd = new SqliteCommand(
                 "SELECT enableAPI, apiPort FROM profilepreference LIMIT 1", conn);
             using var reader = cmd.ExecuteReader();
             if (reader.Read()) {

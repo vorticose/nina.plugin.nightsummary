@@ -3,7 +3,7 @@ using NINA.Plugin.NightSummary.Dashboard.Abstractions;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Data.SQLite;
+using Microsoft.Data.Sqlite;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -18,20 +18,47 @@ using System.Threading.Tasks;
 
 namespace NINA.Plugin.NightSummary.Server {
 
-    public class DashboardServer {
+    public partial class DashboardServer {
 
         private TcpListener _tcpListener;
         private CancellationTokenSource cts;
-        private readonly string dbPath;
+        // Root-level, rig-agnostic: shared logs dir + dashboard cache DB + hips
+        // cache all live under the companion's top-level data dir, never under a
+        // single rig (so the cache is shared and GUID-keyed across rigs).
         private readonly string cachePath;
-        private readonly string reportsDir;
         private readonly string dataDir;
-        private readonly IDashboardPaths _paths;     // kept so ThumbsRoot stays settings-aware
-        private readonly IDashboardDataSource _data;
+        // Multi-rig: the server resolves ?rig=<id> to a backend per request instead
+        // of holding one fixed data source / paths / controller. _currentRig is set
+        // at the top of HandleRequest and flows through the async call chain via
+        // AsyncLocal; outside a request (startup, prewarm, background loops) the
+        // properties below fall back to the registry default.
+        private readonly IRigRegistry _rigs;
+        private readonly System.Threading.AsyncLocal<RigBackend> _currentRig = new();
         private readonly IPluginSettings _settings;
         private readonly IWebAssets _webAssets;
         private readonly IDashboardLogger _external;
-        private readonly IReportRegenerator _regen;
+        private readonly ICompanionTokenStore _tokenStore; // null in companion mode (only primary serves /api/companion/info|pair|revoke)
+        private readonly HashSet<string> _loggedUnknownRigs = new(StringComparer.Ordinal);
+
+        // The rig serving the current request (or the default outside one). All
+        // the per-rig accessors below resolve through this so existing handler
+        // code — which references _data / _paths / dbPath / reportsDir / _regen /
+        // _companion — keeps working unchanged, now scoped to the active rig.
+        private RigBackend CurrentRig => _currentRig.Value ?? _rigs.Default;
+        private IDashboardDataSource _data => CurrentRig.Data;
+        private IDashboardPaths _paths => CurrentRig.Paths;       // kept so ThumbsRoot stays settings-aware
+        private IReportRegenerator _regen => CurrentRig.Regen;     // null when regeneration disabled
+        private ICompanionController _companion => CurrentRig.Companion;  // null in primary mode
+        private ISessionMaintenance _maintenance => CurrentRig.Maintenance; // null in companion mode
+        private string dbPath => _paths.DatabasePath;
+        private string reportsDir => _paths.ReportsDir;
+        // Read-only mode: when true, this DashboardServer instance refuses every non-GET
+        // request with HTTP 403, suppresses destructive UI in the dashboard HTML via a
+        // data-readonly attribute on the <html> element, and tags every response with an
+        // X-Read-Only header. Designed for parallel-port deployment behind a reverse
+        // proxy or Tailscale Funnel so the public-facing instance can't mutate state.
+        private readonly bool _readOnly;
+        public bool ReadOnly => _readOnly;
         private string cachedDashboardHtml;
         private DashboardLog log;
         private readonly HashSet<string> _loggedUserAgents = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -147,27 +174,49 @@ namespace NINA.Plugin.NightSummary.Server {
         public string TailscaleUrl { get; private set; }
         public string ZeroTierUrl { get; private set; }
 
+        // Single-rig ctor — primary mode, read-only mirror, dev harness, tests.
+        // Wraps the one (data, paths, regen, companion) tuple into a trivial
+        // single-entry registry so the multi-rig request path below is exercised
+        // uniformly (Resolve always returns this one backend).
         public DashboardServer(
             IDashboardDataSource data,
             IPluginSettings settings,
             IWebAssets webAssets,
             IDashboardLogger externalLog,
             IDashboardPaths paths,
-            IReportRegenerator regen) {
-            _data       = data       ?? throw new ArgumentNullException(nameof(data));
+            IReportRegenerator regen,
+            ICompanionController companion = null,
+            ICompanionTokenStore tokenStore = null,
+            bool readOnly = false,
+            ISessionMaintenance maintenance = null)
+            : this(new SingleRigRegistry(new RigBackend("primary", "Primary", true,
+                       data  ?? throw new ArgumentNullException(nameof(data)),
+                       paths ?? throw new ArgumentNullException(nameof(paths)),
+                       regen, companion, maintenance)),
+                   settings, webAssets, externalLog, tokenStore, readOnly) { }
+
+        // Multi-rig ctor — companion mode passes a registry with one backend per
+        // paired rig. The server resolves ?rig= to a backend per request.
+        public DashboardServer(
+            IRigRegistry rigs,
+            IPluginSettings settings,
+            IWebAssets webAssets,
+            IDashboardLogger externalLog,
+            ICompanionTokenStore tokenStore = null,
+            bool readOnly = false) {
+            _rigs       = rigs       ?? throw new ArgumentNullException(nameof(rigs));
             _settings   = settings   ?? throw new ArgumentNullException(nameof(settings));
             _webAssets  = webAssets  ?? throw new ArgumentNullException(nameof(webAssets));
             _external   = externalLog ?? throw new ArgumentNullException(nameof(externalLog));
-            _regen      = regen;     // optional — null in dev when regeneration is disabled
+            _tokenStore = tokenStore;  // optional — non-null only in primary mode
+            _readOnly   = readOnly;
 
-            // Path roots come from IDashboardPaths; the legacy fields stay so the rest
-            // of the file's File.Exists/Path.Combine calls keep working unchanged.
-            this._paths     = paths;
-            this.dataDir    = paths.DataDir;
+            // Shared root-level paths (logs, cache) hang off the registry root,
+            // not any single rig. Per-rig dbPath/reportsDir resolve lazily via the
+            // properties above.
+            this.dataDir    = rigs.RootDataDir;
             this.cachePath  = Path.Combine(dataDir, "nightsummary-dashboard-cache.sqlite");
-            this.reportsDir = paths.ReportsDir;
-            this.dbPath     = paths.DatabasePath;
-            Directory.CreateDirectory(reportsDir);
+            Directory.CreateDirectory(_rigs.Default.Paths.ReportsDir);
         }
 
         /// <summary>
@@ -188,6 +237,29 @@ namespace NINA.Plugin.NightSummary.Server {
             return StartAsync(port, addr);
         }
 
+        // Bind the listener, retrying briefly if the port is still held. The
+        // common path binds on the first attempt with zero delay. The retry
+        // only matters on a dashboard-initiated restart, where the outgoing
+        // process may still be releasing the port for a few hundred ms when the
+        // fresh one starts (notably the Windows companion, which self-respawns
+        // with no external watchdog). Without this the new process would die on
+        // SocketException 10048 and the Restart button would appear broken.
+        private void StartListenerWithRetry(TcpListener listener, int port) {
+            const int maxAttempts = 12;   // ~6s worst case at 500ms spacing
+            const int delayMs     = 500;
+            for (int attempt = 1; ; attempt++) {
+                try {
+                    listener.Start();
+                    if (attempt > 1) log?.Info($"Port {port} acquired on attempt {attempt}.");
+                    return;
+                } catch (SocketException ex)
+                      when (ex.SocketErrorCode == SocketError.AddressAlreadyInUse && attempt < maxAttempts) {
+                    log?.Warn($"Port {port} still in use (attempt {attempt}/{maxAttempts}) — retrying in {delayMs}ms…");
+                    Thread.Sleep(delayMs);
+                }
+            }
+        }
+
         private Task StartAsync(int port, IPAddress bindAddress) {
             if (IsRunning) return Task.CompletedTask;
 
@@ -195,11 +267,21 @@ namespace NINA.Plugin.NightSummary.Server {
                 var logsDir = Path.Combine(dataDir, "logs");
                 Directory.CreateDirectory(logsDir);
                 DashboardLog.PurgeOldLogs(logsDir);
-                log = DashboardLog.Init(Path.Combine(logsDir, $"dashboard-{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.log"));
+                // Per-instance DashboardLog (NOT the static Init/Shutdown singleton).
+                // When two servers run in the same process (main 8186 + read-only
+                // mirror 8282), the static path had the mirror's Init clobber the
+                // main's writer + replace the singleton — main's per-request log
+                // calls then went to a closed writer and silently no-op'd. We then
+                // had zero visibility into restart attempts on the main port.
+                // Filename includes the port so the two instances don't share a
+                // file when they happen to init in the same second.
+                var logPath = Path.Combine(logsDir, $"dashboard-{DateTime.Now:yyyy-MM-dd_HH-mm-ss}-{port}.log");
+                log = new DashboardLog(logPath);
+                log.Open();
 
                 cts = new CancellationTokenSource();
                 _tcpListener = new TcpListener(bindAddress, port);
-                _tcpListener.Start();
+                StartListenerWithRetry(_tcpListener, port);
 
                 var hostname = Dns.GetHostName();
                 Url = $"http://{hostname}:{port}";
@@ -261,7 +343,10 @@ namespace NINA.Plugin.NightSummary.Server {
                 ZeroTierUrl  = null;
                 log?.Info("Server stopped");
                 _external.Info("NightSummary: Local dashboard stopped");
-                DashboardLog.Shutdown();
+                // Close THIS server's log only — don't touch DashboardLog.Instance
+                // (the static singleton) because the other server in this process
+                // (mirror or main) may still own it.
+                log?.Close();
                 log = null;
             } catch (Exception ex) {
                 _external.Error($"NightSummary: Error stopping local dashboard. {ex.Message}");
@@ -296,8 +381,16 @@ namespace NINA.Plugin.NightSummary.Server {
                     client.ReceiveTimeout = 10_000;
                     client.SendTimeout    = 30_000;
                     var stream = client.GetStream();
+                    // Capture the peer IP up front so it survives the request parse.
+                    // Used by the auth middleware to auto-detect each companion's
+                    // reachable push URL — no manual configuration needed.
+                    IPAddress remoteIp = null;
+                    try {
+                        if (client.Client?.RemoteEndPoint is IPEndPoint ep) remoteIp = ep.Address;
+                    } catch { /* socket may have closed already; non-fatal */ }
                     var req = await ParseHttpRequestAsync(stream, ct);
                     if (req == null) return;
+                    req.RemoteIp = remoteIp;
                     var res = new TcpHttpResponse(stream);
                     try {
                         await HandleRequest(req, res);
@@ -337,6 +430,9 @@ namespace NINA.Plugin.NightSummary.Server {
 
             long contentLength = 0;
             string userAgent = null;
+            string authorization = null;
+            int? companionDashPort = null;
+            var headers = new System.Collections.Generic.Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             for (int i = 1; i < lines.Length; i++) {
                 var colon = lines[i].IndexOf(':');
                 if (colon <= 0) continue;
@@ -346,6 +442,15 @@ namespace NINA.Plugin.NightSummary.Server {
                     long.TryParse(val, out contentLength);
                 else if (string.Equals(name, "User-Agent", StringComparison.OrdinalIgnoreCase))
                     userAgent = val;
+                else if (string.Equals(name, "Authorization", StringComparison.OrdinalIgnoreCase))
+                    authorization = val;
+                else if (string.Equals(name, "X-Companion-Dashboard-Port", StringComparison.OrdinalIgnoreCase)
+                         && int.TryParse(val, out var p) && p > 0 && p <= 65535)
+                    companionDashPort = p;
+                // Anything else (X-Sync-Trigger, future low-traffic custom
+                // headers) lives in the generic Headers bag for handlers to
+                // pluck by name without growing the typed property surface.
+                headers[name] = val;
             }
 
             if (!rawPath.StartsWith("/")) rawPath = "/" + rawPath;
@@ -368,12 +473,16 @@ namespace NINA.Plugin.NightSummary.Server {
             }
 
             return new TcpHttpRequest {
-                HttpMethod      = method,
-                Url             = uri,
-                QueryString     = queryString,
-                ContentLength64 = contentLength,
-                InputStream     = bodyStream,
-                UserAgent       = userAgent,
+                HttpMethod              = method,
+                Url                     = uri,
+                QueryString             = queryString,
+                ContentLength64         = contentLength,
+                InputStream             = bodyStream,
+                UserAgent               = userAgent,
+                Authorization           = authorization,
+                CompanionDashboardPort  = companionDashPort,
+                Headers                 = headers,
+                // RemoteIp set by HandleTcpClient after this returns.
             };
         }
 
@@ -399,6 +508,22 @@ namespace NINA.Plugin.NightSummary.Server {
         private async Task HandleRequest(TcpHttpRequest req, TcpHttpResponse res) {
             var path = req.Url.AbsolutePath.TrimEnd('/');
             if (string.IsNullOrEmpty(path)) path = "/";
+
+            // Scope this request to the rig named by ?rig=<id>. Missing/unknown id
+            // resolves to the default rig (back-compat for bookmarks, the read-only
+            // mirror, and primary-mode JS that never sends the param). Set before
+            // any handler runs so every _data / _paths / _companion access below
+            // reads the right rig; AsyncLocal carries it through the await chain.
+            var rigId = req.QueryString["rig"];
+            var backend = _rigs.Resolve(rigId);
+            _currentRig.Value = backend;
+            if (!string.IsNullOrEmpty(rigId) && !string.Equals(backend.Id, rigId, StringComparison.Ordinal)) {
+                lock (_loggedUnknownRigs) {
+                    if (_loggedUnknownRigs.Add(rigId))
+                        log?.Warn($"Unknown rig '{rigId}' — serving default rig '{backend.Id}' instead.");
+                }
+            }
+
             var done = log?.BeginRequest(req.HttpMethod, path);
             var ua = req.UserAgent;
             if (!string.IsNullOrEmpty(ua)) {
@@ -408,11 +533,102 @@ namespace NINA.Plugin.NightSummary.Server {
                 }
             }
 
+            // Stamp every response from a read-only instance with X-Read-Only: true so
+            // proxies, monitoring, and integration tests can detect the mode without
+            // having to inspect the HTML. Header is set before any 403 short-circuit
+            // so even rejection responses carry the signal.
+            if (_readOnly) {
+                res.Headers["X-Read-Only"] = "true";
+            }
+
+            // Read-only servers refuse every non-GET/HEAD method up front. This is a
+            // single chokepoint that doesn't depend on per-route discipline, so new
+            // POST/PUT/DELETE routes added later are auto-blocked without needing to
+            // be added to an allowlist or remembered in code review.
+            if (_readOnly && req.HttpMethod != "GET" && req.HttpMethod != "HEAD") {
+                await WriteJson(res, 403, new { error = "Read-only mode — write actions disabled" });
+                done?.Invoke(403, "readonly");
+                return;
+            }
+
+            // Single chokepoint for session-scoped routes: the segment after
+            // /api/sessions/ is the session id, which several handlers interpolate
+            // straight into a filesystem path ($"{sessionId}.html", livestack/{id},
+            // {id}.settings.json — including a write). A GUID is the only legitimate
+            // shape, so reject anything carrying separators or "..". This blocks path
+            // traversal for every current and future /api/sessions/<id>/... route
+            // without relying on each handler to re-validate. ("/api/sessions" with no
+            // id is the list endpoint and is intentionally exempt.)
+            var sessionScopedPrefix =
+                path.StartsWith("/api/sessions/", StringComparison.Ordinal) ? "/api/sessions/"
+                : path.StartsWith("/api/nightsummary/sessions/", StringComparison.Ordinal) ? "/api/nightsummary/sessions/"
+                : path.StartsWith("/api/nightsummary/report/", StringComparison.Ordinal) ? "/api/nightsummary/report/"
+                : null;
+            if (sessionScopedPrefix != null) {
+                var seg = path.Substring(sessionScopedPrefix.Length);
+                var slash = seg.IndexOf('/');
+                var idSeg = Uri.UnescapeDataString(slash >= 0 ? seg.Substring(0, slash) : seg);
+                if (!IsSafeSessionId(idSeg)) {
+                    await WriteJson(res, 400, new { error = "Invalid session id" });
+                    done?.Invoke(400, "invalid session id");
+                    return;
+                }
+            }
+
             try {
                 if (req.HttpMethod == "GET") {
                     if (path == "/api/health") {
-                        await WriteJson(res, 200, new { status = "ok" });
+                        // Unauthenticated — used by the dashboard's reconnect
+                        // poller and external uptime checks. But if the caller
+                        // happens to carry a valid bearer + the companion port
+                        // header (the companion's own ping loop does), use the
+                        // opportunity to refresh that entry's PushUrl. Cheap
+                        // self-healing for IP / port drift.
+                        TrySideUpdatePushUrlIfAuthorized(req);
+                        await WriteJson(res, 200, new {
+                            status         = "ok",
+                            ok             = true,
+                            // IsNullOrEmpty, not ?? — a settings impl can return "" (not
+                            // null), e.g. a release build with the informational-version
+                            // attribute stripped; that must still fall back to the
+                            // assembly version so the companion never shows "primary v?".
+                            version        = string.IsNullOrEmpty(_settings.PluginVersion)
+                                                 ? GetServerAssemblyVersion()
+                                                 : _settings.PluginVersion,
+                            schemaVersion  = CompanionSchemaVersion,
+                            mode           = _settings.Mode ?? "primary",
+                        });
                         done?.Invoke(200, null);
+                    } else if (path == "/api/mode") {
+                        await HandleGetMode(res, done);
+                    } else if (path == "/api/export/manifest") {
+                        await HandleExportManifest(req, res, done);
+                    } else if (path == "/api/export/database") {
+                        await HandleExportDatabase(req, res, done);
+                    } else if (path == "/api/export/ts-database") {
+                        await HandleExportTsDatabase(req, res, done);
+                    } else if (path == "/api/export/reports") {
+                        await HandleExportReports(req, res, done);
+                    } else if (path == "/api/export/thumbs-manifest") {
+                        await HandleExportThumbsManifest(req, res, done);
+                    } else if (path == "/api/export/thumbs") {
+                        await HandleExportThumbs(req, res, done);
+                    } else if (path == "/api/export/tonight-cache") {
+                        await HandleExportTonightCache(req, res, done);
+                    } else if (path == "/api/companion/status") {
+                        await HandleCompanionStatus(res, done);
+                    } else if (path == "/api/companion/status/all") {
+                        await HandleCompanionStatusAll(res, done);
+                    } else if (path == "/api/companion/rigs") {
+                        await HandleCompanionRigsList(res, done);
+                    } else if (path == "/api/companion/config") {
+                        await HandleCompanionConfigGet(res, done);
+                    } else if (path == "/api/companion/autostart") {
+                        await HandleGetAutostart(res, done);
+                    } else if (path == "/api/companion/info") {
+                        await HandleCompanionInfo(res, done);
+                    } else if (path == "/api/companion/update-check") {
+                        await HandleCompanionUpdateCheck(req, res, done);
                     } else if (path == "/api/sessions") {
                         await HandleGetSessions(res, done);
                     } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/images")) {
@@ -522,9 +738,43 @@ namespace NINA.Plugin.NightSummary.Server {
                     } else if (path == "/api/settings") {
                         await HandleGetSettings(res);
                         done?.Invoke(200, null);
+                    } else if (path == "/setup") {
+                        // Companion-only wizard page. When already paired, bounce
+                        // back to the main dashboard so users don't reach setup
+                        // accidentally after onboarding. ?force=1 bypasses the
+                        // bounce so the user can re-enter the wizard from the
+                        // Settings tab (re-pair, switch primary, etc.).
+                        var force = req.QueryString["force"];
+                        if (_companion != null
+                            && _companion.GetConfig().IsComplete
+                            && string.IsNullOrEmpty(force)) {
+                            await Redirect(res, "/", done, "setup → /");
+                        } else {
+                            await HandleSetupHtml(res, done);
+                        }
+                    } else if (path == "/setup.js") {
+                        await HandleSetupAsset(res, "setup.js", "application/javascript; charset=utf-8", done);
+                    } else if (path == "/setup.css") {
+                        await HandleSetupAsset(res, "setup.css", "text/css; charset=utf-8", done);
+                    } else if (path == "/dashboard.css") {
+                        // Standalone-served so the wizard can <link> it for
+                        // design-token inheritance. The dashboard itself still
+                        // inlines via {{STYLES}} for fewer requests on /.
+                        await HandleStaticAsset(res, "dashboard.css", "text/css; charset=utf-8", done);
+                    } else if (path == "/api/setup/probe") {
+                        await HandleSetupProbe(req, res, done);
                     } else if (path == "/") {
-                        await WriteHtml(res, 200, GetDashboardHtml());
-                        done?.Invoke(200, "dashboard html");
+                        // Companion mode + setup not done → redirect to the wizard.
+                        // Primary mode (no _companion) always falls through to
+                        // the dashboard so the regular UI loads.
+                        if (_companion != null && !_companion.GetConfig().IsComplete) {
+                            await Redirect(res, "/setup", done, "/ → setup");
+                        } else {
+                            await WriteHtml(res, 200, GetDashboardHtml());
+                            done?.Invoke(200, "dashboard html");
+                        }
+                    } else if (path.StartsWith("/api/nightsummary/", StringComparison.Ordinal)) {
+                        await HandleTnsGet(req, res, path, done);
                     } else {
                         await WriteJson(res, 404, new { error = "Not found" });
                         done?.Invoke(404, null);
@@ -535,6 +785,9 @@ namespace NINA.Plugin.NightSummary.Server {
                     } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/regenerate")) {
                         var sessionId = ExtractSessionId(path, "/regenerate");
                         await HandleRegenerateReport(req, res, sessionId, done);
+                    } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/resync-ts-grading")) {
+                        var sessionId = ExtractSessionId(path, "/resync-ts-grading");
+                        await HandleResyncTsGrading(res, sessionId, done);
                     } else if (path == "/api/stats/ts/override") {
                         await HandleTsStatusOverride(req, res, done);
                     } else if (path == "/api/stats/ts/link") {
@@ -547,16 +800,58 @@ namespace NINA.Plugin.NightSummary.Server {
                         await HandleCustomProjects(req, res, done);
                     } else if (path == "/api/clientlog") {
                         await HandleClientLog(req, res, done);
+                    } else if (path == "/api/companion/sync") {
+                        await HandleCompanionSync(req, res, done);
+                    } else if (path == "/api/companion/quit") {
+                        await HandleCompanionQuit(res, done);
+                    } else if (path == "/api/companion/restart") {
+                        await HandleCompanionRestart(res, done);
+                    } else if (path == "/api/companion/update") {
+                        await HandleCompanionUpdate(res, done);
+                    } else if (path == "/api/companion/autostart") {
+                        await HandleSetAutostart(req, res, done);
+                    } else if (path == "/api/companion/config") {
+                        await HandleCompanionConfigSave(req, res, done);
+                    } else if (path == "/api/companion/rigs") {
+                        await HandleCompanionRigAdd(req, res, done);
+                    } else if (path.StartsWith("/api/companion/rigs/") && path.EndsWith("/remove")) {
+                        var remRigId = path.Substring("/api/companion/rigs/".Length,
+                            path.Length - "/api/companion/rigs/".Length - "/remove".Length);
+                        await HandleCompanionRigRemove(req, res, Uri.UnescapeDataString(remRigId), done);
+                    } else if (path.StartsWith("/api/companion/rigs/") && path.EndsWith("/enable")) {
+                        var enRigId = path.Substring("/api/companion/rigs/".Length,
+                            path.Length - "/api/companion/rigs/".Length - "/enable".Length);
+                        await HandleCompanionRigEnable(req, res, Uri.UnescapeDataString(enRigId), done);
+                    } else if (path.StartsWith("/api/companion/rigs/") && path.EndsWith("/rename")) {
+                        var rnRigId = path.Substring("/api/companion/rigs/".Length,
+                            path.Length - "/api/companion/rigs/".Length - "/rename".Length);
+                        await HandleCompanionRigRename(req, res, Uri.UnescapeDataString(rnRigId), done);
+                    } else if (path == "/api/companion/test-connection") {
+                        await HandleCompanionTestConnection(req, res, done);
+                    } else if (path == "/api/companion/pair") {
+                        await HandleCompanionPair(req, res, done);
+                    } else if (path == "/api/companion/revoke") {
+                        await HandleCompanionRevoke(req, res, done);
+                    } else if (path == "/api/setup/claim") {
+                        await HandleSetupClaim(req, res, done);
                     } else if (path == "/api/stats/projects/reset") {
                         await HandleProjectsReset(req, res, done);
                     } else if (path.StartsWith("/api/stats/projects/") && path.EndsWith("/reset")) {
                         var pguid = Uri.UnescapeDataString(path.Substring("/api/stats/projects/".Length,
                             path.Length - "/api/stats/projects/".Length - "/reset".Length));
                         await HandleProjectReset(req, res, pguid, done);
+                    } else if (path.StartsWith("/api/nightsummary/", StringComparison.Ordinal)) {
+                        await HandleTnsPost(req, res, path, done);
                     } else {
                         await WriteJson(res, 404, new { error = "Not found" });
                         done?.Invoke(404, null);
                     }
+                } else if (req.HttpMethod == "DELETE"
+                           && path.StartsWith("/api/nightsummary/", StringComparison.Ordinal)) {
+                    // DELETE exists only for the TNS namespace; every other verb/path
+                    // combination keeps the historical 405. (Read-only mirrors never
+                    // get here — the non-GET chokepoint above already returned 403.)
+                    await HandleTnsDelete(res, path, done);
                 } else {
                     res.StatusCode = 405;
                     res.Close();
@@ -574,6 +869,20 @@ namespace NINA.Plugin.NightSummary.Server {
             var start = "/api/sessions/".Length;
             var end = path.Length - suffix.Length;
             return path.Substring(start, end - start);
+        }
+
+        // Session ids are GUIDs (SessionCollector: Guid.NewGuid().ToString()). Accept
+        // only that alphabet — letters, digits, hyphen — which has no path separators,
+        // "..", drive letters, or dots. Validated once at the dispatcher so no
+        // session-scoped file path can escape the reports directory.
+        internal static bool IsSafeSessionId(string id) {
+            if (string.IsNullOrEmpty(id) || id.Length > 64) return false;
+            foreach (var c in id) {
+                bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+                          || (c >= '0' && c <= '9') || c == '-';
+                if (!ok) return false;
+            }
+            return true;
         }
 
         // ── API Handlers ──────────────────────────────────────────────────────
@@ -614,12 +923,13 @@ namespace NINA.Plugin.NightSummary.Server {
                     targets = lightImages
                         .Where(i => !string.IsNullOrEmpty(i.TargetName))
                         .Select(i => i.TargetName).Distinct().ToList(),
-                    totalIntegrationSeconds = lightImages.Where(i => i.Accepted).Sum(i => i.ExposureDuration),
+                    totalIntegrationSeconds = lightImages.Where(i => i.CountsAsAccepted).Sum(i => i.ExposureDuration),
                     avgHfr = lightImages.Where(i => i.HFR > 0).Select(i => i.HFR).DefaultIfEmpty(0).Average(),
                     avgFwhm = lightImages.Where(i => i.FWHM > 0).Select(i => i.FWHM).DefaultIfEmpty(0).Average(),
                     avgGuiding = lightImages.Where(i => i.GuidingRMSTotal > 0).Select(i => i.GuidingRMSTotal).DefaultIfEmpty(0).Average(),
                     hasReport,
-                    moonPhase
+                    moonPhase,
+                    autoFinalized = s.AutoFinalized
                 };
             }).ToList();
 
@@ -652,9 +962,9 @@ namespace NINA.Plugin.NightSummary.Server {
                 .Select(g => new {
                     target = g.Key,
                     imageCount = g.Count(),
-                    accepted = g.Count(i => i.Accepted),
-                    rejected = g.Count(i => !i.Accepted),
-                    integrationSeconds = g.Where(i => i.Accepted).Sum(i => i.ExposureDuration),
+                    accepted = g.Count(i => i.CountsAsAccepted),
+                    rejected = g.Count(i => !i.CountsAsAccepted),
+                    integrationSeconds = g.Where(i => i.CountsAsAccepted).Sum(i => i.ExposureDuration),
                     avgHfr = g.Where(i => i.HFR > 0).Select(i => i.HFR).DefaultIfEmpty(0).Average(),
                     avgFwhm = g.Where(i => i.FWHM > 0).Select(i => i.FWHM).DefaultIfEmpty(0).Average(),
                     avgGuiding = g.Where(i => i.GuidingRMSTotal > 0).Select(i => i.GuidingRMSTotal).DefaultIfEmpty(0).Average(),
@@ -662,8 +972,8 @@ namespace NINA.Plugin.NightSummary.Server {
                     filters = g.GroupBy(i => i.Filter ?? "Unknown").Select(fg => new {
                         filter = fg.Key,
                         count = fg.Count(),
-                        accepted = fg.Count(i => i.Accepted),
-                        integrationSeconds = fg.Where(i => i.Accepted).Sum(i => i.ExposureDuration)
+                        accepted = fg.Count(i => i.CountsAsAccepted),
+                        integrationSeconds = fg.Where(i => i.CountsAsAccepted).Sum(i => i.ExposureDuration)
                     }).ToList()
                 }).ToList();
 
@@ -674,6 +984,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 profileName = session.ProfileName,
                 notes = session.Notes,
                 skippedExposures = session.SkippedExposures,
+                autoFinalized = session.AutoFinalized,
                 equipment = new {
                     camera = session.CameraName,
                     telescope = session.TelescopeName,
@@ -696,9 +1007,9 @@ namespace NINA.Plugin.NightSummary.Server {
                 },
                 summary = new {
                     totalImages = lightImages.Count,
-                    accepted = lightImages.Count(i => i.Accepted),
-                    rejected = lightImages.Count(i => !i.Accepted),
-                    totalIntegrationSeconds = lightImages.Where(i => i.Accepted).Sum(i => i.ExposureDuration),
+                    accepted = lightImages.Count(i => i.CountsAsAccepted),
+                    rejected = lightImages.Count(i => !i.CountsAsAccepted),
+                    totalIntegrationSeconds = lightImages.Where(i => i.CountsAsAccepted).Sum(i => i.ExposureDuration),
                     avgHfr = lightImages.Where(i => i.HFR > 0).Select(i => i.HFR).DefaultIfEmpty(0).Average(),
                     avgFwhm = lightImages.Where(i => i.FWHM > 0).Select(i => i.FWHM).DefaultIfEmpty(0).Average(),
                     avgGuiding = lightImages.Where(i => i.GuidingRMSTotal > 0).Select(i => i.GuidingRMSTotal).DefaultIfEmpty(0).Average(),
@@ -714,6 +1025,26 @@ namespace NINA.Plugin.NightSummary.Server {
             done?.Invoke(200, $"{sessionId} — {targetBreakdown.Count} targets, {lightImages.Count} images");
         }
 
+        // Fire-and-forget from the dashboard on session-detail load. Queries TS for any
+        // late grading verdicts on Pending images and updates the NS DB. Cheap pre-check
+        // in the data source skips the TS query entirely when nothing is Pending.
+        private async Task HandleResyncTsGrading(TcpHttpResponse res, string sessionId, Action<int, string> done) {
+            if (string.IsNullOrEmpty(sessionId)) {
+                await WriteJson(res, 400, new { error = "Missing session id" });
+                done?.Invoke(400, null);
+                return;
+            }
+            try {
+                int updated = await _data.ResyncTsGradingAsync(sessionId);
+                await WriteJson(res, 200, new { updated });
+                done?.Invoke(200, $"{sessionId} — {updated} grading row(s) refreshed");
+            } catch (Exception ex) {
+                log?.Warn($"Resync TS grading failed for {sessionId}: {ex.Message}");
+                await WriteJson(res, 500, new { error = ex.Message });
+                done?.Invoke(500, ex.Message);
+            }
+        }
+
         private async Task HandleGetSessionImages(TcpHttpResponse res, string sessionId, Action<int, string> done) {
             if (!File.Exists(dbPath)) {
                 await WriteJson(res, 200, Array.Empty<object>());
@@ -726,8 +1057,8 @@ namespace NINA.Plugin.NightSummary.Server {
             // when TS is unavailable so frame tiles don't render as rejected for
             // a non-TS user (see HandleGetFrameMetrics for the same gating).
             // Also reset accepted=true when TS sync had previously written accepted=false
-            // (UpdateImageGradingFromTs sets accepted = gradingStatus==1, so a non-1
-            // gradingStatus implies accepted came from TS, not NINA-side rejection).
+            // for a Pending row (legacy DBs from before the UpdateImageGradingFromTs
+            // fix), or when TS isn't installed at all (stale TS-import residue).
             bool tsAvailable = await _data.IsTargetSchedulerAvailableAsync();
             var result = images.Select(i => new {
                 id = i.Id,
@@ -736,7 +1067,8 @@ namespace NINA.Plugin.NightSummary.Server {
                 filter = i.Filter,
                 exposureDuration = i.ExposureDuration,
                 imageType = i.ImageType,
-                accepted = (!tsAvailable && i.GradingStatus >= 0) ? true : i.Accepted,
+                // Pending (gradingStatus=0) is "TS hasn't graded yet" — render as accepted.
+                accepted = (!tsAvailable && i.GradingStatus >= 0) ? true : i.CountsAsAccepted,
                 hfr = i.HFR,
                 fwhm = i.FWHM,
                 eccentricity = i.Eccentricity,
@@ -875,10 +1207,13 @@ namespace NINA.Plugin.NightSummary.Server {
 
             var reportPath = Path.Combine(reportsDir, $"{sessionId}.html");
             if (!File.Exists(reportPath)) {
+                // Report generation can still be in flight (a session just ended and
+                // the Projects view got queried in that window) — don't cache this as
+                // a permanent answer, or the report finishing moments later would
+                // never be reflected and the placeholder would stick forever.
                 var empty = new List<ThumbnailEntry>();
-                thumbnailCache[sessionId] = empty;
                 await WriteJson(res, 200, empty);
-                done?.Invoke(200, $"{sessionId} — no report");
+                done?.Invoke(200, $"{sessionId} — no report yet");
                 return;
             }
 
@@ -888,7 +1223,12 @@ namespace NINA.Plugin.NightSummary.Server {
             // Split HTML on target-section boundaries and extract h3 + thumbnail + FOV overlay from each
             var sections = html.Split(new[] { "<div class='target-section'>" }, StringSplitOptions.None);
             var h3Pattern = new Regex(@"<h3>([^<]+)");
-            var imgPattern = new Regex(@"<div\s+class='ts-thumb-wrap'>\s*<img\s+src='(data:image/[^']+)'");
+            // Normally a base64 data URI, but FetchThumbnailAsync falls back to a plain
+            // https:// URL when both sky-survey APIs are unreachable at report-generation
+            // time (ReportGenerator still renders it fine via a live browser fetch) — match
+            // both so the Projects view doesn't show a placeholder for what the report
+            // already displays.
+            var imgPattern = new Regex(@"<div\s+class='ts-thumb-wrap'>\s*<img\s+src='(data:image/[^']+|https?://[^']+)'");
             var svgPattern = new Regex(@"<div\s+class='ts-thumb-wrap'>[^<]*<img[^>]*/>\s*(<svg[^>]*>.*?</svg>)", RegexOptions.Singleline);
 
             for (int i = 1; i < sections.Length; i++) { // skip first (before any target-section)
@@ -1015,7 +1355,10 @@ namespace NINA.Plugin.NightSummary.Server {
             bool tsAvailable = await _data.IsTargetSchedulerAvailableAsync();
             int finalGrading;
             string finalReject;
-            bool effectivelyAccepted = img.Accepted;
+            // Pending (GradingStatus=0) counts as accepted — see ImageRecord.CountsAsAccepted.
+            // Heals legacy DB rows where UpdateImageGradingFromTs wrote Accepted=false for
+            // Pending images before the fix.
+            bool effectivelyAccepted = img.CountsAsAccepted;
             if (tsAvailable) {
                 finalGrading = img.GradingStatus >= 0
                     ? img.GradingStatus
@@ -1167,7 +1510,8 @@ namespace NINA.Plugin.NightSummary.Server {
                         timestamp = img.Timestamp.ToString("o"),
                         filter = img.Filter,
                         exposureDuration = img.ExposureDuration,
-                        accepted = (!tsAvailable && img.GradingStatus >= 0) ? true : img.Accepted,
+                        // Pending (gradingStatus=0) is "TS hasn't graded yet" — render as accepted.
+                        accepted = (!tsAvailable && img.GradingStatus >= 0) ? true : img.CountsAsAccepted,
                         gradingStatus = tsAvailable ? img.GradingStatus : -1,
                         thumbnailVersion = img.ThumbnailVersion
                     });
@@ -1217,7 +1561,8 @@ namespace NINA.Plugin.NightSummary.Server {
                         targetName = img.TargetName,
                         filter = img.Filter,
                         exposureDuration = img.ExposureDuration,
-                        accepted = img.Accepted,
+                        // Pending (gradingStatus=0) is "TS hasn't graded yet" — render as accepted.
+                        accepted = img.CountsAsAccepted,
                         gradingStatus = img.GradingStatus,
                         thumbnailVersion = img.ThumbnailVersion
                     });
@@ -1239,7 +1584,18 @@ namespace NINA.Plugin.NightSummary.Server {
                 return;
             }
 
-            var liveRoot = Path.GetFullPath(Path.Combine(reportsDir, "livestack", sessionId));
+            // sessionId is attacker-controlled too: it can carry "..\.." segments that
+            // make liveRoot escape reportsDir entirely (filePath would still pass a
+            // "under liveRoot" check). Pin the per-session root under the livestack base
+            // and verify *liveRoot itself* hasn't climbed out before resolving the file.
+            var liveBase = Path.GetFullPath(Path.Combine(reportsDir, "livestack"));
+            var liveRoot = Path.GetFullPath(Path.Combine(liveBase, sessionId));
+            if (!liveRoot.StartsWith(liveBase + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) &&
+                !liveRoot.Equals(liveBase, StringComparison.OrdinalIgnoreCase)) {
+                await WriteJson(res, 400, new { error = "Invalid session" });
+                done?.Invoke(400, "session path escape");
+                return;
+            }
             var filePath = Path.GetFullPath(Path.Combine(liveRoot, safeName));
             if (!filePath.StartsWith(liveRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) &&
                 !filePath.Equals(liveRoot, StringComparison.OrdinalIgnoreCase)) {
@@ -1385,9 +1741,9 @@ namespace NINA.Plugin.NightSummary.Server {
                 // Bulk-load all cached charts from DB into memory — fast path, no HTML parsing
                 int dbLoaded = 0;
                 try {
-                    using (var conn = new SQLiteConnection($"Data Source={cachePath};Version=3;")) {
+                    using (var conn = new SqliteConnection($"Data Source={cachePath};")) {
                         conn.Open();
-                        using (var cmd = new SQLiteCommand("SELECT SessionId, ChartJson FROM AltitudeCharts", conn))
+                        using (var cmd = new SqliteCommand("SELECT SessionId, ChartJson FROM AltitudeCharts", conn))
                         using (var reader = cmd.ExecuteReader()) {
                             while (reader.Read()) {
                                 if (ct.IsCancellationRequested) break;
@@ -1429,16 +1785,16 @@ namespace NINA.Plugin.NightSummary.Server {
 
         private void InitCacheDb() {
             try {
-                using (var conn = new SQLiteConnection($"Data Source={cachePath};Version=3;")) {
+                using (var conn = new SqliteConnection($"Data Source={cachePath};")) {
                     conn.Open();
-                    using (var cmd = new SQLiteCommand(
+                    using (var cmd = new SqliteCommand(
                         "CREATE TABLE IF NOT EXISTS AltitudeCharts (SessionId TEXT PRIMARY KEY, ChartJson TEXT NOT NULL, GeneratedAt TEXT NOT NULL)",
                         conn))
                         cmd.ExecuteNonQuery();
                     // Generic key/value store for dashboard-side metadata (TS status overrides,
                     // manual target→TS links, etc.) Avoids touching SettingsManager for features
                     // that don't need XAML bindings.
-                    using (var cmd = new SQLiteCommand(
+                    using (var cmd = new SqliteCommand(
                         "CREATE TABLE IF NOT EXISTS DashboardMetadata (Key TEXT PRIMARY KEY, Value TEXT NOT NULL, UpdatedAt TEXT NOT NULL)",
                         conn))
                         cmd.ExecuteNonQuery();
@@ -1450,9 +1806,9 @@ namespace NINA.Plugin.NightSummary.Server {
 
         private string GetDashboardMeta(string key) {
             try {
-                using (var conn = new SQLiteConnection($"Data Source={cachePath};Version=3;")) {
+                using (var conn = new SqliteConnection($"Data Source={cachePath};")) {
                     conn.Open();
-                    using (var cmd = new SQLiteCommand("SELECT Value FROM DashboardMetadata WHERE Key = @k", conn)) {
+                    using (var cmd = new SqliteCommand("SELECT Value FROM DashboardMetadata WHERE Key = @k", conn)) {
                         cmd.Parameters.AddWithValue("@k", key);
                         return cmd.ExecuteScalar() as string;
                     }
@@ -1462,9 +1818,9 @@ namespace NINA.Plugin.NightSummary.Server {
 
         private void SetDashboardMeta(string key, string value) {
             try {
-                using (var conn = new SQLiteConnection($"Data Source={cachePath};Version=3;")) {
+                using (var conn = new SqliteConnection($"Data Source={cachePath};")) {
                     conn.Open();
-                    using (var cmd = new SQLiteCommand(
+                    using (var cmd = new SqliteCommand(
                         "INSERT OR REPLACE INTO DashboardMetadata (Key, Value, UpdatedAt) VALUES (@k, @v, @ts)",
                         conn)) {
                         cmd.Parameters.AddWithValue("@k", key);
@@ -1597,9 +1953,9 @@ namespace NINA.Plugin.NightSummary.Server {
 
         private string GetCachedChartJson(string sessionId) {
             try {
-                using (var conn = new SQLiteConnection($"Data Source={cachePath};Version=3;")) {
+                using (var conn = new SqliteConnection($"Data Source={cachePath};")) {
                     conn.Open();
-                    using (var cmd = new SQLiteCommand("SELECT ChartJson FROM AltitudeCharts WHERE SessionId = @id", conn)) {
+                    using (var cmd = new SqliteCommand("SELECT ChartJson FROM AltitudeCharts WHERE SessionId = @id", conn)) {
                         cmd.Parameters.AddWithValue("@id", sessionId);
                         return cmd.ExecuteScalar() as string;
                     }
@@ -1609,9 +1965,9 @@ namespace NINA.Plugin.NightSummary.Server {
 
         private void SetCachedChartJson(string sessionId, string json) {
             try {
-                using (var conn = new SQLiteConnection($"Data Source={cachePath};Version=3;")) {
+                using (var conn = new SqliteConnection($"Data Source={cachePath};")) {
                     conn.Open();
-                    using (var cmd = new SQLiteCommand(
+                    using (var cmd = new SqliteCommand(
                         "INSERT OR REPLACE INTO AltitudeCharts (SessionId, ChartJson, GeneratedAt) VALUES (@id, @json, @ts)",
                         conn)) {
                         cmd.Parameters.AddWithValue("@id", sessionId);
@@ -1625,9 +1981,9 @@ namespace NINA.Plugin.NightSummary.Server {
 
         private void DeleteCachedChartJson(string sessionId) {
             try {
-                using (var conn = new SQLiteConnection($"Data Source={cachePath};Version=3;")) {
+                using (var conn = new SqliteConnection($"Data Source={cachePath};")) {
                     conn.Open();
-                    using (var cmd = new SQLiteCommand("DELETE FROM AltitudeCharts WHERE SessionId = @id", conn)) {
+                    using (var cmd = new SqliteCommand("DELETE FROM AltitudeCharts WHERE SessionId = @id", conn)) {
                         cmd.Parameters.AddWithValue("@id", sessionId);
                         cmd.ExecuteNonQuery();
                     }
@@ -2273,7 +2629,7 @@ namespace NINA.Plugin.NightSummary.Server {
                     allSessions = DbSessions().ToArray();
 
                 // Query the most recent plate-solve PositionAngle per target name
-                using (var conn = new System.Data.SQLite.SQLiteConnection($"Data Source={dbPath};Version=3;"))
+                using (var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath};"))
                 {
                     conn.Open();
                     string paSql = @"
@@ -2282,7 +2638,7 @@ namespace NINA.Plugin.NightSummary.Server {
                         WHERE TargetName IS NOT NULL AND TargetName != ''
                           AND PositionAngle IS NOT NULL
                         ORDER BY TargetName, Timestamp DESC";
-                    using (var cmd = new System.Data.SQLite.SQLiteCommand(paSql, conn))
+                    using (var cmd = new Microsoft.Data.Sqlite.SqliteCommand(paSql, conn))
                     using (var reader = cmd.ExecuteReader()) {
                         while (reader.Read()) {
                             var tname = reader["TargetName"].ToString();
@@ -2663,7 +3019,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 }).ToList();
                 if (matching.Count == 0) continue;
 
-                var accepted = matching.Where(i => i.Accepted).ToList();
+                var accepted = matching.Where(i => i.CountsAsAccepted).ToList();
                 double integSec = accepted.Sum(i => i.ExposureDuration);
                 var hfrs = accepted.Where(i => i.HFR > 0).Select(i => i.HFR).ToList();
                 var guides = accepted.Where(i => i.GuidingRMSTotal > 0).Select(i => i.GuidingRMSTotal).ToList();
@@ -2673,7 +3029,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 var byFilter = matching
                     .GroupBy(i => i.Filter ?? "Unknown")
                     .Select(g => {
-                        var acc = g.Where(i => i.Accepted).ToList();
+                        var acc = g.Where(i => i.CountsAsAccepted).ToList();
                         var fHfrs   = acc.Where(i => i.HFR > 0).Select(i => i.HFR).ToList();
                         var fGuides = acc.Where(i => i.GuidingRMSTotal > 0).Select(i => i.GuidingRMSTotal).ToList();
                         double fSec = acc.Sum(i => i.ExposureDuration);
@@ -3000,21 +3356,92 @@ namespace NINA.Plugin.NightSummary.Server {
             Timeout = TimeSpan.FromSeconds(120)
         };
 
-        // Tonight preview response cache (5-minute TTL; refreshed on first request after expiry)
+        // In-memory hot cache (5-minute TTL) for the happy path — keeps the
+        // ~25s TS preview call from running on every dashboard refresh.
         private string _tonightPreviewJson = null;
         private DateTime _tonightPreviewCachedAt = DateTime.MinValue;
 
+        // On-disk cache, noon-boundary expiry. Backstops every error path so
+        // companion mode (and primary when NINA-side TS API is briefly down)
+        // can still render Tonight's Preview from last-good data.
+        private string TonightPreviewDiskCachePath()
+            => Path.Combine(_paths.DataDir, "tonight-preview-cache.json");
+
+        // Splices `cached:true` + `cachedAtUtc` into a stored payload so the
+        // client can show a subtle "Cached from {time}" badge on stale-but-valid
+        // fallback. Re-parse over string surgery so we don't depend on payload shape.
+        private static string WrapCachedPayloadWith(string payload, DateTime cachedAtUtc) {
+            try {
+                using var doc = JsonDocument.Parse(payload);
+                if (doc.RootElement.ValueKind != JsonValueKind.Object) return payload;
+                using var ms = new MemoryStream();
+                using (var w = new Utf8JsonWriter(ms)) {
+                    w.WriteStartObject();
+                    foreach (var p in doc.RootElement.EnumerateObject()) p.WriteTo(w);
+                    w.WriteBoolean("cached", true);
+                    w.WriteString("cachedAtUtc", cachedAtUtc.ToString("o"));
+                    w.WriteEndObject();
+                }
+                return System.Text.Encoding.UTF8.GetString(ms.ToArray());
+            } catch {
+                return payload;
+            }
+        }
+
+        // Centralized fallback for every error path below — if we have a valid
+        // disk cache, serve it with cached:true; otherwise pass through the
+        // {error} response the caller built.
+        private async Task<bool> ServeTonightFromDiskCacheOrFail(TcpHttpResponse res, Action<int, string> done, string failTag) {
+            var cache = TsApiCache.Load(TonightPreviewDiskCachePath());
+            if (cache == null || !cache.IsValidAt(DateTime.Now)) return false;
+            var wrapped = WrapCachedPayloadWith(cache.Payload, cache.CachedAtUtc);
+            await WriteJsonRaw(res, 200, wrapped);
+            done?.Invoke(200, $"{failTag} → served disk cache from {cache.CachedAtUtc:o}");
+            return true;
+        }
+
+        // In-process refresh trigger (called from HandleExportTonightCache when
+        // the cache is stale, so the next companion sync pulls fresh data).
+        // Best-effort — caller doesn't await, errors logged + swallowed.
+        // Skip refresh when running in companion mode (it'd be a no-op since
+        // _companion != null short-circuits the handler at entry).
+        private async Task RefreshTonightPreviewInBackground() {
+            if (_companion != null) return;
+            // Reuse the handler's full path but throw the HTTP write into
+            // Stream.Null — we only care about the side effect (TsApiCache.Save
+            // when the TS API call succeeds). The handler also self-coalesces
+            // via the 5-min hot cache so concurrent refreshes don't pile up.
+            var sink = new TcpHttpResponse(Stream.Null);
+            await HandleGetTonightPreview(sink, (_, _) => { });
+        }
+
         private async Task HandleGetTonightPreview(TcpHttpResponse res, Action<int, string> done) {
             try {
-                // Return cached data if still fresh (5 min TTL — preview call takes ~25s)
-                if (_tonightPreviewJson != null &&
-                    (DateTime.UtcNow - _tonightPreviewCachedAt).TotalSeconds < 300) {
-                    await WriteJsonRaw(res, 200, _tonightPreviewJson);
-                    done?.Invoke(200, "tonight preview (cached)");
+                // Companion mode: live TS API call is pointless — the TS API
+                // listens on the primary's loopback inside NINA, not reachable
+                // from the companion's network. Serve straight from the synced
+                // disk cache (populated by SyncEngine pulling /api/export/tonight-cache
+                // from primary each sync). If the cache is missing/stale, show
+                // a clear message instead of trying to call the unreachable API.
+                if (_companion != null) {
+                    if (await ServeTonightFromDiskCacheOrFail(res, done, "tonight: companion mode")) return;
+                    await WriteJson(res, 200, new { error = "Tonight's Preview not yet synced from primary. Wait for the next sync (or click Sync Now) and reload." });
+                    done?.Invoke(200, "tonight: companion mode, no cache yet");
                     return;
                 }
 
-                    if (!TsAvailable()) {
+                // Return hot-cached data if still fresh (5 min TTL — preview call takes ~25s)
+                if (_tonightPreviewJson != null &&
+                    (DateTime.UtcNow - _tonightPreviewCachedAt).TotalSeconds < 300) {
+                    await WriteJsonRaw(res, 200, _tonightPreviewJson);
+                    done?.Invoke(200, "tonight preview (hot cached)");
+                    return;
+                }
+
+                if (!TsAvailable()) {
+                    // Companion w/o TS DB synced OR primary w/o TS installed → still
+                    // serve a stale-but-valid preview if we have one.
+                    if (await ServeTonightFromDiskCacheOrFail(res, done, "tonight: ts not available")) return;
                     await WriteJson(res, 200, new { error = "Target Scheduler is not installed or not available." });
                     done?.Invoke(200, "tonight: ts not available");
                     return;
@@ -3022,6 +3449,7 @@ namespace NINA.Plugin.NightSummary.Server {
 
                 var (apiEnabled, apiPort, apiHost) = TsApi();
                 if (!apiEnabled) {
+                    if (await ServeTonightFromDiskCacheOrFail(res, done, "tonight: ts api disabled")) return;
                     await WriteJson(res, 200, new { error = "Target Scheduler API is disabled. Enable it in Target Scheduler settings." });
                     done?.Invoke(200, "tonight: ts api disabled");
                     return;
@@ -3036,6 +3464,8 @@ namespace NINA.Plugin.NightSummary.Server {
                     profilesJson = await TonightApiClient.GetStringAsync($"{baseUrl}/profiles");
                 } catch (Exception ex) {
                     log?.Info($"Tonight preview: TS API unreachable: {ex.Message}");
+                    // Companion-side NINA-off case lives here too. Serve last-good if we have it.
+                    if (await ServeTonightFromDiskCacheOrFail(res, done, "tonight: ts api unreachable")) return;
                     await WriteJson(res, 200, new { error = "Could not reach Target Scheduler API. Make sure NINA is running with Target Scheduler installed and the API is enabled." });
                     done?.Invoke(200, "tonight: ts api unreachable");
                     return;
@@ -3045,6 +3475,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 var profiles = JsonSerializer.Deserialize<List<TsProfileInfo>>(profilesJson, options);
                 var active = profiles?.FirstOrDefault(p => p.Active);
                 if (active == null) {
+                    if (await ServeTonightFromDiskCacheOrFail(res, done, "tonight: no active profile")) return;
                     await WriteJson(res, 200, new { error = "No active NINA profile found in Target Scheduler." });
                     done?.Invoke(200, "tonight: no active profile");
                     return;
@@ -3065,6 +3496,7 @@ namespace NINA.Plugin.NightSummary.Server {
                     previewJson = await TonightApiClient.GetStringAsync(previewUrl);
                 } catch (Exception ex) {
                     log?.Info($"Tonight preview: TS preview call failed: {ex.Message}");
+                    if (await ServeTonightFromDiskCacheOrFail(res, done, $"tonight: preview error: {ex.Message}")) return;
                     await WriteJson(res, 200, new { error = "Target Scheduler preview failed. Check the NINA log for details." });
                     done?.Invoke(200, $"tonight: preview error: {ex.Message}");
                     return;
@@ -3093,25 +3525,70 @@ namespace NINA.Plugin.NightSummary.Server {
                     ? (int)rawOffsets[0].start.Offset.TotalMinutes
                     : (int)TimeZoneInfo.Local.GetUtcOffset(now).TotalMinutes;
 
+                // Per-target RA/Dec lookup from the TS DB. Preview entries
+                // don't carry coords themselves — the dashboard's altitude
+                // chart needs them to plot per-target curves. Match by Guid
+                // first (stable across TS DB rebuilds), then by exact-case
+                // Id, then case-insensitive Name as a last resort.
+                var tsTargets = TsProjects()
+                    .SelectMany(p => p.Targets ?? new List<TsProjectTarget>())
+                    .ToList();
+                var byGuid = tsTargets
+                    .Where(t => !string.IsNullOrEmpty(t.Guid))
+                    .GroupBy(t => t.Guid, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+                var byId = tsTargets
+                    .Where(t => t.Id != 0)
+                    .GroupBy(t => t.Id.ToString())
+                    .ToDictionary(g => g.Key, g => g.First());
+                var byName = tsTargets
+                    .Where(t => !string.IsNullOrEmpty(t.Name))
+                    .GroupBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+                (double ra, double dec) Lookup(TsPreviewEntry e) {
+                    if (e.WaitPeriod) return (0, 0);
+                    if (e.Id != null && byGuid.TryGetValue(e.Id, out var t1)) return (t1.RA, t1.Dec);
+                    if (e.Id != null && byId.TryGetValue(e.Id, out var t2))   return (t2.RA, t2.Dec);
+                    if (e.Name != null && byName.TryGetValue(e.Name, out var t3)) return (t3.RA, t3.Dec);
+                    return (0, 0);
+                }
+
                 var responseObj = new {
-                    entries = entries.Select((e, i) => new {
-                        id         = e.Id,
-                        name       = e.Name,
-                        waitPeriod = e.WaitPeriod,
-                        startTime  = (i < rawOffsets.Count ? rawOffsets[i].start : new DateTimeOffset(e.StartTime)).ToString("o"),
-                        endTime    = (i < rawOffsets.Count ? rawOffsets[i].end   : new DateTimeOffset(e.EndTime  )).ToString("o"),
-                        exposurePlan = e.ExposurePlan.Select(ep => new {
-                            filterName = ep.FilterName,
-                            exposure   = ep.Exposure,
-                            count      = ep.Count
-                        }).ToList()
+                    entries = entries.Select((e, i) => {
+                        var (ra, dec) = Lookup(e);
+                        return new {
+                            id         = e.Id,
+                            name       = e.Name,
+                            waitPeriod = e.WaitPeriod,
+                            startTime  = (i < rawOffsets.Count ? rawOffsets[i].start : new DateTimeOffset(e.StartTime)).ToString("o"),
+                            endTime    = (i < rawOffsets.Count ? rawOffsets[i].end   : new DateTimeOffset(e.EndTime  )).ToString("o"),
+                            ra         = ra,   // decimal hours; 0 when wait period or unknown target
+                            dec        = dec,  // decimal degrees
+                            exposurePlan = e.ExposurePlan.Select(ep => new {
+                                filterName = ep.FilterName,
+                                exposure   = ep.Exposure,
+                                count      = ep.Count
+                            }).ToList()
+                        };
                     }).ToList(),
                     startTime       = startTime.ToString("o"),
-                    tzOffsetMinutes = tzOffsetMinutes
+                    tzOffsetMinutes = tzOffsetMinutes,
+                    // Observer coords from primary's active profile so the
+                    // dashboard's altitude chart can render. Companion mirror
+                    // gets these via the synced tonight-preview-cache.json —
+                    // the value is "where the telescope is" regardless of
+                    // where the viewer's browser is.
+                    observerLat = _settings.ObserverLatitude,
+                    observerLon = _settings.ObserverLongitude
                 };
 
                 _tonightPreviewJson = JsonSerializer.Serialize(responseObj, JsonOpts);
                 _tonightPreviewCachedAt = DateTime.UtcNow;
+
+                // Persist to disk for noon-boundary fallback on subsequent failure
+                // (companion-side NINA-off scenario, or transient TS API hiccup).
+                TsApiCache.Save(TonightPreviewDiskCachePath(), _tonightPreviewJson);
 
                 await WriteJsonRaw(res, 200, _tonightPreviewJson);
                 done?.Invoke(200, $"tonight preview: {entries.Count} entries");
@@ -3266,7 +3743,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 var message = root.TryGetProperty("message", out var mg) && mg.ValueKind == JsonValueKind.String ? mg.GetString() : "";
                 var url     = root.TryGetProperty("url",     out var ul) && ul.ValueKind == JsonValueKind.String ? ul.GetString() : "";
                 var entry   = string.IsNullOrEmpty(url) ? $"[JS] {message}" : $"[JS] {message} (page: {url})";
-                switch (level?.ToLower()) {
+                switch (level?.ToLowerInvariant()) {
                     case "warn":  log?.Warn(entry);  break;
                     case "error": log?.Error(entry); break;
                     default:      log?.Info(entry);  break;
@@ -3322,11 +3799,36 @@ namespace NINA.Plugin.NightSummary.Server {
             }
         }
 
+        // Clears every in-memory cache keyed by sessionId. Report content on disk can
+        // change out from under these caches via more than one path — Regenerate,
+        // Resend, and the TNS resend endpoint all produce a fresh report.html — so
+        // this is called from all of them rather than duplicating the four lines
+        // (previously only Regenerate/RegenerateAll called this, which left Resend
+        // able to leave a stale — sometimes permanently empty — thumbnail cache
+        // behind even after the report itself was fine).
+        public void InvalidateSessionCaches(string sessionId) {
+            thumbnailCache.TryRemove(sessionId, out _);
+            altitudeChartCache.TryRemove(sessionId, out _);
+            DeleteCachedChartJson(sessionId);
+            livestackCache.TryRemove(sessionId, out _);
+        }
+
         private async Task HandleRegenerateReport(TcpHttpRequest req, TcpHttpResponse res, string sessionId, Action<int, string> done) {
+            // Both primary and companion now have a local IReportRegenerator;
+            // the older companion→primary proxy path was retired when the
+            // companion gained its own CompanionReportRegenerator.
             if (_regen == null || !_regen.IsAvailable) {
                 await WriteJson(res, 500, new { error = "Report generation not available" });
                 done?.Invoke(500, "no regenerator");
                 return;
+            }
+
+            // Primary mode (local _regen). If a bearer is present on the
+            // request, require it to match a valid pairing token — that's the
+            // companion-proxy path. Without a bearer, this is the local
+            // primary dashboard (no auth needed; same-origin only).
+            if (!string.IsNullOrEmpty(req.Authorization)) {
+                if (!await RequireCompanionAuth(req, res, done)) return;
             }
 
             try {
@@ -3347,11 +3849,25 @@ namespace NINA.Plugin.NightSummary.Server {
                 var saved = SnapshotSettings(s);
 
                 try {
+                    // Companion: seed from the synced sidecar first so charts /
+                    // equipment overrides / filter classifications / etc match
+                    // what the user had configured when the report was created.
+                    // Without this, CompanionPluginSettings.Current returns
+                    // vanilla defaults and the regen silently swaps user-chosen
+                    // settings for "out-of-the-box."
+                    if (string.Equals(_settings.Mode, "companion", StringComparison.OrdinalIgnoreCase)) {
+                        var sidecar = LoadSidecarAsOverrides(sessionId);
+                        if (sidecar != null) ApplyOverrides(s, sidecar);
+                    }
                     ApplyOverrides(s, overrides);
-                    // Tonight's Preview lives on the dashboard's Stats > Tonight tab,
-                    // so the embedded report section is redundant when viewed in-dashboard.
-                    // Not exposed in the per-report settings panel either.
-                    s.ShowNextNightPreview = false;
+                    // Primary regen embeds Tonight's Preview via a ~25s TS API call,
+                    // and dashboard users already see the same data on the Stats >
+                    // Tonight tab — embed is redundant + expensive there.
+                    // Companion regen reads it from disk cache instantly, and reports
+                    // viewed outside the dashboard (download/email) benefit from the
+                    // section being present, so leave it enabled there.
+                    if (!string.Equals(_settings.Mode, "companion", StringComparison.OrdinalIgnoreCase))
+                        s.ShowNextNightPreview = false;
                     log?.Debug($"Regenerate {sessionId} effective settings: {FormatSettingsForLog(s)}");
 
                     var err = await _regen.RegenerateAsync(sessionId);
@@ -3362,10 +3878,7 @@ namespace NINA.Plugin.NightSummary.Server {
                     }
                     await SaveSessionSettings(sessionId, s);
 
-                    thumbnailCache.TryRemove(sessionId, out _);
-                    altitudeChartCache.TryRemove(sessionId, out _);
-                    DeleteCachedChartJson(sessionId);
-                    livestackCache.TryRemove(sessionId, out _);
+                    InvalidateSessionCaches(sessionId);
                     log?.Info($"Regenerated report for {sessionId}");
                     _external.Info($"NightSummary: Dashboard regenerated report for {sessionId}");
                     await WriteJson(res, 200, new { status = "ok", sessionId });
@@ -3435,22 +3948,47 @@ namespace NINA.Plugin.NightSummary.Server {
                     var s = _settings.Current;
                     var saved = SnapshotSettings(s);
                     try {
+                        // Companion: snapshot per-session sidecar settings BEFORE
+                        // bulk overrides so each report regenerates with its own
+                        // original chart/equipment/filter choices (the bulk
+                        // override layer applies on top per-session inside the
+                        // loop below). See HandleRegenerate for the rationale.
+                        bool seedFromSidecar = string.Equals(_settings.Mode, "companion", StringComparison.OrdinalIgnoreCase);
                         ApplyOverrides(s, overrides);
-                        s.ShowNextNightPreview = false; // see HandleRegenerate for rationale
+                        // see HandleRegenerate for rationale — companion regen keeps
+                        // the section since it reads from disk cache, not live TS API.
+                        if (!string.Equals(_settings.Mode, "companion", StringComparison.OrdinalIgnoreCase))
+                            s.ShowNextNightPreview = false;
 
                         for (int i = 0; i < sessions.Count; i++) {
                             regenAllCurrent = i + 1;
                             try {
+                                // Per-session seed cycle (companion only): roll s
+                                // back to bulk-override baseline, then seed from
+                                // this session's sidecar, then re-apply the bulk
+                                // overrides on top. Without this, every session
+                                // in the bulk would render with the first one's
+                                // settings (or vanilla defaults).
+                                var perSessionSaved = seedFromSidecar ? SnapshotSettings(s) : null;
+                                if (seedFromSidecar) {
+                                    var sidecar = LoadSidecarAsOverrides(sessions[i].SessionId);
+                                    if (sidecar != null) ApplyOverrides(s, sidecar);
+                                    ApplyOverrides(s, overrides);
+                                }
+
                                 var err = await _regen.RegenerateAsync(sessions[i].SessionId);
-                                if (err != null) { regenAllFailed++; continue; }
+                                if (err != null) {
+                                    regenAllFailed++;
+                                    if (perSessionSaved != null) RestoreSettings(s, perSessionSaved);
+                                    continue;
+                                }
 
                                 await SaveSessionSettings(sessions[i].SessionId, s);
-                                thumbnailCache.TryRemove(sessions[i].SessionId, out _);
-                                altitudeChartCache.TryRemove(sessions[i].SessionId, out _);
-                                DeleteCachedChartJson(sessions[i].SessionId);
-                                livestackCache.TryRemove(sessions[i].SessionId, out _);
+                                InvalidateSessionCaches(sessions[i].SessionId);
                                 regenAllGenerated++;
                                 log?.Debug($"Bulk regen {regenAllCurrent}/{sessions.Count}: {sessions[i].SessionId} OK");
+
+                                if (perSessionSaved != null) RestoreSettings(s, perSessionSaved);
                             } catch (Exception ex) {
                                 log?.Warn($"Bulk regen {regenAllCurrent}/{sessions.Count}: {sessions[i].SessionId} FAILED — {ex.Message}");
                                 _external.Warn($"NightSummary: Failed to regenerate report for {sessions[i].SessionId}. {ex.Message}");
@@ -3552,6 +4090,29 @@ namespace NINA.Plugin.NightSummary.Server {
         /// </summary>
         private async Task SaveSessionSettings(string sessionId, NightSummarySettings s) {
             try {
+                // Observer coords come from the IPluginSettings host. On primary
+                // this proxies to NINA's active profile and returns real values.
+                // On companion this returns 0 — preserve whatever is already in
+                // the sidecar so a companion-side regen doesn't clobber the
+                // primary-stamped lat/lon (which the altitude chart needs).
+                double lat = _settings.ObserverLatitude;
+                double lon = _settings.ObserverLongitude;
+                if (lat == 0 && lon == 0) {
+                    var settingsPathExisting = Path.Combine(reportsDir, $"{sessionId}.settings.json");
+                    if (File.Exists(settingsPathExisting)) {
+                        try {
+                            using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(settingsPathExisting));
+                            if (doc.RootElement.TryGetProperty("observerLatitude",  out var elLat)
+                                && elLat.ValueKind == JsonValueKind.Number
+                                && doc.RootElement.TryGetProperty("observerLongitude", out var elLon)
+                                && elLon.ValueKind == JsonValueKind.Number) {
+                                lat = elLat.GetDouble();
+                                lon = elLon.GetDouble();
+                            }
+                        } catch { /* malformed sidecar — fall through to zeros */ }
+                    }
+                }
+
                 var settings = new {
                     reportDetailLevel      = s.ReportDetailLevel,
                     reportLightMode        = s.ReportLightMode,
@@ -3579,7 +4140,9 @@ namespace NINA.Plugin.NightSummary.Server {
                     equipmentVisibleFields = s.EquipmentVisibleFields,
                     filterClassifications  = s.FilterClassifications,
                     filterTypeOverrides    = s.FilterTypeOverrides,
-                    equipmentOverrides     = s.EquipmentOverrides
+                    equipmentOverrides     = s.EquipmentOverrides,
+                    observerLatitude       = lat,
+                    observerLongitude      = lon
                 };
                 var json = JsonSerializer.Serialize(settings, JsonOpts);
                 var settingsPath = Path.Combine(reportsDir, $"{sessionId}.settings.json");
@@ -3684,6 +4247,36 @@ private static string FormatSettingsForLog(NightSummarySettings s) {
             s.EquipmentOverrides    = (string)saved["EquipmentOverrides"];
         }
 
+        // Companion-side helper: loads the per-session sidecar JSON as the
+        // override dictionary ApplyOverrides expects. Returns an empty dict
+        // when the sidecar is missing or malformed — callers then layer the
+        // POST body on top of nothing, matching the pre-sidecar behavior.
+        //
+        // Sidecar is the source of truth for "what settings was this report
+        // generated with." On primary, _settings.Current is the user's live
+        // NINA settings, so the sidecar mostly just snapshots them; on
+        // companion CompanionPluginSettings.Current is a vanilla defaults
+        // instance, so seeding from sidecar is the only way the regen
+        // reflects user-configured chart/equipment/filter overrides.
+        private Dictionary<string, JsonElement>? LoadSidecarAsOverrides(string sessionId) {
+            try {
+                var path = Path.Combine(reportsDir, $"{sessionId}.settings.json");
+                if (!File.Exists(path)) return null;
+                var json = File.ReadAllText(path);
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.ValueKind != JsonValueKind.Object) return null;
+                var dict = new Dictionary<string, JsonElement>();
+                // Clone each element so it outlives the using-disposed doc.
+                foreach (var p in doc.RootElement.EnumerateObject()) {
+                    dict[p.Name] = p.Value.Clone();
+                }
+                return dict;
+            } catch (Exception ex) {
+                log?.Warn($"LoadSidecarAsOverrides({sessionId}): {ex.Message}");
+                return null;
+            }
+        }
+
         private static void ApplyOverrides(NightSummarySettings s, Dictionary<string, JsonElement> overrides) {
             if (overrides == null) return;
             foreach (var kv in overrides) {
@@ -3756,6 +4349,15 @@ private static string FormatSettingsForLog(NightSummarySettings s) {
 
         // ── Response Helpers ──────────────────────────────────────────────────
 
+        // 302 redirect with an empty body. Used by the companion setup flow
+        // to bounce / ↔ /setup based on IsComplete state.
+        private static Task Redirect(TcpHttpResponse res, string location, Action<int, string> done, string traceMsg) {
+            res.StatusCode = 302;
+            res.Headers.Add("Location", location);
+            done?.Invoke(302, traceMsg);
+            return Task.CompletedTask;
+        }
+
         private static async Task WriteJson(TcpHttpResponse res, int status, object data) {
             res.StatusCode = status;
             res.ContentType = "application/json; charset=utf-8";
@@ -3808,8 +4410,8 @@ private static string FormatSettingsForLog(NightSummarySettings s) {
             foreach (var s in sessions) {
                 var images = DbImages(s.SessionId);
                 var lights = images.Where(i => string.IsNullOrEmpty(i.ImageType) || i.ImageType == "LIGHT").ToList();
-                totalImages += lights.Count(i => i.Accepted);
-                totalIntegration += lights.Where(i => i.Accepted).Sum(i => i.ExposureDuration);
+                totalImages += lights.Count(i => i.CountsAsAccepted);
+                totalIntegration += lights.Where(i => i.CountsAsAccepted).Sum(i => i.ExposureDuration);
                 foreach (var t in lights.Where(i => !string.IsNullOrEmpty(i.TargetName)).Select(i => i.TargetName))
                     allTargets.Add(t);
             }
@@ -3880,11 +4482,17 @@ private static string FormatSettingsForLog(NightSummarySettings s) {
                 var iconBase64 = iconBytes != null
                     ? "data:image/png;base64," + Convert.ToBase64String(iconBytes)
                     : "";
+                // {{READONLY_ATTR}} → ' data-readonly="true"' on the <html> element when
+                // this is a read-only mirror; empty otherwise. Lets CSS hide destructive UI
+                // (regenerate, project-stats edits) via [data-readonly] selector without any
+                // JS race on initial paint, and lets dashboard.js branch on the attribute
+                // when truly needed.
                 cachedDashboardHtml = html
                     .Replace("{{STYLES}}", css)
                     .Replace("{{SCRIPTS}}", js)
                     .Replace("{{ICON}}", iconBase64)
-                    .Replace("{{VERSION}}", _settings.PluginVersion ?? "");
+                    .Replace("{{VERSION}}", _settings.PluginVersion ?? "")
+                    .Replace("{{READONLY_ATTR}}", _readOnly ? " data-readonly=\"true\"" : "");
             } catch (Exception ex) {
                 _external.Error($"NightSummary: Failed to load dashboard resources. {ex.Message}");
                 cachedDashboardHtml = "<!DOCTYPE html><html><body><h1>Dashboard failed to load</h1>" +

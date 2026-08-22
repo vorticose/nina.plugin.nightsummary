@@ -1,0 +1,162 @@
+---
+layout: default
+title: Companion App
+nav_order: 4.5
+---
+
+# Companion App
+
+The Night Summary **Companion** is a standalone dashboard app you run on a **second computer** — Mac, Windows, or Linux. It keeps its own synced copy of your sessions from the machine running NINA and serves the full Night Summary dashboard independently, so you can browse your imaging history even when the NINA machine is asleep or powered off.
+
+The sync is **one-way**: the Companion only pulls data from your NINA machine and never writes anything back to it.
+
+---
+
+## How it works
+
+1. The **Local Dashboard** runs on your NINA machine (see [Live Dashboard](dashboard)).
+2. You install the **Companion** on another computer and pair it with a one-time token.
+3. The Companion syncs a copy of your reports, thumbnails, and database, then serves the same dashboard from its own copy — on a schedule and whenever NINA finishes a session.
+
+{: .note }
+> The Companion needs the Local Dashboard enabled on the NINA machine, plus network access to it — the same local network, or a VPN such as Tailscale for remote access.
+
+---
+
+## Download
+
+Grab the latest build from the [**Releases page**](https://github.com/vorticose/nina.plugin.nightsummary/releases/latest) and follow the steps for your OS.
+
+### Windows
+
+1. Download `NightSummaryCompanion-win-x64.zip` and unzip it.
+2. Double-click `NightSummaryCompanion.exe` — it's a single file, no install, drop it anywhere. First launch may show Windows SmartScreen (*"Windows protected your PC"*) — click **More info → Run anyway** (expected for an unsigned open-source app).
+
+### macOS
+
+One line, no Gatekeeper prompt — open **Terminal** (Applications → Utilities → Terminal) and paste:
+
+```sh
+curl -fsSL https://github.com/vorticose/nina.plugin.nightsummary/releases/latest/download/install-companion-mac.sh | sh
+```
+
+It auto-detects Apple Silicon vs Intel, installs the app to **Applications**, and launches it. Because the download comes through `curl` rather than a browser, macOS never quarantines it — so there's no "unidentified developer" wall and nothing else to click.
+
+{: .warning }
+> **Don't just download the `.dmg` and double-click it** — recent macOS quarantines browser downloads and blocks the ad-hoc-signed app, and it no longer offers the old right-click → **Open** bypass. Use the one-liner above. If you'd rather use the DMG: drag `NightSummaryCompanion.app` to **Applications**, then clear the download flag once in Terminal — `xattr -dr com.apple.quarantine /Applications/NightSummaryCompanion.app` — and open it normally. (It's ad-hoc signed because there's no paid Apple Developer account behind this open-source app.)
+
+### Linux
+
+One line, no root:
+
+```sh
+curl -fsSL https://github.com/vorticose/nina.plugin.nightsummary/releases/latest/download/install-companion.sh | sh
+```
+
+Then launch **Night Summary Companion** from your applications menu. Other options: a `.deb` (`sudo apt install ./nightsummary-companion_*.deb`), a portable AppImage, or the tarball.
+
+{: .note }
+> If the AppImage errors about `libfuse.so.2`, install FUSE 2 (`sudo apt install libfuse2`) or run it with `--appimage-extract-and-run`. The `.deb` and `curl | sh` paths don't need this.
+
+---
+
+## Pairing
+
+On first launch the Companion opens a setup wizard in your browser.
+
+![The Companion Pairing panel in NINA's Night Summary options](assets/companion-pairing.png)
+
+1. On the **NINA machine**, open **Options → Night Summary Settings → Local Dashboard → Companion Pairing** and click **+ Generate Token**. The token is shown once — copy it.
+2. In the Companion wizard's **Connect** step, enter your NINA machine's address (for example `http://astro-pc:8181`).
+3. On the **Pair** step, paste the token.
+4. The Companion runs its first sync and opens the dashboard.
+
+![The Companion setup wizard — Connect step (NINA address)](assets/companion-wizard-connect.png)
+
+![The Companion setup wizard — Pair step (pairing token)](assets/companion-wizard-pair.png)
+
+Each companion you set up gets its **own token**, which you can **Revoke** independently from the Companion Pairing panel. The paired list there updates as companions connect.
+
+---
+
+## Keeping it running
+
+- The Companion runs as a background app and reopens its dashboard in your browser whenever you launch it.
+- Turn on **Start at login** in the Companion's **Settings** tab to have it start automatically.
+- Your pairing and settings survive app updates — you pair once per computer, not once per release.
+
+![The Companion's Settings tab, showing the Start at login toggle](assets/companion-settings.png)
+
+---
+
+## Running multiple rigs
+
+Have more than one rig running Night Summary, but want a single Companion machine (your NAS box, processing PC, etc.)? You can run **one Companion instance per rig** on the same computer. Each instance just needs three things of its own: a **dashboard port**, a **data folder**, and the **rig it pairs with** — all set in a small config file you point it at with `--config`.
+
+You'll end up with one dashboard per rig, e.g. `http://localhost:8182` (rig 1) and `http://localhost:8183` (rig 2), each syncing independently.
+
+### 1. Pair each rig
+
+On **each** rig's NINA: **Options → Night Summary Settings → Local Dashboard → Companion Pairing → + Generate Token**. Copy one token per rig.
+
+### 2. Create a config file per rig
+
+Make a folder to hold them (e.g. `D:\NightSummary\`), and create one JSON per rig. The only things that must differ between rigs are **`port`**, **`dataDir`**, and the **`nina`** block.
+
+`rig1.json`:
+
+```json
+{
+  "port": 8182,
+  "dataDir": "D:/NightSummary/data-rig1",
+  "nina": { "host": "rig1.local", "port": 8181, "pairingToken": "PASTE-RIG1-TOKEN" }
+}
+```
+
+`rig2.json` — same shape, different port and data folder:
+
+```json
+{
+  "port": 8183,
+  "dataDir": "D:/NightSummary/data-rig2",
+  "nina": { "host": "rig2.local", "port": 8181, "pairingToken": "PASTE-RIG2-TOKEN" }
+}
+```
+
+- `host` is the rig's hostname or IP; `nina.port` (8181) is the rig's dashboard port — leave it unless you changed it on the rig.
+- `dataDir` is where that rig's synced database, reports, and thumbnails are stored. **Must be unique per rig** — pointing it at a NAS share is fine.
+- Using the Read-Only Mirror? Add `"enableReadOnlyMirror": true` and a unique `"readOnlyMirrorPort"` per instance too.
+
+### 3. Launch one instance per rig
+
+Run each in its own terminal window:
+
+**Windows** (from where you unzipped the Companion):
+
+```
+NightSummaryCompanion.exe serve --config D:\NightSummary\rig1.json
+NightSummaryCompanion.exe serve --config D:\NightSummary\rig2.json
+```
+
+**macOS**:
+
+```
+/Applications/NightSummaryCompanion.app/Contents/MacOS/NightSummaryCompanion-bin serve --config /path/to/rig1.json
+```
+
+**Linux**:
+
+```
+~/.local/bin/nightsummary-companion serve --config ~/NightSummary/rig1.json
+```
+
+### 4. (Optional) Start them automatically
+
+The in-app **Start at login** toggle manages a single instance, so for multiple rigs you add one startup entry per config:
+
+- **Windows** — a shortcut per rig (target = the `serve --config …` command) in the Startup folder (`Win+R` → `shell:startup`), or a Task Scheduler task per rig.
+- **macOS** — a `~/Library/LaunchAgents/` plist per rig (unique `Label`, `ProgramArguments` = the bin + `serve --config /path/rigN.json`), then `launchctl load` each.
+- **Linux** — a `systemd --user` unit per rig (`~/.config/systemd/user/companion-rigN.service`), then `systemctl --user enable --now companion-rigN`.
+
+{: .note }
+> There's no single combined "all my rigs" dashboard yet — it's one dashboard (one port) per rig. Keep each rig's **port** and **dataDir** distinct and the instances run fully independently. Share either and the second instance will refuse to start or overwrite the first.

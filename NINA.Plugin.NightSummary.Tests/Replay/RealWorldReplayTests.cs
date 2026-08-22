@@ -161,7 +161,7 @@ namespace NINA.Plugin.NightSummary.Tests.Replay {
             };
 
             // Generate the HTML report
-            var generator = new ReportGenerator();
+            var generator = TestDeps.NewReportGenerator();
             var html = await generator.GenerateHtmlReport(reportData);
 
             Assert.NotNull(html);

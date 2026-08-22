@@ -25,6 +25,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "dev-dashboard-cs", "dev-das
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DevDashboardHost", "tools\dev-dashboard-cs\DevDashboardHost.csproj", "{937AF115-4682-4E1D-A8A1-C9F691FDAADF}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NINA.Plugin.NightSummary.Companion", "NINA.Plugin.NightSummary.Companion\NINA.Plugin.NightSummary.Companion.csproj", "{F0041ACA-479E-4C52-8B83-1D13E1E65ECF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -95,6 +97,18 @@ Global
 		{937AF115-4682-4E1D-A8A1-C9F691FDAADF}.Release|x86.Build.0 = Release|Any CPU
 		{937AF115-4682-4E1D-A8A1-C9F691FDAADF}.Release|x64.ActiveCfg = Release|Any CPU
 		{937AF115-4682-4E1D-A8A1-C9F691FDAADF}.Release|x64.Build.0 = Release|Any CPU
+		{F0041ACA-479E-4C52-8B83-1D13E1E65ECF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F0041ACA-479E-4C52-8B83-1D13E1E65ECF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F0041ACA-479E-4C52-8B83-1D13E1E65ECF}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{F0041ACA-479E-4C52-8B83-1D13E1E65ECF}.Debug|x86.Build.0 = Debug|Any CPU
+		{F0041ACA-479E-4C52-8B83-1D13E1E65ECF}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{F0041ACA-479E-4C52-8B83-1D13E1E65ECF}.Debug|x64.Build.0 = Debug|Any CPU
+		{F0041ACA-479E-4C52-8B83-1D13E1E65ECF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F0041ACA-479E-4C52-8B83-1D13E1E65ECF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F0041ACA-479E-4C52-8B83-1D13E1E65ECF}.Release|x86.ActiveCfg = Release|Any CPU
+		{F0041ACA-479E-4C52-8B83-1D13E1E65ECF}.Release|x86.Build.0 = Release|Any CPU
+		{F0041ACA-479E-4C52-8B83-1D13E1E65ECF}.Release|x64.ActiveCfg = Release|Any CPU
+		{F0041ACA-479E-4C52-8B83-1D13E1E65ECF}.Release|x64.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

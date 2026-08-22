@@ -100,13 +100,26 @@ namespace NINA.Plugin.NightSummary.Data {
         /// <param name="expectedImageCount">Expected number of images from Night Summary's own count, for cross-check. Pass -1 to skip.</param>
         /// <returns>Parsed timing events, or empty list if log not found or unparseable.</returns>
         public static List<TimingEvent> Parse(DateTime sessionStart, DateTime sessionEnd, int expectedImageCount = -1) {
+            return Parse(sessionStart, sessionEnd, expectedImageCount, out _);
+        }
+
+        /// <summary>
+        /// Same as Parse, but also reports why the result was empty (if it was), so
+        /// callers can distinguish "no log file could be found" from "a log file was
+        /// found but had nothing matching" instead of showing the same generic message
+        /// for both.
+        /// </summary>
+        public static List<TimingEvent> Parse(DateTime sessionStart, DateTime sessionEnd, int expectedImageCount, out LogParseOutcome outcome) {
             var logPath = FindLogFile(sessionStart);
             if (logPath == null) {
                 Logger.Warning("NightSummary: LogParser — no matching NINA log file found for session");
+                outcome = LogParseOutcome.NoLogFileFound;
                 return new List<TimingEvent>();
             }
 
-            return ParseFile(logPath, sessionStart, sessionEnd, expectedImageCount);
+            var events = ParseFile(logPath, sessionStart, sessionEnd, expectedImageCount);
+            outcome = events.Count > 0 ? LogParseOutcome.Success : LogParseOutcome.NoEventsInWindow;
+            return events;
         }
 
         /// <summary>
@@ -144,6 +157,15 @@ namespace NINA.Plugin.NightSummary.Data {
 
             // Generic tracker for all non-exposure SequenceItem Starting/Finishing pairs
             var pendingStarts = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+            // Parallel tracker for WaitForTimeSpan requested duration. NINA logs the wait
+            // as `Item: WaitForTimeSpan, Time: 60s` on Start. Capturing the requested time
+            // lets us cap the emitted duration when the parent container (WhenPlugin
+            // IfContainer, OnceSafe recovery, etc.) exits before the wait finishes — those
+            // exits don't log a Finishing line for the child wait, so without a cap the
+            // orphan can be flushed by a later "Canceling sequence" with a duration
+            // spanning hours. Same shape as the AbortedExposure cap below.
+            var pendingWaitSeconds = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            const double WaitDurationGraceSeconds = 5;
             DateTime? plateSolveStart = null;
             DateTime? meridianFlipTriggerStart = null;
             DateTime? schedulerWaitStart = null;
@@ -210,6 +232,11 @@ namespace NINA.Plugin.NightSummary.Data {
                             exposureRequestedSeconds = ExtractExposureTime(message);
                         } else if (ItemCategoryMap.ContainsKey(itemName)) {
                             pendingStarts[itemName] = timestamp;
+                            if (itemName.Equals("WaitForTimeSpan", StringComparison.OrdinalIgnoreCase)) {
+                                var requested = ExtractWaitForTimeSpanSeconds(message);
+                                if (requested > 0) pendingWaitSeconds[itemName] = requested;
+                                else               pendingWaitSeconds.Remove(itemName);
+                            }
                         } else {
                             skippedItems[itemName] = skippedItems.GetValueOrDefault(itemName) + 1;
                         }
@@ -273,11 +300,26 @@ namespace NINA.Plugin.NightSummary.Data {
                             if (itemName == "RunAutofocus")
                                 lastFilterMoveTimestamp = null;
 
+                            var rawDuration = (timestamp - startTime).TotalSeconds;
+                            var emitDuration = rawDuration;
+                            var emitEnd      = timestamp;
+                            if (itemName.Equals("WaitForTimeSpan", StringComparison.OrdinalIgnoreCase) &&
+                                pendingWaitSeconds.TryGetValue(itemName, out var requestedSecs) &&
+                                requestedSecs > 0) {
+                                var cap = requestedSecs + WaitDurationGraceSeconds;
+                                if (rawDuration > cap) {
+                                    emitDuration = cap;
+                                    emitEnd      = startTime.AddSeconds(cap);
+                                    Logger.Warning($"NightSummary: LogParser — WaitForTimeSpan started at {startTime:o} capped at {cap:F0}s (raw {rawDuration:F0}s) — likely orphaned by parent container exit");
+                                }
+                            }
+                            pendingWaitSeconds.Remove(itemName);
+
                             events.Add(new TimingEvent {
                                 EventType = eventType,
                                 StartTime = startTime,
-                                EndTime = timestamp,
-                                DurationSeconds = (timestamp - startTime).TotalSeconds,
+                                EndTime = emitEnd,
+                                DurationSeconds = emitDuration,
                                 Details = level == "ERROR" ? "Failed" : ExtractItemDetails(itemName, message)
                             });
                         }
@@ -394,15 +436,34 @@ namespace NINA.Plugin.NightSummary.Data {
                          && message.StartsWith("Canceling sequence")) {
                     foreach (var kvp in pendingStarts) {
                         var cancelType = ItemCategoryMap.TryGetValue(kvp.Key, out var cm) ? cm : kvp.Key;
+                        var rawDuration = (timestamp - kvp.Value).TotalSeconds;
+                        var emitDuration = rawDuration;
+                        var emitEnd      = timestamp;
+                        // Cap WaitForTimeSpan at its requested duration + grace. Without
+                        // this, a wait orphaned by an earlier parent-container exit (no
+                        // Finishing line emitted for the child wait) sits in pendingStarts
+                        // until the next cancel and gets flushed with a wall-clock span
+                        // potentially measured in hours.
+                        if (kvp.Key.Equals("WaitForTimeSpan", StringComparison.OrdinalIgnoreCase) &&
+                            pendingWaitSeconds.TryGetValue(kvp.Key, out var requestedCancel) &&
+                            requestedCancel > 0) {
+                            var cap = requestedCancel + WaitDurationGraceSeconds;
+                            if (rawDuration > cap) {
+                                emitDuration = cap;
+                                emitEnd      = kvp.Value.AddSeconds(cap);
+                                Logger.Warning($"NightSummary: LogParser — orphaned WaitForTimeSpan started at {kvp.Value:o} flushed by Canceling sequence — capped at {cap:F0}s (raw {rawDuration:F0}s)");
+                            }
+                        }
                         events.Add(new TimingEvent {
                             EventType = cancelType,
                             StartTime = kvp.Value,
-                            EndTime = timestamp,
-                            DurationSeconds = (timestamp - kvp.Value).TotalSeconds,
+                            EndTime = emitEnd,
+                            DurationSeconds = emitDuration,
                             Details = "Cancelled"
                         });
                     }
                     pendingStarts.Clear();
+                    pendingWaitSeconds.Clear();
 
                     // Center/CenterAndRotate aren't tracked in pendingStarts (they aren't in
                     // ItemCategoryMap), so cancellation mid-Centering would leave centeringDepth
@@ -483,8 +544,25 @@ namespace NINA.Plugin.NightSummary.Data {
         }
 
         /// <summary>
-        /// Finds the NINA log file whose filename timestamp is closest to (but before) the session start.
+        /// Finds the NINA log file that was active at the session start.
         /// </summary>
+        /// <remarks>
+        /// NINA's filename embeds the process-start timestamp once and keeps it fixed
+        /// across Serilog's monthly/size-based rollovers — a rollover only appends a new
+        /// period suffix (e.g. "-202607.log" -&gt; "-202608.log") to that same leading
+        /// timestamp. A long-running process (e.g. an infinite-loop Advanced Sequence that
+        /// never restarts NINA) can therefore have multiple log files whose filename
+        /// timestamp is identical, even though they cover different, non-overlapping time
+        /// ranges. Selecting by filename timestamp alone can't distinguish them and may
+        /// pick a stale pre-rollover file, silently returning zero timing events for a
+        /// session that's actually in the newer file.
+        ///
+        /// Filesystem creation time doesn't have this ambiguity — each physical file was
+        /// actually created when Serilog rolled over to it — so it's used as the primary
+        /// signal, with the old filename-timestamp matching kept as a fallback for the
+        /// rare case creation-time metadata is missing or invalid (e.g. logs copied
+        /// between machines by a hand-off tool that doesn't preserve it).
+        /// </remarks>
         internal static string FindLogFile(DateTime sessionStart) {
             var logsDir = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -494,6 +572,11 @@ namespace NINA.Plugin.NightSummary.Data {
 
             // Pattern: {yyyyMMdd}-{HHmmss}-{version}.{pid}-{yyyyMM}.log
             var logFiles = Directory.GetFiles(logsDir, "*.log");
+            if (logFiles.Length == 0) return null;
+
+            var byCreation = FindLogFileByCreationTime(logFiles, sessionStart);
+            if (byCreation != null) return byCreation;
+
             string bestMatch = null;
             TimeSpan bestDelta = TimeSpan.MaxValue;
 
@@ -505,6 +588,39 @@ namespace NINA.Plugin.NightSummary.Data {
                 var delta = sessionStart - fileTimestamp.Value;
                 if (delta >= TimeSpan.Zero && delta < bestDelta) {
                     bestDelta = delta;
+                    bestMatch = file;
+                }
+            }
+
+            return bestMatch;
+        }
+
+        /// <summary>
+        /// Picks the log file with the latest creation time at or before sessionStart —
+        /// i.e. the file that was actively being written to when the session began.
+        /// Exposed for testing. Returns null if no file has usable creation-time metadata.
+        /// </summary>
+        internal static string FindLogFileByCreationTime(string[] logFiles, DateTime sessionStart) {
+            string bestMatch = null;
+            DateTime bestCreationLocal = DateTime.MinValue;
+
+            foreach (var file in logFiles) {
+                DateTime creationUtc;
+                try {
+                    creationUtc = File.GetCreationTimeUtc(file);
+                } catch (IOException) {
+                    continue;
+                } catch (UnauthorizedAccessException) {
+                    continue;
+                }
+
+                // Guard against missing/invalid creation-time metadata (some filesystems
+                // or copy tools report an epoch/zero value when creation time isn't tracked).
+                if (creationUtc <= new DateTime(1980, 1, 1)) continue;
+
+                var creationLocal = creationUtc.ToLocalTime();
+                if (creationLocal <= sessionStart && creationLocal > bestCreationLocal) {
+                    bestCreationLocal = creationLocal;
                     bestMatch = file;
                 }
             }
@@ -568,6 +684,15 @@ namespace NINA.Plugin.NightSummary.Data {
 
         private static double ExtractExposureTime(string message) {
             var match = Regex.Match(message, @"ExposureTime (\d+(?:\.\d+)?)");
+            if (match.Success && double.TryParse(match.Groups[1].Value, CultureInfo.InvariantCulture, out var seconds))
+                return seconds;
+            return 0;
+        }
+
+        private static double ExtractWaitForTimeSpanSeconds(string message) {
+            // "Starting Category: Utility, Item: WaitForTimeSpan, Time: 60s"
+            // (Also seen in older logs as `Wait: 120s` — accept either label.)
+            var match = Regex.Match(message, @"(?:Time|Wait):\s*(\d+(?:\.\d+)?)s\b");
             if (match.Success && double.TryParse(match.Groups[1].Value, CultureInfo.InvariantCulture, out var seconds))
                 return seconds;
             return 0;

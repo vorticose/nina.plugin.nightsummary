@@ -30,7 +30,7 @@ namespace NINA.Plugin.NightSummary.Tests {
             SettingsManager.Instance.Current.ShowSessionHistory      = false;
             SettingsManager.Instance.Current.ShowNextNightPreview    = false;
             SettingsManager.Instance.Current.ExpandSectionsDefault   = false;
-            _generator = new ReportGenerator();
+            _generator = TestDeps.NewReportGenerator();
         }
 
         // ── Detail level: Overview stat boxes ──────────────────────────────

@@ -150,5 +150,24 @@ namespace NINA.Plugin.NightSummary {
             var plugin = (sender as Button)?.DataContext as NightSummaryPlugin;
             if (plugin != null) plugin.ThumbnailStorageDir = "";
         }
+
+        // Pairing list rows live inside an ItemsControl whose DataContext is a
+        // CompanionTokenView; the Button.Tag carries the entry Id. Walk up the
+        // visual tree to find the NightSummaryPlugin and delegate to its
+        // confirm + revoke helper.
+        private void RevokeCompanionToken_Click(object sender, RoutedEventArgs e) {
+            var button = sender as Button;
+            var id = button?.Tag as string;
+            if (string.IsNullOrEmpty(id)) return;
+
+            var element = button as DependencyObject;
+            while (element != null) {
+                if (element is FrameworkElement fe && fe.DataContext is NightSummaryPlugin plugin) {
+                    plugin.RevokeCompanionToken(id);
+                    return;
+                }
+                element = System.Windows.Media.VisualTreeHelper.GetParent(element);
+            }
+        }
     }
 }

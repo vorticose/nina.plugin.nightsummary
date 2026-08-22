@@ -112,7 +112,10 @@ namespace NINA.Plugin.NightSummary.Session {
             var database        = databasePath != null ? new SessionDatabase(databasePath) : new SessionDatabase();
             this.collector       = new SessionCollector(imageSaveMediator, sequenceMediator, database);
             this.eventCollector  = new SessionEventCollector(database, safetyMonitorMediator, focuserMediator, telescopeMediator);
-            this.reportGenerator = new ReportGenerator();
+            this.reportGenerator = new ReportGenerator(
+                new Server.NinaPluginSettings(profileService),
+                new Server.NinaDashboardLogger(),
+                new TargetSchedulerDatabase());
 
             // NOTE: SequenceFinished subscription happens in StartSession, not here.
             // At plugin-load time NINA's SequenceMediator has no backing delegate yet and
@@ -213,9 +216,10 @@ namespace NINA.Plugin.NightSummary.Session {
 
             // Parse NINA logs for per-event overhead timing data
             List<TimingEvent> timingEvents;
+            LogParseOutcome timingEventsOutcome;
             try {
                 Logger.Info($"NightSummary: EndSession — parsing logs for session {sessionId} (start={session.SessionStart:o}, end={session.SessionEnd:o}, images={images.Count})");
-                timingEvents = NinaLogParser.Parse(session.SessionStart, session.SessionEnd, images.Count);
+                timingEvents = NinaLogParser.Parse(session.SessionStart, session.SessionEnd, images.Count, out timingEventsOutcome);
                 Logger.Info($"NightSummary: EndSession — parser returned {timingEvents.Count} events");
                 if (timingEvents.Any())
                     database.SaveTimingEvents(sessionId, timingEvents);
@@ -223,12 +227,14 @@ namespace NINA.Plugin.NightSummary.Session {
                 Logger.Warning($"NightSummary: Log parsing failed — overhead breakdown will be unavailable. {ex.Message}");
                 Logger.Warning($"NightSummary: Log parsing stack trace: {ex.StackTrace}");
                 timingEvents = new List<TimingEvent>();
+                timingEventsOutcome = LogParseOutcome.NoLogFileFound;
             }
 
             var profileId    = profileService?.ActiveProfile?.Id.ToString();
             var tsData       = FetchTsData(images, profileId);
             var cumulative   = database.GetCumulativeIntegrationByTarget(sessionId);
-            var history      = BuildSessionHistory(database, images, sessionId);
+            var history          = BuildSessionHistory(database, images, sessionId);
+            var historyAggregate = BuildSessionHistoryAggregate(database, images, sessionId);
             var (fovW, fovH) = ComputeCameraFov(session);
             var (lat, lon)   = GetObserverCoords();
             var reportData   = new ReportData {
@@ -238,6 +244,7 @@ namespace NINA.Plugin.NightSummary.Session {
                 TsData                       = tsData,
                 CumulativeIntegrationSeconds = cumulative,
                 SessionHistory               = history,
+                SessionHistoryAggregate      = historyAggregate,
                 CameraFovWidthDeg            = fovW,
                 CameraFovHeightDeg           = fovH,
                 ObserverLatitude             = lat,
@@ -245,6 +252,7 @@ namespace NINA.Plugin.NightSummary.Session {
                 ActiveProfileId              = profileId,
                 SkippedExposures             = collector.SkippedExposures,
                 TimingEvents                 = timingEvents,
+                TimingEventsUnavailableReason = timingEvents.Any() ? (LogParseOutcome?)null : timingEventsOutcome,
                 Equipment                    = BuildEquipmentDictionary(session),
                 LiveStackImages              = liveStackImages
             };
@@ -331,13 +339,71 @@ namespace NINA.Plugin.NightSummary.Session {
 
                 // Always save a copy to the local dashboard reports directory
                 // so the embedded dashboard server can serve it
-                tasks.Add(SaveReportForDashboardAsync(reportData.Session.SessionId, htmlReport, reportData.LiveStackImages));
+                tasks.Add(SaveReportForDashboardAsync(reportData.Session.SessionId, htmlReport, reportData.LiveStackImages,
+                                                      reportData.ObserverLatitude, reportData.ObserverLongitude));
 
                 await Task.WhenAll(tasks);
                 Notification.ShowSuccess("Night Summary: Report delivered successfully");
+
+                // Push companion notification AFTER the report file is on disk
+                // so the companion's pull picks up the fresh DB + new HTML in
+                // one round trip. Fire-and-forget — never block / never throw.
+                _ = NotifyAllPairedCompanionsAsync();
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to generate/send report. {ex.Message}");
                 Notification.ShowError($"Night Summary: Failed to send report — {ex.Message}");
+            }
+        }
+
+        // Pings every paired companion's auto-detected push URL so they pull
+        // fresh data immediately instead of waiting for their scheduled poll.
+        // URLs come from CompanionTokenStore — captured at pair time + refreshed
+        // on every authenticated request, so they self-heal across DHCP / port
+        // changes. No manual configuration anywhere.
+        //
+        // Hard 5s timeout per companion, fire-and-forget. Failures are logged
+        // but never surfaced to the user — companion's own scheduler catches
+        // up on the next interval.
+        private static async Task NotifyAllPairedCompanionsAsync() {
+            IReadOnlyList<CompanionTokenEntry> entries;
+            try {
+                entries = CompanionTokenStore.Instance.List();
+            } catch (Exception ex) {
+                Logger.Info($"NightSummary: Companion notify skipped ({ex.Message}) — token store unavailable");
+                return;
+            }
+            var tasks = new List<Task>();
+            foreach (var e in entries) {
+                if (e.IsRevoked || !e.IsPaired) continue;
+                if (string.IsNullOrWhiteSpace(e.PushUrl)) continue;
+                tasks.Add(NotifyCompanionAsync(e.PushUrl, e.CompanionName ?? e.Id));
+            }
+            if (tasks.Count == 0) {
+                Logger.Info("NightSummary: No paired companions with a known push URL — skipping notify.");
+                return;
+            }
+            try { await Task.WhenAll(tasks); } catch { /* per-call errors already logged */ }
+        }
+
+        private static async Task NotifyCompanionAsync(string companionUrl, string label) {
+            try {
+                var url = companionUrl.TrimEnd('/') + "/api/companion/sync";
+                using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+                using var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Post, url) {
+                    Content = new System.Net.Http.StringContent(""),
+                };
+                // Tag the request so the companion can distinguish push-driven
+                // triggers from user-clicked manual syncs. Lets users disable
+                // push without losing the Sync button.
+                req.Headers.TryAddWithoutValidation("X-Sync-Trigger", "push");
+                using var resp = await http.SendAsync(req);
+                if (resp.IsSuccessStatusCode) {
+                    Logger.Info($"NightSummary: Companion '{label}' notified at {url} (HTTP {(int)resp.StatusCode})");
+                } else {
+                    Logger.Warning($"NightSummary: Companion '{label}' notify returned HTTP {(int)resp.StatusCode} for {url}");
+                }
+            } catch (Exception ex) {
+                Logger.Info($"NightSummary: Companion '{label}' notify failed ({ex.Message}) — will pull on schedule");
             }
         }
 
@@ -357,12 +423,14 @@ namespace NINA.Plugin.NightSummary.Session {
 
                 var images = testDb.GetImagesForSession(session.SessionId);
                 var events = testDb.GetEventsForSession(session.SessionId);
+                FinalizeOrphanedSession(testDb, session, images, events);
                 Logger.Info($"NightSummary: Sending test report for session {session.SessionId} ({images.Count} images, {events.Count} events)");
 
                 var profileId    = profileService?.ActiveProfile?.Id.ToString();
                 var tsData       = FetchTsData(images, profileId);
                 var cumulative   = testDb.GetCumulativeIntegrationByTarget(session.SessionId);
-                var history      = BuildSessionHistory(testDb, images, session.SessionId);
+                var history          = BuildSessionHistory(testDb, images, session.SessionId);
+                var historyAggregate = BuildSessionHistoryAggregate(testDb, images, session.SessionId);
                 var (fovW, fovH) = ComputeCameraFov(session);
                 var (lat, lon)   = GetObserverCoords();
                 // Fallback for test reports when no profile location is configured
@@ -371,8 +439,9 @@ namespace NINA.Plugin.NightSummary.Session {
                 // Always re-parse timing events from logs to pick up parser improvements.
                 // Falls back to cached DB data only if the log file is no longer available.
                 List<TimingEvent> timingEvents;
+                LogParseOutcome timingEventsOutcome;
                 try {
-                    timingEvents = NinaLogParser.Parse(session.SessionStart, session.SessionEnd, images.Count);
+                    timingEvents = NinaLogParser.Parse(session.SessionStart, session.SessionEnd, images.Count, out timingEventsOutcome);
                     if (timingEvents.Any()) {
                         testDb.ClearTimingEvents(session.SessionId);
                         testDb.SaveTimingEvents(session.SessionId, timingEvents);
@@ -380,6 +449,7 @@ namespace NINA.Plugin.NightSummary.Session {
                 } catch (Exception ex) {
                     Logger.Warning($"NightSummary: Log re-parse failed, using cached data — {ex.Message}");
                     timingEvents = null;  // fall through to DB lookup below
+                    timingEventsOutcome = LogParseOutcome.NoLogFileFound;
                 }
                 // If log parsing returned nothing (no log file, or empty), use cached DB data
                 if (timingEvents == null || !timingEvents.Any()) {
@@ -393,6 +463,7 @@ namespace NINA.Plugin.NightSummary.Session {
                     TsData                       = tsData,
                     CumulativeIntegrationSeconds = cumulative,
                     SessionHistory               = history,
+                    SessionHistoryAggregate      = historyAggregate,
                     CameraFovWidthDeg            = fovW,
                     CameraFovHeightDeg           = fovH,
                     ObserverLatitude             = lat,
@@ -400,7 +471,8 @@ namespace NINA.Plugin.NightSummary.Session {
                     ActiveProfileId              = profileId,
                     SkippedExposures             = session.SkippedExposures,
                     Equipment                    = BuildEquipmentDictionary(session),
-                    TimingEvents                 = timingEvents
+                    TimingEvents                 = timingEvents,
+                    TimingEventsUnavailableReason = timingEvents.Any() ? (LogParseOutcome?)null : timingEventsOutcome
                 };
 
                 // Try to load persisted live stack masters for this session
@@ -430,7 +502,8 @@ namespace NINA.Plugin.NightSummary.Session {
                 if (S.DashboardEnabled)
                     tasks.Add(SendDashboardWithDataAsync(reportData, htmlReport));
 
-                tasks.Add(SaveReportForDashboardAsync(reportData.Session.SessionId, htmlReport, reportData.LiveStackImages));
+                tasks.Add(SaveReportForDashboardAsync(reportData.Session.SessionId, htmlReport, reportData.LiveStackImages,
+                                                      reportData.ObserverLatitude, reportData.ObserverLongitude));
 
                 await Task.WhenAll(tasks);
                 Notification.ShowSuccess("Night Summary: Report delivered successfully");
@@ -540,7 +613,7 @@ namespace NINA.Plugin.NightSummary.Session {
         /// DashboardServer can serve it. This is always called on report generation,
         /// independent of the user's "Save Report Locally" setting.
         /// </summary>
-        private async Task SaveReportForDashboardAsync(string sessionId, string htmlReport, List<LiveStackImage> liveStackImages = null) {
+        private async Task SaveReportForDashboardAsync(string sessionId, string htmlReport, List<LiveStackImage> liveStackImages = null, double observerLatitude = 0, double observerLongitude = 0) {
             try {
                 var reportsDir = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -610,7 +683,15 @@ namespace NINA.Plugin.NightSummary.Session {
                     thumbnailRetentionMode  = S.ThumbnailRetentionMode,
                     thumbnailRetentionDays  = S.ThumbnailRetentionDays,
                     thumbnailRetentionMaxGB = S.ThumbnailRetentionMaxGB,
-                    thumbnailStorageDir     = S.ThumbnailStorageDir
+                    thumbnailStorageDir     = S.ThumbnailStorageDir,
+                    // Stamped on the sidecar so the companion's local regen
+                    // path can render altitude curves without contacting the
+                    // primary or NINA. (CompanionPluginSettings has no access
+                    // to NINA's profile.) Stored as session-time values rather
+                    // than live-profile reads — closer to "what the report
+                    // was generated with" anyway.
+                    observerLatitude       = observerLatitude,
+                    observerLongitude      = observerLongitude
                 };
                 var json = System.Text.Json.JsonSerializer.Serialize(settings,
                     new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });
@@ -835,7 +916,8 @@ namespace NINA.Plugin.NightSummary.Session {
                     var profileId  = profileService?.ActiveProfile?.Id.ToString();
                     var tsData     = FetchTsData(images, profileId);
                     var cumulative = db.GetCumulativeIntegrationByTarget(session.SessionId);
-                    var history    = BuildSessionHistory(db, images, session.SessionId);
+                    var history          = BuildSessionHistory(db, images, session.SessionId);
+                    var historyAggregate = BuildSessionHistoryAggregate(db, images, session.SessionId);
                     var (fovW, fovH) = ComputeCameraFov(session);
                     var (lat, lon)   = GetObserverCoords();
                     var reportData = new ReportData {
@@ -845,6 +927,7 @@ namespace NINA.Plugin.NightSummary.Session {
                         TsData                       = tsData,
                         CumulativeIntegrationSeconds = cumulative,
                         SessionHistory               = history,
+                        SessionHistoryAggregate      = historyAggregate,
                         CameraFovWidthDeg            = fovW,
                         CameraFovHeightDeg           = fovH,
                         ObserverLatitude             = lat,
@@ -887,7 +970,14 @@ namespace NINA.Plugin.NightSummary.Session {
                 onProgress?.Invoke(i + 1, sessions.Count);
 
                 var reportPath = Path.Combine(reportsDir, $"{session.SessionId}.html");
-                if (File.Exists(reportPath)) {
+                // Orphaned sessions (End Session instruction never ran — e.g. NINA crashed
+                // mid-sequence) never get skipped even if a report already exists: their
+                // SessionEnd is still unset, which hides them from the dashboard session
+                // list forever. Rebuilding finalizes SessionEnd (see FinalizeOrphanedSession)
+                // so they become visible instead of silently staying orphaned.
+                bool isOrphaned = session.SessionEnd <= session.SessionStart
+                    && session.SessionId != collector.GetCurrentSessionId();
+                if (File.Exists(reportPath) && !isOrphaned) {
                     skipped++;
                     continue;
                 }
@@ -990,35 +1080,36 @@ namespace NINA.Plugin.NightSummary.Session {
             return result;
         }
 
+        // Parallel to BuildSessionHistory: the all-prior-sessions roll-up (totals +
+        // per-filter breakdown) per target, for the report's Session History totals
+        // band. Skips targets with no prior frames (reader returns null).
+        private Dictionary<string, TargetSessionHistoryAggregate> BuildSessionHistoryAggregate(SessionDatabase database, List<ImageRecord> images, string sessionId) {
+            var result = new Dictionary<string, TargetSessionHistoryAggregate>(StringComparer.OrdinalIgnoreCase);
+            foreach (var targetName in images.Select(i => i.TargetName).Distinct()) {
+                // Lifetime scope (no session exclusion): the totals band headline
+                // must mean "everything, including this session" so it lines up
+                // with Target Scheduler's accepted totals. The generator derives
+                // the current session's share from data.Images for the
+                // "(Xh this session)" suffix.
+                var agg = database.GetSessionHistoryAggregateForTarget(targetName, "");
+                if (agg != null) result[targetName] = agg;
+            }
+            return result;
+        }
+
         /// <summary>
-        /// Queries the Target Scheduler database for grading results that overlap the session window
-        /// and batch-updates our Images rows. Matched on filter name + timestamp within ±60 s.
-        /// Entirely wrapped in try/catch — TS unavailability or schema differences are non-fatal.
+        /// Delegates to <see cref="TsGradingResync.Sync"/> with try/catch — session-end sync
+        /// is non-fatal (a TS schema mismatch or missing DB should not block report generation).
+        /// The dashboard's on-demand resync uses the same helper directly.
         /// </summary>
         private static void SyncTsGrading(SessionDatabase database, string sessionId,
                                            DateTime sessionStart, DateTime sessionEnd,
                                            List<ImageRecord> images) {
             try {
                 var tsDb = new TargetSchedulerDatabase();
-                if (!tsDb.IsAvailable) return;
-
-                var tsRows = tsDb.GetAcquiredImagesForDateRange(sessionStart, sessionEnd);
-                if (tsRows.Count == 0) return;
-
-                var updates = new List<(int imageId, int gradingStatus, string rejectReason)>();
-                foreach (var img in images) {
-                    // Match by filter (case-insensitive) and timestamp within ±60 s
-                    var match = tsRows.FirstOrDefault(r =>
-                        string.Equals(r.FilterName, img.Filter, StringComparison.OrdinalIgnoreCase) &&
-                        Math.Abs((r.AcquiredAt - img.Timestamp).TotalSeconds) <= 60);
-
-                    if (match != null)
-                        updates.Add((img.Id, match.GradingStatus, match.RejectReason));
-                }
-
-                if (updates.Count > 0) {
-                    database.UpdateImageGradingFromTs(sessionId, updates);
-                    Logger.Info($"NightSummary: Synced TS grading for {updates.Count}/{images.Count} images");
+                int changed = TsGradingResync.Sync(database, tsDb, sessionId, sessionStart, sessionEnd, images);
+                if (changed > 0) {
+                    Logger.Info($"NightSummary: Synced TS grading for {changed}/{images.Count} images");
                 }
             } catch (Exception ex) {
                 Logger.Warning($"NightSummary: TS grading sync failed (non-fatal). {ex.Message}");
@@ -1169,6 +1260,56 @@ namespace NINA.Plugin.NightSummary.Session {
         }
 
         /// <summary>
+        /// Persists a real SessionEnd for an orphaned session (End Session instruction never
+        /// ran — see OnSequenceFinished) whenever we build a report for it and it isn't the
+        /// session currently running. Without this, the session's SessionEnd stays unset
+        /// forever: reports keep rendering it as "in progress" against DateTime.Now, and the
+        /// dashboard session list (SessionEnd &gt; SessionStart) hides it even after a report
+        /// exists on disk. Marks the session AutoFinalized so callers know this end time is
+        /// an estimate, not a real End instruction run — this suppresses any automatic
+        /// delivery for it and keeps the report's "estimated" notice showing on every future
+        /// regenerate. Mutates session.SessionEnd/AutoFinalized in place so the rest of this
+        /// report build (log parsing, yield calc, header) uses the corrected state too.
+        /// </summary>
+        private void FinalizeOrphanedSession(SessionDatabase db, SessionRecord session, List<ImageRecord> images, List<SessionEvent> events) {
+            var endTime = OrphanedSessionFinalizer.ResolveEndTime(session, images, events, collector.GetCurrentSessionId());
+            if (endTime == null) return;
+
+            db.FinalizeSession(session.SessionId, endTime.Value, session.ReportSent, session.SkippedExposures, autoFinalized: true);
+            session.SessionEnd = endTime.Value;
+            session.AutoFinalized = true;
+            Logger.Info($"NightSummary: Finalized orphaned session {session.SessionId} (End Session instruction never ran) — end time set to {endTime.Value:o} from last recorded activity");
+        }
+
+        /// <summary>
+        /// Scans every session for orphans left over from a previous NINA run — most
+        /// commonly a crash before End Session could run — and finalizes each one via
+        /// FinalizeOrphanedSession above. Never sends anything; only fixes the stored
+        /// end time so the session stops rendering as "in progress" and stops being
+        /// hidden from the dashboard session list. Intended for a one-time pass at
+        /// plugin startup, before any new session could exist, so nothing currently
+        /// live is ever touched (FinalizeOrphanedSession already skips the live
+        /// session on its own, but there also can't be one yet at this point).
+        /// Returns how many sessions were recovered.
+        /// </summary>
+        public int FinalizeOrphanedSessions(string dbPath) {
+            if (!File.Exists(dbPath)) return 0;
+
+            var db = new SessionDatabase(dbPath);
+            int recovered = 0;
+            foreach (var session in db.GetAllSessions()) {
+                if (session.SessionEnd > session.SessionStart) continue;
+
+                var images = db.GetImagesForSession(session.SessionId);
+                var events = db.GetEventsForSession(session.SessionId);
+                var before = session.SessionEnd;
+                FinalizeOrphanedSession(db, session, images, events);
+                if (session.SessionEnd != before) recovered++;
+            }
+            return recovered;
+        }
+
+        /// <summary>
         /// Builds ReportData from a database without sending. Used by the preview window.
         /// </summary>
         public async Task<ReportData> BuildReportDataAsync(string dbPath, string sessionId = null, CancellationToken ct = default) {
@@ -1180,18 +1321,21 @@ namespace NINA.Plugin.NightSummary.Session {
             ct.ThrowIfCancellationRequested();
             var images     = db.GetImagesForSession(session.SessionId);
             var events     = db.GetEventsForSession(session.SessionId);
+            FinalizeOrphanedSession(db, session, images, events);
             var profileId  = profileService?.ActiveProfile?.Id.ToString();
             var tsData     = FetchTsData(images, profileId);
             var cumulative = db.GetCumulativeIntegrationByTarget(session.SessionId);
-            var history    = BuildSessionHistory(db, images, session.SessionId);
+            var history          = BuildSessionHistory(db, images, session.SessionId);
+            var historyAggregate = BuildSessionHistoryAggregate(db, images, session.SessionId);
             var (fovW, fovH) = ComputeCameraFov(session);
             var (lat, lon)   = GetObserverCoords();
 
             // Always re-parse timing events from logs (fast, < 1s) to pick up parser improvements.
             // Falls back to cached DB data only if the log file is no longer available.
             List<TimingEvent> timingEvents;
+            LogParseOutcome timingEventsOutcome;
             try {
-                timingEvents = NinaLogParser.Parse(session.SessionStart, session.SessionEnd, images.Count);
+                timingEvents = NinaLogParser.Parse(session.SessionStart, session.SessionEnd, images.Count, out timingEventsOutcome);
                 if (timingEvents.Any()) {
                     db.ClearTimingEvents(session.SessionId);
                     db.SaveTimingEvents(session.SessionId, timingEvents);
@@ -1199,6 +1343,7 @@ namespace NINA.Plugin.NightSummary.Session {
             } catch (Exception ex) {
                 Logger.Warning($"NightSummary: Log re-parse failed, using cached data — {ex.Message}");
                 timingEvents = null;
+                timingEventsOutcome = LogParseOutcome.NoLogFileFound;
             }
             if (timingEvents == null || !timingEvents.Any()) {
                 timingEvents = db.GetTimingEventsForSession(session.SessionId);
@@ -1211,6 +1356,7 @@ namespace NINA.Plugin.NightSummary.Session {
                 TsData                       = tsData,
                 CumulativeIntegrationSeconds = cumulative,
                 SessionHistory               = history,
+                SessionHistoryAggregate      = historyAggregate,
                 CameraFovWidthDeg            = fovW,
                 CameraFovHeightDeg           = fovH,
                 ObserverLatitude             = lat,
@@ -1218,7 +1364,8 @@ namespace NINA.Plugin.NightSummary.Session {
                 ActiveProfileId              = profileId,
                 SkippedExposures             = session.SkippedExposures,
                 Equipment                    = BuildEquipmentDictionary(session),
-                TimingEvents                 = timingEvents
+                TimingEvents                 = timingEvents,
+                TimingEventsUnavailableReason = timingEvents.Any() ? (LogParseOutcome?)null : timingEventsOutcome
             };
 
             // Try to load persisted live stack masters for this session
@@ -1256,7 +1403,8 @@ namespace NINA.Plugin.NightSummary.Session {
             var events   = reportData.Events ?? new List<Data.SessionEvent>();
 
             var totalExpSec  = images.Sum(i => i.ExposureDuration);
-            var accepted     = images.Count(i => i.Accepted);
+            // Pending counts as accepted — see ImageRecord.CountsAsAccepted.
+            var accepted     = images.Count(i => i.CountsAsAccepted);
             var hfrImages    = images.Where(i => i.HFR > 0).ToList();
             var rmsImages    = images.Where(i => i.GuidingRMSTotal > 0).ToList();
 

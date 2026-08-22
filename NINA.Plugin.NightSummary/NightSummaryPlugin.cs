@@ -28,8 +28,16 @@ namespace NINA.Plugin.NightSummary {
 
         private readonly SessionService sessionService;
         private readonly IProfileService profileService;
+        private PortBroadcaster portBroadcaster; // null if broker unavailable
         private readonly string liveDbPath;
         private DashboardServer dashboardServer;
+        // Optional second instance bound to ReadOnlyMirrorPort when EnableReadOnlyMirror
+        // is true. Reads the same DB and serves the same dashboard HTML but refuses every
+        // non-GET method at the server level (see DashboardServer ctor `readOnly` param)
+        // and tags responses with X-Read-Only + a data-readonly attribute on the HTML so
+        // CSS hides destructive UI. Designed to sit behind a user-managed reverse proxy
+        // (Caddy / nginx / CF Tunnel) or Tailscale Funnel for safe public exposure.
+        private DashboardServer readOnlyMirrorServer;
         private ObservableCollection<SessionRecord> _availableSessions = new ObservableCollection<SessionRecord>();
         public ObservableCollection<SessionRecord> AvailableSessions {
             get => _availableSessions;
@@ -78,15 +86,67 @@ namespace NINA.Plugin.NightSummary {
             set { _tsImportStatus = value; RaisePropertyChanged(); }
         }
 
+        // Set up the SQLitePCLRaw native-library resolver before any code path
+        // touches Microsoft.Data.Sqlite. The runtimes/win-x64/native convention
+        // doesn't fire in NINA's plugin AssemblyLoadContext (the host's runtime
+        // identifier resolver doesn't recurse into plugin folders), so the
+        // default Batteries_V2.Init throws TypeInitializationException with a
+        // "cannot load e_sqlite3" inner. Pointing the resolver at the plugin's
+        // own bundled native shim fixes it for every consumer in this assembly
+        // and every assembly it ProjectReferences (Dashboard).
+        static NightSummaryPlugin() {
+            try {
+                var pluginDir = System.IO.Path.GetDirectoryName(typeof(NightSummaryPlugin).Assembly.Location);
+                if (string.IsNullOrEmpty(pluginDir)) return;
+                var nativePath = System.IO.Path.Combine(pluginDir, "runtimes", "win-x64", "native", "e_sqlite3.dll");
+                if (!System.IO.File.Exists(nativePath)) return;
+                // The P/Invoke "e_sqlite3" import lives on the SQLitePCLRaw provider
+                // assembly — register the resolver there, not on Microsoft.Data.Sqlite.
+                var providerAsm = typeof(SQLitePCL.SQLite3Provider_e_sqlite3).Assembly;
+                System.Runtime.InteropServices.NativeLibrary.SetDllImportResolver(providerAsm,
+                    (name, asm, path) => name == "e_sqlite3"
+                        ? System.Runtime.InteropServices.NativeLibrary.Load(nativePath)
+                        : IntPtr.Zero);
+            } catch (Exception ex) {
+                // Static ctor must never throw — log via NINA Logger if available,
+                // and let Batteries_V2.Init take its normal failure path so the
+                // dashboard's existing error surface still triggers.
+                try { NINA.Core.Utility.Logger.Warning($"NightSummary: SQLite resolver setup failed — {ex.Message}"); } catch { }
+            }
+        }
+
         [ImportingConstructor]
         public NightSummaryPlugin(
             IProfileService profileService,
             IOptionsVM options,
             IImageSaveMediator imageSaveMediator,
-            SessionService sessionService) {
+            SessionService sessionService,
+            IMessageBroker messageBroker) {
 
             this.sessionService = sessionService;
             this.profileService = profileService;
+
+            // Port discovery for other plugins (Touch 'N' Stars): announce the
+            // dashboard port over the message broker, answer RequestPort probes.
+            // See PortBroadcaster / TNS_INTEGRATION.md.
+            try {
+                if (messageBroker != null) {
+                    portBroadcaster = new PortBroadcaster(messageBroker,
+                        Guid.Parse("682531D1-5A23-4627-B961-0794282ECB4E"));
+                }
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Port broadcaster init failed: {ex.Message}");
+            }
+
+            // Populate the pairing token lists once at startup so the Options
+            // panel renders the current state without waiting for a user action.
+            RefreshCompanionTokens();
+
+            // A companion claiming a token happens over HTTP on a server thread
+            // (pair endpoint -> CompanionTokenStore.MarkPaired), out of band from
+            // this panel — so without this the Paired/Unpaired lists only updated
+            // on the next NINA restart. Refresh live whenever the store changes.
+            CompanionTokenStore.Instance.Changed += OnCompanionTokensChanged;
 
             TestEmailCommand = new RelayCommand(async () => {
                 EmailTestStatus.Text = "";
@@ -251,6 +311,14 @@ namespace NINA.Plugin.NightSummary {
                     return;
                 }
                 await this.sessionService.SendFromDatabaseAsync(liveDbPath, SelectedSession.SessionId);
+                // Resend writes a fresh report.html; the dashboard's in-memory
+                // per-session caches (thumbnails, altitude chart, live stack) don't
+                // know that happened unless told, so a stale — sometimes permanently
+                // empty, if it was first queried before the report existed — cached
+                // answer would otherwise survive the resend. Both the primary
+                // dashboard and the read-only mirror keep independent caches.
+                dashboardServer?.InvalidateSessionCaches(SelectedSession.SessionId);
+                readOnlyMirrorServer?.InvalidateSessionCaches(SelectedSession.SessionId);
                 ResendStatus.Text = "✓ Sent";
             });
 
@@ -274,7 +342,11 @@ namespace NINA.Plugin.NightSummary {
 
                 var sessionIdToDelete = SelectedSession.SessionId;
                 try {
-                    await Task.Run(() => new SessionDatabase(liveDbPath).DeleteSession(sessionIdToDelete));
+                    // Same path as the TNS/dashboard delete endpoint: DB rows plus
+                    // on-disk artifacts (report HTML, livestack masters, thumbnails),
+                    // which the old direct SessionDatabase call left orphaned.
+                    var maintenance = new NinaSessionMaintenance(sessionService, liveDbPath, new NinaDashboardPaths());
+                    await Task.Run(() => maintenance.DeleteAsync(sessionIdToDelete));
                     LoadSessions();
                     ResendStatus.Text = "✓ Deleted";
                 } catch (Exception ex) {
@@ -391,6 +463,21 @@ namespace NINA.Plugin.NightSummary {
                 GenerateDashboardReportsStatus.Text = $"✓ Done — {generated} generated, {skipped} already existed, {failed} failed";
             });
 
+            // Finalize any sessions orphaned by a previous crash (End Session never ran)
+            // so they stop rendering as "in progress" and stop being hidden from the
+            // dashboard session list. Never sends a report -- just fixes the stored end
+            // time. Runs here, before LoadSessions() and the dashboard auto-start below,
+            // so both immediately reflect the corrected state instead of needing a manual
+            // regenerate later. Best-effort; never fail plugin init on a recovery error.
+            try {
+                if (File.Exists(liveDbPath)) {
+                    var recovered = sessionService.FinalizeOrphanedSessions(liveDbPath);
+                    if (recovered > 0) Logger.Info($"NightSummary: Recovered {recovered} session(s) orphaned by a previous crash");
+                }
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Startup orphaned-session recovery failed: {ex.Message}");
+            }
+
             LoadSessions();
             LoadFilterClassifications();
 
@@ -421,6 +508,14 @@ namespace NINA.Plugin.NightSummary {
                 Logger.Warning($"NightSummary: ThumbnailRetention startup pass failed: {ex.Message}");
             }
 
+            // Expose the stable integration surface for other in-process plugins
+            // (Touch 'N' Stars) to bind to instead of reflecting into internals.
+            try {
+                Integration.NightSummaryApi.Wire(sessionService, new NinaDashboardPaths(), GetProfileFilterNames);
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: NightSummaryApi wire-up failed: {ex.Message}");
+            }
+
             Logger.Info("NightSummary: Plugin initialized successfully");
         }
 
@@ -439,6 +534,8 @@ namespace NINA.Plugin.NightSummary {
                 Logger.Warning($"NightSummary: Error waiting for in-flight reports: {ex.Message}");
             }
             await StopLocalServerAsync();
+            portBroadcaster?.Dispose();
+            Integration.NightSummaryApi.Unwire();
             SettingsManager.Instance.Save();
             Logger.Info("NightSummary: Plugin torn down");
             await base.Teardown();
@@ -449,20 +546,111 @@ namespace NINA.Plugin.NightSummary {
             var paths = new NinaDashboardPaths();
             dashboardServer = new DashboardServer(
                 data:        new NinaDashboardDataSource(paths.DatabasePath),
-                settings:    new NinaPluginSettings(),
+                settings:    new NinaPluginSettings(profileService),
                 webAssets:   new EmbeddedWebAssets(),
                 externalLog: new NinaDashboardLogger(),
                 paths:       paths,
-                regen:       new NinaReportRegenerator(this.sessionService, paths.DatabasePath, paths.ReportsDir));
+                regen:       new NinaReportRegenerator(this.sessionService, paths.DatabasePath, paths.ReportsDir),
+                tokenStore:  CompanionTokenStore.Instance,
+                maintenance: new NinaSessionMaintenance(this.sessionService, paths.DatabasePath, paths));
             await dashboardServer.StartAsync(S.LocalServerPort);
             var notifyUrl = dashboardServer.TailscaleUrl ?? dashboardServer.ZeroTierUrl ?? dashboardServer.Url;
             Notification.ShowInformation($"Night Summary dashboard live: {notifyUrl}");
+
+            // Tell listening plugins (Touch 'N' Stars) where the dashboard lives.
+            if (portBroadcaster != null) {
+                try { await portBroadcaster.AnnounceAsync(S.LocalServerPort); }
+                catch (Exception ex) { Logger.Warning($"NightSummary: Port announce failed: {ex.Message}"); }
+            }
+
+            // If a read-only mirror port is configured, spin a second DashboardServer
+            // bound to that port with readOnly: true. Reads the same DB and same web
+            // assets — only difference is the constructor flag.
+            //
+            // Validation checks happen here at start time (not in the setter) so the
+            // user can adjust both fields atomically in Options without an intermediate
+            // invalid state triggering a failed start.
+            if (S.EnableReadOnlyMirror) {
+                await StartReadOnlyMirrorAsync(paths);
+            }
+        }
+
+        private async Task StartReadOnlyMirrorAsync(NinaDashboardPaths paths) {
+            if (readOnlyMirrorServer?.IsRunning == true) return;
+
+            int port = S.ReadOnlyMirrorPort;
+            // Surface validation failures as a toast in addition to the log line —
+            // users who fix the port in Options then hit Start expect feedback when
+            // the mirror still won't bind. The silent log-only path bit us when a
+            // tester picked a colliding port and saw nothing happen.
+            if (port < 1024 || port > 65535) {
+                var msg = $"Read-only mirror port {port} is out of range (1024-65535); mirror not started";
+                Logger.Warning("NightSummary: " + msg);
+                Notification.ShowError("Night Summary: " + msg);
+                return;
+            }
+            if (port == S.LocalServerPort) {
+                var msg = $"Read-only mirror port {port} matches main dashboard port ({S.LocalServerPort}); mirror not started. Pick a different port.";
+                Logger.Warning("NightSummary: " + msg);
+                Notification.ShowError("Night Summary: " + msg);
+                return;
+            }
+
+            try {
+                readOnlyMirrorServer = new DashboardServer(
+                    data:        new NinaDashboardDataSource(paths.DatabasePath),
+                    settings:    new NinaPluginSettings(profileService),
+                    webAssets:   new EmbeddedWebAssets(),
+                    externalLog: new NinaDashboardLogger(),
+                    paths:       paths,
+                    regen:       null,   // regen path is a no-op in read-only — POSTs are 403'd
+                    readOnly:    true);
+                await readOnlyMirrorServer.StartAsync(port);
+                Logger.Info($"NightSummary: Read-only mirror dashboard started on port {port}");
+                var mirrorUrl = readOnlyMirrorServer.TailscaleUrl ?? readOnlyMirrorServer.ZeroTierUrl ?? readOnlyMirrorServer.Url;
+                Notification.ShowInformation($"Night Summary read-only mirror live: {mirrorUrl}");
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Failed to start read-only mirror on port {port}: {ex.Message}");
+                Notification.ShowError($"Night Summary: Read-only mirror failed to bind on port {port}: {ex.Message}");
+                readOnlyMirrorServer = null;
+            }
+        }
+
+        // Stop + (optionally) restart the read-only mirror in response to a runtime toggle
+        // from Options. Called by the EnableReadOnlyMirror setter so users don't have to
+        // restart NINA to start/stop the mirror.
+        private async Task ApplyReadOnlyMirrorStateAsync() {
+            try {
+                if (readOnlyMirrorServer != null) {
+                    await readOnlyMirrorServer.StopAsync();
+                    readOnlyMirrorServer = null;
+                    Logger.Info("NightSummary: Read-only mirror stopped");
+                }
+                // Only start a fresh mirror if the user wants it enabled AND the main
+                // dashboard is already running — without the main server the mirror has
+                // nothing meaningful to mirror, and the auto-start path in
+                // StartLocalServerAsync will pick it up the next time the main starts.
+                if (S.EnableReadOnlyMirror && dashboardServer?.IsRunning == true) {
+                    await StartReadOnlyMirrorAsync(new NinaDashboardPaths());
+                }
+            } catch (Exception ex) {
+                Logger.Warning($"NightSummary: Failed to apply read-only mirror state change: {ex.Message}");
+            }
         }
 
         private async Task StopLocalServerAsync() {
+            if (readOnlyMirrorServer != null) {
+                try { await readOnlyMirrorServer.StopAsync(); } catch { /* logged at start path */ }
+                readOnlyMirrorServer = null;
+            }
             if (dashboardServer != null) {
                 await dashboardServer.StopAsync();
                 dashboardServer = null;
+                // Port 0 = installed but server not running, so a TNS probe can
+                // distinguish "enable the local server" from "NS not installed".
+                if (portBroadcaster != null) {
+                    try { await portBroadcaster.AnnounceAsync(0); } catch { }
+                }
             }
         }
 
@@ -654,6 +842,38 @@ namespace NINA.Plugin.NightSummary {
             set { S.LocalServerPort = value; SaveSettings(); RaisePropertyChanged(); }
         }
 
+        // Read-only mirror exposure. Toggling EnableReadOnlyMirror applies immediately
+        // via ApplyReadOnlyMirrorStateAsync — the user doesn't have to restart NINA.
+        // Port changes ALSO apply immediately (stop + restart on the new port) provided
+        // the mirror is enabled. The XAML TextBox commits on LostFocus (default trigger)
+        // so the setter doesn't fire mid-typing — keeps the rebind from chasing every
+        // keystroke from "8" to "8281".
+        public bool EnableReadOnlyMirror {
+            get => S.EnableReadOnlyMirror;
+            set {
+                if (S.EnableReadOnlyMirror == value) return;
+                S.EnableReadOnlyMirror = value;
+                SaveSettings();
+                RaisePropertyChanged();
+                _ = ApplyReadOnlyMirrorStateAsync();
+            }
+        }
+
+        public int ReadOnlyMirrorPort {
+            get => S.ReadOnlyMirrorPort;
+            set {
+                if (S.ReadOnlyMirrorPort == value) return;
+                S.ReadOnlyMirrorPort = value;
+                SaveSettings();
+                RaisePropertyChanged();
+                // Auto-restart when enabled so the user doesn't have to remember to
+                // toggle the checkbox off+on after changing the port. No-op when the
+                // mirror is disabled or the main dashboard isn't running — the next
+                // StartLocalServerAsync picks up the new port.
+                if (S.EnableReadOnlyMirror) _ = ApplyReadOnlyMirrorStateAsync();
+            }
+        }
+
         public bool IsLocalServerRunning => dashboardServer?.IsRunning == true;
         public string LocalServerUrl => dashboardServer?.Url ?? "";
         public string TailscaleUrl => dashboardServer?.TailscaleUrl ?? "";
@@ -676,6 +896,117 @@ namespace NINA.Plugin.NightSummary {
             if (!string.IsNullOrEmpty(ZeroTierUrl))
                 System.Windows.Clipboard.SetText(ZeroTierUrl);
         });
+
+        // ── Companion Pairing ────────────────────────────────────────────────
+        // New per-companion token flow. Replaces the shared CompanionApiKey
+        // long-term — see COMPANION_PAIRING_DESIGN.md. The plain token is
+        // shown ONCE at generation time and never re-read; only the SHA-256
+        // hash is persisted (in companion_tokens.json, separate from settings).
+
+        public ObservableCollection<CompanionTokenView> PairedCompanions { get; } = new();
+        public ObservableCollection<CompanionTokenView> UnpairedTokens   { get; } = new();
+
+        public bool HasPairedCompanions => PairedCompanions.Count > 0;
+        public bool HasUnpairedTokens   => UnpairedTokens.Count > 0;
+        public bool HasAnyTokens        => HasPairedCompanions || HasUnpairedTokens;
+
+        private string _newCompanionToken = "";
+        // Plain token, hyphenated for display. Bound read-only to a TextBox so
+        // the user can copy it. Cleared when the user dismisses the panel.
+        public string NewCompanionToken {
+            get => _newCompanionToken;
+            private set { _newCompanionToken = value; RaisePropertyChanged(); }
+        }
+
+        private bool _showNewCompanionToken;
+        // Drives a DataTrigger on the "new token" panel's Visibility. Flipped
+        // true by GenerateCompanionTokenCommand; flipped false by Dismiss.
+        public bool ShowNewCompanionToken {
+            get => _showNewCompanionToken;
+            private set { _showNewCompanionToken = value; RaisePropertyChanged(); }
+        }
+
+        public ICommand GenerateCompanionTokenCommand => new RelayCommand(async () => {
+            var plain = GeneratePairingTokenPlain();
+            CompanionTokenStore.Instance.Add(plain);   // fires Changed -> OnCompanionTokensChanged refreshes the lists
+            NewCompanionToken     = FormatPairingTokenForDisplay(plain);
+            ShowNewCompanionToken = true;
+            await Task.CompletedTask;
+        });
+
+        public ICommand CopyNewCompanionTokenCommand => new RelayCommand(async () => {
+            if (!string.IsNullOrEmpty(_newCompanionToken))
+                System.Windows.Clipboard.SetText(_newCompanionToken);
+            await Task.CompletedTask;
+        });
+
+        public ICommand DismissNewCompanionTokenCommand => new RelayCommand(async () => {
+            NewCompanionToken     = "";
+            ShowNewCompanionToken = false;
+            await Task.CompletedTask;
+        });
+
+        // Called by Options.xaml.cs revoke-button click handler with the
+        // entry's Id from the Button Tag. Confirms, revokes, refreshes.
+        public void RevokeCompanionToken(string id) {
+            if (string.IsNullOrEmpty(id)) return;
+            var entry = CompanionTokenStore.Instance.FindById(id);
+            var label = entry?.CompanionName ?? entry?.Name ?? id;
+            var ok = System.Windows.MessageBox.Show(
+                $"Revoke pairing for \"{label}\"?\n\nThe companion will stop syncing immediately and must be re-paired to resume.",
+                "Revoke Companion Token",
+                System.Windows.MessageBoxButton.OKCancel,
+                System.Windows.MessageBoxImage.Warning);
+            if (ok != System.Windows.MessageBoxResult.OK) return;
+            CompanionTokenStore.Instance.Revoke(id);   // fires Changed -> OnCompanionTokensChanged refreshes the lists
+        }
+
+        // Store-change handler. Fires from a server thread when a companion pairs
+        // or revokes over HTTP, or inline (UI thread) when the user generates /
+        // revokes here. Marshals to the UI thread because RefreshCompanionTokens
+        // edits ObservableCollections, which must happen on the dispatcher.
+        private void OnCompanionTokensChanged() {
+            var disp = System.Windows.Application.Current?.Dispatcher;
+            if (disp != null && !disp.CheckAccess())
+                disp.BeginInvoke(new Action(RefreshCompanionTokens));
+            else
+                RefreshCompanionTokens();
+        }
+
+        // Rebuilds PairedCompanions + UnpairedTokens from the store. Cheap —
+        // store reads from JSON once on first access and cache-hits after.
+        public void RefreshCompanionTokens() {
+            var entries = CompanionTokenStore.Instance.List();
+            PairedCompanions.Clear();
+            UnpairedTokens.Clear();
+            foreach (var e in entries) {
+                if (e.IsRevoked) continue;
+                var view = new CompanionTokenView(e);
+                if (e.IsPaired) PairedCompanions.Add(view);
+                else            UnpairedTokens.Add(view);
+            }
+            RaisePropertyChanged(nameof(HasPairedCompanions));
+            RaisePropertyChanged(nameof(HasUnpairedTokens));
+            RaisePropertyChanged(nameof(HasAnyTokens));
+        }
+
+        // 16-char token from base32 minus visually ambiguous characters
+        // (0/O/1/I/L). Matches COMPANION_PAIRING_DESIGN — 80 bits of entropy.
+        private static string GeneratePairingTokenPlain() {
+            const string alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+            var bytes = new byte[16];
+            System.Security.Cryptography.RandomNumberGenerator.Fill(bytes);
+            var sb = new System.Text.StringBuilder(16);
+            foreach (var b in bytes) sb.Append(alphabet[b % alphabet.Length]);
+            return sb.ToString();
+        }
+
+        // 4-4-4-4 with hyphens for human readability. The wizard strips
+        // hyphens on submit so either form works on paste.
+        private static string FormatPairingTokenForDisplay(string raw) {
+            if (raw == null || raw.Length != 16) return raw ?? "";
+            return $"{raw.Substring(0, 4)}-{raw.Substring(4, 4)}-{raw.Substring(8, 4)}-{raw.Substring(12, 4)}";
+        }
 
         public int ReportDetailLevel {
             get => S.ReportDetailLevel;
@@ -999,6 +1330,17 @@ namespace NINA.Plugin.NightSummary {
 
         private bool _loadingFilters;
 
+        // Active-profile filter wheel names, for NightSummaryApi.GetSettings' _filterNames.
+        private List<string> GetProfileFilterNames() {
+            try {
+                var filters = profileService?.ActiveProfile?.FilterWheelSettings?.FilterWheelFilters;
+                if (filters == null) return new List<string>();
+                return filters.Select(f => f?.Name).Where(n => !string.IsNullOrEmpty(n)).ToList();
+            } catch {
+                return new List<string>();
+            }
+        }
+
         private void LoadFilterClassifications() {
             try {
                 var filters = profileService?.ActiveProfile?.FilterWheelSettings?.FilterWheelFilters;
@@ -1159,6 +1501,41 @@ namespace NINA.Plugin.NightSummary {
     /// <summary>
     /// Minimal async-capable relay command for the Options UI.
     /// </summary>
+    /// <summary>
+    /// UI projection of <see cref="CompanionTokenEntry"/> for the Options
+    /// panel's pairing lists. Just enough fields for the row template +
+    /// a humanized "paired 2d ago" string; the Id is what the Revoke
+    /// button passes back through its Tag.
+    /// </summary>
+    public class CompanionTokenView {
+        public string Id            { get; }
+        public string DisplayName   { get; }
+        public string TimestampText { get; }
+        public bool   IsPaired      { get; }
+
+        public CompanionTokenView(CompanionTokenEntry e) {
+            Id          = e.Id;
+            IsPaired    = e.IsPaired;
+            DisplayName = !string.IsNullOrWhiteSpace(e.CompanionName) ? e.CompanionName!
+                        : !string.IsNullOrWhiteSpace(e.Name)          ? e.Name!
+                        : "(unnamed)";
+
+            if (e.IsPaired && e.PairedAt.HasValue) {
+                TimestampText = $"paired {Relative(DateTime.UtcNow - e.PairedAt.Value)}";
+            } else {
+                TimestampText = $"created {Relative(DateTime.UtcNow - e.CreatedAt)} — not yet claimed";
+            }
+        }
+
+        private static string Relative(TimeSpan span) {
+            if (span.TotalSeconds < 60) return "just now";
+            if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes}m ago";
+            if (span.TotalHours   < 24) return $"{(int)span.TotalHours}h ago";
+            if (span.TotalDays    < 30) return $"{(int)span.TotalDays}d ago";
+            return $"{(int)(span.TotalDays / 30)}mo ago";
+        }
+    }
+
     internal class RelayCommand : ICommand {
         private readonly Func<Task> execute;
         private bool isExecuting;

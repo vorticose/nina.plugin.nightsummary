@@ -770,5 +770,172 @@ namespace NINA.Plugin.NightSummary.Tests {
                 File.Delete(path);
             }
         }
+
+        // ── Bug fix: orphaned WaitForTimeSpan capped at requested duration ──
+        // Repro from 2026-05-18 session: WhenPlugin IfContainer / OnceSafe recovery flow
+        // started a `WaitForTimeSpan, Time: 60s`, then exited without logging a Finishing
+        // line for that child wait. Two hours later, an InterruptWhen → "Canceling sequence"
+        // flushed all pendingStarts at the cancel timestamp, emitting a phantom Wait event
+        // spanning 2h. Fix: cap WaitForTimeSpan duration at the requested seconds + grace
+        // on every emit path (Finishing/ERROR and cancellation flush).
+        [Fact]
+        public void WaitForTimeSpan_OrphanedThenCancelled_DurationCappedAtRequested() {
+            var log = @"----------------------------------------------------------------------
+--------------N.I.N.A. - Nighttime Imaging 'N' Astronomy--------------
+--------------------------Version 3.2.0.9001--------------------------
+-------------------------2026-03-30T21:21:13--------------------------
+----------------------------------------------------------------------
+2026-03-30T22:00:00.0000|INFO|SequenceItem.cs|Run|208|Starting Category: Utility, Item: WaitForTimeSpan, Time: 60s
+2026-03-30T23:30:00.0000|INFO|WhenCommon.cs|InterruptWhen|332|Canceling sequence...
+";
+            var path = Path.Combine(Path.GetTempPath(), $"wait_cancel_{Guid.NewGuid():N}.log");
+            File.WriteAllText(path, log);
+            try {
+                var wideEnd = new DateTime(2026, 3, 31, 0, 0, 0);
+                var events = NinaLogParser.ParseFile(path, SessionStart, wideEnd);
+                var waits = events.Where(e => e.EventType == "Wait").ToList();
+                Assert.Single(waits);
+                // Capped at 60s + 5s grace — NOT the 1h30m wall-clock gap to cancel.
+                Assert.InRange(waits[0].DurationSeconds, 60, 65);
+                Assert.Equal("Cancelled", waits[0].Details);
+            } finally {
+                File.Delete(path);
+            }
+        }
+
+        // Defence in depth: even if a Finishing line eventually arrives way after the
+        // requested wait, treat the gap as orphaning + late-finish noise and cap at
+        // requested + grace rather than crediting the full wall-clock span.
+        [Fact]
+        public void WaitForTimeSpan_LateFinish_DurationCappedAtRequested() {
+            var log = @"----------------------------------------------------------------------
+--------------N.I.N.A. - Nighttime Imaging 'N' Astronomy--------------
+--------------------------Version 3.2.0.9001--------------------------
+-------------------------2026-03-30T21:21:13--------------------------
+----------------------------------------------------------------------
+2026-03-30T22:00:00.0000|INFO|SequenceItem.cs|Run|208|Starting Category: Utility, Item: WaitForTimeSpan, Time: 30s
+2026-03-30T22:30:00.0000|INFO|SequenceItem.cs|Run|254|Finishing Category: Utility, Item: WaitForTimeSpan, Time: 30s
+";
+            var path = Path.Combine(Path.GetTempPath(), $"wait_late_{Guid.NewGuid():N}.log");
+            File.WriteAllText(path, log);
+            try {
+                var wideEnd = new DateTime(2026, 3, 30, 23, 0, 0);
+                var events = NinaLogParser.ParseFile(path, SessionStart, wideEnd);
+                var waits = events.Where(e => e.EventType == "Wait").ToList();
+                Assert.Single(waits);
+                // Capped at 30s + 5s grace — NOT the 30-minute wall-clock span.
+                Assert.InRange(waits[0].DurationSeconds, 30, 35);
+            } finally {
+                File.Delete(path);
+            }
+        }
+
+        // Mixed: one orphaned long wait + two normal short waits = three events totalling
+        // ~requested time, not many hours. Mirrors the field repro's category total.
+        [Fact]
+        public void WaitForTimeSpan_OrphanPlusShortWaits_AggregateMakesSense() {
+            var log = @"----------------------------------------------------------------------
+--------------N.I.N.A. - Nighttime Imaging 'N' Astronomy--------------
+--------------------------Version 3.2.0.9001--------------------------
+-------------------------2026-03-30T21:21:13--------------------------
+----------------------------------------------------------------------
+2026-03-30T22:00:00.0000|INFO|SequenceItem.cs|Run|208|Starting Category: Utility, Item: WaitForTimeSpan, Time: 60s
+2026-03-31T00:00:00.0000|INFO|WhenCommon.cs|InterruptWhen|332|Canceling sequence...
+2026-03-31T00:01:00.0000|INFO|SequenceItem.cs|Run|208|Starting Category: Utility, Item: WaitForTimeSpan, Time: 60s
+2026-03-31T00:02:00.0000|INFO|SequenceItem.cs|Run|254|Finishing Category: Utility, Item: WaitForTimeSpan, Time: 60s
+2026-03-31T00:03:00.0000|INFO|SequenceItem.cs|Run|208|Starting Category: Utility, Item: WaitForTimeSpan, Time: 60s
+2026-03-31T00:04:00.0000|INFO|SequenceItem.cs|Run|254|Finishing Category: Utility, Item: WaitForTimeSpan, Time: 60s
+";
+            var path = Path.Combine(Path.GetTempPath(), $"wait_mixed_{Guid.NewGuid():N}.log");
+            File.WriteAllText(path, log);
+            try {
+                var wideEnd = new DateTime(2026, 3, 31, 1, 0, 0);
+                var events = NinaLogParser.ParseFile(path, SessionStart, wideEnd);
+                var waits = events.Where(e => e.EventType == "Wait").ToList();
+                Assert.Equal(3, waits.Count);
+                var total = waits.Sum(w => w.DurationSeconds);
+                // Without the cap: total would be 2h+ thanks to the orphan.
+                // With the cap: ~65 + 60 + 60 = ~185s.
+                Assert.InRange(total, 180, 200);
+            } finally {
+                File.Delete(path);
+            }
+        }
+
+        // Reproduces the infinite-loop-sequence bug (2026-08-03 report): NINA's log
+        // filename embeds the process-start timestamp once, and a monthly/size rollover
+        // only appends a new period suffix to that same fixed timestamp — so two rotated
+        // files from one long-running process can share an identical filename timestamp
+        // even though they cover different time ranges. Selection must use actual
+        // filesystem creation time to tell them apart, not the filename alone.
+        [Fact]
+        public void FindLogFileByCreationTime_DisambiguatesRolledOverFilesWithSameFilenameTimestamp() {
+            var dir = Path.Combine(Path.GetTempPath(), $"ninalog_rollover_{Guid.NewGuid():N}");
+            Directory.CreateDirectory(dir);
+            try {
+                // Same leading 15-char timestamp on both — only the rollover period suffix differs.
+                var julyFile = Path.Combine(dir, "20260730-232737-3.2.0.9001.25568-202607.log");
+                var augFile = Path.Combine(dir, "20260730-232737-3.2.0.9001.25568-202608.log");
+                File.WriteAllText(julyFile, "july content");
+                File.WriteAllText(augFile, "august content");
+
+                File.SetCreationTimeUtc(julyFile, new DateTime(2026, 7, 30, 23, 27, 37, DateTimeKind.Utc));
+                File.SetCreationTimeUtc(augFile, new DateTime(2026, 8, 1, 0, 0, 49, DateTimeKind.Utc));
+
+                Assert.Equal(
+                    NinaLogParser.ExtractLogFileTimestamp(Path.GetFileNameWithoutExtension(julyFile)),
+                    NinaLogParser.ExtractLogFileTimestamp(Path.GetFileNameWithoutExtension(augFile)));
+
+                var sessionStart = new DateTime(2026, 8, 2, 0, 0, 0);
+                var chosen = NinaLogParser.FindLogFileByCreationTime(new[] { julyFile, augFile }, sessionStart);
+
+                Assert.Equal(augFile, chosen);
+            } finally {
+                Directory.Delete(dir, true);
+            }
+        }
+
+        [Fact]
+        public void FindLogFileByCreationTime_PicksLatestCreationAtOrBeforeSessionStart() {
+            var dir = Path.Combine(Path.GetTempPath(), $"ninalog_multi_{Guid.NewGuid():N}");
+            Directory.CreateDirectory(dir);
+            try {
+                var file1 = Path.Combine(dir, "a.log");
+                var file2 = Path.Combine(dir, "b.log");
+                var file3 = Path.Combine(dir, "c.log");
+                File.WriteAllText(file1, "1");
+                File.WriteAllText(file2, "2");
+                File.WriteAllText(file3, "3");
+
+                File.SetCreationTimeUtc(file1, new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc));
+                File.SetCreationTimeUtc(file2, new DateTime(2026, 8, 2, 0, 0, 0, DateTimeKind.Utc));
+                File.SetCreationTimeUtc(file3, new DateTime(2026, 8, 3, 0, 0, 0, DateTimeKind.Utc)); // after sessionStart
+
+                var sessionStart = new DateTime(2026, 8, 2, 12, 0, 0);
+                var chosen = NinaLogParser.FindLogFileByCreationTime(new[] { file1, file2, file3 }, sessionStart);
+
+                Assert.Equal(file2, chosen);
+            } finally {
+                Directory.Delete(dir, true);
+            }
+        }
+
+        [Fact]
+        public void FindLogFileByCreationTime_NoFileBeforeSessionStart_ReturnsNull() {
+            var dir = Path.Combine(Path.GetTempPath(), $"ninalog_none_{Guid.NewGuid():N}");
+            Directory.CreateDirectory(dir);
+            try {
+                var file1 = Path.Combine(dir, "a.log");
+                File.WriteAllText(file1, "1");
+                File.SetCreationTimeUtc(file1, new DateTime(2026, 8, 5, 0, 0, 0, DateTimeKind.Utc));
+
+                var sessionStart = new DateTime(2026, 8, 2, 0, 0, 0);
+                var chosen = NinaLogParser.FindLogFileByCreationTime(new[] { file1 }, sessionStart);
+
+                Assert.Null(chosen);
+            } finally {
+                Directory.Delete(dir, true);
+            }
+        }
     }
 }

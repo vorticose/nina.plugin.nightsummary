@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using NINA.Plugin.NightSummary.Dashboard.Abstractions;
 using NINA.Plugin.NightSummary.Dashboard.WebAssets;
 using NINA.Plugin.NightSummary.Server;
 
@@ -19,6 +21,16 @@ internal static class Program {
         "  --ts-api-host  Hostname/IP for TS API calls (default 'localhost'). Use rig's tailnet IP when TS runs on a remote box.\n" +
         "  --no-ts        Hide Target Scheduler from the dashboard (simulates a non-TS user). Overrides --ts-db / --ts-api-host.\n" +
         "  --empty-projects  TS available but 0 projects (simulates TS installed, never configured).\n" +
+        "  --companion-mode  Wire a stub ICompanionController so the dashboard renders its companion-mode\n" +
+        "                    UI (sync banner, pairing wizard, settings tab variants). Hot-reload of JS/CSS\n" +
+        "                    still works via --web. Useful for iterating on mobile UI bugs without\n" +
+        "                    rebuilding + redeploying the actual companion binary.\n" +
+        "  --fake-rigs N     Serve N rigs (\"Rig A\", \"Rig B\", ...) that all read the SAME --db/--data/\n" +
+        "                    --reports snapshot. Implies --companion-mode so the real rig switcher +\n" +
+        "                    multi-rig UI render. Dev-only stand-in for a second physical rig.\n" +
+        "  --fake-rigs-stagger N  With --fake-rigs, drop the newest N distinct session dates from\n" +
+        "                    each later rig (rig i drops i*N nights). Default 3. Pass 0 to clone\n" +
+        "                    the snapshot identically (the original --fake-rigs behaviour).\n" +
         "  --web          Source dir for HTML/CSS/JS (default <repo>/NINA.Plugin.NightSummary.Dashboard/Web)\n" +
         "  --data         Cache + logs root (default ./data under exe)\n" +
         "  --reports      Reports dir (default %LOCALAPPDATA%/NINA/NightSummary/reports)";
@@ -33,14 +45,68 @@ internal static class Program {
         Directory.CreateDirectory(opts.DataDir);
         Directory.CreateDirectory(opts.ReportsDir);
 
+        bool companionMode = opts.CompanionMode || opts.FakeRigs >= 2;
+
         var log      = new DevDashboardLogger();
         var paths    = new DevDashboardPaths(opts.DataDir, opts.ReportsDir, opts.DbPath);
         var data     = new DevDashboardDataSource(opts.DbPath, log, opts.TsDbPath, opts.TsApiHost, opts.NoTs, opts.EmptyProjects);
         var settings = new DevPluginSettings();
+        if (companionMode) settings.Mode = "companion";
         var assets   = new DiskWebAssets(opts.WebDir, opts.AssetsDir);
-        var regen    = new DevReportRegenerator();
+        // In companion mode the regenerator wires the same building blocks the
+        // real companion uses (CompanionReportDataBuilder + ReportGenerator)
+        // against the snapshot DB so devs can exercise the regen path without
+        // a real companion build. Primary mode has no SessionService here, so
+        // regen reports "not available" and the UI hides the button.
+        IReportRegenerator regen = companionMode
+            ? new DevCompanionRegenerator(opts.DbPath, settings, log, paths)
+            : new DevReportRegenerator();
 
-        var server = new DashboardServer(data, settings, assets, log, paths, regen);
+        // --companion-mode / --fake-rigs flip DashboardServer to its companion-mode
+        // wiring by passing a non-null ICompanionController. Stub returns plausible
+        // static values so the UI renders banners + sync status + pairing wizard
+        // pages without a real primary or sync engine. Keeps the hot-reload --web
+        // path intact for fast mobile UI iteration.
+        var companion = companionMode ? new DevStubCompanionController(log) : null;
+
+        // --pair-token wires a seeded in-memory token store so this harness acts
+        // as a REAL primary: a companion paired with that token can pull
+        // /api/export/*. Dev/E2E only.
+        var tokenStore = string.IsNullOrEmpty(opts.PairToken) ? null : new DevTokenStore(opts.PairToken);
+        if (tokenStore != null) log.Info($"Primary pairing ENABLED — seeded token '{opts.PairToken}' (dev export auth).");
+
+        DashboardServer server;
+        if (opts.FakeRigs >= 2) {
+            // Every fake rig shares the SAME data/paths/regen/companion instances —
+            // "duplicate the one real rig and show it twice" needs no second DB.
+            var backends = new List<RigBackend>();
+            for (int i = 0; i < opts.FakeRigs; i++) {
+                string letter = ((char)('A' + i)).ToString();
+                int drop = i * opts.FakeRigsStagger;
+                IDashboardDataSource rigData = drop > 0
+                    ? new DevStaggeredSessionSource(data, drop)
+                    : data;
+                backends.Add(new RigBackend("rig-" + letter.ToLowerInvariant(), "Rig " + letter, true,
+                    rigData, paths, regen, companion));
+            }
+            log.Info($"Fake multi-rig ENABLED — {opts.FakeRigs} rigs, stagger={opts.FakeRigsStagger} night(s)/rig, reading {opts.DbPath}");
+            server = new DashboardServer(
+                rigs:        new DevFakeMultiRigRegistry(backends),
+                settings:    settings,
+                webAssets:   assets,
+                externalLog: log,
+                tokenStore:  tokenStore);
+        } else {
+            server = new DashboardServer(
+                data:        data,
+                settings:    settings,
+                webAssets:   assets,
+                externalLog: log,
+                paths:       paths,
+                regen:       regen,
+                companion:   companion,
+                tokenStore:  tokenStore);
+        }
 
         log.Info($"DB:      {opts.DbPath} (exists: {File.Exists(opts.DbPath)})");
         if (opts.NoTs) {
@@ -83,6 +149,10 @@ internal static class Program {
         public string TsApiHost  { get; set; } = "localhost";
         public bool   NoTs           { get; set; } = false;
         public bool   EmptyProjects  { get; set; } = false;
+        public bool   CompanionMode  { get; set; } = false;
+        public int    FakeRigs        { get; set; } = 0;
+        public int    FakeRigsStagger { get; set; } = 3;
+        public string PairToken      { get; set; } = "";
         public string WebDir     { get; set; } = "";
         public string AssetsDir  { get; set; } = "";
         public string DataDir    { get; set; } = "";
@@ -109,6 +179,16 @@ internal static class Program {
                 case "--ts-api-host": opts.TsApiHost = next() ?? "localhost"; break;
                 case "--no-ts":          opts.NoTs          = true; break;
                 case "--empty-projects": opts.EmptyProjects  = true; break;
+                case "--companion-mode": opts.CompanionMode  = true; break;
+                case "--fake-rigs":
+                    if (!int.TryParse(next(), out var fr) || fr < 0) return null;
+                    opts.FakeRigs = fr;
+                    break;
+                case "--fake-rigs-stagger":
+                    if (!int.TryParse(next(), out var fs) || fs < 0) return null;
+                    opts.FakeRigsStagger = fs;
+                    break;
+                case "--pair-token":     opts.PairToken      = next() ?? ""; break;
                 case "--web":     opts.WebDir     = next() ?? ""; break;
                 case "--assets":  opts.AssetsDir  = next() ?? ""; break;
                 case "--data":    opts.DataDir    = next() ?? ""; break;

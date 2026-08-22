@@ -198,10 +198,8 @@ namespace NINA.Plugin.NightSummary.Tests {
             var session = Session(start, start.AddHours(6));
             var images  = TestDataFactory.MakeImageSeries(session.SessionId, 5);
 
-            SettingsManager.Instance.Current.ReportLightMode = true;
-            var lightResult = EventTimelineGenerator.GenerateTimeline(session, images, new List<SessionEvent>());
-            SettingsManager.Instance.Current.ReportLightMode = false;
-            var darkResult = EventTimelineGenerator.GenerateTimeline(session, images, new List<SessionEvent>());
+            var lightResult = EventTimelineGenerator.GenerateTimeline(session, images, new List<SessionEvent>(), light: true);
+            var darkResult  = EventTimelineGenerator.GenerateTimeline(session, images, new List<SessionEvent>(), light: false);
 
             Assert.Contains("#d0d4da", lightResult); // light idle bg
             Assert.Contains("#0f0f23", darkResult);  // dark idle bg
