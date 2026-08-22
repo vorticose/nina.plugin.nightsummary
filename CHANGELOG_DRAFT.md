@@ -1,8 +1,8 @@
 # Night Summary — Changelog
 
-<!-- v3.3.0 shipped 2026-08-08; see CHANGELOG.md. -->
+<!-- v3.3.1 frozen to CHANGELOG.md; ship pending. -->
 
-## v3.3.1 (unreleased)
+## v3.3.1
 
 ### New Features
 
