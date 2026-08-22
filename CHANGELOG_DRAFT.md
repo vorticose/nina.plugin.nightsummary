@@ -12,6 +12,7 @@
 
 - Fixed Projects-view thumbnails getting stuck on a placeholder if opened right after a session ends, before its report finished generating. Resend now also refreshes cached thumbnail, altitude, and live-stack data, same as Regenerate.
 - Fixed sessions that crashed before the End instruction staying hidden from the dashboard. Next NINA start recovers them with an estimated end time (marked Auto-recovered, no report auto-sent).
+- Fixed report footer always showing Night Summary v1.0.0 instead of the real plugin version.
 
 
 ## v3.2.0
