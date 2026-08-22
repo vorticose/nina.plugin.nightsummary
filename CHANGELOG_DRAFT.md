@@ -11,6 +11,7 @@
 ### Improvements
 
 - Companion update banner now rechecks every few hours and when you return to a hidden tab, so a dashboard left open still nags. GitHub check failures retry in minutes instead of being cached for a day. Settings has a Check for updates button.
+- Mosaic FOV overlays use plate-solve position angle when present, then rotator angle, then the other panels in the project. Panels with no plate solve were drawing unrotated.
 
 ### Candidates
 

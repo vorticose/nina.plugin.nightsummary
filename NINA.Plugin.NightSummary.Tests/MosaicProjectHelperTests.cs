@@ -53,5 +53,37 @@ namespace NINA.Plugin.NightSummary.Tests {
             Assert.Equal("Mosaic", MosaicProjectHelper.SuggestName(null));
             Assert.Equal("Mosaic", MosaicProjectHelper.SuggestName(System.Array.Empty<string>()));
         }
+
+        [Fact]
+        public void EffectiveFovAngle_prefers_plate_solve() {
+            Assert.Equal(100.0, MosaicProjectHelper.EffectiveFovAngle(100.0, 45.0, 280.0));
+        }
+
+        [Fact]
+        public void EffectiveFovAngle_uses_ts_rotation_when_no_plate_solve() {
+            Assert.Equal(45.0, MosaicProjectHelper.EffectiveFovAngle(null, 45.0, 280.0));
+        }
+
+        [Fact]
+        public void EffectiveFovAngle_uses_rotator_when_ts_rotation_is_zero() {
+            Assert.Equal(280.5, MosaicProjectHelper.EffectiveFovAngle(null, 0.0, 280.5));
+        }
+
+        [Fact]
+        public void EffectiveFovAngle_null_when_nothing_known() {
+            Assert.Null(MosaicProjectHelper.EffectiveFovAngle(null, 0.0, null));
+        }
+
+        [Fact]
+        public void CoalesceSiblingAngles_fills_nulls_from_known_panel() {
+            var angles = new double?[] { 100.0, null, null, null };
+            MosaicProjectHelper.CoalesceSiblingAngles(angles);
+            Assert.Equal(new double?[] { 100.0, 100.0, 100.0, 100.0 }, angles);
+        }
+
+        [Fact]
+        public void CircularMedian_unwraps_across_360() {
+            Assert.Equal(10.0, MosaicProjectHelper.CircularMedian(new[] { 350.0, 10.0, 20.0 }), 1);
+        }
     }
 }

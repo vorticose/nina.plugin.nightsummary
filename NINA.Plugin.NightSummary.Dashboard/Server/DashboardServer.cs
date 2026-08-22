@@ -1897,6 +1897,65 @@ namespace NINA.Plugin.NightSummary.Server {
             return list;
         }
 
+        private void LoadLatestOrientations(
+            Dictionary<string, double> platePa,
+            Dictionary<string, double> rotator) {
+            if (platePa == null || rotator == null || !File.Exists(dbPath)) return;
+            try {
+                using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath};");
+                conn.Open();
+                const string sql = @"
+                    SELECT TargetName, PositionAngle, RotatorPosition
+                    FROM Images
+                    WHERE TargetName IS NOT NULL AND TargetName != ''
+                    ORDER BY TargetName, Timestamp DESC";
+                using var cmd = new Microsoft.Data.Sqlite.SqliteCommand(sql, conn);
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read()) {
+                    var tname = reader["TargetName"]?.ToString();
+                    if (string.IsNullOrEmpty(tname)) continue;
+                    if (!platePa.ContainsKey(tname) && reader["PositionAngle"] != DBNull.Value)
+                        platePa[tname] = Convert.ToDouble(reader["PositionAngle"]);
+                    if (!rotator.ContainsKey(tname) && reader["RotatorPosition"] != DBNull.Value)
+                        rotator[tname] = Convert.ToDouble(reader["RotatorPosition"]);
+                }
+            } catch (Exception ex) {
+                log?.Warn($"LoadLatestOrientations failed: {ex.Message}");
+            }
+        }
+
+        private Dictionary<string, double?> ResolveFovAngles(
+            TsProjectInfo proj,
+            Dictionary<string, double> platePa,
+            Dictionary<string, double> rotator,
+            Dictionary<string, TargetDetail> nsByName) {
+            var result = new Dictionary<string, double?>(StringComparer.OrdinalIgnoreCase);
+            void Consider(string name, double tsRotation) {
+                if (string.IsNullOrEmpty(name) || result.ContainsKey(name)) return;
+                double? pa  = platePa != null && platePa.TryGetValue(name, out var p) ? p : (double?)null;
+                double? rot = rotator != null && rotator.TryGetValue(name, out var r) ? r : (double?)null;
+                result[name] = MosaicProjectHelper.EffectiveFovAngle(pa, tsRotation, rot);
+            }
+
+            foreach (var tgt in proj.Targets ?? new List<TsProjectTarget>())
+                Consider(tgt.Name, tgt.Rotation);
+
+            var guid = proj.Guid ?? "";
+            foreach (var kv in GetProjectAssignments()) {
+                if (!(kv.Value ?? new List<string>()).Any(g => string.Equals(g, guid, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+                var display = nsByName != null && nsByName.TryGetValue(kv.Key ?? "", out var td)
+                    ? td.TargetName : kv.Key;
+                Consider(display, 0);
+            }
+
+            var keys = result.Keys.ToList();
+            var vals = keys.Select(k => result[k]).ToList();
+            MosaicProjectHelper.CoalesceSiblingAngles(vals);
+            for (int i = 0; i < keys.Count; i++) result[keys[i]] = vals[i];
+            return result;
+        }
+
         private Dictionary<string, TargetDetail> NsTargetLookup() {
             var map = new Dictionary<string, TargetDetail>(StringComparer.OrdinalIgnoreCase);
             if (!File.Exists(dbPath)) return map;
@@ -2694,35 +2753,17 @@ namespace NINA.Plugin.NightSummary.Server {
 
             // Load NS sessions for camera + FOV data
             SessionRecord[] allSessions = Array.Empty<SessionRecord>();
-            Dictionary<string, double?> latestPaByTarget = new Dictionary<string, double?>(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, double> latestPaByTarget  = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, double> latestRotByTarget = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
             if (File.Exists(dbPath)) {
                     allSessions = DbSessions().ToArray();
-
-                // Query the most recent plate-solve PositionAngle per target name
-                using (var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath};"))
-                {
-                    conn.Open();
-                    string paSql = @"
-                        SELECT TargetName, PositionAngle
-                        FROM Images
-                        WHERE TargetName IS NOT NULL AND TargetName != ''
-                          AND PositionAngle IS NOT NULL
-                        ORDER BY TargetName, Timestamp DESC";
-                    using (var cmd = new Microsoft.Data.Sqlite.SqliteCommand(paSql, conn))
-                    using (var reader = cmd.ExecuteReader()) {
-                        while (reader.Read()) {
-                            var tname = reader["TargetName"].ToString();
-                            if (!latestPaByTarget.ContainsKey(tname)) {
-                                latestPaByTarget[tname] = Convert.ToDouble(reader["PositionAngle"]);
-                            }
-                        }
-                    }
-                }
+                LoadLatestOrientations(latestPaByTarget, latestRotByTarget);
             }
 
             // Session map by SessionId for quick camera-field lookup
             var sessionById = allSessions.ToDictionary(s => s.SessionId, StringComparer.OrdinalIgnoreCase);
             var nsByName = NsTargetLookup();
+            var fovAngleByName = ResolveFovAngles(proj, latestPaByTarget, latestRotByTarget, nsByName);
 
             // Status override for this project
             var statusOverrides = GetTsStatusOverrides();
@@ -2811,8 +2852,8 @@ namespace NINA.Plugin.NightSummary.Server {
                     fovHeightDeg     = Math.Round(bestSession.CamYSize * pixelScale.Value / 3600.0, 4);
                 }
 
-                // Most recent plate-solve position angle for this target
-                latestPaByTarget.TryGetValue(tgt.Name ?? "", out var plateAngle);
+                fovAngleByName.TryGetValue(tgt.Name ?? "", out var plateAngle);
+                double? rotatorPos = latestRotByTarget.TryGetValue(tgt.Name ?? "", out var rp) ? rp : (double?)null;
                 double panelRa  = tgt.RA;
                 double panelDec = tgt.Dec;
                 if (panelRa == 0 && panelDec == 0 && nsByName.TryGetValue(tgt.Name ?? "", out var nsTgt)) {
@@ -2827,6 +2868,7 @@ namespace NINA.Plugin.NightSummary.Server {
                     ra               = panelRa,
                     dec              = panelDec,
                     rotation         = tgt.Rotation,
+                    rotatorPosition  = rotatorPos,
                     positionAngle    = plateAngle,
                     totalIntegrationHours = Math.Round(totalSec / 3600.0, 2),
                     acceptedFrames   = totFrames,
@@ -2928,7 +2970,8 @@ namespace NINA.Plugin.NightSummary.Server {
                     caFovH  = Math.Round(caBest.CamYSize * caScale.Value / 3600.0, 4);
                 }
 
-                latestPaByTarget.TryGetValue(displayName, out var caPlateAngle);
+                fovAngleByName.TryGetValue(displayName, out var caPlateAngle);
+                double? caRotator = latestRotByTarget.TryGetValue(displayName, out var caRp) ? caRp : (double?)null;
 
                 panels.Add(new {
                     guid             = nativeTarget?.Guid,
@@ -2941,6 +2984,7 @@ namespace NINA.Plugin.NightSummary.Server {
                                          ? nativeTarget.Dec
                                          : (nsByName.TryGetValue(displayName, out var caNsDec) ? caNsDec.DecDegrees : 0),
                     rotation         = nativeTarget?.Rotation ?? 0,
+                    rotatorPosition  = caRotator,
                     positionAngle    = caPlateAngle,
                     totalIntegrationHours = Math.Round(caTotalSec / 3600.0, 2),
                     acceptedFrames   = caTotFrames,

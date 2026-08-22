@@ -3057,17 +3057,28 @@ function loadMosaicThumbnail(panels, wrapOrBackdrop, projectGuid) {
                  'rgba(239,154,154,0.9)','rgba(206,147,216,0.9)','rgba(128,222,234,0.9)',
                  'rgba(188,170,164,0.9)','rgba(176,190,197,0.9)'];
 
+  function panelFovAngle(p) {
+    if (p.positionAngle != null) return p.positionAngle;
+    if (p.rotation) return p.rotation;
+    if (p.rotatorPosition != null) return p.rotatorPosition;
+    return null;
+  }
+  var knownAngles = validPanels.map(panelFovAngle).filter(function(a) { return a != null; });
+  var siblingPa = knownAngles.length ? knownAngles[0] : 0;
+
   // Precompute image-space geometry for every panel
   var pGeo = validPanels.map(function(p, i) {
     // Use trailing number from TS target name (e.g. "Spaghetti Nebula Panel 2" → 2),
     // fall back to sequential 1-based index.
     var nameMatch = p.name && p.name.match(/(\d+)\s*$/);
+    var pa = panelFovAngle(p);
+    if (pa == null) pa = siblingPa;
     return {
       cx:    imgSize / 2 + (-(p.ra * 15 - centerRA) * cosCenter / scale),
       cy:    imgSize / 2 + (-(p.dec - centerDec) / scale),
       wPx:   p.fovWidthDeg  != null ? p.fovWidthDeg  / scale : 0,
       hPx:   p.fovHeightDeg != null ? p.fovHeightDeg / scale : 0,
-      pa:    p.positionAngle != null ? p.positionAngle : (p.rotation || 0),
+      pa:    pa,
       label: nameMatch ? nameMatch[1] : String(i + 1)
     };
   });
