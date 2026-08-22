@@ -1531,18 +1531,23 @@ namespace NINA.Plugin.NightSummary.Server {
                 done?.Invoke(400, null);
                 return;
             }
-            if (!TsAvailable()) {
-                await WriteJson(res, 404, new { error = "Target Scheduler not installed" });
-                done?.Invoke(404, "no TS");
+            var projForFrames = LoadAllProjects().FirstOrDefault(p =>
+                string.Equals(p.Guid, projectGuid, StringComparison.OrdinalIgnoreCase));
+            if (projForFrames == null) {
+                await WriteJson(res, 404, new { error = "Project not found" });
+                done?.Invoke(404, "no project");
                 return;
             }
 
-            var targetNames = TsProjects()
-                .Where(p => string.Equals(p.Guid, projectGuid, StringComparison.OrdinalIgnoreCase))
-                .SelectMany(p => p.Targets ?? new List<TsProjectTarget>())
+            var targetNames = (projForFrames.Targets ?? new List<TsProjectTarget>())
                 .Select(t => t.Name)
                 .Where(n => !string.IsNullOrEmpty(n))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in GetProjectAssignments()) {
+                if ((kv.Value ?? new List<string>()).Any(g => string.Equals(g, projectGuid, StringComparison.OrdinalIgnoreCase))
+                    && !string.IsNullOrEmpty(kv.Key))
+                    targetNames.Add(kv.Key);
+            }
             if (targetNames.Count == 0) {
                 await WriteJson(res, 200, Array.Empty<object>());
                 done?.Invoke(200, $"project {projectGuid} has no targets");
@@ -1841,17 +1846,96 @@ namespace NINA.Plugin.NightSummary.Server {
         private const string TsTargetExclusionsKey   = "ts.targetExclusions";
         private const string TsCustomProjectsKey     = "ts.customProjects";
 
-        private record CustomProjectRecord(string Guid, string Name);
+        private sealed class CustomProjectRecord {
+            public string Guid { get; set; }
+            public string Name { get; set; }
+            public bool IsMosaic { get; set; }
+        }
+
+        private static readonly JsonSerializerOptions CustomProjectJson = new JsonSerializerOptions {
+            PropertyNameCaseInsensitive = true
+        };
 
         private List<CustomProjectRecord> GetCustomProjects() {
             var raw = GetDashboardMeta(TsCustomProjectsKey);
             if (string.IsNullOrEmpty(raw)) return new List<CustomProjectRecord>();
-            try { return JsonSerializer.Deserialize<List<CustomProjectRecord>>(raw) ?? new List<CustomProjectRecord>(); }
+            try { return JsonSerializer.Deserialize<List<CustomProjectRecord>>(raw, CustomProjectJson) ?? new List<CustomProjectRecord>(); }
             catch { return new List<CustomProjectRecord>(); }
         }
 
         private void SaveCustomProjects(List<CustomProjectRecord> projects) {
             SetDashboardMeta(TsCustomProjectsKey, JsonSerializer.Serialize(projects));
+        }
+
+        private void MergeCustomProjects(List<TsProjectInfo> list) {
+            if (list == null) return;
+            foreach (var cp in GetCustomProjects()) {
+                if (string.IsNullOrEmpty(cp.Guid)) continue;
+                if (list.Any(p => string.Equals(p.Guid, cp.Guid, StringComparison.OrdinalIgnoreCase))) continue;
+                list.Add(new TsProjectInfo {
+                    Guid     = cp.Guid,
+                    Name     = cp.Name,
+                    State    = "Active",
+                    IsMosaic = cp.IsMosaic
+                });
+            }
+        }
+
+        // TS projects when available, plus dashboard-created custom projects.
+        // Custom mosaics must work even when Target Scheduler is not installed.
+        private List<TsProjectInfo> LoadAllProjects() {
+            var list = new List<TsProjectInfo>();
+            if (TsAvailable()) {
+                try {
+                    var ts = TsProjects();
+                    if (ts != null) list.AddRange(ts);
+                } catch (Exception ex) {
+                    log?.Warn($"TS GetAllProjects failed (continuing with custom projects): {ex.Message}");
+                }
+            }
+            MergeCustomProjects(list);
+            return list;
+        }
+
+        private Dictionary<string, TargetDetail> NsTargetLookup() {
+            var map = new Dictionary<string, TargetDetail>(StringComparer.OrdinalIgnoreCase);
+            if (!File.Exists(dbPath)) return map;
+            try {
+                foreach (var td in DbTargetDetails()) {
+                    if (!string.IsNullOrEmpty(td.TargetName))
+                        map[td.TargetName] = td;
+                }
+            } catch { }
+            return map;
+        }
+
+        private List<(string Name, double RaHours, double Dec)> GetProjectPanelCoords(TsProjectInfo proj) {
+            var result = new List<(string, double, double)>();
+            if (proj == null) return result;
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var ns = NsTargetLookup();
+
+            void TryAdd(string name, double ra, double dec) {
+                if (string.IsNullOrEmpty(name) || !seen.Add(name)) return;
+                if (ra == 0 && dec == 0 && ns.TryGetValue(name, out var td)) {
+                    ra  = td.RaHours;
+                    dec = td.DecDegrees;
+                }
+                if (ra == 0 && dec == 0) return;
+                result.Add((name, ra, dec));
+            }
+
+            foreach (var t in proj.Targets)
+                TryAdd(t.Name, t.RA, t.Dec);
+
+            var guid = proj.Guid ?? "";
+            foreach (var kv in GetProjectAssignments()) {
+                if (!(kv.Value ?? new List<string>()).Any(g => string.Equals(g, guid, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+                var display = ns.TryGetValue(kv.Key ?? "", out var td) ? td.TargetName : kv.Key;
+                TryAdd(display, 0, 0);
+            }
+            return result;
         }
 
         private Dictionary<string, string> GetTsStatusOverrides() {
@@ -2213,16 +2297,19 @@ namespace NINA.Plugin.NightSummary.Server {
                 }
             }
 
-            // Merge in NS custom projects (not from TS DB)
+            // Merge in NS custom projects (not from TS DB). These work without TS.
             var customProjectsList = GetCustomProjects();
             var customGuids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            if (tsStatus == "available") {
-                foreach (var cp in customProjectsList) {
-                    if (string.IsNullOrEmpty(cp.Guid)) continue;
-                    if (tsProjects == null) tsProjects = new List<TsProjectInfo>();
-                    tsProjects.Add(new TsProjectInfo { Guid = cp.Guid, Name = cp.Name, State = "Active", IsMosaic = false });
-                    customGuids.Add(cp.Guid);
-                }
+            foreach (var cp in customProjectsList) {
+                if (string.IsNullOrEmpty(cp.Guid)) continue;
+                if (tsProjects == null) tsProjects = new List<TsProjectInfo>();
+                tsProjects.Add(new TsProjectInfo {
+                    Guid     = cp.Guid,
+                    Name     = cp.Name,
+                    State    = "Active",
+                    IsMosaic = cp.IsMosaic
+                });
+                customGuids.Add(cp.Guid);
             }
 
             // Build a case-insensitive lookup from target name → (project, target)
@@ -2427,7 +2514,7 @@ namespace NINA.Plugin.NightSummary.Server {
                                 state           = "Active",
                                 stateSource     = "raw",
                                 priority        = (string)null,
-                                isMosaic        = false,
+                                isMosaic        = cp.IsMosaic,
                                 createDate      = (string)null,
                                 activeDate      = (string)null,
                                 inactiveDate    = (string)null,
@@ -2595,24 +2682,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 return;
             }
 
-            // TS must be available
-            if (!TsAvailable()) {
-                await WriteJson(res, 404, new { error = "Target Scheduler not available" });
-                done?.Invoke(404, null);
-                return;
-            }
-
-            List<TsProjectInfo> allProjects;
-            try {
-                allProjects = TsProjects();
-            } catch (Exception ex) {
-                await WriteJson(res, 500, new { error = "Internal server error" });
-                done?.Invoke(500, ex.Message);
-                return;
-            }
-            foreach (var cp in GetCustomProjects())
-                if (!string.IsNullOrEmpty(cp.Guid) && !allProjects.Any(p => string.Equals(p.Guid, cp.Guid, StringComparison.OrdinalIgnoreCase)))
-                    allProjects.Add(new TsProjectInfo { Guid = cp.Guid, Name = cp.Name, State = "Active", IsMosaic = false });
+            var allProjects = LoadAllProjects();
 
             var proj = allProjects.FirstOrDefault(p =>
                 string.Equals(p.Guid, projectGuid, StringComparison.OrdinalIgnoreCase));
@@ -2652,6 +2722,7 @@ namespace NINA.Plugin.NightSummary.Server {
 
             // Session map by SessionId for quick camera-field lookup
             var sessionById = allSessions.ToDictionary(s => s.SessionId, StringComparer.OrdinalIgnoreCase);
+            var nsByName = NsTargetLookup();
 
             // Status override for this project
             var statusOverrides = GetTsStatusOverrides();
@@ -2742,13 +2813,19 @@ namespace NINA.Plugin.NightSummary.Server {
 
                 // Most recent plate-solve position angle for this target
                 latestPaByTarget.TryGetValue(tgt.Name ?? "", out var plateAngle);
+                double panelRa  = tgt.RA;
+                double panelDec = tgt.Dec;
+                if (panelRa == 0 && panelDec == 0 && nsByName.TryGetValue(tgt.Name ?? "", out var nsTgt)) {
+                    panelRa  = nsTgt.RaHours;
+                    panelDec = nsTgt.DecDegrees;
+                }
 
                 panels.Add(new {
                     guid             = tgt.Guid,
                     name             = tgt.Name,
                     active           = tgt.Active,
-                    ra               = tgt.RA,
-                    dec              = tgt.Dec,
+                    ra               = panelRa,
+                    dec              = panelDec,
                     rotation         = tgt.Rotation,
                     positionAngle    = plateAngle,
                     totalIntegrationHours = Math.Round(totalSec / 3600.0, 2),
@@ -2795,12 +2872,8 @@ namespace NINA.Plugin.NightSummary.Server {
 
             // Proper-case name lookup: projectAssignments keys are lowercase, so fall back
             // to the NS Images table to recover the original casing for custom projects.
-            var properNameByLower = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            if (haveDb) {
-                foreach (var td in DbTargetDetails())
-                    if (!string.IsNullOrEmpty(td.TargetName))
-                        properNameByLower[td.TargetName.ToLowerInvariant()] = td.TargetName;
-            }
+            var properNameByLower = nsByName.ToDictionary(
+                kv => kv.Key, kv => kv.Value.TargetName, StringComparer.OrdinalIgnoreCase);
 
             foreach (var kv in projectAssignments) {
                 var tgtKey = kv.Key ?? "";
@@ -2861,8 +2934,12 @@ namespace NINA.Plugin.NightSummary.Server {
                     guid             = nativeTarget?.Guid,
                     name             = displayName,
                     active           = true,
-                    ra               = nativeTarget?.RA ?? 0,
-                    dec              = nativeTarget?.Dec ?? 0,
+                    ra               = (nativeTarget != null && !(nativeTarget.RA == 0 && nativeTarget.Dec == 0))
+                                         ? nativeTarget.RA
+                                         : (nsByName.TryGetValue(displayName, out var caNs) ? caNs.RaHours : 0),
+                    dec              = (nativeTarget != null && !(nativeTarget.RA == 0 && nativeTarget.Dec == 0))
+                                         ? nativeTarget.Dec
+                                         : (nsByName.TryGetValue(displayName, out var caNsDec) ? caNsDec.DecDegrees : 0),
                     rotation         = nativeTarget?.Rotation ?? 0,
                     positionAngle    = caPlateAngle,
                     totalIntegrationHours = Math.Round(caTotalSec / 3600.0, 2),
@@ -2905,6 +2982,8 @@ namespace NINA.Plugin.NightSummary.Server {
             double? projectPercent = totalDesiredProj > 0
                 ? Math.Round(Math.Min(100.0, (totalAcceptedProj * 100.0) / totalDesiredProj), 1)
                 : (double?)null;
+            bool customGuidsForProj = GetCustomProjects().Any(cp =>
+                string.Equals(cp.Guid, proj.Guid, StringComparison.OrdinalIgnoreCase));
 
             var result = new {
                 project = new {
@@ -2914,6 +2993,7 @@ namespace NINA.Plugin.NightSummary.Server {
                     state           = effectiveState,
                     rawState        = proj.State,
                     isMosaic        = proj.IsMosaic,
+                    isCustom        = customGuidsForProj,
                     priority        = proj.Priority,
                     createDate      = proj.CreateDate?.ToString("o"),
                     activeDate      = proj.ActiveDate?.ToString("o"),
@@ -2945,24 +3025,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 return;
             }
 
-            if (!TsAvailable()) {
-                await WriteJson(res, 404, new { error = "Target Scheduler not available" });
-                done?.Invoke(404, null);
-                return;
-            }
-
-            List<TsProjectInfo> allProjects;
-            try {
-                allProjects = TsProjects();
-            } catch (Exception ex) {
-                await WriteJson(res, 500, new { error = "Internal server error" });
-                done?.Invoke(500, ex.Message);
-                return;
-            }
-            foreach (var cp in GetCustomProjects())
-                if (!string.IsNullOrEmpty(cp.Guid) && !allProjects.Any(p => string.Equals(p.Guid, cp.Guid, StringComparison.OrdinalIgnoreCase)))
-                    allProjects.Add(new TsProjectInfo { Guid = cp.Guid, Name = cp.Name, State = "Active", IsMosaic = false });
-
+            var allProjects = LoadAllProjects();
             var proj = allProjects.FirstOrDefault(p =>
                 string.Equals(p.Guid, projectGuid, StringComparison.OrdinalIgnoreCase));
             if (proj == null) {
@@ -2983,10 +3046,12 @@ namespace NINA.Plugin.NightSummary.Server {
             }
             // Also include cross-assigned targets (projectAssignments pointing here)
             var assignments = GetProjectAssignments();
+            var nsNames = NsTargetLookup();
             foreach (var kv in assignments) {
                 if (panelNames.Any(n => string.Equals(n, kv.Key, StringComparison.OrdinalIgnoreCase))) continue;
                 if ((kv.Value ?? new List<string>()).Any(g => string.Equals(g, proj.Guid, StringComparison.OrdinalIgnoreCase))) {
-                    panelNames.Add(kv.Key);
+                    var display = nsNames.TryGetValue(kv.Key ?? "", out var td) ? td.TargetName : kv.Key;
+                    panelNames.Add(display);
                 }
             }
             var panelSetLower = new HashSet<string>(panelNames.Select(n => n.ToLowerInvariant()));
@@ -3105,30 +3170,15 @@ namespace NINA.Plugin.NightSummary.Server {
                 return;
             }
 
-            if (!TsAvailable()) {
-                await WriteJson(res, 404, new { error = "Target Scheduler not available" });
-                done?.Invoke(404, null);
-                return;
-            }
-
-            TsProjectInfo proj;
-            try {
-                proj = TsProjects().FirstOrDefault(p =>
-                    string.Equals(p.Guid, projectGuid, StringComparison.OrdinalIgnoreCase));
-            } catch (Exception ex) {
-                await WriteJson(res, 500, new { error = "Internal server error" });
-                done?.Invoke(500, ex.Message);
-                return;
-            }
+            var proj = LoadAllProjects().FirstOrDefault(p =>
+                string.Equals(p.Guid, projectGuid, StringComparison.OrdinalIgnoreCase));
             if (proj == null) {
                 await WriteJson(res, 404, new { error = "Project not found" });
                 done?.Invoke(404, null);
                 return;
             }
 
-            var coordTargets = proj.Targets
-                .Where(t => !(t.RA == 0 && t.Dec == 0))
-                .ToList();
+            var coordTargets = GetProjectPanelCoords(proj);
             if (coordTargets.Count == 0) {
                 await WriteJson(res, 404, new { error = "No targets with coordinates" });
                 done?.Invoke(404, null);
@@ -3157,21 +3207,21 @@ namespace NINA.Plugin.NightSummary.Server {
 
             // Center on imaged panels only; fall back to all if nothing imaged yet
             var imaged = coordTargets.Where(t => {
-                var c = GetCam(t.Name ?? "");
+                var c = GetCam(t.Name);
                 return c.w > 0 && c.h > 0;
             }).ToList();
             var centerSource = imaged.Count > 0 ? imaged : coordTargets;
 
-            double centerRa  = centerSource.Average(t => t.RA * 15.0);
+            double centerRa  = centerSource.Average(t => t.RaHours * 15.0);
             double centerDec = centerSource.Average(t => t.Dec);
             double cosCenter = Math.Cos(centerDec * Math.PI / 180.0);
 
             const int imgSize = 1024;
             double maxReach = 0.0;
             foreach (var t in coordTargets) {
-                double dRa  = (t.RA * 15.0 - centerRa) * cosCenter;
+                double dRa  = (t.RaHours * 15.0 - centerRa) * cosCenter;
                 double dDec = t.Dec - centerDec;
-                var cam = GetCam(t.Name ?? "");
+                var cam = GetCam(t.Name);
                 double halfDiag = (cam.w > 0 && cam.h > 0)
                     ? Math.Sqrt(cam.w * cam.w + cam.h * cam.h) / 2.0
                     : 0.0;
@@ -3179,7 +3229,7 @@ namespace NINA.Plugin.NightSummary.Server {
                 if (reach > maxReach) maxReach = reach;
             }
             if (maxReach < 0.5) {
-                var cam = GetCam(centerSource[0].Name ?? "");
+                var cam = GetCam(centerSource[0].Name);
                 maxReach = (cam.w > 0 && cam.h > 0)
                     ? Math.Sqrt(cam.w * cam.w + cam.h * cam.h) / 2.0
                     : 1.0;
@@ -3709,19 +3759,46 @@ namespace NINA.Plugin.NightSummary.Server {
                 var action = root.TryGetProperty("action", out var a) ? a.GetString() : null;
                 if (action == "create") {
                     var name = root.TryGetProperty("name", out var n) ? n.GetString()?.Trim() : null;
+                    var isMosaic = root.TryGetProperty("isMosaic", out var m) && m.ValueKind == JsonValueKind.True;
+                    var targetNames = new List<string>();
+                    if (root.TryGetProperty("targets", out var tEl) && tEl.ValueKind == JsonValueKind.Array) {
+                        foreach (var item in tEl.EnumerateArray()) {
+                            if (item.ValueKind != JsonValueKind.String) continue;
+                            var tn = item.GetString()?.Trim();
+                            if (!string.IsNullOrEmpty(tn)) targetNames.Add(tn);
+                        }
+                    }
+                    if (string.IsNullOrEmpty(name))
+                        name = MosaicProjectHelper.SuggestName(targetNames);
                     if (string.IsNullOrEmpty(name)) { await WriteJson(res, 400, new { error = "name required" }); return; }
                     var guid     = "custom-" + System.Guid.NewGuid().ToString("N").Substring(0, 8);
                     var projects = GetCustomProjects();
-                    projects.Add(new CustomProjectRecord(guid, name));
+                    projects.Add(new CustomProjectRecord { Guid = guid, Name = name, IsMosaic = isMosaic });
                     SaveCustomProjects(projects);
-                    await WriteJson(res, 200, new { guid, name });
-                    done?.Invoke(200, $"created custom project '{name}'");
+                    if (targetNames.Count > 0) {
+                        var map = GetProjectAssignments();
+                        foreach (var tn in targetNames) {
+                            var key = tn.ToLowerInvariant();
+                            if (!map.ContainsKey(key)) map[key] = new List<string>();
+                            if (!map[key].Any(g => string.Equals(g, guid, StringComparison.OrdinalIgnoreCase)))
+                                map[key].Add(guid);
+                        }
+                        SetDashboardMeta(TsProjectAssignmentsKey, JsonSerializer.Serialize(map));
+                    }
+                    await WriteJson(res, 200, new { guid, name, isMosaic, targets = targetNames });
+                    done?.Invoke(200, $"created custom project '{name}' mosaic={isMosaic} targets={targetNames.Count}");
                 } else if (action == "delete") {
                     var guid = root.TryGetProperty("guid", out var g) ? g.GetString() : null;
                     if (string.IsNullOrEmpty(guid)) { await WriteJson(res, 400, new { error = "guid required" }); return; }
                     var projects = GetCustomProjects();
                     projects.RemoveAll(p => string.Equals(p.Guid, guid, StringComparison.OrdinalIgnoreCase));
                     SaveCustomProjects(projects);
+                    var assignMap = GetProjectAssignments();
+                    foreach (var key in assignMap.Keys.ToList()) {
+                        assignMap[key].RemoveAll(x => string.Equals(x, guid, StringComparison.OrdinalIgnoreCase));
+                        if (assignMap[key].Count == 0) assignMap.Remove(key);
+                    }
+                    SetDashboardMeta(TsProjectAssignmentsKey, JsonSerializer.Serialize(assignMap));
                     await WriteJson(res, 200, new { ok = true });
                     done?.Invoke(200, $"deleted custom project {guid}");
                 } else {

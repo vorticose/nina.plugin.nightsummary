@@ -145,11 +145,14 @@ Each target you've ever imaged gets a card showing:
 |---------|-------------|
 | Sort pills | Sort by: Integration, Images, Last imaged, Name |
 | Group toggle | Group targets by project |
+| Select | Pick two or more target cards, then **Create mosaic** |
 | Status filter chips | Filter by project status (Active, Inactive, etc.) |
 
 Click a target card to open a detail panel with the full session-by-session breakdown, per-filter stats, and the altitude chart history.
 
-Use the **Manage Projects** button to create custom projects and assign targets to them. Projects support grouping, status tracking, and integration time goals. If Target Scheduler is installed, TS projects are imported automatically — but projects work independently of TS and don't require it.
+Use the **Manage Projects** button to create custom projects and assign targets to them. Check **Mosaic** when creating a project if the targets are mosaic panels: the Targets tab then shows the same combined sky thumbnail and FOV overlays as a Target Scheduler mosaic (without TS progress bars). You can also select the panel cards and use **Create mosaic**.
+
+If Target Scheduler is installed, TS projects are imported automatically. Custom projects and mosaics work without it.
 
 ### Tonight Sub-Tab
 

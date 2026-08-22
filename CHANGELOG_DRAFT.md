@@ -4,6 +4,10 @@
 
 ## v3.3.2 (unreleased)
 
+### New Features
+
+- **Custom mosaic projects** — group separate panel targets into a mosaic card on the Stats Targets tab without Target Scheduler. Select two or more cards and choose Create mosaic, or use Manage Projects with the Mosaic checkbox. The card matches a TS mosaic (combined sky thumbnail, FOV overlays, panel/integration/frame/session totals) minus TS progress bars. Coordinates come from captured images.
+
 ### Improvements
 
 - Companion update banner now rechecks every few hours and when you return to a hidden tab, so a dashboard left open still nags. GitHub check failures retry in minutes instead of being cached for a day. Settings has a Check for updates button.

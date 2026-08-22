@@ -3262,14 +3262,100 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
 
 /* ── Target card (horizontal layout — thumbnail left, stat boxes right) ── */
 .target-card {
+  position: relative;
   background: rgba(255,255,255,0.025);
   border: 1px solid rgba(255,255,255,0.07);
   border-radius: 12px;
   overflow: hidden;
   cursor: pointer;
-  transition: border-color var(--t-medium);
+  transition: border-color var(--t-medium), box-shadow var(--t-medium);
 }
 .target-card:hover { border-color: rgba(255,255,255,0.15); }
+.target-card-select-mark {
+  display: none;
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(230,232,240,0.45);
+  background: rgba(12,14,28,0.55);
+  box-sizing: border-box;
+  pointer-events: none;
+}
+.targets-selecting .target-card-select-mark { display: block; }
+.targets-selecting .target-card-assign-btn { visibility: hidden; }
+.target-card.selected {
+  border-color: rgba(126,184,247,0.65);
+  box-shadow: 0 0 0 1px rgba(126,184,247,0.45);
+}
+.target-card.selected .target-card-select-mark {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.target-card.selected .target-card-select-mark::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  width: 5px;
+  height: 9px;
+  border: solid #0c0e1c;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+:root.light .target-card.selected {
+  border-color: rgba(37,99,184,0.55);
+  box-shadow: 0 0 0 1px rgba(37,99,184,0.3);
+}
+.targets-select-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 0 4px;
+}
+.targets-create-mosaic-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.create-mosaic-lead, .create-mosaic-warn {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0 0 10px;
+  line-height: 1.45;
+}
+.create-mosaic-warn { color: #FFB74D; }
+.create-mosaic-label {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-tertiary);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.create-mosaic-list {
+  margin: 10px 0 14px;
+  padding-left: 18px;
+  max-height: 160px;
+  overflow: auto;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.create-mosaic-list li { margin: 2px 0; }
+.manage-projects-mosaic-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+.manage-projects-mosaic-check input { accent-color: var(--accent); }
 .target-card.collapsed .target-card-body { display: none; }
 .target-card.collapsed .targets-project-collapse-btn { transform: rotate(-90deg); }
 /* Grid row height is driven by the tallest card in the row, so a collapsed
