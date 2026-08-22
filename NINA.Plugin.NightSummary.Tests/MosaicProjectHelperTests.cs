@@ -10,6 +10,7 @@ namespace NINA.Plugin.NightSummary.Tests {
         [InlineData("North America Panel 2", "North America")]
         [InlineData("Sh2-27 Panel 2", "Sh2-27")]
         [InlineData("Sh2-27 P1", "Sh2-27")]
+        [InlineData("Sh2-27", "Sh2-27")]
         [InlineData("NA Nebula_1", "NA Nebula")]
         [InlineData("NA Nebula-12", "NA Nebula")]
         [InlineData("NGC 7000 #2", "NGC 7000")]

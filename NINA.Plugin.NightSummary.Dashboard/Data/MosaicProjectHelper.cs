@@ -22,9 +22,14 @@ namespace NINA.Plugin.NightSummary.Data {
             @"[\s_-]+#\s*\d+$",
             RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
-        // "_1" or "-12" but not a space+number (keeps "M31")
-        private static readonly Regex TrailingSepNumber = new Regex(
-            @"[_-]\d+$",
+        // "_1" is almost always a panel index. "-12" only when the char before
+        // the hyphen is not a digit, so "Sh2-27" / "NGC-7000" stay intact.
+        private static readonly Regex TrailingUnderscoreNumber = new Regex(
+            @"_\d+$",
+            RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+        private static readonly Regex TrailingHyphenPanel = new Regex(
+            @"(?<=\D)-\d{1,2}$",
             RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
         public static string StripPanelSuffix(string name) {
@@ -32,7 +37,8 @@ namespace NINA.Plugin.NightSummary.Data {
             var s = name.Trim();
             s = PanelWordSuffix.Replace(s, "");
             s = HashNumberSuffix.Replace(s, "");
-            s = TrailingSepNumber.Replace(s, "");
+            s = TrailingUnderscoreNumber.Replace(s, "");
+            s = TrailingHyphenPanel.Replace(s, "");
             return s.Trim().TrimEnd('-', '_', ' ');
         }
 

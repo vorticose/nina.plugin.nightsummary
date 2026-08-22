@@ -742,7 +742,8 @@ function suggestMosaicName(names) {
     var s = (n || '').trim();
     s = s.replace(/[\s_-]+(?:panels?|panes?|p)\s*\d+$/i, '');
     s = s.replace(/[\s_-]+#\s*\d+$/, '');
-    s = s.replace(/[_-]\d+$/, '');
+    s = s.replace(/_\d+$/, '');
+    s = s.replace(/(?<=\D)-\d{1,2}$/, '');
     return s.trim().replace(/[-_ ]+$/, '');
   }
   names = (names || []).filter(function(n) { return n && String(n).trim(); });
