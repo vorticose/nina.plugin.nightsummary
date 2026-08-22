@@ -1,12 +1,15 @@
 # Night Summary — Changelog
 
-<!-- v3.3.1 shipped 2026-08-22. Items below are candidates, not commitments. -->
+<!-- v3.3.1 shipped 2026-08-22. Session merge remains a candidate, not a commitment. -->
 
 ## v3.3.2 (unreleased)
 
+### Improvements
+
+- Companion update banner now rechecks every few hours and when you return to a hidden tab, so a dashboard left open still nags. GitHub check failures retry in minutes instead of being cached for a day. Settings has a Check for updates button.
+
 ### Candidates
 
-- Companion update banner: do not cache GitHub failures for 24h (retry in minutes). Recheck on a long interval or when a hidden tab becomes visible again, so a pinned dashboard eventually nags. Optional Settings "Check for updates" button. Not a hotfix; 24h success cache stays.
 - Session merge: optional merge of an Auto-recovered night with the following stub, then regenerate a combined report. Parked from v3.3.1 (all eight live orphans had a next session in 5-27 min).
 
 ## v3.3.1

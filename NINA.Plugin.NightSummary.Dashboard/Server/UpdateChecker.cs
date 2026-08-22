@@ -42,8 +42,9 @@ namespace NINA.Plugin.NightSummary.Server {
     // Polls the project's GitHub Releases for a newer companion build and decides
     // whether (and how) this install could self-update. The version-comparison and
     // asset/strategy resolution are pure static methods (unit-tested); only
-    // CheckAsync touches the network, and it caches the result for 24 h so a busy
-    // dashboard doesn't hammer the unauthenticated GitHub API (60 req/h/IP).
+    // CheckAsync touches the network. A successful check is cached for 24 h so a
+    // busy dashboard doesn't hammer the unauthenticated GitHub API (60 req/h/IP).
+    // Failures use a short TTL so a blip cannot hide a real update for a day.
     public sealed class UpdateChecker {
 
         // Public repo slug — same one the install scripts target. Not a secret.
@@ -78,11 +79,17 @@ namespace NINA.Plugin.NightSummary.Server {
         // GitHub requires a User-Agent on API requests or it 403s.
         private const string UserAgent = "NightSummaryCompanion-UpdateChecker";
 
-        private static readonly TimeSpan CacheTtl = TimeSpan.FromHours(24);
+        public static readonly TimeSpan SuccessCacheTtl = TimeSpan.FromHours(24);
+        public static readonly TimeSpan ErrorCacheTtl = TimeSpan.FromMinutes(15);
+
+        // How long to keep a CheckAsync result. Errors must not sit in the
+        // 24 h bucket: a GitHub blip would hide a real release until tomorrow.
+        public static TimeSpan TtlFor(UpdateInfo info) =>
+            string.IsNullOrEmpty(info?.Error) ? SuccessCacheTtl : ErrorCacheTtl;
 
         private readonly object _lock = new();
         private UpdateInfo? _cached;
-        private DateTime _cachedAtUtc = DateTime.MinValue;
+        private DateTime _cachedUntilUtc = DateTime.MinValue;
         private readonly Func<HttpClient> _httpFactory;
 
         public UpdateChecker(Func<HttpClient>? httpFactory = null) {
@@ -96,13 +103,13 @@ namespace NINA.Plugin.NightSummary.Server {
             });
         }
 
-        // Check for a newer release. Returns the cached result if checked within the
-        // last 24 h unless force=true. Never throws — a network/parse failure comes
-        // back as an UpdateInfo with Error set and UpdateAvailable=false, so the
+        // Check for a newer release. Returns the cached result until its TTL
+        // unless force=true. Never throws — a network/parse failure comes back
+        // as an UpdateInfo with Error set and UpdateAvailable=false, so the
         // banner just stays hidden rather than the dashboard breaking.
         public async Task<UpdateInfo> CheckAsync(string currentVersion, bool force, CancellationToken ct) {
             lock (_lock) {
-                if (!force && _cached != null && DateTime.UtcNow - _cachedAtUtc < CacheTtl) {
+                if (!force && _cached != null && DateTime.UtcNow < _cachedUntilUtc) {
                     return _cached;
                 }
             }
@@ -126,7 +133,7 @@ namespace NINA.Plugin.NightSummary.Server {
 
             lock (_lock) {
                 _cached = result;
-                _cachedAtUtc = DateTime.UtcNow;
+                _cachedUntilUtc = DateTime.UtcNow + TtlFor(result);
             }
             return result;
         }

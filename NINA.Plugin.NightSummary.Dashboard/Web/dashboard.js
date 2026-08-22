@@ -10196,23 +10196,56 @@ function companionSyncNow() {
 }
 
 // ── In-app update banner (companion-only) ────────────────────────────────
-// Polls /api/companion/update-check once after the banner inits. When a newer
-// release exists AND the user hasn't dismissed THAT version, shows a banner.
-// Self-updatable installs (Windows zip / mac .app / Linux tarball) get an
-// "Update now" button that POSTs /api/companion/update, then polls /api/health
-// until the new version answers and reloads. AppImage / .deb / non-writable
-// installs get a "Download" link to the release instead. Nothing ever applies
-// without a click — dismissal is per-version, so the next release re-prompts.
+// Checks /api/companion/update-check on init, every few hours, and when a
+// hidden tab becomes visible again (throttled so window-switching is cheap).
+// When a newer release exists AND the user hasn't dismissed THAT version,
+// shows a banner. Self-updatable installs (Windows zip / mac .app / Linux
+// tarball) get an "Update now" button that POSTs /api/companion/update, then
+// polls /api/health until the new version answers and reloads. AppImage /
+// .deb / non-writable installs get a "Download" link to the release instead.
+// Nothing ever applies without a click — dismissal is per-version, so the
+// next release re-prompts.
 var UPDATE_DISMISS_KEY = 'ns_companion_update_dismissed';
+var UPDATE_RECHECK_MS = 6 * 60 * 60 * 1000;
+var UPDATE_VISIBLE_MIN_MS = 60 * 60 * 1000;
+var updateCheckInited = false;
+var lastUpdateCheckAt = 0;
 
 function initUpdateCheck() {
-  fetch('/api/companion/update-check').then(function(r){ return r.json(); }).then(function(u){
-    if (!u || !u.updateAvailable) return;
-    var dismissed = '';
-    try { dismissed = localStorage.getItem(UPDATE_DISMISS_KEY) || ''; } catch (e) {}
-    if (dismissed === u.latest) return;   // user already dismissed THIS version
-    renderUpdateBanner(u);
-  }).catch(function(){ /* offline / rate-limited / primary mode — stay quiet */ });
+  if (updateCheckInited) return;
+  updateCheckInited = true;
+  runUpdateCheck(false);
+  setInterval(function(){ runUpdateCheck(false); }, UPDATE_RECHECK_MS);
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible') runUpdateCheck(false);
+  });
+}
+
+function runUpdateCheck(force, onDone) {
+  var now = Date.now();
+  if (!force && lastUpdateCheckAt && (now - lastUpdateCheckAt) < UPDATE_VISIBLE_MIN_MS) {
+    if (onDone) onDone(null);
+    return;
+  }
+  lastUpdateCheckAt = now;
+  var url = '/api/companion/update-check' + (force ? '?force=1' : '');
+  fetch(url).then(function(r){ return r.json(); }).then(function(u){
+    applyUpdateCheck(u);
+    if (onDone) onDone(u);
+  }).catch(function(err){
+    /* offline / rate-limited / primary mode — stay quiet unless a caller cares */
+    if (onDone) onDone({ error: (err && err.message) || 'network error' });
+  });
+}
+
+function applyUpdateCheck(u) {
+  if (!u || !u.updateAvailable) return;
+  var dismissed = '';
+  try { dismissed = localStorage.getItem(UPDATE_DISMISS_KEY) || ''; } catch (e) {}
+  if (dismissed === u.latest) return;
+  var banner = document.getElementById('companion-update-banner');
+  if (banner && !banner.hidden && banner.getAttribute('data-latest') === u.latest) return;
+  renderUpdateBanner(u);
 }
 
 function renderUpdateBanner(u) {
@@ -10237,6 +10270,7 @@ function renderUpdateBanner(u) {
       '<button id="ns-update-dismiss" class="companion-banner-btn is-ghost" type="button">Dismiss</button>' +
     '</div>';
   banner.hidden = false;
+  banner.setAttribute('data-latest', u.latest || '');
   var dis = document.getElementById('ns-update-dismiss');
   if (dis) dis.onclick = function(){ dismissUpdate(u.latest); };
   var now = document.getElementById('ns-update-now');
@@ -10246,7 +10280,7 @@ function renderUpdateBanner(u) {
 function dismissUpdate(version) {
   try { localStorage.setItem(UPDATE_DISMISS_KEY, version || ''); } catch (e) {}
   var banner = document.getElementById('companion-update-banner');
-  if (banner) { banner.hidden = true; banner.innerHTML = ''; }
+  if (banner) { banner.hidden = true; banner.innerHTML = ''; banner.removeAttribute('data-latest'); }
 }
 
 // In-place confirm (mutate the action row, never reopen) -> POST -> progress.
@@ -10736,6 +10770,14 @@ function settingsHtml(c) {
         '</div>' +
       '</div>' +
       '<div class="settings-card">' +
+        '<h2>Updates</h2>' +
+        '<p class="settings-hint">The companion checks GitHub when this dashboard loads, every few hours, and when you come back to a hidden tab. Use the button to check now, bypassing the cache.</p>' +
+        '<div class="settings-actions">' +
+          '<div class="settings-status" id="update-check-status"></div>' +
+          '<button type="button" class="settings-btn" id="cfg-check-update">Check for updates</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="settings-card">' +
         '<h2>Companion process</h2>' +
         '<p class="settings-hint">Restart applies a port change or refreshes the in-memory state. Quit stops the companion entirely — to bring it back, ' + esc(companionRelaunchPhrase(c.os)) + '.</p>' +
         '<div class="settings-actions">' +
@@ -10763,6 +10805,8 @@ function bindSettingsForm(initial) {
   var restartBtn = document.getElementById('cfg-restart');
   var quitBtn  = document.getElementById('cfg-quit');
   var procStatus = document.getElementById('proc-status');
+  var checkUpdateBtn = document.getElementById('cfg-check-update');
+  var updateCheckStatus = document.getElementById('update-check-status');
 
   function readEdit() {
     return {
@@ -10793,6 +10837,30 @@ function bindSettingsForm(initial) {
     if (!procStatus) return;
     procStatus.textContent = text || '';
     procStatus.className = 'settings-status' + (cls ? ' ' + cls : '');
+  }
+  function setUpdateCheckStatus(text, cls) {
+    if (!updateCheckStatus) return;
+    updateCheckStatus.textContent = text || '';
+    updateCheckStatus.className = 'settings-status' + (cls ? ' ' + cls : '');
+  }
+  if (checkUpdateBtn) {
+    checkUpdateBtn.addEventListener('click', function() {
+      checkUpdateBtn.disabled = true;
+      setUpdateCheckStatus('Checking…', '');
+      runUpdateCheck(true, function(u) {
+        checkUpdateBtn.disabled = false;
+        if (!u) {
+          setUpdateCheckStatus('Could not check.', 'is-error');
+        } else if (u.error) {
+          setUpdateCheckStatus('Could not check: ' + u.error, 'is-error');
+        } else if (u.updateAvailable) {
+          setUpdateCheckStatus('Version ' + (u.latest || '') + ' is available.', 'is-ok');
+        } else {
+          setUpdateCheckStatus('You are on the latest version' +
+            (u.current ? ' (' + u.current + ')' : '') + '.', 'is-ok');
+        }
+      });
+    });
   }
 
   // Start-at-login toggle — immediate action, separate from the config form.

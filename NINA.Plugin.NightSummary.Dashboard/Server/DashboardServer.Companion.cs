@@ -486,8 +486,9 @@ namespace NINA.Plugin.NightSummary.Server {
 
         // GET /api/companion/update-check[?force=1] — compares this companion's
         // version against GitHub releases/latest and reports whether (and how) it
-        // could self-update. Cached 24 h unless force=1. Never errors hard: a
-        // network failure comes back as { error } with updateAvailable=false.
+        // could self-update. Successful checks cache 24 h; failures cache 15 min.
+        // force=1 bypasses the cache. Never errors hard: a network failure comes
+        // back as { error } with updateAvailable=false.
         private async Task HandleCompanionUpdateCheck(TcpHttpRequest req, TcpHttpResponse res, Action<int, string> done) {
             if (_companion == null) {
                 await WriteJson(res, 404, new { error = "companion mode not active" });
