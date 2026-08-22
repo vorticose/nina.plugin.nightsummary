@@ -2995,8 +2995,11 @@ function renderPdpPanelDrillDown(data, panelName, panelData, projectData, projec
 
 // Fetch the combined HiPS survey image via the server's disk-cached endpoint and draw
 // per-panel FOV rectangles as an SVG overlay.
-// SVG rotation convention: position angle (degrees E of N, CCW) → SVG rotate(-PA) because
-// astronomical images are N-up, E-left which mirrors the x-axis relative to SVG.
+// HiPS2FITS JPEG is N-up with RA increasing to the right (east on the right),
+// even though the FITS WCS has CDELT1 < 0. Overlay math must match the JPEG:
+//   cx = mid + dRA*cos(dec)/scale
+//   cy = mid - dDec/scale          (Dec up, SVG Y down)
+// SVG rotation: sky PA (deg E of N) → rotate(-PA) because SVG Y is inverted.
 function loadMosaicThumbnail(panels, wrapOrBackdrop, projectGuid) {
   // Accept either a direct wrap element or a backdrop containing #pdp-thumb-wrap
   var wrap = (wrapOrBackdrop && (wrapOrBackdrop.id === 'pdp-thumb-wrap' ||
@@ -3075,7 +3078,7 @@ function loadMosaicThumbnail(panels, wrapOrBackdrop, projectGuid) {
     var pa = panelFovAngle(p);
     if (pa == null) pa = siblingPa;
     return {
-      cx:    imgSize / 2 + (-(p.ra * 15 - centerRA) * cosCenter / scale),
+      cx:    imgSize / 2 + ((p.ra * 15 - centerRA) * cosCenter / scale),
       cy:    imgSize / 2 + (-(p.dec - centerDec) / scale),
       wPx:   p.fovWidthDeg  != null ? p.fovWidthDeg  / scale : 0,
       hPx:   p.fovHeightDeg != null ? p.fovHeightDeg / scale : 0,
