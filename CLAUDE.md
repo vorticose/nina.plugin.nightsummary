@@ -237,6 +237,29 @@ to users upgrading from the previous stable version. Specifically:
 The audience for CHANGELOG.md is users upgrading from the previous stable version. Write
 it as if you went directly from the previous stable release to this one without a beta cycle.
 
+### Companion / plugin desync check (required before tag)
+
+Companion in-app update goes live when the GitHub release exists (`releases/latest`).
+NINA Plugin Manager updates when the isbeorn catalog PR merges, often days later.
+Mixed versions are the normal gap, not an accident. Classify every user-facing change
+in this release before merge/tag:
+
+1. **Plugin-only** (session recovery, report HTML, Options): catalog lag is fine.
+2. **Companion-only on data the previous plugin already sends** (All-rigs on existing
+   `?rig=` APIs): GitHub release can precede the catalog PR.
+3. **Companion UI that needs a new plugin field, file, or API**: either
+   - **Degrade:** hide or disable until `primaryVersion` is new enough; confirm an old
+     plugin does not 500. This is the default.
+   - **Couple:** hold the GitHub release until the catalog PR is merged so both update
+     together.
+
+Also check the reverse: the new plugin must still serve the previous companion (no
+removed or renamed endpoints; new sqlite columns nullable or defaulted).
+
+v3.3.1 example: Auto-recovered needed plugin-written `AutoFinalized`. A 3.3.1 companion
+on a 3.3.0 rig listed the session but showed no badge. That is acceptable degrade. A
+required field with no default would not have been.
+
 ### Release steps
 
 To publish a new version:
@@ -247,7 +270,7 @@ To publish a new version:
    - Remove `[assembly: AssemblyInformationalVersion("X.Y.Z-dev")]` line
 3. **Finalize CHANGELOG_DRAFT.md** following the stable-to-stable rule above, then copy the
    new version's section over the previous version's section in `CHANGELOG.md` on main.
-4. **Merge and tag**: `git checkout main && git merge dev --no-ff && git tag vX.Y.Z && git push origin main vX.Y.Z`
+4. **Merge and tag** (desync check above must be done first): `git checkout main && git merge dev --no-ff && git tag vX.Y.Z && git push origin main vX.Y.Z`
 5. **Build**: `dotnet build NINA.Plugin.NightSummary.sln -c Release`
 6. **Package**: `cd NINA.Plugin.NightSummary/bin/Release/net8.0-windows && zip -r /tmp/NINA.Plugin.NightSummary.zip . --exclude "*.pdb" --exclude "*.xml"`
    - On Windows when `zip`/`7z` aren't on PATH: use PowerShell `robocopy <src> <stage> /E /XF *.pdb *.xml` + `Compress-Archive -Path "<stage>\*" -DestinationPath <dest>` (staging dir preserves folder structure).
