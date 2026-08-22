@@ -18,8 +18,13 @@ internal static class AssetNames {
     public const string HeaderIcon = "report-icon.png";
 
     // 776x776 brand master, ~600 KB. The source of truth for the store listing,
-    // the docs site and the companion launcher icons (all of which read
-    // assets/plugin-icon.png from disk, not from an assembly). Nothing inlines
-    // it; do not point a data URI at it.
+    // the docs site and the companion launcher icons, all of which read
+    // assets/plugin-icon.png from disk.
+    //
+    // NOT embedded in any assembly: it has no code consumer, and carrying it
+    // cost ~600 KB in both the plugin DLL and the dashboard classlib that ships
+    // with all three companion builds. EmbeddedWebAssets.ReadAsync will return
+    // null for this name. Named here only so tests can assert it stays out and
+    // so the next reader does not have to rediscover why.
     public const string BrandMaster = "plugin-icon.png";
 }

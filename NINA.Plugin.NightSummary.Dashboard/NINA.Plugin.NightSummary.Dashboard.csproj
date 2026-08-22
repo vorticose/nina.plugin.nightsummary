@@ -58,16 +58,13 @@
     <EmbeddedResource Include="Web\setup.js">
       <LogicalName>setup.js</LogicalName>
     </EmbeddedResource>
-    <!-- Full-size brand art (776x776, ~600 KB). NOTE: nothing reads this resource
-         any more. There is no HTTP icon endpoint and no favicon link; the only
-         former consumer was the dashboard header, which now uses report-icon.png.
-         The file itself is still needed on disk (store listing, docs site,
-         gen-companion-icons.py) but this embed is ~600 KB of dead weight in a DLL
-         that ships with both the plugin and all three companion builds. Left in
-         place pending a deliberate, Windows-tested removal. -->
-    <EmbeddedResource Include="..\assets\plugin-icon.png">
-      <LogicalName>plugin-icon.png</LogicalName>
-    </EmbeddedResource>
+    <!-- assets/plugin-icon.png (the 776x776 brand master) is deliberately NOT embedded.
+         Nothing reads it: there is no HTTP icon endpoint and no favicon link, and the
+         only former consumer was the dashboard header, which now uses report-icon.png.
+         Embedding it cost ~600 KB in a DLL that ships with the plugin and all three
+         companion builds. The file itself still lives on disk for the store listing,
+         the docs site and gen-companion-icons.py. ReportIconTests asserts it stays
+         un-embedded. -->
     <!-- 144x144 palette copy (~9 KB). Both the HTML report header and the dashboard
          header inline this as a base64 data URI and render it at 48px. Inlining the
          full-size art instead made the icon ~90% of every report and put ~800 KB of

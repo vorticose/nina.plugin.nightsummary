@@ -71,6 +71,21 @@ namespace NINA.Plugin.NightSummary.Tests {
         }
 
         [Fact]
+        public void BrandMaster_IsNotEmbeddedInEitherShippedAssembly() {
+            // The 776x776 master is ~600 KB and has no code consumer: no HTTP icon
+            // endpoint, no favicon link, and NINA's plugin loader reads no embedded
+            // resources. Embedding it just inflated the plugin DLL and the dashboard
+            // classlib that ships with all three companion builds. It still lives at
+            // assets/plugin-icon.png on disk for the store listing, the docs site and
+            // gen-companion-icons.py; it must not come back as a resource.
+            var dashboard = typeof(ReportGenerator).Assembly.GetManifestResourceNames();
+            Assert.DoesNotContain(AssetNames.BrandMaster, dashboard);
+
+            var plugin = typeof(SettingsManager).Assembly.GetManifestResourceNames();
+            Assert.DoesNotContain(AssetNames.BrandMaster, plugin);
+        }
+
+        [Fact]
         public void ReportAndDashboardHeaders_ShareTheSameIcon() {
             // The report header and the dashboard header render the same mark at the
             // same 48px. If they ever drift apart, one of them is carrying bytes the
