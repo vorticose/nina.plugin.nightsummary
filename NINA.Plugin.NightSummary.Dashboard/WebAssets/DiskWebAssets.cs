@@ -13,7 +13,7 @@ namespace NINA.Plugin.NightSummary.Dashboard.WebAssets;
 // Each ReadAsync call hits the filesystem fresh - no caching - so any save propagates instantly.
 //
 // Search order: webRoot first, then any fallback roots in order. Used so non-Web/ assets
-// like plugin-icon.png (which lives under <repo>/assets/) still resolve.
+// like report-icon.png (which lives under <repo>/assets/) still resolve.
 public sealed class DiskWebAssets : IWebAssets {
     private readonly string[] roots;
 

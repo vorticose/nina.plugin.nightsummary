@@ -12,7 +12,7 @@
 
 - Companion update banner now rechecks every few hours and when you return to a hidden tab, so a dashboard left open still nags. GitHub check failures retry in minutes instead of being cached for a day. Settings has a Check for updates button.
 - Mosaic FOV overlays use plate-solve position angle when present, then rotator angle, then the other panels in the project. Panels with no plate solve were drawing unrotated.
-- Reports are roughly 8x smaller. The header icon was embedded at full brand-art resolution (776x776, ~600 KB) despite rendering at 48px, which made it about 90% of every report. It is now a 144px copy, so a typical report drops from ~840 KB to ~100 KB. Emailed reports in particular are far less exposed to gateway size limits and truncation.
+- Reports are roughly 8x smaller and the dashboard page is roughly half the size. Both headers embedded the icon at full brand-art resolution (776x776, ~600 KB) despite rendering it at 48px, which made it about 90% of every report and about half of every dashboard page load. Both now use a 144px copy: a typical report drops from ~840 KB to ~100 KB, and the dashboard HTML from ~1.5 MB to ~775 KB. Emailed reports in particular are far less exposed to gateway size limits and truncation.
 
 ### Candidates
 

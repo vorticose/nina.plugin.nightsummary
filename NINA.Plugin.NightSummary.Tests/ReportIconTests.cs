@@ -1,3 +1,4 @@
+using NINA.Plugin.NightSummary.Dashboard.WebAssets;
 using NINA.Plugin.NightSummary.Data;
 using NINA.Plugin.NightSummary.Reporting;
 using NINA.Plugin.NightSummary.Tests.Fixtures;
@@ -48,7 +49,7 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         private static byte[] ReadReportIcon() {
             using var stream = typeof(ReportGenerator).Assembly
-                                   .GetManifestResourceStream(ReportGenerator.ReportIconResource);
+                                   .GetManifestResourceStream(AssetNames.HeaderIcon);
             Assert.NotNull(stream);
             using var ms = new System.IO.MemoryStream();
             stream!.CopyTo(ms);
@@ -63,10 +64,18 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public void ReportIcon_IsNotTheFullSizeBrandMaster() {
-            // plugin-icon.png is still embedded for the dashboard's HTTP icon endpoint,
-            // where the bytes cost one cached request instead of riding along in every
-            // report. The report must not resolve to it.
-            Assert.NotEqual("plugin-icon.png", ReportGenerator.ReportIconResource);
+            // Both inlining consumers must resolve to the small copy. The brand master
+            // is ~600 KB and gets base64-expanded by 4/3 on every use.
+            Assert.NotEqual(AssetNames.BrandMaster, AssetNames.HeaderIcon);
+            Assert.NotEqual(AssetNames.BrandMaster, ReportGenerator.ReportIconResource);
+        }
+
+        [Fact]
+        public void ReportAndDashboardHeaders_ShareTheSameIcon() {
+            // The report header and the dashboard header render the same mark at the
+            // same 48px. If they ever drift apart, one of them is carrying bytes the
+            // other proved unnecessary.
+            Assert.Equal(AssetNames.HeaderIcon, ReportGenerator.ReportIconResource);
         }
 
         [Fact]
