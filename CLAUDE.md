@@ -247,11 +247,9 @@ in this release before merge/tag:
 1. **Plugin-only** (session recovery, report HTML, Options): catalog lag is fine.
 2. **Companion-only on data the previous plugin already sends** (All-rigs on existing
    `?rig=` APIs): GitHub release can precede the catalog PR.
-3. **Companion UI that needs a new plugin field, file, or API**: either
-   - **Degrade:** hide or disable until `primaryVersion` is new enough; confirm an old
-     plugin does not 500. This is the default.
-   - **Couple:** hold the GitHub release until the catalog PR is merged so both update
-     together.
+3. **Companion UI that needs a new plugin field, file, or API**: **Degrade**
+   (default). Hide or disable until `primaryVersion` is new enough; confirm an
+   old plugin does not 500. Mixed versions look incomplete, not broken.
 
 Also check the reverse: the new plugin must still serve the previous companion (no
 removed or renamed endpoints; new sqlite columns nullable or defaulted).
@@ -259,6 +257,31 @@ removed or renamed endpoints; new sqlite columns nullable or defaulted).
 v3.3.1 example: Auto-recovered needed plugin-written `AutoFinalized`. A 3.3.1 companion
 on a 3.3.0 rig listed the session but showed no badge. That is acceptable degrade. A
 required field with no default would not have been.
+
+#### If degrade is not enough (coupled release)
+
+Do not "hold the GitHub release until the catalog PR merges." The catalog
+Installer URL is that GitHub zip, so some GitHub object has to exist first.
+Companion update checks `releases/latest`, which **ignores prereleases and
+drafts**. Plugin Manager uses the explicit zip URL. Split those channels:
+
+1. **Ship GitHub as a prerelease** (preferred). Create `vX.Y.Z` as a prerelease
+   with the plugin zip and companion binaries. Catalog PR points at that zip
+   URL. Companion users keep seeing the previous `/releases/latest`. After the
+   catalog PR merges, convert the release to latest (uncheck prerelease). Discord:
+   update the plugin first, then companion.
+2. **Do not** publish a normal latest with only the plugin zip. `UpdateChecker`
+   sets `updateAvailable` from the tag, not from whether a companion asset
+   exists. The banner still nags ("Re-run your installer to update") even when
+   `canSelfUpdate` is false.
+3. **Already shipped and mixed-broken:** hotfix companion that degrades (item 3
+   above) and ship it as a patch. Discord: update Plugin Manager before (or
+   immediately after) the companion prompt. Do not yank `/releases/latest`; old
+   companions would then have no update path.
+
+A companion-only follow-up tag after catalog is live is a fallback if the new
+companion (not the plugin) is what is unsafe. Do not rely on Discord timing
+alone.
 
 ### Release steps
 
