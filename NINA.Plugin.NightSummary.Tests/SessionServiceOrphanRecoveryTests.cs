@@ -25,6 +25,13 @@ namespace NINA.Plugin.NightSummary.Tests {
         private readonly MockCameraMediator _cameraMediator = new();
         private readonly string _dbPath;
         private readonly string _settingsPath;
+        // See SessionReplayRunner — SessionService reads from SettingsManager.Instance,
+        // not from this test's isolated SettingsManager. Without redirecting the
+        // singleton the disabled delivery flags below are decorative: FinalizeOrphanedSessions
+        // generates a report per recovered session and sends it using whatever real
+        // credentials are on the test host. This class did exactly that and posted three
+        // live Discord messages when the suite was run on the observatory PC (2026-08-23).
+        private readonly IDisposable _settingsOverride;
         private readonly SessionService _service;
         private readonly SessionDatabase _db;
 
@@ -39,6 +46,7 @@ namespace NINA.Plugin.NightSummary.Tests {
             settingsMgr.Current.DiscordEnabled    = false;
             settingsMgr.Current.PushoverEnabled   = false;
             settingsMgr.Save();
+            _settingsOverride = SettingsManager.UseInstanceForTesting(settingsMgr);
 
             _service = new SessionService(
                 _imageSaveMediator,
@@ -55,6 +63,16 @@ namespace NINA.Plugin.NightSummary.Tests {
         }
 
         public void Dispose() {
+            // Drain pending report tasks before releasing the settings override — see
+            // SessionReplayRunner.Dispose for the race this prevents. These tests DO
+            // finalize sessions with content, so this is load-bearing here: releasing
+            // the override first would let an in-flight report send against the host's
+            // real settings.
+            try {
+                _service?.WaitForPendingReportsAsync(TimeSpan.FromSeconds(10))
+                         .GetAwaiter().GetResult();
+            } catch { }
+            _settingsOverride?.Dispose();
             if (File.Exists(_dbPath))       File.Delete(_dbPath);
             if (File.Exists(_settingsPath)) File.Delete(_settingsPath);
         }
