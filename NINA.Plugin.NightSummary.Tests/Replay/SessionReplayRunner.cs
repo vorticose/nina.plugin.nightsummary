@@ -26,6 +26,11 @@ namespace NINA.Plugin.NightSummary.Tests.Replay {
         private readonly SessionRecording _recording;
         private readonly string _dbPath;
         private readonly string _settingsPath;
+        // Keeps dashboard report HTML out of the developer's real
+        // %LOCALAPPDATA%\NINA\NightSummary\reports. SaveReportForDashboardAsync runs
+        // unconditionally and consults no setting, so without this seam every test run
+        // litters the live folder.
+        private readonly string _reportsDir;
 
         private readonly MockImageSaveMediator _imageSaveMediator = new();
         private readonly MockProfileService _profileService = new();
@@ -55,6 +60,7 @@ namespace NINA.Plugin.NightSummary.Tests.Replay {
 
             _dbPath = Path.Combine(Path.GetTempPath(), $"ns_replay_{Guid.NewGuid():N}.sqlite");
             _settingsPath = Path.Combine(Path.GetTempPath(), $"ns_replay_settings_{Guid.NewGuid():N}.json");
+            _reportsDir   = Path.Combine(Path.GetTempPath(), $"ns_replay_reports_{Guid.NewGuid():N}");
 
             // Configure mocks from initial state
             ConfigureMocksFromInitialState(_recording.InitialState);
@@ -132,7 +138,8 @@ namespace NINA.Plugin.NightSummary.Tests.Replay {
                 null, // weatherDataMediator
                 null, // switchMediator
                 null, // messageBroker — not needed for replay
-                _dbPath);
+                _dbPath,
+                reportsDirectory: _reportsDir);
 
             // Set clock to the first event timestamp (or recordedAt) for session start
             var sessionStartTime = _recording.Events.Count > 0
@@ -256,6 +263,7 @@ namespace NINA.Plugin.NightSummary.Tests.Replay {
             Clock.Reset();
             try { if (File.Exists(_dbPath)) File.Delete(_dbPath); } catch { }
             try { if (File.Exists(_settingsPath)) File.Delete(_settingsPath); } catch { }
+            try { if (Directory.Exists(_reportsDir)) Directory.Delete(_reportsDir, true); } catch { }
         }
     }
 }
