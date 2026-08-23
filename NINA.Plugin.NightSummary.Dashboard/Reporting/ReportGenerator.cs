@@ -1,4 +1,5 @@
 using NINA.Plugin.NightSummary.Dashboard.Abstractions;
+using NINA.Plugin.NightSummary.Dashboard.WebAssets;
 using NINA.Plugin.NightSummary.Data;
 using System;
 using System.Collections.Generic;
@@ -55,6 +56,17 @@ namespace NINA.Plugin.NightSummary.Reporting {
         // SVG theme colors (set at the start of each report generation)
         private string svgBg, svgBorder, svgMuted, svgDim, svgAccent, svgChartBg, svgChartDark, svgMoonStroke, svgMoonOpacity, svgSunrise;
 
+        // Logical name of the embedded icon inlined into the report header.
+        // Deliberately NOT the brand master: base64-inlining that made the icon
+        // ~90% of an entire report (~840 KB total, of which 752 KB was this one
+        // data URI). The report renders it at 48px, so AssetNames.HeaderIcon is
+        // a 144x144 palette copy (~9 KB, 3x for HiDPI).
+        // Size matters beyond disk: reports go out as base64 MIME email bodies
+        // and Discord attachments, and a ~1.1 MB body is far more exposed to
+        // gateway rewriting and truncation than a ~130 KB one (a user has
+        // already received a report corrupted mid-stream inside this icon).
+        internal const string ReportIconResource = AssetNames.HeaderIcon;
+
         // Lazily-loaded plugin icon as a base64 data URI (embedded resource)
         private static string? _iconDataUri;
         private static string? IconDataUri {
@@ -62,7 +74,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 if (_iconDataUri != null) return _iconDataUri;
                 try {
                     using var stream = Assembly.GetExecutingAssembly()
-                                               .GetManifestResourceStream("plugin-icon.png");
+                                               .GetManifestResourceStream(ReportIconResource);
                     if (stream == null) return null;
                     var bytes = new byte[stream.Length];
                     stream.Read(bytes, 0, bytes.Length);

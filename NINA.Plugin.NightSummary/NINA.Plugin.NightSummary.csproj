@@ -47,14 +47,11 @@
     <Folder Include="MyPluginDockables\" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- plugin-icon.png stays embedded in the plugin assembly because ReportGenerator embeds it
-         into HTML reports. The dashboard classlib also embeds its own copy for the favicon
-         endpoint (separate assembly, separate resource lookup). -->
-    <EmbeddedResource Include="..\assets\plugin-icon.png">
-      <LogicalName>plugin-icon.png</LogicalName>
-    </EmbeddedResource>
-  </ItemGroup>
+  <!-- No icon is embedded in this assembly. ReportGenerator lives in the dashboard
+       classlib and resolves its icon via GetExecutingAssembly(), i.e. out of
+       Dashboard.dll; this assembly reads no embedded resources at all, and NINA's
+       plugin loader does not look for an embedded icon either. The ~600 KB embed
+       that used to sit here was pure dead weight in the shipped plugin DLL. -->
 
   <ItemGroup>
     <ProjectReference Include="..\NINA.Plugin.NightSummary.Dashboard\NINA.Plugin.NightSummary.Dashboard.csproj" />

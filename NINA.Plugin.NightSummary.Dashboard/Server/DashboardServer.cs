@@ -1,5 +1,6 @@
 using NINA.Plugin.NightSummary.Data;
 using NINA.Plugin.NightSummary.Dashboard.Abstractions;
+using NINA.Plugin.NightSummary.Dashboard.WebAssets;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -4599,7 +4600,11 @@ private static string FormatSettingsForLog(NightSummarySettings s) {
                 var html = ReadAssetText("dashboard.html");
                 var css  = ReadAssetText("flatpickr.min.css") + "\n" + ReadAssetText("dashboard.css");
                 var js   = ReadAssetText("flatpickr.min.js")  + "\n" + ReadAssetText("dashboard.js");
-                var iconBytes = _webAssets.ReadAsync("plugin-icon.png").GetAwaiter().GetResult();
+                // AssetNames.HeaderIcon, not the brand master: this is inlined as a
+                // base64 data URI into every dashboard HTML response and rendered at
+                // 48px (22px on mobile), so the master's ~600 KB would be ~800 KB of
+                // base64 paid on every page load for pixels nobody sees.
+                var iconBytes = _webAssets.ReadAsync(AssetNames.HeaderIcon).GetAwaiter().GetResult();
                 var iconBase64 = iconBytes != null
                     ? "data:image/png;base64," + Convert.ToBase64String(iconBytes)
                     : "";

@@ -72,7 +72,7 @@ namespace NINA.Plugin.NightSummary.Tests {
                     "dashboard.js"      => Encoding.UTF8.GetBytes("// stub"),
                     "flatpickr.min.css" => Encoding.UTF8.GetBytes(""),
                     "flatpickr.min.js"  => Encoding.UTF8.GetBytes(""),
-                    "plugin-icon.png"   => Array.Empty<byte>(),
+                    "report-icon.png"   => Array.Empty<byte>(),
                     _                   => null
                 };
                 return Task.FromResult(bytes);
