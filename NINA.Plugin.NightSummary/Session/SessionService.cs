@@ -44,6 +44,13 @@ namespace NINA.Plugin.NightSummary.Session {
         // Tracks fire-and-forget report-generation Tasks spawned from EndSession so
         // Teardown can wait for in-flight reports rather than dropping them when NINA
         // closes immediately after a session ends.
+        // Root for dashboard-served report HTML. Null in production, meaning the real
+        // %LOCALAPPDATA% folder; tests pass a temp dir so a test run never writes into a
+        // developer's live NightSummary data. Deliberately a constructor seam rather than
+        // a post-run cleanup hook: deleting "files that appeared during the run" would
+        // race a live NINA finalizing a real session and could destroy a real report.
+        private readonly string reportsDirectoryOverride;
+
         private readonly object _pendingReportsLock = new object();
         private readonly List<Task> _pendingReports = new List<Task>();
 
@@ -76,6 +83,12 @@ namespace NINA.Plugin.NightSummary.Session {
         /// Internal constructor for test replay. Accepts an explicit database path
         /// to isolate tests from the production LOCALAPPDATA database.
         /// When databasePath is null, uses the default production path.
+        ///
+        /// reportsDirectory does the same for dashboard report HTML. Without it the
+        /// suite writes into a developer's real %LOCALAPPDATA%\NINA\NightSummary\reports
+        /// on every run, because SaveReportForDashboardAsync is called unconditionally
+        /// and consults no setting. Running the suite on the observatory PC on
+        /// 2026-08-23 left 220 synthetic reports in the live folder that way.
         /// </summary>
         internal SessionService(
             IImageSaveMediator     imageSaveMediator,
@@ -93,7 +106,10 @@ namespace NINA.Plugin.NightSummary.Session {
             IWeatherDataMediator   weatherDataMediator,
             ISwitchMediator        switchMediator,
             IMessageBroker         messageBroker,
-            string                 databasePath) {
+            string                 databasePath,
+            string                 reportsDirectory = null) {
+
+            this.reportsDirectoryOverride = reportsDirectory;
 
             this.profileService        = profileService;
             this.cameraMediator        = cameraMediator;
@@ -608,6 +624,13 @@ namespace NINA.Plugin.NightSummary.Session {
             }
         }
 
+        /// <summary>Directory the dashboard serves report HTML from. Honours the
+        /// constructor override so tests stay out of the production data folder.</summary>
+        private string ResolveDashboardReportsDir() =>
+            reportsDirectoryOverride ?? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "NINA", "NightSummary", "reports");
+
         /// <summary>
         /// Saves an HTML report to the local dashboard reports directory so the embedded
         /// DashboardServer can serve it. This is always called on report generation,
@@ -615,9 +638,7 @@ namespace NINA.Plugin.NightSummary.Session {
         /// </summary>
         private async Task SaveReportForDashboardAsync(string sessionId, string htmlReport, List<LiveStackImage> liveStackImages = null, double observerLatitude = 0, double observerLongitude = 0) {
             try {
-                var reportsDir = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "NINA", "NightSummary", "reports");
+                var reportsDir = ResolveDashboardReportsDir();
                 Directory.CreateDirectory(reportsDir);
                 var filePath = Path.Combine(reportsDir, $"{sessionId}.html");
                 await File.WriteAllTextAsync(filePath, htmlReport);
@@ -956,9 +977,7 @@ namespace NINA.Plugin.NightSummary.Session {
         public async Task<(int generated, int skipped, int failed)> GenerateAllDashboardReportsAsync(
             string dbPath, Action<int, int> onProgress = null) {
 
-            var reportsDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "NINA", "NightSummary", "reports");
+            var reportsDir = ResolveDashboardReportsDir();
             Directory.CreateDirectory(reportsDir);
 
             var db       = new SessionDatabase(dbPath);

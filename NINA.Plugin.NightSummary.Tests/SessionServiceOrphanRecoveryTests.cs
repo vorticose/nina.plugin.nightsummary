@@ -25,6 +25,11 @@ namespace NINA.Plugin.NightSummary.Tests {
         private readonly MockCameraMediator _cameraMediator = new();
         private readonly string _dbPath;
         private readonly string _settingsPath;
+        // Keeps dashboard report HTML out of the developer's real
+        // %LOCALAPPDATA%\NINA\NightSummary\reports. SaveReportForDashboardAsync runs
+        // unconditionally and consults no setting, so without this seam every test run
+        // litters the live folder.
+        private readonly string _reportsDir;
         // See SessionReplayRunner — SessionService reads from SettingsManager.Instance,
         // not from this test's isolated SettingsManager. Without redirecting the
         // singleton the disabled delivery flags below are decorative: FinalizeOrphanedSessions
@@ -38,6 +43,7 @@ namespace NINA.Plugin.NightSummary.Tests {
         public SessionServiceOrphanRecoveryTests() {
             _dbPath       = Path.Combine(Path.GetTempPath(), $"ns_orphan_{Guid.NewGuid():N}.sqlite");
             _settingsPath = Path.Combine(Path.GetTempPath(), $"ns_orphan_settings_{Guid.NewGuid():N}.json");
+            _reportsDir   = Path.Combine(Path.GetTempPath(), $"ns_orphan_reports_{Guid.NewGuid():N}");
 
             var settingsMgr = new SettingsManager(_settingsPath, attemptMigration: false);
             settingsMgr.Load();
@@ -57,7 +63,8 @@ namespace NINA.Plugin.NightSummary.Tests {
                 _cameraMediator,
                 _sequenceMediator,
                 null, null, null, null, null, null, null, null,
-                databasePath: _dbPath);
+                databasePath: _dbPath,
+                reportsDirectory: _reportsDir);
 
             _db = new SessionDatabase(_dbPath);
         }
@@ -75,6 +82,7 @@ namespace NINA.Plugin.NightSummary.Tests {
             _settingsOverride?.Dispose();
             if (File.Exists(_dbPath))       File.Delete(_dbPath);
             if (File.Exists(_settingsPath)) File.Delete(_settingsPath);
+            try { if (Directory.Exists(_reportsDir)) Directory.Delete(_reportsDir, true); } catch { }
         }
 
         // ── No database ─────────────────────────────────────────────────────

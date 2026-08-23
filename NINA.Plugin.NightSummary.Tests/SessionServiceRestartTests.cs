@@ -23,6 +23,11 @@ namespace NINA.Plugin.NightSummary.Tests {
         private readonly MockCameraMediator _cameraMediator = new();
         private readonly string _dbPath;
         private readonly string _settingsPath;
+        // Keeps dashboard report HTML out of the developer's real
+        // %LOCALAPPDATA%\NINA\NightSummary\reports. SaveReportForDashboardAsync runs
+        // unconditionally and consults no setting, so without this seam every test run
+        // litters the live folder.
+        private readonly string _reportsDir;
         // See SessionReplayRunner — SessionService reads from SettingsManager.Instance,
         // not from this test's isolated SettingsManager. Redirect the singleton so the
         // disabled delivery flags below are actually observed.
@@ -32,6 +37,7 @@ namespace NINA.Plugin.NightSummary.Tests {
         public SessionServiceRestartTests() {
             _dbPath       = Path.Combine(Path.GetTempPath(), $"ns_restart_{Guid.NewGuid():N}.sqlite");
             _settingsPath = Path.Combine(Path.GetTempPath(), $"ns_restart_settings_{Guid.NewGuid():N}.json");
+            _reportsDir   = Path.Combine(Path.GetTempPath(), $"ns_restart_reports_{Guid.NewGuid():N}");
 
             var settingsMgr = new SettingsManager(_settingsPath, attemptMigration: false);
             settingsMgr.Load();
@@ -51,7 +57,8 @@ namespace NINA.Plugin.NightSummary.Tests {
                 _cameraMediator,
                 _sequenceMediator,
                 null, null, null, null, null, null, null, null,
-                databasePath: _dbPath);
+                databasePath: _dbPath,
+                reportsDirectory: _reportsDir);
         }
 
         public void Dispose() {
@@ -66,6 +73,7 @@ namespace NINA.Plugin.NightSummary.Tests {
             _settingsOverride?.Dispose();
             if (File.Exists(_dbPath))       File.Delete(_dbPath);
             if (File.Exists(_settingsPath)) File.Delete(_settingsPath);
+            try { if (Directory.Exists(_reportsDir)) Directory.Delete(_reportsDir, true); } catch { }
         }
 
         // ── Helpers ──────────────────────────────────────────────────────────
