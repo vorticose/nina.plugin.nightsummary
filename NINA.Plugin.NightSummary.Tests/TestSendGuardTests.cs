@@ -1,4 +1,6 @@
+using NINA.Core.Utility;
 using NINA.Plugin.NightSummary.Data;
+using System;
 using System.IO;
 using Xunit;
 
@@ -51,6 +53,26 @@ namespace NINA.Plugin.NightSummary.Tests {
             } finally {
                 if (File.Exists(tempPath)) File.Delete(tempPath);
             }
+        }
+
+        [Fact]
+        public void LoggerHome_IsNotProductionLocalAppData() {
+            Assert.False(string.IsNullOrEmpty(TestSendGuard.IsolatedNinaHome));
+            Assert.Equal(TestSendGuard.IsolatedNinaHome, CoreUtil.APPLICATIONTEMPPATH);
+            var productionNina = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "NINA");
+            Assert.False(
+                string.Equals(CoreUtil.APPLICATIONTEMPPATH, productionNina, StringComparison.OrdinalIgnoreCase),
+                "Logger home must not be the host's real %LOCALAPPDATA%\\NINA");
+        }
+
+        [Fact]
+        public void Logger_WritesUnderIsolatedHome_NotProductionLogs() {
+            Logger.Info("NightSummary test log redirect probe");
+            var isolatedLogs = Path.Combine(TestSendGuard.IsolatedNinaHome, "Logs");
+            Assert.True(Directory.Exists(isolatedLogs));
+            Assert.NotEmpty(Directory.GetFiles(isolatedLogs, "*.log"));
         }
     }
 }
