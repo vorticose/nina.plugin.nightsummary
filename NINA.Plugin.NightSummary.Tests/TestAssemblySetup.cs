@@ -1,3 +1,4 @@
+using NINA.Core.Utility;
 using NINA.Plugin.NightSummary.Data;
 using System;
 using System.IO;
@@ -39,11 +40,15 @@ namespace NINA.Plugin.NightSummary.Tests {
     /// It also makes local runs match CI, where no production settings.json exists and
     /// tests already run against defaults.
     ///
-    /// This deliberately does NOT gate report FILE writes: SessionService.
-    /// SaveReportForDashboardAsync hardcodes the production reports directory and
-    /// consults no setting, so running the suite still litters
-    /// %LOCALAPPDATA%\NINA\NightSummary\reports. Fixing that needs an injection point on
-    /// SessionService and is tracked separately.
+    /// Report HTML writes are gated separately via the SessionService reportsDirectory
+    /// constructor seam (see 9d0d882). This initializer also redirects
+    /// CoreUtil.APPLICATIONTEMPPATH before NINA.Core.Utility.Logger's static constructor
+    /// runs, so the suite cannot drop a NINA-format log into the host's real
+    /// %LOCALAPPDATA%\NINA\Logs folder. That leak is how four full-suite runs on the
+    /// observatory PC on 2026-08-23 put 855 KB of test-fixture logs into the nightly
+    /// rig-log bundle. Logger also DirectoryCleanup's that folder on first use (90-day
+    /// retention), so pointing it at production would be a custody hazard, not just
+    /// noise. Do not scan or delete production Logs from tests to "fix" leftovers.
     /// </summary>
     internal static class TestSendGuard {
 
@@ -52,12 +57,23 @@ namespace NINA.Plugin.NightSummary.Tests {
         private static readonly string GuardSettingsPath =
             Path.Combine(Path.GetTempPath(), "ns_test_send_guard_settings.json");
 
+        /// <summary>Isolated NINA home (Logs, etc.) for the test process. Exposed so a
+        /// test can assert Logger is not writing into the host's real LOCALAPPDATA.</summary>
+        internal static string IsolatedNinaHome { get; private set; } = "";
+
         /// <summary>The isolated manager installed as the floor. Exposed so a test can
         /// assert the floor is actually in place.</summary>
         internal static SettingsManager Installed { get; private set; }
 
         [ModuleInitializer]
         internal static void InstallDeliveryChannelFloor() {
+            // Must run before any Logger.Info/Warning/Error. Logger's static constructor
+            // captures CoreUtil.APPLICATIONTEMPPATH once and opens a file there; there is
+            // no later seam. SettingsManager.Load below can log, so this comes first.
+            IsolatedNinaHome = Path.Combine(Path.GetTempPath(), "ns_test_nina_home");
+            Directory.CreateDirectory(Path.Combine(IsolatedNinaHome, "Logs"));
+            CoreUtil.APPLICATIONTEMPPATH = IsolatedNinaHome;
+
             var mgr = new SettingsManager(GuardSettingsPath, attemptMigration: false);
             mgr.Load();
             mgr.Current.EmailEnabled       = false;
