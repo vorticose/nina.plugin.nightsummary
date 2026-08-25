@@ -2753,16 +2753,8 @@ namespace NINA.Plugin.NightSummary.Reporting {
         /// Uses a mean-anomaly approximation accurate to ~1–2%.
         /// Reference new moon: 2000-01-06 18:14 UTC (JD 2451549.5).
         /// </summary>
-        internal static double MoonIllumination(DateTime localTime, out bool waxing) {
-            const double synodicPeriod = 29.53058868;
-            var referenceNewMoon = new DateTime(2000, 1, 6, 18, 14, 0, DateTimeKind.Utc);
-            var utc = localTime.Kind == DateTimeKind.Utc ? localTime : localTime.ToUniversalTime();
-            var daysSinceNew = (utc - referenceNewMoon).TotalDays % synodicPeriod;
-            if (daysSinceNew < 0) daysSinceNew += synodicPeriod;
-            waxing = daysSinceNew < synodicPeriod / 2.0;
-            var phaseAngle = daysSinceNew / synodicPeriod * 2.0 * Math.PI;
-            return (1.0 - Math.Cos(phaseAngle)) / 2.0 * 100.0;
-        }
+        internal static double MoonIllumination(DateTime localTime, out bool waxing)
+            => MoonPhase.MoonIllumination(localTime, out waxing);
 
         private static double CV(List<double> values) => FilterHelper.CV(values);
         private static double StdDev(List<double> values) => FilterHelper.StdDev(values);
