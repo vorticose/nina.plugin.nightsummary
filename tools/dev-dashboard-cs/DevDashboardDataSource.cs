@@ -35,7 +35,7 @@ internal sealed class DevDashboardDataSource : IDashboardDataSource {
     private bool HasDb() => File.Exists(dbPath);
 
     public Task<IReadOnlyList<SessionRecord>> GetAllSessionsAsync(CancellationToken ct = default)
-        => Task.FromResult<IReadOnlyList<SessionRecord>>(HasDb() ? Reader().GetAllSessions() : new List<SessionRecord>());
+        => Task.FromResult<IReadOnlyList<SessionRecord>>(HasDb() ? Reader().GetAllSessionsWithListAggregates() : new List<SessionRecord>());
 
     public Task<SessionRecord?> GetSessionAsync(string sessionId, CancellationToken ct = default)
         => Task.FromResult(HasDb() ? Reader().GetSession(sessionId) : null);

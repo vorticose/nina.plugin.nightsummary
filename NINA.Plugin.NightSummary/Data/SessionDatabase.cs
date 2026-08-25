@@ -1077,6 +1077,13 @@ namespace NINA.Plugin.NightSummary.Data {
         public List<SessionRecord> GetAllSessions() => Reader().GetAllSessions();
 
         /// <summary>
+        /// Dashboard session-list aggregates (LIGHT predicates). Do not use for the
+        /// plugin dropdown; that stays on GetRecentSessions / GetSessionsByDateRange.
+        /// </summary>
+        public List<SessionRecord> GetAllSessionsWithListAggregates()
+            => Reader().GetAllSessionsWithListAggregates();
+
+        /// <summary>
         /// Returns the most recent session by SessionStart, or null if no sessions exist.
         /// </summary>
         public SessionRecord GetLatestSession() => Reader().GetLatestSession();

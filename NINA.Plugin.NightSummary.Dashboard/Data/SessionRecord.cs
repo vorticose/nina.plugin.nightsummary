@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 
 namespace NINA.Plugin.NightSummary.Data {
     /// <summary>
@@ -57,11 +58,25 @@ namespace NINA.Plugin.NightSummary.Data {
         public string WeatherName       { get; set; }
         public string SwitchName        { get; set; }
 
-        // Populated only by GetRecentSessions / GetSessionsByDateRange for dropdown display.
-        // Zero everywhere else (reporting pipeline, GetAllSessions, GetLatestSession, etc.).
+        // In-memory aggregates. NOT persisted. Two methods fill them with DIFFERENT
+        // predicates; do not reuse one for the other:
+        //   GetRecentSessions / GetSessionsByDateRange (plugin dropdown):
+        //     not-rejected (Accepted=1 OR GradingStatus=0), ALL image types.
+        //   GetAllSessionsWithListAggregates (dashboard GET /api/sessions):
+        //     LIGHT (or empty ImageType) for ImageCount / TargetNames / avgs;
+        //     CountsAsAccepted lights for IntegrationSeconds; avgs are metric > 0
+        //     including rejected lights. GetAllSessions() leaves these at 0.
         public int    ImageCount         { get; set; }
         public int    TargetCount        { get; set; }
         public double IntegrationSeconds { get; set; }
+
+        // First-seen LIGHT target names. Filled only by GetAllSessionsWithListAggregates.
+        public List<string> TargetNames { get; set; } = new List<string>();
+
+        // LIGHT rows with metric > 0 (rejected included). List method only.
+        public double AvgHfr     { get; set; }
+        public double AvgFwhm    { get; set; }
+        public double AvgGuiding { get; set; }
 
         // Display string for session picker dropdown.
         // Always includes counts so zero-image sessions render as "0 targets, 0 images, 0m"

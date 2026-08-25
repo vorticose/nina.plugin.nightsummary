@@ -559,6 +559,91 @@ public sealed class SqliteSessionReader {
         return result;
     }
 
+    /// <summary>
+    /// Dashboard session-list row: LIGHT counts (including rejected), first-seen
+    /// LIGHT target names, CountsAsAccepted integration, LIGHT avgs with metric &gt; 0.
+    /// Does NOT match GetRecentSessions dropdown SQL. Do not reuse SessionListWithCountsSql.
+    /// In-progress nights (SessionEnd unset) are still returned; the handler filters them.
+    /// Both statements run on one connection inside one read transaction so WAL
+    /// snapshot isolation keeps counts and names on the same DB state.
+    /// </summary>
+    public List<SessionRecord> GetAllSessionsWithListAggregates() {
+        var result = new List<SessionRecord>();
+        using var conn = new SqliteConnection(connectionString);
+        conn.Open();
+        using var tx = conn.BeginTransaction();
+
+        const string aggSql = @"
+            SELECT s.*,
+                   COALESCE(a.ImageCount, 0)            AS ImageCount,
+                   COALESCE(a.IntegrationSeconds, 0)    AS IntegrationSeconds,
+                   COALESCE(a.AvgHfr, 0)                AS AvgHfr,
+                   COALESCE(a.AvgFwhm, 0)                AS AvgFwhm,
+                   COALESCE(a.AvgGuiding, 0)             AS AvgGuiding
+            FROM Sessions s
+            LEFT JOIN (
+                SELECT SessionId,
+                       SUM(CASE WHEN (ImageType IS NULL OR ImageType = '' OR ImageType = 'LIGHT')
+                                THEN 1 ELSE 0 END) AS ImageCount,
+                       SUM(CASE WHEN (ImageType IS NULL OR ImageType = '' OR ImageType = 'LIGHT')
+                                 AND (Accepted = 1 OR GradingStatus = 0)
+                                THEN ExposureDuration ELSE 0 END) AS IntegrationSeconds,
+                       AVG(CASE WHEN (ImageType IS NULL OR ImageType = '' OR ImageType = 'LIGHT')
+                                 AND HFR > 0 THEN HFR END) AS AvgHfr,
+                       AVG(CASE WHEN (ImageType IS NULL OR ImageType = '' OR ImageType = 'LIGHT')
+                                 AND FWHM > 0 THEN FWHM END) AS AvgFwhm,
+                       AVG(CASE WHEN (ImageType IS NULL OR ImageType = '' OR ImageType = 'LIGHT')
+                                 AND GuidingRMSTotal > 0 THEN GuidingRMSTotal END) AS AvgGuiding
+                FROM Images
+                GROUP BY SessionId
+            ) a ON a.SessionId = s.SessionId
+            ORDER BY s.SessionStart DESC";
+
+        using (var cmd = new SqliteCommand(aggSql, conn, tx))
+        using (var reader = new SchemaSafeReader(cmd.ExecuteReader())) {
+            while (reader.Read()) {
+                try { result.Add(ReadListAggregateSessionRecord(reader)); }
+                catch (Exception ex) { log?.Error($"Error reading list-aggregate session record: {ex.Message}"); }
+            }
+        }
+
+        const string namesSql = @"
+            SELECT SessionId, TargetName, MIN(Timestamp) AS FirstSeen
+            FROM Images
+            WHERE (ImageType IS NULL OR ImageType = '' OR ImageType = 'LIGHT')
+              AND TargetName IS NOT NULL AND TargetName <> ''
+            GROUP BY SessionId, TargetName
+            ORDER BY SessionId, FirstSeen";
+
+        var names = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        using (var cmd = new SqliteCommand(namesSql, conn, tx))
+        using (var reader = new SchemaSafeReader(cmd.ExecuteReader())) {
+            while (reader.Read()) {
+                var sid  = reader["SessionId"]  == DBNull.Value ? "" : reader["SessionId"].ToString() ?? "";
+                var name = reader["TargetName"] == DBNull.Value ? "" : reader["TargetName"].ToString() ?? "";
+                if (sid.Length == 0 || name.Length == 0) continue;
+                if (!names.TryGetValue(sid, out var list)) {
+                    list = new List<string>();
+                    names[sid] = list;
+                }
+                list.Add(name);
+            }
+        }
+
+        tx.Commit();
+
+        foreach (var s in result) {
+            if (names.TryGetValue(s.SessionId, out var list)) {
+                s.TargetNames = list;
+                s.TargetCount = list.Count;
+            } else {
+                s.TargetNames = new List<string>();
+                s.TargetCount = 0;
+            }
+        }
+        return result;
+    }
+
     public SessionRecord? GetLatestSession() {
         using var conn = new SqliteConnection(connectionString);
         conn.Open();
@@ -592,6 +677,17 @@ public sealed class SqliteSessionReader {
         record.ImageCount         = reader["ImageCount"]         == DBNull.Value ? 0 : Convert.ToInt32(reader["ImageCount"]);
         record.TargetCount        = reader["TargetCount"]        == DBNull.Value ? 0 : Convert.ToInt32(reader["TargetCount"]);
         record.IntegrationSeconds = reader["IntegrationSeconds"] == DBNull.Value ? 0 : Convert.ToDouble(reader["IntegrationSeconds"]);
+        return record;
+    }
+
+    private static SessionRecord ReadListAggregateSessionRecord(SchemaSafeReader reader) {
+        var record = ReadSessionRecord(reader);
+        record.ImageCount         = reader["ImageCount"]         == DBNull.Value ? 0 : Convert.ToInt32(reader["ImageCount"]);
+        record.IntegrationSeconds = reader["IntegrationSeconds"] == DBNull.Value ? 0 : Convert.ToDouble(reader["IntegrationSeconds"]);
+        record.AvgHfr             = reader["AvgHfr"]             == DBNull.Value ? 0 : Convert.ToDouble(reader["AvgHfr"]);
+        record.AvgFwhm            = reader["AvgFwhm"]            == DBNull.Value ? 0 : Convert.ToDouble(reader["AvgFwhm"]);
+        record.AvgGuiding         = reader["AvgGuiding"]         == DBNull.Value ? 0 : Convert.ToDouble(reader["AvgGuiding"]);
+        record.TargetNames        = new List<string>();
         return record;
     }
 

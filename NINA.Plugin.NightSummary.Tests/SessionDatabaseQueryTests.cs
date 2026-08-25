@@ -1,6 +1,7 @@
 using NINA.Plugin.NightSummary.Data;
 using NINA.Plugin.NightSummary.Tests.Fixtures;
 using System;
+using System.Data.SQLite;
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
@@ -424,6 +425,178 @@ namespace NINA.Plugin.NightSummary.Tests {
             var ex = Record.Exception(() =>
                 _db.UpdateSessionCameraInfo("nonexistent-id", 4656, 3520, 3.76, 540.0));
             Assert.Null(ex);
+        }
+
+        // ── GetAllSessionsWithListAggregates ──────────────────────────────────
+        // LIGHT-scoped list predicates. Do not copy GetSessionsForTarget AVG
+        // gates (those use Accepted=1 OR GradingStatus=0). GetAllSessions() stays
+        // SELECT * and must not grow aggregates.
+
+        [Fact]
+        public void GetAllSessionsWithListAggregates_EmptyDatabase_ReturnsEmptyList() {
+            Assert.Empty(_db.GetAllSessionsWithListAggregates());
+        }
+
+        [Fact]
+        public void GetAllSessionsWithListAggregates_ZeroImageSession_ReturnedWithZeros() {
+            var session = CreateSession(new DateTime(2025, 3, 1, 21, 0, 0));
+            var s = _db.GetAllSessionsWithListAggregates().Single();
+            Assert.Equal(session.SessionId, s.SessionId);
+            Assert.Equal(0, s.ImageCount);
+            Assert.Empty(s.TargetNames);
+            Assert.Equal(0, s.TargetCount);
+            Assert.Equal(0.0, s.AvgHfr);
+            Assert.Equal(0.0, s.AvgFwhm);
+            Assert.Equal(0.0, s.AvgGuiding);
+        }
+
+        [Fact]
+        public void GetAllSessionsWithListAggregates_TwoTargets_FirstSeenOrderAndIntegration() {
+            var session = CreateSession(new DateTime(2025, 3, 1, 21, 0, 0));
+            var t0 = new DateTime(2025, 3, 1, 22, 0, 0);
+            for (int i = 0; i < 5; i++)
+                _db.SaveImageRecord(TestDataFactory.MakeImage(session.SessionId, target: "M31", timestamp: t0.AddMinutes(i)));
+            for (int i = 0; i < 3; i++)
+                _db.SaveImageRecord(TestDataFactory.MakeImage(session.SessionId, target: "M42", timestamp: t0.AddHours(1).AddMinutes(i)));
+            var s = _db.GetAllSessionsWithListAggregates().Single();
+            Assert.Equal(8, s.ImageCount);
+            Assert.Equal(new[] { "M31", "M42" }, s.TargetNames);
+            Assert.Equal(2400.0, s.IntegrationSeconds, precision: 1);
+        }
+
+        [Fact]
+        public void GetAllSessionsWithListAggregates_RejectedLights_InCountNotIntegration() {
+            var session = CreateSession(new DateTime(2025, 3, 1, 21, 0, 0));
+            for (int i = 0; i < 5; i++)
+                _db.SaveImageRecord(TestDataFactory.MakeImage(session.SessionId, accepted: true));
+            for (int i = 0; i < 2; i++) {
+                var rej = TestDataFactory.MakeImage(session.SessionId, accepted: false);
+                rej.GradingStatus = -1;
+                _db.SaveImageRecord(rej);
+            }
+            var s = _db.GetAllSessionsWithListAggregates().Single();
+            Assert.Equal(7, s.ImageCount);
+            Assert.Equal(1500.0, s.IntegrationSeconds, precision: 1);
+        }
+
+        [Fact]
+        public void GetAllSessionsWithListAggregates_PendingCountsTowardImageCountAndIntegration() {
+            var session = CreateSession(new DateTime(2025, 3, 1, 21, 0, 0));
+            var acc = TestDataFactory.MakeImage(session.SessionId, accepted: true);
+            acc.GradingStatus = 1;
+            _db.SaveImageRecord(acc);
+            var pend = TestDataFactory.MakeImage(session.SessionId, accepted: false);
+            pend.GradingStatus = 0;
+            _db.SaveImageRecord(pend);
+            var rej = TestDataFactory.MakeImage(session.SessionId, accepted: false);
+            rej.GradingStatus = 2;
+            _db.SaveImageRecord(rej);
+
+            var s = _db.GetAllSessionsWithListAggregates().Single();
+            Assert.Equal(3, s.ImageCount);
+            Assert.Equal(600.0, s.IntegrationSeconds, precision: 1);
+        }
+
+        [Fact]
+        public void GetAllSessionsWithListAggregates_DarkFlatExcluded() {
+            var session = CreateSession(new DateTime(2025, 3, 1, 21, 0, 0));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(session.SessionId, target: "M31"));
+            var dark = TestDataFactory.MakeImage(session.SessionId, target: "M31");
+            dark.ImageType = "DARK";
+            _db.SaveImageRecord(dark);
+            var flat = TestDataFactory.MakeImage(session.SessionId, target: "calibration");
+            flat.ImageType = "FLAT";
+            _db.SaveImageRecord(flat);
+
+            var s = _db.GetAllSessionsWithListAggregates().Single();
+            Assert.Equal(1, s.ImageCount);
+            Assert.Equal(new[] { "M31" }, s.TargetNames);
+            Assert.Equal(300.0, s.IntegrationSeconds, precision: 1);
+        }
+
+        [Fact]
+        public void GetAllSessionsWithListAggregates_RejectedLightHfrIncludedInAvg() {
+            var session = CreateSession(new DateTime(2025, 3, 1, 21, 0, 0));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(session.SessionId, hfr: 2.0, accepted: true));
+            var rej = TestDataFactory.MakeImage(session.SessionId, hfr: 4.0, accepted: false);
+            rej.GradingStatus = -1;
+            _db.SaveImageRecord(rej);
+            var s = _db.GetAllSessionsWithListAggregates().Single();
+            Assert.Equal(3.0, s.AvgHfr, precision: 2);
+        }
+
+        [Fact]
+        public void GetAllSessionsWithListAggregates_AllZeroHfr_AvgIsZero() {
+            var session = CreateSession(new DateTime(2025, 3, 1, 21, 0, 0));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(session.SessionId, hfr: 0));
+            var s = _db.GetAllSessionsWithListAggregates().Single();
+            Assert.Equal(0.0, s.AvgHfr);
+        }
+
+        [Fact]
+        public void GetAllSessionsWithListAggregates_CommaInTargetName_IsOneEntry() {
+            var session = CreateSession(new DateTime(2025, 3, 1, 21, 0, 0));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(session.SessionId, target: "M31, Andromeda"));
+            var s = _db.GetAllSessionsWithListAggregates().Single();
+            Assert.Equal(new[] { "M31, Andromeda" }, s.TargetNames);
+        }
+
+        [Fact]
+        public void GetAllSessionsWithListAggregates_TargetNamesOrderedByMinTimestampNotInsertOrder() {
+            var session = CreateSession(new DateTime(2025, 3, 1, 21, 0, 0));
+            var later = new DateTime(2025, 3, 1, 23, 0, 0);
+            var earlier = new DateTime(2025, 3, 1, 22, 0, 0);
+            _db.SaveImageRecord(TestDataFactory.MakeImage(session.SessionId, target: "M42", timestamp: later));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(session.SessionId, target: "M31", timestamp: earlier));
+            var s = _db.GetAllSessionsWithListAggregates().Single();
+            Assert.Equal(new[] { "M31", "M42" }, s.TargetNames);
+        }
+
+        [Fact]
+        public void GetAllSessionsWithListAggregates_InProgressStillReturnedByReader() {
+            var session = CreateSession(new DateTime(2025, 3, 1, 21, 0, 0));
+            var s = _db.GetAllSessionsWithListAggregates().Single();
+            Assert.Equal(session.SessionId, s.SessionId);
+            Assert.True(s.SessionEnd <= s.SessionStart);
+        }
+
+        [Fact]
+        public void GetAllSessionsWithListAggregates_AutoFinalizedRoundTrips() {
+            var session = CreateSession(new DateTime(2025, 3, 1, 21, 0, 0));
+            _db.FinalizeSession(session.SessionId, session.SessionStart.AddHours(6), reportSent: false, autoFinalized: true);
+            var s = _db.GetAllSessionsWithListAggregates().Single();
+            Assert.True(s.AutoFinalized);
+        }
+
+        [Fact]
+        public void GetAllSessions_DoesNotGrowAggregates() {
+            var session = CreateSession(new DateTime(2025, 3, 1, 21, 0, 0));
+            _db.SaveImageRecord(TestDataFactory.MakeImage(session.SessionId));
+            var plain = _db.GetAllSessions().Single();
+            Assert.Equal(0, plain.ImageCount);
+            Assert.Equal(0.0, plain.IntegrationSeconds);
+            Assert.Empty(plain.TargetNames);
+        }
+
+        [Fact]
+        public void GetAllSessionsWithListAggregates_NullColumnsCountAsLightExcludedFromIntegrationAndAvgs() {
+            var session = CreateSession(new DateTime(2025, 3, 1, 21, 0, 0));
+            using (var conn = new SQLiteConnection($"Data Source={_dbPath};Version=3;")) {
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    INSERT INTO Images (SessionId, Timestamp, TargetName, Filter,
+                                        ExposureDuration, HFR, Accepted, GradingStatus, ImageType)
+                    VALUES (@sid, @ts, 'NULLROW', 'Ha', NULL, NULL, NULL, NULL, NULL)";
+                cmd.Parameters.AddWithValue("@sid", session.SessionId);
+                cmd.Parameters.AddWithValue("@ts", new DateTime(2025, 3, 1, 22, 0, 0).ToString("o"));
+                cmd.ExecuteNonQuery();
+            }
+            var s = _db.GetAllSessionsWithListAggregates().Single();
+            Assert.Equal(1, s.ImageCount);
+            Assert.Equal(0.0, s.IntegrationSeconds);
+            Assert.Equal(0.0, s.AvgHfr);
+            Assert.Equal(new[] { "NULLROW" }, s.TargetNames);
         }
     }
 }
