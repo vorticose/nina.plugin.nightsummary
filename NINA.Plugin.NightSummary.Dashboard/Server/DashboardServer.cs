@@ -1,6 +1,7 @@
 using NINA.Plugin.NightSummary.Data;
 using NINA.Plugin.NightSummary.Dashboard.Abstractions;
 using NINA.Plugin.NightSummary.Dashboard.WebAssets;
+using NINA.Plugin.NightSummary.Reporting;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -903,18 +904,7 @@ namespace NINA.Plugin.NightSummary.Server {
             var result = completed.Select(s => {
                 var images = DbImages(s.SessionId);
                 var lightImages = images.Where(i => string.IsNullOrEmpty(i.ImageType) || i.ImageType == "LIGHT").ToList();
-                // Extract moon phase from report if available
-                string moonPhase = null;
                 var reportPath = Path.Combine(reportsDir, $"{s.SessionId}.html");
-                bool hasReport = File.Exists(reportPath);
-                if (hasReport) {
-                    try {
-                        var html = File.ReadAllText(reportPath);
-                        // Match: <div class='stat-value'>42% ↑</div><div class='stat-label'>Moon</div>
-                        var moonMatch = Regex.Match(html, @"<div class='stat-value'>(\d+%\s*[^\<]*)</div>\s*<div class='stat-label'>Moon</div>");
-                        if (moonMatch.Success) moonPhase = System.Text.RegularExpressions.Regex.Replace(System.Net.WebUtility.HtmlDecode(moonMatch.Groups[1].Value), @"\s+", " ").Trim();
-                    } catch { }
-                }
                 return new {
                     sessionId = s.SessionId,
                     sessionStart = s.SessionStart.ToString("o"),
@@ -928,8 +918,8 @@ namespace NINA.Plugin.NightSummary.Server {
                     avgHfr = lightImages.Where(i => i.HFR > 0).Select(i => i.HFR).DefaultIfEmpty(0).Average(),
                     avgFwhm = lightImages.Where(i => i.FWHM > 0).Select(i => i.FWHM).DefaultIfEmpty(0).Average(),
                     avgGuiding = lightImages.Where(i => i.GuidingRMSTotal > 0).Select(i => i.GuidingRMSTotal).DefaultIfEmpty(0).Average(),
-                    hasReport,
-                    moonPhase,
+                    hasReport = File.Exists(reportPath),
+                    moonPhase = MoonPhase.Format(s.SessionStart),
                     autoFinalized = s.AutoFinalized
                 };
             }).ToList();
@@ -2673,21 +2663,6 @@ namespace NINA.Plugin.NightSummary.Server {
 
             var sessions = DbSessionsForTarget(targetName);
 
-            // Parse moon phase from each session's report HTML (same pattern as HandleGetSessions)
-            var moonBySessionId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var s in sessions) {
-                var reportPath = Path.Combine(reportsDir, $"{s.SessionId}.html");
-                if (!File.Exists(reportPath)) continue;
-                try {
-                    var html = File.ReadAllText(reportPath);
-                    var moonMatch = Regex.Match(html, @"<div class='stat-value'>(\d+%\s*[^\<]*)</div>\s*<div class='stat-label'>Moon</div>");
-                    if (moonMatch.Success) {
-                        moonBySessionId[s.SessionId] = Regex.Replace(
-                            WebUtility.HtmlDecode(moonMatch.Groups[1].Value), @"\s+", " ").Trim();
-                    }
-                } catch { }
-            }
-
             // Aggregate totals across all sessions
             var totalSeconds = sessions.Sum(s => s.IntegrationSeconds);
             var totalFrames  = sessions.Sum(s => s.AcceptedFrames);
@@ -2716,7 +2691,7 @@ namespace NINA.Plugin.NightSummary.Server {
                     totalFrames           = s.FrameCount,
                     avgHFR                = s.AvgHFR        > 0 ? (double?)s.AvgHFR        : null,
                     avgGuidingRMS         = s.AvgGuidingRMS > 0 ? (double?)s.AvgGuidingRMS : null,
-                    moonPhase             = moonBySessionId.TryGetValue(s.SessionId, out var m) ? m : null,
+                    moonPhase             = MoonPhase.Format(s.SessionStart),
                     filters = s.Filters.Select(f => new {
                         filter             = f.Filter,
                         integrationSeconds = f.IntegrationSeconds,
@@ -3164,19 +3139,6 @@ namespace NINA.Plugin.NightSummary.Server {
 
                 int durMin = (int)Math.Round((s.SessionEnd - s.SessionStart).TotalMinutes);
 
-                string moon = null;
-                var reportPath = Path.Combine(reportsDir, $"{s.SessionId}.html");
-                if (File.Exists(reportPath)) {
-                    try {
-                        var html = File.ReadAllText(reportPath);
-                        var moonMatch = Regex.Match(html, @"<div class='stat-value'>(\d+%\s*[^\<]*)</div>\s*<div class='stat-label'>Moon</div>");
-                        if (moonMatch.Success) {
-                            moon = Regex.Replace(
-                                WebUtility.HtmlDecode(moonMatch.Groups[1].Value), @"\s+", " ").Trim();
-                        }
-                    } catch { }
-                }
-
                 resultSessions.Add(new {
                     sessionId          = s.SessionId,
                     sessionStart       = s.SessionStart.ToString("o"),
@@ -3188,7 +3150,7 @@ namespace NINA.Plugin.NightSummary.Server {
                     totalFrames        = matching.Count,
                     avgHFR             = avgHfr,
                     avgGuidingRMS      = avgGuide,
-                    moonPhase          = moon,
+                    moonPhase          = MoonPhase.Format(s.SessionStart),
                     targets            = targetsInSession,
                     filters            = byFilter,
                 });
