@@ -902,25 +902,21 @@ namespace NINA.Plugin.NightSummary.Server {
             // Tonight tab via /api/tonight/preview.
             var completed = sessions.Where(s => s.SessionEnd > s.SessionStart).ToList();
             var result = completed.Select(s => {
-                var images = DbImages(s.SessionId);
-                var lightImages = images.Where(i => string.IsNullOrEmpty(i.ImageType) || i.ImageType == "LIGHT").ToList();
                 var reportPath = Path.Combine(reportsDir, $"{s.SessionId}.html");
                 return new {
-                    sessionId = s.SessionId,
-                    sessionStart = s.SessionStart.ToString("o"),
-                    sessionEnd = s.SessionEnd.ToString("o"),
-                    profileName = s.ProfileName,
-                    imageCount = lightImages.Count,
-                    targets = lightImages
-                        .Where(i => !string.IsNullOrEmpty(i.TargetName))
-                        .Select(i => i.TargetName).Distinct().ToList(),
-                    totalIntegrationSeconds = lightImages.Where(i => i.CountsAsAccepted).Sum(i => i.ExposureDuration),
-                    avgHfr = lightImages.Where(i => i.HFR > 0).Select(i => i.HFR).DefaultIfEmpty(0).Average(),
-                    avgFwhm = lightImages.Where(i => i.FWHM > 0).Select(i => i.FWHM).DefaultIfEmpty(0).Average(),
-                    avgGuiding = lightImages.Where(i => i.GuidingRMSTotal > 0).Select(i => i.GuidingRMSTotal).DefaultIfEmpty(0).Average(),
-                    hasReport = File.Exists(reportPath),
-                    moonPhase = MoonPhase.Format(s.SessionStart),
-                    autoFinalized = s.AutoFinalized
+                    sessionId               = s.SessionId,
+                    sessionStart            = s.SessionStart.ToString("o"),
+                    sessionEnd              = s.SessionEnd.ToString("o"),
+                    profileName             = s.ProfileName,
+                    imageCount              = s.ImageCount,
+                    targets                 = s.TargetNames ?? (IReadOnlyList<string>)Array.Empty<string>(),
+                    totalIntegrationSeconds = s.IntegrationSeconds,
+                    avgHfr                  = s.AvgHfr,
+                    avgFwhm                 = s.AvgFwhm,
+                    avgGuiding              = s.AvgGuiding,
+                    hasReport               = File.Exists(reportPath),
+                    moonPhase               = MoonPhase.Format(s.SessionStart),
+                    autoFinalized           = s.AutoFinalized
                 };
             }).ToList();
 
