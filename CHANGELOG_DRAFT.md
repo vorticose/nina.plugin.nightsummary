@@ -1,8 +1,8 @@
 # Night Summary — Changelog
 
-<!-- v3.3.1 shipped 2026-08-22. Session merge remains a candidate, not a commitment. -->
+<!-- v3.3.1 shipped 2026-08-22. Next tag is planned as v3.4.0 (dashboard load speed). Session merge remains a candidate, not a commitment. -->
 
-## v3.3.2 (unreleased)
+## v3.4.0 (unreleased)
 
 ### New Features
 
@@ -16,10 +16,11 @@
 
 ### Bug Fixes
 
-- Fixed the Sessions activity stripe on a phone: expanding the stats row used to open on the oldest dates and drag the whole page sideways until it snapped to today. It now opens on the latest nights and only the stripe scrolls.
+- Fixed the Sessions activity stripe on a phone: expanding the stats row used to open on the oldest dates and drag the whole page sideways until it snapped to today. It now opens on the latest nights with no flash of the older view, and only the stripe scrolls.
 
 ### Candidates
 
+- Dashboard shell: gzip HTML/JSON and serve JS/CSS as separate cacheable files. GET `/` is still ~800 KB inlined with no-store; that is the remaining phone first-load wait after the sessions-list SQL work. Parked 2026-08-26, intended as the v3.4.0 headline.
 - Session merge: optional merge of an Auto-recovered night with the following stub, then regenerate a combined report. Parked from v3.3.1 (all eight live orphans had a next session in 5-27 min).
 
 ## v3.3.1

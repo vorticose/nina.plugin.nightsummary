@@ -2511,6 +2511,12 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   .lifetime-calendar-slot { display: none !important; }
   .lifetime-strip--expanded { overflow-x: hidden; }
   .lifetime-strip--expanded .lifetime-waveform-slot { display: flex !important; }
+  /* --expanded makes the slot measurable, but the SVG still starts at the
+     oldest dates (and fitLifetimeWaveform may rebuild to a new width). Hide
+     until JS has snapped to today so expand does not flash the wrong view. */
+  .lifetime-strip--expanded:not(.lifetime-strip--ready) .lifetime-waveform-slot {
+    visibility: hidden;
+  }
   .lv-toggle { display: none; }
   .lifetime-strip-expandable { cursor: pointer; }
   .lifetime-strip-handle {

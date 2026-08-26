@@ -3821,19 +3821,27 @@ function fmtActivityRange(sessions) {
 }
 
 function toggleLifetimeExpand(strip) {
-  strip.classList.toggle('lifetime-strip--expanded');
   if (strip.classList.contains('lifetime-strip--expanded')) {
-    // The waveform slot is display:none on mobile until this class is set.
-    // First-load fitLifetimeWaveform therefore saw clientWidth 0, skipped
-    // is-scrollable, and left overflow:visible. Setting scrollLeft alone
-    // then does nothing: the wide SVG (oldest dates at x=0) overflows the
-    // page, a horizontal pan moves the whole dashboard, and iOS address-bar
-    // resize is what eventually snapped to "today". Refit now that the slot
-    // is visible: measure, enable the inner scroller, snap to the right.
-    requestAnimationFrame(function() {
-      requestAnimationFrame(fitLifetimeWaveform);
-    });
+    strip.classList.remove('lifetime-strip--expanded', 'lifetime-strip--ready');
+    return;
   }
+  // The waveform slot is display:none on mobile until --expanded. CSS also
+  // keeps it visibility:hidden until --ready so the first paint cannot show
+  // the unfitted SVG (oldest dates at x=0, often a different pixel width
+  // than the post-fit chart). Measure, snap to the latest nights, then reveal.
+  strip.classList.add('lifetime-strip--expanded');
+  var tries = 0;
+  function reveal() {
+    var wrap = strip.querySelector('.lifetime-waveform-slot .lw-scroll-wrap');
+    if (wrap && wrap.clientWidth >= 200) {
+      fitLifetimeWaveform();
+      strip.classList.add('lifetime-strip--ready');
+      return;
+    }
+    if (++tries < 8) requestAnimationFrame(reveal);
+    else strip.classList.add('lifetime-strip--ready');
+  }
+  reveal();
 }
 
 function positionPopup(infoEl, anchorX, refEl) {

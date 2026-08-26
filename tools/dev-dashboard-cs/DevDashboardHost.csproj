@@ -6,6 +6,10 @@
     <AssemblyName>nightsummary-dev-dashboard</AssemblyName>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
+    <!-- Same lockstep as the companion: header /api/health reads this assembly's
+         informational version, which the SDK derives from VersionPrefix. Keep a
+         single bump site (the plugin csproj). -->
+    <VersionPrefix>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)..\..\NINA.Plugin.NightSummary\NINA.Plugin.NightSummary.csproj')), '&lt;VersionPrefix&gt;([^&lt;]+)&lt;').Groups[1].Value)</VersionPrefix>
   </PropertyGroup>
 
   <ItemGroup>
