@@ -14,6 +14,10 @@
 - Companion update banner now rechecks every few hours and when you return to a hidden tab, so a dashboard left open still nags. GitHub check failures retry in minutes instead of being cached for a day. Settings has a Check for updates button.
 - Reports are roughly 8x smaller and the dashboard page is roughly half the size. Both headers embedded the icon at full brand-art resolution (776x776, ~600 KB) despite rendering it at 48px, which made it about 90% of every report and about half of every dashboard page load. Both now use a 144px copy: a typical report drops from ~840 KB to ~100 KB, and the dashboard HTML from ~1.5 MB to ~775 KB. Emailed reports in particular are far less exposed to gateway size limits and truncation. The plugin download is also about 1.2 MB smaller, since the full-size art was being baked into two DLLs that never read it.
 
+### Bug Fixes
+
+- Fixed the Sessions activity stripe on a phone: expanding the stats row used to open on the oldest dates and drag the whole page sideways until it snapped to today. It now opens on the latest nights and only the stripe scrolls.
+
 ### Candidates
 
 - Session merge: optional merge of an Auto-recovered night with the following stub, then regenerate a combined report. Parked from v3.3.1 (all eight live orphans had a next session in 5-27 min).

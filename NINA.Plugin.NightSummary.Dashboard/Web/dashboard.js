@@ -3823,12 +3823,16 @@ function fmtActivityRange(sessions) {
 function toggleLifetimeExpand(strip) {
   strip.classList.toggle('lifetime-strip--expanded');
   if (strip.classList.contains('lifetime-strip--expanded')) {
-    var sw = strip.querySelector('.lw-scroll-wrap');
-    if (sw) {
-      var snap = function() { sw.scrollLeft = sw.scrollWidth; };
-      requestAnimationFrame(function() { requestAnimationFrame(snap); });
-      [50, 200].forEach(function(ms) { setTimeout(snap, ms); });
-    }
+    // The waveform slot is display:none on mobile until this class is set.
+    // First-load fitLifetimeWaveform therefore saw clientWidth 0, skipped
+    // is-scrollable, and left overflow:visible. Setting scrollLeft alone
+    // then does nothing: the wide SVG (oldest dates at x=0) overflows the
+    // page, a horizontal pan moves the whole dashboard, and iOS address-bar
+    // resize is what eventually snapped to "today". Refit now that the slot
+    // is visible: measure, enable the inner scroller, snap to the right.
+    requestAnimationFrame(function() {
+      requestAnimationFrame(fitLifetimeWaveform);
+    });
   }
 }
 

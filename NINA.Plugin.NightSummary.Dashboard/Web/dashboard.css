@@ -2368,6 +2368,8 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   padding-bottom: 8px;
   scrollbar-width: thin;
   scrollbar-color: rgba(255,255,255,0.18) transparent;
+  touch-action: pan-x;
+  overscroll-behavior-x: contain;
 }
 .lw-scroll-wrap::-webkit-scrollbar { height: 8px; }
 .lw-scroll-wrap::-webkit-scrollbar-track { background: transparent; }
@@ -2507,6 +2509,7 @@ body.report-view #content { flex: 1; display: flex; flex-direction: column; min-
   .lifetime-heatmap-slot,
   .lifetime-waveform-slot,
   .lifetime-calendar-slot { display: none !important; }
+  .lifetime-strip--expanded { overflow-x: hidden; }
   .lifetime-strip--expanded .lifetime-waveform-slot { display: flex !important; }
   .lv-toggle { display: none; }
   .lifetime-strip-expandable { cursor: pointer; }
