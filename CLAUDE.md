@@ -42,6 +42,7 @@ git worktree add .claude/worktrees/<name> -b <branch-name> origin/dev   # or ori
 cd .claude/worktrees/<name>
 ```
 
+- The **primary checkout stays on `dev`**. Never `git checkout nina-3.3` (or `main`) in this folder; a leftover checkout is how the workspace spent months sitting on a stale NINA 3.3 port that we only ever merge into. `nina-3.3` lives at `.claude/worktrees/nina-3.3`.
 - Each agent gets its own worktree with its own branch
 - Two worktrees cannot share the same branch — create a feature branch if needed
 - Commit frequently so work is never lost to branch switches
@@ -181,8 +182,9 @@ nina-3.3   ← long-running NINA 3.3 port, periodically synced from dev
 - Do this before starting any v3 feature work to avoid drift
 
 **Keeping nina-3.3 in sync:**
-- Periodically (every few sessions or before a release): `git checkout nina-3.3 && git merge dev`
-- No conflicts expected — only difference is 3 lines in the .csproj
+- Work in the dedicated worktree, never the primary checkout:
+  `cd .claude/worktrees/nina-3.3 && git merge origin/main && git push origin nina-3.3`
+- Periodically (every few sessions or before a release). No conflicts expected; only difference is 3 lines in the .csproj.
 
 **Note:** `main` should always reflect exactly what's published. Never commit unreleased
 work directly to `main`.
@@ -304,7 +306,7 @@ To publish a new version:
 11. **Validate**: `cd ~/nina.plugin.manifests && npm install && node gather.js` — must show 0 failed
 12. **Submit PR**: to `isbeorn/nina.plugin.manifests` from `vorticose:night-summary-vX.Y.Z`
 13. **Discord announcement**: post to NINA community server once PR merges (catalog is live). See format template below.
-14. **Post-release**: merge `main` into `nina-3.3` (`git checkout nina-3.3 && git merge main --no-ff && git push`), update memory — mark release LIVE in `project_v2_XX_progress.md` and the `MEMORY.md` index line.
+14. **Post-release**: merge `main` into `nina-3.3` from the worktree (`cd .claude/worktrees/nina-3.3 && git merge origin/main --no-ff && git push origin nina-3.3`). Do not `git checkout nina-3.3` in the primary folder. Then update memory: mark release LIVE in `project_v2_XX_progress.md` and the `MEMORY.md` index line.
 
 ### Discord announcement format
 
@@ -367,13 +369,15 @@ and a stable release is expected several months away (as of March 2026).
 - No API changes were needed — the port compiled clean with 0 errors
 
 ### Keeping branches in sync
-Periodically merge `main` into `nina-3.3` to keep them in sync (no need to do this
-after every commit — every few sessions or before a release is fine):
+The primary checkout stays on `dev`. `nina-3.3` is a dedicated worktree at
+`.claude/worktrees/nina-3.3` so a sync cannot leave this folder on the port branch.
+
+Periodically merge `main` into `nina-3.3` (every few sessions or before a release):
 ```bash
-git checkout nina-3.3
-git merge main
+cd .claude/worktrees/nina-3.3
+git fetch origin
+git merge origin/main
 git push origin nina-3.3
-git checkout main
 ```
 Merges will always be clean since the only difference is 3 lines in the `.csproj`.
 **Important**: always merge `main` → `nina-3.3`, NEVER `nina-3.3` → `main`. Merging
