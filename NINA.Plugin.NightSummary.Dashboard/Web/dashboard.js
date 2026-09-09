@@ -5937,7 +5937,7 @@ function setupChartCrosshair(container) {
   var targets = [];
   svg.querySelectorAll('g').forEach(function(g) {
     var title = g.querySelector('title');
-    if (!title || title.textContent === 'Moon Position') return;
+    if (!title || title.textContent === 'Moon Position' || title.textContent === 'Moon') return;
     var polys = g.querySelectorAll('polyline');
     var poly = polys.length > 1 ? polys[1] : polys[0]; // second is colored
     if (!poly || poly.getAttribute('stroke') === 'transparent') poly = polys.length > 1 ? polys[1] : null;

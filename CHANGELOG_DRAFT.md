@@ -15,6 +15,10 @@
 - Combined mosaic FOV boxes were mirrored east/west against the survey thumbnail (individual target thumbs looked fine because each target sits at the center). Overlay RA now matches the HiPS JPEG.
 - Reports are roughly 8x smaller and the dashboard page is roughly half the size. Both headers embedded the icon at full brand-art resolution (776x776, ~600 KB) despite rendering it at 48px, which made it about 90% of every report and about half of every dashboard page load. Both now use a 144px copy: a typical report drops from ~840 KB to ~100 KB, and the dashboard HTML from ~1.5 MB to ~775 KB. Emailed reports in particular are far less exposed to gateway size limits and truncation. The plugin download is also about 1.2 MB smaller, since the full-size art was being baked into two DLLs that never read it.
 
+### Bug Fixes
+
+- Dashboard Sessions list altitude chart now matches the session-page timeline when a target is imaged in two windows (for example before and after a roof close). The card previously kept only the first window.
+
 ### Candidates
 
 - Session merge: optional merge of an Auto-recovered night with the following stub, then regenerate a combined report. Parked from v3.3.1 (all eight live orphans had a next session in 5-27 min).
