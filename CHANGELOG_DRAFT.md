@@ -17,7 +17,7 @@
 
 ### Bug Fixes
 
-- Dashboard Sessions list altitude chart now matches the session-page timeline when a target is imaged in two windows (for example before and after a roof close). The card previously kept only the first window.
+- Dashboard Sessions list altitude chart now shows every imaging window for a target, not just the first. A roof close that split a target into two windows no longer drops the post-reopen band. Card look is unchanged.
 
 ### Candidates
 

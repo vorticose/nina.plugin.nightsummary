@@ -9,18 +9,17 @@ namespace NINA.Plugin.NightSummary.Server {
     /// <summary>
     /// Builds the dashboard session-card altitude chart from a report HTML file.
     ///
-    /// Prefer the Session Timeline altitude SVG (the same chart the session page
-    /// shows) so a target imaged in two windows — for example before and after a
-    /// roof close — appears in both views. Older reports without that SVG fall
-    /// back to compositing the per-target <c>altitude-chart</c> SVGs, taking
-    /// every imaging-window rect and every above-horizon polyline rather than
-    /// just the first of each.
+    /// Same visual as before: sunset-to-sunrise axis, per-target curves, imaging
+    /// window bands, no idle hatch and no event markers. The previous scraper
+    /// kept only the first window rect and the first polyline per target, so a
+    /// roof close that split a target into two windows dropped the post-reopen
+    /// band. This composite keeps every window and every above-horizon segment.
     /// </summary>
     internal static class AltitudeChartComposer {
-        public const int CacheVersion = 2;
+        public const int CacheVersion = 3;
 
-        // Widen the fallback composite from the per-target 500-wide plot to a
-        // 950-wide viewBox so the card chart isn't letterboxed.
+        // Widen the composite from the per-target 500-wide plot to a 950-wide
+        // viewBox so the card chart isn't letterboxed.
         private const double AltPadL = 38.0;
         private const double AltOrigRight = 490.0;
         private const double AltNewSvgW = 950.0;
@@ -42,18 +41,14 @@ namespace NINA.Plugin.NightSummary.Server {
         }
 
         public static Result FromReportHtml(string html, string sessionId) {
+            _ = sessionId;
             if (string.IsNullOrEmpty(html)) return Empty();
-
-            var sessionSvg = TryExtractSessionTimelineSvg(html, sessionId);
-            if (sessionSvg != null)
-                return new Result { Svg = sessionSvg, Legend = LegendFromSessionSvg(sessionSvg) };
-
             return ComposeFromPerTargetCharts(html);
         }
 
         public static Result Empty() => new Result { Svg = "", Legend = Array.Empty<LegendItem>() };
 
-        public static bool IsCurrentCache(string json) {
+        public static bool IsCurrentCache(string? json) {
             if (string.IsNullOrEmpty(json)) return false;
             try {
                 using var doc = System.Text.Json.JsonDocument.Parse(json);
@@ -64,51 +59,6 @@ namespace NINA.Plugin.NightSummary.Server {
                 return false;
             }
         }
-
-        // ── Session Timeline SVG (preferred) ────────────────────────────────
-
-        private static readonly Regex SessionAltDivPattern = new Regex(
-            @"<div class=""ns-chart-svg"" id=""[^""]*-svg-altitude""[^>]*>\s*(<svg[\s\S]*?</svg>)",
-            RegexOptions.CultureInvariant);
-
-        private static string? TryExtractSessionTimelineSvg(string html, string sessionId) {
-            var match = SessionAltDivPattern.Match(html);
-            if (!match.Success) return null;
-            var svg = match.Groups[1].Value;
-            if (svg.Length < 50) return null;
-
-            svg = RemapLightToDark(svg);
-            svg = Regex.Replace(svg, @"\sstyle='[^']*'", "");
-            if (svg.IndexOf("preserveAspectRatio", StringComparison.OrdinalIgnoreCase) < 0)
-                svg = svg.Replace("<svg ", "<svg preserveAspectRatio='none' ");
-
-            var suffix = SanitizeId(sessionId);
-            svg = svg.Replace("id='ns-idle-alt'", $"id='ns-idle-alt-{suffix}'")
-                     .Replace("url(#ns-idle-alt)", $"url(#ns-idle-alt-{suffix})");
-            svg = svg.Replace("<title>Moon</title>", "<title>Moon Position</title>");
-            return svg;
-        }
-
-        private static List<LegendItem> LegendFromSessionSvg(string svg) {
-            var items = new List<LegendItem>();
-            var groupRe = new Regex(@"<g><title>([^<]+)</title>([\s\S]*?)</g>");
-            foreach (Match m in groupRe.Matches(svg)) {
-                var name = m.Groups[1].Value.Trim();
-                if (name.Equals("Moon", StringComparison.OrdinalIgnoreCase)
-                    || name.Equals("Moon Position", StringComparison.OrdinalIgnoreCase))
-                    continue;
-                var body = m.Groups[2].Value;
-                if (body.IndexOf("<polyline", StringComparison.Ordinal) < 0) continue;
-                var colorMatch = Regex.Match(body, @"stroke='(#[0-9a-fA-F]{3,8})' stroke-width='2'");
-                var color = colorMatch.Success
-                    ? colorMatch.Groups[1].Value
-                    : TargetColors[items.Count % TargetColors.Length];
-                items.Add(new LegendItem { Name = name, Color = color });
-            }
-            return items;
-        }
-
-        // ── Per-target composite (fallback for older reports) ───────────────
 
         private static readonly Regex H3Pattern = new Regex(@"<h3>([^<]+)");
         private static readonly Regex SvgPattern = new Regex(
@@ -254,9 +204,7 @@ namespace NINA.Plugin.NightSummary.Server {
             .Replace("fill='#2563b8'", "fill='#7eb8f7'")
             .Replace("#7a8a9e", "#c0c0c0")
             .Replace("#c07a00", "#f59e0b")
-            .Replace("opacity='0.75'", "opacity='0.45'")
-            .Replace("#d0d4da", "#0f0f23")
-            .Replace("#b04040", "#7a1a1a");
+            .Replace("opacity='0.75'", "opacity='0.45'");
 
         private static double MapX(double x) => AltPadL + (x - AltPadL) * AltScaleX;
 
@@ -286,14 +234,6 @@ namespace NINA.Plugin.NightSummary.Server {
                 }
                 return m.Value;
             });
-        }
-
-        internal static string SanitizeId(string sessionId) {
-            if (string.IsNullOrEmpty(sessionId)) return "x";
-            var sb = new StringBuilder(sessionId.Length);
-            foreach (var c in sessionId)
-                sb.Append(char.IsLetterOrDigit(c) || c == '-' || c == '_' ? c : '_');
-            return sb.Length == 0 ? "x" : sb.ToString();
         }
     }
 }
