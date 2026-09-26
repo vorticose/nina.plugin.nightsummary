@@ -3053,8 +3053,9 @@ function loadMosaicThumbnail(panels, wrapOrBackdrop, projectGuid) {
   var imgSize  = 1024;
   var scale    = hipsFov / imgSize; // degrees per pixel
 
-  // Image served via server's disk-cached endpoint — server handles HiPS fetch + caching
-  var hipsUrl = '/api/stats/projects/' + encodeURIComponent(projectGuid) + '/mosaic-thumb';
+  // Image served via server's disk-cached endpoint — server handles HiPS fetch + caching.
+  // img.src bypasses the fetch() rig rewrite, so scope it explicitly (as the card does).
+  var hipsUrl = withRig('/api/stats/projects/' + encodeURIComponent(projectGuid) + '/mosaic-thumb');
 
   // Build SVG overlay rects + smart-positioned labels (labels rendered last so they sit on top)
   var palette = ['rgba(144,202,249,0.9)','rgba(165,214,167,0.9)','rgba(255,204,128,0.9)',
