@@ -118,52 +118,6 @@ namespace NINA.Plugin.NightSummary.Server {
             public bool isComposite { get; set; }
         }
 
-        // Altitude chart coordinate scaling: widen from 500 to 825 for better aspect ratio
-        private const double AltPadL = 38.0;          // left padding (y-axis labels)
-        private const double AltOrigRight = 490.0;    // original right edge of plot (500 - 10)
-        private const double AltNewSvgW = 950.0;      // new viewBox width (plot area only)
-        private const double AltNewRight = 940.0;     // new right edge (950 - 10)
-        // Legend is rendered as HTML overlay — no SVG legend constants needed
-        private static readonly double AltScaleX = (AltNewRight - AltPadL) / (AltOrigRight - AltPadL); // ~1.719
-
-        /// <summary>Map an x-coordinate from the original 500-wide plot space to the wider 750-wide space.</summary>
-        private static double MapX(double x) => AltPadL + (x - AltPadL) * AltScaleX;
-
-        /// <summary>Scale all x-coordinates in a polyline points string ("x1,y1 x2,y2 ...").</summary>
-        private static string ScalePolylineX(string points) {
-            var parts = points.Split(' ');
-            var sb = new StringBuilder(points.Length * 2);
-            foreach (var part in parts) {
-                if (sb.Length > 0) sb.Append(' ');
-                var comma = part.IndexOf(',');
-                if (comma < 0) { sb.Append(part); continue; }
-                if (double.TryParse(part.Substring(0, comma), System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out double x)) {
-                    sb.Append(MapX(x).ToString("F1", System.Globalization.CultureInfo.InvariantCulture));
-                    sb.Append(part.Substring(comma)); // ",y" unchanged
-                } else {
-                    sb.Append(part);
-                }
-            }
-            return sb.ToString();
-        }
-
-        /// <summary>Remap the x='...' attribute in an SVG element string.</summary>
-        private static string RemapSvgX(string element) {
-            return Regex.Replace(element, @"x='([\d.]+)'", m => {
-                if (double.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out double x) && x >= AltPadL) {
-                    return $"x='{MapX(x).ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}'";
-                }
-                return m.Value; // keep axis labels (x < padL) unchanged
-            });
-        }
-
-        // Target color palette (matches ReportGenerator.PreviewColors)
-        private static readonly string[] TargetColors = {
-            "#4e79a7", "#f28e2b", "#e15759", "#76b7b2", "#59a14f", "#edc948"
-        };
-
         private static readonly JsonSerializerOptions JsonOpts = new JsonSerializerOptions {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -1756,6 +1710,7 @@ namespace NINA.Plugin.NightSummary.Server {
                                 var sid = reader.GetString(0);
                                 var json = reader.GetString(1);
                                 try {
+                                    if (!AltitudeChartComposer.IsCurrentCache(json)) continue;
                                     altitudeChartCache[sid] = JsonSerializer.Deserialize<JsonElement>(json);
                                     dbLoaded++;
                                 } catch { }
@@ -2101,7 +2056,8 @@ namespace NINA.Plugin.NightSummary.Server {
                     conn.Open();
                     using (var cmd = new SqliteCommand("SELECT ChartJson FROM AltitudeCharts WHERE SessionId = @id", conn)) {
                         cmd.Parameters.AddWithValue("@id", sessionId);
-                        return cmd.ExecuteScalar() as string;
+                        var json = cmd.ExecuteScalar() as string;
+                        return AltitudeChartComposer.IsCurrentCache(json) ? json : null;
                     }
                 }
             } catch { return null; }
@@ -2167,162 +2123,13 @@ namespace NINA.Plugin.NightSummary.Server {
             }
 
             var html = File.ReadAllText(reportPath);
-
-            // Find all altitude chart SVGs and their associated target names
-            var sections = html.Split(new[] { "<div class='target-section'>" }, StringSplitOptions.None);
-            var h3Pattern = new Regex(@"<h3>([^<]+)");
-            var svgPattern = new Regex(@"<svg class='altitude-chart'.*?</svg>", RegexOptions.Singleline);
-            var polylinePattern = new Regex(@"<polyline points='([^']+)' fill='none' stroke='#7eb8f7' stroke-width='2'/>"); // target curve (dark mode)
-            var polylinePatternLight = new Regex(@"<polyline points='([^']+)' fill='none' stroke='#2563b8' stroke-width='2'/>"); // light mode
-            var sessionRectPattern = new Regex(@"<rect x='([\d.]+)' y='\d+' width='([\d.]+)' height='\d+' fill='#7eb8f7' opacity='0\.07'/>");
-            var sessionRectPatternLight = new Regex(@"<rect x='([\d.]+)' y='\d+' width='([\d.]+)' height='\d+' fill='#2563b8' opacity='0\.07'/>");
-
-            // Extract per-target data
-            var targetData = new List<(string Name, string Points, double SessX, double SessW)>();
-            string scaffoldSvg = null; // first chart's full SVG for structural elements
-
-            for (int i = 1; i < sections.Length; i++) {
-                var block = sections[i];
-                var h3Match = h3Pattern.Match(block);
-                var svgMatch = svgPattern.Match(block);
-                if (!h3Match.Success || !svgMatch.Success) continue;
-
-                var targetName = h3Match.Groups[1].Value.Trim();
-                var svgContent = svgMatch.Value;
-
-                if (scaffoldSvg == null) scaffoldSvg = svgContent;
-
-                // Extract the target altitude polyline
-                var polyMatch = polylinePattern.Match(svgContent);
-                if (!polyMatch.Success) polyMatch = polylinePatternLight.Match(svgContent);
-                if (!polyMatch.Success) continue;
-
-                // Extract session window rect position
-                double sessX = 0, sessW = 0;
-                var rectMatch = sessionRectPattern.Match(svgContent);
-                if (!rectMatch.Success) rectMatch = sessionRectPatternLight.Match(svgContent);
-                if (rectMatch.Success) {
-                    sessX = double.Parse(rectMatch.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
-                    sessW = double.Parse(rectMatch.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture);
-                }
-
-                targetData.Add((targetName, polyMatch.Groups[1].Value, sessX, sessW));
-            }
-
-            if (targetData.Count == 0 || scaffoldSvg == null) {
-                var noCharts = new { svg = "", legend = Array.Empty<object>() };
-                altitudeChartCache[sessionId] = noCharts;
-                // Persist so we don't re-parse this report on every restart
-                try { SetCachedChartJson(sessionId, JsonSerializer.Serialize(noCharts, JsonOpts)); } catch { }
-                return noCharts;
-            }
-
-            // Normalize light-mode colors to dark-mode for consistent dashboard rendering
-            scaffoldSvg = scaffoldSvg
-                .Replace("#e8eef5", "#0d1117")  // chart background
-                .Replace("#c0c8d4", "#2d2d5e")  // border/grid
-                .Replace("fill='#666'", "fill='#888'")  // muted text
-                .Replace("stroke='#2563b8'", "stroke='#7eb8f7'")  // accent (for moon/other)
-                .Replace("fill='#2563b8'", "fill='#7eb8f7'")      // accent fills
-                .Replace("#7a8a9e", "#c0c0c0")  // moon stroke
-                .Replace("#c07a00", "#f59e0b")  // sunrise
-                .Replace("opacity='0.75'", "opacity='0.45'");  // moon opacity
-
-            // Extract shared structural elements from the first chart
-            var inv = System.Globalization.CultureInfo.InvariantCulture;
-            // Trim vertical padding: original is 0-248, content lives at ~10-242
-            const int vbTopTrim = 14;  // trim from top (room for 90° label)
-            const int vbBotTrim = 2;   // trim from bottom (tight to time labels)
-            var viewBoxMatch = Regex.Match(scaffoldSvg, @"viewBox='[\d.]+ [\d.]+ [\d.]+ ([\d.]+)'");
-            int origH = viewBoxMatch.Success ? (int)double.Parse(viewBoxMatch.Groups[1].Value, inv) : 248;
-            var viewBoxY = vbTopTrim.ToString();
-            var viewBoxH = (origH - vbTopTrim - vbBotTrim).ToString();
-
-            var moonPattern = new Regex(@"<g><title>Moon Position</title>.*?</g>", RegexOptions.Singleline);
-            var timeLabelPattern = new Regex(@"<text[^>]*fill='#888'[^>]*>\d{2}:\d{2}</text>");
-
-            // Build SVG — no legend (rendered as HTML overlay), no sunset/sunrise text
-            var sb = new StringBuilder();
-            sb.AppendLine($"<svg viewBox='0 {viewBoxY} {AltNewSvgW.ToString("F0", inv)} {viewBoxH}' xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='none'>");
-
-            // Background + border rects (scale x and width to fill wider plot area)
-            var bgRects = Regex.Matches(scaffoldSvg, @"<rect x='38'[^/]*/>");
-            foreach (Match r in bgRects) {
-                var rect = Regex.Replace(r.Value, @"width='([\d.]+)'", m => {
-                    if (double.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.Float, inv, out double w))
-                        return $"width='{(w * AltScaleX).ToString("F1", inv)}'";
-                    return m.Value;
-                });
-                sb.AppendLine(rect);
-            }
-
-            // Per-target imaging window shading with border lines (scaled coordinates)
-            for (int t = 0; t < targetData.Count; t++) {
-                var td = targetData[t];
-                if (td.SessW > 0) {
-                    var color = TargetColors[t % TargetColors.Length];
-                    var sx = MapX(td.SessX).ToString("F1", inv);
-                    var sw = (td.SessW * AltScaleX).ToString("F1", inv);
-                    sb.AppendLine($"<rect x='{sx}' y='20' width='{sw}' height='200' fill='{color}' opacity='0.15'/>");
-                    var endX = MapX(td.SessX + td.SessW).ToString("F1", inv);
-                    sb.AppendLine($"<line x1='{sx}' y1='20' x2='{sx}' y2='220' stroke='{color}' stroke-width='1' opacity='0.6'/>");
-                    sb.AppendLine($"<line x1='{endX}' y1='20' x2='{endX}' y2='220' stroke='{color}' stroke-width='1' opacity='0.6'/>");
-                }
-            }
-
-            // Grid lines at 30 and 60 degrees (scale x2 endpoint, exclude min altitude lines)
-            var gridLines = Regex.Matches(scaffoldSvg, @"<line x1='38'[^/]*/>");
-            foreach (Match g in gridLines) {
-                if (g.Value.Contains("#cc4444")) continue;
-                var line = Regex.Replace(g.Value, @"x2='([\d.]+)'", m => {
-                    if (double.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.Float, inv, out double x))
-                        return $"x2='{MapX(x).ToString("F1", inv)}'";
-                    return m.Value;
-                });
-                sb.AppendLine(line);
-            }
-
-            // Altitude axis labels (90, 60, 30, 0) — keep at original x positions
-            var axisLabels = Regex.Matches(scaffoldSvg, @"<text x='34'[^>]*>[^<]*</text>");
-            foreach (Match a in axisLabels) sb.AppendLine(a.Value);
-
-            // Per-target altitude curves with distinct colors (scale polyline x-coordinates)
-            for (int t = 0; t < targetData.Count; t++) {
-                var td = targetData[t];
-                var color = TargetColors[t % TargetColors.Length];
-                var scaledPoints = ScalePolylineX(td.Points);
-                sb.AppendLine($"<g><title>{td.Name}</title>");
-                sb.AppendLine($"<polyline points='{scaledPoints}' fill='none' stroke='transparent' stroke-width='10'/>");
-                sb.AppendLine($"<polyline points='{scaledPoints}' fill='none' stroke='{color}' stroke-width='2'/>");
-                sb.AppendLine("</g>");
-            }
-
-            // Moon curve (scale polyline x-coordinates within the group)
-            var moonMatch = moonPattern.Match(scaffoldSvg);
-            if (moonMatch.Success) {
-                var moonSvg = Regex.Replace(moonMatch.Value, @"points='([^']+)'", m => {
-                    return $"points='{ScalePolylineX(m.Groups[1].Value)}'";
-                });
-                sb.AppendLine(moonSvg);
-            }
-
-            // Sunset/sunrise labels — omitted from dashboard chart (dropped to allow preserveAspectRatio=none)
-
-            // Time axis labels (scale x positions)
-            foreach (Match t in timeLabelPattern.Matches(scaffoldSvg)) sb.AppendLine(RemapSvgX(t.Value));
-
-            sb.AppendLine("</svg>");
-
-            // Legend data for HTML overlay (rendered client-side)
-            var legend = targetData.Select((td, i) => new {
-                name = td.Name,
-                color = TargetColors[i % TargetColors.Length]
-            }).ToList();
-
-            var svgResult = sb.ToString();
-            var result = new { svg = svgResult, legend };
+            var composed = AltitudeChartComposer.FromReportHtml(html, sessionId);
+            var result = new {
+                svg = composed.Svg,
+                legend = composed.Legend.Select(l => new { name = l.Name, color = l.Color }).ToList(),
+                v = AltitudeChartComposer.CacheVersion
+            };
             altitudeChartCache[sessionId] = result;
-            // Persist to DB so subsequent server restarts skip HTML parsing
             try { SetCachedChartJson(sessionId, JsonSerializer.Serialize(result, JsonOpts)); } catch { }
             return result;
         }

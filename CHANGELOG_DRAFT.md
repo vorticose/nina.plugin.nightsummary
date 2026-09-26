@@ -17,6 +17,7 @@
 ### Bug Fixes
 
 - Combined mosaic thumbnails could show an out-of-date sky survey after a panel was added or removed, so the FOV boxes landed on the wrong part of the sky. The browser kept the old image for up to a day. It now rechecks on every load and downloads a new image only when the panel layout changes.
+- Dashboard Sessions list altitude chart now shows every imaging window for a target, not just the first. A roof close that split a target into two windows no longer drops the post-reopen band. Card look is unchanged.
 
 ### Candidates
 
