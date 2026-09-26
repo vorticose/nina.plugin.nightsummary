@@ -686,7 +686,7 @@ namespace NINA.Plugin.NightSummary.Server {
                         var mSuffix = "/mosaic-thumb";
                         var mEncoded = path.Substring(mPrefix.Length, path.Length - mPrefix.Length - mSuffix.Length);
                         var mGuid = Uri.UnescapeDataString(mEncoded);
-                        await HandleGetProjectMosaicThumb(res, mGuid, done);
+                        await HandleGetProjectMosaicThumb(req, res, mGuid, done);
                     } else if (path.StartsWith("/api/stats/projects/") && !path.Substring("/api/stats/projects/".Length).Contains("/")) {
                         var projectGuid = Uri.UnescapeDataString(path.Substring("/api/stats/projects/".Length));
                         await HandleGetProjectStats(res, projectGuid, done);
@@ -3208,7 +3208,7 @@ namespace NINA.Plugin.NightSummary.Server {
         }
 
         // ── Mosaic HiPS survey thumbnail ─────────────────────────────────────
-        private async Task HandleGetProjectMosaicThumb(TcpHttpResponse res, string projectGuid, Action<int, string> done) {
+        private async Task HandleGetProjectMosaicThumb(TcpHttpRequest req, TcpHttpResponse res, string projectGuid, Action<int, string> done) {
             if (string.IsNullOrEmpty(projectGuid)) {
                 await WriteJson(res, 400, new { error = "Missing project guid" });
                 done?.Invoke(400, null);
@@ -3293,6 +3293,23 @@ namespace NINA.Plugin.NightSummary.Server {
             }
             var cachePath = Path.Combine(cacheDir, $"{cacheKey}.jpg");
 
+            // The URL is the same for every layout of a project, but the image
+            // changes whenever panels are added or removed (custom mosaics are
+            // built up one target at a time). A long max-age let the browser
+            // keep showing a survey from an earlier panel set while the overlay
+            // was drawn for the current one. Revalidate on every load instead,
+            // keyed on the layout, so an unchanged mosaic costs only a 304.
+            var etag = "\"" + cacheKey + "\"";
+            res.Headers["Cache-Control"] = "no-cache";
+            res.Headers["ETag"] = etag;
+            if (req != null && req.Headers.TryGetValue("If-None-Match", out var inm)
+                && HttpCaching.IfNoneMatchMatches(inm, etag)) {
+                res.StatusCode = 304;
+                res.OutputStream.Close();
+                done?.Invoke(304, "mosaic-thumb not modified");
+                return;
+            }
+
             byte[] imgBytes;
             if (File.Exists(cachePath)) {
                 imgBytes = File.ReadAllBytes(cachePath);
@@ -3319,7 +3336,6 @@ namespace NINA.Plugin.NightSummary.Server {
             res.StatusCode = 200;
             res.ContentType = "image/jpeg";
             res.ContentLength64 = imgBytes.Length;
-            res.Headers["Cache-Control"] = "public, max-age=86400";
             await res.OutputStream.WriteAsync(imgBytes, 0, imgBytes.Length);
             res.OutputStream.Close();
             done?.Invoke(200, $"mosaic-thumb cache={(File.Exists(cachePath) ? "hit" : "miss")} bytes={imgBytes.Length}");

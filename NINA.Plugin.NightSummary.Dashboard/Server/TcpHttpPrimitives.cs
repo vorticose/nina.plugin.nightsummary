@@ -39,6 +39,31 @@ namespace NINA.Plugin.NightSummary.Server {
     }
 
     /// <summary>
+    /// Conditional-GET helpers for endpoints that revalidate with an ETag.
+    /// </summary>
+    public static class HttpCaching {
+        /// <summary>
+        /// True when an If-None-Match header value matches <paramref name="etag"/>.
+        /// Handles "*", comma-separated lists and weak (W/) validators, which
+        /// compare equal to their strong form for GET revalidation.
+        /// </summary>
+        public static bool IfNoneMatchMatches(string ifNoneMatch, string etag) {
+            if (string.IsNullOrWhiteSpace(ifNoneMatch) || string.IsNullOrEmpty(etag)) return false;
+            static string Strip(string t) {
+                t = t.Trim();
+                return t.StartsWith("W/", StringComparison.Ordinal) ? t.Substring(2) : t;
+            }
+            var want = Strip(etag);
+            foreach (var part in ifNoneMatch.Split(',')) {
+                var tag = part.Trim();
+                if (tag == "*") return true;
+                if (string.Equals(Strip(tag), want, StringComparison.Ordinal)) return true;
+            }
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Minimal HTTP response writer for a raw TCP stream.
     /// Body is buffered in memory; all headers + body are written atomically on Close().
     /// Close() is idempotent — callers that invoke res.OutputStream.Close() before res.Close()
