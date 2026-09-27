@@ -19,6 +19,7 @@
 - Combined mosaic thumbnails could show an out-of-date sky survey after a panel was added or removed, so the FOV boxes landed on the wrong part of the sky. The browser kept the old image for up to a day. It now rechecks on every load and downloads a new image only when the panel layout changes.
 - Dashboard Sessions list altitude chart now shows every imaging window for a target, not just the first. A roof close that split a target into two windows no longer drops the post-reopen band. Card look is unchanged.
 - Companion with more than one rig: the project detail panel's mosaic survey now comes from the selected rig, matching the project card.
+- Imaging windows in the session timeline, per-target altitude charts and Sessions list chart were drawn one exposure too early, so a target with long exposures could overlap the target before it. Windows now start when the first exposure began and end when the last one finished. Applies to new reports; regenerate a report to update an older night.
 
 ### Candidates
 

@@ -906,7 +906,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
                 // produces multiple windows. The altitude chart and filter table render one
                 // section per window when there are 2+; the rest of the section (TS progress,
                 // session history, sky thumbnail, IQ stats) stays aggregated.
-                var imagingWindows = ImagingBlockHelper.DetectWindows(target).ToList();
+                var imagingWindows = ImagingBlockHelper.DetectWindows(target, sessionImages: data.Images).ToList();
                 DateTime targetImgStart, targetImgEnd;
                 if (imagingWindows.Count > 0) {
                     targetImgStart = imagingWindows.First().Start;
@@ -2480,7 +2480,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             // EventTimelineGenerator) — preserves per-target color + name decoration.
             var allBlocks = new List<(string Name, string Color, DateTime Start, DateTime End)>();
             foreach (var target in targets) {
-                foreach (var (winStart, winEnd) in ImagingBlockHelper.DetectWindows(target.Images)) {
+                foreach (var (winStart, winEnd) in ImagingBlockHelper.DetectWindows(target.Images, sessionImages: images)) {
                     allBlocks.Add((target.Name, target.Color, winStart, winEnd));
                 }
             }
