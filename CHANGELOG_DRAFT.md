@@ -1,25 +1,25 @@
 # Night Summary — Changelog
 
-<!-- v3.3.1 shipped 2026-08-22. Session merge remains a candidate, not a commitment. -->
+<!-- v3.3.2 frozen to CHANGELOG.md; ship pending. Session merge remains a candidate, not a commitment. -->
 
-## v3.3.2 (unreleased)
+## v3.3.2
 
 ### New Features
 
-- **Custom mosaic projects** — group separate panel targets into a mosaic card on the Stats Targets tab without Target Scheduler. Select two or more cards and choose Create mosaic, or use Manage Projects with the Mosaic checkbox. The card matches a TS mosaic (combined sky thumbnail, FOV overlays, panel/integration/frame/session totals) minus TS progress bars. Coordinates come from captured images.
+- **Custom mosaic projects**: group panel targets into a mosaic without Target Scheduler. Select two or more cards on the Stats Targets tab and choose Create mosaic, or tick Mosaic in Manage Projects. The card matches a TS mosaic (sky thumbnail with FOV overlays, combined totals) minus progress bars.
 
 ### Improvements
 
-- Companion update banner now rechecks every few hours and when you return to a hidden tab, so a dashboard left open still nags. GitHub check failures retry in minutes instead of being cached for a day. Settings has a Check for updates button.
-- Mosaic FOV overlays use plate-solve position angle when present, then rotator angle, then the other panels in the project. Panels with no plate solve were drawing unrotated.
-- Reports are roughly 8x smaller and the dashboard page is roughly half the size. Both headers embedded the icon at full brand-art resolution (776x776, ~600 KB) despite rendering it at 48px, which made it about 90% of every report and about half of every dashboard page load. Both now use a 144px copy: a typical report drops from ~840 KB to ~100 KB, and the dashboard HTML from ~1.5 MB to ~775 KB. Emailed reports in particular are far less exposed to gateway size limits and truncation. The plugin download is also about 1.2 MB smaller, since the full-size art was being baked into two DLLs that never read it.
+- Reports are about 8x smaller and the dashboard page about half the size. The plugin download is 1.2 MB smaller.
+- Companion update banner rechecks every few hours and when you return to the tab, and failed checks retry within minutes. Settings has a Check for updates button.
+- Mosaic FOV overlays fall back to the rotator angle, then sibling panels, instead of drawing unrotated when a panel has no recorded position angle.
 
 ### Bug Fixes
 
-- Combined mosaic thumbnails could show an out-of-date sky survey after a panel was added or removed, so the FOV boxes landed on the wrong part of the sky. The browser kept the old image for up to a day. It now rechecks on every load and downloads a new image only when the panel layout changes.
-- Dashboard Sessions list altitude chart now shows every imaging window for a target, not just the first. A roof close that split a target into two windows no longer drops the post-reopen band. Card look is unchanged.
-- Companion with more than one rig: the project detail panel's mosaic survey now comes from the selected rig, matching the project card.
-- Imaging windows in the session timeline, per-target altitude charts and Sessions list chart were drawn one exposure too early, so a target with long exposures could overlap the target before it. Windows now start when the first exposure began and end when the last one finished. Applies to new reports; regenerate a report to update an older night.
+- Fixed imaging windows in timelines and charts being drawn one exposure early, which could overlap the previous target. Applies to new reports; regenerate to update older nights.
+- Fixed the Sessions list chart dropping a target's second window after a roof close.
+- Fixed mosaic thumbnails showing an out-of-date sky survey for up to a day after the mosaic's panels changed, misplacing the FOV boxes.
+- Fixed the project detail panel on a multi-rig companion showing the default rig's mosaic survey.
 
 ### Candidates
 

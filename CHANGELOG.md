@@ -1,6 +1,26 @@
 # Night Summary — Changelog
 
 
+## v3.3.2
+
+### New Features
+
+- **Custom mosaic projects**: group panel targets into a mosaic without Target Scheduler. Select two or more cards on the Stats Targets tab and choose Create mosaic, or tick Mosaic in Manage Projects. The card matches a TS mosaic (sky thumbnail with FOV overlays, combined totals) minus progress bars.
+
+### Improvements
+
+- Reports are about 8x smaller and the dashboard page about half the size. The plugin download is 1.2 MB smaller.
+- Companion update banner rechecks every few hours and when you return to the tab, and failed checks retry within minutes. Settings has a Check for updates button.
+- Mosaic FOV overlays fall back to the rotator angle, then sibling panels, instead of drawing unrotated when a panel has no recorded position angle.
+
+### Bug Fixes
+
+- Fixed imaging windows in timelines and charts being drawn one exposure early, which could overlap the previous target. Applies to new reports; regenerate to update older nights.
+- Fixed the Sessions list chart dropping a target's second window after a roof close.
+- Fixed mosaic thumbnails showing an out-of-date sky survey for up to a day after the mosaic's panels changed, misplacing the FOV boxes.
+- Fixed the project detail panel on a multi-rig companion showing the default rig's mosaic survey.
+
+
 ## v3.3.1
 
 ### New Features
