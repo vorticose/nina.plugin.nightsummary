@@ -16,7 +16,7 @@
 ### Bug Fixes
 
 - Fixed imaging windows in timelines and charts being drawn one exposure early, which could overlap the previous target. Applies to new reports; regenerate to update older nights.
-- Fixed the Sessions list chart dropping a target's second window after a roof close.
+- Fixed the Sessions list chart showing only the first imaging window for a target imaged in more than one stretch during a night.
 - Fixed mosaic thumbnails showing an out-of-date sky survey for up to a day after the mosaic's panels changed, misplacing the FOV boxes.
 - Fixed the project detail panel on a multi-rig companion showing the default rig's mosaic survey.
 
