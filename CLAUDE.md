@@ -42,6 +42,7 @@ git worktree add .claude/worktrees/<name> -b <branch-name> origin/dev   # or ori
 cd .claude/worktrees/<name>
 ```
 
+- The **primary checkout stays on `dev`**. Never `git checkout nina-3.3` (or `main`) in this folder; a leftover checkout is how the workspace spent months sitting on a stale NINA 3.3 port that we only ever merge into. `nina-3.3` lives at `.claude/worktrees/nina-3.3`.
 - Each agent gets its own worktree with its own branch
 - Two worktrees cannot share the same branch — create a feature branch if needed
 - Commit frequently so work is never lost to branch switches
@@ -181,8 +182,9 @@ nina-3.3   ← long-running NINA 3.3 port, periodically synced from dev
 - Do this before starting any v3 feature work to avoid drift
 
 **Keeping nina-3.3 in sync:**
-- Periodically (every few sessions or before a release): `git checkout nina-3.3 && git merge dev`
-- No conflicts expected — only difference is 3 lines in the .csproj
+- Work in the dedicated worktree, never the primary checkout:
+  `cd .claude/worktrees/nina-3.3 && git merge origin/main && git push origin nina-3.3`
+- Periodically (every few sessions or before a release). No conflicts expected; only difference is 3 lines in the .csproj.
 
 **Note:** `main` should always reflect exactly what's published. Never commit unreleased
 work directly to `main`.
@@ -237,6 +239,52 @@ to users upgrading from the previous stable version. Specifically:
 The audience for CHANGELOG.md is users upgrading from the previous stable version. Write
 it as if you went directly from the previous stable release to this one without a beta cycle.
 
+### Companion / plugin desync check (required before tag)
+
+Companion in-app update goes live when the GitHub release exists (`releases/latest`).
+NINA Plugin Manager updates when the isbeorn catalog PR merges, often days later.
+Mixed versions are the normal gap, not an accident. Classify every user-facing change
+in this release before merge/tag:
+
+1. **Plugin-only** (session recovery, report HTML, Options): catalog lag is fine.
+2. **Companion-only on data the previous plugin already sends** (All-rigs on existing
+   `?rig=` APIs): GitHub release can precede the catalog PR.
+3. **Companion UI that needs a new plugin field, file, or API**: **Degrade**
+   (default). Hide or disable until `primaryVersion` is new enough; confirm an
+   old plugin does not 500. Mixed versions look incomplete, not broken.
+
+Also check the reverse: the new plugin must still serve the previous companion (no
+removed or renamed endpoints; new sqlite columns nullable or defaulted).
+
+v3.3.1 example: Auto-recovered needed plugin-written `AutoFinalized`. A 3.3.1 companion
+on a 3.3.0 rig listed the session but showed no badge. That is acceptable degrade. A
+required field with no default would not have been.
+
+#### If degrade is not enough (coupled release)
+
+Do not "hold the GitHub release until the catalog PR merges." The catalog
+Installer URL is that GitHub zip, so some GitHub object has to exist first.
+Companion update checks `releases/latest`, which **ignores prereleases and
+drafts**. Plugin Manager uses the explicit zip URL. Split those channels:
+
+1. **Ship GitHub as a prerelease** (preferred). Create `vX.Y.Z` as a prerelease
+   with the plugin zip and companion binaries. Catalog PR points at that zip
+   URL. Companion users keep seeing the previous `/releases/latest`. After the
+   catalog PR merges, convert the release to latest (uncheck prerelease). Discord:
+   update the plugin first, then companion.
+2. **Do not** publish a normal latest with only the plugin zip. `UpdateChecker`
+   sets `updateAvailable` from the tag, not from whether a companion asset
+   exists. The banner still nags ("Re-run your installer to update") even when
+   `canSelfUpdate` is false.
+3. **Already shipped and mixed-broken:** hotfix companion that degrades (item 3
+   above) and ship it as a patch. Discord: update Plugin Manager before (or
+   immediately after) the companion prompt. Do not yank `/releases/latest`; old
+   companions would then have no update path.
+
+A companion-only follow-up tag after catalog is live is a fallback if the new
+companion (not the plugin) is what is unsafe. Do not rely on Discord timing
+alone.
+
 ### Release steps
 
 To publish a new version:
@@ -247,7 +295,7 @@ To publish a new version:
    - Remove `[assembly: AssemblyInformationalVersion("X.Y.Z-dev")]` line
 3. **Finalize CHANGELOG_DRAFT.md** following the stable-to-stable rule above, then copy the
    new version's section over the previous version's section in `CHANGELOG.md` on main.
-4. **Merge and tag**: `git checkout main && git merge dev --no-ff && git tag vX.Y.Z && git push origin main vX.Y.Z`
+4. **Merge and tag** (desync check above must be done first): `git checkout main && git merge dev --no-ff && git tag vX.Y.Z && git push origin main vX.Y.Z`
 5. **Build**: `dotnet build NINA.Plugin.NightSummary.sln -c Release`
 6. **Package**: `cd NINA.Plugin.NightSummary/bin/Release/net8.0-windows && zip -r /tmp/NINA.Plugin.NightSummary.zip . --exclude "*.pdb" --exclude "*.xml"`
    - On Windows when `zip`/`7z` aren't on PATH: use PowerShell `robocopy <src> <stage> /E /XF *.pdb *.xml` + `Compress-Archive -Path "<stage>\*" -DestinationPath <dest>` (staging dir preserves folder structure).
@@ -258,7 +306,7 @@ To publish a new version:
 11. **Validate**: `cd ~/nina.plugin.manifests && npm install && node gather.js` — must show 0 failed
 12. **Submit PR**: to `isbeorn/nina.plugin.manifests` from `vorticose:night-summary-vX.Y.Z`
 13. **Discord announcement**: post to NINA community server once PR merges (catalog is live). See format template below.
-14. **Post-release**: merge `main` into `nina-3.3` (`git checkout nina-3.3 && git merge main --no-ff && git push`), update memory — mark release LIVE in `project_v2_XX_progress.md` and the `MEMORY.md` index line.
+14. **Post-release**: merge `main` into `nina-3.3` from the worktree (`cd .claude/worktrees/nina-3.3 && git merge origin/main --no-ff && git push origin nina-3.3`). Do not `git checkout nina-3.3` in the primary folder. Then update memory: mark release LIVE in `project_v2_XX_progress.md` and the `MEMORY.md` index line.
 
 ### Discord announcement format
 
@@ -321,13 +369,15 @@ and a stable release is expected several months away (as of March 2026).
 - No API changes were needed — the port compiled clean with 0 errors
 
 ### Keeping branches in sync
-Periodically merge `main` into `nina-3.3` to keep them in sync (no need to do this
-after every commit — every few sessions or before a release is fine):
+The primary checkout stays on `dev`. `nina-3.3` is a dedicated worktree at
+`.claude/worktrees/nina-3.3` so a sync cannot leave this folder on the port branch.
+
+Periodically merge `main` into `nina-3.3` (every few sessions or before a release):
 ```bash
-git checkout nina-3.3
-git merge main
+cd .claude/worktrees/nina-3.3
+git fetch origin
+git merge origin/main
 git push origin nina-3.3
-git checkout main
 ```
 Merges will always be clean since the only difference is 3 lines in the `.csproj`.
 **Important**: always merge `main` → `nina-3.3`, NEVER `nina-3.3` → `main`. Merging

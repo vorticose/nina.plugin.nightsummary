@@ -38,7 +38,7 @@ On first run a default companion.json is written and the program exits so you ca
   automatically per platform.
 
 --web <dir>
-  Serve dashboard.html / .css / .js / plugin-icon.png from this directory
+  Serve dashboard.html / .css / .js / report-icon.png from this directory
   instead of the embedded resources baked into the binary. Each request hits
   the disk fresh, so editing a CSS file + refreshing the browser is enough
   to iterate on UI without rebuilding. Intended for development; production

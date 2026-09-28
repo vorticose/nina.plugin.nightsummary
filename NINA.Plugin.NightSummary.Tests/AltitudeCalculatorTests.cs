@@ -168,8 +168,10 @@ namespace NINA.Plugin.NightSummary.Tests {
 
         [Fact]
         public void GetSunAltitude_AtNight_IsBelowHorizon() {
-            // 22:00 local in January at mid-latitude — sun well below horizon
-            var alt = AltitudeCalculator.GetSunAltitude(Lat, 0.0, new DateTime(2025, 1, 15, 22, 0, 0));
+            // 22:00 UTC in January at longitude 0 and mid-latitude: sun well below horizon.
+            // UTC kind so the result doesn't depend on the test machine's time zone
+            // (a local 22:00 is mid-afternoon at Greenwich on a UTC+7 machine).
+            var alt = AltitudeCalculator.GetSunAltitude(Lat, 0.0, new DateTime(2025, 1, 15, 22, 0, 0, DateTimeKind.Utc));
             Assert.True(alt < -10.0);
         }
 

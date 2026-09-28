@@ -584,6 +584,7 @@ function renderTargetCard(t, index) {
   var sessionCount = t.sessionCount || 0;
 
   var html = '<div class="target-card" data-target="' + esc(t.target) + '" data-latest-session="' + esc(t.latestSessionId || '') + '">';
+  html += '<span class="target-card-select-mark" aria-hidden="true"></span>';
 
   // Header: name + type pill + badges + progress bar
   html += '<div class="target-card-header">';
@@ -626,7 +627,7 @@ function renderTargetCard(t, index) {
   }
 
   html += '<div class="target-card-header-right">';
-  if (statsTsStatus === 'available') html += '<button type="button" class="target-card-assign-btn' + (!statsTsProjects || statsTsProjects.length === 0 ? ' ts-gated' : '') + '" data-target="' + esc(t.target) + '" title="Assign to project">&#x1F4C1;</button>';
+  html += '<button type="button" class="target-card-assign-btn' + (!statsTsProjects || statsTsProjects.length === 0 ? ' ts-gated' : '') + '" data-target="' + esc(t.target) + '" title="Assign to project">&#x1F4C1;</button>';
   html += '<button type="button" class="targets-project-collapse-btn" aria-label="Collapse"></button>';
   html += '</div>';
   html += '</div>'; // .target-card-header
@@ -724,6 +725,71 @@ function getTargetGroupBy() {
   return localStorage.getItem('ns-targets-group') === 'project' ? 'project' : 'flat';
 }
 
+function hasCustomProjects() {
+  return !!(statsTsProjects && statsTsProjects.some(function(p) { return p.isCustom; }));
+}
+
+// Selection mode: pick target cards, then Create mosaic.
+var _targetsSelecting = false;
+var _selectedTargetNames = {}; // lowercase -> display name
+
+function selectedTargetList() {
+  return Object.keys(_selectedTargetNames).map(function(k) { return _selectedTargetNames[k]; });
+}
+
+function suggestMosaicName(names) {
+  function strip(n) {
+    var s = (n || '').trim();
+    s = s.replace(/[\s_-]+(?:panels?|panes?|p)\s*\d+$/i, '');
+    s = s.replace(/[\s_-]+#\s*\d+$/, '');
+    s = s.replace(/_\d+$/, '');
+    s = s.replace(/(?<=\D)-\d{1,2}$/, '');
+    return s.trim().replace(/[-_ ]+$/, '');
+  }
+  names = (names || []).filter(function(n) { return n && String(n).trim(); });
+  if (!names.length) return 'Mosaic';
+  if (names.length === 1) return strip(names[0]) || names[0];
+  var stripped = names.map(strip);
+  if (stripped.every(function(s) { return s && s.toLowerCase() === stripped[0].toLowerCase(); }))
+    return stripped[0];
+  var prefix = names[0];
+  names.slice(1).forEach(function(s) {
+    var n = Math.min(prefix.length, s.length);
+    var k = 0;
+    while (k < n && prefix.charAt(k).toLowerCase() === s.charAt(k).toLowerCase()) k++;
+    prefix = prefix.slice(0, k);
+  });
+  prefix = strip(prefix.replace(/[-_# ]+$/, ''));
+  return prefix.length >= 3 ? prefix : 'Mosaic';
+}
+
+function mosaicSpanDegrees(names) {
+  var pts = [];
+  var want = {};
+  (names || []).forEach(function(n) { want[(n || '').toLowerCase()] = true; });
+  (statsTargetData || []).forEach(function(t) {
+    if (!want[(t.target || '').toLowerCase()]) return;
+    if (t.raHours == null || t.decDegrees == null) return;
+    if (t.raHours === 0 && t.decDegrees === 0) return;
+    pts.push({ ra: t.raHours * 15, dec: t.decDegrees });
+  });
+  if (pts.length < 2) return 0;
+  function sep(a, b) {
+    var ra1 = a.ra * Math.PI / 180, dec1 = a.dec * Math.PI / 180;
+    var ra2 = b.ra * Math.PI / 180, dec2 = b.dec * Math.PI / 180;
+    var cos = Math.sin(dec1) * Math.sin(dec2) + Math.cos(dec1) * Math.cos(dec2) * Math.cos(ra1 - ra2);
+    return Math.acos(Math.max(-1, Math.min(1, cos))) * 180 / Math.PI;
+  }
+  var max = 0;
+  for (var i = 0; i < pts.length; i++) {
+    for (var j = i + 1; j < pts.length; j++) {
+      var d = sep(pts[i], pts[j]);
+      if (d > max) max = d;
+    }
+  }
+  return max;
+}
+
 function getTargetStatusFilter() {
   try {
     var raw = localStorage.getItem('ns-targets-status-filter');
@@ -765,35 +831,45 @@ function projectType(isMosaic, targetCount) {
 function renderTargetsControlBar(sortKey, groupBy) {
   var tsAvail = statsTsStatus === 'available';
   var tsNoProjects = tsAvail && (!statsTsProjects || statsTsProjects.length === 0);
+  var selectedCount = selectedTargetList().length;
 
   var html = '<div class="targets-control-bar">';
-  html += '<div class="targets-sort-bar"><span class="targets-sort-label">Sort</span>';
-  // Group by project first — commonly used
-  if (tsAvail || (statsTsProjects && statsTsProjects.some(function(p) { return p.isCustom; }))) {
-    var grpCls = 'targets-group-pill' + (groupBy === 'project' ? ' active' : '') + (tsNoProjects ? ' ts-gated' : '');
+  html += '<div class="targets-sort-bar">';
+  if (_targetsSelecting) {
+    html += '<span class="targets-sort-label">Select</span>';
+    html += '<span class="targets-select-count">' + selectedCount + ' selected</span>';
+    html += '<button type="button" class="targets-group-pill targets-create-mosaic-btn"' +
+            (selectedCount < 2 ? ' disabled' : '') + ' data-action="create-mosaic">Create mosaic</button>';
+    html += '<button type="button" class="targets-group-pill" data-action="cancel-select">Cancel</button>';
+  } else {
+    html += '<span class="targets-sort-label">Sort</span>';
+    var grpCls = 'targets-group-pill' + (groupBy === 'project' ? ' active' : '');
     html += '<button type="button" class="' + grpCls + '" data-action="toggle-group">Group by project</button>';
+    html += '<button type="button" class="targets-group-pill" data-action="start-select">Select</button>';
+    TARGET_SORT_OPTIONS.forEach(function(opt) {
+      if (opt.key === 'type' && !tsAvail && !hasCustomProjects()) return;
+      var cls = 'targets-sort-pill' + (opt.key === sortKey ? ' active' : '') + (opt.key === 'type' && tsNoProjects && !hasCustomProjects() ? ' ts-gated' : '');
+      html += '<button type="button" class="' + cls + '" data-sort-key="' + opt.key + '">' + esc(opt.label) + '</button>';
+    });
   }
-  TARGET_SORT_OPTIONS.forEach(function(opt) {
-    if (opt.key === 'type' && !tsAvail) return;
-    var cls = 'targets-sort-pill' + (opt.key === sortKey ? ' active' : '') + (opt.key === 'type' && tsNoProjects ? ' ts-gated' : '');
-    html += '<button type="button" class="' + cls + '" data-sort-key="' + opt.key + '">' + esc(opt.label) + '</button>';
-  });
   html += '</div>';
-  if (tsAvail) {
+  if (tsAvail || hasCustomProjects()) {
     var enabledStates = getTargetStatusFilter();
     var enabledTypes  = getTargetTypeFilter();
-    var allStatesOn = TS_STATE_ORDER.every(function(s) { return enabledStates.indexOf(s) >= 0; });
+    var allStatesOn = !tsAvail || TS_STATE_ORDER.every(function(s) { return enabledStates.indexOf(s) >= 0; });
     var allTypesOn  = TARGET_TYPE_OPTIONS.every(function(o) { return enabledTypes.indexOf(o.key) >= 0; });
-    html += '<div class="targets-filter-row' + (tsNoProjects ? ' ts-gated' : '') + '"><span class="targets-sort-label">Filter</span>';
+    html += '<div class="targets-filter-row' + (tsNoProjects && !hasCustomProjects() ? ' ts-gated' : '') + '"><span class="targets-sort-label">Filter</span>';
     html += '<button type="button" class="targets-status-chip' + (allStatesOn && allTypesOn ? ' active' : '') + '" data-filter-state="__all__">All</button>';
-    TS_STATE_ORDER.forEach(function(state) {
-      var on = enabledStates.indexOf(state) >= 0;
-      var color = TS_STATE_COLORS[state] || '#90A4AE';
-      var cls = 'targets-status-chip' + (on ? ' active' : '');
-      html += '<button type="button" class="' + cls + '" data-filter-state="' + esc(state) + '">' +
-        '<span class="status-chip-dot" style="background:' + color + '"></span>' + esc(state) + '</button>';
-    });
-    html += '<span class="filter-row-divider"></span>';
+    if (tsAvail) {
+      TS_STATE_ORDER.forEach(function(state) {
+        var on = enabledStates.indexOf(state) >= 0;
+        var color = TS_STATE_COLORS[state] || '#90A4AE';
+        var cls = 'targets-status-chip' + (on ? ' active' : '');
+        html += '<button type="button" class="' + cls + '" data-filter-state="' + esc(state) + '">' +
+          '<span class="status-chip-dot" style="background:' + color + '"></span>' + esc(state) + '</button>';
+      });
+      html += '<span class="filter-row-divider"></span>';
+    }
     TARGET_TYPE_OPTIONS.forEach(function(opt) {
       var on = enabledTypes.indexOf(opt.key) >= 0;
       html += '<button type="button" class="targets-status-chip' + (on ? ' active' : '') + '" data-filter-type="' + esc(opt.key) + '">' + esc(opt.label) + '</button>';
@@ -817,11 +893,34 @@ function initTargetsControlBar() {
       renderStatsTabContent('targets');
     });
   });
-  var grpBtn = document.querySelector('.targets-group-pill');
+  var grpBtn = document.querySelector('.targets-group-pill[data-action="toggle-group"]');
   if (grpBtn) {
     grpBtn.addEventListener('click', function() {
       safeSetItem('ns-targets-group', getTargetGroupBy() === 'project' ? 'flat' : 'project');
       renderStatsTabContent('targets');
+    });
+  }
+  var startSel = document.querySelector('[data-action="start-select"]');
+  if (startSel) {
+    startSel.addEventListener('click', function() {
+      _targetsSelecting = true;
+      _selectedTargetNames = {};
+      renderStatsTabContent('targets');
+    });
+  }
+  var cancelSel = document.querySelector('[data-action="cancel-select"]');
+  if (cancelSel) {
+    cancelSel.addEventListener('click', function() {
+      _targetsSelecting = false;
+      _selectedTargetNames = {};
+      renderStatsTabContent('targets');
+    });
+  }
+  var createMosaic = document.querySelector('[data-action="create-mosaic"]');
+  if (createMosaic) {
+    createMosaic.addEventListener('click', function() {
+      if (createMosaic.disabled) return;
+      openCreateMosaicModal(selectedTargetList());
     });
   }
   document.querySelectorAll('.targets-status-chip[data-filter-state]').forEach(function(chip) {
@@ -889,6 +988,17 @@ function initTargetsControlBar() {
     el.addEventListener('scroll', updateFade, { passive: true });
     updateFade();
   });
+
+  document.removeEventListener('keydown', _targetSelectKeyHandler);
+  if (_targetsSelecting) document.addEventListener('keydown', _targetSelectKeyHandler);
+}
+
+function _targetSelectKeyHandler(e) {
+  if (e.key !== 'Escape') return;
+  if (document.getElementById('create-mosaic-backdrop')) return;
+  _targetsSelecting = false;
+  _selectedTargetNames = {};
+  renderStatsTabContent('targets');
 }
 
 // Flat-mode filter by state + type; targets with no TS link always pass through
@@ -1196,6 +1306,7 @@ function initProjectContainers() {
     var name = container.querySelector('.targets-project-name');
     if (!guid) return;
     container.addEventListener('click', function(e) {
+      if (_targetsSelecting) return;
       if (e.target.closest('.target-card-ts-badge')) return;
       if (e.target.closest('.targets-project-collapse-btn')) return;
       openProjectDetail(guid, name ? name.textContent : guid);
@@ -2886,6 +2997,9 @@ function renderPdpPanelDrillDown(data, panelName, panelData, projectData, projec
 // per-panel FOV rectangles as an SVG overlay.
 // SVG rotation convention: position angle (degrees E of N, CCW) → SVG rotate(-PA) because
 // astronomical images are N-up, E-left which mirrors the x-axis relative to SVG.
+// The HiPS JPEG is east-on-the-left, so cx steps west (right) as RA decreases.
+// Checked against 52 Cyg on the Veil survey. If boxes look mirrored, suspect a
+// stale cached image before flipping this sign (f40df8b did, and was reverted).
 function loadMosaicThumbnail(panels, wrapOrBackdrop, projectGuid) {
   // Accept either a direct wrap element or a backdrop containing #pdp-thumb-wrap
   var wrap = (wrapOrBackdrop && (wrapOrBackdrop.id === 'pdp-thumb-wrap' ||
@@ -2939,26 +3053,39 @@ function loadMosaicThumbnail(panels, wrapOrBackdrop, projectGuid) {
   var imgSize  = 1024;
   var scale    = hipsFov / imgSize; // degrees per pixel
 
-  // Image served via server's disk-cached endpoint — server handles HiPS fetch + caching
-  var hipsUrl = '/api/stats/projects/' + encodeURIComponent(projectGuid) + '/mosaic-thumb';
+  // Image served via server's disk-cached endpoint — server handles HiPS fetch + caching.
+  // img.src bypasses the fetch() rig rewrite, so scope it explicitly (as the card does).
+  var hipsUrl = withRig('/api/stats/projects/' + encodeURIComponent(projectGuid) + '/mosaic-thumb');
 
   // Build SVG overlay rects + smart-positioned labels (labels rendered last so they sit on top)
   var palette = ['rgba(144,202,249,0.9)','rgba(165,214,167,0.9)','rgba(255,204,128,0.9)',
                  'rgba(239,154,154,0.9)','rgba(206,147,216,0.9)','rgba(128,222,234,0.9)',
                  'rgba(188,170,164,0.9)','rgba(176,190,197,0.9)'];
 
+  function panelFovAngle(p) {
+    if (p.positionAngle != null) return p.positionAngle;
+    if (p.rotation) return p.rotation;
+    if (p.rotatorPosition != null) return p.rotatorPosition;
+    return null;
+  }
+  var knownAngles = validPanels.map(panelFovAngle).filter(function(a) { return a != null; });
+  var siblingPa = knownAngles.length ? knownAngles[0] : 0;
+
   // Precompute image-space geometry for every panel
   var pGeo = validPanels.map(function(p, i) {
-    // Use trailing number from TS target name (e.g. "Spaghetti Nebula Panel 2" → 2),
-    // fall back to sequential 1-based index.
-    var nameMatch = p.name && p.name.match(/(\d+)\s*$/);
+    // Prefer "Panel 2" anywhere in the name, including "Panel 2 (West)".
+    // A trailing number ("Spaghetti Nebula 2") is the fallback. Otherwise 1-based index.
+    var named = p.name && p.name.match(/panels?\s*(\d+)/i);
+    var trail = !named && p.name && p.name.match(/(\d+)\s*$/);
+    var pa = panelFovAngle(p);
+    if (pa == null) pa = siblingPa;
     return {
       cx:    imgSize / 2 + (-(p.ra * 15 - centerRA) * cosCenter / scale),
       cy:    imgSize / 2 + (-(p.dec - centerDec) / scale),
       wPx:   p.fovWidthDeg  != null ? p.fovWidthDeg  / scale : 0,
       hPx:   p.fovHeightDeg != null ? p.fovHeightDeg / scale : 0,
-      pa:    p.positionAngle != null ? p.positionAngle : (p.rotation || 0),
-      label: nameMatch ? nameMatch[1] : String(i + 1)
+      pa:    pa,
+      label: named ? named[1] : (trail ? trail[1] : String(i + 1))
     };
   });
 
@@ -7593,10 +7720,10 @@ function renderStatsTabContent(tabId) {
     var allTargets = statsTargetData || [];
     var html = renderTsStatusBanner();
     html += renderTargetsControlBar(sortKey, groupBy);
-    if (groupBy === 'project' && tsAvail) {
+    if (groupBy === 'project') {
       html += '<div class="targets-grouped">' + renderGroupedTargets(targets, sortKey) + '</div>';
     } else {
-      var filtered = tsAvail ? filterTargets(targets) : targets;
+      var filtered = (tsAvail || hasCustomProjects()) ? filterTargets(targets) : targets;
       var sorted = sortTargets(filtered, sortKey);
       html += '<div class="target-grid">';
       sorted.forEach(function(t) { html += renderTargetCard(t, allTargets.indexOf(t)); });
@@ -7606,6 +7733,8 @@ function renderStatsTabContent(tabId) {
       }
     }
     container.innerHTML = html;
+    if (_targetsSelecting) container.classList.add('targets-selecting');
+    else container.classList.remove('targets-selecting');
     // Restore sort/filter bar scroll positions
     var newSortBar = container.querySelector('.targets-sort-bar');
     var newFilterRow = container.querySelector('.targets-filter-row');
@@ -7616,7 +7745,8 @@ function renderStatsTabContent(tabId) {
     initTargetsControlBar();
     initTargetCardClicks();
     initTsBadgeClicks();
-    if (groupBy === 'project' && tsAvail) initProjectContainers();
+    if (groupBy === 'project') initProjectContainers();
+    restoreTargetSelection(container);
     requestAnimationFrame(fitTargetNameOverlays);
   } else if (tabId === 'tonight') {
     renderTonightTab(container);
@@ -8138,10 +8268,113 @@ function initTargetCardClicks() {
       if (e.target.closest('.targets-project-collapse-btn')) return;
       if (e.target.closest('.target-card-assign-btn')) return;
       var name = card.getAttribute('data-target');
+      if (_targetsSelecting) {
+        e.preventDefault();
+        toggleTargetSelected(card, name);
+        return;
+      }
       var sid = card.getAttribute('data-latest-session');
       openTargetDetail(name, sid);
     });
     card.style.cursor = 'pointer';
+  });
+}
+
+function toggleTargetSelected(card, name) {
+  if (!name) return;
+  var key = name.toLowerCase();
+  if (_selectedTargetNames[key]) {
+    delete _selectedTargetNames[key];
+    card.classList.remove('selected');
+  } else {
+    _selectedTargetNames[key] = name;
+    card.classList.add('selected');
+  }
+  var countEl = document.querySelector('.targets-select-count');
+  if (countEl) countEl.textContent = selectedTargetList().length + ' selected';
+  var createBtn = document.querySelector('[data-action="create-mosaic"]');
+  if (createBtn) createBtn.disabled = selectedTargetList().length < 2;
+}
+
+function restoreTargetSelection(container) {
+  if (!_targetsSelecting || !container) return;
+  container.querySelectorAll('.target-card[data-target]').forEach(function(card) {
+    var name = card.getAttribute('data-target') || '';
+    if (_selectedTargetNames[name.toLowerCase()]) card.classList.add('selected');
+  });
+}
+
+function closeCreateMosaicModal() {
+  var bd = document.getElementById('create-mosaic-backdrop');
+  if (bd && bd.parentNode) bd.parentNode.removeChild(bd);
+  document.removeEventListener('keydown', _createMosaicKeyHandler);
+}
+
+var _createMosaicKeyHandler = function(e) {
+  if (e.key === 'Escape') closeCreateMosaicModal();
+};
+
+function openCreateMosaicModal(names) {
+  closeCreateMosaicModal();
+  names = names || [];
+  if (names.length < 2) return;
+  var suggested = suggestMosaicName(names);
+  var span = mosaicSpanDegrees(names);
+  var warn = span >= 10
+    ? '<p class="create-mosaic-warn">These targets span about ' + Math.round(span) +
+      ' degrees. That is wider than a typical mosaic. Continue anyway?</p>'
+    : '';
+  var list = names.map(function(n) { return '<li>' + esc(n) + '</li>'; }).join('');
+  var html =
+    '<div class="manage-projects-modal create-mosaic-modal" role="dialog" aria-label="Create mosaic">' +
+      '<h3>New mosaic project</h3>' +
+      '<p class="create-mosaic-lead">Group ' + names.length + ' targets as mosaic panels. No Target Scheduler required.</p>' +
+      warn +
+      '<label class="create-mosaic-label">Name</label>' +
+      '<input type="text" class="manage-projects-input create-mosaic-name" maxlength="80" value="' + esc(suggested) + '">' +
+      '<ul class="create-mosaic-list">' + list + '</ul>' +
+      '<div class="manage-projects-footer">' +
+        '<button type="button" data-action="cancel">Cancel</button>' +
+        '<button type="button" class="manage-projects-add-btn" data-action="confirm">Create mosaic</button>' +
+      '</div>' +
+    '</div>';
+  var backdrop = document.createElement('div');
+  backdrop.id = 'create-mosaic-backdrop';
+  backdrop.className = 'ts-link-picker-backdrop';
+  backdrop.innerHTML = html;
+  document.body.appendChild(backdrop);
+  document.addEventListener('keydown', _createMosaicKeyHandler);
+  backdrop.addEventListener('click', function(e) {
+    if (e.target === backdrop) closeCreateMosaicModal();
+  });
+  backdrop.querySelector('[data-action="cancel"]').addEventListener('click', closeCreateMosaicModal);
+  var input = backdrop.querySelector('.create-mosaic-name');
+  if (input) {
+    input.focus();
+    input.select();
+  }
+  backdrop.querySelector('[data-action="confirm"]').addEventListener('click', function() {
+    var name = (input && input.value.trim()) || suggested || 'Mosaic';
+    var btn = backdrop.querySelector('[data-action="confirm"]');
+    if (btn) btn.disabled = true;
+    fetch('/api/stats/projects/custom', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'create', name: name, isMosaic: true, targets: names })
+    }).then(function(r) { return r.json(); }).then(function(d) {
+      if (d.error) {
+        if (btn) btn.disabled = false;
+        alert(d.error);
+        return;
+      }
+      closeCreateMosaicModal();
+      _targetsSelecting = false;
+      _selectedTargetNames = {};
+      safeSetItem('ns-targets-group', 'project');
+      renderStats();
+    }).catch(function() {
+      if (btn) btn.disabled = false;
+    });
   });
 }
 
@@ -8406,10 +8639,15 @@ function openManageProjectsModal() {
       '<div class="manage-projects-list">' + (listContent || '<div class="empty">No projects available</div>') + '</div>' +
       '<div class="manage-projects-create">' +
         '<input type="text" class="manage-projects-input" placeholder="New project name\u2026" maxlength="80">' +
+        '<label class="manage-projects-mosaic-check" title="Combined sky thumbnail and FOV overlays, like a Target Scheduler mosaic">' +
+          '<input type="checkbox" class="manage-projects-mosaic">' +
+          '<span>Mosaic</span>' +
+        '</label>' +
         '<button type="button" class="manage-projects-add-btn">Create</button>' +
       '</div>' +
       '<div class="manage-projects-footer">' +
-        '<button type="button" class="manage-projects-reset-btn" data-action="reset">Reset to TS</button>' +
+        '<button type="button" class="manage-projects-reset-btn" data-action="reset">' +
+          (statsTsStatus === 'available' ? 'Reset to TS' : 'Reset custom projects') + '</button>' +
         '<button type="button" data-action="close">Close</button>' +
       '</div>' +
     '</div>';
@@ -8676,17 +8914,20 @@ function openManageProjectsModal() {
   function doCreate() {
     var name = input.value.trim();
     if (!name) return;
+    var mosaicEl = backdrop.querySelector('.manage-projects-mosaic');
+    var isMosaic = !!(mosaicEl && mosaicEl.checked);
     addBtn.disabled = true;
     fetch('/api/stats/projects/custom', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'create', name: name })
+      body: JSON.stringify({ action: 'create', name: name, isMosaic: isMosaic })
     }).then(function(r) { return r.json(); }).then(function(d) {
       if (d.guid && d.name) {
         if (!statsTsProjects) statsTsProjects = [];
-        statsTsProjects.push({ guid: d.guid, name: d.name, state: 'Active', isMosaic: false, isCustom: true, targetCount: 0, targets: [] });
+        statsTsProjects.push({ guid: d.guid, name: d.name, state: 'Active', isMosaic: !!d.isMosaic, isCustom: true, targetCount: 0, targets: [] });
       }
       input.value = '';
+      if (mosaicEl) mosaicEl.checked = false;
       addBtn.disabled = false;
       rebuildList();
     }).catch(function() { addBtn.disabled = false; });
@@ -8696,7 +8937,10 @@ function openManageProjectsModal() {
 
   // Reset to TS button
   backdrop.querySelector('[data-action="reset"]').addEventListener('click', function() {
-    if (!confirm('Reset all project assignments?\n\nThis will remove all custom projects and target assignments, restoring the default TS project grouping.')) return;
+    var resetMsg = statsTsStatus === 'available'
+      ? 'Reset all project assignments?\n\nThis will remove all custom projects and target assignments, restoring the default TS project grouping.'
+      : 'Delete all custom projects and target assignments?';
+    if (!confirm(resetMsg)) return;
     fetch('/api/stats/projects/reset', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -9230,26 +9474,21 @@ function renderStats(params) {
     var tsOn = statsTsStatus === 'available';
     updateStatsNavLabel();
 
-    if (tsOn) {
-      var tsNoProjects = !statsTsProjects || statsTsProjects.length === 0;
-      var tabs = [{id: 'targets', label: 'Targets'}, {id: 'tonight', label: 'Tonight', disabled: tsNoProjects}];
-      var activeTab = localStorage.getItem('ns-stats-tab') || 'targets';
-      if (!tabs.some(function(t) { return t.id === activeTab; })) activeTab = 'targets';
-      html += '<div class="stats-tab-row">';
-      html += renderTabBar(tabs, activeTab);
-      html += '<button type="button" class="targets-manage-projects-btn" data-action="manage-projects">Manage Projects</button>';
-      html += '</div>';
-      html += '<div id="stats-tab-content"></div>';
-      el.innerHTML = html;
-      initTabBar(renderStatsTabContent);
-      var manageBtn = el.querySelector('.targets-manage-projects-btn');
-      if (manageBtn) manageBtn.addEventListener('click', function() { openManageProjectsModal(); });
-      renderStatsTabContent(activeTab);
-    } else {
-      html += '<div id="stats-tab-content"></div>';
-      el.innerHTML = html;
-      renderStatsTabContent('targets');
-    }
+    var tsNoProjects = tsOn && (!statsTsProjects || statsTsProjects.length === 0);
+    var tabs = [{id: 'targets', label: 'Targets'}];
+    if (tsOn) tabs.push({id: 'tonight', label: 'Tonight', disabled: tsNoProjects});
+    var activeTab = localStorage.getItem('ns-stats-tab') || 'targets';
+    if (!tabs.some(function(t) { return t.id === activeTab; })) activeTab = 'targets';
+    html += '<div class="stats-tab-row">';
+    html += renderTabBar(tabs, activeTab);
+    html += '<button type="button" class="targets-manage-projects-btn" data-action="manage-projects">Manage Projects</button>';
+    html += '</div>';
+    html += '<div id="stats-tab-content"></div>';
+    el.innerHTML = html;
+    initTabBar(renderStatsTabContent);
+    var manageBtn = el.querySelector('.targets-manage-projects-btn');
+    if (manageBtn) manageBtn.addEventListener('click', function() { openManageProjectsModal(); });
+    renderStatsTabContent(activeTab);
 
     // Auto-open TDP/PDP after stats paints — used by deep-links from
     // session-detail "back" buttons that originated in a TDP/PDP modal.
@@ -10196,23 +10435,56 @@ function companionSyncNow() {
 }
 
 // ── In-app update banner (companion-only) ────────────────────────────────
-// Polls /api/companion/update-check once after the banner inits. When a newer
-// release exists AND the user hasn't dismissed THAT version, shows a banner.
-// Self-updatable installs (Windows zip / mac .app / Linux tarball) get an
-// "Update now" button that POSTs /api/companion/update, then polls /api/health
-// until the new version answers and reloads. AppImage / .deb / non-writable
-// installs get a "Download" link to the release instead. Nothing ever applies
-// without a click — dismissal is per-version, so the next release re-prompts.
+// Checks /api/companion/update-check on init, every few hours, and when a
+// hidden tab becomes visible again (throttled so window-switching is cheap).
+// When a newer release exists AND the user hasn't dismissed THAT version,
+// shows a banner. Self-updatable installs (Windows zip / mac .app / Linux
+// tarball) get an "Update now" button that POSTs /api/companion/update, then
+// polls /api/health until the new version answers and reloads. AppImage /
+// .deb / non-writable installs get a "Download" link to the release instead.
+// Nothing ever applies without a click — dismissal is per-version, so the
+// next release re-prompts.
 var UPDATE_DISMISS_KEY = 'ns_companion_update_dismissed';
+var UPDATE_RECHECK_MS = 6 * 60 * 60 * 1000;
+var UPDATE_VISIBLE_MIN_MS = 60 * 60 * 1000;
+var updateCheckInited = false;
+var lastUpdateCheckAt = 0;
 
 function initUpdateCheck() {
-  fetch('/api/companion/update-check').then(function(r){ return r.json(); }).then(function(u){
-    if (!u || !u.updateAvailable) return;
-    var dismissed = '';
-    try { dismissed = localStorage.getItem(UPDATE_DISMISS_KEY) || ''; } catch (e) {}
-    if (dismissed === u.latest) return;   // user already dismissed THIS version
-    renderUpdateBanner(u);
-  }).catch(function(){ /* offline / rate-limited / primary mode — stay quiet */ });
+  if (updateCheckInited) return;
+  updateCheckInited = true;
+  runUpdateCheck(false);
+  setInterval(function(){ runUpdateCheck(false); }, UPDATE_RECHECK_MS);
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible') runUpdateCheck(false);
+  });
+}
+
+function runUpdateCheck(force, onDone) {
+  var now = Date.now();
+  if (!force && lastUpdateCheckAt && (now - lastUpdateCheckAt) < UPDATE_VISIBLE_MIN_MS) {
+    if (onDone) onDone(null);
+    return;
+  }
+  lastUpdateCheckAt = now;
+  var url = '/api/companion/update-check' + (force ? '?force=1' : '');
+  fetch(url).then(function(r){ return r.json(); }).then(function(u){
+    applyUpdateCheck(u);
+    if (onDone) onDone(u);
+  }).catch(function(err){
+    /* offline / rate-limited / primary mode — stay quiet unless a caller cares */
+    if (onDone) onDone({ error: (err && err.message) || 'network error' });
+  });
+}
+
+function applyUpdateCheck(u) {
+  if (!u || !u.updateAvailable) return;
+  var dismissed = '';
+  try { dismissed = localStorage.getItem(UPDATE_DISMISS_KEY) || ''; } catch (e) {}
+  if (dismissed === u.latest) return;
+  var banner = document.getElementById('companion-update-banner');
+  if (banner && !banner.hidden && banner.getAttribute('data-latest') === u.latest) return;
+  renderUpdateBanner(u);
 }
 
 function renderUpdateBanner(u) {
@@ -10237,6 +10509,7 @@ function renderUpdateBanner(u) {
       '<button id="ns-update-dismiss" class="companion-banner-btn is-ghost" type="button">Dismiss</button>' +
     '</div>';
   banner.hidden = false;
+  banner.setAttribute('data-latest', u.latest || '');
   var dis = document.getElementById('ns-update-dismiss');
   if (dis) dis.onclick = function(){ dismissUpdate(u.latest); };
   var now = document.getElementById('ns-update-now');
@@ -10246,7 +10519,7 @@ function renderUpdateBanner(u) {
 function dismissUpdate(version) {
   try { localStorage.setItem(UPDATE_DISMISS_KEY, version || ''); } catch (e) {}
   var banner = document.getElementById('companion-update-banner');
-  if (banner) { banner.hidden = true; banner.innerHTML = ''; }
+  if (banner) { banner.hidden = true; banner.innerHTML = ''; banner.removeAttribute('data-latest'); }
 }
 
 // In-place confirm (mutate the action row, never reopen) -> POST -> progress.
@@ -10736,6 +11009,14 @@ function settingsHtml(c) {
         '</div>' +
       '</div>' +
       '<div class="settings-card">' +
+        '<h2>Updates</h2>' +
+        '<p class="settings-hint">The companion checks GitHub when this dashboard loads, every few hours, and when you come back to a hidden tab. Use the button to check now, bypassing the cache.</p>' +
+        '<div class="settings-actions">' +
+          '<div class="settings-status" id="update-check-status"></div>' +
+          '<button type="button" class="settings-btn" id="cfg-check-update">Check for updates</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="settings-card">' +
         '<h2>Companion process</h2>' +
         '<p class="settings-hint">Restart applies a port change or refreshes the in-memory state. Quit stops the companion entirely — to bring it back, ' + esc(companionRelaunchPhrase(c.os)) + '.</p>' +
         '<div class="settings-actions">' +
@@ -10763,6 +11044,8 @@ function bindSettingsForm(initial) {
   var restartBtn = document.getElementById('cfg-restart');
   var quitBtn  = document.getElementById('cfg-quit');
   var procStatus = document.getElementById('proc-status');
+  var checkUpdateBtn = document.getElementById('cfg-check-update');
+  var updateCheckStatus = document.getElementById('update-check-status');
 
   function readEdit() {
     return {
@@ -10793,6 +11076,30 @@ function bindSettingsForm(initial) {
     if (!procStatus) return;
     procStatus.textContent = text || '';
     procStatus.className = 'settings-status' + (cls ? ' ' + cls : '');
+  }
+  function setUpdateCheckStatus(text, cls) {
+    if (!updateCheckStatus) return;
+    updateCheckStatus.textContent = text || '';
+    updateCheckStatus.className = 'settings-status' + (cls ? ' ' + cls : '');
+  }
+  if (checkUpdateBtn) {
+    checkUpdateBtn.addEventListener('click', function() {
+      checkUpdateBtn.disabled = true;
+      setUpdateCheckStatus('Checking…', '');
+      runUpdateCheck(true, function(u) {
+        checkUpdateBtn.disabled = false;
+        if (!u) {
+          setUpdateCheckStatus('Could not check.', 'is-error');
+        } else if (u.error) {
+          setUpdateCheckStatus('Could not check: ' + u.error, 'is-error');
+        } else if (u.updateAvailable) {
+          setUpdateCheckStatus('Version ' + (u.latest || '') + ' is available.', 'is-ok');
+        } else {
+          setUpdateCheckStatus('You are on the latest version' +
+            (u.current ? ' (' + u.current + ')' : '') + '.', 'is-ok');
+        }
+      });
+    });
   }
 
   // Start-at-login toggle — immediate action, separate from the config form.
