@@ -9,7 +9,7 @@
 
 ### Improvements
 
-- Reports are about 8x smaller and the dashboard page about half the size. The plugin download is 1.2 MB smaller.
+- Optimized report, dashboard, and plugin download size.
 - Companion update banner rechecks every few hours and when you return to the tab, and failed checks retry within minutes. Settings has a Check for updates button.
 - Mosaic FOV overlays fall back to the rotator angle, then sibling panels, instead of drawing unrotated when a panel has no recorded position angle.
 
