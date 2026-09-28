@@ -96,7 +96,7 @@ namespace NINA.Plugin.NightSummary.Reporting {
             // Uses the shared ImagingBlockHelper so the gap-merge logic stays in one place.
             var allBlocks = new List<(string Name, string Color, DateTime Start, DateTime End)>();
             foreach (var target in targets) {
-                foreach (var (winStart, winEnd) in ImagingBlockHelper.DetectWindows(target.Images)) {
+                foreach (var (winStart, winEnd) in ImagingBlockHelper.DetectWindows(target.Images, sessionImages: images)) {
                     allBlocks.Add((target.Name, target.Color, winStart, winEnd));
                 }
             }

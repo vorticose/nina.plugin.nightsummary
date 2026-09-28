@@ -1,5 +1,9 @@
 using System;
+using System.Net;
+using System.Net.Http;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
 using NINA.Plugin.NightSummary.Server;
 using Xunit;
 
@@ -226,6 +230,77 @@ namespace NINA.Plugin.NightSummary.Tests {
                     UpdateChecker.DownloadUrl("install-companion-mac.sh"));
             } finally {
                 Environment.SetEnvironmentVariable("NS_UPDATE_BASE_URL", prior);
+            }
+        }
+
+        // ── Cache TTL ────────────────────────────────────────────────────────
+        [Fact]
+        public void TtlFor_success_is_24_hours() {
+            Assert.Equal(TimeSpan.FromHours(24),
+                UpdateChecker.TtlFor(new UpdateInfo { Latest = "3.3.1" }));
+            Assert.Equal(TimeSpan.FromHours(24),
+                UpdateChecker.TtlFor(new UpdateInfo { Error = "" }));
+            Assert.Equal(TimeSpan.FromHours(24),
+                UpdateChecker.TtlFor(new UpdateInfo { Error = null }));
+        }
+
+        [Fact]
+        public void TtlFor_error_is_15_minutes() {
+            Assert.Equal(TimeSpan.FromMinutes(15),
+                UpdateChecker.TtlFor(new UpdateInfo { Error = "GitHub 403" }));
+        }
+
+        [Fact]
+        public async Task CheckAsync_reuses_success_until_force() {
+            var handler = new CountingHandler {
+                Next = _ => OkJson(ReleaseJson)
+            };
+            var checker = new UpdateChecker(() => new HttpClient(handler, disposeHandler: false));
+
+            var first = await checker.CheckAsync("3.2.1", force: false, CancellationToken.None);
+            var second = await checker.CheckAsync("3.2.1", force: false, CancellationToken.None);
+            Assert.Equal(1, handler.Calls);
+            Assert.True(first.UpdateAvailable);
+            Assert.Equal(first.Latest, second.Latest);
+
+            var forced = await checker.CheckAsync("3.2.1", force: true, CancellationToken.None);
+            Assert.Equal(2, handler.Calls);
+            Assert.True(forced.UpdateAvailable);
+        }
+
+        [Fact]
+        public async Task CheckAsync_reuses_error_immediately_but_force_retries() {
+            var handler = new CountingHandler {
+                Next = _ => throw new HttpRequestException("boom")
+            };
+            var checker = new UpdateChecker(() => new HttpClient(handler, disposeHandler: false));
+
+            var first = await checker.CheckAsync("3.2.1", force: false, CancellationToken.None);
+            var second = await checker.CheckAsync("3.2.1", force: false, CancellationToken.None);
+            Assert.Equal(1, handler.Calls);
+            Assert.False(string.IsNullOrEmpty(first.Error));
+            Assert.False(first.UpdateAvailable);
+            Assert.Equal(first.Error, second.Error);
+
+            var forced = await checker.CheckAsync("3.2.1", force: true, CancellationToken.None);
+            Assert.Equal(2, handler.Calls);
+            Assert.False(string.IsNullOrEmpty(forced.Error));
+        }
+
+        private static HttpResponseMessage OkJson(string json) =>
+            new HttpResponseMessage(HttpStatusCode.OK) {
+                Content = new StringContent(json)
+            };
+
+        private sealed class CountingHandler : HttpMessageHandler {
+            public int Calls;
+            public Func<int, HttpResponseMessage> Next = _ =>
+                new HttpResponseMessage(HttpStatusCode.InternalServerError);
+
+            protected override Task<HttpResponseMessage> SendAsync(
+                    HttpRequestMessage request, CancellationToken cancellationToken) {
+                Calls++;
+                return Task.FromResult(Next(Calls));
             }
         }
     }

@@ -25,12 +25,25 @@ namespace NINA.Plugin.NightSummary.Tests {
         private readonly MockCameraMediator _cameraMediator = new();
         private readonly string _dbPath;
         private readonly string _settingsPath;
+        // Keeps dashboard report HTML out of the developer's real
+        // %LOCALAPPDATA%\NINA\NightSummary\reports. SaveReportForDashboardAsync runs
+        // unconditionally and consults no setting, so without this seam every test run
+        // litters the live folder.
+        private readonly string _reportsDir;
+        // See SessionReplayRunner — SessionService reads from SettingsManager.Instance,
+        // not from this test's isolated SettingsManager. Without redirecting the
+        // singleton the disabled delivery flags below are decorative: FinalizeOrphanedSessions
+        // generates a report per recovered session and sends it using whatever real
+        // credentials are on the test host. This class did exactly that and posted three
+        // live Discord messages when the suite was run on the observatory PC (2026-08-23).
+        private readonly IDisposable _settingsOverride;
         private readonly SessionService _service;
         private readonly SessionDatabase _db;
 
         public SessionServiceOrphanRecoveryTests() {
             _dbPath       = Path.Combine(Path.GetTempPath(), $"ns_orphan_{Guid.NewGuid():N}.sqlite");
             _settingsPath = Path.Combine(Path.GetTempPath(), $"ns_orphan_settings_{Guid.NewGuid():N}.json");
+            _reportsDir   = Path.Combine(Path.GetTempPath(), $"ns_orphan_reports_{Guid.NewGuid():N}");
 
             var settingsMgr = new SettingsManager(_settingsPath, attemptMigration: false);
             settingsMgr.Load();
@@ -39,6 +52,7 @@ namespace NINA.Plugin.NightSummary.Tests {
             settingsMgr.Current.DiscordEnabled    = false;
             settingsMgr.Current.PushoverEnabled   = false;
             settingsMgr.Save();
+            _settingsOverride = SettingsManager.UseInstanceForTesting(settingsMgr);
 
             _service = new SessionService(
                 _imageSaveMediator,
@@ -49,14 +63,26 @@ namespace NINA.Plugin.NightSummary.Tests {
                 _cameraMediator,
                 _sequenceMediator,
                 null, null, null, null, null, null, null, null,
-                databasePath: _dbPath);
+                databasePath: _dbPath,
+                reportsDirectory: _reportsDir);
 
             _db = new SessionDatabase(_dbPath);
         }
 
         public void Dispose() {
+            // Drain pending report tasks before releasing the settings override — see
+            // SessionReplayRunner.Dispose for the race this prevents. These tests DO
+            // finalize sessions with content, so this is load-bearing here: releasing
+            // the override first would let an in-flight report send against the host's
+            // real settings.
+            try {
+                _service?.WaitForPendingReportsAsync(TimeSpan.FromSeconds(10))
+                         .GetAwaiter().GetResult();
+            } catch { }
+            _settingsOverride?.Dispose();
             if (File.Exists(_dbPath))       File.Delete(_dbPath);
             if (File.Exists(_settingsPath)) File.Delete(_settingsPath);
+            try { if (Directory.Exists(_reportsDir)) Directory.Delete(_reportsDir, true); } catch { }
         }
 
         // ── No database ─────────────────────────────────────────────────────

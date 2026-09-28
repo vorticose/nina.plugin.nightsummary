@@ -58,8 +58,20 @@
     <EmbeddedResource Include="Web\setup.js">
       <LogicalName>setup.js</LogicalName>
     </EmbeddedResource>
-    <EmbeddedResource Include="..\assets\plugin-icon.png">
-      <LogicalName>plugin-icon.png</LogicalName>
+    <!-- assets/plugin-icon.png (the 776x776 brand master) is deliberately NOT embedded.
+         Nothing reads it: there is no HTTP icon endpoint and no favicon link, and the
+         only former consumer was the dashboard header, which now uses report-icon.png.
+         Embedding it cost ~600 KB in a DLL that ships with the plugin and all three
+         companion builds. The file itself still lives on disk for the store listing,
+         the docs site and gen-companion-icons.py. ReportIconTests asserts it stays
+         un-embedded. -->
+    <!-- 144x144 palette copy (~9 KB). Both the HTML report header and the dashboard
+         header inline this as a base64 data URI and render it at 48px. Inlining the
+         full-size art instead made the icon ~90% of every report and put ~800 KB of
+         base64 in every dashboard page load.
+         Regenerate with scripts/gen-report-icon.py if the brand art changes. -->
+    <EmbeddedResource Include="..\assets\report-icon.png">
+      <LogicalName>report-icon.png</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
 </Project>
