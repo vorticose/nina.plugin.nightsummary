@@ -257,3 +257,36 @@ logger path) were left for separate review.
 
 Tests: `MoonPhaseTests` and `SessionListMoonHttpTests` pass on macOS;
 `SessionDatabaseQueryTests` uses System.Data.SQLite and runs on Windows only.
+
+### Batch 3: Targets edits in place (`feature/perf-targets-inplace`)
+
+`refreshStatsInPlace()` replaces `renderStats()` at the 8 edit call sites. It re-fetches
+only `/api/stats/targets` (these edits never change the summary, settings or session
+list), applies it with the same `applyStatsTargetData()` the full render uses, repaints
+the tab content in one task (the tab row only if it changed), carries the old mosaic FOV
+overlays over so they don't blink while re-fetching, and restores the scroll position.
+Falls back to `renderStats()` if Stats isn't on screen or the fetch fails.
+
+Done criterion checked on the iPad profile by sampling every 16 ms during a real edit,
+then diffing `#content` against a full `renderStats()` of the same state:
+
+| Edit path | Loader | Scroll | Content updated | Same as full reload |
+|---|---|---|---:|---|
+| Assign target to mosaic (grouped view, scrolled 6000 px) | none | kept | (no height change) | byte-identical, 879 nodes |
+| TS status override (ungrouped, scrolled 3000 px) | none | kept | 0.31 s | byte-identical, 709 KB |
+| Create mosaic (ungrouped, scrolled 2500 px) | none | new mosaic scrolled into view | 0.33 s | byte-identical, 942 nodes |
+
+Before: page blanked to "Loading stats..." at 0.2 s, came back at 0.42 s, scroll reset
+to the top.
+
+Deliberate exception: create-mosaic switches the view to project grouping, so instead
+of keeping a now-meaningless offset it scrolls the new mosaic to just below the header.
+
+Target "< 100 ms visible response": the immediate acknowledgement (picker or modal
+closes, checkbox toggles) is instant. The card content follows ~0.3 s later: two
+sequential round trips (save, then re-read), each on a new connection. Options if that
+matters: return the refreshed targets payload from the POST (saves ~0.12 s), or
+optimistic local updates (under 100 ms, but gives up the "identical to reload" guarantee).
+
+First-ever render of a brand-new mosaic's survey image waits on the external HiPS
+service (seconds); this is unchanged and not part of the in-place path.

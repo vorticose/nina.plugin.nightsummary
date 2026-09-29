@@ -2026,7 +2026,7 @@ function bindTargetDetailEvents(backdrop, targetName) {
         applyTsTargetLink(targetName, '', function() {
           // Close and re-open the panel with refreshed data
           closeTargetDetail();
-          renderStats();
+          refreshStatsInPlace();
         });
       }
     });
@@ -8371,7 +8371,19 @@ function openCreateMosaicModal(names) {
       _targetsSelecting = false;
       _selectedTargetNames = {};
       safeSetItem('ns-targets-group', 'project');
-      renderStats();
+      // The view switches to project grouping, so the old scroll offset would
+      // land on unrelated cards: bring the new mosaic into view instead.
+      refreshStatsInPlace().then(function() {
+        var created = Array.prototype.find.call(
+          document.querySelectorAll('.targets-project-container[data-guid]'),
+          function(c) { return c.getAttribute('data-guid') === d.guid; });
+        if (!created) return;
+        // Top of the card just below the sticky header (a tall card centred
+        // would push its title off-screen).
+        var header = document.querySelector('header');
+        var offset = (header ? header.getBoundingClientRect().bottom : 0) + 12;
+        window.scrollBy(0, created.getBoundingClientRect().top - offset);
+      });
     }).catch(function() {
       if (btn) btn.disabled = false;
     });
@@ -8487,7 +8499,7 @@ function applyTsStatusOverride(projectGuid, status) {
   }).then(function() {
     // Reload stats data so all cards reflect the new state
     logInfo('TS override applied:', projectGuid, '->', status || '(cleared)');
-    renderStats();
+    refreshStatsInPlace();
   }).catch(function(err) {
     logError('TS override failed:', err.message);
   });
@@ -8519,7 +8531,7 @@ function closeManageProjectsModal() {
   document.body.style.overflow = '';
   if (_manageProjectsDirty) {
     _manageProjectsDirty = false;
-    renderStats();
+    refreshStatsInPlace();
   }
 }
 
@@ -8966,7 +8978,7 @@ function closeProjectAssignPicker() {
   document.body.style.overflow = '';
   if (_projectAssignDirty) {
     _projectAssignDirty = false;
-    renderStats();
+    refreshStatsInPlace();
   }
 }
 
@@ -9111,7 +9123,7 @@ function openProjectAssignPicker(anchorEl, targetName) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ targetName: targetName, projectGuid: '' })
     }).then(function(r) { return r.json(); }).then(function() {
-      renderStats();
+      refreshStatsInPlace();
     });
   });
 
@@ -9203,7 +9215,7 @@ function openTsLinkPicker(sessionTargetName) {
       closeTsLinkPicker();
       applyTsTargetLink(sessionTargetName, guid, function() {
         closeTargetDetail();
-        renderStats();
+        refreshStatsInPlace();
       });
     });
   });
@@ -9212,7 +9224,7 @@ function openTsLinkPicker(sessionTargetName) {
     closeTsLinkPicker();
     applyTsTargetLink(sessionTargetName, '', function() {
       closeTargetDetail();
-      renderStats();
+      refreshStatsInPlace();
     });
   });
 }
@@ -9405,6 +9417,98 @@ function buildActivityHeatmap(sessions, firstSessionIso) {
   return svg;
 }
 
+// Store the /api/stats/targets payload in the Stats globals. Shared by the full
+// render and the in-place refresh so both paths derive identical state.
+function applyStatsTargetData(targetData) {
+  var targets = targetData.targets || [];
+  statsTargetData = targets;
+  statsTsStatus   = targetData.tsStatus   || null;
+  if (statsTsStatus) safeSetItem('ns-ts-status', statsTsStatus);
+  statsTsError    = targetData.tsError    || null;
+  statsTsProjects = targetData.tsProjects || null;
+  statsProjectAssignments = normalizeAssignments(targetData.projectAssignments || {});
+  statsTargetExclusions  = targetData.targetExclusions  || {};
+  return targets;
+}
+
+// Tab bar markup for the current Stats state, plus the tab it resolves to.
+function statsTabRow() {
+  var tsOn = statsTsStatus === 'available';
+  var tsNoProjects = tsOn && (!statsTsProjects || statsTsProjects.length === 0);
+  var tabs = [{id: 'targets', label: 'Targets'}];
+  if (tsOn) tabs.push({id: 'tonight', label: 'Tonight', disabled: tsNoProjects});
+  var activeTab = localStorage.getItem('ns-stats-tab') || 'targets';
+  if (!tabs.some(function(t) { return t.id === activeTab; })) activeTab = 'targets';
+  var html = '<div class="stats-tab-row">';
+  html += renderTabBar(tabs, activeTab);
+  html += '<button type="button" class="targets-manage-projects-btn" data-action="manage-projects">Manage Projects</button>';
+  html += '</div>';
+  return { html: html, activeTab: activeTab };
+}
+
+// Write the Stats shell (tab row + empty tab container) into el and wire it up.
+// Returns the active tab id for the caller to render.
+function paintStatsShell(el) {
+  var row = statsTabRow();
+  el.innerHTML = row.html + '<div id="stats-tab-content"></div>';
+  el.setAttribute('data-stats-tab-row', row.html);
+  initTabBar(renderStatsTabContent);
+  var manageBtn = el.querySelector('.targets-manage-projects-btn');
+  if (manageBtn) manageBtn.addEventListener('click', function() { openManageProjectsModal(); });
+  return row.activeTab;
+}
+
+// Repaint Stats after an edit (project assignment, mosaic, TS link or override)
+// without the full-page reload: no loader, the old page stays up until the new
+// one is ready, the scroll position is kept, and mosaic FOV overlays from the
+// old cards are carried over so they don't blink while they re-fetch. Only
+// /api/stats/targets is re-fetched: these edits never change the summary,
+// settings or session list that renderStats also loads. Produces the same page
+// renderStats would. Falls back to renderStats when Stats isn't on screen.
+function refreshStatsInPlace() {
+  var el = document.getElementById('content');
+  var path = (location.hash.slice(1) || '/sessions').split('?')[0];
+  if (path !== '/stats' || !document.getElementById('stats-tab-content')) {
+    renderStats();
+    return Promise.resolve();
+  }
+  return api('/api/stats/targets').then(function(targetData) {
+    if ((location.hash.slice(1) || '/sessions').split('?')[0] !== '/stats') return;
+    applyStatsTargetData(targetData);
+    updateStatsNavLabel();
+    var scroller = document.scrollingElement || document.documentElement;
+    var y = scroller.scrollTop;
+    var overlays = takeMosaicOverlays();
+    var row = statsTabRow();
+    if (el.getAttribute('data-stats-tab-row') !== row.html) paintStatsShell(el);
+    renderStatsTabContent(row.activeTab);
+    restoreMosaicOverlays(overlays);
+    scroller.scrollTop = y;
+  }).catch(function(err) {
+    logWarn('In-place Stats refresh failed, reloading:', err && err.message);
+    renderStats();
+  });
+}
+
+// Detach the current mosaic FOV overlays, keyed by project guid.
+function takeMosaicOverlays() {
+  var out = {};
+  document.querySelectorAll('.targets-project-thumb-wrap[data-guid]').forEach(function(wrap) {
+    var svg = wrap.querySelector('.mosaic-fov-svg');
+    if (svg) out[wrap.getAttribute('data-guid')] = svg;
+  });
+  return out;
+}
+
+// Re-attach carried-over overlays to the freshly rendered cards, unless the
+// re-fetch already injected a new one (loadMosaicThumbnail replaces it anyway).
+function restoreMosaicOverlays(overlays) {
+  document.querySelectorAll('.targets-project-thumb-wrap[data-guid]').forEach(function(wrap) {
+    var svg = overlays[wrap.getAttribute('data-guid')];
+    if (svg && !wrap.querySelector('.mosaic-fov-svg')) wrap.appendChild(svg);
+  });
+}
+
 function renderStats(params) {
   var el = document.getElementById('content');
   var sub = document.getElementById('page-subtitle');
@@ -9441,14 +9545,7 @@ function renderStats(params) {
     var sessions   = results[3] || [];
     var tdpData    = results[4];
     if (sessions.length > 0) sessionsCache = sessions;
-    var targets = targetData.targets || [];
-    statsTargetData = targets;
-    statsTsStatus   = targetData.tsStatus   || null;
-    if (statsTsStatus) safeSetItem('ns-ts-status', statsTsStatus);
-    statsTsError    = targetData.tsError    || null;
-    statsTsProjects = targetData.tsProjects || null;
-    statsProjectAssignments = normalizeAssignments(targetData.projectAssignments || {});
-    statsTargetExclusions  = targetData.targetExclusions  || {};
+    var targets = applyStatsTargetData(targetData);
 
     // Populate globalFilterTypeMap from plugin settings (case-insensitive)
     globalFilterTypeMap = {};
@@ -9468,26 +9565,8 @@ function renderStats(params) {
     // the stats data was loading.
     exitReportView();
 
-    var html = '';
-
-    // Tab bar + content
-    var tsOn = statsTsStatus === 'available';
     updateStatsNavLabel();
-
-    var tsNoProjects = tsOn && (!statsTsProjects || statsTsProjects.length === 0);
-    var tabs = [{id: 'targets', label: 'Targets'}];
-    if (tsOn) tabs.push({id: 'tonight', label: 'Tonight', disabled: tsNoProjects});
-    var activeTab = localStorage.getItem('ns-stats-tab') || 'targets';
-    if (!tabs.some(function(t) { return t.id === activeTab; })) activeTab = 'targets';
-    html += '<div class="stats-tab-row">';
-    html += renderTabBar(tabs, activeTab);
-    html += '<button type="button" class="targets-manage-projects-btn" data-action="manage-projects">Manage Projects</button>';
-    html += '</div>';
-    html += '<div id="stats-tab-content"></div>';
-    el.innerHTML = html;
-    initTabBar(renderStatsTabContent);
-    var manageBtn = el.querySelector('.targets-manage-projects-btn');
-    if (manageBtn) manageBtn.addEventListener('click', function() { openManageProjectsModal(); });
+    var activeTab = paintStatsShell(el);
     renderStatsTabContent(activeTab);
 
     // Auto-open TDP/PDP after stats paints — used by deep-links from
