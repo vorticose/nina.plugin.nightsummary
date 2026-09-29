@@ -239,3 +239,21 @@ from the previous one so they stack. Batch 3 is done when an edit produces the s
 as a full reload, with no loader and the scroll position kept. Stopping rules as above.
 No merge, push or deploy. Deliverables: a before/after table against the targets, and
 a separate proposal for animations and blur (the visual part of batch 5).
+
+### Batch 2: session-list SQL aggregation (`feature/perf-sessions-list`)
+
+Cherry-picked from `feature/sessions-list-scale`: 93a7ffa (moon without reading report
+HTML) and b30e24d (aggregate list stats in SQL), plus the changelog line from 8422ffb
+re-applied by hand. The branch's other commits (mobile activity-stripe snap x2, test
+logger path) were left for separate review.
+
+`/api/sessions`: 210 ms -> 9 ms warm on the snapshot. JSON is identical to `dev` except
+`moonPhase` is now filled for 11 sessions that were missing it.
+
+| Scenario (iPad profile) | Batch 1 | Batch 2 | Target |
+|---|---:|---:|---:|
+| First load: list data in | 0.86 s | **0.43 s** | < 0.5 s: met |
+| First load: settled | 2.75 s | 2.30 s | < 1 s (batch 4) |
+
+Tests: `MoonPhaseTests` and `SessionListMoonHttpTests` pass on macOS;
+`SessionDatabaseQueryTests` uses System.Data.SQLite and runs on Windows only.

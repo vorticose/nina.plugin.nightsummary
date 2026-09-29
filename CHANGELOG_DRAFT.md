@@ -7,6 +7,7 @@
 ### Improvements
 
 - Faster dashboard over Tailscale and on phones: pages and data are compressed (the dashboard page drops from about 800 KB to 200 KB), and an unchanged dashboard or report is no longer downloaded again. Re-opening the dashboard or a report you have already viewed is now near-instant.
+- Sessions page loads quickly even with a long history. The list no longer reads every report HTML file just to fill the moon cell and image stats.
 
 ## v3.3.2
 
