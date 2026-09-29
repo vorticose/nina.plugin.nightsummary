@@ -231,3 +231,11 @@ Tests: `HttpCompressionTests` (negotiation, policy, wire bytes, HTTP/1.1 status 
 `DashboardHttpCachingTests` (real server: page and report 304s, theme and regeneration
 bust the tag, gzip only when asked). 42 tests pass on macOS via a scratch project that
 links these files; the Windows suite still needs a run before merge.
+
+## Goal (set 2026-09-29)
+
+Finish batches 2, 3, 4 and the non-visual parts of 5. One branch per batch, each cut
+from the previous one so they stack. Batch 3 is done when an edit produces the same page
+as a full reload, with no loader and the scroll position kept. Stopping rules as above.
+No merge, push or deploy. Deliverables: a before/after table against the targets, and
+a separate proposal for animations and blur (the visual part of batch 5).
