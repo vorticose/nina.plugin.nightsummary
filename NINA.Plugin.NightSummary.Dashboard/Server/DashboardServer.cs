@@ -122,6 +122,31 @@ namespace NINA.Plugin.NightSummary.Server {
         // Live stack cache: sessionId -> { target -> list of entries }
         private readonly ConcurrentDictionary<string, Dictionary<string, List<LiveStackEntry>>> livestackCache = new();
 
+        // Whole-database aggregates that walk every session's images (filters, stats
+        // summary) but only change when the database does. Keyed by name + DB path so
+        // each rig has its own entry; the stamp is the DB and WAL file state, which
+        // moves on every write (NINA writes land in the WAL first) and when a
+        // companion sync swaps the file.
+        private readonly ConcurrentDictionary<string, (string stamp, object value)> _dbMemo = new();
+
+        private string DbStamp() {
+            var db  = new FileInfo(dbPath);
+            var wal = new FileInfo(dbPath + "-wal");
+            return db.LastWriteTimeUtc.Ticks + ":" + db.Length + ":" +
+                   (wal.Exists ? wal.LastWriteTimeUtc.Ticks + ":" + wal.Length : "-");
+        }
+
+        // Stamp is read before computing, so a write that lands mid-compute just
+        // makes the next call recompute.
+        private T DbMemo<T>(string name, Func<T> compute) {
+            var key = name + "|" + dbPath;
+            var stamp = DbStamp();
+            if (_dbMemo.TryGetValue(key, out var hit) && hit.stamp == stamp) return (T)hit.value;
+            var value = compute();
+            _dbMemo[key] = (stamp, value);
+            return value;
+        }
+
         private class LiveStackEntry {
             public string target { get; set; }
             public string filter { get; set; }
@@ -3215,15 +3240,15 @@ namespace NINA.Plugin.NightSummary.Server {
                 done?.Invoke(200, "0 filters (no db)");
                 return;
             }
-            var sessions = await _data.GetAllSessionsAsync();
-            var filters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var s in sessions) {
-                var images = DbImages(s.SessionId);
-                foreach (var img in images) {
-                    if (!string.IsNullOrEmpty(img.Filter)) filters.Add(img.Filter);
+            var sorted = DbMemo("filters", () => {
+                var filters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var s in DbSessions()) {
+                    foreach (var img in DbImages(s.SessionId)) {
+                        if (!string.IsNullOrEmpty(img.Filter)) filters.Add(img.Filter);
+                    }
                 }
-            }
-            var sorted = filters.OrderBy(f => f).ToList();
+                return filters.OrderBy(f => f).ToList();
+            });
             await WriteJson(res, 200, new { filters = sorted });
             done?.Invoke(200, $"{sorted.Count} filters");
         }
@@ -4435,30 +4460,42 @@ private static string FormatSettingsForLog(NightSummarySettings s) {
                 return;
             }
 
-            var sessions = await _data.GetAllSessionsAsync();
-            double totalIntegration = 0;
-            int totalImages = 0;
-            var allTargets = new HashSet<string>();
+            var summary = DbMemo("stats-summary", () => {
+                var sessions = DbSessions();
+                double totalIntegration = 0;
+                int totalImages = 0;
+                var allTargets = new HashSet<string>();
 
-            foreach (var s in sessions) {
-                var images = DbImages(s.SessionId);
-                var lights = images.Where(i => string.IsNullOrEmpty(i.ImageType) || i.ImageType == "LIGHT").ToList();
-                totalImages += lights.Count(i => i.CountsAsAccepted);
-                totalIntegration += lights.Where(i => i.CountsAsAccepted).Sum(i => i.ExposureDuration);
-                foreach (var t in lights.Where(i => !string.IsNullOrEmpty(i.TargetName)).Select(i => i.TargetName))
-                    allTargets.Add(t);
-            }
+                foreach (var s in sessions) {
+                    var images = DbImages(s.SessionId);
+                    var lights = images.Where(i => string.IsNullOrEmpty(i.ImageType) || i.ImageType == "LIGHT").ToList();
+                    totalImages += lights.Count(i => i.CountsAsAccepted);
+                    totalIntegration += lights.Where(i => i.CountsAsAccepted).Sum(i => i.ExposureDuration);
+                    foreach (var t in lights.Where(i => !string.IsNullOrEmpty(i.TargetName)).Select(i => i.TargetName))
+                        allTargets.Add(t);
+                }
 
-            if (sessions.Count == 0) log?.Warn("Stats summary: 0 sessions in DB");
-            await WriteJson(res, 200, new {
-                totalSessions = sessions.Count,
-                totalIntegrationHours = Math.Round(totalIntegration / 3600.0, 1),
-                totalImages,
-                targetCount = allTargets.Count,
-                firstSession = sessions.Count > 0 ? sessions.Last().SessionStart.ToString("o") : null,
-                lastSession = sessions.Count > 0 ? sessions.First().SessionStart.ToString("o") : null
+                if (sessions.Count == 0) log?.Warn("Stats summary: 0 sessions in DB");
+                return new StatsSummary {
+                    totalSessions = sessions.Count,
+                    totalIntegrationHours = Math.Round(totalIntegration / 3600.0, 1),
+                    totalImages = totalImages,
+                    targetCount = allTargets.Count,
+                    firstSession = sessions.Count > 0 ? sessions.Last().SessionStart.ToString("o") : null,
+                    lastSession = sessions.Count > 0 ? sessions.First().SessionStart.ToString("o") : null
+                };
             });
-            done?.Invoke(200, $"{sessions.Count} sessions, {allTargets.Count} targets");
+            await WriteJson(res, 200, summary);
+            done?.Invoke(200, $"{summary.totalSessions} sessions, {summary.targetCount} targets");
+        }
+
+        private sealed class StatsSummary {
+            public int totalSessions { get; set; }
+            public double totalIntegrationHours { get; set; }
+            public int totalImages { get; set; }
+            public int targetCount { get; set; }
+            public string firstSession { get; set; }
+            public string lastSession { get; set; }
         }
 
         // ── Tailscale Detection ──────────────────────────────────────────────────

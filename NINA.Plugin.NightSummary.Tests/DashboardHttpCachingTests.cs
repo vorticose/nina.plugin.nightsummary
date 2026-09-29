@@ -31,12 +31,19 @@ namespace NINA.Plugin.NightSummary.Tests {
         // ── Stubs ───────────────────────────────────────────────────────────
 
         private sealed class StubDataSource : IDashboardDataSource {
+            public readonly List<SessionRecord> Sessions = new List<SessionRecord>();
+            public readonly Dictionary<string, List<ImageRecord>> Images = new Dictionary<string, List<ImageRecord>>();
+            public int ImageQueries;
+
             public Task<IReadOnlyList<SessionRecord>> GetAllSessionsAsync(CancellationToken ct = default)
-                => Task.FromResult<IReadOnlyList<SessionRecord>>(Array.Empty<SessionRecord>());
+                => Task.FromResult<IReadOnlyList<SessionRecord>>(Sessions);
             public Task<SessionRecord?> GetSessionAsync(string sessionId, CancellationToken ct = default)
                 => Task.FromResult<SessionRecord?>(null);
-            public Task<IReadOnlyList<ImageRecord>> GetImagesAsync(string sessionId, CancellationToken ct = default)
-                => Task.FromResult<IReadOnlyList<ImageRecord>>(Array.Empty<ImageRecord>());
+            public Task<IReadOnlyList<ImageRecord>> GetImagesAsync(string sessionId, CancellationToken ct = default) {
+                Interlocked.Increment(ref ImageQueries);
+                return Task.FromResult<IReadOnlyList<ImageRecord>>(
+                    Images.TryGetValue(sessionId, out var list) ? list : new List<ImageRecord>());
+            }
             public Task<IReadOnlyList<SessionEvent>> GetEventsAsync(string sessionId, CancellationToken ct = default)
                 => Task.FromResult<IReadOnlyList<SessionEvent>>(Array.Empty<SessionEvent>());
             public Task<IReadOnlyList<TimingEvent>> GetTimingEventsAsync(string sessionId, CancellationToken ct = default)
@@ -129,10 +136,10 @@ namespace NINA.Plugin.NightSummary.Tests {
             return port;
         }
 
-        private static async Task<(DashboardServer srv, HttpClient client)> StartAsync(StubPaths paths) {
+        private static async Task<(DashboardServer srv, HttpClient client)> StartAsync(StubPaths paths, StubDataSource? data = null) {
             int port = GetFreePort();
             var srv = new DashboardServer(
-                data:        new StubDataSource(),
+                data:        data ?? new StubDataSource(),
                 settings:    new StubSettings(),
                 webAssets:   new StubWebAssets(),
                 externalLog: new StubLogger(),
@@ -331,6 +338,41 @@ namespace NINA.Plugin.NightSummary.Tests {
             try {
                 var resp = await client.GetAsync($"/api/sessions/{SessionA}/target-thumb/{index}");
                 Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+            } finally {
+                await srv.StopAsync();
+            }
+        }
+
+        // ── Whole-DB aggregates ─────────────────────────────────────────────
+
+        [Fact]
+        public async Task FiltersAndSummary_RecomputeOnlyWhenDatabaseChanges() {
+            var paths = new StubPaths();
+            var data = new StubDataSource();
+            data.Sessions.Add(new SessionRecord { SessionId = SessionA, SessionStart = DateTime.UtcNow.AddHours(-3), SessionEnd = DateTime.UtcNow });
+            data.Images[SessionA] = new List<ImageRecord> {
+                new ImageRecord { SessionId = SessionA, TargetName = "M31", Filter = "Ha", ImageType = "LIGHT", ExposureDuration = 300, Accepted = true },
+            };
+            var (srv, client) = await StartAsync(paths, data);
+            try {
+                Assert.Contains("\"Ha\"", await client.GetStringAsync("/api/filters"));
+                await client.GetStringAsync("/api/stats/summary");
+                int afterFirst = data.ImageQueries;
+                Assert.True(afterFirst >= 2);
+
+                // Unchanged database: served from the memo, no image queries.
+                await client.GetStringAsync("/api/filters");
+                await client.GetStringAsync("/api/stats/summary");
+                Assert.Equal(afterFirst, data.ImageQueries);
+
+                // A write (here: a new WAL file, like NINA's first write after a checkpoint).
+                data.Images[SessionA].Add(new ImageRecord { SessionId = SessionA, TargetName = "M31", Filter = "OIII", ImageType = "LIGHT", ExposureDuration = 300, Accepted = true });
+                File.WriteAllText(paths.DatabasePath + "-wal", "wal");
+                var filters = await client.GetStringAsync("/api/filters");
+                Assert.Contains("\"OIII\"", filters);
+                var summary = await client.GetStringAsync("/api/stats/summary");
+                Assert.Contains("\"totalImages\":2", summary);
+                Assert.True(data.ImageQueries > afterFirst);
             } finally {
                 await srv.StopAsync();
             }
