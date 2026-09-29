@@ -174,3 +174,25 @@ takes 77 ms (Stats). Both are candidates for a cache keyed on DB mtime.
 | later | Keep-alive; companion sync pass | F4b, pass 2 | Higher |
 
 Each batch lands with before/after numbers from the same harness and throttle profile.
+
+## Targets (guides, not hard requirements)
+
+Agreed 2026-09-29. All on the iPad profile (60 ms RTT, 20 Mbps). Derived from perception
+thresholds (under 100 ms feels instant, under 1 s keeps flow) and the estimated latency
+floor for the current content.
+
+| What | Baseline | Target |
+|---|---:|---:|
+| Sessions first load, list visible | 0.86 s | < 0.5 s |
+| Sessions first load, fully settled | 2.97 s | < 1 s |
+| Repeat dashboard open | 0.5 s | < 0.2 s |
+| Report re-open | 1.43 s | < 0.2 s |
+| First report open (large) | 1.50 s | < 1 s |
+| Targets edit, visible response | 0.42 s + scroll lost | < 100 ms, scroll kept |
+
+Stopping rules: about 1-2 hours of work per batch, then report. Stop when the remaining
+gap is physics (the latency floor), not code. Stop and ask if a fix spreads into riskier
+areas. No merge, push or deploy without asking.
+
+`feature/sessions-list-scale`: cherry-pick the perf commits only (b30e24d, 93a7ffa, plus
+the changelog note); the other commits get reviewed separately.
