@@ -4904,10 +4904,14 @@ function loadCardExtras(s) {
   return Promise.all([thumbs, fetchAltitudeChart(s)]);
 }
 
-// Resolves when every <img> under el has loaded or failed.
+// Resolves when every <img> under el has loaded or failed. These are images we
+// want now (on-screen or about to be), so lazy ones are switched to eager:
+// the browser's lazy loader doesn't run in a background tab, which would
+// otherwise hold the first-load reveal until its safety timeout.
 function imagesSettled(el) {
   if (!el) return Promise.resolve();
   var imgs = Array.prototype.filter.call(el.querySelectorAll('img'), function(img) { return !img.complete; });
+  imgs.forEach(function(img) { if (img.loading === 'lazy') img.loading = 'eager'; });
   return Promise.all(imgs.map(function(img) {
     return new Promise(function(resolve) {
       img.addEventListener('load', resolve, { once: true });
@@ -9456,7 +9460,9 @@ function buildActivityHeatmap(sessions, firstSessionIso) {
 
 // Store the /api/stats/targets payload in the Stats globals. Shared by the full
 // render and the in-place refresh so both paths derive identical state.
+var _statsTargetsJson = null;
 function applyStatsTargetData(targetData) {
+  _statsTargetsJson = JSON.stringify(targetData);
   var targets = targetData.targets || [];
   statsTargetData = targets;
   statsTsStatus   = targetData.tsStatus   || null;
@@ -10713,22 +10719,67 @@ function normalizeVer(v) {
 // list/stats views where a silent rebuild is safe; skips the report iframe
 // (would reload mid-read), the settings form (would discard edits), frames
 // galleries, and any moment a modal / detail panel is open.
-function maybeAutoRefreshAfterSync(newUtc) {
+//
+// lastSuccessUtc advances on every successful sync, including scheduled polls
+// that changed nothing, so the view's data is re-fetched quietly and compared
+// first: an unchanged sync leaves the page (and its caches) alone. Per-report
+// caches (thumbnails, altitude charts, details) are only dropped when the sync
+// actually added, updated or deleted report files.
+function maybeAutoRefreshAfterSync(s) {
+  var newUtc = s && s.lastSuccessUtc;
   var prev = window.__lastSyncSuccessUtc;
   if (newUtc) window.__lastSyncSuccessUtc = newUtc;
   if (!newUtc || prev === undefined || prev === null || newUtc === prev) return;
   var path = (location.hash.slice(1) || '/sessions').split('?')[0];
   if (path !== '/sessions' && path !== '/stats') return;
   if (document.querySelector('[id$="-backdrop"]')) return; // a modal / detail panel is open
-  logInfo('Sync landed — auto-refreshing', path);
-  // Bust the session caches so the list re-fetches; renderStats always re-fetches.
-  sessionsCache = []; initialLoadDone = false;
-  detailCache = {}; thumbnailCache = {}; altitudeChartCache = {};
-  __lwCachedSessions = null; cachedFilters = null; tonightPreviewCache = null;
-  var scroller = document.querySelector('.shell') || document.scrollingElement || document.documentElement;
-  var y = scroller ? scroller.scrollTop : 0;
-  route();
-  reapplyScrollAfterRender(scroller, y);
+  var reportsChanged = ((s.filesAdded || 0) + (s.filesUpdated || 0) + (s.filesDeleted || 0)) > 0;
+  function dropReportCaches() {
+    detailCache = {}; thumbnailCache = {}; altitudeChartCache = {};
+  }
+  function dropDerivedCaches() {
+    __lwCachedSessions = null; cachedFilters = null; tonightPreviewCache = null;
+  }
+
+  if (path === '/stats') {
+    api('/api/stats/targets').then(function(targetData) {
+      if (!reportsChanged && JSON.stringify(targetData) === _statsTargetsJson) {
+        logInfo('Sync landed — Stats unchanged, no refresh');
+        return;
+      }
+      logInfo('Sync landed — refreshing Stats in place');
+      if (reportsChanged) dropReportCaches();
+      dropDerivedCaches();
+      refreshStatsInPlace();
+    }).catch(function(err) { logWarn('Post-sync Stats check failed:', err && err.message); });
+    return;
+  }
+
+  // Sessions. The merged All-rigs view has its own loaders; rebuild it as before.
+  if (ACTIVE_RIG === 'all') {
+    logInfo('Sync landed — auto-refreshing', path);
+    sessionsCache = []; dropReportCaches(); dropDerivedCaches();
+    route();
+    return;
+  }
+  api('/api/sessions').then(function(data) {
+    if (ACTIVE_RIG === 'all') return;
+    if (!reportsChanged && JSON.stringify(data) === JSON.stringify(sessionsCache)) {
+      logInfo('Sync landed — Sessions unchanged, no refresh');
+      return;
+    }
+    logInfo('Sync landed — refreshing Sessions');
+    if (reportsChanged) dropReportCaches();
+    dropDerivedCaches();
+    // Fresh data in the cache renders without a second fetch; initialLoadDone
+    // stays true so the list doesn't fade out and back in.
+    sessionsCache = data;
+    var scroller = document.scrollingElement || document.documentElement;
+    var y = scroller.scrollTop;
+    route(); // renders synchronously from the fresh cache
+    scroller.scrollTop = y;
+    reapplyScrollAfterRender(scroller, y);
+  }).catch(function(err) { logWarn('Post-sync Sessions check failed:', err && err.message); });
 }
 
 // The data views fetch async, so the new DOM paints a beat after route(). Re-apply
@@ -10744,7 +10795,7 @@ function reapplyScrollAfterRender(scroller, y) {
 }
 
 function renderCompanionStatus(s) {
-  maybeAutoRefreshAfterSync(s && s.lastSuccessUtc);
+  maybeAutoRefreshAfterSync(s);
   var statusEl = document.getElementById('companion-banner-status');
   var banner = document.getElementById('companion-banner');
   var btn = document.getElementById('companion-sync-btn');

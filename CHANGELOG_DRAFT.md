@@ -10,6 +10,7 @@
 - Sessions page loads quickly even with a long history. The list no longer reads every report HTML file just to fill the moon cell and image stats.
 - Editing projects on the Targets tab (assigning targets, creating a mosaic, changing a TS status or link) updates the page in place instead of reloading it, so you keep your scroll position. A newly created mosaic is scrolled into view.
 - Sessions page shows up in under a second on a phone or tablet: cards on screen load first and the rest load as you scroll. Target thumbnails are cached by the browser instead of being downloaded again on every visit.
+- Companion: a background sync that brought nothing new no longer reloads the Sessions or Stats page, and a sync that did bring new data updates the page without blanking it or losing your scroll position.
 
 ## v3.3.2
 
