@@ -407,3 +407,33 @@ Nothing below is implemented; each item is a small CSS change to try on the iPad
 
 Suggested way to judge it: implement 1-4 on one branch, open the dashboard on the iPad
 side by side with the current build, scroll Sessions and Stats, open a few cards.
+
+### Items 3 and 4 of the proposal (`feature/perf-compositor`)
+
+Durations and hover delay (items 1-2) are a style choice and were left alone.
+
+**Item 3, checked first:** the four progress fills (`.integration-bar`,
+`.targets-project-progress-overall-fill`, `.tdp-progress-bar-fill`,
+`.pdp-panel-progress-fill`) get their width once, inline in the HTML, and never change,
+so their `width` transitions never run and cost nothing; left as is. Changed where a
+transition actually fires:
+- stat hover underlines (`.card-stat-expandable::after`, `.target-stat-expandable::after`)
+  grow with `scaleX` instead of `width`;
+- the Targets/Tonight tab thumb moves with `translateX` instead of `left` (width still
+  transitions: scaling would distort its radius and inset shadows). Verified aligned
+  with the active tab before and after switching;
+- `transition: all` on `.tdp-project-action-btn` and `.ts-link-picker-item` lists the
+  three properties that change (background, border, color).
+
+**Item 4:**
+- Header: `@media (hover: none)` (touch-primary: iPad, phones) drops the 14 px backdrop
+  blur for a 97% opaque background (`--header-bg-solid`, dark and light). Mouse and
+  trackpad devices keep the frosted header. Verified under touch emulation.
+- TS badge: every badge on the page sits statically in a card or project header over a
+  solid background (checked in the live DOM: 30 on the flat view, 21 grouped), so the
+  blur was invisible but made a compositing layer per card. Removed. Same-page
+  screenshot diff, blur on vs off: mean 0.75/255, max 7/255 in the badge region.
+- Modal backdrops keep their blur (only while open, over still content).
+
+Scroll smoothness itself needs the real iPad: this environment can't measure Safari's
+compositor.

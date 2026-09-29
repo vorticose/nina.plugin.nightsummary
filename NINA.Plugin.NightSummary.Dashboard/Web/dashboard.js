@@ -528,7 +528,7 @@ function initTabBar(onSwitch) {
   function positionThumb(btn, animate) {
     if (!btn || !thumb) return;
     if (!animate) thumb.style.transition = 'none';
-    thumb.style.left = btn.offsetLeft + 'px';
+    thumb.style.transform = 'translateX(' + btn.offsetLeft + 'px)';
     thumb.style.width = btn.offsetWidth + 'px';
     if (!animate) {
       requestAnimationFrame(function() {

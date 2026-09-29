@@ -11,6 +11,7 @@
 - Editing projects on the Targets tab (assigning targets, creating a mosaic, changing a TS status or link) updates the page in place instead of reloading it, so you keep your scroll position. A newly created mosaic is scrolled into view.
 - Sessions page shows up in under a second on a phone or tablet: cards on screen load first and the rest load as you scroll. Target thumbnails are cached by the browser instead of being downloaded again on every visit.
 - Companion: a background sync that brought nothing new no longer reloads the Sessions or Stats page, and a sync that did bring new data updates the page without blanking it or losing your scroll position.
+- Smoother scrolling on iPad and phones: the header no longer re-blurs the page scrolling underneath it on touch screens.
 
 ## v3.3.2
 
