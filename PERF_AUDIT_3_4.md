@@ -290,3 +290,39 @@ optimistic local updates (under 100 ms, but gives up the "identical to reload" g
 
 First-ever render of a brand-new mosaic's survey image waits on the external HiPS
 service (seconds); this is unchanged and not part of the in-place path.
+
+### Batch 4: cacheable thumbnails + lazy card extras (`feature/perf-lazy-thumbs`)
+
+Server: `/api/sessions/{id}/thumbnails` now returns a versioned image URL
+(`/api/sessions/{id}/target-thumb/{i}?v=<report mtime>`) in the existing `dataUri` field
+instead of the base64 JPEG (the field already carried plain https URLs in the offline
+fallback, so every consumer works unchanged). The new endpoint decodes the report's
+embedded JPEG and serves it `Cache-Control: public, max-age=31536000, immutable`. The
+request's `?rig=` is appended per response so `<img>` tags stay rig-scoped on a
+multi-rig companion; the server cache stays rig-neutral. JSON per session: 41 KB -> 0.8 KB.
+
+Client (Sessions list): cards on screen (viewport + 200 px) load their extras first;
+the rest load through one IntersectionObserver with 1000 px lookahead. The first-load
+"reveal together" now waits only for on-screen cards, including their images. Live
+stack data is skipped below desktop width (the badges are hidden there anyway). Stats
+target card images use `loading="lazy"`.
+
+**Correction to the baseline:** the Sessions list is held at `opacity: 0` until its
+assets are in, so "list data in" was not what the user sees. Measured the real reveal
+on a pristine `dev` build: **3.13 s**.
+
+| Scenario (iPad profile) | Baseline (dev) | Batch 2 | Batch 4 | Target |
+|---|---:|---:|---:|---:|
+| Sessions list appears (with images) | 3.13 s | ~2.3 s | **0.86 s** | < 1 s: met |
+| First load: settled | 2.97 s, 80 req, 2.5 MB | 2.30 s | **0.98 s**, 23 req, 373 KB | < 1 s: met |
+| Stats first visit | 1.29 s, 24 req, 1.8 MB | 1.11 s | 1.16 s, 29 req, **41 KB** | |
+| Stats revisit | 0.52 s, 119 KB | | 0.60 s, 25 KB (images from cache) | |
+
+Stats time is now round trips, not bytes: thumbnail lookups and mosaic data, each on
+a new connection, plus the 77 ms summary query (batch 5). Keep-alive is the structural
+fix. Not converted in this batch: the "All rigs" merged Sessions view
+(`renderSessionsAllRigs`) still loads extras for every card up front.
+
+Tests: target-thumb endpoint (versioned URL, bytes, immutable cache, rig param,
+regeneration changes the version, bad index 404). 80 tests pass on macOS, including the
+existing `DashboardServerReadOnlyTests` and `TnsEndpointsTests`.

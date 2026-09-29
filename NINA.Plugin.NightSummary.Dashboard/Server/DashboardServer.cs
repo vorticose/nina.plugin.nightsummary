@@ -105,8 +105,15 @@ namespace NINA.Plugin.NightSummary.Server {
 
         private class ThumbnailEntry {
             public string target { get; set; }
+            // Image src for the card. Embedded report thumbnails are served as a
+            // versioned URL (/api/sessions/{id}/target-thumb/{i}?v=...) so the browser
+            // caches the JPEG instead of re-downloading base64 inside JSON on every
+            // render; a plain https:// survey URL passes through unchanged. The name
+            // predates that and is kept for compatibility.
             public string dataUri { get; set; }
             public string fovSvg { get; set; }  // SVG overlay with FOV rectangle (from report)
+            // The report's original data: URI, served by HandleGetTargetThumb.
+            [JsonIgnore] public string inlineDataUri { get; set; }
         }
 
         // Altitude chart cache: sessionId -> { svg, legend }
@@ -607,7 +614,13 @@ namespace NINA.Plugin.NightSummary.Server {
                         await HandleGetSessionReport(req, res, sessionId, req.QueryString["theme"], done);
                     } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/thumbnails")) {
                         var sessionId = ExtractSessionId(path, "/thumbnails");
-                        await HandleGetSessionThumbnails(res, sessionId, done);
+                        await HandleGetSessionThumbnails(res, sessionId, req.QueryString["rig"], done);
+                    } else if (path.StartsWith("/api/sessions/") && path.Contains("/target-thumb/")) {
+                        // /api/sessions/{id}/target-thumb/{index}
+                        var tail = path.Substring("/api/sessions/".Length);
+                        var slash = tail.IndexOf("/target-thumb/", StringComparison.Ordinal);
+                        await HandleGetTargetThumb(res, Uri.UnescapeDataString(tail.Substring(0, slash)),
+                                                   tail.Substring(slash + "/target-thumb/".Length), done);
                     } else if (path.StartsWith("/api/sessions/") && path.Contains("/livestack/")) {
                         // Serve individual live stack image file: /api/sessions/{id}/livestack/{file}.jpg
                         // Target names can contain spaces (e.g. "M 101_R.jpg") — decode them.
@@ -1166,15 +1179,15 @@ namespace NINA.Plugin.NightSummary.Server {
             done?.Invoke(200, $"{sessionId} ({html.Length / 1024}KB)");
         }
 
-        private async Task HandleGetSessionThumbnails(TcpHttpResponse res, string sessionId, Action<int, string> done) {
+        private async Task HandleGetSessionThumbnails(TcpHttpResponse res, string sessionId, string rigId, Action<int, string> done) {
             if (thumbnailCache.TryGetValue(sessionId, out var cached)) {
-                await WriteJson(res, 200, cached);
+                await WriteJson(res, 200, ThumbEntriesForRig(cached, rigId));
                 done?.Invoke(200, $"{sessionId} — {cached.Count} thumbs (cached)");
                 return;
             }
 
-            var reportPath = Path.Combine(reportsDir, $"{sessionId}.html");
-            if (!File.Exists(reportPath)) {
+            var entries = BuildThumbnailEntries(sessionId);
+            if (entries == null) {
                 // Report generation can still be in flight (a session just ended and
                 // the Projects view got queried in that window) — don't cache this as
                 // a permanent answer, or the report finishing moments later would
@@ -1185,7 +1198,22 @@ namespace NINA.Plugin.NightSummary.Server {
                 return;
             }
 
+            thumbnailCache[sessionId] = entries;
+            await WriteJson(res, 200, ThumbEntriesForRig(entries, rigId));
+            done?.Invoke(200, $"{sessionId} — {entries.Count} thumbs");
+        }
+
+        // Parse the report's per-target thumbnails. Null when the report doesn't
+        // exist yet (callers must not cache that).
+        private List<ThumbnailEntry> BuildThumbnailEntries(string sessionId) {
+            var reportPath = Path.Combine(reportsDir, $"{sessionId}.html");
+            var reportInfo = new FileInfo(reportPath);
+            if (!reportInfo.Exists) return null;
+
             var html = File.ReadAllText(reportPath);
+            // Version the image URLs by report mtime so a regenerated report gets new
+            // URLs and the immutable browser cache can never serve a stale thumbnail.
+            var version = reportInfo.LastWriteTimeUtc.Ticks.ToString("x", System.Globalization.CultureInfo.InvariantCulture);
             var entries = new List<ThumbnailEntry>();
 
             // Split HTML on target-section boundaries and extract h3 + thumbnail + FOV overlay from each
@@ -1205,17 +1233,63 @@ namespace NINA.Plugin.NightSummary.Server {
                 var imgMatch = imgPattern.Match(block);
                 if (h3Match.Success && imgMatch.Success) {
                     var svgMatch = svgPattern.Match(block);
+                    var src = imgMatch.Groups[1].Value;
+                    bool inline = src.StartsWith("data:", StringComparison.Ordinal);
                     entries.Add(new ThumbnailEntry {
                         target = h3Match.Groups[1].Value.Trim(),
-                        dataUri = imgMatch.Groups[1].Value,
+                        dataUri = inline
+                            ? $"/api/sessions/{Uri.EscapeDataString(sessionId)}/target-thumb/{entries.Count}?v={version}"
+                            : src,
+                        inlineDataUri = inline ? src : null,
                         fovSvg = svgMatch.Success ? svgMatch.Groups[1].Value : null
                     });
                 }
             }
+            return entries;
+        }
 
-            thumbnailCache[sessionId] = entries;
-            await WriteJson(res, 200, entries);
-            done?.Invoke(200, $"{sessionId} — {entries.Count} thumbs");
+        // img src URLs bypass the dashboard's fetch() rig rewrite, so scope our own
+        // image URLs to the requesting rig here. The cache stays rig-neutral.
+        private static List<ThumbnailEntry> ThumbEntriesForRig(List<ThumbnailEntry> entries, string rigId) {
+            if (string.IsNullOrEmpty(rigId)) return entries;
+            var rigParam = "&rig=" + Uri.EscapeDataString(rigId);
+            return entries.Select(e => new ThumbnailEntry {
+                target = e.target,
+                dataUri = e.inlineDataUri != null ? e.dataUri + rigParam : e.dataUri,
+                fovSvg = e.fovSvg,
+            }).ToList();
+        }
+
+        // GET /api/sessions/{id}/target-thumb/{index}: one embedded report thumbnail as
+        // a JPEG. The URL carries ?v=<report mtime>, so the bytes behind it never
+        // change and the browser may cache it forever.
+        private async Task HandleGetTargetThumb(TcpHttpResponse res, string sessionId, string indexText, Action<int, string> done) {
+            if (!thumbnailCache.TryGetValue(sessionId, out var entries)) {
+                entries = BuildThumbnailEntries(sessionId);
+                if (entries != null) thumbnailCache[sessionId] = entries;
+            }
+            var entry = entries != null && int.TryParse(indexText, out var idx) && idx >= 0 && idx < entries.Count
+                ? entries[idx] : null;
+            var uri = entry?.inlineDataUri;
+            int comma = uri?.IndexOf(',') ?? -1;
+            if (uri == null || comma < 0 || !uri.Substring(0, comma).EndsWith(";base64", StringComparison.Ordinal)) {
+                await WriteJson(res, 404, new { error = "Thumbnail not found" });
+                done?.Invoke(404, $"{sessionId} target-thumb {indexText}");
+                return;
+            }
+            byte[] bytes;
+            try { bytes = Convert.FromBase64String(uri.Substring(comma + 1)); }
+            catch (FormatException) {
+                await WriteJson(res, 404, new { error = "Thumbnail not found" });
+                done?.Invoke(404, $"{sessionId} target-thumb {indexText} bad base64");
+                return;
+            }
+            res.StatusCode = 200;
+            res.ContentType = uri.Substring(5, comma - 5 - ";base64".Length); // e.g. image/jpeg
+            res.ContentLength64 = bytes.Length;
+            res.Headers["Cache-Control"] = "public, max-age=31536000, immutable";
+            await res.OutputStream.WriteAsync(bytes, 0, bytes.Length);
+            done?.Invoke(200, $"{sessionId} target-thumb {indexText} ({bytes.Length / 1024}KB)");
         }
 
         private async Task HandleGetSessionLiveStack(TcpHttpResponse res, string sessionId, Action<int, string> done) {

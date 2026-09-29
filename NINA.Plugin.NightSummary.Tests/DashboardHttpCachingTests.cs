@@ -245,6 +245,97 @@ namespace NINA.Plugin.NightSummary.Tests {
             }
         }
 
+        // ── Target thumbnails ───────────────────────────────────────────────
+
+        private static readonly byte[] FakeJpeg = { 0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3, 4, 5, 0xFF, 0xD9 };
+
+        private static string ReportWithThumb(string target, byte[] jpeg) =>
+            "<div class='target-section'><h3>" + target + "</h3>" +
+            "<div class='ts-thumb-wrap'><img src='data:image/jpeg;base64," + Convert.ToBase64String(jpeg) + "' alt='" + target + "' /></div>" +
+            "</div>";
+
+        [Fact]
+        public async Task Thumbnails_ServedAsVersionedImageUrl_NotInlineBase64() {
+            var paths = new StubPaths();
+            var reportPath = Path.Combine(paths.ReportsDir, SessionA + ".html");
+            File.WriteAllText(reportPath, ReportWithThumb("M31", FakeJpeg));
+            var (srv, client) = await StartAsync(paths);
+            try {
+                var json = await client.GetStringAsync($"/api/sessions/{SessionA}/thumbnails");
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                var src = doc.RootElement[0].GetProperty("dataUri").GetString()!;
+                Assert.StartsWith($"/api/sessions/{SessionA}/target-thumb/0?v=", src);
+                Assert.DoesNotContain("base64", json);
+
+                var img = await client.GetAsync(src);
+                Assert.Equal(HttpStatusCode.OK, img.StatusCode);
+                Assert.Equal("image/jpeg", img.Content.Headers.ContentType?.MediaType);
+                Assert.Contains("immutable", CacheControl(img));
+                Assert.Equal(FakeJpeg, await img.Content.ReadAsByteArrayAsync());
+            } finally {
+                await srv.StopAsync();
+            }
+        }
+
+        [Fact]
+        public async Task Thumbnails_UrlCarriesRequestRig_ForImgTags() {
+            var paths = new StubPaths();
+            File.WriteAllText(Path.Combine(paths.ReportsDir, SessionA + ".html"), ReportWithThumb("M31", FakeJpeg));
+            var (srv, client) = await StartAsync(paths);
+            try {
+                // Twice: the second answer comes from the (rig-neutral) cache.
+                for (int i = 0; i < 2; i++) {
+                    var json = await client.GetStringAsync($"/api/sessions/{SessionA}/thumbnails?rig=rig-b");
+                    using var doc = System.Text.Json.JsonDocument.Parse(json);
+                    Assert.EndsWith("&rig=rig-b", doc.RootElement[0].GetProperty("dataUri").GetString());
+                }
+                var plain = await client.GetStringAsync($"/api/sessions/{SessionA}/thumbnails");
+                Assert.DoesNotContain("rig=", plain);
+            } finally {
+                await srv.StopAsync();
+            }
+        }
+
+        [Fact]
+        public async Task Thumbnails_RegeneratedReport_GetsNewUrlVersion() {
+            var paths = new StubPaths();
+            var reportPath = Path.Combine(paths.ReportsDir, SessionA + ".html");
+            File.WriteAllText(reportPath, ReportWithThumb("M31", FakeJpeg));
+            File.SetLastWriteTimeUtc(reportPath, new DateTime(2026, 9, 1, 3, 0, 0, DateTimeKind.Utc));
+            var (srv, client) = await StartAsync(paths);
+            try {
+                static async Task<string> Src(HttpClient c) {
+                    using var d = System.Text.Json.JsonDocument.Parse(await c.GetStringAsync($"/api/sessions/{SessionA}/thumbnails"));
+                    return d.RootElement[0].GetProperty("dataUri").GetString()!;
+                }
+                var before = await Src(client);
+                File.WriteAllText(reportPath, ReportWithThumb("M31", new byte[] { 0xFF, 0xD8, 9, 9, 0xFF, 0xD9 }));
+                File.SetLastWriteTimeUtc(reportPath, new DateTime(2026, 9, 2, 3, 0, 0, DateTimeKind.Utc));
+                srv.InvalidateSessionCaches(SessionA); // what regenerate/resend do
+                var after = await Src(client);
+                Assert.NotEqual(before, after);
+                Assert.Equal(new byte[] { 0xFF, 0xD8, 9, 9, 0xFF, 0xD9 }, await client.GetByteArrayAsync(after));
+            } finally {
+                await srv.StopAsync();
+            }
+        }
+
+        [Theory]
+        [InlineData("5")]
+        [InlineData("-1")]
+        [InlineData("abc")]
+        public async Task TargetThumb_BadIndex_Is404(string index) {
+            var paths = new StubPaths();
+            File.WriteAllText(Path.Combine(paths.ReportsDir, SessionA + ".html"), ReportWithThumb("M31", FakeJpeg));
+            var (srv, client) = await StartAsync(paths);
+            try {
+                var resp = await client.GetAsync($"/api/sessions/{SessionA}/target-thumb/{index}");
+                Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+            } finally {
+                await srv.StopAsync();
+            }
+        }
+
         private static byte[] Gunzip(byte[] gz) {
             using var input = new GZipStream(new MemoryStream(gz), CompressionMode.Decompress);
             using var output = new MemoryStream();

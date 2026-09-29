@@ -3225,6 +3225,9 @@ function loadTargetThumbnails() {
         var existingImg = el.querySelector('img');
         if (existingImg) existingImg.remove();
         var imgEl = document.createElement('img');
+        // Most target cards start below the fold; let the browser fetch them as
+        // they scroll near rather than all ~30 on the first Stats visit.
+        imgEl.loading = 'lazy';
         imgEl.src = match.dataUri;
         imgEl.alt = target;
         // Insert as first child so overlay/badge (absolute, higher z-index) stack above
@@ -3305,7 +3308,6 @@ var livestackMap = {}; // sessionId -> { targetName -> [{filter, url, label, isC
 var thumbnailCache = {}; // sessionId -> thumbnails array
 var altitudeChartCache = {}; // sessionId -> {svg, legend}
 var altitudeChartFetching = {}; // sessionId -> true while request is in flight
-var altitudeObserver = null; // IntersectionObserver for lazy-loading uncached charts
 var thumbnailFetching = {}; // sessionId -> true while request is in flight
 var detailCache = {}; // sessionId -> detail JSON (for stat expand)
 var statExpandTimer = null;
@@ -4528,7 +4530,7 @@ function hydrateRigSessionCard(rig, s) {
     api('/api/sessions/' + s.sessionId + '/thumbnails?rig=' + encodeURIComponent(rig.id)).then(function(thumbs) {
       if (!thumbs || !thumbs.length) return;
       thumbsEl.innerHTML = thumbs.map(function(t) {
-        var img = '<img class="card-thumb" src="' + t.dataUri + '" alt="' + esc(t.target) + '" loading="lazy" onerror="this.style.display=\'none\'">';
+        var img = '<img class="card-thumb" src="' + esc(t.dataUri) + '" alt="' + esc(t.target) + '" loading="lazy" onerror="this.style.display=\'none\'">';
         var svg = '';
         if (t.fovSvg) {
           svg = t.fovSvg
@@ -4838,15 +4840,22 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy, keepPage) {
   el.innerHTML = filterHtml + '<div class="cards-container' + modeClass + '" style="' + fadeStyle + '">' + cards + '<div class="date-filter-empty empty" style="display:none">No sessions match the date filter.</div></div>' + loadMoreHtml;
   bindListEvents();
 
-  loadLiveStacks(visible);
+  // Cards on screen load their extras (thumbnails, altitude chart, live stack
+  // badges) now; the rest load as they scroll near. A phone or iPad shows a
+  // handful of the 25 cards, and each extra is its own round trip.
+  var split = splitCardsByViewport(visible);
+  var onScreen = split.onScreen;
+  setupCardExtrasObserver(split.later);
 
   if (!initialLoadDone && cardViewMode === 'expanded') {
-    // First load only: hold opacity:0 until all assets are fetched, then reveal together
+    // First load only: hold opacity:0 until the on-screen cards' assets (and
+    // their images) are in, then reveal together. Off-screen cards fill in as
+    // they approach the viewport.
     function revealContainer() {
       var container = el.querySelector('.cards-container');
       if (container) container.style.opacity = '1';
     }
-    var pending = loadThumbnails(visible).concat(loadAltitudeCharts(visible));
+    var pending = onScreen.map(loadCardExtras);
     if (pending.length === 0) {
       requestAnimationFrame(revealContainer);
     } else {
@@ -4858,23 +4867,82 @@ function doRenderList(el, sub, fromFilter, toFilter, sortBy, keepPage) {
     }
     initialLoadDone = true;
   } else {
-    loadThumbnails(visible);
-    // Re-render cached charts directly (works even after navigation destroyed the old divs)
-    visible.forEach(function(s) {
-      if (altitudeChartCache[s.sessionId]) {
-        renderAltitudeChart(s, altitudeChartCache[s.sessionId]);
-      }
-    });
-    // IO observer for any uncached charts (lazy-loads as they scroll into view)
-    setupAltitudeObserver(visible);
+    onScreen.forEach(loadCardExtras);
   }
+}
+
+// The element to measure and observe for a list card. The card root, not
+// .card-thumbs, which is display:none until its images arrive.
+function sessionCardEl(s) {
+  var el = document.getElementById('thumbs-' + s.sessionId) || document.getElementById('altitude-' + s.sessionId);
+  return el ? (el.closest('.session-card') || el) : null;
+}
+
+// Partition list cards into those within (or just below) the viewport and the
+// rest. Measured after the cards are in the DOM; opacity:0 still has layout.
+function splitCardsByViewport(sessions) {
+  var onScreen = [], later = [];
+  var limit = window.innerHeight + 200;
+  sessions.forEach(function(s) {
+    var el = sessionCardEl(s);
+    if (!el || el.getBoundingClientRect().top < limit) onScreen.push(s);
+    else later.push(s);
+  });
+  return { onScreen: onScreen, later: later };
+}
+
+// Fetch (or re-render from cache) one card's extras. Resolves once its
+// thumbnails have loaded and its altitude chart is drawn, so the first-load
+// reveal doesn't show empty frames.
+function loadCardExtras(s) {
+  if (!s.hasReport) return Promise.resolve();
+  // Live stack badges only exist on desktop-width cards; skip the request elsewhere.
+  if (window.innerWidth >= CARD_DESKTOP_MIN_WIDTH) loadLiveStacks([s]);
+  var thumbs = Promise.all(loadThumbnails([s])).then(function() {
+    return imagesSettled(document.getElementById('thumbs-' + s.sessionId));
+  });
+  return Promise.all([thumbs, fetchAltitudeChart(s)]);
+}
+
+// Resolves when every <img> under el has loaded or failed.
+function imagesSettled(el) {
+  if (!el) return Promise.resolve();
+  var imgs = Array.prototype.filter.call(el.querySelectorAll('img'), function(img) { return !img.complete; });
+  return Promise.all(imgs.map(function(img) {
+    return new Promise(function(resolve) {
+      img.addEventListener('load', resolve, { once: true });
+      img.addEventListener('error', resolve, { once: true });
+    });
+  }));
+}
+
+var cardExtrasObserver = null;
+function setupCardExtrasObserver(sessions) {
+  if (cardExtrasObserver) { cardExtrasObserver.disconnect(); cardExtrasObserver = null; }
+  if (!sessions.length) return;
+  var byId = {};
+  sessions.forEach(function(s) { byId[s.sessionId] = s; });
+  cardExtrasObserver = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (!entry.isIntersecting) return;
+      cardExtrasObserver.unobserve(entry.target);
+      var s = byId[entry.target.getAttribute('data-extras-for')];
+      if (s) loadCardExtras(s);
+    });
+  }, { rootMargin: '1000px 0px' });
+  sessions.forEach(function(s) {
+    var el = sessionCardEl(s);
+    if (!el) return;
+    el.setAttribute('data-extras-for', s.sessionId);
+    cardExtrasObserver.observe(el);
+  });
 }
 
 function renderThumbnails(s, thumbs) {
   var el = document.getElementById('thumbs-' + s.sessionId);
   if (!el) return;
   el.innerHTML = thumbs.map(function(t) {
-    var img = '<img class="card-thumb" src="' + t.dataUri + '" alt="' + esc(t.target) + '" loading="lazy" onerror="this.style.display=\'none\'">';
+    var img = '<img class="card-thumb" src="' + esc(t.dataUri) + '" alt="' + esc(t.target) + '" loading="lazy" onerror="this.style.display=\'none\'">';
     var svg = '';
     if (t.fovSvg) {
       svg = t.fovSvg
@@ -6545,37 +6613,6 @@ function loadAltitudeCharts(sessions) {
     }));
   });
   return promises;
-}
-
-function setupAltitudeObserver(sessions) {
-  if (altitudeObserver) {
-    altitudeObserver.disconnect();
-    altitudeObserver = null;
-  }
-  var unloaded = sessions.filter(function(s) {
-    return s.hasReport && !altitudeChartCache[s.sessionId];
-  });
-  if (unloaded.length === 0) return;
-
-  altitudeObserver = new IntersectionObserver(function(entries) {
-    entries.forEach(function(entry) {
-      if (!entry.isIntersecting) return;
-      var id = entry.target.dataset.altId;
-      var s = unloaded.find(function(x) { return x.sessionId === id; });
-      if (s) {
-        fetchAltitudeChart(s);
-        altitudeObserver.unobserve(entry.target);
-      }
-    });
-  }, { rootMargin: '200px' });
-
-  unloaded.forEach(function(s) {
-    var el = document.getElementById('altitude-' + s.sessionId);
-    if (el) {
-      el.dataset.altId = s.sessionId;
-      altitudeObserver.observe(el);
-    }
-  });
 }
 
 function applyTargetSearch(query) {

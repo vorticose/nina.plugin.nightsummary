@@ -9,6 +9,7 @@
 - Faster dashboard over Tailscale and on phones: pages and data are compressed (the dashboard page drops from about 800 KB to 200 KB), and an unchanged dashboard or report is no longer downloaded again. Re-opening the dashboard or a report you have already viewed is now near-instant.
 - Sessions page loads quickly even with a long history. The list no longer reads every report HTML file just to fill the moon cell and image stats.
 - Editing projects on the Targets tab (assigning targets, creating a mosaic, changing a TS status or link) updates the page in place instead of reloading it, so you keep your scroll position. A newly created mosaic is scrolled into view.
+- Sessions page shows up in under a second on a phone or tablet: cards on screen load first and the rest load as you scroll. Target thumbnails are cached by the browser instead of being downloaded again on every visit.
 
 ## v3.3.2
 
