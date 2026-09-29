@@ -2,6 +2,12 @@
 
 <!-- v3.3.2 frozen to CHANGELOG.md; ship pending. Session merge remains a candidate, not a commitment. -->
 
+## v3.4.0
+
+### Improvements
+
+- Faster dashboard over Tailscale and on phones: pages and data are compressed (the dashboard page drops from about 800 KB to 200 KB), and an unchanged dashboard or report is no longer downloaded again. Re-opening the dashboard or a report you have already viewed is now near-instant.
+
 ## v3.3.2
 
 ### New Features

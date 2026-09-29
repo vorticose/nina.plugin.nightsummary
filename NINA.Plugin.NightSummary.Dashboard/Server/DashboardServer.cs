@@ -61,6 +61,10 @@ namespace NINA.Plugin.NightSummary.Server {
         private readonly bool _readOnly;
         public bool ReadOnly => _readOnly;
         private string cachedDashboardHtml;
+        // ETag of the last dashboard HTML served; recomputed only when the
+        // assembled string changes (every request under hot reload).
+        private string _dashboardEtag;
+        private string _dashboardEtagSource;
         private DashboardLog log;
         private readonly HashSet<string> _loggedUserAgents = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -347,6 +351,8 @@ namespace NINA.Plugin.NightSummary.Server {
                     if (req == null) return;
                     req.RemoteIp = remoteIp;
                     var res = new TcpHttpResponse(stream);
+                    res.AcceptsGzip = req.Headers.TryGetValue("Accept-Encoding", out var acceptEncoding)
+                                      && HttpCompression.AcceptsGzip(acceptEncoding);
                     try {
                         await HandleRequest(req, res);
                     } finally {
@@ -597,7 +603,7 @@ namespace NINA.Plugin.NightSummary.Server {
                         await HandleGetSessionTiming(res, sessionId, done);
                     } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/report")) {
                         var sessionId = ExtractSessionId(path, "/report");
-                        await HandleGetSessionReport(res, sessionId, req.QueryString["theme"], done);
+                        await HandleGetSessionReport(req, res, sessionId, req.QueryString["theme"], done);
                     } else if (path.StartsWith("/api/sessions/") && path.EndsWith("/thumbnails")) {
                         var sessionId = ExtractSessionId(path, "/thumbnails");
                         await HandleGetSessionThumbnails(res, sessionId, done);
@@ -725,8 +731,17 @@ namespace NINA.Plugin.NightSummary.Server {
                         if (_companion != null && !_companion.GetConfig().IsComplete) {
                             await Redirect(res, "/setup", done, "/ → setup");
                         } else {
-                            await WriteHtml(res, 200, GetDashboardHtml());
-                            done?.Invoke(200, "dashboard html");
+                            var dashHtml = GetDashboardHtml();
+                            if (!ReferenceEquals(dashHtml, _dashboardEtagSource)) {
+                                _dashboardEtag = ContentEtag(dashHtml);
+                                _dashboardEtagSource = dashHtml;
+                            }
+                            if (TryNotModified(req, res, _dashboardEtag)) {
+                                done?.Invoke(304, "dashboard html not modified");
+                            } else {
+                                await WriteRevalidatedHtml(res, dashHtml);
+                                done?.Invoke(200, "dashboard html");
+                            }
                         }
                     } else if (path.StartsWith("/api/nightsummary/", StringComparison.Ordinal)) {
                         await HandleTnsGet(req, res, path, done);
@@ -1098,11 +1113,23 @@ namespace NINA.Plugin.NightSummary.Server {
             done?.Invoke(200, $"{result.Count} timing events for {sessionId}");
         }
 
-        private async Task HandleGetSessionReport(TcpHttpResponse res, string sessionId, string theme, Action<int, string> done) {
+        private async Task HandleGetSessionReport(TcpHttpRequest req, TcpHttpResponse res, string sessionId, string theme, Action<int, string> done) {
             var reportPath = Path.Combine(reportsDir, $"{sessionId}.html");
-            if (!File.Exists(reportPath)) {
+            var reportInfo = new FileInfo(reportPath);
+            if (!reportInfo.Exists) {
                 await WriteJson(res, 404, new { error = "Report not found" });
                 done?.Invoke(404, sessionId);
+                return;
+            }
+            // Reports only change when regenerated, so file mtime + size identify the
+            // content. Theme and plugin version are in the tag too: the theme picks the
+            // injected overrides below, and an upgrade may change that injection. A
+            // re-opened report then costs one round trip instead of the whole file.
+            var reportEtag = string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                "\"r{0:x}-{1:x}-{2}-{3}\"", reportInfo.LastWriteTimeUtc.Ticks, reportInfo.Length,
+                theme ?? "", _settings.PluginVersion ?? "");
+            if (TryNotModified(req, res, reportEtag)) {
+                done?.Invoke(304, $"{sessionId} not modified");
                 return;
             }
             var html = File.ReadAllText(reportPath);
@@ -1149,7 +1176,7 @@ namespace NINA.Plugin.NightSummary.Server {
                     @"(<html[^>]*style=['""][^'""]*background-color:)[^;'""]+",
                     "$1" + bg);
             }
-            await WriteHtml(res, 200, html);
+            await WriteRevalidatedHtml(res, html);
             done?.Invoke(200, $"{sessionId} ({html.Length / 1024}KB)");
         }
 
@@ -4333,6 +4360,35 @@ private static string FormatSettingsForLog(NightSummarySettings s) {
             res.ContentLength64 = bytes.Length;
             await res.OutputStream.WriteAsync(bytes, 0, bytes.Length);
             res.Close();
+        }
+
+        // Cacheable-but-revalidated HTML: the browser keeps its copy and asks
+        // "still this ETag?" on every load, so an unchanged page costs one round
+        // trip and no body. Returns true when a 304 was sent (nothing more to do).
+        private static bool TryNotModified(TcpHttpRequest req, TcpHttpResponse res, string etag) {
+            res.Headers["Cache-Control"] = "no-cache";
+            res.Headers["ETag"] = etag;
+            if (req != null && req.Headers.TryGetValue("If-None-Match", out var inm)
+                && HttpCaching.IfNoneMatchMatches(inm, etag)) {
+                res.StatusCode = 304;
+                res.Close();
+                return true;
+            }
+            return false;
+        }
+
+        private static async Task WriteRevalidatedHtml(TcpHttpResponse res, string html) {
+            res.StatusCode = 200;
+            res.ContentType = "text/html; charset=utf-8";
+            var bytes = Encoding.UTF8.GetBytes(html);
+            res.ContentLength64 = bytes.Length;
+            await res.OutputStream.WriteAsync(bytes, 0, bytes.Length);
+            res.Close();
+        }
+
+        private static string ContentEtag(string text) {
+            var hash = System.Security.Cryptography.SHA1.HashData(Encoding.UTF8.GetBytes(text));
+            return "\"" + Convert.ToHexString(hash, 0, 10).ToLowerInvariant() + "\"";
         }
 
         // ── Stats Summary ──────────────────────────────────────────────────────

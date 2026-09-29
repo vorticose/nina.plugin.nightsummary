@@ -196,3 +196,38 @@ areas. No merge, push or deploy without asking.
 
 `feature/sessions-list-scale`: cherry-pick the perf commits only (b30e24d, 93a7ffa, plus
 the changelog note); the other commits get reviewed separately.
+
+## Results
+
+### Batch 1: gzip + ETag revalidation (`feature/perf-transport-caching`)
+
+Changes: gzip in `TcpHttpResponse.Close()` for text/JSON over 1 KB when the client
+asks (level Optimal: +9 ms CPU on the 800 KB page vs Fastest, 49 KB smaller); ETag +
+`no-cache` on the dashboard page (content hash) and reports (mtime, size, theme, plugin
+version); status line `HTTP/1.1` instead of `HTTP/1.0`.
+
+The status line change was necessary, not cosmetic: Chromium never revalidates an
+HTTP/1.0 response (verified with a probe server: identical headers, no `If-None-Match`
+sent under 1.0, sent under 1.1). That also means the mosaic-thumb ETag shipped in 3.3.2
+never produced a 304 in Chromium; it re-downloaded every time (still correct, just not
+saving bandwidth).
+
+| Scenario (iPad profile) | Before | After | Target |
+|---|---:|---:|---:|
+| First load: HTML arrives | 0.49 s, 802 KB | 0.27 s, 197 KB | |
+| First load: list data in | 0.86 s | 0.86 s | < 0.5 s (batch 2) |
+| First load: settled | 2.97 s, 2.5 MB | 2.75 s, 1.1 MB | < 1 s (batch 4) |
+| Repeat dashboard open | 0.49 s | **0.14 s**, 300 B | < 0.2 s: met |
+| Large report, first open | 1.50 s, 2.4 MB | 1.23 s, 1.6 MB | < 1 s (icon swap, batch 5) |
+| Large report, re-open | 1.43 s | **0.33 s**, report 304 | < 0.2 s (see note) |
+| Stats first visit | 1.29 s, 1.8 MB | 1.11 s, 1.1 MB | |
+
+Report re-open note: the report itself is a 0-byte 304; the remaining 0.33 s is three
+metadata requests (`/api/sessions/{id}`, `/settings`, `/api/filters` at 78 ms server
+time), each on a new TCP connection. Closing the gap needs the filters cache (batch 5)
+and eventually keep-alive.
+
+Tests: `HttpCompressionTests` (negotiation, policy, wire bytes, HTTP/1.1 status line) and
+`DashboardHttpCachingTests` (real server: page and report 304s, theme and regeneration
+bust the tag, gzip only when asked). 42 tests pass on macOS via a scratch project that
+links these files; the Windows suite still needs a run before merge.

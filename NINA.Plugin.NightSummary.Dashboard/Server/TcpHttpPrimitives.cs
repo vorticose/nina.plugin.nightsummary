@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Specialized;
 using System.IO;
+using System.IO.Compression;
 using System.Net;
 using System.Text;
 using System.Threading;
@@ -64,6 +65,51 @@ namespace NINA.Plugin.NightSummary.Server {
     }
 
     /// <summary>
+    /// Response compression policy. The dashboard is mostly reached over
+    /// Tailscale from phones and tablets, where bytes cost real time: gzip cuts
+    /// the inlined dashboard page from ~800 KB to ~200 KB and API JSON by ~80%.
+    /// </summary>
+    public static class HttpCompression {
+        // Below this, gzip framing overhead and CPU outweigh the saving.
+        public const int MinBytes = 1024;
+
+        public static bool AcceptsGzip(string acceptEncoding) {
+            if (string.IsNullOrEmpty(acceptEncoding)) return false;
+            foreach (var part in acceptEncoding.Split(',')) {
+                var token = part.Trim();
+                var semi = token.IndexOf(';');
+                var name = semi >= 0 ? token.Substring(0, semi).Trim() : token;
+                if (!string.Equals(name, "gzip", StringComparison.OrdinalIgnoreCase)) continue;
+                if (semi < 0) return true;
+                // "gzip;q=0" is an explicit refusal; any positive q accepts.
+                var param = token.Substring(semi + 1).Trim();
+                if (!param.StartsWith("q=", StringComparison.OrdinalIgnoreCase)) return true;
+                return double.TryParse(param.Substring(2), System.Globalization.NumberStyles.Float,
+                                       System.Globalization.CultureInfo.InvariantCulture, out var q) && q > 0;
+            }
+            return false;
+        }
+
+        public static bool IsCompressible(string contentType) {
+            if (string.IsNullOrEmpty(contentType)) return false;
+            return contentType.StartsWith("text/", StringComparison.OrdinalIgnoreCase)
+                || contentType.StartsWith("application/json", StringComparison.OrdinalIgnoreCase)
+                || contentType.StartsWith("application/javascript", StringComparison.OrdinalIgnoreCase)
+                || contentType.StartsWith("image/svg+xml", StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static bool ShouldCompress(int statusCode, string contentType, int length)
+            => statusCode == 200 && length >= MinBytes && IsCompressible(contentType);
+
+        public static byte[] Gzip(byte[] body) {
+            using var ms = new MemoryStream(body.Length / 3 + 64);
+            using (var gz = new GZipStream(ms, CompressionLevel.Optimal, leaveOpen: true))
+                gz.Write(body, 0, body.Length);
+            return ms.ToArray();
+        }
+    }
+
+    /// <summary>
     /// Minimal HTTP response writer for a raw TCP stream.
     /// Body is buffered in memory; all headers + body are written atomically on Close().
     /// Close() is idempotent — callers that invoke res.OutputStream.Close() before res.Close()
@@ -79,6 +125,11 @@ namespace NINA.Plugin.NightSummary.Server {
         public long ContentLength64 { get; set; }
         public WebHeaderCollection Headers { get; } = new WebHeaderCollection();
         public Stream OutputStream => _body;
+        // Set from the request's Accept-Encoding. When true, Close() gzips
+        // compressible bodies (see HttpCompression). StreamAsync never does:
+        // exports are already-compressed zips or SQLite files, and the companion
+        // sync client does not send Accept-Encoding anyway.
+        public bool AcceptsGzip { get; set; }
 
         public TcpHttpResponse(Stream tcpStream) => _tcp = tcpStream;
 
@@ -94,7 +145,7 @@ namespace NINA.Plugin.NightSummary.Server {
             _closed = true;
             try {
                 var sb = new StringBuilder();
-                sb.Append($"HTTP/1.0 {StatusCode} {GetStatusText(StatusCode)}\r\n");
+                sb.Append($"HTTP/1.1 {StatusCode} {GetStatusText(StatusCode)}\r\n");
                 if (contentType != null)
                     sb.Append($"Content-Type: {contentType}\r\n");
                 sb.Append($"Content-Length: {contentLength}\r\n");
@@ -123,11 +174,20 @@ namespace NINA.Plugin.NightSummary.Server {
             _closed = true;
             try {
                 var bodyBytes = _body.ToArray();
+                bool gzip = AcceptsGzip
+                    && Headers["Content-Encoding"] == null
+                    && HttpCompression.ShouldCompress(StatusCode, ContentType, bodyBytes.Length);
+                if (gzip) bodyBytes = HttpCompression.Gzip(bodyBytes);
                 var sb = new StringBuilder();
-                sb.Append($"HTTP/1.0 {StatusCode} {GetStatusText(StatusCode)}\r\n");
+                // HTTP/1.1, not 1.0: Chromium never revalidates an HTTP/1.0 response
+                // (no If-None-Match is sent), so every ETag here would be ignored.
+                // Connection: close + Content-Length stays valid 1.1 framing.
+                sb.Append($"HTTP/1.1 {StatusCode} {GetStatusText(StatusCode)}\r\n");
                 if (ContentType != null)
                     sb.Append($"Content-Type: {ContentType}\r\n");
                 sb.Append($"Content-Length: {bodyBytes.Length}\r\n");
+                if (gzip) sb.Append("Content-Encoding: gzip\r\n");
+                if (HttpCompression.IsCompressible(ContentType)) sb.Append("Vary: Accept-Encoding\r\n");
                 foreach (string key in Headers.AllKeys) {
                     var lower = key.ToLowerInvariant();
                     if (lower == "content-type" || lower == "content-length") continue;

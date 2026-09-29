@@ -59,7 +59,7 @@ namespace NINA.Plugin.NightSummary.Server {
                     done?.Invoke(404, sessionId);
                     return;
                 }
-                await HandleGetSessionReport(res, sessionId, req.QueryString["theme"], done);
+                await HandleGetSessionReport(req, res, sessionId, req.QueryString["theme"], done);
             } else {
                 await WriteTnsError(res, 404, "Not found");
                 done?.Invoke(404, null);
