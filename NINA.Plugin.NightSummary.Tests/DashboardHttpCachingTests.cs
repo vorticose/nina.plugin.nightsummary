@@ -241,6 +241,29 @@ namespace NINA.Plugin.NightSummary.Tests {
         }
 
         [Fact]
+        public async Task Report_WithCurrentVersion_IsImmutable_StaleVersionRevalidates() {
+            var paths = new StubPaths();
+            File.WriteAllText(Path.Combine(paths.ReportsDir, SessionA + ".html"), "<html><head></head><body>r</body></html>");
+            var (srv, client) = await StartAsync(paths);
+            try {
+                var plain = await GetAsync(client, $"/api/sessions/{SessionA}/report?theme=dark");
+                Assert.Equal("no-cache", CacheControl(plain));
+                // ETag is "r<version>-<theme>"
+                var tag = Etag(plain)!.Trim('"');
+                var version = tag.Substring(1, tag.Length - 1 - "-dark".Length);
+
+                var current = await GetAsync(client, $"/api/sessions/{SessionA}/report?theme=dark&v={Uri.EscapeDataString(version)}");
+                Assert.Equal(HttpStatusCode.OK, current.StatusCode);
+                Assert.Contains("immutable", CacheControl(current));
+
+                var stale = await GetAsync(client, $"/api/sessions/{SessionA}/report?theme=dark&v=old");
+                Assert.Equal("no-cache", CacheControl(stale));
+            } finally {
+                await srv.StopAsync();
+            }
+        }
+
+        [Fact]
         public async Task Report_Missing_Is404NotCached() {
             var (srv, client) = await StartAsync(new StubPaths());
             try {

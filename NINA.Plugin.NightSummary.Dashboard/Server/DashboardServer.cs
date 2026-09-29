@@ -971,6 +971,7 @@ namespace NINA.Plugin.NightSummary.Server {
                     }).ToList()
                 }).ToList();
 
+            var reportFile = new FileInfo(Path.Combine(reportsDir, $"{sessionId}.html"));
             var result = new {
                 sessionId = session.SessionId,
                 sessionStart = session.SessionStart.ToString("o"),
@@ -1012,7 +1013,10 @@ namespace NINA.Plugin.NightSummary.Server {
                     meridianFlips = events.Count(e => e.EventType == "MeridianFlip")
                 },
                 targets = targetBreakdown,
-                hasReport = File.Exists(Path.Combine(reportsDir, $"{sessionId}.html"))
+                hasReport = reportFile.Exists,
+                // Lets the dashboard request /report?v=<this>, served immutable, so
+                // re-opening an unchanged report needs no request at all.
+                reportVersion = reportFile.Exists ? ReportVersion(reportFile) : null
             };
 
             await WriteJson(res, 200, result);
@@ -1145,18 +1149,21 @@ namespace NINA.Plugin.NightSummary.Server {
                 done?.Invoke(404, sessionId);
                 return;
             }
-            // Reports only change when regenerated, so file mtime + size identify the
-            // content. Theme and plugin version are in the tag too: the theme picks the
-            // injected overrides below, and an upgrade may change that injection. A
-            // re-opened report then costs one round trip instead of the whole file.
-            var reportEtag = string.Format(System.Globalization.CultureInfo.InvariantCulture,
-                "\"r{0:x}-{1:x}-{2}-{3}\"", reportInfo.LastWriteTimeUtc.Ticks, reportInfo.Length,
-                theme ?? "", _settings.PluginVersion ?? "");
-            if (TryNotModified(req, res, reportEtag)) {
+            // Reports only change when regenerated, so ReportVersion (file mtime +
+            // size + plugin/serve version) identifies the content; the theme picks the
+            // injected overrides below. The dashboard asks with ?v=<version> (from the
+            // session detail), which can be cached forever. Unversioned requests (open
+            // in new tab, TNS) revalidate with an ETag: one round trip, no body.
+            var version = ReportVersion(reportInfo);
+            var reportEtag = "\"r" + version + "-" + (theme ?? "") + "\"";
+            if (req?.QueryString["v"] == version) {
+                res.Headers["Cache-Control"] = "public, max-age=31536000, immutable";
+                res.Headers["ETag"] = reportEtag;
+            } else if (TryNotModified(req, res, reportEtag)) {
                 done?.Invoke(304, $"{sessionId} not modified");
                 return;
             }
-            var html = File.ReadAllText(reportPath);
+            var html = LegacyReportIcon.Shrink(File.ReadAllText(reportPath), SmallIconDataUri());
             if (theme == "light" || theme == "dark") {
                 // Inject data-theme attribute and CSS variable override so initial render matches dashboard theme
                 html = System.Text.RegularExpressions.Regex.Replace(html,
@@ -4422,6 +4429,23 @@ private static string FormatSettingsForLog(NightSummarySettings s) {
         // Cacheable-but-revalidated HTML: the browser keeps its copy and asks
         // "still this ETag?" on every load, so an unchanged page costs one round
         // trip and no body. Returns true when a 304 was sent (nothing more to do).
+        // The small header icon as a data URI, for LegacyReportIcon. Null if the
+        // asset is missing, in which case reports are served unchanged.
+        private string _smallIconDataUri;
+        private string SmallIconDataUri() {
+            if (_smallIconDataUri != null) return _smallIconDataUri;
+            var bytes = _webAssets.ReadAsync(AssetNames.HeaderIcon).GetAwaiter().GetResult();
+            if (bytes == null || bytes.Length == 0) return null;
+            return _smallIconDataUri = "data:image/png;base64," + Convert.ToBase64String(bytes);
+        }
+
+        // Content version of a report as served. "s2": bump when the served
+        // transformation changes (s2 = legacy header icon swap).
+        private string ReportVersion(FileInfo reportFile) => string.Format(
+            System.Globalization.CultureInfo.InvariantCulture, "{0:x}-{1:x}-{2}-s2",
+            reportFile.LastWriteTimeUtc.Ticks, reportFile.Length,
+            Uri.EscapeDataString(_settings.PluginVersion ?? ""));
+
         private static bool TryNotModified(TcpHttpRequest req, TcpHttpResponse res, string etag) {
             res.Headers["Cache-Control"] = "no-cache";
             res.Headers["ETag"] = etag;

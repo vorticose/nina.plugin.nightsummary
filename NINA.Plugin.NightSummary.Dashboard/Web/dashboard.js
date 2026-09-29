@@ -7312,12 +7312,18 @@ function collectSettings() {
   };
 }
 
-function loadReportIntoShadow(sessionId) {
+// reportVersion (from the session detail) makes the URL immutable-cacheable;
+// omit it to force a revalidation (e.g. right after Regenerate).
+function reportVersionParam(reportVersion) {
+  return reportVersion ? '&v=' + encodeURIComponent(reportVersion) : '';
+}
+
+function loadReportIntoShadow(sessionId, reportVersion) {
   var host = document.getElementById('report-shadow-host');
   if (!host) return;
 
   var isLight = document.documentElement.classList.contains('light');
-  fetch('/api/sessions/' + sessionId + '/report?theme=' + (isLight ? 'light' : 'dark'))
+  fetch('/api/sessions/' + sessionId + '/report?theme=' + (isLight ? 'light' : 'dark') + reportVersionParam(reportVersion))
     .then(function(r) { return r.text(); })
     .then(function(html) {
       // Render report at its designed width (800px) and CSS-scale to fit the
@@ -7462,7 +7468,7 @@ function renderSessionDetail(sessionId, params) {
         html += '<div class="report-viewer"><div id="report-shadow-host" class="report-shadow-host"></div></div>';
       } else {
         html += '<div class="report-viewer">' +
-          '<iframe id="report-iframe" class="report-iframe" src="' + withRig('/api/sessions/' + sessionId + '/report?theme=' + (document.documentElement.classList.contains('light') ? 'light' : 'dark')) + '" sandbox="allow-same-origin"></iframe>' +
+          '<iframe id="report-iframe" class="report-iframe" src="' + esc(withRig('/api/sessions/' + sessionId + '/report?theme=' + (document.documentElement.classList.contains('light') ? 'light' : 'dark') + reportVersionParam(detail.reportVersion))) + '" sandbox="allow-same-origin"></iframe>' +
         '</div>';
       }
     } else {
@@ -7481,7 +7487,7 @@ function renderSessionDetail(sessionId, params) {
         document.getElementById('pdp-backdrop')) closeProjectDetail();
 
     if (detail.hasReport && isMobile) {
-      loadReportIntoShadow(sessionId);
+      loadReportIntoShadow(sessionId, detail.reportVersion);
     }
 
     var iframeEl = document.getElementById('report-iframe');
