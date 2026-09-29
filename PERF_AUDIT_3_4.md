@@ -326,3 +326,84 @@ fix. Not converted in this batch: the "All rigs" merged Sessions view
 Tests: target-thumb endpoint (versioned URL, bytes, immutable cache, rig param,
 regeneration changes the version, bad index 404). 80 tests pass on macOS, including the
 existing `DashboardServerReadOnlyTests` and `TnsEndpointsTests`.
+
+### Batch 5 (non-visual): `feature/perf-polish`
+
+- `/api/filters` and `/api/stats/summary` memoized on the DB + WAL file stamp, per rig
+  DB path: ~78 ms -> ~0.5 ms, outputs identical.
+- Companion post-sync refresh gated on actual change: the view's data is re-fetched and
+  compared; unchanged syncs do nothing. Changed syncs refresh without the fade-out and
+  keep scroll (the old restore helper measured `.shell`, which only scrolls in report
+  view, so sync refreshes always jumped to the top). Report caches are dropped only when
+  the sync touched report files.
+- Images the first-load reveal waits on are switched to eager (background tabs don't
+  run the lazy loader; the reveal stalled to its 5 s safety timeout).
+- Legacy header icon swapped for the small one when serving older reports (read-side
+  only): large report 2.46 MB -> 1.69 MB, identical apart from that tag.
+- `reportVersion` in the session detail + `/report?v=` served immutable: re-opening an
+  unchanged report needs no request. Unversioned URLs keep ETag revalidation.
+
+## Final results vs targets (iPad profile: 60 ms RTT, 20 Mbps)
+
+| What | Baseline (`dev`) | Final | Target | |
+|---|---:|---:|---:|---|
+| Sessions list visible, cold | 3.13 s | 0.78 s | < 0.5 s | missed (see note) |
+| Sessions first load settled | 2.97 s, 80 req, 2.5 MB | 0.78-0.98 s, 9-23 req, 250-370 KB | < 1 s | met |
+| Repeat dashboard open (page) | 0.49 s, 802 KB | 0.15 s, 300 B | < 0.2 s | met |
+| Repeat open, list visible | ~3 s | 0.50 s, 29 KB total | | |
+| Large report, first open | 1.50 s, 2.4 MB | 0.91 s, 1.0 MB | < 1 s | met |
+| Report re-open | 1.43 s | 0.19 s, no report request | < 0.2 s | met |
+| Targets edit | page blanks, 0.42 s, scroll to top | in place, 0.31 s, scroll kept, identical DOM | < 100 ms, scroll kept | scroll met; content 0.3 s |
+| Stats first visit | 1.29 s, 1.8 MB | 1.16 s, 41 KB | | |
+| `/api/sessions` (server) | 210 ms | 9 ms | | |
+
+"List visible" note: the list data itself arrives at 0.41 s; the reveal then waits for
+the on-screen cards' thumbnails and charts (two more sequential round trips, each on a
+new TCP connection). What remains is round trips, not code or bytes. Options: HTTP
+keep-alive in the TCP server (saves a handshake per request), or embedding the
+on-screen cards' thumbnail URLs and chart data in `/api/sessions`. Both are bigger
+changes; not done under the stopping rules.
+
+Targets edit note: the acknowledgement (picker or modal closes) is instant; the card
+content follows after two sequential round trips (save, re-read). Returning the
+refreshed targets from the POST would save one (~0.12 s).
+
+## Not done / next
+
+- HTTP keep-alive (F4b): the biggest remaining lever for every screen; riskier (custom
+  TCP server, export streaming, companion auth).
+- "All rigs" merged Sessions view still loads every card's extras up front.
+- Pass 2 (Windows dev PC): companion sync re-downloads the full NS and TS databases on
+  every sync; report generation time; Live Stack embed size; WebView2 preview.
+- Before merging any batch: `dotnet test` on Windows, and a look on a real iPad and
+  the companion.
+
+## Proposal: animations and blur (visual, needs a real iPad)
+
+Nothing below is implemented; each item is a small CSS change to try on the iPad.
+
+1. **Timing tokens.** `--t-medium` 450 ms -> ~280 ms and `--t-slow` 650 ms -> ~400 ms
+   (dashboard.css:28-30). `--t-medium` drives card lift (`.session-card`, `.target-card`),
+   thumbnail zoom (`.card-thumb-wrap`), the stat expand popup and labels; `--t-slow`
+   only the integration bar. The live-stack shelf reveal (`shelf-reveal 450ms`) and the
+   first-load list fade (`opacity 400ms`, dashboard.js) to ~250-300 ms. The curve
+   (0.22, 1, 0.36, 1) is front-loaded, so shorter durations keep the soft landing.
+2. **Hover delay.** `.card-thumb-wrap:hover` waits 150 ms before zooming (dashboard.css
+   ~1187). Keep if it prevents accidental zooms while scrolling on desktop; otherwise
+   ~60 ms.
+3. **Layout-triggering transitions -> transform.** Progress fills
+   (`.integration-bar`, `.targets-project-progress-overall-fill`, `.tdp-progress-bar-fill`,
+   `.pdp-panel-progress-fill`) animate `width`; switch to `transform: scaleX()` with
+   `transform-origin: left`. The tab thumb (`.stats-tab-thumb`) animates `left` + `width`;
+   use `transform: translateX() scaleX()`. `transition: all` on `.tdp-project-action-btn`
+   and `.ts-link-picker-item` -> list only the properties that change.
+4. **Blur.** The sticky `header` blurs 14 px of the page scrolling under it, repainted on
+   every scroll frame; the most likely iPad scroll-jank source. Option A: solid,
+   slightly translucent background on touch/narrow screens, blur kept on desktop.
+   Option B: drop to 6 px everywhere. `.target-card-ts-badge` has its own 6 px blur on
+   every target card (~30 compositing layers on Stats); a solid badge background would
+   look almost identical. Modal backdrops (TDP, PDP, link picker, lightbox) blur only
+   while open over still content; leave them.
+
+Suggested way to judge it: implement 1-4 on one branch, open the dashboard on the iPad
+side by side with the current build, scroll Sessions and Stats, open a few cards.
