@@ -235,7 +235,7 @@ namespace NINA.Plugin.NightSummary.Session {
             LogParseOutcome timingEventsOutcome;
             try {
                 Logger.Info($"NightSummary: EndSession — parsing logs for session {sessionId} (start={session.SessionStart:o}, end={session.SessionEnd:o}, images={images.Count})");
-                timingEvents = NinaLogParser.Parse(session.SessionStart, session.SessionEnd, images.Count, out timingEventsOutcome);
+                timingEvents = NinaLogParser.Parse(session.SessionId, session.SessionStart, session.SessionEnd, images.Count, out timingEventsOutcome);
                 Logger.Info($"NightSummary: EndSession — parser returned {timingEvents.Count} events");
                 if (timingEvents.Any())
                     database.SaveTimingEvents(sessionId, timingEvents);
@@ -457,7 +457,7 @@ namespace NINA.Plugin.NightSummary.Session {
                 List<TimingEvent> timingEvents;
                 LogParseOutcome timingEventsOutcome;
                 try {
-                    timingEvents = NinaLogParser.Parse(session.SessionStart, session.SessionEnd, images.Count, out timingEventsOutcome);
+                    timingEvents = NinaLogParser.Parse(session.SessionId, session.SessionStart, session.SessionEnd, images.Count, out timingEventsOutcome);
                     if (timingEvents.Any()) {
                         testDb.ClearTimingEvents(session.SessionId);
                         testDb.SaveTimingEvents(session.SessionId, timingEvents);
@@ -1354,7 +1354,7 @@ namespace NINA.Plugin.NightSummary.Session {
             List<TimingEvent> timingEvents;
             LogParseOutcome timingEventsOutcome;
             try {
-                timingEvents = NinaLogParser.Parse(session.SessionStart, session.SessionEnd, images.Count, out timingEventsOutcome);
+                timingEvents = NinaLogParser.Parse(session.SessionId, session.SessionStart, session.SessionEnd, images.Count, out timingEventsOutcome);
                 if (timingEvents.Any()) {
                     db.ClearTimingEvents(session.SessionId);
                     db.SaveTimingEvents(session.SessionId, timingEvents);

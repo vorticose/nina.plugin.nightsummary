@@ -472,13 +472,18 @@ namespace NINA.Plugin.NightSummary.Reporting {
                               "This session predates NINA's 90-day log retention — the original log is likely gone, and this data can't be recovered."
                             : "log file not found, and none was saved when this report first ran. " +
                               "Check that NINA's Logs folder hasn't been moved or cleared.";
-                    } else {
-                        // A log file was found but had nothing matching — almost always NINA's
-                        // log level set below Info, which suppresses the lines the parser reads
+                    } else if (data.TimingEventsUnavailableReason == LogParseOutcome.NoInfoLinesInWindow) {
+                        // The log has no Info lines at all during the session: NINA's log
+                        // level is below Info, which suppresses the lines the parser reads
                         // (issue #27).
-                        message = "no timing events were found in the NINA log. " +
-                                  "This usually means NINA's log level is below Info. " +
+                        message = "the NINA log has no Info-level entries for this session. " +
+                                  "NINA's log level is likely set below Info. " +
                                   "Set NINA to Options &gt; General &gt; Log Level &gt; Info to enable this section.";
+                    } else {
+                        // The log has Info lines but nothing the parser recognized, so log
+                        // level isn't the cause; don't send the user to check it.
+                        message = "no timing events were found in the NINA log for this session. " +
+                                  "If this keeps happening, please report it on the Night Summary GitHub page and include the NINA log from that night.";
                     }
                     return $"<details class='iq-section'{detailsOpen}>" +
                            "<summary>Yield and Imaging Overhead Analysis</summary>" +

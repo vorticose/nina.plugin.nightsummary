@@ -100,25 +100,31 @@ namespace NINA.Plugin.NightSummary.Data {
         /// <param name="expectedImageCount">Expected number of images from Night Summary's own count, for cross-check. Pass -1 to skip.</param>
         /// <returns>Parsed timing events, or empty list if log not found or unparseable.</returns>
         public static List<TimingEvent> Parse(DateTime sessionStart, DateTime sessionEnd, int expectedImageCount = -1) {
-            return Parse(sessionStart, sessionEnd, expectedImageCount, out _);
+            return Parse(null, sessionStart, sessionEnd, expectedImageCount, out _);
         }
 
         /// <summary>
         /// Same as Parse, but also reports why the result was empty (if it was), so
         /// callers can distinguish "no log file could be found" from "a log file was
         /// found but had nothing matching" instead of showing the same generic message
-        /// for both.
+        /// for both. sessionId (optional) lets FindLogFile pick the log that actually
+        /// recorded this session when several NINA instances share the Logs folder.
         /// </summary>
-        public static List<TimingEvent> Parse(DateTime sessionStart, DateTime sessionEnd, int expectedImageCount, out LogParseOutcome outcome) {
-            var logPath = FindLogFile(sessionStart);
+        public static List<TimingEvent> Parse(string sessionId, DateTime sessionStart, DateTime sessionEnd, int expectedImageCount, out LogParseOutcome outcome) {
+            var logPath = FindLogFile(sessionStart, sessionId);
             if (logPath == null) {
                 Logger.Warning("NightSummary: LogParser — no matching NINA log file found for session");
                 outcome = LogParseOutcome.NoLogFileFound;
                 return new List<TimingEvent>();
             }
 
-            var events = ParseFile(logPath, sessionStart, sessionEnd, expectedImageCount);
-            outcome = events.Count > 0 ? LogParseOutcome.Success : LogParseOutcome.NoEventsInWindow;
+            var events = ParseFile(logPath, sessionStart, sessionEnd, expectedImageCount, out var infoLinesInWindow);
+            if (events.Count > 0)
+                outcome = LogParseOutcome.Success;
+            else if (infoLinesInWindow == 0)
+                outcome = LogParseOutcome.NoInfoLinesInWindow;
+            else
+                outcome = LogParseOutcome.NoEventsInWindow;
             return events;
         }
 
@@ -126,6 +132,16 @@ namespace NINA.Plugin.NightSummary.Data {
         /// Parses a specific log file. Exposed for testing.
         /// </summary>
         internal static List<TimingEvent> ParseFile(string logPath, DateTime sessionStart, DateTime sessionEnd, int expectedImageCount = -1) {
+            return ParseFile(logPath, sessionStart, sessionEnd, expectedImageCount, out _);
+        }
+
+        /// <summary>
+        /// Parses a specific log file, also reporting how many INFO lines fell inside the
+        /// session window. Zero INFO lines means NINA's log level was below Info (issue #27);
+        /// INFO lines with no events means something else went wrong.
+        /// </summary>
+        internal static List<TimingEvent> ParseFile(string logPath, DateTime sessionStart, DateTime sessionEnd, int expectedImageCount, out int infoLinesInWindow) {
+            infoLinesInWindow = 0;
             var events = new List<TimingEvent>();
             // Open with FileShare.ReadWrite since NINA holds a write lock on the active log file
             string[] lines;
@@ -194,6 +210,8 @@ namespace NINA.Plugin.NightSummary.Data {
                 var member = parts[3];
                 // parts[4] is line number — intentionally ignored
                 var message = string.Join("|", parts.Skip(5)); // rejoin in case message contains pipes
+
+                if (level == "INFO") infoLinesInWindow++;
 
                 // ERROR lines are only relevant for SequenceItem.Run — failed items must emit
                 // their Finishing equivalent so pendingStarts don't leak. Everything else is INFO-only.
@@ -563,7 +581,7 @@ namespace NINA.Plugin.NightSummary.Data {
         /// rare case creation-time metadata is missing or invalid (e.g. logs copied
         /// between machines by a hand-off tool that doesn't preserve it).
         /// </remarks>
-        internal static string FindLogFile(DateTime sessionStart) {
+        internal static string FindLogFile(DateTime sessionStart, string sessionId = null) {
             var logsDir = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "NINA", "Logs");
@@ -573,6 +591,20 @@ namespace NINA.Plugin.NightSummary.Data {
             // Pattern: {yyyyMMdd}-{HHmmss}-{version}.{pid}-{yyyyMM}.log
             var logFiles = Directory.GetFiles(logsDir, "*.log");
             if (logFiles.Length == 0) return null;
+
+            // Every NINA instance on the machine writes to this same folder, so "newest
+            // file created before the session" can belong to a different instance (e.g. a
+            // second NINA opened briefly to look at a sequence, 2026-10-13 report). Prefer
+            // the file that actually logged this session's start, then this process's own
+            // file, and only then fall back to creation-time/filename matching.
+            var bySessionId = FindLogFileBySessionId(logFiles, sessionStart, sessionId);
+            if (bySessionId != null) return bySessionId;
+
+            DateTime processStart;
+            using (var self = System.Diagnostics.Process.GetCurrentProcess())
+                processStart = self.StartTime;
+            var byPid = FindLogFileByProcessId(logFiles, sessionStart, Environment.ProcessId, processStart);
+            if (byPid != null) return byPid;
 
             var byCreation = FindLogFileByCreationTime(logFiles, sessionStart);
             if (byCreation != null) return byCreation;
@@ -593,6 +625,89 @@ namespace NINA.Plugin.NightSummary.Data {
             }
 
             return bestMatch;
+        }
+
+        // Max files scanned for the session-start marker. The right file is almost always
+        // the newest one, so this only bounds the cost when the marker is missing (e.g.
+        // log level below Info, or a session recorded before the marker existed).
+        private const int MaxSessionIdScanFiles = 10;
+
+        /// <summary>
+        /// Returns the log file containing this session's "Session started" line, searching
+        /// files that existed at sessionStart, newest first. Exposed for testing. Returns
+        /// null if sessionId is empty or no scanned file contains the marker.
+        /// </summary>
+        internal static string FindLogFileBySessionId(string[] logFiles, DateTime sessionStart, string sessionId) {
+            if (string.IsNullOrWhiteSpace(sessionId)) return null;
+            var marker = $"NightSummary: Session started. SessionId={sessionId}";
+
+            var candidates = logFiles
+                .Select(f => (File: f, Time: GetLogFileStartLocal(f)))
+                .Where(c => c.Time.HasValue && c.Time.Value <= sessionStart)
+                .OrderByDescending(c => c.Time.Value)
+                .Take(MaxSessionIdScanFiles);
+
+            foreach (var c in candidates) {
+                try {
+                    using var fs = new FileStream(c.File, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                    using var reader = new StreamReader(fs);
+                    string line;
+                    while ((line = reader.ReadLine()) != null) {
+                        if (line.Contains(marker, StringComparison.Ordinal)) {
+                            Logger.Info($"NightSummary: LogParser — selected {c.File} (contains this session's start)");
+                            return c.File;
+                        }
+                    }
+                } catch (IOException) {
+                } catch (UnauthorizedAccessException) {
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Picks the newest log file at or before sessionStart whose filename carries the
+        /// given process id. Covers sessions whose start marker isn't in the log (log level
+        /// below Info) when the report is built by the same NINA process that recorded it.
+        /// Files created before processStart are ignored: Windows reuses process ids, so an
+        /// older log with the same id belongs to a different, long-gone process.
+        /// Exposed for testing. Returns null if no file matches.
+        /// </summary>
+        internal static string FindLogFileByProcessId(string[] logFiles, DateTime sessionStart, int processId, DateTime processStart) {
+            var notBefore = processStart.AddMinutes(-1);
+            var match = logFiles
+                .Where(f => ExtractLogFileProcessId(Path.GetFileNameWithoutExtension(f)) == processId)
+                .Select(f => (File: f, Time: GetLogFileStartLocal(f)))
+                .Where(c => c.Time.HasValue && c.Time.Value >= notBefore && c.Time.Value <= sessionStart)
+                .OrderByDescending(c => c.Time.Value)
+                .FirstOrDefault();
+            if (match.File != null)
+                Logger.Info($"NightSummary: LogParser — selected {match.File} (current NINA process {processId})");
+            return match.File;
+        }
+
+        /// <summary>
+        /// Extracts the NINA process id from a log filename.
+        /// Format: {yyyyMMdd}-{HHmmss}-{version}.{pid}-{yyyyMM} → e.g. "20261012-173627-3.2.0.9001.6988-202610" → 6988
+        /// </summary>
+        internal static int? ExtractLogFileProcessId(string fileNameWithoutExtension) {
+            var match = Regex.Match(fileNameWithoutExtension, @"^\d{8}-\d{6}-[\d.]+?\.(\d+)(?:-\d{6})?$");
+            return match.Success && int.TryParse(match.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var pid)
+                ? pid : null;
+        }
+
+        /// <summary>
+        /// When a log file started being written, in local time: filesystem creation time
+        /// if valid, else the timestamp embedded in the filename. Null if neither is usable.
+        /// </summary>
+        private static DateTime? GetLogFileStartLocal(string file) {
+            try {
+                var creationUtc = File.GetCreationTimeUtc(file);
+                if (creationUtc > new DateTime(1980, 1, 1)) return creationUtc.ToLocalTime();
+            } catch (IOException) {
+            } catch (UnauthorizedAccessException) {
+            }
+            return ExtractLogFileTimestamp(Path.GetFileNameWithoutExtension(file));
         }
 
         /// <summary>

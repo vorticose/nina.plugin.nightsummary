@@ -462,7 +462,7 @@ namespace NINA.Plugin.NightSummary.Tests {
             SettingsManager.Instance.Current.ShowOverheadBreakdown = true;
             SettingsManager.Instance.Current.ExpandSectionsDefault = false;
 
-            var data = MakeOverheadReportData(new List<TimingEvent>());
+            var data = MakeOverheadReportData(new List<TimingEvent>(), LogParseOutcome.NoInfoLinesInWindow);
             var report = await _generator.GenerateHtmlReport(data);
 
             Assert.Contains("Yield and Imaging Overhead Analysis", report);
@@ -471,6 +471,23 @@ namespace NINA.Plugin.NightSummary.Tests {
             // The notice section must honor ExpandSectionsDefault like every other
             // section (regression: hardcoded ` open` broke ExpandSectionsDefault_False).
             Assert.DoesNotContain("' open>", report);
+        }
+
+        [Theory]
+        [InlineData(LogParseOutcome.NoEventsInWindow)]
+        [InlineData(null)]
+        public async Task Overhead_LogHasInfoLinesButNoEvents_DoesNotBlameLogLevel(LogParseOutcome? reason) {
+            // 2026-10-13 report: the log had plenty of Info lines (log level was fine) but
+            // the parser read another NINA instance's log. Pointing the user at the log
+            // level setting sent them chasing a setting that was never the problem.
+            SettingsManager.Instance.Current.ShowOverheadBreakdown = true;
+
+            var data = MakeOverheadReportData(new List<TimingEvent>(), reason);
+            var report = await _generator.GenerateHtmlReport(data);
+
+            Assert.Contains("Overhead analysis unavailable", report);
+            Assert.Contains("include the NINA log from that night", report);
+            Assert.DoesNotContain("Log Level &gt; Info", report);
         }
 
         [Fact]

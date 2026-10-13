@@ -937,5 +937,129 @@ namespace NINA.Plugin.NightSummary.Tests {
                 Directory.Delete(dir, true);
             }
         }
+
+        // ── Multiple NINA instances sharing one Logs folder (2026-10-13 report) ──
+        // A second NINA opened at 19:48 just to view a sequence created a newer log
+        // than the imaging instance's (17:36). Session started 20:01, so "newest file
+        // created before the session" picked the idle instance's log and the report
+        // showed no overhead analysis. The session-start marker identifies the right one.
+
+        private const string MikeSessionId = "cd773e21-def6-4ef9-8a19-ea67c8a11302";
+
+        private static (string dir, string imaging, string idle) MakeTwoInstanceLogs(bool includeMarker) {
+            var dir = Path.Combine(Path.GetTempPath(), $"ninalog_instances_{Guid.NewGuid():N}");
+            Directory.CreateDirectory(dir);
+            var imaging = Path.Combine(dir, "20261012-173627-3.2.0.9001.6988-202610.log");
+            var idle    = Path.Combine(dir, "20261012-194847-3.2.0.9001.13624-202610.log");
+            var marker  = includeMarker
+                ? $"2026-10-12T20:01:20.7125|INFO|SessionCollector.cs|StartSession|113|NightSummary: Session started. SessionId={MikeSessionId}\n"
+                : "";
+            File.WriteAllText(imaging,
+                "2026-10-12T17:36:30.0000|INFO|App.xaml.cs|OnStartup|1|Starting\n" + marker +
+                "2026-10-12T20:42:59.3672|INFO|SequenceItem.cs|Run|208|Starting Category: Scheduler, Item: TakeExposure, ExposureTime 240, Gain 50, Offset 20, ImageType LIGHT, Binning 1x1\n");
+            File.WriteAllText(idle, "2026-10-12T19:48:50.0000|INFO|App.xaml.cs|OnStartup|1|Starting\n");
+            File.SetCreationTime(imaging, new DateTime(2026, 10, 12, 17, 36, 27));
+            File.SetCreationTime(idle,    new DateTime(2026, 10, 12, 19, 48, 47));
+            return (dir, imaging, idle);
+        }
+
+        private static readonly DateTime MikeSessionStart = new DateTime(2026, 10, 12, 20, 1, 20);
+
+        [Fact]
+        public void FindLogFileBySessionId_PicksImagingInstance_OverNewerIdleInstance() {
+            var (dir, imaging, idle) = MakeTwoInstanceLogs(includeMarker: true);
+            try {
+                var files = new[] { imaging, idle };
+                // The old rule picks the idle instance's newer log (the bug).
+                Assert.Equal(idle, NinaLogParser.FindLogFileByCreationTime(files, MikeSessionStart));
+                Assert.Equal(imaging, NinaLogParser.FindLogFileBySessionId(files, MikeSessionStart, MikeSessionId));
+            } finally {
+                Directory.Delete(dir, true);
+            }
+        }
+
+        [Fact]
+        public void FindLogFileBySessionId_MarkerMissing_ReturnsNull() {
+            var (dir, imaging, idle) = MakeTwoInstanceLogs(includeMarker: false);
+            try {
+                Assert.Null(NinaLogParser.FindLogFileBySessionId(new[] { imaging, idle }, MikeSessionStart, MikeSessionId));
+            } finally {
+                Directory.Delete(dir, true);
+            }
+        }
+
+        [Fact]
+        public void FindLogFileBySessionId_NoSessionId_ReturnsNull() {
+            var (dir, imaging, idle) = MakeTwoInstanceLogs(includeMarker: true);
+            try {
+                Assert.Null(NinaLogParser.FindLogFileBySessionId(new[] { imaging, idle }, MikeSessionStart, null));
+            } finally {
+                Directory.Delete(dir, true);
+            }
+        }
+
+        [Fact]
+        public void FindLogFileByProcessId_PicksCurrentProcessFile_OverNewerIdleInstance() {
+            var (dir, imaging, idle) = MakeTwoInstanceLogs(includeMarker: false);
+            try {
+                var processStart = new DateTime(2026, 10, 12, 17, 36, 20);
+                Assert.Equal(imaging, NinaLogParser.FindLogFileByProcessId(new[] { imaging, idle }, MikeSessionStart, 6988, processStart));
+            } finally {
+                Directory.Delete(dir, true);
+            }
+        }
+
+        [Fact]
+        public void FindLogFileByProcessId_IgnoresReusedPidFromOlderProcess() {
+            // Windows reuses process ids: a weeks-old log with the same id belongs to a
+            // different process and must not be picked when regenerating a report later.
+            var (dir, imaging, idle) = MakeTwoInstanceLogs(includeMarker: false);
+            try {
+                var processStart = new DateTime(2026, 10, 20, 18, 0, 0); // a later NINA run, reused pid 6988
+                Assert.Null(NinaLogParser.FindLogFileByProcessId(new[] { imaging, idle }, MikeSessionStart, 6988, processStart));
+            } finally {
+                Directory.Delete(dir, true);
+            }
+        }
+
+        [Theory]
+        [InlineData("20261012-173627-3.2.0.9001.6988-202610", 6988)]
+        [InlineData("20261012-194847-3.2.0.9001.13624-202610", 13624)]
+        [InlineData("20261012-173627-3.2.0.9001.6988", 6988)]
+        [InlineData("20260730-232737-3.3.0.1049.25568-202607", 25568)]
+        [InlineData("nina_test", null)]
+        [InlineData("dashboard", null)]
+        public void ExtractLogFileProcessId_ParsesNinaFilenames(string name, int? expected) {
+            Assert.Equal(expected, NinaLogParser.ExtractLogFileProcessId(name));
+        }
+
+        [Fact]
+        public void ParseFile_CountsInfoLinesInWindow() {
+            NinaLogParser.ParseFile(_logPath, SessionStart, SessionEnd, -1, out var infoLines);
+            Assert.True(infoLines > 0);
+        }
+
+        [Fact]
+        public void ParseFile_WarningOnlyLog_ZeroInfoLinesInWindow() {
+            // Issue #27: log level Warning writes no INFO lines, so the report should
+            // point at the log level setting rather than a generic message.
+            var path = Path.Combine(Path.GetTempPath(), $"nina_warn_{Guid.NewGuid():N}.log");
+            File.WriteAllText(path, string.Join("\n", new[] {
+                "----------------------------------------------------------------------",
+                "--------------N.I.N.A. - Nighttime Imaging 'N' Astronomy--------------",
+                "--------------------------Version 3.2.0.9001--------------------------",
+                "-------------------------2026-03-30T21:21:13--------------------------",
+                "----------------------------------------------------------------------",
+                "2026-03-30T21:40:00.0000|WARNING|PHD2Guider.cs|Run|1|Guide star lost",
+                "2026-03-30T21:50:00.0000|ERROR|CameraVM.cs|Capture|1|Download failed",
+            }));
+            try {
+                var events = NinaLogParser.ParseFile(path, SessionStart, SessionEnd, -1, out var infoLines);
+                Assert.Empty(events);
+                Assert.Equal(0, infoLines);
+            } finally {
+                File.Delete(path);
+            }
+        }
     }
 }
