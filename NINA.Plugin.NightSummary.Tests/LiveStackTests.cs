@@ -301,5 +301,21 @@ namespace NINA.Plugin.NightSummary.Tests {
 
             Assert.Contains("width:400px", html);
         }
+
+        // Issue #27 (2026-10-13 comment): with Live Stack installed, the old warning said it
+        // "may not be installed", which sent the user looking for a missing folder.
+        [Fact]
+        public void NoStacksWarning_LiveStackLoaded_PointsAtQualityGates() {
+            var msg = LiveStackCapture.NoStacksWarning(liveStackLoaded: true);
+            Assert.Contains("quality gate", msg);
+            Assert.DoesNotContain("not loaded", msg);
+        }
+
+        [Fact]
+        public void NoStacksWarning_LiveStackNotLoaded_SaysSo() {
+            var msg = LiveStackCapture.NoStacksWarning(liveStackLoaded: false);
+            Assert.Contains("not loaded", msg);
+            Assert.DoesNotContain("quality gate", msg);
+        }
     }
 }

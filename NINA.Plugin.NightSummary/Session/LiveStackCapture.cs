@@ -112,9 +112,32 @@ namespace NINA.Plugin.NightSummary.Session {
                 var targets = result.Select(i => $"{i.Target}/{i.Filter}").Distinct();
                 Logger.Info($"NightSummary: LiveStackCapture collected {result.Count} image(s): {string.Join(", ", targets)}");
             } else {
-                Logger.Warning("NightSummary: LiveStackCapture collected 0 images — Live Stack plugin may not be installed or no stacks were broadcast during the session");
+                Logger.Warning(NoStacksWarning(IsLiveStackLoaded()));
             }
             return result;
+        }
+
+        /// <summary>
+        /// Warning for a session with no stacks. Live Stack only broadcasts a stack it
+        /// built, so frames rejected by its own quality gates never reach us (issue #27,
+        /// 2026-10-13 comment: an HFR gate of 1 rejected every frame for three nights).
+        /// Exposed for testing.
+        /// </summary>
+        internal static string NoStacksWarning(bool liveStackLoaded) {
+            return liveStackLoaded
+                ? "NightSummary: LiveStackCapture collected 0 images — Live Stack is installed but broadcast no stacks this session. " +
+                  "Either live stacking wasn't started, or Live Stack rejected every frame (look for \"does not meet quality gate\" " +
+                  "in this log and check Live Stack's quality-gate settings)"
+                : "NightSummary: LiveStackCapture collected 0 images — Live Stack plugin is not loaded";
+        }
+
+        private static bool IsLiveStackLoaded() {
+            try {
+                return AppDomain.CurrentDomain.GetAssemblies().Any(a =>
+                    (a.GetName().Name ?? "").StartsWith("NINA.Plugin.Livestack", StringComparison.OrdinalIgnoreCase));
+            } catch (Exception) {
+                return false;
+            }
         }
 
         /// <summary>
