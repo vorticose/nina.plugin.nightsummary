@@ -7,6 +7,7 @@
 ### Bug Fixes
 
 - Fixed the Overhead Analysis section going missing when a second NINA instance was open on the same PC when the session started. Night Summary read the other instance's log instead of its own. Regenerate an affected night to restore it, as long as that night's NINA log still exists.
+- Fixed the same missing section when another plugin keeps its own log files in NINA's Logs folder (for example a remote-copy plugin's robocopy logs). Night Summary now reads only NINA's own log files.
 - The "Overhead analysis unavailable" notice now points at NINA's log level only when the log really has no Info entries for the session.
 
 ## v3.3.2

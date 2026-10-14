@@ -1033,6 +1033,42 @@ namespace NINA.Plugin.NightSummary.Tests {
             Assert.Equal(expected, NinaLogParser.ExtractLogFileProcessId(name));
         }
 
+        // ── Non-NINA files in the Logs folder (issue #27, 2026-10-13 comment) ──
+        // A remote copy plugin writes robocopy-{timestamp}.log into NINA's Logs folder.
+        // Created 53 s after NINA's own log, it won the creation-time match every night.
+
+        [Theory]
+        [InlineData("20261007-173938-3.2.1.3002.7312-202610.log", true)]
+        [InlineData("20261012-173627-3.2.0.9001.6988.log", true)]
+        [InlineData("robocopy-20261007-174031.log", false)]
+        [InlineData("nina_test.log", false)]
+        public void FilterNinaLogFiles_KeepsOnlyNinaNamedLogs(string name, bool kept) {
+            var path = Path.Combine(@"C:\Logs", name);
+            Assert.Equal(kept, NinaLogParser.FilterNinaLogFiles(new[] { path }).Contains(path));
+        }
+
+        [Fact]
+        public void FilterNinaLogFiles_NewerRobocopyLog_NotSelected() {
+            var dir = Path.Combine(Path.GetTempPath(), $"ninalog_robocopy_{Guid.NewGuid():N}");
+            Directory.CreateDirectory(dir);
+            try {
+                var nina     = Path.Combine(dir, "20261007-173938-3.2.1.3002.7312-202610.log");
+                var robocopy = Path.Combine(dir, "robocopy-20261007-174031.log");
+                File.WriteAllText(nina, "nina");
+                File.WriteAllText(robocopy, "robocopy");
+                File.SetCreationTime(nina,     new DateTime(2026, 10, 7, 17, 39, 38));
+                File.SetCreationTime(robocopy, new DateTime(2026, 10, 7, 17, 40, 31));
+
+                var sessionStart = new DateTime(2026, 10, 7, 20, 7, 13);
+                var files = new[] { nina, robocopy };
+                // Unfiltered, the newer robocopy log wins (the bug).
+                Assert.Equal(robocopy, NinaLogParser.FindLogFileByCreationTime(files, sessionStart));
+                Assert.Equal(nina, NinaLogParser.FindLogFileByCreationTime(NinaLogParser.FilterNinaLogFiles(files), sessionStart));
+            } finally {
+                Directory.Delete(dir, true);
+            }
+        }
+
         [Fact]
         public void ParseFile_CountsInfoLinesInWindow() {
             NinaLogParser.ParseFile(_logPath, SessionStart, SessionEnd, -1, out var infoLines);

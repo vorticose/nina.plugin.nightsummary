@@ -589,7 +589,7 @@ namespace NINA.Plugin.NightSummary.Data {
             if (!Directory.Exists(logsDir)) return null;
 
             // Pattern: {yyyyMMdd}-{HHmmss}-{version}.{pid}-{yyyyMM}.log
-            var logFiles = Directory.GetFiles(logsDir, "*.log");
+            var logFiles = FilterNinaLogFiles(Directory.GetFiles(logsDir, "*.log"));
             if (logFiles.Length == 0) return null;
 
             // Every NINA instance on the machine writes to this same folder, so "newest
@@ -625,6 +625,18 @@ namespace NINA.Plugin.NightSummary.Data {
             }
 
             return bestMatch;
+        }
+
+        /// <summary>
+        /// Keeps only files named like NINA's own logs ({yyyyMMdd}-{HHmmss}-...). Other
+        /// plugins write into the same Logs folder (issue #27, 2026-10-13 comment: a remote
+        /// copy plugin's robocopy-{yyyyMMdd}-{HHmmss}.log), and a newer foreign file won the
+        /// creation-time match, so the parser read it and found 0 events. Exposed for testing.
+        /// </summary>
+        internal static string[] FilterNinaLogFiles(string[] files) {
+            return files
+                .Where(f => Regex.IsMatch(Path.GetFileName(f), @"^\d{8}-\d{6}-.+\.log$", RegexOptions.IgnoreCase))
+                .ToArray();
         }
 
         // Max files scanned for the session-start marker. The right file is almost always
