@@ -1,6 +1,6 @@
 # Night Summary — Changelog
 
-<!-- v3.3.2 frozen to CHANGELOG.md; ship pending. Session merge remains a candidate, not a commitment. -->
+<!-- v3.3.3 frozen to CHANGELOG.md. Session merge remains a candidate, not a commitment. -->
 
 ## v3.3.3
 
