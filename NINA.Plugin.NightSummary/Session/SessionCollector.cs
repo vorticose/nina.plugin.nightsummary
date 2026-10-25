@@ -56,8 +56,10 @@ namespace NINA.Plugin.NightSummary.Session {
         // by ExposureStart. ImageSavedEventArgs only exposes the (possibly annotated)
         // Image — we grab IRenderedImage.OriginalImage earlier so thumbnails never
         // contain NINA's star/HFR overlay even when Annotate Image is enabled.
-        private readonly ConcurrentDictionary<DateTime, BitmapSource> _preAnnotationImages
-            = new ConcurrentDictionary<DateTime, BitmapSource>();
+        // LIGHT frames only, taken at the top of OnImageSaved, and capped so a
+        // save that never reports back can't pin full-size bitmaps (issue #29).
+        private readonly PendingFrameCache<BitmapSource> _preAnnotationImages
+            = new PendingFrameCache<BitmapSource>(capacity: 3);
 
         public SessionDatabase Database { get; private set; }
         public int SkippedExposures => skippedExposures;
@@ -194,6 +196,14 @@ namespace NINA.Plugin.NightSummary.Session {
 
         private void OnImageSaved(object sender, ImageSavedEventArgs e) {
             try {
+                // Take the stashed bitmap first, before any early return, so every
+                // ImageSaved releases its entry (issue #29: non-LIGHT frames used to
+                // return before this and stay cached until EndSession).
+                var exposureStart = e.MetaData?.Image?.ExposureStart;
+                BitmapSource thumbSource = null;
+                if (exposureStart.HasValue && exposureStart.Value > DateTime.MinValue)
+                    thumbSource = _preAnnotationImages.Take(exposureStart.Value);
+
                 // Only record LIGHT frames — skip darks, flats, bias, etc.
                 var imageType = e.MetaData?.Image?.ImageType;
                 if (!"LIGHT".Equals(imageType, StringComparison.OrdinalIgnoreCase))
@@ -234,7 +244,6 @@ namespace NINA.Plugin.NightSummary.Session {
                 // ImageSaved event). Pre-fix legacy rows captured Clock.Now (ImageSaved
                 // time, ~exposureDuration later); the importer/augment paths apply an
                 // ExposureDuration offset to bridge the conventions.
-                var exposureStart = e.MetaData?.Image?.ExposureStart;
                 var record = new ImageRecord {
                     SessionId        = currentSession.SessionId,
                     Timestamp        = exposureStart.HasValue && exposureStart.Value > DateTime.MinValue
@@ -319,9 +328,6 @@ namespace NINA.Plugin.NightSummary.Session {
                 // for 192px output; not worth a background queue.
                 // Prefer the pre-annotation OriginalImage stashed by BeforeFinalizeImageSaved
                 // so thumbnails never include NINA's star/HFR overlay (Imaging → Annotate Image).
-                BitmapSource thumbSource = null;
-                if (exposureStart.HasValue && exposureStart.Value > DateTime.MinValue)
-                    _preAnnotationImages.TryRemove(exposureStart.Value, out thumbSource);
                 TryCaptureThumbnails(thumbSource ?? e.Image, rowId, currentSession?.SessionId);
             } catch (Exception ex) {
                 Logger.Error($"NightSummary: Failed to record image. {ex.Message}");
@@ -391,10 +397,15 @@ namespace NINA.Plugin.NightSummary.Session {
                 if (!S.CaptureRawThumbnails) return Task.CompletedTask;
                 var rendered = e?.Image;
                 var original = rendered?.OriginalImage;
-                var exposureStart = rendered?.RawImageData?.MetaData?.Image?.ExposureStart;
-                if (original == null || !exposureStart.HasValue || exposureStart.Value <= DateTime.MinValue)
+                var image = rendered?.RawImageData?.MetaData?.Image;
+                // OnImageSaved only thumbnails LIGHT frames; caching flats/darks/bias
+                // would hold ~260 MB each for nothing (issue #29).
+                if (!"LIGHT".Equals(image?.ImageType, StringComparison.OrdinalIgnoreCase))
                     return Task.CompletedTask;
-                _preAnnotationImages[exposureStart.Value] = original;
+                var exposureStart = image.ExposureStart;
+                if (original == null || exposureStart <= DateTime.MinValue)
+                    return Task.CompletedTask;
+                _preAnnotationImages.Put(exposureStart, original);
             } catch (Exception ex) {
                 Logger.Warning($"NightSummary: BeforeFinalizeImageSaved stash failed: {ex.Message}");
             }
