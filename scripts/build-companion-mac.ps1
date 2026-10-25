@@ -306,8 +306,24 @@ STOP / RESTART
         $appsLink = Join-Path $staging 'Applications'
         if (-not (Test-Path $appsLink)) { & ln -s /Applications $appsLink }
 
-        & hdiutil create -volname "Night Summary Companion" -srcfolder "$staging" -ov -format UDZO "$dmgPath" | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw "hdiutil create failed (exit $LASTEXITCODE)" }
+        # Size the image explicitly. Left to estimate from -srcfolder, hdiutil
+        # sometimes sizes the temporary image too small and fails with "No space
+        # left on device" even with 100+ GB free on the runner (v3.3.3 x64 failed
+        # twice that way with 140 GB available). Staging size plus 50% and 20 MB
+        # headroom; UDZO compresses the final .dmg, so the result is no bigger.
+        $stagingMb = [int](((& du -sm "$staging") -split '\s+')[0])
+        $imageMb   = [int][math]::Ceiling($stagingMb * 1.5) + 20
+        $hdiOk = $false
+        for ($attempt = 1; $attempt -le 3 -and -not $hdiOk; $attempt++) {
+            if (Test-Path $dmgPath) { Remove-Item $dmgPath }
+            & hdiutil create -volname "Night Summary Companion" -srcfolder "$staging" -size "${imageMb}m" -ov -format UDZO "$dmgPath" | Out-Null
+            if ($LASTEXITCODE -eq 0) { $hdiOk = $true }
+            else {
+                Write-Warning "hdiutil create failed (exit $LASTEXITCODE), attempt $attempt of 3, staging $stagingMb MB, image $imageMb MB"
+                Start-Sleep -Seconds 5
+            }
+        }
+        if (-not $hdiOk) { throw "hdiutil create failed after 3 attempts" }
         $dmgMb = [math]::Round((Get-Item $dmgPath).Length / 1MB, 1)
         Write-Host "  -> $dmgPath ($dmgMb MB)" -ForegroundColor Green
     } else {
