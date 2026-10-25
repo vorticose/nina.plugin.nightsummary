@@ -2,6 +2,12 @@
 
 <!-- v3.3.2 frozen to CHANGELOG.md; ship pending. Session merge remains a candidate, not a commitment. -->
 
+## v3.3.3
+
+### Bug Fixes
+
+- Fixed NINA's memory growing by hundreds of MB for every flat, dark or bias frame taken during a session with Capture Thumbnails on. The memory was only released at End Session (#29).
+
 ## v3.3.2
 
 ### New Features
