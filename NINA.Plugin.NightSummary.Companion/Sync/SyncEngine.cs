@@ -42,6 +42,20 @@ public sealed class SyncEngine {
     private static readonly JsonSerializerOptions ManifestJson =
         new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
+    // A download that delivers no bytes for this long is abandoned. A rig that
+    // drops off the network mid-transfer never closes the connection, and
+    // HttpClient.Timeout stops applying once the response headers have arrived
+    // (we read bodies with ResponseHeadersRead), so without this guard the body
+    // read waits forever. Every later sync then joins the stuck one in
+    // CompanionController.TriggerSyncAsync, and the companion silently stops
+    // updating (2026-11-03: three days with no sync on a long-running companion).
+    internal TimeSpan StallTimeout { get; set; } = TimeSpan.FromMinutes(2);
+
+    // Upper bound on one whole sync: a backstop for anything the stall guard
+    // cannot see, such as a connection that trickles a byte at a time. Generous
+    // on purpose, so a first full pull over a slow link still finishes.
+    internal TimeSpan SyncDeadline { get; set; } = TimeSpan.FromHours(2);
+
     // Canonical multi-rig ctor: one engine per paired rig. dashboardPort is the
     // companion's own listener port, advertised so the primary learns the push
     // URL — it's a companion-global value, not per-rig.
@@ -101,19 +115,31 @@ public sealed class SyncEngine {
     }
 
     // CopyToAsync that emits byte progress for the current phase every ~512 KB.
-    // Used for the three large transfers (reports zip, DB, thumbs zip) so a
-    // multi-minute pull doesn't look frozen on a single phase label.
+    // Used for every streamed download body so a multi-minute pull doesn't look
+    // frozen on a single phase label. Each read must deliver data within
+    // StallTimeout or the download is abandoned (see StallTimeout). A null phase
+    // skips progress reporting but keeps the stall guard.
     private async Task CopyWithProgressAsync(System.IO.Stream src, System.IO.Stream dst,
-                                             int step, string phase, CancellationToken ct) {
+                                             int step, string? phase, CancellationToken ct) {
         var buffer = new byte[81920];
         long total = 0, lastReport = 0;
-        int read;
-        while ((read = await src.ReadAsync(buffer.AsMemory(0, buffer.Length), ct)) > 0) {
+        using var stall = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        while (true) {
+            stall.CancelAfter(StallTimeout);   // restarts the timer for this read
+            int read;
+            try {
+                read = await src.ReadAsync(buffer.AsMemory(0, buffer.Length), stall.Token);
+            } catch (OperationCanceledException) when (!ct.IsCancellationRequested) {
+                throw new TimeoutException(
+                    $"no data from the rig for {StallTimeout.TotalSeconds:0} s after {total} bytes" +
+                    $" ({phase ?? "download"}); connection abandoned");
+            }
+            if (read == 0) break;
             await dst.WriteAsync(buffer.AsMemory(0, read), ct);
             total += read;
-            if (total - lastReport >= 524288) { Report(step, phase, total); lastReport = total; }
+            if (phase != null && total - lastReport >= 524288) { Report(step, phase, total); lastReport = total; }
         }
-        Report(step, phase, total);
+        if (phase != null) Report(step, phase, total);
     }
 
     public sealed record SyncResult(
@@ -136,10 +162,14 @@ public sealed class SyncEngine {
         var state = SyncState.Load(statePath);
         state.LastAttemptUtc = DateTime.UtcNow;
 
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(SyncDeadline);
+        var syncCt = deadline.Token;
+
         try {
             // 1 — Reachability + schema check
             Report(1, "Connecting to your imaging rig");
-            var (reachable, primaryVersion, primarySchema) = await CheckHealthAsync(ct);
+            var (reachable, primaryVersion, primarySchema) = await CheckHealthAsync(syncCt);
             state.PrimaryVersion = primaryVersion;
             state.PrimarySchema  = primarySchema;
             if (!reachable) {
@@ -150,19 +180,19 @@ public sealed class SyncEngine {
             }
 
             // 2 — Full remote manifest (used for orphan reconcile)
-            var manifest = await FetchManifestAsync(since: null, ct);
+            var manifest = await FetchManifestAsync(since: null, syncCt);
             _log.Info($"{Tag}Sync: remote manifest reports {manifest.Files.Length} file(s)");
 
             // 3 — Incremental reports zip
             Report(2, "Downloading reports");
-            var (added, updated) = await PullReportsZipAsync(state.LastReportMtimeUtc, ct, 2, "Downloading reports");
+            var (added, updated) = await PullReportsZipAsync(state.LastReportMtimeUtc, syncCt, 2, "Downloading reports");
 
             // 4 — Main DB
             Report(3, "Downloading database");
-            var dbBytes = await PullSqliteAsync("/api/export/database", _paths.DatabasePath, ct, 3, "Downloading database");
+            var dbBytes = await PullSqliteAsync("/api/export/database", _paths.DatabasePath, syncCt, 3, "Downloading database");
 
             // 5 — TS DB (optional)
-            var tsBytes = await TryPullSqliteAsync("/api/export/ts-database", _paths.TsDatabasePath, ct, 3, "Downloading database");
+            var tsBytes = await TryPullSqliteAsync("/api/export/ts-database", _paths.TsDatabasePath, syncCt, 3, "Downloading database");
 
             // 6a — Reports orphan reconcile (only when manifest is non-empty — never nuke on bad response)
             int deleted = manifest.Files.Length > 0
@@ -177,7 +207,7 @@ public sealed class SyncEngine {
             // cache yet (no human loaded Tonight + no proactive refresh has
             // run). Best-effort — sync continues on failure.
             try {
-                await TryPullTonightCacheAsync(ct);
+                await TryPullTonightCacheAsync(syncCt);
             } catch (Exception ex) {
                 _log.Warn($"{Tag}Sync: tonight cache pull skipped — {ex.Message}");
             }
@@ -186,9 +216,9 @@ public sealed class SyncEngine {
             // not have raw thumbnails enabled (older sessions, feature off) — the
             // server returns an empty manifest/zip in that case and we no-op.
             Report(4, "Downloading thumbnails");
-            var thumbsManifest = await FetchThumbsManifestAsync(since: null, ct);
+            var thumbsManifest = await FetchThumbsManifestAsync(since: null, syncCt);
             _log.Info($"{Tag}Sync: remote thumbs manifest reports {thumbsManifest.Files.Length} file(s)");
-            var (tAdded, tUpdated) = await PullThumbsZipAsync(state.LastThumbMtimeUtc, ct, 4, "Downloading thumbnails");
+            var (tAdded, tUpdated) = await PullThumbsZipAsync(state.LastThumbMtimeUtc, syncCt, 4, "Downloading thumbnails");
             int tDeleted = thumbsManifest.Files.Length > 0
                 ? DeleteThumbOrphans(thumbsManifest)
                 : 0;
@@ -206,6 +236,12 @@ public sealed class SyncEngine {
             return new SyncResult(true, true, null, dbBytes, tsBytes, added, updated, deleted,
                                   tAdded, tUpdated, tDeleted, primaryVersion);
 
+        } catch (OperationCanceledException) when (deadline.IsCancellationRequested && !ct.IsCancellationRequested) {
+            var msg = $"sync took longer than {SyncDeadline.TotalMinutes:0.#} min and was abandoned";
+            state.LastError = msg;
+            state.Save(statePath);
+            _log.Warn($"{Tag}Sync: {msg}");
+            return new SyncResult(true, false, msg, 0, 0, 0, 0, 0, 0, 0, 0, null);
         } catch (Exception ex) {
             state.LastError = ex.Message;
             state.Save(statePath);
@@ -402,7 +438,7 @@ public sealed class SyncEngine {
                 using (var src = await resp.Content.ReadAsStreamAsync(ct))
                 using (var dst = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None,
                                                 81920, useAsync: true)) {
-                    await src.CopyToAsync(dst, ct);
+                    await CopyWithProgressAsync(src, dst, 0, null, ct);
                 }
                 if (File.Exists(destPath)) File.Replace(temp, destPath, null, ignoreMetadataErrors: true);
                 else                       File.Move(temp, destPath);
