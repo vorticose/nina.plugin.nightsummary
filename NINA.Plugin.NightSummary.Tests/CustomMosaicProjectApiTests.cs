@@ -4,6 +4,7 @@ using NINA.Plugin.NightSummary.Server;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
@@ -21,6 +22,7 @@ namespace NINA.Plugin.NightSummary.Tests {
     public class CustomMosaicProjectApiTests {
 
         private sealed class StubDataSource : IDashboardDataSource {
+            public IReadOnlyList<TargetDetail> Targets { get; set; } = Array.Empty<TargetDetail>();
             public Task<IReadOnlyList<SessionRecord>> GetAllSessionsAsync(CancellationToken ct = default)
                 => Task.FromResult<IReadOnlyList<SessionRecord>>(Array.Empty<SessionRecord>());
             public Task<SessionRecord?> GetSessionAsync(string sessionId, CancellationToken ct = default)
@@ -32,7 +34,7 @@ namespace NINA.Plugin.NightSummary.Tests {
             public Task<IReadOnlyList<TimingEvent>> GetTimingEventsAsync(string sessionId, CancellationToken ct = default)
                 => Task.FromResult<IReadOnlyList<TimingEvent>>(Array.Empty<TimingEvent>());
             public Task<IReadOnlyList<TargetDetail>> GetTargetDetailsAsync(CancellationToken ct = default)
-                => Task.FromResult<IReadOnlyList<TargetDetail>>(Array.Empty<TargetDetail>());
+                => Task.FromResult(Targets);
             public Task<IReadOnlyList<TargetSessionDetail>> GetSessionsForTargetAsync(string targetName, CancellationToken ct = default)
                 => Task.FromResult<IReadOnlyList<TargetSessionDetail>>(Array.Empty<TargetSessionDetail>());
             public Task<IReadOnlyDictionary<string, double>> GetLatestPositionAnglesAsync(CancellationToken ct = default)
@@ -113,14 +115,21 @@ namespace NINA.Plugin.NightSummary.Tests {
             return port;
         }
 
-        private static async Task<(DashboardServer srv, int port)> StartServerAsync() {
+        private static async Task<(DashboardServer srv, int port)> StartServerAsync(params string[] targetNames) {
             int port = GetFreePort();
+            var data = new StubDataSource();
+            var paths = new StubPaths();
+            if (targetNames.Length > 0) {
+                data.Targets = targetNames.Select(n => new TargetDetail { TargetName = n }).ToList();
+                // /api/stats/targets returns nothing unless the NS database file exists.
+                File.WriteAllBytes(paths.DatabasePath, Array.Empty<byte>());
+            }
             var srv = new DashboardServer(
-                data:        new StubDataSource(),
+                data:        data,
                 settings:    new StubSettings(),
                 webAssets:   new StubWebAssets(),
                 externalLog: new StubLogger(),
-                paths:       new StubPaths(),
+                paths:       paths,
                 regen:       null,
                 readOnly:    false);
             await srv.StartAsync(port, "localhost");
@@ -174,6 +183,50 @@ namespace NINA.Plugin.NightSummary.Tests {
                 using var doc = JsonDocument.Parse(json);
                 Assert.True(doc.RootElement.GetProperty("project").GetProperty("isMosaic").GetBoolean());
                 Assert.True(doc.RootElement.GetProperty("project").GetProperty("isCustom").GetBoolean());
+            } finally { await srv.StopAsync(); }
+        }
+
+        // Issue #31: changing a custom project's status saved the override, but the
+        // target card's project came back hardcoded to Active, so the badge never changed.
+        [Fact]
+        public async Task Status_override_applies_to_custom_project_on_target_stats() {
+            var (srv, port) = await StartServerAsync("Heart_1");
+            try {
+                using var client = NewClient(port);
+                var create = await client.PostAsync("/api/stats/projects/custom",
+                    new StringContent(JsonSerializer.Serialize(new {
+                        action = "create", name = "Heart", isMosaic = false, targets = new[] { "Heart_1" }
+                    }), Encoding.UTF8, "application/json"));
+                create.EnsureSuccessStatusCode();
+                var guid = JsonDocument.Parse(await create.Content.ReadAsStringAsync())
+                    .RootElement.GetProperty("guid").GetString();
+
+                async Task<(string? state, string? source)> GetProjectState() {
+                    var json = await client.GetStringAsync("/api/stats/targets");
+                    using var doc = JsonDocument.Parse(json);
+                    var proj = doc.RootElement.GetProperty("targets")[0].GetProperty("ts").GetProperty("project");
+                    Assert.Equal(guid, proj.GetProperty("guid").GetString());
+                    return (proj.GetProperty("state").GetString(), proj.GetProperty("stateSource").GetString());
+                }
+
+                async Task SetOverride(string status) {
+                    var resp = await client.PostAsync("/api/stats/ts/override",
+                        new StringContent(JsonSerializer.Serialize(new { projectGuid = guid, status }),
+                            Encoding.UTF8, "application/json"));
+                    resp.EnsureSuccessStatusCode();
+                }
+
+                Assert.Equal(("Active", "raw"), await GetProjectState());
+
+                await SetOverride("Draft");
+                Assert.Equal(("Draft", "override"), await GetProjectState());
+
+                await SetOverride("Completed");
+                Assert.Equal(("Completed", "override"), await GetProjectState());
+
+                // Empty status clears the override ("Reset" in the dropdown).
+                await SetOverride("");
+                Assert.Equal(("Active", "raw"), await GetProjectState());
             } finally { await srv.StopAsync(); }
         }
     }

@@ -2370,6 +2370,11 @@ namespace NINA.Plugin.NightSummary.Server {
                     var cg = customAssignGuids.FirstOrDefault(g => customGuids.Contains(g));
                     if (cg != null && tsProjectByGuid.TryGetValue(cg, out var cp)) {
                         customPrimaryGuid = cp.Guid;
+                        // Custom projects have no TS state, so they start Active, but a
+                        // status the user picked in the dashboard must still win (issue #31:
+                        // the badge stayed Active after every change).
+                        var customHasOverride = statusOverrides.TryGetValue(cp.Guid ?? "", out var customOverride)
+                            && !string.IsNullOrEmpty(customOverride);
                         tsObj = new {
                             project = new {
                                 id              = 0,
@@ -2378,8 +2383,8 @@ namespace NINA.Plugin.NightSummary.Server {
                                 name            = cp.Name,
                                 description     = (string)null,
                                 rawState        = "Active",
-                                state           = "Active",
-                                stateSource     = "raw",
+                                state           = customHasOverride ? customOverride : "Active",
+                                stateSource     = customHasOverride ? "override" : "raw",
                                 priority        = (string)null,
                                 isMosaic        = cp.IsMosaic,
                                 createDate      = (string)null,

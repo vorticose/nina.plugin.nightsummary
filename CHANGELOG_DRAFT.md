@@ -2,6 +2,12 @@
 
 <!-- v3.3.3 frozen to CHANGELOG.md. Session merge remains a candidate, not a commitment. -->
 
+## Unreleased
+
+### Bug Fixes
+
+- Fixed the dashboard ignoring status changes on projects created in the dashboard (custom projects). The project kept showing Active on its target cards and project header whatever status you picked (#31).
+
 ## v3.3.3
 
 ### Bug Fixes
